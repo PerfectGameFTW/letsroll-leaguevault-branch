@@ -12,7 +12,8 @@ export async function initializeSquare() {
   if (!payments) {
     try {
       console.log("Loading Square.js script...");
-      await loadScript("https://web.squarecdn.com/v1/square.js");
+      // Use the sandbox URL for development
+      await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
       console.log("Square.js script loaded");
 
       if (!window.Square) {

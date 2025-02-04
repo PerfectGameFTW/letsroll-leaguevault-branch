@@ -61,14 +61,38 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
         return;
       }
 
+      // Create empty container for Square card
+      if (cardContainer.current) {
+        cardContainer.current.innerHTML = '';
+      }
+
       setIsCardLoading(true);
       setInitError(null);
 
       try {
         const payments = await initializeSquare();
-        if (!card.current) {
+
+        // Create and attach Square card element
+        if (payments && !card.current) {
           card.current = await payments.card();
-          await card.current.attach('#card-container');
+
+          // Add specific styling required by Square
+          const styles = {
+            '.input-container': {
+              borderColor: 'lightgray',
+              borderRadius: '6px',
+            },
+            '.input-container.is-focus': {
+              borderColor: 'blue',
+            },
+            input: {
+              backgroundColor: 'transparent',
+              color: '#333',
+              fontFamily: 'system-ui',
+            },
+          };
+
+          await card.current.attach('#card-container', { styles });
           setIsCardInitialized(true);
         }
       } catch (error) {
@@ -86,7 +110,6 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
 
     initializeCard();
 
-    // Cleanup function
     return () => {
       if (card.current) {
         card.current.destroy();
@@ -242,7 +265,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               <div 
                 id="card-container"
                 ref={cardContainer}
-                className="p-3 border rounded-md min-h-[40px]"
+                className="p-3 border rounded-md min-h-[40px] bg-white"
               >
                 {isCardLoading && (
                   <div className="flex items-center justify-center">
