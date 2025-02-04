@@ -29,7 +29,7 @@ import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/sc
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { initializeSquare } from "@/lib/square";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface PaymentFormProps {
   open: boolean;
@@ -41,6 +41,8 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
   const { toast } = useToast();
   const cardContainer = useRef<HTMLDivElement>(null);
   const card = useRef<any>(null);
+  const [isCardInitialized, setIsCardInitialized] = useState(false);
+  const [isCardLoading, setIsCardLoading] = useState(false);
 
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
@@ -54,24 +56,33 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
   // Initialize Square card element when dialog opens
   useEffect(() => {
     async function initializeCard() {
-      if (open && cardContainer.current && !card.current) {
-        try {
-          const payments = await initializeSquare();
+      if (!open || !cardContainer.current || isCardInitialized || isCardLoading) {
+        return;
+      }
+
+      setIsCardLoading(true);
+      try {
+        const payments = await initializeSquare();
+        if (!card.current) {
           card.current = await payments.card();
           await card.current.attach('#card-container');
-        } catch (error) {
-          console.error('Failed to initialize Square card:', error);
-          toast({
-            title: "Error",
-            description: "Failed to initialize payment form. Please try again.",
-            variant: "destructive",
-          });
-          handleClose();
+          setIsCardInitialized(true);
         }
+      } catch (error) {
+        console.error('Failed to initialize Square card:', error);
+        toast({
+          title: "Error",
+          description: "Failed to initialize payment form. Please try again.",
+          variant: "destructive",
+        });
+        handleClose();
+      } finally {
+        setIsCardLoading(false);
       }
     }
+
     initializeCard();
-  }, [open]);
+  }, [open, isCardInitialized, isCardLoading]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
@@ -133,6 +144,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
       card.current.destroy();
       card.current = null;
     }
+    setIsCardInitialized(false);
     form.reset();
     onClose();
   };
@@ -209,7 +221,13 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                 id="card-container"
                 ref={cardContainer}
                 className="p-3 border rounded-md min-h-[40px]"
-              />
+              >
+                {isCardLoading && (
+                  <div className="flex items-center justify-center">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                )}
+              </div>
             </div>
 
             <FormField
@@ -244,7 +262,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               </Button>
               <Button 
                 type="submit" 
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || !isCardInitialized}
                 className="min-w-[120px]"
               >
                 {mutation.isPending ? (
