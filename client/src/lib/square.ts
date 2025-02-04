@@ -12,7 +12,6 @@ export async function initializeSquare() {
   if (!payments) {
     try {
       console.log("Loading Square.js script...");
-      // Use the sandbox URL for development
       await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
       console.log("Square.js script loaded");
 
@@ -24,7 +23,7 @@ export async function initializeSquare() {
         throw new Error("Square credentials are not configured");
       }
 
-      console.log("Initializing Square payments...");
+      console.log("Initializing Square payments with App ID and Location ID...");
       payments = await window.Square.payments(
         import.meta.env.VITE_SQUARE_APP_ID,
         import.meta.env.VITE_SQUARE_LOCATION_ID
@@ -36,7 +35,7 @@ export async function initializeSquare() {
       console.log("Square payments initialized successfully");
     } catch (error) {
       console.error("Square initialization error:", error);
-      throw new Error("Failed to initialize Square payments. Please check your configuration.");
+      throw error instanceof Error ? error : new Error("Failed to initialize Square payments");
     }
   }
   return payments;

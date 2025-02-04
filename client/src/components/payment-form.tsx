@@ -54,14 +54,13 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     },
   });
 
-  // Initialize Square card element when dialog opens
   useEffect(() => {
     async function initializeCard() {
       if (!open || !cardContainer.current || isCardInitialized || isCardLoading) {
         return;
       }
 
-      // Create empty container for Square card
+      // Clear container first
       if (cardContainer.current) {
         cardContainer.current.innerHTML = '';
       }
@@ -72,30 +71,35 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
       try {
         const payments = await initializeSquare();
 
-        // Create and attach Square card element
         if (payments && !card.current) {
-          card.current = await payments.card();
-
-          // Add specific styling required by Square
+          // Initialize card with more specific styles
           const styles = {
             '.input-container': {
-              borderColor: 'lightgray',
+              borderColor: 'var(--border)',
               borderRadius: '6px',
+              padding: '8px',
             },
             '.input-container.is-focus': {
-              borderColor: 'blue',
+              borderColor: 'var(--primary)',
+              boxShadow: '0 0 0 1px var(--primary)',
+            },
+            '.message-text': {
+              color: 'var(--muted-foreground)',
+              fontSize: '14px',
             },
             input: {
               backgroundColor: 'transparent',
-              color: '#333',
-              fontFamily: 'system-ui',
+              color: 'var(--foreground)',
+              fontFamily: 'var(--font-sans)',
             },
           };
 
+          card.current = await payments.card();
           await card.current.attach('#card-container', { styles });
           setIsCardInitialized(true);
         }
       } catch (error) {
+        console.error('Square card initialization error:', error);
         const errorMessage = error instanceof Error ? error.message : "Failed to initialize payment form";
         setInitError(errorMessage);
         toast({
@@ -265,11 +269,18 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               <div 
                 id="card-container"
                 ref={cardContainer}
-                className="p-3 border rounded-md min-h-[40px] bg-white"
+                className="p-3 border rounded-md bg-card"
+                style={{
+                  minHeight: '120px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  position: 'relative',
+                }}
               >
                 {isCardLoading && (
-                  <div className="flex items-center justify-center">
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                  <div className="flex items-center justify-center absolute inset-0 bg-background/50">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
                 )}
                 {initError && (
