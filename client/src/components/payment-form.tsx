@@ -42,7 +42,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
       amount: 2000, // $20.00
-      weekOf: new Date().toISOString(),
+      weekOf: new Date(), // Use Date object directly
       status: "pending",
     },
   });
@@ -51,10 +51,11 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     mutationFn: async (data: InsertPayment) => {
       // Process payment through Square
       const squarePayment = await createPayment(data.amount);
-      
+
       // Create payment record
       await apiRequest("POST", "/api/payments", {
         ...data,
+        weekOf: data.weekOf.toISOString(), // Convert to ISO string for API
         status: squarePayment.status,
         squarePaymentId: squarePayment.id,
         paidAt: new Date().toISOString(),
@@ -154,9 +155,9 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                     <Input
                       type="date"
                       {...field}
-                      value={field.value?.split('T')[0]}
+                      value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
                       onChange={(e) =>
-                        field.onChange(new Date(e.target.value).toISOString())
+                        field.onChange(new Date(e.target.value))
                       }
                     />
                   </FormControl>

@@ -21,6 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { insertBowlerSchema, type InsertBowler } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 interface BowlerFormProps {
   open: boolean;
