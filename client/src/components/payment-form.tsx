@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -29,7 +30,6 @@ import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/sc
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { initializeSquare } from "@/lib/square";
-import { useEffect, useRef, useState } from "react";
 
 interface PaymentFormProps {
   open: boolean;
@@ -40,8 +40,7 @@ interface PaymentFormProps {
 export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
   const { toast } = useToast();
   const cardContainer = useRef<HTMLDivElement>(null);
-  const card = useRef<any>(null);
-  const [isCardInitialized, setIsCardInitialized] = useState(false);
+  const [card, setCard] = useState<any>(null);
   const [isCardLoading, setIsCardLoading] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
@@ -55,14 +54,12 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
   });
 
   useEffect(() => {
-    async function initializeCard() {
-      if (!open || !cardContainer.current || isCardInitialized || isCardLoading) {
-        return;
-      }
+    let isMounted = true;
+    let currentCard: any = null;
 
-      // Clear container first
-      if (cardContainer.current) {
-        cardContainer.current.innerHTML = '';
+    async function initializeCard() {
+      if (!open || !cardContainer.current || isCardLoading) {
+        return;
       }
 
       setIsCardLoading(true);
@@ -70,14 +67,22 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
 
       try {
         const payments = await initializeSquare();
+        if (!isMounted) return;
 
-        if (payments && !card.current) {
-          // Initialize card with more specific styles
+        if (payments) {
+          // Initialize card with styles
+          const newCard = await payments.card();
+          if (!isMounted) {
+            await newCard.destroy();
+            return;
+          }
+
           const styles = {
             '.input-container': {
               borderColor: 'var(--border)',
               borderRadius: '6px',
               padding: '8px',
+              backgroundColor: 'var(--background)',
             },
             '.input-container.is-focus': {
               borderColor: 'var(--primary)',
@@ -91,45 +96,56 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               backgroundColor: 'transparent',
               color: 'var(--foreground)',
               fontFamily: 'var(--font-sans)',
+              fontSize: '14px',
             },
           };
 
-          card.current = await payments.card();
-          await card.current.attach('#card-container', { styles });
-          setIsCardInitialized(true);
+          await newCard.attach('#card-container', { styles });
+          if (!isMounted) {
+            await newCard.destroy();
+            return;
+          }
+
+          currentCard = newCard;
+          setCard(newCard);
         }
       } catch (error) {
         console.error('Square card initialization error:', error);
-        const errorMessage = error instanceof Error ? error.message : "Failed to initialize payment form";
-        setInitError(errorMessage);
-        toast({
-          title: "Error",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        if (isMounted) {
+          const errorMessage = error instanceof Error ? error.message : "Failed to initialize payment form";
+          setInitError(errorMessage);
+          toast({
+            title: "Error",
+            description: errorMessage,
+            variant: "destructive",
+          });
+        }
       } finally {
-        setIsCardLoading(false);
+        if (isMounted) {
+          setIsCardLoading(false);
+        }
       }
     }
 
+    // Start initialization
     initializeCard();
 
+    // Cleanup function
     return () => {
-      if (card.current) {
-        card.current.destroy();
-        card.current = null;
-        setIsCardInitialized(false);
+      isMounted = false;
+      if (currentCard) {
+        currentCard.destroy().catch(console.error);
       }
     };
-  }, [open, isCardInitialized, isCardLoading, toast]);
+  }, [open, toast]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
-      if (!card.current) {
+      if (!card) {
         throw new Error("Payment form not initialized");
       }
 
-      const result = await card.current.tokenize();
+      const result = await card.tokenize();
       if (result.status === 'OK') {
         const response = await fetch('/api/payments/process', {
           method: 'POST',
@@ -149,7 +165,6 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
         }
 
         const payment = await response.json();
-
         await apiRequest("POST", "/api/payments", {
           ...data,
           weekOf: data.weekOf.toISOString(),
@@ -179,24 +194,14 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
   });
 
   const handleClose = () => {
-    if (card.current) {
-      card.current.destroy();
-      card.current = null;
+    if (card) {
+      card.destroy().catch(console.error);
+      setCard(null);
     }
-    setIsCardInitialized(false);
     setInitError(null);
     form.reset();
     onClose();
   };
-
-  useEffect(() => {
-    return () => {
-      if (card.current) {
-        card.current.destroy();
-        card.current = null;
-      }
-    };
-  }, []);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -323,7 +328,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               </Button>
               <Button 
                 type="submit" 
-                disabled={mutation.isPending || !isCardInitialized || isCardLoading}
+                disabled={mutation.isPending || !card || isCardLoading}
                 className="min-w-[120px]"
               >
                 {mutation.isPending ? (
