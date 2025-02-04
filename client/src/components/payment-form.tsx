@@ -144,6 +144,11 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                 </FormItem>
               )}
             />
+            
+            <div className="space-y-2">
+              <FormLabel>Card Details</FormLabel>
+              <div id="card-container" className="p-3 border rounded-md"></div>
+            </div>
 
             <FormField
               control={form.control}

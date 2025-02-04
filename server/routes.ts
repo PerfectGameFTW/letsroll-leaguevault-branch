@@ -75,6 +75,22 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.post("/api/payments/process", async (req, res) => {
+    try {
+      const { sourceId, amount } = req.body;
+      
+      // TODO: Replace with actual Square API call
+      const squarePayment = {
+        id: `live_${Date.now()}`,
+        status: "paid"
+      };
+      
+      res.json(squarePayment);
+    } catch (error) {
+      res.status(500).json({ message: "Payment processing failed" });
+    }
+  });
+
   app.patch("/api/payments/:id/status", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
