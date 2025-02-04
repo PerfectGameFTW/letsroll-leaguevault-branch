@@ -10,14 +10,29 @@ let payments: any = null;
 
 export async function initializeSquare() {
   if (!payments) {
-    await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
-    if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
-      throw new Error("Square credentials are not configured");
+    try {
+      console.log("Loading Square.js script...");
+      await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
+      console.log("Square.js script loaded");
+
+      if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
+        throw new Error("Square credentials are not configured");
+      }
+
+      console.log("Initializing Square payments...");
+      payments = await window.Square?.payments(
+        import.meta.env.VITE_SQUARE_APP_ID,
+        import.meta.env.VITE_SQUARE_LOCATION_ID
+      );
+
+      if (!payments) {
+        throw new Error("Failed to initialize Square payments");
+      }
+      console.log("Square payments initialized successfully");
+    } catch (error) {
+      console.error("Square initialization error:", error);
+      throw new Error("Failed to initialize Square payments. Please check your configuration.");
     }
-    payments = await window.Square.payments(
-      import.meta.env.VITE_SQUARE_APP_ID,
-      import.meta.env.VITE_SQUARE_LOCATION_ID
-    );
   }
   return payments;
 }

@@ -43,6 +43,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
   const card = useRef<any>(null);
   const [isCardInitialized, setIsCardInitialized] = useState(false);
   const [isCardLoading, setIsCardLoading] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
 
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
@@ -61,28 +62,33 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
       }
 
       setIsCardLoading(true);
+      setInitError(null);
+
       try {
+        console.log("Initializing Square card element...");
         const payments = await initializeSquare();
         if (!card.current) {
           card.current = await payments.card();
           await card.current.attach('#card-container');
           setIsCardInitialized(true);
+          console.log("Square card element initialized successfully");
         }
       } catch (error) {
         console.error('Failed to initialize Square card:', error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to initialize payment form";
+        setInitError(errorMessage);
         toast({
           title: "Error",
-          description: "Failed to initialize payment form. Please try again.",
+          description: errorMessage,
           variant: "destructive",
         });
-        handleClose();
       } finally {
         setIsCardLoading(false);
       }
     }
 
     initializeCard();
-  }, [open, isCardInitialized, isCardLoading]);
+  }, [open, isCardInitialized, isCardLoading, toast]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
@@ -145,9 +151,19 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
       card.current = null;
     }
     setIsCardInitialized(false);
+    setInitError(null);
     form.reset();
     onClose();
   };
+
+  useEffect(() => {
+    return () => {
+      if (card.current) {
+        card.current.destroy();
+        card.current = null;
+      }
+    };
+  }, []);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -227,6 +243,11 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                     <Loader2 className="h-4 w-4 animate-spin" />
                   </div>
                 )}
+                {initError && (
+                  <div className="text-sm text-destructive text-center">
+                    {initError}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -262,7 +283,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               </Button>
               <Button 
                 type="submit" 
-                disabled={mutation.isPending || !isCardInitialized}
+                disabled={mutation.isPending || !isCardInitialized || isCardLoading}
                 className="min-w-[120px]"
               >
                 {mutation.isPending ? (
