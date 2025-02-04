@@ -15,9 +15,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-50">
       <div className="flex min-h-screen">
         {/* Sidebar */}
-        <div className="hidden w-64 bg-white border-r md:flex md:flex-col">
+        <div className="w-64 flex-shrink-0 bg-white border-r">
           <div className="flex flex-col flex-1">
-            <div className="flex-1 flex flex-col pt-5 pb-4 overflow-y-auto">
+            <div className="flex-1 flex flex-col pt-5 pb-4">
               <div className="flex items-center flex-shrink-0 px-4">
                 <h1 className="text-xl font-bold text-gray-900">
                   League Manager
