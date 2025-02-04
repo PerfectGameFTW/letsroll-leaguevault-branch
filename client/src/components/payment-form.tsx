@@ -28,7 +28,7 @@ import { Loader2 } from "lucide-react";
 import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { createPayment } from "@/lib/square";
+import { initializeSquare } from "@/lib/square";
 import { useEffect, useRef } from "react";
 
 interface PaymentFormProps {
@@ -51,20 +51,64 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     },
   });
 
+  // Initialize Square card element when dialog opens
+  useEffect(() => {
+    async function initializeCard() {
+      if (open && cardContainer.current && !card.current) {
+        try {
+          const payments = await initializeSquare();
+          card.current = await payments.card();
+          await card.current.attach('#card-container');
+        } catch (error) {
+          console.error('Failed to initialize Square card:', error);
+          toast({
+            title: "Error",
+            description: "Failed to initialize payment form. Please try again.",
+            variant: "destructive",
+          });
+          handleClose();
+        }
+      }
+    }
+    initializeCard();
+  }, [open]);
+
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
-      try {
-        const squarePayment = await createPayment(data.amount);
+      if (!card.current) {
+        throw new Error("Payment form not initialized");
+      }
+
+      const result = await card.current.tokenize();
+      if (result.status === 'OK') {
+        const response = await fetch('/api/payments/process', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sourceId: result.token,
+            amount: data.amount,
+            locationId: import.meta.env.VITE_SQUARE_LOCATION_ID,
+          }),
+        });
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(error || 'Payment processing failed');
+        }
+
+        const payment = await response.json();
+
         await apiRequest("POST", "/api/payments", {
           ...data,
           weekOf: data.weekOf.toISOString(),
-          status: squarePayment.status,
-          squarePaymentId: squarePayment.id,
+          status: payment.status,
+          squarePaymentId: payment.id,
           paidAt: new Date().toISOString(),
         });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Payment processing failed";
-        throw new Error(message);
+      } else {
+        throw new Error(result.errors[0].message);
       }
     },
     onSuccess: () => {
@@ -92,12 +136,6 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     form.reset();
     onClose();
   };
-
-  useEffect(() => {
-    if (!open) {
-      handleClose();
-    }
-  }, [open]);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -171,7 +209,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                 id="card-container"
                 ref={cardContainer}
                 className="p-3 border rounded-md min-h-[40px]"
-              ></div>
+              />
             </div>
 
             <FormField
