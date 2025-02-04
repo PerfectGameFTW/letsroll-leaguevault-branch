@@ -12,15 +12,19 @@ export async function initializeSquare() {
   if (!payments) {
     try {
       console.log("Loading Square.js script...");
-      await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
+      await loadScript("https://web.squarecdn.com/v1/square.js");
       console.log("Square.js script loaded");
+
+      if (!window.Square) {
+        throw new Error("Failed to load Square.js");
+      }
 
       if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
         throw new Error("Square credentials are not configured");
       }
 
       console.log("Initializing Square payments...");
-      payments = await window.Square?.payments(
+      payments = await window.Square.payments(
         import.meta.env.VITE_SQUARE_APP_ID,
         import.meta.env.VITE_SQUARE_LOCATION_ID
       );

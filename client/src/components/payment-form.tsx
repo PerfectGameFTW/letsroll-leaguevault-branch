@@ -65,16 +65,13 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
       setInitError(null);
 
       try {
-        console.log("Initializing Square card element...");
         const payments = await initializeSquare();
         if (!card.current) {
           card.current = await payments.card();
           await card.current.attach('#card-container');
           setIsCardInitialized(true);
-          console.log("Square card element initialized successfully");
         }
       } catch (error) {
-        console.error('Failed to initialize Square card:', error);
         const errorMessage = error instanceof Error ? error.message : "Failed to initialize payment form";
         setInitError(errorMessage);
         toast({
@@ -88,6 +85,15 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     }
 
     initializeCard();
+
+    // Cleanup function
+    return () => {
+      if (card.current) {
+        card.current.destroy();
+        card.current = null;
+        setIsCardInitialized(false);
+      }
+    };
   }, [open, isCardInitialized, isCardLoading, toast]);
 
   const mutation = useMutation({
@@ -131,8 +137,8 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({
-        title: "Payment Successful",
-        description: "The payment has been processed and recorded.",
+        title: "Success",
+        description: "Payment has been processed and recorded.",
       });
       handleClose();
     },
