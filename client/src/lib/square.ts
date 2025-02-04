@@ -43,16 +43,19 @@ export async function createPayment(amount: number) {
       });
 
       if (!response.ok) {
+        await card.destroy();
         const error = await response.text();
         throw new Error(error || 'Payment processing failed');
       }
 
       const payment = await response.json();
+      await card.destroy();
       return {
         id: payment.id,
         status: payment.status
       };
     } else {
+      await card.destroy();
       throw new Error(result.errors[0].message);
     }
   } catch (error) {

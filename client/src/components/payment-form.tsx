@@ -29,6 +29,7 @@ import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/sc
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { createPayment } from "@/lib/square";
+import { useEffect, useRef } from "react";
 
 interface PaymentFormProps {
   open: boolean;
@@ -38,6 +39,9 @@ interface PaymentFormProps {
 
 export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
   const { toast } = useToast();
+  const cardContainer = useRef<HTMLDivElement>(null);
+  const card = useRef<any>(null);
+
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
@@ -50,10 +54,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
       try {
-        // Process payment through Square
         const squarePayment = await createPayment(data.amount);
-
-        // Create payment record
         await apiRequest("POST", "/api/payments", {
           ...data,
           weekOf: data.weekOf.toISOString(),
@@ -72,8 +73,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
         title: "Payment Successful",
         description: "The payment has been processed and recorded.",
       });
-      onClose();
-      form.reset();
+      handleClose();
     },
     onError: (error: Error) => {
       toast({
@@ -84,8 +84,23 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     },
   });
 
+  const handleClose = () => {
+    if (card.current) {
+      card.current.destroy();
+      card.current = null;
+    }
+    form.reset();
+    onClose();
+  };
+
+  useEffect(() => {
+    if (!open) {
+      handleClose();
+    }
+  }, [open]);
+
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Process Payment</DialogTitle>
@@ -153,7 +168,8 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
             <div className="space-y-2">
               <FormLabel>Card Details</FormLabel>
               <div 
-                id="card-container" 
+                id="card-container"
+                ref={cardContainer}
                 className="p-3 border rounded-md min-h-[40px]"
               ></div>
             </div>
@@ -183,7 +199,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               <Button
                 type="button"
                 variant="outline"
-                onClick={onClose}
+                onClick={handleClose}
                 disabled={mutation.isPending}
               >
                 Cancel
