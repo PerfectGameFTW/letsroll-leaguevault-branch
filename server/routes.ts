@@ -77,17 +77,30 @@ export function registerRoutes(app: Express): Server {
 
   app.post("/api/payments/process", async (req, res) => {
     try {
-      const { sourceId, amount } = req.body;
-      
-      // TODO: Replace with actual Square API call
+      const { sourceId, amount, locationId } = req.body;
+
+      // TODO: Replace with actual Square API call once credentials are configured
+      // For now, simulate a successful payment for testing
       const squarePayment = {
-        id: `live_${Date.now()}`,
-        status: "paid"
+        id: `sandbox_${Date.now()}`,
+        status: "paid",
+        amount: amount,
+        card: {
+          last4: "1111", // This would come from the actual Square response
+          brand: "VISA"  // This would come from the actual Square response
+        }
       };
-      
-      res.json(squarePayment);
+
+      res.json({
+        id: squarePayment.id,
+        status: squarePayment.status,
+        card: squarePayment.card
+      });
     } catch (error) {
-      res.status(500).json({ message: "Payment processing failed" });
+      console.error('Payment processing error:', error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Payment processing failed" 
+      });
     }
   });
 
@@ -98,7 +111,7 @@ export function registerRoutes(app: Express): Server {
         status: z.string(),
         squarePaymentId: z.string().optional(),
       }).parse(req.body);
-      
+
       const updated = await storage.updatePaymentStatus(id, status, squarePaymentId);
       res.json(updated);
     } catch (error) {

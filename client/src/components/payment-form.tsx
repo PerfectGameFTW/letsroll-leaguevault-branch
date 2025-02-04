@@ -42,37 +42,42 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
       amount: 2000, // $20.00
-      weekOf: new Date(), // Use Date object directly
+      weekOf: new Date(),
       status: "pending",
     },
   });
 
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
-      // Process payment through Square
-      const squarePayment = await createPayment(data.amount);
+      try {
+        // Process payment through Square
+        const squarePayment = await createPayment(data.amount);
 
-      // Create payment record
-      await apiRequest("POST", "/api/payments", {
-        ...data,
-        weekOf: data.weekOf.toISOString(), // Convert to ISO string for API
-        status: squarePayment.status,
-        squarePaymentId: squarePayment.id,
-        paidAt: new Date().toISOString(),
-      });
+        // Create payment record
+        await apiRequest("POST", "/api/payments", {
+          ...data,
+          weekOf: data.weekOf.toISOString(),
+          status: squarePayment.status,
+          squarePaymentId: squarePayment.id,
+          paidAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Payment processing failed";
+        throw new Error(message);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({
-        title: "Success",
-        description: "Payment has been processed and recorded.",
+        title: "Payment Successful",
+        description: "The payment has been processed and recorded.",
       });
       onClose();
       form.reset();
     },
-    onError: (error) => {
+    onError: (error: Error) => {
       toast({
-        title: "Error",
+        title: "Payment Failed",
         description: error.message,
         variant: "destructive",
       });
@@ -83,7 +88,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Record Payment</DialogTitle>
+          <DialogTitle>Process Payment</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -144,10 +149,13 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                 </FormItem>
               )}
             />
-            
+
             <div className="space-y-2">
               <FormLabel>Card Details</FormLabel>
-              <div id="card-container" className="p-3 border rounded-md"></div>
+              <div 
+                id="card-container" 
+                className="p-3 border rounded-md min-h-[40px]"
+              ></div>
             </div>
 
             <FormField
@@ -176,14 +184,23 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                 type="button"
                 variant="outline"
                 onClick={onClose}
+                disabled={mutation.isPending}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <Button 
+                type="submit" 
+                disabled={mutation.isPending}
+                className="min-w-[120px]"
+              >
+                {mutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  'Pay Now'
                 )}
-                Process Payment
               </Button>
             </div>
           </form>
