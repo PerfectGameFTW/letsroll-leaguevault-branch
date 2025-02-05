@@ -29,6 +29,7 @@ import { insertBowlerSchema, type InsertBowler, type Team } from "@shared/schema
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { createSquareCustomer } from "@/lib/square";
 
 interface BowlerFormProps {
   open: boolean;
@@ -55,7 +56,15 @@ export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
-      const response = await apiRequest("POST", "/api/bowlers", data);
+      // First create a Square customer
+      const squareCustomer = await createSquareCustomer(data.name, data.email);
+
+      // Then create the bowler with the Square customer ID
+      const response = await apiRequest("POST", "/api/bowlers", {
+        ...data,
+        squareCustomerId: squareCustomer.id,
+      });
+
       if (!response.ok) {
         const error = await response.text();
         throw new Error(error);

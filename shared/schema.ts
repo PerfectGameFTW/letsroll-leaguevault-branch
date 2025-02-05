@@ -33,6 +33,7 @@ export const bowlers = pgTable("bowlers", {
   teamId: integer("team_id").references(() => teams.id),
   active: boolean("active").notNull().default(true),
   weeklyFee: integer("weekly_fee").notNull(),
+  squareCustomerId: text("square_customer_id"),
 });
 
 export const payments = pgTable("payments", {

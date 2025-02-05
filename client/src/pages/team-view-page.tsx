@@ -12,11 +12,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, ArrowLeft } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, ExternalLink } from "lucide-react";
 import type { Team, Bowler } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useParams, Link } from "wouter";
+import { getSquareCustomerUrl } from "@/lib/square";
 
 export default function TeamViewPage() {
   const [showForm, setShowForm] = useState(false);
@@ -98,7 +99,22 @@ export default function TeamViewPage() {
           <TableBody>
             {bowlers?.map((bowler) => (
               <TableRow key={bowler.id}>
-                <TableCell>{bowler.name}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    {bowler.name}
+                    {bowler.squareCustomerId && (
+                      <a
+                        href={getSquareCustomerUrl(bowler.squareCustomerId)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-muted-foreground hover:text-foreground"
+                        title="View in Square"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell>{bowler.email}</TableCell>
                 <TableCell>${(bowler.weeklyFee / 100).toFixed(2)}</TableCell>
                 <TableCell>

@@ -176,6 +176,33 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Square Integration
+  app.post("/api/square/customers", async (req, res) => {
+    try {
+      const { name, email } = z.object({
+        name: z.string(),
+        email: z.string().email(),
+      }).parse(req.body);
+
+      // TODO: Replace with actual Square API call once credentials are configured
+      // For now, simulate customer creation for testing
+      const customer = {
+        id: `sandbox_${Date.now()}`,
+        name,
+        email,
+      };
+
+      res.status(201).json(customer);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json(error.issues);
+      } else {
+        console.error('Square customer creation error:', error);
+        res.status(500).json({ message: "Failed to create Square customer" });
+      }
+    }
+  });
+
   // Payments
   app.get("/api/payments", async (req, res) => {
     try {
@@ -213,8 +240,8 @@ export function registerRoutes(app: Express): Server {
         status: "paid",
         amount: amount,
         card: {
-          last4: "1111", // This would come from the actual Square response
-          brand: "VISA"  // This would come from the actual Square response
+          last4: "1111",
+          brand: "VISA"
         }
       };
 
