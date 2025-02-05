@@ -252,10 +252,9 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Add the customer to the group in a separate call
-      await squareClient.customerGroupsApi.addGroupToCustomer(
-        response.result.customer.id,
-        groupId
-      );
+      await squareClient.customerGroupsApi.addCustomerToGroup(groupId, {
+        customerId: response.result.customer.id,
+      });
 
       if (response.result?.customer) {
         res.status(201).json({
