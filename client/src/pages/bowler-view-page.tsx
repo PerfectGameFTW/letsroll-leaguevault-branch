@@ -129,6 +129,16 @@ export default function BowlerViewPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Card>
             <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Weekly Fee</CardTitle>
+              <CardDescription>Regular payment amount</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">${(bowler.weeklyFee / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
               <CardTitle className="text-lg">Amount Due to Date</CardTitle>
               <CardDescription>
                 {weeksDue} week{weeksDue === 1 ? "" : "s"} at ${(
@@ -158,15 +168,6 @@ export default function BowlerViewPage() {
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold text-destructive">${(remainingBalance / 100).toFixed(2)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Weekly Fee</CardTitle>
-              <CardDescription>Regular payment amount</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">${(bowler.weeklyFee / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
 
