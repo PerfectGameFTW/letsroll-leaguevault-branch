@@ -148,6 +148,19 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.get("/api/bowlers/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const bowler = await storage.getBowler(id);
+      if (!bowler) {
+        return res.status(404).json({ message: "Bowler not found" });
+      }
+      res.json(bowler);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/bowlers", async (req, res) => {
     try {
       const bowler = insertBowlerSchema.parse(req.body);

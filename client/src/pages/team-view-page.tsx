@@ -76,7 +76,9 @@ function SortableBowlerRow({ bowler, onEdit }: SortableBowlerRowProps) {
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-2">
-          {bowler.name}
+          <Link href={`/bowlers/${bowler.id}`} className="hover:underline">
+            {bowler.name}
+          </Link>
           {bowler.squareCustomerId && (
             <a
               href={getSquareCustomerUrl(bowler.squareCustomerId)}

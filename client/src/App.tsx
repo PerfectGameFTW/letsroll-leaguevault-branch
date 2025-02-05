@@ -8,6 +8,7 @@ import LeaguesPage from "@/pages/leagues-page";
 import TeamsPage from "@/pages/teams-page";
 import TeamViewPage from "@/pages/team-view-page";
 import BowlersPage from "@/pages/bowlers-page";
+import BowlerViewPage from "@/pages/bowler-view-page";
 import PaymentsPage from "@/pages/payments-page";
 import { useEffect } from "react";
 import { initializeSquare } from "./lib/square";
@@ -21,6 +22,7 @@ function Router() {
       <Route path="/leagues/:leagueId/teams" component={TeamsPage} />
       <Route path="/teams/:teamId" component={TeamViewPage} />
       <Route path="/bowlers" component={BowlersPage} />
+      <Route path="/bowlers/:bowlerId" component={BowlerViewPage} />
       <Route path="/payments" component={PaymentsPage} />
       <Route component={NotFound} />
     </Switch>
