@@ -209,14 +209,43 @@ export function registerRoutes(app: Express): Server {
         throw new Error("League not found");
       }
 
+      // First create or get the league group
+      let groupId;
+      try {
+        // Try to create the group first
+        const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+          idempotencyKey: `league-${league.id}`,
+          group: {
+            name: league.name,
+          },
+        });
+        groupId = groupResponse.result.group?.id;
+      } catch (error) {
+        if (error instanceof ApiError && error.statusCode === 400) {
+          // Group might already exist, try to find it
+          const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+          const existingGroup = groupsResponse.result.groups?.find(
+            (g) => g.name === league.name
+          );
+          if (existingGroup) {
+            groupId = existingGroup.id;
+          }
+        } else {
+          throw error;
+        }
+      }
+
+      if (!groupId) {
+        throw new Error("Failed to create or find league group");
+      }
+
+      // Now create the customer
       const response = await squareClient.customersApi.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
         emailAddress: email,
-        groups: {
-          group_ids: [`${league.name}`], // Use league name as group
-        },
+        groupIds: [groupId], // Use the group ID we got
       });
 
       if (response.result?.customer) {
