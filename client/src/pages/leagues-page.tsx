@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Pencil } from "lucide-react";
-import type { League } from "@shared/schema";
+import type { League, Team } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInWeeks } from "date-fns";
@@ -24,11 +24,22 @@ export default function LeaguesPage() {
   const [selectedLeague, setSelectedLeague] = useState<League | undefined>();
   const { toast } = useToast();
 
-  const { data: leagues, isLoading } = useQuery<League[]>({
+  const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
   });
 
-  if (isLoading) {
+  // Get teams for each league
+  const { data: allTeams, isLoading: loadingTeams } = useQuery<Team[]>({
+    queryKey: ["/api/teams"],
+  });
+
+  // Create a map of league ID to team count
+  const teamCounts = allTeams?.reduce((acc, team) => {
+    acc[team.leagueId] = (acc[team.leagueId] || 0) + 1;
+    return acc;
+  }, {} as Record<number, number>) ?? {};
+
+  if (loadingLeagues || loadingTeams) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -55,7 +66,8 @@ export default function LeaguesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[35%]">Name</TableHead>
+              <TableHead className="w-[30%]">Name</TableHead>
+              <TableHead>Teams</TableHead>
               <TableHead className="w-[15%]">Start Date</TableHead>
               <TableHead className="w-[15%]">End Date</TableHead>
               <TableHead>Duration</TableHead>
@@ -79,6 +91,7 @@ export default function LeaguesPage() {
                       {league.name}
                     </Link>
                   </TableCell>
+                  <TableCell>{teamCounts[league.id] || 0}</TableCell>
                   <TableCell className="whitespace-nowrap">
                     {format(startDate, "MMM d, yyyy")}
                   </TableCell>
