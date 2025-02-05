@@ -1,9 +1,10 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard } from "lucide-react";
+import { Home, Users, CreditCard, Trophy } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: Home },
+  { name: "Leagues", href: "/leagues", icon: Trophy },
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
 ];

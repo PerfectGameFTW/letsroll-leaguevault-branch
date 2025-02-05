@@ -1,14 +1,114 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertBowlerSchema, insertPaymentSchema } from "@shared/schema";
+import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema } from "@shared/schema";
 import { z } from "zod";
 
 export function registerRoutes(app: Express): Server {
+  // Leagues
+  app.get("/api/leagues", async (_req, res) => {
+    const leagues = await storage.getLeagues();
+    res.json(leagues);
+  });
+
+  app.post("/api/leagues", async (req, res) => {
+    try {
+      const league = insertLeagueSchema.parse(req.body);
+      const created = await storage.createLeague(league);
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json(error.issues);
+      } else {
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  app.patch("/api/leagues/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const update = insertLeagueSchema.partial().parse(req.body);
+      const updated = await storage.updateLeague(id, update);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json(error.issues);
+      } else {
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  app.delete("/api/leagues/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteLeague(id);
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Teams
+  app.get("/api/teams", async (req, res) => {
+    try {
+      const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
+      const teams = await storage.getTeams(leagueId);
+      res.json(teams);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/teams", async (req, res) => {
+    try {
+      const team = insertTeamSchema.parse(req.body);
+      const created = await storage.createTeam(team);
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json(error.issues);
+      } else {
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  app.patch("/api/teams/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const update = insertTeamSchema.partial().parse(req.body);
+      const updated = await storage.updateTeam(id, update);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json(error.issues);
+      } else {
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  app.delete("/api/teams/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteTeam(id);
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Bowlers
-  app.get("/api/bowlers", async (_req, res) => {
-    const bowlers = await storage.getBowlers();
-    res.json(bowlers);
+  app.get("/api/bowlers", async (req, res) => {
+    try {
+      const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
+      const bowlers = await storage.getBowlers(teamId);
+      res.json(bowlers);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.post("/api/bowlers", async (req, res) => {
@@ -54,7 +154,8 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/payments", async (req, res) => {
     try {
       const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
-      const payments = await storage.getPayments(bowlerId);
+      const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
+      const payments = await storage.getPayments(bowlerId, leagueId);
       res.json(payments);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
