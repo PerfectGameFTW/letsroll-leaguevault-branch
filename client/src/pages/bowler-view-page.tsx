@@ -96,7 +96,7 @@ export default function BowlerViewPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Total Amount Due</CardTitle>
+              <CardTitle className="text-lg">Amount Due to Date</CardTitle>
               <CardDescription>Current season charges</CardDescription>
             </CardHeader>
             <CardContent>
@@ -106,7 +106,7 @@ export default function BowlerViewPage() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Total Amount Paid</CardTitle>
+              <CardTitle className="text-lg">Amount Paid to Date</CardTitle>
               <CardDescription>All payments received</CardDescription>
             </CardHeader>
             <CardContent>
@@ -123,7 +123,6 @@ export default function BowlerViewPage() {
               <p className="text-2xl font-bold text-destructive">${(totalUnpaidAmount / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Total Season Dues</CardTitle>
