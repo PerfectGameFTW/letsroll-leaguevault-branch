@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -28,7 +29,7 @@ import { Loader2 } from "lucide-react";
 import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { createPayment } from "@/lib/square";
+import { createPayment, initializeSquare } from "@/lib/square";
 
 interface PaymentFormProps {
   open: boolean;
@@ -46,6 +47,37 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
       status: "pending",
     },
   });
+
+  // Initialize Square card form when dialog opens
+  useEffect(() => {
+    let card: any = null;
+
+    async function setupCard() {
+      try {
+        const payments = await initializeSquare();
+        card = await payments.card();
+        await card.attach('#card-container');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to initialize payment form";
+        toast({
+          title: "Payment Form Error",
+          description: message,
+          variant: "destructive",
+        });
+      }
+    }
+
+    if (open) {
+      setupCard();
+    }
+
+    // Cleanup function
+    return () => {
+      if (card) {
+        card.destroy();
+      }
+    };
+  }, [open, toast]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
@@ -155,7 +187,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               <div 
                 id="card-container" 
                 className="p-3 border rounded-md min-h-[40px]"
-              ></div>
+              />
             </div>
 
             <FormField
