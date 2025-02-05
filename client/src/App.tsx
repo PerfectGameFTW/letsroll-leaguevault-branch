@@ -8,6 +8,7 @@ import BowlersPage from "@/pages/bowlers-page";
 import PaymentsPage from "@/pages/payments-page";
 import { useEffect } from "react";
 import { initializeSquare } from "./lib/square";
+import { useToast } from "@/hooks/use-toast";
 
 function Router() {
   return (
@@ -21,8 +22,16 @@ function Router() {
 }
 
 function App() {
+  const { toast } = useToast();
+
   useEffect(() => {
-    initializeSquare().catch(console.error);
+    initializeSquare().catch((error) => {
+      toast({
+        title: "Square Integration Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    });
   }, []);
 
   return (
