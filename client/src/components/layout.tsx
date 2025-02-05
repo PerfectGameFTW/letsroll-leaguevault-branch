@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
+import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, BarChart } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -18,6 +18,7 @@ const baseNavigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
+  { name: "Reports", href: "/reports", icon: BarChart },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
