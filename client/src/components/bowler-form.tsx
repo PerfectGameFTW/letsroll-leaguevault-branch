@@ -41,7 +41,7 @@ interface BowlerFormProps {
 
 export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormProps) {
   const { toast } = useToast();
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(bowler?.leagueId || null);
 
   // Query for leagues
   const { data: leagues } = useQuery<League[]>({
@@ -76,15 +76,11 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     },
   });
 
-  // Initialize form and state when opening for editing
+  // Initialize or reset form when dialog opens/closes
   useEffect(() => {
     if (open && bowler) {
-      // Set league ID first to trigger team loading
-      if (bowler.leagueId) {
-        setSelectedLeagueId(bowler.leagueId);
-      }
-
-      // Reset form with bowler data
+      // When editing, set the league ID and form values
+      setSelectedLeagueId(bowler.leagueId || null);
       form.reset({
         name: bowler.name,
         email: bowler.email,
@@ -94,7 +90,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
         leagueId: bowler.leagueId,
       });
     } else if (!open) {
-      // Clear form when closing
+      // When closing, reset everything
       form.reset({
         name: "",
         email: "",
@@ -207,7 +203,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                         form.setValue("teamId", undefined);
                       }
                     }}
-                    value={field.value?.toString()}
+                    value={field.value?.toString() || ""}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -238,7 +234,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                   <FormLabel>Team (Optional)</FormLabel>
                   <Select
                     onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)}
-                    value={field.value?.toString()}
+                    value={field.value?.toString() || ""}
                     disabled={!selectedLeagueId}
                   >
                     <FormControl>
