@@ -43,24 +43,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
   const { toast } = useToast();
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
-  const form = useForm<InsertBowler>({
-    resolver: zodResolver(insertBowlerSchema),
-    defaultValues: bowler ? {
-      name: bowler.name,
-      email: bowler.email,
-      weeklyFee: bowler.weeklyFee,
-      active: bowler.active,
-      teamId: bowler.teamId,
-      leagueId: bowler.leagueId,
-    } : {
-      name: "",
-      email: "",
-      weeklyFee: 2000, // $20.00
-      active: true,
-      teamId: defaultTeamId,
-    },
-  });
-
   // Query for leagues
   const { data: leagues } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
@@ -76,36 +58,53 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     enabled: !!selectedLeagueId,
   });
 
-  // Set initial league ID and form values when editing a bowler
+  const form = useForm<InsertBowler>({
+    resolver: zodResolver(insertBowlerSchema),
+    defaultValues: bowler ? {
+      name: bowler.name,
+      email: bowler.email,
+      weeklyFee: bowler.weeklyFee,
+      active: bowler.active,
+      teamId: bowler.teamId ?? undefined,
+      leagueId: bowler.leagueId,
+    } : {
+      name: "",
+      email: "",
+      weeklyFee: 2000, // $20.00
+      active: true,
+      teamId: defaultTeamId,
+    },
+  });
+
+  // Initialize form and state when opening for editing
   useEffect(() => {
     if (open && bowler) {
+      // Set league ID first to trigger team loading
       if (bowler.leagueId) {
         setSelectedLeagueId(bowler.leagueId);
       }
-      // Reset form with bowler data when dialog opens for editing
+
+      // Reset form with bowler data
       form.reset({
         name: bowler.name,
         email: bowler.email,
         weeklyFee: bowler.weeklyFee,
         active: bowler.active,
-        teamId: bowler.teamId,
+        teamId: bowler.teamId ?? undefined,
         leagueId: bowler.leagueId,
       });
     } else if (!open) {
-      form.reset();
+      // Clear form when closing
+      form.reset({
+        name: "",
+        email: "",
+        weeklyFee: 2000,
+        active: true,
+        teamId: defaultTeamId,
+      });
       setSelectedLeagueId(null);
     }
-  }, [open, bowler, form]);
-
-  // Update form values when teams are loaded
-  useEffect(() => {
-    if (teams && bowler?.teamId) {
-      const team = teams.find(t => t.id === bowler.teamId);
-      if (team) {
-        form.setValue('teamId', team.id);
-      }
-    }
-  }, [teams, bowler, form]);
+  }, [open, bowler, form, defaultTeamId]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
@@ -142,7 +141,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
           : "Bowler has been added to the system.",
       });
       onClose();
-      form.reset();
     },
     onError: (error: Error) => {
       toast({
@@ -201,11 +199,13 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                   <FormLabel>League (Optional)</FormLabel>
                   <Select
                     onValueChange={(value) => {
-                      const leagueId = parseInt(value);
-                      setSelectedLeagueId(leagueId);
+                      const leagueId = value ? parseInt(value) : undefined;
+                      setSelectedLeagueId(leagueId ?? null);
                       field.onChange(leagueId);
                       // Reset team selection when league changes
-                      form.setValue("teamId", undefined);
+                      if (field.value !== leagueId) {
+                        form.setValue("teamId", undefined);
+                      }
                     }}
                     value={field.value?.toString()}
                   >
@@ -237,7 +237,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                 <FormItem>
                   <FormLabel>Team (Optional)</FormLabel>
                   <Select
-                    onValueChange={(value) => field.onChange(parseInt(value))}
+                    onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)}
                     value={field.value?.toString()}
                     disabled={!selectedLeagueId}
                   >
