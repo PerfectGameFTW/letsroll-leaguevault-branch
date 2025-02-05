@@ -7,6 +7,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -22,7 +32,7 @@ import { insertLeagueSchema, type InsertLeague, type League } from "@shared/sche
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { differenceInWeeks } from "date-fns";
 import { Separator } from "@/components/ui/separator";
 
@@ -34,6 +44,7 @@ interface LeagueFormProps {
 
 export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const { toast } = useToast();
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Initialize dates with noon time to avoid timezone issues
   const today = new Date();
@@ -92,6 +103,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         seasonStart: today,
         seasonEnd: nextYear,
       });
+      setShowDeleteConfirm(false);
     }
   }, [open, league, form]);
 
@@ -161,64 +173,26 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   });
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{league ? "Edit League" : "Add New League"}</DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{league ? "Edit League" : "Add New League"}</DialogTitle>
+          </DialogHeader>
 
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
-            className="space-y-4"
-          >
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Input {...field} value={field.value || ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+              className="space-y-4"
+            >
               <FormField
                 control={form.control}
-                name="seasonStart"
+                name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Season Start</FormLabel>
+                    <FormLabel>Name</FormLabel>
                     <FormControl>
-                      <Input
-                        type="date"
-                        {...field}
-                        value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
-                        onChange={(e) => {
-                          // Create date with the exact selected date at noon
-                          const [year, month, day] = e.target.value.split('-').map(Number);
-                          const date = new Date(year, month - 1, day, 12, 0, 0, 0);
-                          field.onChange(date);
-                        }}
-                      />
+                      <Input {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -227,90 +201,157 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
 
               <FormField
                 control={form.control}
-                name="seasonEnd"
+                name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Season End</FormLabel>
+                    <FormLabel>Description</FormLabel>
                     <FormControl>
-                      <Input
-                        type="date"
-                        {...field}
-                        value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
-                        onChange={(e) => {
-                          // Create date with the exact selected date at noon
-                          const [year, month, day] = e.target.value.split('-').map(Number);
-                          const date = new Date(year, month - 1, day, 12, 0, 0, 0);
-                          field.onChange(date);
-                        }}
-                      />
+                      <Input {...field} value={field.value || ""} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            </div>
 
-            {/* Number of Weeks Display */}
-            <div className="rounded-lg border p-3">
-              <div className="text-sm font-medium">Season Length</div>
-              <div className="text-2xl font-bold mt-1">{numberOfWeeks} weeks</div>
-            </div>
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="seasonStart"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Season Start</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          {...field}
+                          value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
+                          onChange={(e) => {
+                            // Create date with the exact selected date at noon
+                            const [year, month, day] = e.target.value.split('-').map(Number);
+                            const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+                            field.onChange(date);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="active"
-              render={({ field }) => (
-                <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel>Active</FormLabel>
+                <FormField
+                  control={form.control}
+                  name="seasonEnd"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Season End</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          {...field}
+                          value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
+                          onChange={(e) => {
+                            // Create date with the exact selected date at noon
+                            const [year, month, day] = e.target.value.split('-').map(Number);
+                            const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+                            field.onChange(date);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Number of Weeks Display */}
+              <div className="rounded-lg border p-3">
+                <div className="text-sm font-medium">Season Length</div>
+                <div className="text-2xl font-bold mt-1">{numberOfWeeks} weeks</div>
+              </div>
+
+              <FormField
+                control={form.control}
+                name="active"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel>Active</FormLabel>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-end space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onClose}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={mutation.isPending}>
+                  {mutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {league ? "Update" : "Add"} League
+                </Button>
+              </div>
+
+              {league && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="flex justify-center">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={deleteMutation.isPending}
+                    >
+                      {deleteMutation.isPending && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      Delete League
+                    </Button>
                   </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </FormItem>
+                </>
               )}
-            />
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
-            <div className="flex justify-end space-x-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                {league ? "Update" : "Add"} League
-              </Button>
-            </div>
-
-            {league && (
-              <>
-                <Separator className="my-4" />
-                <div className="flex justify-center">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={() => deleteMutation.mutate()}
-                    disabled={deleteMutation.isPending}
-                  >
-                    {deleteMutation.isPending && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Delete League
-                  </Button>
-                </div>
-              </>
-            )}
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this league?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete the league "{league?.name}" and all associated teams. 
+              Bowlers will be unassigned from their teams, but their records and payment history will be preserved.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowDeleteConfirm(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                deleteMutation.mutate();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete League
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
