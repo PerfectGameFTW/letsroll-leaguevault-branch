@@ -16,7 +16,7 @@ import { Loader2, Plus, Pencil } from "lucide-react";
 import type { League } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
+import { format, differenceInWeeks } from "date-fns";
 import { Link } from "wouter";
 
 export default function LeaguesPage() {
@@ -26,19 +26,6 @@ export default function LeaguesPage() {
 
   const { data: leagues, isLoading } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/leagues/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/leagues"] });
-      toast({
-        title: "League deleted",
-        description: "The league has been removed from the system.",
-      });
-    },
   });
 
   if (isLoading) {
@@ -68,51 +55,57 @@ export default function LeaguesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Description</TableHead>
+              <TableHead className="w-[40%]">Name</TableHead>
               <TableHead>Season</TableHead>
+              <TableHead>Duration</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {leagues?.map((league) => (
-              <TableRow key={league.id}>
-                <TableCell>
-                  <Link 
-                    href={`/leagues/${league.id}/teams`}
-                    className="text-foreground hover:underline"
-                  >
-                    {league.name}
-                  </Link>
-                </TableCell>
-                <TableCell>{league.description || "N/A"}</TableCell>
-                <TableCell>
-                  {format(new Date(league.seasonStart), "MMM d, yyyy")} -{" "}
-                  {format(new Date(league.seasonEnd), "MMM d, yyyy")}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={league.active ? "default" : "secondary"}>
-                    {league.active ? "Active" : "Inactive"}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedLeague(league);
-                        setShowForm(true);
-                      }}
+            {leagues?.map((league) => {
+              const startDate = new Date(league.seasonStart);
+              const endDate = new Date(league.seasonEnd);
+              const weeks = differenceInWeeks(endDate, startDate);
+
+              return (
+                <TableRow key={league.id}>
+                  <TableCell>
+                    <Link 
+                      href={`/leagues/${league.id}/teams`}
+                      className="text-foreground hover:underline font-medium"
                     >
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
+                      {league.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell>
+                    {format(startDate, "MMM d, yyyy")} -{" "}
+                    {format(endDate, "MMM d, yyyy")}
+                  </TableCell>
+                  <TableCell>{weeks} weeks</TableCell>
+                  <TableCell>
+                    <Badge variant={league.active ? "default" : "secondary"}>
+                      {league.active ? "Active" : "Inactive"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedLeague(league);
+                          setShowForm(true);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
