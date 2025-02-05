@@ -30,13 +30,13 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { createSquareCustomer } from "@/lib/square";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface BowlerFormProps {
   open: boolean;
   onClose: () => void;
   defaultTeamId?: number;
-  bowler?: Bowler; // Add bowler prop for edit mode
+  bowler?: Bowler;
 }
 
 export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormProps) {
@@ -51,7 +51,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       weeklyFee: bowler.weeklyFee,
       active: bowler.active,
       teamId: bowler.teamId,
-      leagueId: bowler.leagueId, //Added this line back
+      leagueId: bowler.leagueId,
     } : {
       name: "",
       email: "",
@@ -60,6 +60,32 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       teamId: defaultTeamId,
     },
   });
+
+  // Set initial league ID when editing a bowler
+  useEffect(() => {
+    if (bowler?.leagueId) {
+      setSelectedLeagueId(bowler.leagueId);
+    }
+  }, [bowler]);
+
+  // Reset form when dialog closes
+  useEffect(() => {
+    if (!open) {
+      form.reset();
+      setSelectedLeagueId(null);
+    } else if (bowler) {
+      // Reset form with bowler data when dialog opens for editing
+      form.reset({
+        name: bowler.name,
+        email: bowler.email,
+        weeklyFee: bowler.weeklyFee,
+        active: bowler.active,
+        teamId: bowler.teamId,
+        leagueId: bowler.leagueId,
+      });
+      setSelectedLeagueId(bowler.leagueId);
+    }
+  }, [open, bowler, form]);
 
   // Query for leagues
   const { data: leagues } = useQuery<League[]>({
@@ -162,7 +188,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
               )}
             />
 
-            {/* League Selection */}
             <FormField
               control={form.control}
               name="leagueId"
@@ -200,7 +225,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
               )}
             />
 
-            {/* Team Selection - Only enabled when a league is selected */}
             <FormField
               control={form.control}
               name="teamId"
