@@ -12,15 +12,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Eye, EyeOff } from "lucide-react";
+import { Loader2, Plus, Eye, EyeOff, Search } from "lucide-react";
 import type { Bowler } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 
 export default function BowlersPage() {
   const [showForm, setShowForm] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
 
   const { data: bowlers, isLoading } = useQuery<Bowler[]>({
@@ -40,7 +42,12 @@ export default function BowlersPage() {
     },
   });
 
-  const filteredBowlers = bowlers?.filter(bowler => showInactive ? true : bowler.active);
+  const filteredBowlers = bowlers?.filter(bowler => {
+    const matchesSearch = searchQuery === "" || 
+      bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
+    return (showInactive ? true : bowler.active) && matchesSearch;
+  });
 
   if (isLoading) {
     return (
@@ -62,54 +69,67 @@ export default function BowlersPage() {
         </Button>
       </div>
 
-      <div className="flex items-center space-x-2 mb-4">
-        {showInactive ? (
-          <Eye className="h-4 w-4 text-muted-foreground" />
-        ) : (
-          <EyeOff className="h-4 w-4 text-muted-foreground" />
-        )}
-        <span className="text-sm text-muted-foreground">Show inactive bowlers</span>
-        <Switch
-          checked={showInactive}
-          onCheckedChange={setShowInactive}
-        />
-      </div>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            {showInactive ? (
+              <Eye className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <EyeOff className="h-4 w-4 text-muted-foreground" />
+            )}
+            <span className="text-sm text-muted-foreground">Show inactive bowlers</span>
+            <Switch
+              checked={showInactive}
+              onCheckedChange={setShowInactive}
+            />
+          </div>
+          <div className="relative w-[300px]">
+            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search bowlers..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8"
+            />
+          </div>
+        </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Weekly Fee</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredBowlers?.map((bowler) => (
-              <TableRow key={bowler.id}>
-                <TableCell>{bowler.name}</TableCell>
-                <TableCell>{bowler.email}</TableCell>
-                <TableCell>${(bowler.weeklyFee / 100).toFixed(2)}</TableCell>
-                <TableCell>
-                  <Badge variant={bowler.active ? "default" : "secondary"}>
-                    {bowler.active ? "Active" : "Inactive"}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => deleteMutation.mutate(bowler.id)}
-                  >
-                    Delete
-                  </Button>
-                </TableCell>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Weekly Fee</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filteredBowlers?.map((bowler) => (
+                <TableRow key={bowler.id}>
+                  <TableCell>{bowler.name}</TableCell>
+                  <TableCell>{bowler.email}</TableCell>
+                  <TableCell>${(bowler.weeklyFee / 100).toFixed(2)}</TableCell>
+                  <TableCell>
+                    <Badge variant={bowler.active ? "default" : "secondary"}>
+                      {bowler.active ? "Active" : "Inactive"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => deleteMutation.mutate(bowler.id)}
+                    >
+                      Delete
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
       <BowlerForm open={showForm} onClose={() => setShowForm(false)} />
