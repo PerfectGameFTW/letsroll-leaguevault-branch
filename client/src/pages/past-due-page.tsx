@@ -76,18 +76,22 @@ export default function PastDuePage() {
     .filter(item => item && item.pastDueAmount > 0)
     .sort((a, b) => (b?.pastDueAmount || 0) - (a?.pastDueAmount || 0));
 
+  // Modify the handleExport function to handle nullable values properly
   const handleExport = () => {
     if (!pastDueBowlers?.length) return;
 
     // Prepare data for Excel
-    const excelData = pastDueBowlers.map(item => ({
-      'Bowler Name': item?.bowler.name,
-      'Email': item?.bowler.email,
-      'League': item?.league.name,
-      'Team': item?.team.name,
-      'Weeks Past Due': item?.weeksPastDue,
-      'Past Due Amount': `$${(item?.pastDueAmount / 100).toFixed(2)}`,
-    }));
+    const excelData = pastDueBowlers.map(item => {
+      if (!item) return null; // Skip null items
+      return {
+        'Bowler Name': item.bowler.name,
+        'Email': item.bowler.email,
+        'League': item.league.name,
+        'Team': item.team.name,
+        'Weeks Past Due': item.weeksPastDue,
+        'Past Due Amount': `$${(item.pastDueAmount / 100).toFixed(2)}`,
+      };
+    }).filter((item): item is NonNullable<typeof item> => item !== null);
 
     // Create worksheet
     const ws = XLSX.utils.json_to_sheet(excelData);
