@@ -179,35 +179,27 @@ export function registerRoutes(app: Express): Server {
           return res.status(400).json({ message: "Bowler must be assigned to a team to reorder" });
         }
 
+        // Get all bowlers for the team and sort them by current order
         const teamBowlers = await storage.getBowlers(bowler.teamId);
-        const oldOrder = bowler.order ?? 0;
-        const newOrder = update.order;
+        teamBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-        // First update the orders of all affected bowlers
-        const updatePromises = teamBowlers.map(async (b) => {
-          if (b.id === id) return; // Skip the bowler being moved
+        const oldIndex = teamBowlers.findIndex(b => b.id === id);
+        const newIndex = Math.min(Math.max(0, update.order), teamBowlers.length - 1); // Clamp order value
 
-          let order = b.order ?? 0;
-          if (oldOrder < newOrder) {
-            // Moving down - decrease order of bowlers in between
-            if (order > oldOrder && order <= newOrder) {
-              await storage.updateBowler(b.id, { order: order - 1 });
-            }
-          } else if (oldOrder > newOrder) {
-            // Moving up - increase order of bowlers in between
-            if (order >= newOrder && order < oldOrder) {
-              await storage.updateBowler(b.id, { order: order + 1 });
-            }
-          }
-        });
+        if (oldIndex === -1) {
+          return res.status(404).json({ message: "Bowler not found in team" });
+        }
 
-        // Wait for all order updates to complete
-        await Promise.all(updatePromises.filter(Boolean));
+        // Remove bowler from old position and insert at new position
+        const [movedBowler] = teamBowlers.splice(oldIndex, 1);
+        teamBowlers.splice(newIndex, 0, movedBowler);
 
-        // Finally update the moved bowler's order
-        await storage.updateBowler(id, { order: newOrder });
+        // Update all bowlers with their new sequential order
+        await Promise.all(teamBowlers.map((b, index) =>
+          storage.updateBowler(b.id, { order: index })
+        ));
 
-        // Return all updated bowlers to ensure frontend has latest state
+        // Return the updated and sorted list
         const updatedBowlers = await storage.getBowlers(bowler.teamId);
         updatedBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         return res.json(updatedBowlers);

@@ -148,22 +148,16 @@ export default function TeamViewPage() {
 
       // Optimistically update the cache
       if (previousBowlers) {
-        const updatedBowlers = [...previousBowlers];
-        const bowlerIndex = updatedBowlers.findIndex((b) => b.id === id);
-        const bowler = updatedBowlers[bowlerIndex];
-
-        if (bowler) {
-          // Remove bowler from old position
-          updatedBowlers.splice(bowlerIndex, 1);
-          // Insert at new position
-          updatedBowlers.splice(order, 0, { ...bowler, order });
-
+        const bowlers = [...previousBowlers];
+        const oldIndex = bowlers.findIndex(b => b.id === id);
+        if (oldIndex !== -1) {
+          const [movedBowler] = bowlers.splice(oldIndex, 1);
+          bowlers.splice(order, 0, movedBowler);
           // Update all orders to match array indices
-          updatedBowlers.forEach((b, index) => {
+          bowlers.forEach((b, index) => {
             b.order = index;
           });
-
-          queryClient.setQueryData(["/api/bowlers", teamId], updatedBowlers);
+          queryClient.setQueryData(["/api/bowlers", teamId], bowlers);
         }
       }
 
@@ -193,11 +187,12 @@ export default function TeamViewPage() {
       const oldIndex = bowlers.findIndex((b) => b.id === active.id);
       const newIndex = bowlers.findIndex((b) => b.id === over.id);
 
-      // Update the dragged bowler's order
-      await reorderMutation.mutateAsync({
-        id: active.id,
-        order: newIndex,
-      });
+      if (oldIndex !== -1 && newIndex !== -1) {
+        await reorderMutation.mutateAsync({
+          id: active.id,
+          order: newIndex,
+        });
+      }
     }
   };
 
