@@ -35,6 +35,24 @@ import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { differenceInWeeks } from "date-fns";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+// Add a new array for weekday options
+const weekDayOptions = [
+  { value: "monday", label: "Monday" },
+  { value: "tuesday", label: "Tuesday" },
+  { value: "wednesday", label: "Wednesday" },
+  { value: "thursday", label: "Thursday" },
+  { value: "friday", label: "Friday" },
+  { value: "saturday", label: "Saturday" },
+  { value: "sunday", label: "Sunday" },
+];
 
 interface LeagueFormProps {
   open: boolean;
@@ -62,6 +80,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       active: true,
       seasonStart: today,
       seasonEnd: nextYear,
+      weekDay: "monday", // Add default weekDay
     },
   });
 
@@ -94,6 +113,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         active: league.active,
         seasonStart: startDate,
         seasonEnd: endDate,
+        weekDay: league.weekDay || "monday",
       });
     } else if (!open) {
       form.reset({
@@ -102,6 +122,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         active: true,
         seasonStart: today,
         seasonEnd: nextYear,
+        weekDay: "monday",
       });
       setShowDeleteConfirm(false);
     }
@@ -263,10 +284,45 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                 />
               </div>
 
-              {/* Number of Weeks Display */}
-              <div className="rounded-lg border p-3">
-                <div className="text-sm font-medium">Season Length</div>
-                <div className="text-2xl font-bold mt-1">{numberOfWeeks} weeks</div>
+              {/* League Info Display */}
+              <div className="space-y-3">
+                {/* Season Length Display */}
+                <div className="rounded-lg border p-3">
+                  <div className="text-sm font-medium">Season Length</div>
+                  <div className="text-2xl font-bold mt-1">{numberOfWeeks} weeks</div>
+                </div>
+
+                {/* Bowling Day Selection */}
+                <FormField
+                  control={form.control}
+                  name="weekDay"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Bowling Day</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select bowling day" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {weekDayOptions.map((option) => (
+                            <SelectItem
+                              key={option.value}
+                              value={option.value}
+                            >
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
               <FormField
