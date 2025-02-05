@@ -66,14 +66,23 @@ export function registerRoutes(app: Express): Server {
     try {
       const id = parseInt(req.params.id);
 
-      // Check if league has any teams
+      // Get all teams in the league
       const teams = await storage.getTeams(id);
-      if (teams.length > 0) {
-        return res.status(400).json({ 
-          message: "Cannot delete league that has teams. Please remove all teams first." 
-        });
+
+      // Update all bowlers from these teams to remove team association
+      for (const team of teams) {
+        const teamBowlers = await storage.getBowlers(team.id);
+        for (const bowler of teamBowlers) {
+          await storage.updateBowler(bowler.id, {
+            teamId: null,
+            order: null
+          });
+        }
+        // Delete the team
+        await storage.deleteTeam(team.id);
       }
 
+      // Finally delete the league
       await storage.deleteLeague(id);
       res.sendStatus(204);
     } catch (error) {
