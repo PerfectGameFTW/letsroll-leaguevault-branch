@@ -10,6 +10,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Bowler, Payment } from "@shared/schema";
 import { format } from "date-fns";
@@ -46,6 +53,17 @@ export default function BowlerViewPage() {
     );
   }
 
+  // Calculate financial summary
+  const totalPaidPayments = payments?.filter(p => p.status === 'paid') || [];
+  const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalUnpaidPayments = payments?.filter(p => p.status !== 'paid') || [];
+  const totalUnpaidAmount = totalUnpaidPayments.reduce((sum, p) => sum + p.amount, 0);
+
+  // Assuming weekly fee is charged for the entire season
+  const weeksInSeason = 32; // You may want to make this dynamic based on league settings
+  const totalSeasonDues = bowler.weeklyFee * weeksInSeason;
+  const remainingBalance = totalSeasonDues - totalPaidAmount;
+
   return (
     <Layout>
       <div className="mb-6">
@@ -72,6 +90,59 @@ export default function BowlerViewPage() {
               {bowler.active ? "Active" : "Inactive"}
             </Badge>
           </div>
+        </div>
+
+        {/* Financial Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Total Amount Due</CardTitle>
+              <CardDescription>Current season charges</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">${(totalSeasonDues / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Total Amount Paid</CardTitle>
+              <CardDescription>All payments received</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">${(totalPaidAmount / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Amount Past Due</CardTitle>
+              <CardDescription>Unpaid fees</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-destructive">${(totalUnpaidAmount / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Total Season Dues</CardTitle>
+              <CardDescription>Full season charges</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">${(totalSeasonDues / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Remaining Balance</CardTitle>
+              <CardDescription>Amount left to pay</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-orange-600">${(remainingBalance / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
         </div>
       </div>
 
