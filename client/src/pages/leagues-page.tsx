@@ -66,7 +66,8 @@ export default function LeaguesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[30%]">Name</TableHead>
+              <TableHead className="w-[15%]">Bowl Day</TableHead>
+              <TableHead className="w-[25%]">Name</TableHead>
               <TableHead>Teams</TableHead>
               <TableHead className="w-[15%]">Start Date</TableHead>
               <TableHead className="w-[15%]">End Date</TableHead>
@@ -80,9 +81,11 @@ export default function LeaguesPage() {
               const startDate = new Date(league.seasonStart);
               const endDate = new Date(league.seasonEnd);
               const weeks = differenceInWeeks(endDate, startDate);
+              const bowlingDay = league.weekDay ? league.weekDay.charAt(0).toUpperCase() + league.weekDay.slice(1) : 'Not set';
 
               return (
                 <TableRow key={league.id}>
+                  <TableCell>{bowlingDay}</TableCell>
                   <TableCell>
                     <Link 
                       href={`/leagues/${league.id}/teams`}
