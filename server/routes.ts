@@ -3,6 +3,15 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema } from "@shared/schema";
 import { z } from "zod";
+import { ApiError, Client } from 'square';
+
+let squareClient: Client | null = null;
+if (process.env.SQUARE_ACCESS_TOKEN) {
+  squareClient = new Client({
+    accessToken: process.env.SQUARE_ACCESS_TOKEN,
+    environment: 'sandbox', // or 'production' for live
+  });
+}
 
 export function registerRoutes(app: Express): Server {
   // Leagues
@@ -184,17 +193,11 @@ export function registerRoutes(app: Express): Server {
         email: z.string().email(),
       }).parse(req.body);
 
-      if (!process.env.SQUARE_ACCESS_TOKEN) {
+      if (!squareClient) {
         throw new Error("Square access token not configured");
       }
 
-      const { Client } = require('square');
-      const client = new Client({
-        accessToken: process.env.SQUARE_ACCESS_TOKEN,
-        environment: 'sandbox', // or 'production' for live
-      });
-
-      const response = await client.customersApi.createCustomer({
+      const response = await squareClient.customersApi.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
@@ -269,8 +272,8 @@ export function registerRoutes(app: Express): Server {
       });
     } catch (error) {
       console.error('Payment processing error:', error);
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : "Payment processing failed" 
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Payment processing failed"
       });
     }
   });
