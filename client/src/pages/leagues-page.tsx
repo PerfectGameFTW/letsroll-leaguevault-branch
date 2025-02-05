@@ -109,13 +109,6 @@ export default function LeaguesPage() {
                       <Pencil className="h-4 w-4 mr-2" />
                       Edit
                     </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => deleteMutation.mutate(league.id)}
-                    >
-                      Delete
-                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
