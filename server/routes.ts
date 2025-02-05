@@ -75,7 +75,7 @@ export function registerRoutes(app: Express): Server {
         for (const bowler of teamBowlers) {
           await storage.updateBowler(bowler.id, {
             teamId: null,
-            order: null
+            order: 0  // Set to 0 instead of null
           });
         }
         // Delete the team
