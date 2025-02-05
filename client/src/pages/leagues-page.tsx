@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Users, Pencil } from "lucide-react";
+import { Loader2, Plus, Pencil } from "lucide-react";
 import type { League } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -78,7 +78,14 @@ export default function LeaguesPage() {
           <TableBody>
             {leagues?.map((league) => (
               <TableRow key={league.id}>
-                <TableCell>{league.name}</TableCell>
+                <TableCell>
+                  <Link 
+                    href={`/leagues/${league.id}/teams`}
+                    className="text-foreground hover:underline"
+                  >
+                    {league.name}
+                  </Link>
+                </TableCell>
                 <TableCell>{league.description || "N/A"}</TableCell>
                 <TableCell>
                   {format(new Date(league.seasonStart), "MMM d, yyyy")} -{" "}
@@ -101,16 +108,6 @@ export default function LeaguesPage() {
                     >
                       <Pencil className="h-4 w-4 mr-2" />
                       Edit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      asChild
-                    >
-                      <Link href={`/leagues/${league.id}/teams`}>
-                        <Users className="h-4 w-4 mr-2" />
-                        Teams
-                      </Link>
                     </Button>
                     <Button
                       variant="destructive"
