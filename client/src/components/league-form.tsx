@@ -33,14 +33,23 @@ interface LeagueFormProps {
 
 export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const { toast } = useToast();
+
+  // Initialize dates with noon time to avoid timezone issues
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+
+  const nextYear = new Date();
+  nextYear.setFullYear(today.getFullYear() + 1);
+  nextYear.setHours(12, 0, 0, 0);
+
   const form = useForm<InsertLeague>({
     resolver: zodResolver(insertLeagueSchema),
     defaultValues: {
       name: "",
       description: "",
       active: true,
-      seasonStart: new Date(),
-      seasonEnd: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
+      seasonStart: today,
+      seasonEnd: nextYear,
     },
   });
 
@@ -49,27 +58,38 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     const start = form.watch('seasonStart');
     const end = form.watch('seasonEnd');
     if (start && end) {
-      return differenceInWeeks(end, start);
+      // Ensure both dates use the same time for comparison
+      const startDate = new Date(start);
+      startDate.setHours(12, 0, 0, 0);
+      const endDate = new Date(end);
+      endDate.setHours(12, 0, 0, 0);
+      return differenceInWeeks(endDate, startDate);
     }
     return 0;
   }, [form.watch('seasonStart'), form.watch('seasonEnd')]);
 
   useEffect(() => {
     if (open && league) {
+      // When editing, ensure dates are set to noon
+      const startDate = new Date(league.seasonStart);
+      startDate.setHours(12, 0, 0, 0);
+      const endDate = new Date(league.seasonEnd);
+      endDate.setHours(12, 0, 0, 0);
+
       form.reset({
         name: league.name,
         description: league.description || "",
         active: league.active,
-        seasonStart: new Date(league.seasonStart),
-        seasonEnd: new Date(league.seasonEnd),
+        seasonStart: startDate,
+        seasonEnd: endDate,
       });
     } else if (!open) {
       form.reset({
         name: "",
         description: "",
         active: true,
-        seasonStart: new Date(),
-        seasonEnd: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
+        seasonStart: today,
+        seasonEnd: nextYear,
       });
     }
   }, [open, league, form]);
@@ -166,8 +186,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                         {...field}
                         value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
                         onChange={(e) => {
+                          // Create date and set to noon to avoid timezone issues
                           const date = new Date(e.target.value);
-                          date.setHours(12); // Set to noon to avoid timezone issues
+                          date.setHours(12, 0, 0, 0);
                           field.onChange(date);
                         }}
                       />
@@ -189,8 +210,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                         {...field}
                         value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
                         onChange={(e) => {
+                          // Create date and set to noon to avoid timezone issues
                           const date = new Date(e.target.value);
-                          date.setHours(12); // Set to noon to avoid timezone issues
+                          date.setHours(12, 0, 0, 0);
                           field.onChange(date);
                         }}
                       />
