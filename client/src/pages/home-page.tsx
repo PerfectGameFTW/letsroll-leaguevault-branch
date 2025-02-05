@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
 import { Loader2 } from "lucide-react";
-import type { Bowler, Payment } from "@shared/schema";
+import type { Bowler, Payment, League } from "@shared/schema";
 
 export default function HomePage() {
   const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
@@ -13,7 +13,11 @@ export default function HomePage() {
     queryKey: ["/api/payments"],
   });
 
-  if (loadingBowlers || loadingPayments) {
+  const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
+    queryKey: ["/api/leagues"],
+  });
+
+  if (loadingBowlers || loadingPayments || loadingLeagues) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -26,10 +30,11 @@ export default function HomePage() {
   const activeBowlers = bowlers?.filter(b => b.active).length || 0;
   const totalRevenue = payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
   const pendingPayments = payments?.filter(p => p.status === "pending").length || 0;
+  const totalLeagues = leagues?.length || 0;
 
   return (
     <Layout>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Bowlers</CardTitle>
@@ -46,6 +51,14 @@ export default function HomePage() {
             <div className="text-2xl font-bold">
               ${(totalRevenue / 100).toFixed(2)}
             </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Leagues</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{totalLeagues}</div>
           </CardContent>
         </Card>
         <Card>
