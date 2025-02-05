@@ -224,10 +224,8 @@ export default function TeamViewPage() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Teams
         </Link>
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold">Team {team.number}: {team.name}</h1>
-          </div>
+        <div className="flex flex-col gap-4 mb-6">
+          <h1 className="text-2xl font-bold">Team {team.number}: {team.name}</h1>
           <div className="flex gap-2">
             <Button onClick={() => setShowAssignForm(true)}>
               <UserPlus className="h-4 w-4 mr-2" />
