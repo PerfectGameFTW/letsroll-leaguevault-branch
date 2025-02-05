@@ -186,9 +186,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                         {...field}
                         value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
                         onChange={(e) => {
-                          // Create date and set to noon to avoid timezone issues
-                          const date = new Date(e.target.value);
-                          date.setHours(12, 0, 0, 0);
+                          // Create date with the exact selected date at noon
+                          const [year, month, day] = e.target.value.split('-').map(Number);
+                          const date = new Date(year, month - 1, day, 12, 0, 0, 0);
                           field.onChange(date);
                         }}
                       />
@@ -210,9 +210,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                         {...field}
                         value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
                         onChange={(e) => {
-                          // Create date and set to noon to avoid timezone issues
-                          const date = new Date(e.target.value);
-                          date.setHours(12, 0, 0, 0);
+                          // Create date with the exact selected date at noon
+                          const [year, month, day] = e.target.value.split('-').map(Number);
+                          const date = new Date(year, month - 1, day, 12, 0, 0, 0);
                           field.onChange(date);
                         }}
                       />
