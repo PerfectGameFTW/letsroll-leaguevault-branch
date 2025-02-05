@@ -80,10 +80,10 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       active: true,
       seasonStart: today,
       seasonEnd: nextYear,
-      weekDay: "monday", // Add default weekDay
-      practiceStartTime: "", // Add default time
-      competitionStartTime: "", // Add default time
-
+      weekDay: "monday",
+      practiceStartTime: "",
+      competitionStartTime: "",
+      weeklyFee: 2000, // Default to $20.00
     },
   });
 
@@ -119,6 +119,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         weekDay: league.weekDay || "monday",
         practiceStartTime: league.practiceStartTime || "",
         competitionStartTime: league.competitionStartTime || "",
+        weeklyFee: league.weeklyFee || 2000,
       });
     } else if (!open) {
       form.reset({
@@ -130,6 +131,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         weekDay: "monday",
         practiceStartTime: "",
         competitionStartTime: "",
+        weeklyFee: 2000,
       });
       setShowDeleteConfirm(false);
     }
@@ -369,6 +371,29 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="weeklyFee"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Weekly Fee</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          {...field}
+                          value={field.value / 100}
+                          onChange={(e) =>
+                            field.onChange(Math.round(parseFloat(e.target.value) * 100))
+                          }
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}
