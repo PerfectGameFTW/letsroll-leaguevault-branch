@@ -193,7 +193,7 @@ export default function BowlerViewPage() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Remaining Balance</CardTitle>
+              <CardTitle className="text-lg">Full Season Remaining Balance</CardTitle>
               <CardDescription>Amount left to pay</CardDescription>
             </CardHeader>
             <CardContent>
