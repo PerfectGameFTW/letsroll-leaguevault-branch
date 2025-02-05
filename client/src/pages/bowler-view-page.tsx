@@ -101,7 +101,7 @@ export default function BowlerViewPage() {
     fullSeasonAmount = bowler.weeklyFee * totalWeeksInSeason;
   }
 
-  const remainingBalance = totalSeasonDues - totalPaidAmount;
+  const remainingBalance = fullSeasonAmount - totalPaidAmount;
 
   return (
     <Layout>
