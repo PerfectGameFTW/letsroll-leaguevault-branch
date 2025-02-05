@@ -16,7 +16,7 @@ import { Loader2, Plus, Users } from "lucide-react";
 import type { Team, League } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useParams } from "wouter";
+import { useParams, Link } from "wouter";
 
 export default function TeamsPage() {
   const [showForm, setShowForm] = useState(false);
@@ -30,8 +30,8 @@ export default function TeamsPage() {
 
   const { data: teams, isLoading: loadingTeams } = useQuery<Team[]>({
     queryKey: ["/api/teams", leagueId],
-    queryFn: () => 
-      fetch(`/api/teams?leagueId=${leagueId}`).then(res => res.json()),
+    queryFn: () =>
+      fetch(`/api/teams?leagueId=${leagueId}`).then((res) => res.json()),
   });
 
   const sortedTeams = useMemo(() => {
@@ -105,6 +105,16 @@ export default function TeamsPage() {
                 <TableCell>
                   <div className="flex gap-2">
                     <Button
+                      variant="outline"
+                      size="sm"
+                      asChild
+                    >
+                      <Link href={`/teams/${team.id}`}>
+                        <Users className="h-4 w-4 mr-2" />
+                        View Team
+                      </Link>
+                    </Button>
+                    <Button
                       variant="destructive"
                       size="sm"
                       onClick={() => deleteMutation.mutate(team.id)}
@@ -119,10 +129,10 @@ export default function TeamsPage() {
         </Table>
       </div>
 
-      <TeamForm 
-        open={showForm} 
-        onClose={() => setShowForm(false)} 
-        leagueId={leagueId} 
+      <TeamForm
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        leagueId={leagueId}
       />
     </Layout>
   );

@@ -74,6 +74,19 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.get("/api/teams/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const team = await storage.getTeam(id);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      res.json(team);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/teams", async (req, res) => {
     try {
       const team = insertTeamSchema.parse(req.body);

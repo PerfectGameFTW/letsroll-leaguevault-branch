@@ -33,9 +33,10 @@ import { Loader2 } from "lucide-react";
 interface BowlerFormProps {
   open: boolean;
   onClose: () => void;
+  defaultTeamId?: number;
 }
 
-export function BowlerForm({ open, onClose }: BowlerFormProps) {
+export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
   const { toast } = useToast();
   const form = useForm<InsertBowler>({
     resolver: zodResolver(insertBowlerSchema),
@@ -44,7 +45,7 @@ export function BowlerForm({ open, onClose }: BowlerFormProps) {
       email: "",
       weeklyFee: 2000, // $20.00
       active: true,
-      teamId: undefined, //added default value for teamId
+      teamId: defaultTeamId,
     },
   });
 
