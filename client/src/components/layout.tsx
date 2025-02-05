@@ -70,33 +70,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </Button>
               </div>
               <nav className="mt-8 flex-1 space-y-1 px-2">
-                {baseNavigation.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <Link key={item.name} href={item.href}>
-                      <span
-                        className={cn(
-                          "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-                          location === item.href
-                            ? "bg-primary text-primary-foreground"
-                            : "text-gray-600 hover:bg-gray-50"
-                        )}
-                        title={isCollapsed ? item.name : undefined}
-                      >
-                        <Icon
-                          className={cn(
-                            "h-5 w-5 flex-shrink-0",
-                            location === item.href
-                              ? "text-primary-foreground"
-                              : "text-gray-400",
-                            isCollapsed ? "mx-auto" : "mr-3"
-                          )}
-                        />
-                        {!isCollapsed && item.name}
-                      </span>
-                    </Link>
-                  );
-                })}
+                {/* Dashboard */}
+                <Link href="/">
+                  <span
+                    className={cn(
+                      "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+                      location === "/"
+                        ? "bg-primary text-primary-foreground"
+                        : "text-gray-600 hover:bg-gray-50"
+                    )}
+                    title={isCollapsed ? "Dashboard" : undefined}
+                  >
+                    <Home
+                      className={cn(
+                        "h-5 w-5 flex-shrink-0",
+                        location === "/"
+                          ? "text-primary-foreground"
+                          : "text-gray-400",
+                        isCollapsed ? "mx-auto" : "mr-3"
+                      )}
+                    />
+                    {!isCollapsed && "Dashboard"}
+                  </span>
+                </Link>
 
                 {/* Leagues Navigation Menu */}
                 {!isCollapsed && (
@@ -163,6 +159,35 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </span>
                   </Link>
                 )}
+
+                {/* Rest of the navigation items */}
+                {baseNavigation.slice(1).map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link key={item.name} href={item.href}>
+                      <span
+                        className={cn(
+                          "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+                          location === item.href
+                            ? "bg-primary text-primary-foreground"
+                            : "text-gray-600 hover:bg-gray-50"
+                        )}
+                        title={isCollapsed ? item.name : undefined}
+                      >
+                        <Icon
+                          className={cn(
+                            "h-5 w-5 flex-shrink-0",
+                            location === item.href
+                              ? "text-primary-foreground"
+                              : "text-gray-400",
+                            isCollapsed ? "mx-auto" : "mr-3"
+                          )}
+                        />
+                        {!isCollapsed && item.name}
+                      </span>
+                    </Link>
+                  );
+                })}
               </nav>
             </div>
           </div>
