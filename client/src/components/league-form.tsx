@@ -24,6 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { differenceInWeeks } from "date-fns";
+import { Separator } from "@/components/ui/separator";
 
 interface LeagueFormProps {
   open: boolean;
@@ -127,6 +128,32 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     onError: (error: Error) => {
       toast({
         title: league ? "Error updating league" : "Error creating league",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      if (!league) return;
+      const response = await apiRequest("DELETE", `/api/leagues/${league.id}`);
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/leagues"] });
+      toast({
+        title: "League deleted",
+        description: "The league has been removed from the system.",
+      });
+      onClose();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error deleting league",
         description: error.message,
         variant: "destructive",
       });
@@ -262,6 +289,25 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                 {league ? "Update" : "Add"} League
               </Button>
             </div>
+
+            {league && (
+              <>
+                <Separator className="my-4" />
+                <div className="flex justify-center">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteMutation.isPending}
+                  >
+                    {deleteMutation.isPending && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Delete League
+                  </Button>
+                </div>
+              </>
+            )}
           </form>
         </Form>
       </DialogContent>
