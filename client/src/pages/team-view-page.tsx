@@ -13,10 +13,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Loader2, Plus, ArrowLeft, ExternalLink, UserPlus, Pencil, GripVertical } from "lucide-react";
 import type { Team, Bowler } from "@shared/schema";
 import { getSquareCustomerUrl } from "@/lib/square";
 import { useParams, Link } from "wouter";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   DndContext,
   closestCenter,
@@ -105,13 +111,25 @@ function SortableBowlerRow({ bowler, onEdit }: SortableBowlerRowProps) {
   );
 }
 
+const editTeamSchema = z.object({
+  name: z.string().min(1, "Team name is required"),
+});
+
 export default function TeamViewPage() {
   const [showForm, setShowForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
   const params = useParams();
   const teamId = parseInt(params.teamId!);
+
+  const editForm = useForm({
+    resolver: zodResolver(editTeamSchema),
+    defaultValues: {
+      name: "",
+    },
+  });
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -130,6 +148,32 @@ export default function TeamViewPage() {
       fetch(`/api/bowlers?teamId=${teamId}`).then((res) => res.json()),
   });
 
+  const updateTeamMutation = useMutation({
+    mutationFn: async (values: z.infer<typeof editTeamSchema>) => {
+      const response = await apiRequest("PATCH", `/api/teams/${teamId}`, values);
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+      return response.json();
+    },
+    onSuccess: (updatedTeam) => {
+      queryClient.setQueryData([`/api/teams/${teamId}`], updatedTeam);
+      setShowEditDialog(false);
+      toast({
+        title: "Team updated",
+        description: "Team name has been updated successfully.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error updating team",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const reorderMutation = useMutation({
     mutationFn: async ({ id, order }: { id: number; order: number }) => {
       const response = await apiRequest("PATCH", `/api/bowlers/${id}`, { order });
@@ -140,31 +184,23 @@ export default function TeamViewPage() {
       return response.json();
     },
     onMutate: async ({ id, order }) => {
-      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["/api/bowlers", teamId] });
-
-      // Get snapshot of current data
       const previousBowlers = queryClient.getQueryData<Bowler[]>(["/api/bowlers", teamId]);
-
-      // Optimistically update the cache
       if (previousBowlers) {
         const bowlers = [...previousBowlers];
         const oldIndex = bowlers.findIndex(b => b.id === id);
         if (oldIndex !== -1) {
           const [movedBowler] = bowlers.splice(oldIndex, 1);
           bowlers.splice(order, 0, movedBowler);
-          // Update all orders to match array indices
           bowlers.forEach((b, index) => {
             b.order = index;
           });
           queryClient.setQueryData(["/api/bowlers", teamId], bowlers);
         }
       }
-
       return { previousBowlers };
     },
     onError: (error: Error, _, context) => {
-      // Revert to previous state on error
       if (context?.previousBowlers) {
         queryClient.setQueryData(["/api/bowlers", teamId], context.previousBowlers);
       }
@@ -175,7 +211,6 @@ export default function TeamViewPage() {
       });
     },
     onSuccess: (updatedBowlers) => {
-      // Update cache with the server response
       queryClient.setQueryData(["/api/bowlers", teamId], updatedBowlers);
     },
   });
@@ -193,6 +228,17 @@ export default function TeamViewPage() {
           order: newIndex,
         });
       }
+    }
+  };
+
+  const onEditTeam = (values: z.infer<typeof editTeamSchema>) => {
+    updateTeamMutation.mutate(values);
+  };
+
+  const handleEditClick = () => {
+    if (team) {
+      editForm.reset({ name: team.name });
+      setShowEditDialog(true);
     }
   };
 
@@ -214,7 +260,6 @@ export default function TeamViewPage() {
     );
   }
 
-  // Sort bowlers by order
   const sortedBowlers = bowlers?.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   return (
@@ -225,7 +270,13 @@ export default function TeamViewPage() {
           Back to Teams
         </Link>
         <div className="flex flex-col gap-4 mb-6">
-          <h1 className="text-2xl font-bold">Team {team.number}: {team.name}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold">Team {team.number}: {team.name}</h1>
+            <Button variant="ghost" size="sm" onClick={handleEditClick}>
+              <Pencil className="h-4 w-4" />
+              <span className="sr-only">Edit team name</span>
+            </Button>
+          </div>
           <div className="flex gap-2">
             <Button onClick={() => setShowAssignForm(true)}>
               <UserPlus className="h-4 w-4 mr-2" />
@@ -276,6 +327,38 @@ export default function TeamViewPage() {
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Team Name</DialogTitle>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditTeam)} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormControl>
+                      <Input placeholder="Enter team name" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex justify-end">
+                <Button type="submit" disabled={updateTeamMutation.isPending}>
+                  {updateTeamMutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Save
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       <BowlerForm
         open={showForm}
