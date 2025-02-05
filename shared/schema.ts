@@ -16,6 +16,7 @@ export const leagues = pgTable("leagues", {
   active: boolean("active").notNull().default(true),
   seasonStart: timestamp("season_start").notNull(),
   seasonEnd: timestamp("season_end").notNull(),
+  weekDay: text("week_day"),  // Add the weekDay column
 });
 
 export const teams = pgTable("teams", {
@@ -85,7 +86,8 @@ export const paymentRelations = relations(payments, ({ one }) => ({
 export const insertUserSchema = createInsertSchema(users);
 export const insertLeagueSchema = createInsertSchema(leagues).extend({
   seasonStart: z.coerce.date(),
-  seasonEnd: z.coerce.date()
+  seasonEnd: z.coerce.date(),
+  weekDay: z.string().optional(),  // Add weekDay to the schema
 });
 export const insertTeamSchema = createInsertSchema(teams).extend({
   number: z.number().min(1, "Team number must be at least 1"),
