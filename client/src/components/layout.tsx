@@ -3,10 +3,19 @@ import { cn } from "@/lib/utils";
 import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
+import { useQuery } from "@tanstack/react-query";
+import {
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+} from "@/components/ui/navigation-menu";
+import type { League } from "@shared/schema";
 
-const navigation = [
+const baseNavigation = [
   { name: "Dashboard", href: "/", icon: Home },
-  { name: "Leagues", href: "/leagues", icon: Trophy },
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
 ];
@@ -16,6 +25,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const saved = localStorage.getItem("sidebarCollapsed");
     return saved ? JSON.parse(saved) : false;
+  });
+
+  const { data: leagues } = useQuery<League[]>({
+    queryKey: ["/api/leagues"],
   });
 
   useEffect(() => {
@@ -57,7 +70,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </Button>
               </div>
               <nav className="mt-8 flex-1 space-y-1 px-2">
-                {navigation.map((item) => {
+                {baseNavigation.map((item) => {
                   const Icon = item.icon;
                   return (
                     <Link key={item.name} href={item.href}>
@@ -84,6 +97,72 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </Link>
                   );
                 })}
+
+                {/* Leagues Navigation Menu */}
+                {!isCollapsed && (
+                  <NavigationMenu orientation="vertical" className="w-full">
+                    <NavigationMenuList className="flex-col items-start">
+                      <NavigationMenuItem className="w-full">
+                        <NavigationMenuTrigger className={cn(
+                          "w-full justify-start group flex items-center px-2 py-2 text-sm font-medium rounded-md",
+                          location.startsWith('/leagues')
+                            ? "bg-primary text-primary-foreground"
+                            : "text-gray-600 hover:bg-gray-50"
+                        )}>
+                          <Trophy className={cn(
+                            "h-5 w-5 flex-shrink-0 mr-3",
+                            location.startsWith('/leagues')
+                              ? "text-primary-foreground"
+                              : "text-gray-400"
+                          )} />
+                          Leagues
+                        </NavigationMenuTrigger>
+                        <NavigationMenuContent>
+                          <div className="w-48 p-2">
+                            <Link href="/leagues" className="block px-2 py-1 text-sm rounded hover:bg-accent">
+                              All Leagues
+                            </Link>
+                            <div className="my-1 border-t" />
+                            {leagues?.map((league) => (
+                              <Link 
+                                key={league.id}
+                                href={`/leagues/${league.id}/teams`}
+                                className="block px-2 py-1 text-sm rounded hover:bg-accent"
+                              >
+                                {league.name}
+                              </Link>
+                            ))}
+                          </div>
+                        </NavigationMenuContent>
+                      </NavigationMenuItem>
+                    </NavigationMenuList>
+                  </NavigationMenu>
+                )}
+
+                {/* Collapsed League Icon */}
+                {isCollapsed && (
+                  <Link href="/leagues">
+                    <span
+                      className={cn(
+                        "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+                        location.startsWith('/leagues')
+                          ? "bg-primary text-primary-foreground"
+                          : "text-gray-600 hover:bg-gray-50"
+                      )}
+                      title="Leagues"
+                    >
+                      <Trophy
+                        className={cn(
+                          "h-5 w-5 flex-shrink-0",
+                          location.startsWith('/leagues')
+                            ? "text-primary-foreground"
+                            : "text-gray-400",
+                          "mx-auto"
+                        )}
+                      />
+                    </span>
+                  </Link>
+                )}
               </nav>
             </div>
           </div>
