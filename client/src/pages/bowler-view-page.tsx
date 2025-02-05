@@ -73,6 +73,10 @@ export default function BowlerViewPage() {
   let weeksDue = 0;
   let totalSeasonDues = 0;
 
+  // Calculate total weeks in season and full season amount
+  let totalWeeksInSeason = 0;
+  let fullSeasonAmount = 0;
+
   if (league) {
     const seasonStart = new Date(league.seasonStart);
     const today = startOfToday();
@@ -93,6 +97,8 @@ export default function BowlerViewPage() {
 
     // Calculate dues based on weeks passed
     totalSeasonDues = bowler.weeklyFee * weeksDue;
+    totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
+    fullSeasonAmount = bowler.weeklyFee * totalWeeksInSeason;
   }
 
   const remainingBalance = totalSeasonDues - totalPaidAmount;
@@ -168,6 +174,20 @@ export default function BowlerViewPage() {
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold text-destructive">${(remainingBalance / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Full Season Lineage Amount Due</CardTitle>
+              <CardDescription>
+                {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at ${(
+                  bowler.weeklyFee / 100
+                ).toFixed(2)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-orange-600">${(fullSeasonAmount / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
 
