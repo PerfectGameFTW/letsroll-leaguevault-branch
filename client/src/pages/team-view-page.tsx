@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { BowlerForm } from "@/components/bowler-form";
@@ -15,16 +15,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, ArrowLeft, ExternalLink, UserPlus, Pencil } from "lucide-react";
 import type { Team, Bowler } from "@shared/schema";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { useParams, Link } from "wouter";
 import { getSquareCustomerUrl } from "@/lib/square";
+import { useParams, Link } from "wouter";
 
 export default function TeamViewPage() {
   const [showForm, setShowForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
-  const { toast } = useToast();
   const params = useParams();
   const teamId = parseInt(params.teamId!);
 
@@ -36,19 +33,6 @@ export default function TeamViewPage() {
     queryKey: ["/api/bowlers", teamId],
     queryFn: () => 
       fetch(`/api/bowlers?teamId=${teamId}`).then(res => res.json()),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/bowlers/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bowlers", teamId] });
-      toast({
-        title: "Bowler deleted",
-        description: "The bowler has been removed from the team.",
-      });
-    },
   });
 
   if (loadingTeam || loadingBowlers) {
@@ -132,26 +116,17 @@ export default function TeamViewPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedBowler(bowler);
-                        setShowForm(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => deleteMutation.mutate(bowler.id)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedBowler(bowler);
+                      setShowForm(true);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
