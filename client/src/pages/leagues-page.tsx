@@ -66,7 +66,7 @@ export default function LeaguesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[15%]">Bowl Day</TableHead>
+              <TableHead className="w-[15%]">Weekday</TableHead>
               <TableHead className="w-[25%]">Name</TableHead>
               <TableHead>Teams</TableHead>
               <TableHead className="w-[15%]">Start Date</TableHead>
