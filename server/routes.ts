@@ -183,19 +183,33 @@ export function registerRoutes(app: Express): Server {
         const oldOrder = bowler.order ?? 0;
         const newOrder = update.order;
 
-        // Update orders for all affected bowlers
-        for (const b of teamBowlers) {
-          if (b.id === id) continue;
+        // First update the orders of all affected bowlers
+        const updatePromises = teamBowlers.map(async (b) => {
+          if (b.id === id) return; // Skip the bowler being moved
 
           let order = b.order ?? 0;
-          if (oldOrder < newOrder && order > oldOrder && order <= newOrder) {
-            await storage.updateBowler(b.id, { order: order - 1 });
-          } else if (oldOrder > newOrder && order >= newOrder && order < oldOrder) {
-            await storage.updateBowler(b.id, { order: order + 1 });
+          if (oldOrder < newOrder) {
+            // Moving down - decrease order of bowlers in between
+            if (order > oldOrder && order <= newOrder) {
+              await storage.updateBowler(b.id, { order: order - 1 });
+            }
+          } else if (oldOrder > newOrder) {
+            // Moving up - increase order of bowlers in between
+            if (order >= newOrder && order < oldOrder) {
+              await storage.updateBowler(b.id, { order: order + 1 });
+            }
           }
-        }
+        });
+
+        // Wait for all order updates to complete
+        await Promise.all(updatePromises.filter(Boolean));
+
+        // Finally update the moved bowler's order
+        const updated = await storage.updateBowler(id, update);
+        return res.json(updated);
       }
 
+      // Handle non-order updates
       const updated = await storage.updateBowler(id, update);
       res.json(updated);
     } catch (error) {
