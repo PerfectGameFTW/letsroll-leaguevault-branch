@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Eye, EyeOff, Search, Pencil } from "lucide-react";
-import type { Bowler } from "@shared/schema";
+import type { Bowler, Team, League } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
@@ -27,8 +27,16 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlers, isLoading } = useQuery<Bowler[]>({
+  const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers"],
+  });
+
+  const { data: teams } = useQuery<Team[]>({
+    queryKey: ["/api/teams"],
+  });
+
+  const { data: leagues } = useQuery<League[]>({
+    queryKey: ["/api/leagues"],
   });
 
   const filteredBowlers = bowlers?.filter(bowler => {
@@ -38,7 +46,7 @@ export default function BowlersPage() {
     return (showInactive ? true : bowler.active) && matchesSearch;
   });
 
-  if (isLoading) {
+  if (loadingBowlers) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -47,6 +55,15 @@ export default function BowlersPage() {
       </Layout>
     );
   }
+
+  // Helper function to get league weekly fee
+  const getWeeklyFee = (bowler: Bowler) => {
+    if (!bowler.teamId) return 0;
+    const team = teams?.find(t => t.id === bowler.teamId);
+    if (!team) return 0;
+    const league = leagues?.find(l => l.id === team.leagueId);
+    return league?.weeklyFee || 0;
+  };
 
   return (
     <Layout>
@@ -106,7 +123,7 @@ export default function BowlersPage() {
                     </Link>
                   </TableCell>
                   <TableCell>{bowler.email}</TableCell>
-                  <TableCell>${(bowler.weeklyFee / 100).toFixed(2)}</TableCell>
+                  <TableCell>${(getWeeklyFee(bowler) / 100).toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={bowler.active ? "default" : "secondary"}>
                       {bowler.active ? "Active" : "Inactive"}
