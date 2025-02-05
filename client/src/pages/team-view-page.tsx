@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { BowlerForm } from "@/components/bowler-form";
@@ -13,17 +13,112 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, ArrowLeft, ExternalLink, UserPlus, Pencil } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, ExternalLink, UserPlus, Pencil, GripVertical } from "lucide-react";
 import type { Team, Bowler } from "@shared/schema";
 import { getSquareCustomerUrl } from "@/lib/square";
 import { useParams, Link } from "wouter";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+interface SortableBowlerRowProps {
+  bowler: Bowler;
+  onEdit: (bowler: Bowler) => void;
+}
+
+function SortableBowlerRow({ bowler, onEdit }: SortableBowlerRowProps) {
+  const {
+    attributes,
+    listeners,
+    transform,
+    transition,
+    setNodeRef,
+  } = useSortable({ id: bowler.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <TableRow ref={setNodeRef} style={style}>
+      <TableCell>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="p-0 cursor-grab active:cursor-grabbing"
+          {...attributes} 
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </Button>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          {bowler.name}
+          {bowler.squareCustomerId && (
+            <a
+              href={getSquareCustomerUrl(bowler.squareCustomerId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground"
+              title="View in Square"
+            >
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          )}
+        </div>
+      </TableCell>
+      <TableCell>{bowler.email}</TableCell>
+      <TableCell>${(bowler.weeklyFee / 100).toFixed(2)}</TableCell>
+      <TableCell>
+        <Badge variant={bowler.active ? "default" : "secondary"}>
+          {bowler.active ? "Active" : "Inactive"}
+        </Badge>
+      </TableCell>
+      <TableCell>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onEdit(bowler)}
+        >
+          <Pencil className="h-4 w-4 mr-2" />
+          Edit
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
 
 export default function TeamViewPage() {
   const [showForm, setShowForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
+  const { toast } = useToast();
   const params = useParams();
   const teamId = parseInt(params.teamId!);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const { data: team, isLoading: loadingTeam } = useQuery<Team>({
     queryKey: [`/api/teams/${teamId}`],
@@ -34,6 +129,48 @@ export default function TeamViewPage() {
     queryFn: () => 
       fetch(`/api/bowlers?teamId=${teamId}`).then(res => res.json()),
   });
+
+  const reorderMutation = useMutation({
+    mutationFn: async ({ id, order }: { id: number; order: number }) => {
+      const response = await apiRequest("PATCH", `/api/bowlers/${id}`, { order });
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error reordering bowlers",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  });
+
+  const handleDragEnd = async (event: any) => {
+    const { active, over } = event;
+
+    if (active.id !== over.id && bowlers) {
+      const oldIndex = bowlers.findIndex((b) => b.id === active.id);
+      const newIndex = bowlers.findIndex((b) => b.id === over.id);
+
+      const newBowlers = arrayMove(bowlers, oldIndex, newIndex);
+
+      // Update the cache optimistically
+      queryClient.setQueryData(["/api/bowlers", teamId], newBowlers);
+
+      // Send the update to the server
+      try {
+        await reorderMutation.mutateAsync({
+          id: active.id,
+          order: newIndex,
+        });
+      } catch (error) {
+        // If there's an error, the query will be invalidated and refetched
+        queryClient.invalidateQueries({ queryKey: ["/api/bowlers", teamId] });
+      }
+    }
+  };
 
   if (loadingTeam || loadingBowlers) {
     return (
@@ -82,6 +219,7 @@ export default function TeamViewPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[50px]"></TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Weekly Fee</TableHead>
@@ -90,46 +228,27 @@ export default function TeamViewPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {bowlers?.map((bowler) => (
-              <TableRow key={bowler.id}>
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    {bowler.name}
-                    {bowler.squareCustomerId && (
-                      <a
-                        href={getSquareCustomerUrl(bowler.squareCustomerId)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground"
-                        title="View in Square"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>{bowler.email}</TableCell>
-                <TableCell>${(bowler.weeklyFee / 100).toFixed(2)}</TableCell>
-                <TableCell>
-                  <Badge variant={bowler.active ? "default" : "secondary"}>
-                    {bowler.active ? "Active" : "Inactive"}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedBowler(bowler);
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={bowlers?.map(b => b.id) ?? []}
+                strategy={verticalListSortingStrategy}
+              >
+                {bowlers?.map((bowler) => (
+                  <SortableBowlerRow
+                    key={bowler.id}
+                    bowler={bowler}
+                    onEdit={(b) => {
+                      setSelectedBowler(b);
                       setShowForm(true);
                     }}
-                  >
-                    <Pencil className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
           </TableBody>
         </Table>
       </div>
