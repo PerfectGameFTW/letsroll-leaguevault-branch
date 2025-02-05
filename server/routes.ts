@@ -140,6 +140,8 @@ export function registerRoutes(app: Express): Server {
     try {
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
       const bowlers = await storage.getBowlers(teamId);
+      // Sort bowlers by order
+      bowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       res.json(bowlers);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
@@ -149,6 +151,11 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/bowlers", async (req, res) => {
     try {
       const bowler = insertBowlerSchema.parse(req.body);
+      // If order is not provided, set it to the next available order number
+      if (bowler.teamId && !bowler.order) {
+        const teamBowlers = await storage.getBowlers(bowler.teamId);
+        bowler.order = teamBowlers.length;
+      }
       const created = await storage.createBowler(bowler);
       res.status(201).json(created);
     } catch (error) {
@@ -164,12 +171,38 @@ export function registerRoutes(app: Express): Server {
     try {
       const id = parseInt(req.params.id);
       const update = insertBowlerSchema.partial().parse(req.body);
+
+      // If we're updating the order, we need to handle reordering
+      if (typeof update.order === 'number') {
+        const bowler = await storage.getBowler(id);
+        if (!bowler?.teamId) {
+          return res.status(400).json({ message: "Bowler must be assigned to a team to reorder" });
+        }
+
+        const teamBowlers = await storage.getBowlers(bowler.teamId);
+        const oldOrder = bowler.order ?? 0;
+        const newOrder = update.order;
+
+        // Update orders for all affected bowlers
+        for (const b of teamBowlers) {
+          if (b.id === id) continue;
+
+          let order = b.order ?? 0;
+          if (oldOrder < newOrder && order > oldOrder && order <= newOrder) {
+            await storage.updateBowler(b.id, { order: order - 1 });
+          } else if (oldOrder > newOrder && order >= newOrder && order < oldOrder) {
+            await storage.updateBowler(b.id, { order: order + 1 });
+          }
+        }
+      }
+
       const updated = await storage.updateBowler(id, update);
       res.json(updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json(error.issues);
       } else {
+        console.error('Error updating bowler:', error);
         res.status(500).json({ message: "Internal server error" });
       }
     }

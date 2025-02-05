@@ -21,7 +21,7 @@ export const leagues = pgTable("leagues", {
 export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  number: integer("number"), // Make nullable initially
+  number: integer("number"), 
   leagueId: integer("league_id").notNull().references(() => leagues.id),
   active: boolean("active").notNull().default(true),
 });
@@ -34,6 +34,7 @@ export const bowlers = pgTable("bowlers", {
   active: boolean("active").notNull().default(true),
   weeklyFee: integer("weekly_fee").notNull(),
   squareCustomerId: text("square_customer_id"),
+  order: integer("order").notNull().default(0),
 });
 
 export const payments = pgTable("payments", {
@@ -92,6 +93,7 @@ export const insertTeamSchema = createInsertSchema(teams).extend({
 export const insertBowlerSchema = createInsertSchema(bowlers).extend({
   teamId: z.number().min(1, "Team selection is required").optional(),
   leagueId: z.number().min(1, "League selection is required").optional(),
+  order: z.number().optional(),
 });
 export const insertPaymentSchema = createInsertSchema(payments);
 
