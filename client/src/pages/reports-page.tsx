@@ -19,7 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import type { League, Team, Bowler, Payment } from "@shared/schema";
-import { format } from "date-fns";
+import { format, isAfter, isBefore, startOfToday } from "date-fns";
 
 export default function ReportsPage() {
   const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
@@ -62,23 +62,32 @@ export default function ReportsPage() {
     const collected = leaguePayments.reduce((sum, payment) =>
       payment.status === 'paid' ? sum + payment.amount : sum, 0);
 
-    const outstandingBalance = leagueBowlers.reduce((sum, bowler) => {
+    const pastDueBalance = leagueBowlers.reduce((sum, bowler) => {
       if (!bowler.active) return sum;
 
       const bowlerPayments = leaguePayments
         .filter(p => p.bowlerId === bowler.id && p.status === 'paid')
         .reduce((sum, p) => sum + p.amount, 0);
 
-      const totalDue = league.weeklyFee *
-        (league.seasonEnd ? Math.ceil((new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) / (7 * 24 * 60 * 60 * 1000)) : 0);
+      // Calculate the number of weeks from season start to today
+      const today = startOfToday();
+      const seasonStart = new Date(league.seasonStart);
+      const weeksPassed = Math.max(0, Math.floor(
+        (today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
+      ));
 
-      return sum + (totalDue - bowlerPayments);
+      // Calculate amount due to date
+      const dueToDate = league.weeklyFee * weeksPassed;
+
+      // Only include in past due if there's an actual balance due
+      const pastDue = Math.max(0, dueToDate - bowlerPayments);
+      return sum + pastDue;
     }, 0);
 
     return {
       ...league,
       collected,
-      outstandingBalance,
+      pastDueBalance,
       activeBowlerCount: leagueBowlers.filter(b => b.active).length,
       teamCount: leagueTeams.length,
     };
@@ -86,7 +95,7 @@ export default function ReportsPage() {
 
   // Calculate overall totals
   const totalCollected = leagueFinancials?.reduce((sum, league) => sum + league.collected, 0) || 0;
-  const totalOutstanding = leagueFinancials?.reduce((sum, league) => sum + league.outstandingBalance, 0) || 0;
+  const totalPastDue = leagueFinancials?.reduce((sum, league) => sum + league.pastDueBalance, 0) || 0;
 
   return (
     <Layout>
@@ -109,12 +118,12 @@ export default function ReportsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Total Outstanding</CardTitle>
-                <CardDescription>Total amount pending collection</CardDescription>
+                <CardTitle>Total Past Due</CardTitle>
+                <CardDescription>Total amount past due to date</CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-destructive">
-                  ${(totalOutstanding / 100).toFixed(2)}
+                  ${(totalPastDue / 100).toFixed(2)}
                 </p>
               </CardContent>
             </Card>
@@ -132,7 +141,7 @@ export default function ReportsPage() {
                   <TableHead>Active Bowlers</TableHead>
                   <TableHead>Teams</TableHead>
                   <TableHead>Collections</TableHead>
-                  <TableHead>Outstanding</TableHead>
+                  <TableHead>Past Due</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -144,7 +153,7 @@ export default function ReportsPage() {
                     <TableCell>{league.teamCount}</TableCell>
                     <TableCell>${(league.collected / 100).toFixed(2)}</TableCell>
                     <TableCell className="text-destructive">
-                      ${(league.outstandingBalance / 100).toFixed(2)}
+                      ${(league.pastDueBalance / 100).toFixed(2)}
                     </TableCell>
                     <TableCell>
                       <Badge variant={league.active ? "default" : "secondary"}>
