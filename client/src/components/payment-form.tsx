@@ -1,4 +1,3 @@
-import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -29,7 +28,7 @@ import { Loader2 } from "lucide-react";
 import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { initializeSquare } from "@/lib/square";
+import { createPayment } from "@/lib/square";
 
 interface PaymentFormProps {
   open: boolean;
@@ -39,11 +38,6 @@ interface PaymentFormProps {
 
 export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
   const { toast } = useToast();
-  const cardContainer = useRef<HTMLDivElement>(null);
-  const [card, setCard] = useState<any>(null);
-  const [isCardLoading, setIsCardLoading] = useState(false);
-  const [initError, setInitError] = useState<string | null>(null);
-
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
@@ -53,135 +47,33 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     },
   });
 
-  useEffect(() => {
-    let isMounted = true;
-    let currentCard: any = null;
-
-    async function initializeCard() {
-      if (!open || !cardContainer.current || isCardLoading) {
-        return;
-      }
-
-      setIsCardLoading(true);
-      setInitError(null);
-
-      try {
-        const payments = await initializeSquare();
-        if (!isMounted) return;
-
-        if (payments) {
-          const newCard = await payments.card();
-          if (!isMounted) {
-            await newCard.destroy();
-            return;
-          }
-
-          const styles = {
-            '.input-container': {
-              border: '1px solid var(--border)',
-              borderRadius: '6px',
-              padding: '12px',
-              backgroundColor: 'var(--background)',
-            },
-            '.input-container.is-focus': {
-              borderColor: 'var(--primary)',
-              boxShadow: '0 0 0 2px var(--primary)',
-            },
-            '.message-text': {
-              color: 'var(--muted-foreground)',
-              fontSize: '14px',
-              marginTop: '4px',
-            },
-            input: {
-              backgroundColor: 'transparent',
-              color: 'var(--foreground)',
-              fontFamily: 'var(--font-sans)',
-              fontSize: '14px',
-              padding: '0',
-            },
-          };
-
-          await newCard.attach('#card-container', { styles });
-          if (!isMounted) {
-            await newCard.destroy();
-            return;
-          }
-
-          currentCard = newCard;
-          setCard(newCard);
-        }
-      } catch (error) {
-        console.error('Square card initialization error:', error);
-        if (isMounted) {
-          const errorMessage = error instanceof Error ? error.message : "Failed to initialize payment form";
-          setInitError(errorMessage);
-          toast({
-            title: "Error",
-            description: errorMessage,
-            variant: "destructive",
-          });
-        }
-      } finally {
-        if (isMounted) {
-          setIsCardLoading(false);
-        }
-      }
-    }
-
-    initializeCard();
-
-    return () => {
-      isMounted = false;
-      if (currentCard) {
-        currentCard.destroy().catch(console.error);
-      }
-    };
-  }, [open, toast]);
-
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
-      if (!card) {
-        throw new Error("Payment form not initialized");
-      }
+      try {
+        // Process payment through Square
+        const squarePayment = await createPayment(data.amount);
 
-      const result = await card.tokenize();
-      if (result.status === 'OK') {
-        const response = await fetch('/api/payments/process', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            sourceId: result.token,
-            amount: data.amount,
-            locationId: import.meta.env.VITE_SQUARE_LOCATION_ID,
-          }),
-        });
-
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(error || 'Payment processing failed');
-        }
-
-        const payment = await response.json();
+        // Create payment record
         await apiRequest("POST", "/api/payments", {
           ...data,
           weekOf: data.weekOf.toISOString(),
-          status: payment.status,
-          squarePaymentId: payment.id,
+          status: squarePayment.status,
+          squarePaymentId: squarePayment.id,
           paidAt: new Date().toISOString(),
         });
-      } else {
-        throw new Error(result.errors[0].message);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Payment processing failed";
+        throw new Error(message);
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({
-        title: "Success",
-        description: "Payment has been processed and recorded.",
+        title: "Payment Successful",
+        description: "The payment has been processed and recorded.",
       });
-      handleClose();
+      onClose();
+      form.reset();
     },
     onError: (error: Error) => {
       toast({
@@ -192,18 +84,8 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     },
   });
 
-  const handleClose = () => {
-    if (card) {
-      card.destroy().catch(console.error);
-      setCard(null);
-    }
-    setInitError(null);
-    form.reset();
-    onClose();
-  };
-
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Process Payment</DialogTitle>
@@ -271,28 +153,9 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
             <div className="space-y-2">
               <FormLabel>Card Details</FormLabel>
               <div 
-                id="card-container"
-                ref={cardContainer}
-                className="border rounded-md bg-background"
-                style={{
-                  minHeight: '150px',
-                  padding: '1px',
-                  position: 'relative',
-                }}
-              >
-                {isCardLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-background/50">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                )}
-                {initError && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="text-sm text-destructive text-center px-4">
-                      {initError}
-                    </div>
-                  </div>
-                )}
-              </div>
+                id="card-container" 
+                className="p-3 border rounded-md min-h-[40px]"
+              ></div>
             </div>
 
             <FormField
@@ -316,18 +179,18 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               )}
             />
 
-            <div className="flex justify-end space-x-2 pt-2">
+            <div className="flex justify-end space-x-2">
               <Button
                 type="button"
                 variant="outline"
-                onClick={handleClose}
+                onClick={onClose}
                 disabled={mutation.isPending}
               >
                 Cancel
               </Button>
               <Button 
                 type="submit" 
-                disabled={mutation.isPending || !card || isCardLoading}
+                disabled={mutation.isPending}
                 className="min-w-[120px]"
               >
                 {mutation.isPending ? (

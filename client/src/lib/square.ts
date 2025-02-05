@@ -10,38 +10,14 @@ let payments: any = null;
 
 export async function initializeSquare() {
   if (!payments) {
-    try {
-      console.log("Loading Square.js script...");
-      await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
-      console.log("Square.js script loaded successfully");
-
-      if (!window.Square) {
-        throw new Error("Square.js failed to load properly");
-      }
-
-      if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
-        throw new Error("Square credentials are not configured. Please check your environment variables.");
-      }
-
-      console.log("Initializing Square payments...");
-      console.log("App ID:", import.meta.env.VITE_SQUARE_APP_ID);
-      console.log("Location ID:", import.meta.env.VITE_SQUARE_LOCATION_ID);
-
-      payments = await window.Square.payments(
-        import.meta.env.VITE_SQUARE_APP_ID,
-        import.meta.env.VITE_SQUARE_LOCATION_ID
-      );
-
-      if (!payments) {
-        throw new Error("Failed to initialize Square payments");
-      }
-
-      console.log("Square payments initialized successfully");
-    } catch (error) {
-      console.error("Square initialization error:", error);
-      payments = null; // Reset on error
-      throw error;
+    await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
+    if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
+      throw new Error("Square credentials are not configured");
     }
+    payments = await window.Square.payments(
+      import.meta.env.VITE_SQUARE_APP_ID,
+      import.meta.env.VITE_SQUARE_LOCATION_ID
+    );
   }
   return payments;
 }
@@ -67,19 +43,16 @@ export async function createPayment(amount: number) {
       });
 
       if (!response.ok) {
-        await card.destroy();
         const error = await response.text();
         throw new Error(error || 'Payment processing failed');
       }
 
       const payment = await response.json();
-      await card.destroy();
       return {
         id: payment.id,
         status: payment.status
       };
     } else {
-      await card.destroy();
       throw new Error(result.errors[0].message);
     }
   } catch (error) {
