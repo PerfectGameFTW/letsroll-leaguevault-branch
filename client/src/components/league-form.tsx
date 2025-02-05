@@ -81,6 +81,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       seasonStart: today,
       seasonEnd: nextYear,
       weekDay: "monday", // Add default weekDay
+      practiceStartTime: "", // Add default time
+      competitionStartTime: "", // Add default time
+
     },
   });
 
@@ -114,6 +117,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         seasonStart: startDate,
         seasonEnd: endDate,
         weekDay: league.weekDay || "monday",
+        practiceStartTime: league.practiceStartTime || "",
+        competitionStartTime: league.competitionStartTime || "",
       });
     } else if (!open) {
       form.reset({
@@ -123,6 +128,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         seasonStart: today,
         seasonEnd: nextYear,
         weekDay: "monday",
+        practiceStartTime: "",
+        competitionStartTime: "",
       });
       setShowDeleteConfirm(false);
     }
@@ -325,6 +332,46 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                 />
               </div>
 
+
+              {/* Practice and Competition Start Times */}
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="practiceStartTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Practice Start Time</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="time"
+                          {...field}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="competitionStartTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Competition Start Time</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="time"
+                          {...field}
+                          value={field.value || ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
               <FormField
                 control={form.control}
                 name="active"
@@ -387,7 +434,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure you want to delete this league?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will delete the league "{league?.name}" and all associated teams. 
+              This will delete the league "{league?.name}" and all associated teams.
               Bowlers will be unassigned from their teams, but their records and payment history will be preserved.
               This action cannot be undone.
             </AlertDialogDescription>
