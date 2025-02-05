@@ -80,7 +80,10 @@ export const paymentRelations = relations(payments, ({ one }) => ({
 
 // Schemas for insertion
 export const insertUserSchema = createInsertSchema(users);
-export const insertLeagueSchema = createInsertSchema(leagues);
+export const insertLeagueSchema = createInsertSchema(leagues).extend({
+  seasonStart: z.coerce.date(),
+  seasonEnd: z.coerce.date()
+});
 export const insertTeamSchema = createInsertSchema(teams);
 export const insertBowlerSchema = createInsertSchema(bowlers);
 export const insertPaymentSchema = createInsertSchema(payments);

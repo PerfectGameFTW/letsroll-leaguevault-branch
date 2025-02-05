@@ -43,11 +43,18 @@ export function LeagueForm({ open, onClose }: LeagueFormProps) {
 
   const mutation = useMutation({
     mutationFn: async (data: InsertLeague) => {
-      await apiRequest("POST", "/api/leagues", {
+      const response = await apiRequest("POST", "/api/leagues", {
         ...data,
         seasonStart: data.seasonStart.toISOString(),
         seasonEnd: data.seasonEnd.toISOString(),
       });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/leagues"] });
@@ -57,6 +64,13 @@ export function LeagueForm({ open, onClose }: LeagueFormProps) {
       });
       onClose();
       form.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error creating league",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -112,9 +126,11 @@ export function LeagueForm({ open, onClose }: LeagueFormProps) {
                         type="date"
                         {...field}
                         value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
-                        onChange={(e) =>
-                          field.onChange(new Date(e.target.value))
-                        }
+                        onChange={(e) => {
+                          const date = new Date(e.target.value);
+                          date.setHours(12); // Set to noon to avoid timezone issues
+                          field.onChange(date);
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
@@ -133,9 +149,11 @@ export function LeagueForm({ open, onClose }: LeagueFormProps) {
                         type="date"
                         {...field}
                         value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
-                        onChange={(e) =>
-                          field.onChange(new Date(e.target.value))
-                        }
+                        onChange={(e) => {
+                          const date = new Date(e.target.value);
+                          date.setHours(12); // Set to noon to avoid timezone issues
+                          field.onChange(date);
+                        }}
                       />
                     </FormControl>
                     <FormMessage />
