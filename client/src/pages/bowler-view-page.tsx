@@ -18,8 +18,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import type { Bowler, Payment } from "@shared/schema";
-import { format } from "date-fns";
+import type { Bowler, Payment, Team, League } from "@shared/schema";
+import { format, differenceInWeeks, startOfToday } from "date-fns";
 
 export default function BowlerViewPage() {
   const params = useParams();
@@ -29,13 +29,23 @@ export default function BowlerViewPage() {
     queryKey: [`/api/bowlers/${bowlerId}`],
   });
 
+  const { data: team, isLoading: loadingTeam } = useQuery<Team>({
+    queryKey: [`/api/teams/${bowler?.teamId}`],
+    enabled: !!bowler?.teamId,
+  });
+
+  const { data: league, isLoading: loadingLeague } = useQuery<League>({
+    queryKey: [`/api/leagues/${team?.leagueId}`],
+    enabled: !!team?.leagueId,
+  });
+
   const { data: payments, isLoading: loadingPayments } = useQuery<Payment[]>({
     queryKey: ["/api/payments", bowlerId],
     queryFn: () =>
       fetch(`/api/payments?bowlerId=${bowlerId}`).then((res) => res.json()),
   });
 
-  if (loadingBowler || loadingPayments) {
+  if (loadingBowler || loadingPayments || loadingTeam || loadingLeague) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -59,9 +69,32 @@ export default function BowlerViewPage() {
   const totalUnpaidPayments = payments?.filter(p => p.status !== 'paid') || [];
   const totalUnpaidAmount = totalUnpaidPayments.reduce((sum, p) => sum + p.amount, 0);
 
-  // Assuming weekly fee is charged for the entire season
-  const weeksInSeason = 32; // You may want to make this dynamic based on league settings
-  const totalSeasonDues = bowler.weeklyFee * weeksInSeason;
+  // Calculate weeks passed in the season
+  let weeksDue = 0;
+  let totalSeasonDues = 0;
+
+  if (league) {
+    const seasonStart = new Date(league.seasonStart);
+    const today = startOfToday();
+    const seasonEnd = new Date(league.seasonEnd);
+
+    // If season hasn't started yet, no weeks due
+    if (today < seasonStart) {
+      weeksDue = 0;
+    }
+    // If we're past season end, use total weeks in season
+    else if (today > seasonEnd) {
+      weeksDue = differenceInWeeks(seasonEnd, seasonStart);
+    }
+    // Otherwise, calculate weeks from start to today
+    else {
+      weeksDue = differenceInWeeks(today, seasonStart);
+    }
+
+    // Calculate dues based on weeks passed
+    totalSeasonDues = bowler.weeklyFee * weeksDue;
+  }
+
   const remainingBalance = totalSeasonDues - totalPaidAmount;
 
   return (
@@ -97,7 +130,9 @@ export default function BowlerViewPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Amount Due to Date</CardTitle>
-              <CardDescription>Current season charges</CardDescription>
+              <CardDescription>
+                {weeksDue} week{weeksDue === 1 ? '' : 's'} at ${(bowler.weeklyFee / 100).toFixed(2)}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">${(totalSeasonDues / 100).toFixed(2)}</p>
@@ -123,13 +158,14 @@ export default function BowlerViewPage() {
               <p className="text-2xl font-bold text-destructive">${(totalUnpaidAmount / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
+
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Total Season Dues</CardTitle>
-              <CardDescription>Full season charges</CardDescription>
+              <CardTitle className="text-lg">Weekly Fee</CardTitle>
+              <CardDescription>Regular payment amount</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">${(totalSeasonDues / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">${(bowler.weeklyFee / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
 
