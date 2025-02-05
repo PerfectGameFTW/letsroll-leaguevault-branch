@@ -184,21 +184,38 @@ export function registerRoutes(app: Express): Server {
         email: z.string().email(),
       }).parse(req.body);
 
-      // TODO: Replace with actual Square API call once credentials are configured
-      // For now, simulate customer creation for testing
-      const customer = {
-        id: `sandbox_${Date.now()}`,
-        name,
-        email,
-      };
+      if (!process.env.SQUARE_ACCESS_TOKEN) {
+        throw new Error("Square access token not configured");
+      }
 
-      res.status(201).json(customer);
+      const { Client } = require('square');
+      const client = new Client({
+        accessToken: process.env.SQUARE_ACCESS_TOKEN,
+        environment: 'sandbox', // or 'production' for live
+      });
+
+      const response = await client.customersApi.createCustomer({
+        idempotencyKey: `${Date.now()}-${Math.random()}`,
+        givenName: name.split(' ')[0],
+        familyName: name.split(' ').slice(1).join(' ') || '',
+        emailAddress: email,
+      });
+
+      if (response.result?.customer) {
+        res.status(201).json({
+          id: response.result.customer.id,
+          name,
+          email,
+        });
+      } else {
+        throw new Error('Failed to create Square customer');
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json(error.issues);
       } else {
         console.error('Square customer creation error:', error);
-        res.status(500).json({ message: "Failed to create Square customer" });
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to create Square customer" });
       }
     }
   });
