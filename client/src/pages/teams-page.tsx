@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
@@ -22,7 +22,7 @@ export default function TeamsPage() {
   const [showForm, setShowForm] = useState(false);
   const { toast } = useToast();
   const params = useParams();
-  const leagueId = parseInt(params.leagueId);
+  const leagueId = parseInt(params.leagueId!);
 
   const { data: league, isLoading: loadingLeague } = useQuery<League>({
     queryKey: [`/api/leagues/${leagueId}`],
@@ -33,6 +33,10 @@ export default function TeamsPage() {
     queryFn: () => 
       fetch(`/api/teams?leagueId=${leagueId}`).then(res => res.json()),
   });
+
+  const sortedTeams = useMemo(() => {
+    return teams?.slice().sort((a, b) => a.number - b.number) ?? [];
+  }, [teams]);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -82,14 +86,16 @@ export default function TeamsPage() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Number</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {teams?.map((team) => (
+            {sortedTeams.map((team) => (
               <TableRow key={team.id}>
+                <TableCell>{team.number}</TableCell>
                 <TableCell>{team.name}</TableCell>
                 <TableCell>
                   <Badge variant={team.active ? "default" : "secondary"}>

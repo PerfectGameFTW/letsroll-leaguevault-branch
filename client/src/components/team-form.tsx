@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,12 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
+interface TeamProps {
+  number: number;
+  name: string;
+  active: boolean;
+}
+
 interface TeamFormProps {
   open: boolean;
   onClose: () => void;
@@ -31,12 +37,21 @@ interface TeamFormProps {
 
 export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
   const { toast } = useToast();
+
+  // Query existing teams to determine next available number
+  const { data: teams } = useQuery<TeamProps[]>({
+    queryKey: ["/api/teams", leagueId],
+    queryFn: () =>
+      fetch(`/api/teams?leagueId=${leagueId}`).then((res) => res.json()),
+  });
+
   const form = useForm<InsertTeam>({
     resolver: zodResolver(insertTeamSchema),
     defaultValues: {
       name: "",
       leagueId,
       active: true,
+      number: teams?.length ? Math.max(...teams.map((t) => t.number)) + 1 : 1,
     },
   });
 
@@ -81,6 +96,27 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
           >
             <FormField
               control={form.control}
+              name="number"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Team Number</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="1"
+                      {...field}
+                      onChange={(e) =>
+                        field.onChange(parseInt(e.target.value, 10))
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="name"
               render={({ field }) => (
                 <FormItem>
@@ -112,11 +148,7 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
             />
 
             <div className="flex justify-end space-x-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-              >
+              <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
               </Button>
               <Button type="submit" disabled={mutation.isPending}>

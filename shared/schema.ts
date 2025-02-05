@@ -21,6 +21,7 @@ export const leagues = pgTable("leagues", {
 export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  number: integer("number"), // Make nullable initially
   leagueId: integer("league_id").notNull().references(() => leagues.id),
   active: boolean("active").notNull().default(true),
 });
@@ -84,7 +85,9 @@ export const insertLeagueSchema = createInsertSchema(leagues).extend({
   seasonStart: z.coerce.date(),
   seasonEnd: z.coerce.date()
 });
-export const insertTeamSchema = createInsertSchema(teams);
+export const insertTeamSchema = createInsertSchema(teams).extend({
+  number: z.number().min(1, "Team number must be at least 1"),
+});
 export const insertBowlerSchema = createInsertSchema(bowlers).extend({
   teamId: z.number().min(1, "Team selection is required"),
 });
