@@ -152,7 +152,14 @@ export default function ReportsPage() {
               <TableBody>
                 {leagueFinancials?.map((league) => (
                   <TableRow key={league.id}>
-                    <TableCell>{league.name}</TableCell>
+                    <TableCell>
+                      <Link 
+                        href={`/reports/leagues/${league.id}/past-due`}
+                        className="hover:underline text-foreground"
+                      >
+                        {league.name}
+                      </Link>
+                    </TableCell>
                     <TableCell>{league.activeBowlerCount}</TableCell>
                     <TableCell>{league.teamCount}</TableCell>
                     <TableCell>${(league.collected / 100).toFixed(2)}</TableCell>
