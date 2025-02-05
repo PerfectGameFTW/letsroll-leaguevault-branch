@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { LeagueForm } from "@/components/league-form";
@@ -14,7 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Pencil } from "lucide-react";
 import type { League } from "@shared/schema";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInWeeks } from "date-fns";
 import { Link } from "wouter";
@@ -55,8 +55,9 @@ export default function LeaguesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[40%]">Name</TableHead>
-              <TableHead className="w-[30%]">Season</TableHead>
+              <TableHead className="w-[35%]">Name</TableHead>
+              <TableHead className="w-[15%]">Start Date</TableHead>
+              <TableHead className="w-[15%]">End Date</TableHead>
               <TableHead>Duration</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
@@ -79,7 +80,10 @@ export default function LeaguesPage() {
                     </Link>
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
-                    {format(startDate, "MMM d, yyyy")} - {format(endDate, "MMM d, yyyy")}
+                    {format(startDate, "MMM d, yyyy")}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {format(endDate, "MMM d, yyyy")}
                   </TableCell>
                   <TableCell>{weeks} weeks</TableCell>
                   <TableCell>
