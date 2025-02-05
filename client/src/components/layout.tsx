@@ -39,7 +39,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-gray-50">
       <div className="flex min-h-screen">
         {/* Sidebar */}
-        <div 
+        <div
           className={cn(
             "flex-shrink-0 bg-white border-r transition-all duration-300",
             isCollapsed ? "w-16" : "w-64"
@@ -101,13 +101,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <NavigationMenuItem className="w-full">
                         <NavigationMenuTrigger className={cn(
                           "w-full justify-start group flex items-center px-2 py-2 text-sm font-medium rounded-md",
-                          location.startsWith('/leagues')
+                          location.startsWith('/leagues') || (leagues?.some(league => location.startsWith(`/teams/${league.id}`)))
                             ? "bg-primary text-primary-foreground"
                             : "text-gray-600 hover:bg-gray-50"
                         )}>
                           <Trophy className={cn(
                             "h-5 w-5 flex-shrink-0 mr-3",
-                            location.startsWith('/leagues')
+                            location.startsWith('/leagues') || (leagues?.some(league => location.startsWith(`/teams/${league.id}`)))
                               ? "text-primary-foreground"
                               : "text-gray-400"
                           )} />
@@ -120,7 +120,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                             </Link>
                             <div className="my-1 border-t" />
                             {leagues?.map((league) => (
-                              <Link 
+                              <Link
                                 key={league.id}
                                 href={`/leagues/${league.id}/teams`}
                                 className="block px-2 py-1 text-sm rounded hover:bg-accent"
@@ -141,7 +141,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <span
                       className={cn(
                         "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-                        location.startsWith('/leagues')
+                        location.startsWith('/leagues') || (leagues?.some(league => location.startsWith(`/teams/${league.id}`)))
                           ? "bg-primary text-primary-foreground"
                           : "text-gray-600 hover:bg-gray-50"
                       )}
@@ -150,7 +150,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <Trophy
                         className={cn(
                           "h-5 w-5 flex-shrink-0",
-                          location.startsWith('/leagues')
+                          location.startsWith('/leagues') || (leagues?.some(league => location.startsWith(`/teams/${league.id}`)))
                             ? "text-primary-foreground"
                             : "text-gray-400",
                           "mx-auto"
