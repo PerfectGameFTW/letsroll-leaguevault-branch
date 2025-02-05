@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { Loader2, Plus, ArrowLeft, ExternalLink, UserPlus, Pencil, GripVertical } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, ExternalLink, Pencil, GripVertical } from "lucide-react";
 import type { Team, Bowler } from "@shared/schema";
 import { getSquareCustomerUrl } from "@/lib/square";
 import { useParams, Link } from "wouter";
@@ -278,13 +278,13 @@ export default function TeamViewPage() {
             </Button>
           </div>
           <div className="flex gap-2">
-            <Button onClick={() => setShowAssignForm(true)}>
-              <UserPlus className="h-4 w-4 mr-2" />
-              Add Existing Bowler
-            </Button>
             <Button onClick={() => setShowForm(true)}>
               <Plus className="h-4 w-4 mr-2" />
               Create New Bowler
+            </Button>
+            <Button onClick={() => setShowAssignForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Existing Bowler
             </Button>
           </div>
         </div>
