@@ -56,8 +56,8 @@ export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
-      // First create a Square customer
-      const squareCustomer = await createSquareCustomer(data.name, data.email);
+      // First create a Square customer with team ID
+      const squareCustomer = await createSquareCustomer(data.name, data.email, data.teamId);
 
       // Then create the bowler with the Square customer ID
       const response = await apiRequest("POST", "/api/bowlers", {

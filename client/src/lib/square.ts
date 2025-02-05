@@ -63,14 +63,14 @@ export async function createPayment(amount: number) {
   }
 }
 
-export async function createSquareCustomer(name: string, email: string) {
+export async function createSquareCustomer(name: string, email: string, teamId: number) {
   try {
     const response = await fetch('/api/square/customers', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ name, email }),
+      body: JSON.stringify({ name, email, teamId }),
     });
 
     if (!response.ok) {

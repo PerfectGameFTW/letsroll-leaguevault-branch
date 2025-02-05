@@ -188,13 +188,25 @@ export function registerRoutes(app: Express): Server {
   // Square Integration
   app.post("/api/square/customers", async (req, res) => {
     try {
-      const { name, email } = z.object({
+      const { name, email, teamId } = z.object({
         name: z.string(),
         email: z.string().email(),
+        teamId: z.number(),
       }).parse(req.body);
 
       if (!squareClient) {
         throw new Error("Square access token not configured");
+      }
+
+      // Get the team and league information
+      const team = await storage.getTeam(teamId);
+      if (!team) {
+        throw new Error("Team not found");
+      }
+
+      const league = await storage.getLeague(team.leagueId);
+      if (!league) {
+        throw new Error("League not found");
       }
 
       const response = await squareClient.customersApi.createCustomer({
@@ -202,6 +214,9 @@ export function registerRoutes(app: Express): Server {
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
         emailAddress: email,
+        groups: {
+          group_ids: [`${league.name}`], // Use league name as group
+        },
       });
 
       if (response.result?.customer) {
