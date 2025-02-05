@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bowler } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -141,6 +142,32 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     onError: (error: Error) => {
       toast({
         title: bowler ? "Error updating bowler" : "Error creating bowler",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      if (!bowler) return;
+      const response = await apiRequest("DELETE", `/api/bowlers/${bowler.id}`);
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
+      toast({
+        title: "Bowler deleted",
+        description: "The bowler has been removed from the system.",
+      });
+      onClose();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error deleting bowler",
         description: error.message,
         variant: "destructive",
       });
@@ -314,6 +341,25 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                 {bowler ? "Update" : "Add"} Bowler
               </Button>
             </div>
+
+            {bowler && (
+              <>
+                <Separator className="my-4" />
+                <div className="flex justify-center">
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteMutation.isPending}
+                  >
+                    {deleteMutation.isPending && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Delete Bowler
+                  </Button>
+                </div>
+              </>
+            )}
           </form>
         </Form>
       </DialogContent>
