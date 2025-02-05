@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
 import { Loader2 } from "lucide-react";
+import { Link } from "wouter";
 import type { Bowler, Payment, League } from "@shared/schema";
 
 export default function HomePage() {
@@ -35,14 +36,16 @@ export default function HomePage() {
   return (
     <Layout>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Leagues</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalLeagues}</div>
-          </CardContent>
-        </Card>
+        <Link href="/leagues" className="block transition-transform hover:scale-105">
+          <Card className="cursor-pointer hover:border-primary">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Leagues</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalLeagues}</div>
+            </CardContent>
+          </Card>
+        </Link>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Bowlers</CardTitle>
