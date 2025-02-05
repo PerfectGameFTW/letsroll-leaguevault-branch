@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, EyeOff } from "lucide-react";
+import { Loader2, Plus, Eye, EyeOff } from "lucide-react";
 import type { Bowler } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -63,7 +63,11 @@ export default function BowlersPage() {
       </div>
 
       <div className="flex items-center space-x-2 mb-4">
-        <EyeOff className="h-4 w-4 text-muted-foreground" />
+        {showInactive ? (
+          <Eye className="h-4 w-4 text-muted-foreground" />
+        ) : (
+          <EyeOff className="h-4 w-4 text-muted-foreground" />
+        )}
         <span className="text-sm text-muted-foreground">Show inactive bowlers</span>
         <Switch
           checked={showInactive}
