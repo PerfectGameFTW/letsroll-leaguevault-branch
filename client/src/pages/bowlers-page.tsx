@@ -76,6 +76,15 @@ export default function BowlersPage() {
       </div>
 
       <div className="space-y-4 mb-6">
+        <div className="relative">
+          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search bowlers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8"
+          />
+        </div>
         <div className="flex items-center space-x-2">
           {showInactive ? (
             <Eye className="h-4 w-4 text-muted-foreground" />
@@ -86,15 +95,6 @@ export default function BowlersPage() {
           <Switch
             checked={showInactive}
             onCheckedChange={setShowInactive}
-          />
-        </div>
-        <div className="relative">
-          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search bowlers..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8"
           />
         </div>
       </div>
