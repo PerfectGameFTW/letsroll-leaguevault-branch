@@ -12,13 +12,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, EyeOff } from "lucide-react";
 import type { Bowler } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
 
 export default function BowlersPage() {
   const [showForm, setShowForm] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const { toast } = useToast();
 
   const { data: bowlers, isLoading } = useQuery<Bowler[]>({
@@ -37,6 +39,8 @@ export default function BowlersPage() {
       });
     },
   });
+
+  const filteredBowlers = bowlers?.filter(bowler => showInactive ? true : bowler.active);
 
   if (isLoading) {
     return (
@@ -58,6 +62,15 @@ export default function BowlersPage() {
         </Button>
       </div>
 
+      <div className="flex items-center space-x-2 mb-4">
+        <EyeOff className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">Show inactive bowlers</span>
+        <Switch
+          checked={showInactive}
+          onCheckedChange={setShowInactive}
+        />
+      </div>
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -70,7 +83,7 @@ export default function BowlersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {bowlers?.map((bowler) => (
+            {filteredBowlers?.map((bowler) => (
               <TableRow key={bowler.id}>
                 <TableCell>{bowler.name}</TableCell>
                 <TableCell>{bowler.email}</TableCell>

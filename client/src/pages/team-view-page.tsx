@@ -13,19 +13,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, ArrowLeft, ExternalLink, UserPlus, Pencil, EyeOff } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, ExternalLink, UserPlus, Pencil } from "lucide-react";
 import type { Team, Bowler } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useParams, Link } from "wouter";
 import { getSquareCustomerUrl } from "@/lib/square";
-import { Switch } from "@/components/ui/switch";
 
 export default function TeamViewPage() {
   const [showForm, setShowForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
-  const [showInactive, setShowInactive] = useState(false);
   const { toast } = useToast();
   const params = useParams();
   const teamId = parseInt(params.teamId!);
@@ -52,8 +50,6 @@ export default function TeamViewPage() {
       });
     },
   });
-
-  const filteredBowlers = bowlers?.filter(bowler => showInactive ? true : bowler.active);
 
   if (loadingTeam || loadingBowlers) {
     return (
@@ -98,15 +94,6 @@ export default function TeamViewPage() {
         </div>
       </div>
 
-      <div className="flex items-center space-x-2 mb-4">
-        <EyeOff className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm text-muted-foreground">Show inactive bowlers</span>
-        <Switch
-          checked={showInactive}
-          onCheckedChange={setShowInactive}
-        />
-      </div>
-
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -119,7 +106,7 @@ export default function TeamViewPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredBowlers?.map((bowler) => (
+            {bowlers?.map((bowler) => (
               <TableRow key={bowler.id}>
                 <TableCell>
                   <div className="flex items-center gap-2">
