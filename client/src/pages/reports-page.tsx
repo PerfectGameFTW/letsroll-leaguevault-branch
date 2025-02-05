@@ -19,7 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import type { League, Team, Bowler, Payment } from "@shared/schema";
-import { format, startOfToday } from "date-fns";
+import { format } from "date-fns";
 
 export default function ReportsPage() {
   const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
@@ -48,53 +48,59 @@ export default function ReportsPage() {
     );
   }
 
-  // Calculate financial summaries
-  const totalCollected = payments?.reduce((sum, payment) => 
-    payment.status === 'paid' ? sum + payment.amount : sum, 0) || 0;
-
-  const outstandingBalance = bowlers?.reduce((sum, bowler) => {
-    if (!bowler.teamId) return sum;
-    const team = teams?.find(t => t.id === bowler.teamId);
-    if (!team?.leagueId) return sum;
-    const league = leagues?.find(l => l.id === team.leagueId);
-    if (!league) return sum;
-    
-    const bowlerPayments = payments?.filter(p => p.bowlerId === bowler.id && p.status === 'paid')
-      .reduce((sum, p) => sum + p.amount, 0) || 0;
-    
-    const totalDue = league.weeklyFee * 
-      (league.seasonEnd ? Math.ceil((new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) / (7 * 24 * 60 * 60 * 1000)) : 0);
-    
-    return sum + (totalDue - bowlerPayments);
-  }, 0) || 0;
-
-  // Calculate league summaries
-  const leagueSummaries = leagues?.map(league => {
+  // Calculate league-wise financial summaries
+  const leagueFinancials = leagues?.map(league => {
     const leagueTeams = teams?.filter(team => team.leagueId === league.id) || [];
-    const activeBowlers = bowlers?.filter(bowler => 
-      leagueTeams.some(team => team.id === bowler.teamId) && bowler.active
+    const leagueBowlers = bowlers?.filter(bowler =>
+      leagueTeams.some(team => team.id === bowler.teamId)
     ) || [];
+
+    const leaguePayments = payments?.filter(payment =>
+      leagueBowlers.some(bowler => bowler.id === payment.bowlerId)
+    ) || [];
+
+    const collected = leaguePayments.reduce((sum, payment) =>
+      payment.status === 'paid' ? sum + payment.amount : sum, 0);
+
+    const outstandingBalance = leagueBowlers.reduce((sum, bowler) => {
+      if (!bowler.active) return sum;
+
+      const bowlerPayments = leaguePayments
+        .filter(p => p.bowlerId === bowler.id && p.status === 'paid')
+        .reduce((sum, p) => sum + p.amount, 0);
+
+      const totalDue = league.weeklyFee *
+        (league.seasonEnd ? Math.ceil((new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) / (7 * 24 * 60 * 60 * 1000)) : 0);
+
+      return sum + (totalDue - bowlerPayments);
+    }, 0);
 
     return {
       ...league,
+      collected,
+      outstandingBalance,
+      activeBowlerCount: leagueBowlers.filter(b => b.active).length,
       teamCount: leagueTeams.length,
-      activeBowlerCount: activeBowlers.length,
     };
   });
+
+  // Calculate overall totals
+  const totalCollected = leagueFinancials?.reduce((sum, league) => sum + league.collected, 0) || 0;
+  const totalOutstanding = leagueFinancials?.reduce((sum, league) => sum + league.outstandingBalance, 0) || 0;
 
   return (
     <Layout>
       <div className="space-y-8">
         <h1 className="text-2xl font-bold">Reports</h1>
 
-        {/* Financial Reports Section */}
+        {/* Overall Financial Summary */}
         <div>
-          <h2 className="text-xl font-semibold mb-4">Financial Reports</h2>
+          <h2 className="text-xl font-semibold mb-4">Overall Financial Summary</h2>
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Season-to-Date Collections</CardTitle>
-                <CardDescription>Total amount collected from all payments</CardDescription>
+                <CardTitle>Total Collections</CardTitle>
+                <CardDescription>Total amount collected across all leagues</CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">${(totalCollected / 100).toFixed(2)}</p>
@@ -103,39 +109,43 @@ export default function ReportsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Outstanding Balances</CardTitle>
+                <CardTitle>Total Outstanding</CardTitle>
                 <CardDescription>Total amount pending collection</CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold text-destructive">
-                  ${(outstandingBalance / 100).toFixed(2)}
+                  ${(totalOutstanding / 100).toFixed(2)}
                 </p>
               </CardContent>
             </Card>
           </div>
         </div>
 
-        {/* League Reports Section */}
+        {/* League-wise Financial Reports */}
         <div>
-          <h2 className="text-xl font-semibold mb-4">League Reports</h2>
+          <h2 className="text-xl font-semibold mb-4">League Financial Reports</h2>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>League Name</TableHead>
-                  <TableHead>Teams</TableHead>
                   <TableHead>Active Bowlers</TableHead>
-                  <TableHead>Weekly Fee</TableHead>
+                  <TableHead>Teams</TableHead>
+                  <TableHead>Collections</TableHead>
+                  <TableHead>Outstanding</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {leagueSummaries?.map((league) => (
+                {leagueFinancials?.map((league) => (
                   <TableRow key={league.id}>
                     <TableCell>{league.name}</TableCell>
-                    <TableCell>{league.teamCount}</TableCell>
                     <TableCell>{league.activeBowlerCount}</TableCell>
-                    <TableCell>${(league.weeklyFee / 100).toFixed(2)}</TableCell>
+                    <TableCell>{league.teamCount}</TableCell>
+                    <TableCell>${(league.collected / 100).toFixed(2)}</TableCell>
+                    <TableCell className="text-destructive">
+                      ${(league.outstandingBalance / 100).toFixed(2)}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={league.active ? "default" : "secondary"}>
                         {league.active ? "Active" : "Inactive"}
@@ -148,7 +158,7 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* Team Roster Reports Section */}
+        {/* Team Roster Reports */}
         <div>
           <h2 className="text-xl font-semibold mb-4">Team Roster Reports</h2>
           <div className="space-y-4">
