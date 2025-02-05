@@ -24,6 +24,9 @@ export async function initializeSquare() {
       }
 
       console.log("Initializing Square payments...");
+      console.log("App ID:", import.meta.env.VITE_SQUARE_APP_ID);
+      console.log("Location ID:", import.meta.env.VITE_SQUARE_LOCATION_ID);
+
       payments = await window.Square.payments(
         import.meta.env.VITE_SQUARE_APP_ID,
         import.meta.env.VITE_SQUARE_LOCATION_ID
@@ -37,7 +40,7 @@ export async function initializeSquare() {
     } catch (error) {
       console.error("Square initialization error:", error);
       payments = null; // Reset on error
-      throw error instanceof Error ? error : new Error("Failed to initialize Square payments");
+      throw error;
     }
   }
   return payments;

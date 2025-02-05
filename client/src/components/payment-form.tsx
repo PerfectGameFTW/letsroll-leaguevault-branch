@@ -70,7 +70,6 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
         if (!isMounted) return;
 
         if (payments) {
-          // Initialize card with styles
           const newCard = await payments.card();
           if (!isMounted) {
             await newCard.destroy();
@@ -79,24 +78,26 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
 
           const styles = {
             '.input-container': {
-              borderColor: 'var(--border)',
+              border: '1px solid var(--border)',
               borderRadius: '6px',
-              padding: '8px',
+              padding: '12px',
               backgroundColor: 'var(--background)',
             },
             '.input-container.is-focus': {
               borderColor: 'var(--primary)',
-              boxShadow: '0 0 0 1px var(--primary)',
+              boxShadow: '0 0 0 2px var(--primary)',
             },
             '.message-text': {
               color: 'var(--muted-foreground)',
               fontSize: '14px',
+              marginTop: '4px',
             },
             input: {
               backgroundColor: 'transparent',
               color: 'var(--foreground)',
               fontFamily: 'var(--font-sans)',
               fontSize: '14px',
+              padding: '0',
             },
           };
 
@@ -127,10 +128,8 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
       }
     }
 
-    // Start initialization
     initializeCard();
 
-    // Cleanup function
     return () => {
       isMounted = false;
       if (currentCard) {
@@ -274,23 +273,23 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               <div 
                 id="card-container"
                 ref={cardContainer}
-                className="p-3 border rounded-md bg-card"
+                className="border rounded-md bg-background"
                 style={{
-                  minHeight: '120px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  minHeight: '150px',
+                  padding: '1px',
                   position: 'relative',
                 }}
               >
                 {isCardLoading && (
-                  <div className="flex items-center justify-center absolute inset-0 bg-background/50">
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/50">
                     <Loader2 className="h-6 w-6 animate-spin text-primary" />
                   </div>
                 )}
                 {initError && (
-                  <div className="text-sm text-destructive text-center">
-                    {initError}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-sm text-destructive text-center px-4">
+                      {initError}
+                    </div>
                   </div>
                 )}
               </div>
@@ -317,7 +316,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               )}
             />
 
-            <div className="flex justify-end space-x-2">
+            <div className="flex justify-end space-x-2 pt-2">
               <Button
                 type="button"
                 variant="outline"
