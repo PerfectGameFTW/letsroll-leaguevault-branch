@@ -131,7 +131,9 @@ export default function BowlerViewPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Amount Due to Date</CardTitle>
               <CardDescription>
-                {weeksDue} week{weeksDue === 1 ? '' : 's'} at ${(bowler.weeklyFee / 100).toFixed(2)}
+                {weeksDue} week{weeksDue === 1 ? "" : "s"} at ${(
+                  bowler.weeklyFee / 100
+                ).toFixed(2)}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -151,14 +153,13 @@ export default function BowlerViewPage() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Amount Past Due</CardTitle>
-              <CardDescription>Unpaid fees</CardDescription>
+              <CardTitle className="text-lg">Amount Past Due to Date</CardTitle>
+              <CardDescription>Unpaid fees for weeks passed</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-destructive">${(totalUnpaidAmount / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold text-destructive">${(remainingBalance / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Weekly Fee</CardTitle>
