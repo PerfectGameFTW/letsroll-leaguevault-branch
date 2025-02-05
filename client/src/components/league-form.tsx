@@ -22,7 +22,8 @@ import { insertLeagueSchema, type InsertLeague, type League } from "@shared/sche
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
+import { differenceInWeeks } from "date-fns";
 
 interface LeagueFormProps {
   open: boolean;
@@ -42,6 +43,16 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       seasonEnd: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
     },
   });
+
+  // Calculate weeks between start and end dates
+  const numberOfWeeks = useMemo(() => {
+    const start = form.watch('seasonStart');
+    const end = form.watch('seasonEnd');
+    if (start && end) {
+      return differenceInWeeks(end, start);
+    }
+    return 0;
+  }, [form.watch('seasonStart'), form.watch('seasonEnd')]);
 
   useEffect(() => {
     if (open && league) {
@@ -188,6 +199,12 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   </FormItem>
                 )}
               />
+            </div>
+
+            {/* Number of Weeks Display */}
+            <div className="rounded-lg border p-3">
+              <div className="text-sm font-medium">Season Length</div>
+              <div className="text-2xl font-bold mt-1">{numberOfWeeks} weeks</div>
             </div>
 
             <FormField
