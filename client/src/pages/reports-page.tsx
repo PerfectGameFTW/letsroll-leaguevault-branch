@@ -20,6 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import type { League, Team, Bowler, Payment } from "@shared/schema";
 import { format, isAfter, isBefore, startOfToday } from "date-fns";
+import { Link } from "wouter";
+
 
 export default function ReportsPage() {
   const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
@@ -116,17 +118,19 @@ export default function ReportsPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Total Past Due</CardTitle>
-                <CardDescription>Total amount past due to date</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-destructive">
-                  ${(totalPastDue / 100).toFixed(2)}
-                </p>
-              </CardContent>
-            </Card>
+            <Link href="/reports/past-due">
+              <Card className="transition-colors hover:bg-accent/50 cursor-pointer">
+                <CardHeader>
+                  <CardTitle>Total Past Due</CardTitle>
+                  <CardDescription>Total amount past due to date</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-2xl font-bold text-destructive">
+                    ${(totalPastDue / 100).toFixed(2)}
+                  </p>
+                </CardContent>
+              </Card>
+            </Link>
           </div>
         </div>
 
