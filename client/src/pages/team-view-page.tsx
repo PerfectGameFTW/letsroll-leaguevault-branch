@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Loader2, Plus, ArrowLeft, ExternalLink, Pencil, GripVertical } from "lucide-react";
-import type { Team, Bowler } from "@shared/schema";
+import type { Team, Bowler, League } from "@shared/schema"; // Added League import
 import { getSquareCustomerUrl } from "@/lib/square";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
@@ -44,10 +44,11 @@ import { useToast } from "@/hooks/use-toast";
 
 interface SortableBowlerRowProps {
   bowler: Bowler;
+  league: League | undefined;
   onEdit: (bowler: Bowler) => void;
 }
 
-function SortableBowlerRow({ bowler, onEdit }: SortableBowlerRowProps) {
+function SortableBowlerRow({ bowler, league, onEdit }: SortableBowlerRowProps) {
   const {
     attributes,
     listeners,
@@ -93,7 +94,7 @@ function SortableBowlerRow({ bowler, onEdit }: SortableBowlerRowProps) {
         </div>
       </TableCell>
       <TableCell>{bowler.email}</TableCell>
-      <TableCell>${(bowler.weeklyFee / 100).toFixed(2)}</TableCell>
+      <TableCell>${((league?.weeklyFee || 0) / 100).toFixed(2)}</TableCell>
       <TableCell>
         <Badge variant={bowler.active ? "default" : "secondary"}>
           {bowler.active ? "Active" : "Inactive"}
@@ -244,7 +245,13 @@ export default function TeamViewPage() {
     }
   };
 
-  if (loadingTeam || loadingBowlers) {
+  const { data: league, isLoading: loadingLeague } = useQuery<League>({
+    queryKey: [`/api/leagues/${team?.leagueId}`],
+    enabled: !!team?.leagueId, // Only run if team and leagueId exist
+  });
+
+
+  if (loadingTeam || loadingBowlers || loadingLeague) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -318,6 +325,7 @@ export default function TeamViewPage() {
                   <SortableBowlerRow
                     key={bowler.id}
                     bowler={bowler}
+                    league={league}
                     onEdit={(b) => {
                       setSelectedBowler(b);
                       setShowForm(true);
