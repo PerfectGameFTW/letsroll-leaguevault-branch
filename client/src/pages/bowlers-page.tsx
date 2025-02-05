@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Eye, EyeOff, Search } from "lucide-react";
+import { Loader2, Plus, Eye, EyeOff, Search, Pencil } from "lucide-react";
 import type { Bowler } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -23,23 +23,11 @@ export default function BowlersPage() {
   const [showForm, setShowForm] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
   const { data: bowlers, isLoading } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers"],
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/bowlers/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
-      toast({
-        title: "Bowler deleted",
-        description: "The bowler has been removed from the system.",
-      });
-    },
   });
 
   const filteredBowlers = bowlers?.filter(bowler => {
@@ -118,11 +106,15 @@ export default function BowlersPage() {
                   </TableCell>
                   <TableCell>
                     <Button
-                      variant="destructive"
+                      variant="outline"
                       size="sm"
-                      onClick={() => deleteMutation.mutate(bowler.id)}
+                      onClick={() => {
+                        setSelectedBowler(bowler);
+                        setShowForm(true);
+                      }}
                     >
-                      Delete
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Edit
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -132,7 +124,14 @@ export default function BowlersPage() {
         </div>
       </div>
 
-      <BowlerForm open={showForm} onClose={() => setShowForm(false)} />
+      <BowlerForm 
+        open={showForm} 
+        onClose={() => {
+          setShowForm(false);
+          setSelectedBowler(undefined);
+        }}
+        bowler={selectedBowler}
+      />
     </Layout>
   );
 }

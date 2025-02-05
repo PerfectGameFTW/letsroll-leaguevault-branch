@@ -41,7 +41,7 @@ interface BowlerFormProps {
 
 export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormProps) {
   const { toast } = useToast();
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(bowler?.leagueId || null);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
   const form = useForm<InsertBowler>({
     resolver: zodResolver(insertBowlerSchema),
@@ -51,14 +51,13 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       weeklyFee: bowler.weeklyFee,
       active: bowler.active,
       teamId: bowler.teamId,
-      leagueId: bowler.leagueId,
+      leagueId: bowler.leagueId, //Added this line back
     } : {
       name: "",
       email: "",
       weeklyFee: 2000, // $20.00
       active: true,
       teamId: defaultTeamId,
-      leagueId: undefined
     },
   });
 
