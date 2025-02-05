@@ -56,7 +56,7 @@ export default function LeaguesPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-[40%]">Name</TableHead>
-              <TableHead>Season</TableHead>
+              <TableHead className="w-[30%]">Season</TableHead>
               <TableHead>Duration</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
@@ -78,9 +78,8 @@ export default function LeaguesPage() {
                       {league.name}
                     </Link>
                   </TableCell>
-                  <TableCell>
-                    {format(startDate, "MMM d, yyyy")} -{" "}
-                    {format(endDate, "MMM d, yyyy")}
+                  <TableCell className="whitespace-nowrap">
+                    {format(startDate, "MMM d, yyyy")} - {format(endDate, "MMM d, yyyy")}
                   </TableCell>
                   <TableCell>{weeks} weeks</TableCell>
                   <TableCell>
