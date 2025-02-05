@@ -11,6 +11,19 @@ export function registerRoutes(app: Express): Server {
     res.json(leagues);
   });
 
+  app.get("/api/leagues/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const league = await storage.getLeague(id);
+      if (!league) {
+        return res.status(404).json({ message: "League not found" });
+      }
+      res.json(league);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.post("/api/leagues", async (req, res) => {
     try {
       const league = insertLeagueSchema.parse(req.body);

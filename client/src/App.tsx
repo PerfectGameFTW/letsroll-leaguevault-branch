@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home-page";
 import LeaguesPage from "@/pages/leagues-page";
+import TeamsPage from "@/pages/teams-page";
 import BowlersPage from "@/pages/bowlers-page";
 import PaymentsPage from "@/pages/payments-page";
 import { useEffect } from "react";
@@ -16,6 +17,7 @@ function Router() {
     <Switch>
       <Route path="/" component={HomePage} />
       <Route path="/leagues" component={LeaguesPage} />
+      <Route path="/leagues/:leagueId/teams" component={TeamsPage} />
       <Route path="/bowlers" component={BowlersPage} />
       <Route path="/payments" component={PaymentsPage} />
       <Route component={NotFound} />
