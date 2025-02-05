@@ -18,6 +18,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Link } from "wouter";
 
 export default function BowlersPage() {
   const [showForm, setShowForm] = useState(false);
@@ -96,7 +97,14 @@ export default function BowlersPage() {
             <TableBody>
               {filteredBowlers?.map((bowler) => (
                 <TableRow key={bowler.id}>
-                  <TableCell>{bowler.name}</TableCell>
+                  <TableCell>
+                    <Link 
+                      href={`/bowlers/${bowler.id}`}
+                      className="hover:underline text-foreground"
+                    >
+                      {bowler.name}
+                    </Link>
+                  </TableCell>
                   <TableCell>{bowler.email}</TableCell>
                   <TableCell>${(bowler.weeklyFee / 100).toFixed(2)}</TableCell>
                   <TableCell>
