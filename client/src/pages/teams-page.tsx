@@ -71,11 +71,8 @@ export default function TeamsPage() {
 
   return (
     <Layout>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">{league.name} Teams</h1>
-          <p className="text-muted-foreground">{league.description}</p>
-        </div>
+      <div className="space-y-4 mb-6">
+        <h1 className="text-2xl font-bold">{league.name}</h1>
         <Button onClick={() => setShowForm(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Team
