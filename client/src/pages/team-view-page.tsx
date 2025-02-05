@@ -227,7 +227,6 @@ export default function TeamViewPage() {
         <div className="flex justify-between items-center">
           <div>
             <h1 className="text-2xl font-bold">Team {team.number}: {team.name}</h1>
-            <p className="text-muted-foreground">Manage team members</p>
           </div>
           <div className="flex gap-2">
             <Button onClick={() => setShowAssignForm(true)}>
