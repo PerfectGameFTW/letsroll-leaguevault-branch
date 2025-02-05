@@ -271,7 +271,7 @@ export default function TeamViewPage() {
         </Link>
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold">Team {team.number}: {team.name}</h1>
+            <h1 className="text-2xl font-bold flex-1">{team.name}</h1>
             <Button variant="ghost" size="sm" onClick={handleEditClick}>
               <Pencil className="h-4 w-4" />
               <span className="sr-only">Edit team name</span>
