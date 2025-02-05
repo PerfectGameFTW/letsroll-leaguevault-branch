@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -17,8 +17,15 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { insertBowlerSchema, type InsertBowler } from "@shared/schema";
+import { insertBowlerSchema, type InsertBowler, type Team } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -37,12 +44,22 @@ export function BowlerForm({ open, onClose }: BowlerFormProps) {
       email: "",
       weeklyFee: 2000, // $20.00
       active: true,
+      teamId: undefined, //added default value for teamId
     },
+  });
+
+  const { data: teams } = useQuery<Team[]>({
+    queryKey: ["/api/teams"],
   });
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
-      await apiRequest("POST", "/api/bowlers", data);
+      const response = await apiRequest("POST", "/api/bowlers", data);
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
@@ -52,6 +69,13 @@ export function BowlerForm({ open, onClose }: BowlerFormProps) {
       });
       onClose();
       form.reset();
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error creating bowler",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -90,6 +114,37 @@ export function BowlerForm({ open, onClose }: BowlerFormProps) {
                   <FormControl>
                     <Input type="email" {...field} />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="teamId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Team</FormLabel>
+                  <Select
+                    onValueChange={(value) => field.onChange(parseInt(value))}
+                    defaultValue={field.value?.toString()}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a team" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {teams?.map((team) => (
+                        <SelectItem
+                          key={team.id}
+                          value={team.id.toString()}
+                        >
+                          {team.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}

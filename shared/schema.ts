@@ -85,7 +85,9 @@ export const insertLeagueSchema = createInsertSchema(leagues).extend({
   seasonEnd: z.coerce.date()
 });
 export const insertTeamSchema = createInsertSchema(teams);
-export const insertBowlerSchema = createInsertSchema(bowlers);
+export const insertBowlerSchema = createInsertSchema(bowlers).extend({
+  teamId: z.number().min(1, "Team selection is required"),
+});
 export const insertPaymentSchema = createInsertSchema(payments);
 
 // Types
