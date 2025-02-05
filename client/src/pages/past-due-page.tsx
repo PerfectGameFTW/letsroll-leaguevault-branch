@@ -8,12 +8,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Loader2, ArrowLeft, Download } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 import type { League, Team, Bowler, Payment } from "@shared/schema";
 import { startOfToday } from "date-fns";
 import { Link } from "wouter";
-import * as XLSX from 'xlsx';
 
 export default function PastDuePage() {
   const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
@@ -76,32 +74,6 @@ export default function PastDuePage() {
     .filter(item => item && item.pastDueAmount > 0)
     .sort((a, b) => (b?.pastDueAmount || 0) - (a?.pastDueAmount || 0));
 
-  // Modify the handleExport function to handle nullable values properly
-  const handleExport = () => {
-    if (!pastDueBowlers?.length) return;
-
-    // Prepare data for Excel
-    const excelData = pastDueBowlers.map(item => {
-      if (!item) return null; // Skip null items
-      return {
-        'Bowler Name': item.bowler.name,
-        'Email': item.bowler.email,
-        'League': item.league.name,
-        'Team': item.team.name,
-        'Weeks Past Due': item.weeksPastDue,
-        'Past Due Amount': `$${(item.pastDueAmount / 100).toFixed(2)}`,
-      };
-    }).filter((item): item is NonNullable<typeof item> => item !== null);
-
-    // Create worksheet
-    const ws = XLSX.utils.json_to_sheet(excelData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Past Due Report');
-
-    // Generate Excel file
-    XLSX.writeFile(wb, 'past_due_report.xlsx');
-  };
-
   return (
     <Layout>
       <div className="space-y-6">
@@ -111,18 +83,10 @@ export default function PastDuePage() {
         </Link>
 
         <div>
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-2xl font-bold mb-2">Past Due Balances</h1>
-              <p className="text-muted-foreground">
-                List of bowlers with past due balances
-              </p>
-            </div>
-            <Button onClick={handleExport} disabled={!pastDueBowlers?.length}>
-              <Download className="h-4 w-4 mr-2" />
-              Export to Excel
-            </Button>
-          </div>
+          <h1 className="text-2xl font-bold mb-2">Past Due Balances</h1>
+          <p className="text-muted-foreground mb-6">
+            List of bowlers with past due balances
+          </p>
         </div>
 
         <div className="rounded-md border">
