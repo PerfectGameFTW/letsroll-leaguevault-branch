@@ -19,6 +19,7 @@ export const leagues = pgTable("leagues", {
   weekDay: text("week_day"),
   practiceStartTime: text("practice_start_time"),
   competitionStartTime: text("competition_start_time"),
+  weeklyFee: integer("weekly_fee").notNull().default(2000), // Adding weekly fee to leagues
 });
 
 export const teams = pgTable("teams", {
@@ -35,9 +36,9 @@ export const bowlers = pgTable("bowlers", {
   email: text("email").notNull(),
   teamId: integer("team_id").references(() => teams.id),
   active: boolean("active").notNull().default(true),
-  weeklyFee: integer("weekly_fee").notNull(),
   squareCustomerId: text("square_customer_id"),
   order: integer("order").notNull().default(0),
+  // Removing weeklyFee from bowlers as it's now in leagues
 });
 
 export const payments = pgTable("payments", {
@@ -51,7 +52,6 @@ export const payments = pgTable("payments", {
   paidAt: timestamp("paid_at"),
 });
 
-// Relations
 export const leagueRelations = relations(leagues, ({ many }) => ({
   teams: many(teams),
   payments: many(payments),
@@ -84,7 +84,6 @@ export const paymentRelations = relations(payments, ({ one }) => ({
   }),
 }));
 
-// Schemas for insertion
 export const insertUserSchema = createInsertSchema(users);
 export const insertLeagueSchema = createInsertSchema(leagues).extend({
   seasonStart: z.coerce.date(),
@@ -92,6 +91,7 @@ export const insertLeagueSchema = createInsertSchema(leagues).extend({
   weekDay: z.string().optional(),
   practiceStartTime: z.string().optional(),
   competitionStartTime: z.string().optional(),
+  weeklyFee: z.number().min(0, "Weekly fee must be non-negative"),
 });
 export const insertTeamSchema = createInsertSchema(teams).extend({
   number: z.number().min(1, "Team number must be at least 1"),
@@ -103,7 +103,6 @@ export const insertBowlerSchema = createInsertSchema(bowlers).extend({
 });
 export const insertPaymentSchema = createInsertSchema(payments);
 
-// Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 

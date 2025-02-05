@@ -64,14 +64,12 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     defaultValues: bowler ? {
       name: bowler.name,
       email: bowler.email,
-      weeklyFee: bowler.weeklyFee,
       active: bowler.active,
       teamId: bowler.teamId ?? undefined,
       leagueId: bowler.leagueId,
     } : {
       name: "",
       email: "",
-      weeklyFee: 2000, // $20.00
       active: true,
       teamId: defaultTeamId,
     },
@@ -85,7 +83,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       form.reset({
         name: bowler.name,
         email: bowler.email,
-        weeklyFee: bowler.weeklyFee,
         active: bowler.active,
         teamId: bowler.teamId ?? undefined,
         leagueId: bowler.leagueId,
@@ -95,7 +92,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       form.reset({
         name: "",
         email: "",
-        weeklyFee: 2000,
         active: true,
         teamId: defaultTeamId,
       });
@@ -133,8 +129,8 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       toast({
         title: bowler ? "Bowler updated" : "Bowler created",
-        description: bowler 
-          ? "Bowler has been updated successfully." 
+        description: bowler
+          ? "Bowler has been updated successfully."
           : "Bowler has been added to the system.",
       });
       onClose();
@@ -285,28 +281,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="weeklyFee"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Weekly Fee</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      {...field}
-                      value={field.value / 100}
-                      onChange={(e) =>
-                        field.onChange(Math.round(parseFloat(e.target.value) * 100))
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <FormField
               control={form.control}

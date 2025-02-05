@@ -72,8 +72,6 @@ export default function BowlerViewPage() {
   // Calculate weeks passed in the season
   let weeksDue = 0;
   let totalSeasonDues = 0;
-
-  // Calculate total weeks in season and full season amount
   let totalWeeksInSeason = 0;
   let fullSeasonAmount = 0;
 
@@ -95,10 +93,10 @@ export default function BowlerViewPage() {
       weeksDue = differenceInWeeks(today, seasonStart);
     }
 
-    // Calculate dues based on weeks passed
-    totalSeasonDues = bowler.weeklyFee * weeksDue;
+    // Calculate dues based on weeks passed using league's weekly fee
+    totalSeasonDues = league.weeklyFee * weeksDue;
     totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
-    fullSeasonAmount = bowler.weeklyFee * totalWeeksInSeason;
+    fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
   }
 
   const remainingBalance = fullSeasonAmount - totalPaidAmount;
@@ -122,7 +120,7 @@ export default function BowlerViewPage() {
             <div>
               <span className="text-muted-foreground">Weekly Fee:</span>{" "}
               <span className="font-medium">
-                ${(bowler.weeklyFee / 100).toFixed(2)}
+                ${((league?.weeklyFee || 0) / 100).toFixed(2)}
               </span>
             </div>
             <Badge variant={bowler.active ? "default" : "secondary"}>
@@ -139,7 +137,7 @@ export default function BowlerViewPage() {
               <CardDescription>Regular payment amount</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">${(bowler.weeklyFee / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">${((league?.weeklyFee || 0) / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
 
@@ -148,7 +146,7 @@ export default function BowlerViewPage() {
               <CardTitle className="text-lg">Amount Due to Date</CardTitle>
               <CardDescription>
                 {weeksDue} week{weeksDue === 1 ? "" : "s"} at ${(
-                  bowler.weeklyFee / 100
+                  (league?.weeklyFee || 0) / 100
                 ).toFixed(2)}
               </CardDescription>
             </CardHeader>
@@ -182,7 +180,7 @@ export default function BowlerViewPage() {
               <CardTitle className="text-lg">Full Season Lineage Amount Due</CardTitle>
               <CardDescription>
                 {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at ${(
-                  bowler.weeklyFee / 100
+                  (league?.weeklyFee || 0) / 100
                 ).toFixed(2)}
               </CardDescription>
             </CardHeader>
