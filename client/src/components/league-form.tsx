@@ -139,8 +139,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       if (!league) return;
       const response = await apiRequest("DELETE", `/api/leagues/${league.id}`);
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+        const error = await response.json();
+        throw new Error(error.message || "Failed to delete league");
       }
     },
     onSuccess: () => {

@@ -65,9 +65,19 @@ export function registerRoutes(app: Express): Server {
   app.delete("/api/leagues/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+
+      // Check if league has any teams
+      const teams = await storage.getTeams(id);
+      if (teams.length > 0) {
+        return res.status(400).json({ 
+          message: "Cannot delete league that has teams. Please remove all teams first." 
+        });
+      }
+
       await storage.deleteLeague(id);
       res.sendStatus(204);
     } catch (error) {
+      console.error('Error deleting league:', error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
