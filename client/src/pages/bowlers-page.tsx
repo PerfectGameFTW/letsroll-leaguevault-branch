@@ -75,78 +75,76 @@ export default function BowlersPage() {
         </Button>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            {showInactive ? (
-              <Eye className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <EyeOff className="h-4 w-4 text-muted-foreground" />
-            )}
-            <span className="text-sm text-muted-foreground">Show inactive bowlers</span>
-            <Switch
-              checked={showInactive}
-              onCheckedChange={setShowInactive}
-            />
-          </div>
-          <div className="relative w-[300px]">
-            <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search bowlers..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8"
-            />
-          </div>
+      <div className="space-y-4 mb-6">
+        <div className="flex items-center space-x-2">
+          {showInactive ? (
+            <Eye className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <EyeOff className="h-4 w-4 text-muted-foreground" />
+          )}
+          <span className="text-sm text-muted-foreground">Show inactive bowlers</span>
+          <Switch
+            checked={showInactive}
+            onCheckedChange={setShowInactive}
+          />
         </div>
+        <div className="relative">
+          <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search bowlers..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8"
+          />
+        </div>
+      </div>
 
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Weekly Fee</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Weekly Fee</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filteredBowlers?.map((bowler) => (
+              <TableRow key={bowler.id}>
+                <TableCell>
+                  <Link 
+                    href={`/bowlers/${bowler.id}`}
+                    className="hover:underline text-foreground"
+                  >
+                    {bowler.name}
+                  </Link>
+                </TableCell>
+                <TableCell>{bowler.email}</TableCell>
+                <TableCell>${(getWeeklyFee(bowler) / 100).toFixed(2)}</TableCell>
+                <TableCell>
+                  <Badge variant={bowler.active ? "default" : "secondary"}>
+                    {bowler.active ? "Active" : "Inactive"}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedBowler(bowler);
+                      setShowForm(true);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredBowlers?.map((bowler) => (
-                <TableRow key={bowler.id}>
-                  <TableCell>
-                    <Link 
-                      href={`/bowlers/${bowler.id}`}
-                      className="hover:underline text-foreground"
-                    >
-                      {bowler.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{bowler.email}</TableCell>
-                  <TableCell>${(getWeeklyFee(bowler) / 100).toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge variant={bowler.active ? "default" : "secondary"}>
-                      {bowler.active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedBowler(bowler);
-                        setShowForm(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+            ))}
+          </TableBody>
+        </Table>
       </div>
 
       <BowlerForm 
