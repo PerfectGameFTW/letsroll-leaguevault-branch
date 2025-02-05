@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { TeamForm } from "@/components/team-form";
@@ -14,13 +14,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Users } from "lucide-react";
 import type { Team, League } from "@shared/schema";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { useParams, Link } from "wouter";
 
 export default function TeamsPage() {
   const [showForm, setShowForm] = useState(false);
-  const { toast } = useToast();
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
 
@@ -37,19 +34,6 @@ export default function TeamsPage() {
   const sortedTeams = useMemo(() => {
     return teams?.slice().sort((a, b) => (a.number || 0) - (b.number || 0)) ?? [];
   }, [teams]);
-
-  const deleteMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/teams/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/teams", leagueId] });
-      toast({
-        title: "Team deleted",
-        description: "The team has been removed from the league.",
-      });
-    },
-  });
 
   if (loadingLeague || loadingTeams) {
     return (
@@ -100,25 +84,16 @@ export default function TeamsPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      asChild
-                    >
-                      <Link href={`/teams/${team.id}`}>
-                        <Users className="h-4 w-4 mr-2" />
-                        View Team
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => deleteMutation.mutate(team.id)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                  >
+                    <Link href={`/teams/${team.id}`}>
+                      <Users className="h-4 w-4 mr-2" />
+                      View Team
+                    </Link>
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
