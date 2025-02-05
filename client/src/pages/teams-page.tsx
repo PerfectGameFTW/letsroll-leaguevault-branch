@@ -12,17 +12,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Users, UserPlus } from "lucide-react";
+import { Loader2, Plus, Users } from "lucide-react";
 import type { Team, League } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useParams, Link } from "wouter";
-import { AssignBowlerForm } from "@/components/assign-bowler-form";
 
 export default function TeamsPage() {
   const [showForm, setShowForm] = useState(false);
-  const [showAssignForm, setShowAssignForm] = useState(false);
-  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const { toast } = useToast();
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
@@ -38,7 +35,7 @@ export default function TeamsPage() {
   });
 
   const sortedTeams = useMemo(() => {
-    return teams?.slice().sort((a, b) => a.number - b.number) ?? [];
+    return teams?.slice().sort((a, b) => (a.number || 0) - (b.number || 0)) ?? [];
   }, [teams]);
 
   const deleteMutation = useMutation({
@@ -72,7 +69,6 @@ export default function TeamsPage() {
     );
   }
 
-
   return (
     <Layout>
       <div className="flex justify-between items-center mb-6">
@@ -80,19 +76,10 @@ export default function TeamsPage() {
           <h1 className="text-2xl font-bold">{league.name} Teams</h1>
           <p className="text-muted-foreground">{league.description}</p>
         </div>
-        <div className="flex gap-2">
-          <Button 
-            onClick={() => setShowAssignForm(true)}
-            disabled={!selectedTeamId}
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            Add Existing Bowler
-          </Button>
-          <Button onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Team
-          </Button>
-        </div>
+        <Button onClick={() => setShowForm(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Team
+        </Button>
       </div>
 
       <div className="rounded-md border">
@@ -107,10 +94,7 @@ export default function TeamsPage() {
           </TableHeader>
           <TableBody>
             {sortedTeams.map((team) => (
-              <TableRow 
-                key={team.id}
-                className={team.id === selectedTeamId ? "bg-muted" : ""}
-              >
+              <TableRow key={team.id}>
                 <TableCell>{team.number}</TableCell>
                 <TableCell>{team.name}</TableCell>
                 <TableCell>
@@ -120,13 +104,6 @@ export default function TeamsPage() {
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setSelectedTeamId(team.id)}
-                    >
-                      Select Team
-                    </Button>
                     <Button
                       variant="outline"
                       size="sm"
@@ -155,16 +132,6 @@ export default function TeamsPage() {
       <TeamForm
         open={showForm}
         onClose={() => setShowForm(false)}
-        leagueId={leagueId}
-      />
-
-      <AssignBowlerForm
-        open={showAssignForm}
-        onClose={() => {
-          setShowAssignForm(false);
-          setSelectedTeamId(null);
-        }}
-        teamId={selectedTeamId!}
         leagueId={leagueId}
       />
     </Layout>

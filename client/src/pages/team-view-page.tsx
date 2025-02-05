@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { BowlerForm } from "@/components/bowler-form";
+import { AssignBowlerForm } from "@/components/assign-bowler-form";
 import {
   Table,
   TableBody,
@@ -12,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, ArrowLeft, ExternalLink } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, ExternalLink, UserPlus } from "lucide-react";
 import type { Team, Bowler } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +22,7 @@ import { getSquareCustomerUrl } from "@/lib/square";
 
 export default function TeamViewPage() {
   const [showForm, setShowForm] = useState(false);
+  const [showAssignForm, setShowAssignForm] = useState(false);
   const { toast } = useToast();
   const params = useParams();
   const teamId = parseInt(params.teamId!);
@@ -78,10 +80,16 @@ export default function TeamViewPage() {
             <h1 className="text-2xl font-bold">Team {team.number}: {team.name}</h1>
             <p className="text-muted-foreground">Manage team members</p>
           </div>
-          <Button onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Bowler
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={() => setShowAssignForm(true)}>
+              <UserPlus className="h-4 w-4 mr-2" />
+              Add Existing Bowler
+            </Button>
+            <Button onClick={() => setShowForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Bowler
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -141,6 +149,13 @@ export default function TeamViewPage() {
         open={showForm} 
         onClose={() => setShowForm(false)} 
         defaultTeamId={teamId}
+      />
+
+      <AssignBowlerForm
+        open={showAssignForm}
+        onClose={() => setShowAssignForm(false)}
+        teamId={teamId}
+        leagueId={team.leagueId}
       />
     </Layout>
   );
