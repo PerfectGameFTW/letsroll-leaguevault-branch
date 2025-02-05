@@ -92,14 +92,24 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
                 <SelectValue placeholder="Choose a bowler" />
               </SelectTrigger>
               <SelectContent>
-                {availableBowlers.map((bowler) => (
-                  <SelectItem
-                    key={bowler.id}
-                    value={bowler.id.toString()}
-                  >
-                    {bowler.name}
-                  </SelectItem>
-                ))}
+                {loadingBowlers ? (
+                  <div className="flex items-center justify-center p-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                ) : availableBowlers.length > 0 ? (
+                  availableBowlers.map((bowler) => (
+                    <SelectItem
+                      key={bowler.id}
+                      value={bowler.id.toString()}
+                    >
+                      {bowler.name} ({bowler.email})
+                    </SelectItem>
+                  ))
+                ) : (
+                  <div className="p-2 text-sm text-muted-foreground">
+                    No available bowlers found
+                  </div>
+                )}
               </SelectContent>
             </Select>
           </div>
