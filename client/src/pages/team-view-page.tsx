@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, ArrowLeft, ExternalLink, UserPlus } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, ExternalLink, UserPlus, Pencil } from "lucide-react";
 import type { Team, Bowler } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -23,6 +23,7 @@ import { getSquareCustomerUrl } from "@/lib/square";
 export default function TeamViewPage() {
   const [showForm, setShowForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
+  const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
   const params = useParams();
   const teamId = parseInt(params.teamId!);
@@ -131,13 +132,26 @@ export default function TeamViewPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => deleteMutation.mutate(bowler.id)}
-                  >
-                    Delete
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedBowler(bowler);
+                        setShowForm(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => deleteMutation.mutate(bowler.id)}
+                    >
+                      Delete
+                    </Button>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
@@ -147,8 +161,12 @@ export default function TeamViewPage() {
 
       <BowlerForm 
         open={showForm} 
-        onClose={() => setShowForm(false)} 
+        onClose={() => {
+          setShowForm(false);
+          setSelectedBowler(undefined);
+        }} 
         defaultTeamId={teamId}
+        bowler={selectedBowler}
       />
 
       <AssignBowlerForm

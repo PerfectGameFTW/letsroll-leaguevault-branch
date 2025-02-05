@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { insertBowlerSchema, type InsertBowler, type Team, type League } from "@shared/schema";
+import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bowler } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -36,21 +36,29 @@ interface BowlerFormProps {
   open: boolean;
   onClose: () => void;
   defaultTeamId?: number;
+  bowler?: Bowler; // Add bowler prop for edit mode
 }
 
-export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
+export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormProps) {
   const { toast } = useToast();
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(bowler?.leagueId || null);
 
   const form = useForm<InsertBowler>({
     resolver: zodResolver(insertBowlerSchema),
-    defaultValues: {
+    defaultValues: bowler ? {
+      name: bowler.name,
+      email: bowler.email,
+      weeklyFee: bowler.weeklyFee,
+      active: bowler.active,
+      teamId: bowler.teamId,
+      leagueId: bowler.leagueId,
+    } : {
       name: "",
       email: "",
       weeklyFee: 2000, // $20.00
       active: true,
       teamId: defaultTeamId,
-      leagueId: undefined // Added default value for leagueId
+      leagueId: undefined
     },
   });
 
@@ -66,38 +74,49 @@ export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
       selectedLeagueId
         ? fetch(`/api/teams?leagueId=${selectedLeagueId}`).then((res) => res.json())
         : Promise.resolve([]),
-    enabled: !!selectedLeagueId, // Only run query when a league is selected
+    enabled: !!selectedLeagueId,
   });
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
-      // First create a Square customer with team ID
-      const squareCustomer = await createSquareCustomer(data.name, data.email, data.teamId);
+      if (bowler) {
+        // Update existing bowler
+        const response = await apiRequest("PATCH", `/api/bowlers/${bowler.id}`, data);
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(error);
+        }
+        return await response.json();
+      } else {
+        // Create new bowler
+        // Only create Square customer if teamId is provided
+        if (data.teamId) {
+          const squareCustomer = await createSquareCustomer(data.name, data.email, data.teamId);
+          data.squareCustomerId = squareCustomer.id;
+        }
 
-      // Then create the bowler with the Square customer ID
-      const response = await apiRequest("POST", "/api/bowlers", {
-        ...data,
-        squareCustomerId: squareCustomer.id,
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+        const response = await apiRequest("POST", "/api/bowlers", data);
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(error);
+        }
+        return await response.json();
       }
-      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       toast({
-        title: "Success",
-        description: "Bowler has been added to the system.",
+        title: bowler ? "Bowler updated" : "Bowler created",
+        description: bowler 
+          ? "Bowler has been updated successfully." 
+          : "Bowler has been added to the system.",
       });
       onClose();
       form.reset();
     },
     onError: (error: Error) => {
       toast({
-        title: "Error creating bowler",
+        title: bowler ? "Error updating bowler" : "Error creating bowler",
         description: error.message,
         variant: "destructive",
       });
@@ -108,7 +127,7 @@ export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add New Bowler</DialogTitle>
+          <DialogTitle>{bowler ? "Edit Bowler" : "Add New Bowler"}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -150,14 +169,16 @@ export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
               name="leagueId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>League</FormLabel>
+                  <FormLabel>League (Optional)</FormLabel>
                   <Select
                     onValueChange={(value) => {
-                      setSelectedLeagueId(parseInt(value));
+                      const leagueId = parseInt(value);
+                      setSelectedLeagueId(leagueId);
+                      field.onChange(leagueId);
                       // Reset team selection when league changes
                       form.setValue("teamId", undefined);
                     }}
-                    defaultValue={field.value?.toString()}
+                    value={field.value?.toString()}
                   >
                     <FormControl>
                       <SelectTrigger>
@@ -186,10 +207,10 @@ export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
               name="teamId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Team</FormLabel>
+                  <FormLabel>Team (Optional)</FormLabel>
                   <Select
                     onValueChange={(value) => field.onChange(parseInt(value))}
-                    defaultValue={field.value?.toString()}
+                    value={field.value?.toString()}
                     disabled={!selectedLeagueId}
                   >
                     <FormControl>
@@ -266,7 +287,7 @@ export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
                 {mutation.isPending && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                Add Bowler
+                {bowler ? "Update" : "Add"} Bowler
               </Button>
             </div>
           </form>
