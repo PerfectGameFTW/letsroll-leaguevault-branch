@@ -91,6 +91,7 @@ export const insertTeamSchema = createInsertSchema(teams).extend({
 });
 export const insertBowlerSchema = createInsertSchema(bowlers).extend({
   teamId: z.number().min(1, "Team selection is required"),
+  leagueId: z.number().min(1, "League selection is required"),
 });
 export const insertPaymentSchema = createInsertSchema(payments);
 

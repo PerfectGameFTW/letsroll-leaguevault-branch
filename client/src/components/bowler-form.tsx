@@ -25,11 +25,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { insertBowlerSchema, type InsertBowler, type Team } from "@shared/schema";
+import { insertBowlerSchema, type InsertBowler, type Team, type League } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { createSquareCustomer } from "@/lib/square";
+import { useState } from "react";
 
 interface BowlerFormProps {
   open: boolean;
@@ -39,6 +40,8 @@ interface BowlerFormProps {
 
 export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
   const { toast } = useToast();
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
+
   const form = useForm<InsertBowler>({
     resolver: zodResolver(insertBowlerSchema),
     defaultValues: {
@@ -47,11 +50,23 @@ export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
       weeklyFee: 2000, // $20.00
       active: true,
       teamId: defaultTeamId,
+      leagueId: undefined // Added default value for leagueId
     },
   });
 
+  // Query for leagues
+  const { data: leagues } = useQuery<League[]>({
+    queryKey: ["/api/leagues"],
+  });
+
+  // Query for teams filtered by selected league
   const { data: teams } = useQuery<Team[]>({
-    queryKey: ["/api/teams"],
+    queryKey: ["/api/teams", selectedLeagueId],
+    queryFn: () =>
+      selectedLeagueId
+        ? fetch(`/api/teams?leagueId=${selectedLeagueId}`).then((res) => res.json())
+        : Promise.resolve([]),
+    enabled: !!selectedLeagueId, // Only run query when a league is selected
   });
 
   const mutation = useMutation({
@@ -129,6 +144,43 @@ export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
               )}
             />
 
+            {/* League Selection */}
+            <FormField
+              control={form.control}
+              name="leagueId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>League</FormLabel>
+                  <Select
+                    onValueChange={(value) => {
+                      setSelectedLeagueId(parseInt(value));
+                      // Reset team selection when league changes
+                      form.setValue("teamId", undefined);
+                    }}
+                    defaultValue={field.value?.toString()}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a league" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {leagues?.map((league) => (
+                        <SelectItem
+                          key={league.id}
+                          value={league.id.toString()}
+                        >
+                          {league.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Team Selection - Only enabled when a league is selected */}
             <FormField
               control={form.control}
               name="teamId"
@@ -138,10 +190,11 @@ export function BowlerForm({ open, onClose, defaultTeamId }: BowlerFormProps) {
                   <Select
                     onValueChange={(value) => field.onChange(parseInt(value))}
                     defaultValue={field.value?.toString()}
+                    disabled={!selectedLeagueId}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a team" />
+                        <SelectValue placeholder={selectedLeagueId ? "Select a team" : "Please select a league first"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>

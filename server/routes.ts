@@ -240,31 +240,31 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Now create the customer
-      const response = await squareClient.customersApi.createCustomer({
+      const customerResponse = await squareClient.customersApi.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
         emailAddress: email,
       });
 
-      if (!response.result?.customer?.id) {
+      if (!customerResponse.result?.customer?.id) {
         throw new Error('Failed to create Square customer');
       }
 
-      // Add the customer to the group in a separate call
-      await squareClient.customerGroupsApi.addCustomerToGroup(groupId, {
-        customerId: response.result.customer.id,
+      // Add the customer to the group
+      await squareClient.customerGroupsApi.createCustomerGroupMembership({
+        idempotencyKey: `membership-${customerResponse.result.customer.id}-${groupId}`,
+        membership: {
+          customerId: customerResponse.result.customer.id,
+          groupId: groupId,
+        },
       });
 
-      if (response.result?.customer) {
-        res.status(201).json({
-          id: response.result.customer.id,
-          name,
-          email,
-        });
-      } else {
-        throw new Error('Failed to create Square customer');
-      }
+      res.status(201).json({
+        id: customerResponse.result.customer.id,
+        name,
+        email,
+      });
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json(error.issues);
