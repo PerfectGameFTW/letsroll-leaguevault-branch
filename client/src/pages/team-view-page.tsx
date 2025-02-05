@@ -236,7 +236,7 @@ export default function TeamViewPage() {
             </Button>
             <Button onClick={() => setShowForm(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Bowler
+              Create New Bowler
             </Button>
           </div>
         </div>
