@@ -74,6 +74,7 @@ export default function BowlerViewPage() {
   let totalSeasonDues = 0;
   let totalWeeksInSeason = 0;
   let fullSeasonAmount = 0;
+  let amountPastDue = 0;
 
   if (league) {
     const seasonStart = new Date(league.seasonStart);
@@ -97,8 +98,12 @@ export default function BowlerViewPage() {
     totalSeasonDues = league.weeklyFee * weeksDue;
     totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
     fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
+
+    // Calculate amount past due (only for weeks that have passed)
+    amountPastDue = totalSeasonDues - totalPaidAmount;
   }
 
+  // Calculate remaining balance for the full season
   const remainingBalance = fullSeasonAmount - totalPaidAmount;
 
   return (
@@ -171,7 +176,7 @@ export default function BowlerViewPage() {
               <CardDescription>Unpaid fees for weeks passed</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-destructive">${(remainingBalance / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
 
