@@ -170,53 +170,6 @@ export default function ReportsPage() {
             </Table>
           </div>
         </div>
-
-        {/* Team Roster Reports */}
-        <div>
-          <h2 className="text-xl font-semibold mb-4">Team Roster Reports</h2>
-          <div className="space-y-4">
-            {leagues?.map(league => (
-              <Card key={league.id}>
-                <CardHeader>
-                  <CardTitle>{league.name}</CardTitle>
-                  <CardDescription>
-                    {format(new Date(league.seasonStart), "MMM d, yyyy")} - {format(new Date(league.seasonEnd), "MMM d, yyyy")}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Team</TableHead>
-                          <TableHead>Active Bowlers</TableHead>
-                          <TableHead>Inactive Bowlers</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {teams
-                          ?.filter(team => team.leagueId === league.id)
-                          .map(team => {
-                            const teamBowlers = bowlers?.filter(bowler => bowler.teamId === team.id) || [];
-                            const activeBowlers = teamBowlers.filter(bowler => bowler.active);
-                            const inactiveBowlers = teamBowlers.filter(bowler => !bowler.active);
-
-                            return (
-                              <TableRow key={team.id}>
-                                <TableCell>{team.name}</TableCell>
-                                <TableCell>{activeBowlers.length}</TableCell>
-                                <TableCell>{inactiveBowlers.length}</TableCell>
-                              </TableRow>
-                            );
-                          })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
       </div>
     </Layout>
   );
