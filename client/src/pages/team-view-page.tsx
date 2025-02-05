@@ -58,11 +58,11 @@ function SortableBowlerRow({ bowler, onEdit }: SortableBowlerRowProps) {
   return (
     <TableRow ref={setNodeRef} style={style}>
       <TableCell>
-        <Button 
-          variant="ghost" 
-          size="sm" 
+        <Button
+          variant="ghost"
+          size="sm"
           className="p-0 cursor-grab active:cursor-grabbing"
-          {...attributes} 
+          {...attributes}
           {...listeners}
         >
           <GripVertical className="h-4 w-4 text-muted-foreground" />
@@ -126,8 +126,8 @@ export default function TeamViewPage() {
 
   const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers", teamId],
-    queryFn: () => 
-      fetch(`/api/bowlers?teamId=${teamId}`).then(res => res.json()),
+    queryFn: () =>
+      fetch(`/api/bowlers?teamId=${teamId}`).then((res) => res.json()),
   });
 
   const reorderMutation = useMutation({
@@ -149,7 +149,7 @@ export default function TeamViewPage() {
       // Optimistically update the cache
       if (previousBowlers) {
         const updatedBowlers = [...previousBowlers];
-        const bowlerIndex = updatedBowlers.findIndex(b => b.id === id);
+        const bowlerIndex = updatedBowlers.findIndex((b) => b.id === id);
         const bowler = updatedBowlers[bowlerIndex];
 
         if (bowler) {
@@ -180,9 +180,9 @@ export default function TeamViewPage() {
         variant: "destructive",
       });
     },
-    onSettled: () => {
-      // Always refetch after error or success
-      queryClient.invalidateQueries({ queryKey: ["/api/bowlers", teamId] });
+    onSuccess: (updatedBowlers) => {
+      // Update cache with the server response
+      queryClient.setQueryData(["/api/bowlers", teamId], updatedBowlers);
     },
   });
 
@@ -266,7 +266,7 @@ export default function TeamViewPage() {
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={sortedBowlers?.map(b => b.id) ?? []}
+                items={sortedBowlers?.map((b) => b.id) ?? []}
                 strategy={verticalListSortingStrategy}
               >
                 {sortedBowlers?.map((bowler) => (
@@ -285,12 +285,12 @@ export default function TeamViewPage() {
         </Table>
       </div>
 
-      <BowlerForm 
-        open={showForm} 
+      <BowlerForm
+        open={showForm}
         onClose={() => {
           setShowForm(false);
           setSelectedBowler(undefined);
-        }} 
+        }}
         defaultTeamId={teamId}
         bowler={selectedBowler}
       />

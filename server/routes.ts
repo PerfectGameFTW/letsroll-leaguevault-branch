@@ -205,8 +205,11 @@ export function registerRoutes(app: Express): Server {
         await Promise.all(updatePromises.filter(Boolean));
 
         // Finally update the moved bowler's order
-        const updated = await storage.updateBowler(id, update);
-        return res.json(updated);
+        const updated = await storage.updateBowler(id, { order: newOrder });
+
+        // Return all updated bowlers to ensure frontend has latest state
+        const updatedBowlers = await storage.getBowlers(bowler.teamId);
+        return res.json(updatedBowlers);
       }
 
       // Handle non-order updates
