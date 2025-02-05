@@ -245,8 +245,17 @@ export function registerRoutes(app: Express): Server {
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
         emailAddress: email,
-        groupIds: [groupId], // Use the group ID we got
       });
+
+      if (!response.result?.customer?.id) {
+        throw new Error('Failed to create Square customer');
+      }
+
+      // Add the customer to the group in a separate call
+      await squareClient.customerGroupsApi.addGroupToCustomer(
+        response.result.customer.id,
+        groupId
+      );
 
       if (response.result?.customer) {
         res.status(201).json({
