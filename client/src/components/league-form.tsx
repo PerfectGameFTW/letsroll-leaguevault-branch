@@ -18,17 +18,19 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { insertLeagueSchema, type InsertLeague } from "@shared/schema";
+import { insertLeagueSchema, type InsertLeague, type League } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { useEffect } from "react";
 
 interface LeagueFormProps {
   open: boolean;
   onClose: () => void;
+  league?: League;
 }
 
-export function LeagueForm({ open, onClose }: LeagueFormProps) {
+export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const { toast } = useToast();
   const form = useForm<InsertLeague>({
     resolver: zodResolver(insertLeagueSchema),
@@ -41,13 +43,37 @@ export function LeagueForm({ open, onClose }: LeagueFormProps) {
     },
   });
 
+  useEffect(() => {
+    if (open && league) {
+      form.reset({
+        name: league.name,
+        description: league.description || "",
+        active: league.active,
+        seasonStart: new Date(league.seasonStart),
+        seasonEnd: new Date(league.seasonEnd),
+      });
+    } else if (!open) {
+      form.reset({
+        name: "",
+        description: "",
+        active: true,
+        seasonStart: new Date(),
+        seasonEnd: new Date(new Date().setFullYear(new Date().getFullYear() + 1)),
+      });
+    }
+  }, [open, league, form]);
+
   const mutation = useMutation({
     mutationFn: async (data: InsertLeague) => {
-      const response = await apiRequest("POST", "/api/leagues", {
-        ...data,
-        seasonStart: data.seasonStart.toISOString(),
-        seasonEnd: data.seasonEnd.toISOString(),
-      });
+      const response = await apiRequest(
+        league ? "PATCH" : "POST",
+        league ? `/api/leagues/${league.id}` : "/api/leagues",
+        {
+          ...data,
+          seasonStart: data.seasonStart.toISOString(),
+          seasonEnd: data.seasonEnd.toISOString(),
+        }
+      );
 
       if (!response.ok) {
         const error = await response.text();
@@ -59,15 +85,17 @@ export function LeagueForm({ open, onClose }: LeagueFormProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/leagues"] });
       toast({
-        title: "Success",
-        description: "League has been created successfully.",
+        title: league ? "League updated" : "League created",
+        description: league
+          ? "League has been updated successfully."
+          : "League has been created successfully.",
       });
       onClose();
       form.reset();
     },
     onError: (error: Error) => {
       toast({
-        title: "Error creating league",
+        title: league ? "Error updating league" : "Error creating league",
         description: error.message,
         variant: "destructive",
       });
@@ -78,7 +106,7 @@ export function LeagueForm({ open, onClose }: LeagueFormProps) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add New League</DialogTitle>
+          <DialogTitle>{league ? "Edit League" : "Add New League"}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -107,7 +135,7 @@ export function LeagueForm({ open, onClose }: LeagueFormProps) {
                 <FormItem>
                   <FormLabel>Description</FormLabel>
                   <FormControl>
-                    <Input {...field} />
+                    <Input {...field} value={field.value || ""} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -192,7 +220,7 @@ export function LeagueForm({ open, onClose }: LeagueFormProps) {
                 {mutation.isPending && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                Add League
+                {league ? "Update" : "Add"} League
               </Button>
             </div>
           </form>

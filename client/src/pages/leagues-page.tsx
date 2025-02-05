@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Users } from "lucide-react";
+import { Loader2, Plus, Users, Pencil } from "lucide-react";
 import type { League } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +21,7 @@ import { Link } from "wouter";
 
 export default function LeaguesPage() {
   const [showForm, setShowForm] = useState(false);
+  const [selectedLeague, setSelectedLeague] = useState<League | undefined>();
   const { toast } = useToast();
 
   const { data: leagues, isLoading } = useQuery<League[]>({
@@ -54,7 +55,10 @@ export default function LeaguesPage() {
     <Layout>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Leagues</h1>
-        <Button onClick={() => setShowForm(true)}>
+        <Button onClick={() => {
+          setSelectedLeague(undefined);
+          setShowForm(true);
+        }}>
           <Plus className="h-4 w-4 mr-2" />
           Add League
         </Button>
@@ -90,6 +94,17 @@ export default function LeaguesPage() {
                     <Button
                       variant="outline"
                       size="sm"
+                      onClick={() => {
+                        setSelectedLeague(league);
+                        setShowForm(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       asChild
                     >
                       <Link href={`/leagues/${league.id}/teams`}>
@@ -112,7 +127,14 @@ export default function LeaguesPage() {
         </Table>
       </div>
 
-      <LeagueForm open={showForm} onClose={() => setShowForm(false)} />
+      <LeagueForm 
+        open={showForm} 
+        onClose={() => {
+          setShowForm(false);
+          setSelectedLeague(undefined);
+        }}
+        league={selectedLeague}
+      />
     </Layout>
   );
 }
