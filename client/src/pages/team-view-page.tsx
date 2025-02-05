@@ -137,14 +137,53 @@ export default function TeamViewPage() {
         const error = await response.text();
         throw new Error(error);
       }
+      return response.json();
     },
-    onError: (error: Error) => {
+    onMutate: async ({ id, order }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["/api/bowlers", teamId] });
+
+      // Get snapshot of current data
+      const previousBowlers = queryClient.getQueryData<Bowler[]>(["/api/bowlers", teamId]);
+
+      // Optimistically update the cache
+      if (previousBowlers) {
+        const updatedBowlers = [...previousBowlers];
+        const bowlerIndex = updatedBowlers.findIndex(b => b.id === id);
+        const bowler = updatedBowlers[bowlerIndex];
+
+        if (bowler) {
+          // Remove bowler from old position
+          updatedBowlers.splice(bowlerIndex, 1);
+          // Insert at new position
+          updatedBowlers.splice(order, 0, { ...bowler, order });
+
+          // Update all orders to match array indices
+          updatedBowlers.forEach((b, index) => {
+            b.order = index;
+          });
+
+          queryClient.setQueryData(["/api/bowlers", teamId], updatedBowlers);
+        }
+      }
+
+      return { previousBowlers };
+    },
+    onError: (error: Error, _, context) => {
+      // Revert to previous state on error
+      if (context?.previousBowlers) {
+        queryClient.setQueryData(["/api/bowlers", teamId], context.previousBowlers);
+      }
       toast({
         title: "Error reordering bowlers",
         description: error.message,
         variant: "destructive",
       });
-    }
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ["/api/bowlers", teamId] });
+    },
   });
 
   const handleDragEnd = async (event: any) => {
@@ -154,21 +193,11 @@ export default function TeamViewPage() {
       const oldIndex = bowlers.findIndex((b) => b.id === active.id);
       const newIndex = bowlers.findIndex((b) => b.id === over.id);
 
-      const newBowlers = arrayMove(bowlers, oldIndex, newIndex);
-
-      // Update the cache optimistically
-      queryClient.setQueryData(["/api/bowlers", teamId], newBowlers);
-
-      // Send the update to the server
-      try {
-        await reorderMutation.mutateAsync({
-          id: active.id,
-          order: newIndex,
-        });
-      } catch (error) {
-        // If there's an error, the query will be invalidated and refetched
-        queryClient.invalidateQueries({ queryKey: ["/api/bowlers", teamId] });
-      }
+      // Update the dragged bowler's order
+      await reorderMutation.mutateAsync({
+        id: active.id,
+        order: newIndex,
+      });
     }
   };
 
@@ -189,6 +218,9 @@ export default function TeamViewPage() {
       </Layout>
     );
   }
+
+  // Sort bowlers by order
+  const sortedBowlers = bowlers?.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   return (
     <Layout>
@@ -234,10 +266,10 @@ export default function TeamViewPage() {
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={bowlers?.map(b => b.id) ?? []}
+                items={sortedBowlers?.map(b => b.id) ?? []}
                 strategy={verticalListSortingStrategy}
               >
-                {bowlers?.map((bowler) => (
+                {sortedBowlers?.map((bowler) => (
                   <SortableBowlerRow
                     key={bowler.id}
                     bowler={bowler}
