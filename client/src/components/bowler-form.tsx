@@ -61,32 +61,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     },
   });
 
-  // Set initial league ID when editing a bowler
-  useEffect(() => {
-    if (bowler?.leagueId) {
-      setSelectedLeagueId(bowler.leagueId);
-    }
-  }, [bowler]);
-
-  // Reset form when dialog closes
-  useEffect(() => {
-    if (!open) {
-      form.reset();
-      setSelectedLeagueId(null);
-    } else if (bowler) {
-      // Reset form with bowler data when dialog opens for editing
-      form.reset({
-        name: bowler.name,
-        email: bowler.email,
-        weeklyFee: bowler.weeklyFee,
-        active: bowler.active,
-        teamId: bowler.teamId,
-        leagueId: bowler.leagueId,
-      });
-      setSelectedLeagueId(bowler.leagueId);
-    }
-  }, [open, bowler, form]);
-
   // Query for leagues
   const { data: leagues } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
@@ -101,6 +75,37 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
         : Promise.resolve([]),
     enabled: !!selectedLeagueId,
   });
+
+  // Set initial league ID and form values when editing a bowler
+  useEffect(() => {
+    if (open && bowler) {
+      if (bowler.leagueId) {
+        setSelectedLeagueId(bowler.leagueId);
+      }
+      // Reset form with bowler data when dialog opens for editing
+      form.reset({
+        name: bowler.name,
+        email: bowler.email,
+        weeklyFee: bowler.weeklyFee,
+        active: bowler.active,
+        teamId: bowler.teamId,
+        leagueId: bowler.leagueId,
+      });
+    } else if (!open) {
+      form.reset();
+      setSelectedLeagueId(null);
+    }
+  }, [open, bowler, form]);
+
+  // Update form values when teams are loaded
+  useEffect(() => {
+    if (teams && bowler?.teamId) {
+      const team = teams.find(t => t.id === bowler.teamId);
+      if (team) {
+        form.setValue('teamId', team.id);
+      }
+    }
+  }, [teams, bowler, form]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
