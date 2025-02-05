@@ -96,6 +96,20 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
           >
             <FormField
               control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Team Name</FormLabel>
+                  <FormControl>
+                    <Input {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="number"
               render={({ field }) => (
                 <FormItem>
@@ -109,20 +123,6 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
                         field.onChange(parseInt(e.target.value, 10))
                       }
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Team Name</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
