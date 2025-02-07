@@ -288,7 +288,7 @@ export function registerRoutes(app: Express): Server {
       let groupId;
       try {
         // Try to create the group first
-        const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+        const groupResponse = await squareClient.customerGroups.createCustomerGroup({
           idempotencyKey: `league-${league.id}`,
           group: {
             name: league.name,
@@ -298,7 +298,7 @@ export function registerRoutes(app: Express): Server {
       } catch (error) {
         if (error instanceof ApiError && error.statusCode === 400) {
           // Group might already exist, try to find it
-          const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+          const groupsResponse = await squareClient.customerGroups.listCustomerGroups();
           const existingGroup = groupsResponse.result.groups?.find(
             (g) => g.name === league.name
           );
@@ -315,7 +315,7 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Now create the customer
-      const customerResponse = await squareClient.customersApi.createCustomer({
+      const customerResponse = await squareClient.customers.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
@@ -327,55 +327,45 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Add the customer to the group
-      await squareClient.customerGroupsApi.createCustomerGroupMembership({
-        idempotencyKey: `membership-${customerResponse.result.customer.id}-${groupId}`,
-        membership: {
-          customerId: customerResponse.result.customer.id,
-          groupId: groupId,
-        },
-      });
+      await squareClient.customerGroups.addGroupToCustomer(
+        customerResponse.result.customer.id,
+        groupId
+      );
 
-      async function enrollCustomerInLoyalty(customerId: string) {
-        if (!squareClient) {
-          throw new Error("Square client not configured");
-        }
-  
-        try {
-          // First get the loyalty program ID
-          const programResponse = await squareClient.loyaltyApi.listLoyaltyPrograms();
-          const program = programResponse.result.programs?.[0];
-  
-          if (!program?.id) {
-            throw new Error("No loyalty program found");
-          }
-  
+      // Enroll in loyalty program
+      let loyaltyId = null;
+      try {
+        // First get the loyalty program ID
+        const programResponse = await squareClient.loyaltyApi.listLoyaltyPrograms();
+        const program = programResponse.result.programs?.[0];
+
+        if (program?.id) {
           // Enroll the customer in the loyalty program
           const enrollResponse = await squareClient.loyaltyApi.createLoyaltyAccount({
             loyaltyAccount: {
-              program_id: program.id,
+              programId: program.id,
               mapping: {
-                phone_number: "+0000000000" // Placeholder, you might want to add phone number to bowler schema
+                phoneNumber: "+0000000000" // Placeholder
               }
             },
-            idempotencyKey: `enroll-${customerId}-${Date.now()}`
+            idempotencyKey: `enroll-${customerResponse.result.customer.id}-${Date.now()}`
           });
-  
-          return enrollResponse.result.loyaltyAccount;
-        } catch (error) {
-          console.error('Error enrolling customer in loyalty:', error);
-          throw error;
+
+          if (enrollResponse.result.loyaltyAccount?.id) {
+            loyaltyId = enrollResponse.result.loyaltyAccount.id;
+          }
         }
+      } catch (error) {
+        console.error('Error enrolling customer in loyalty:', error);
+        // Don't throw - we still want to return the customer even if loyalty enrollment fails
       }
 
-      // After creating the customer, enroll them in loyalty
-      const loyaltyAccount = await enrollCustomerInLoyalty(customerResponse.result.customer.id);
-
-      // Update response to include loyalty information
+      // Return the created customer info
       res.status(201).json({
         id: customerResponse.result.customer.id,
         name,
         email,
-        loyaltyId: loyaltyAccount?.id
+        loyaltyId
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
