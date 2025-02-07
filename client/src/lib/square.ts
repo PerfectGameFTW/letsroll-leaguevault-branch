@@ -58,9 +58,48 @@ export async function initializeDigitalWallets(amount: number) {
   return null;
 }
 
-export async function createPayment(amount: number) {
+export async function getStoredCards(customerId: string) {
+  try {
+    const response = await fetch(`/api/square/customers/${customerId}/cards`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch stored cards');
+    }
+    return await response.json();
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('An unexpected error occurred while fetching stored cards');
+  }
+}
+
+export async function createPayment(amount: number, customerId?: string, cardId?: string) {
   try {
     const payments = await initializeSquare();
+    
+    if (cardId && customerId) {
+      // Use stored card
+      const response = await fetch('/api/payments/process', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customerId,
+          sourceId: cardId,
+          amount,
+          locationId: import.meta.env.VITE_SQUARE_LOCATION_ID,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Payment processing failed');
+      }
+
+      return await response.json();
+    }
+    
+    // Otherwise use new card
     const card = await payments.card();
     await card.attach('#card-container');
 

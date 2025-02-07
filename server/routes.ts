@@ -564,13 +564,50 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  app.get("/api/square/customers/:customerId/cards", async (req, res) => {
+    try {
+      if (!squareClient) {
+        throw new Error("Square access token not configured");
+      }
+
+      const { customerId } = req.params;
+      const response = await squareClient.customersApi.listCustomerCards(customerId);
+      res.json(response.result.cards || []);
+    } catch (error) {
+      console.error('Error fetching stored cards:', error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Failed to fetch stored cards"
+      });
+    }
+  });
+
   app.post("/api/payments/process", async (req, res) => {
     try {
-      const { sourceId, amount, locationId } = req.body;
+      const { sourceId, amount, locationId, customerId } = req.body;
 
-      // TODO: Replace with actual Square API call once credentials are configured
-      // For now, simulate a successful payment for testing
-      const squarePayment = {
+      if (!squareClient) {
+        throw new Error("Square access token not configured");
+      }
+
+      const payment = await squareClient.paymentsApi.createPayment({
+        sourceId,
+        customerId,
+        amountMoney: {
+          amount,
+          currency: 'USD'
+        },
+        locationId,
+        idempotencyKey: `${Date.now()}-${Math.random()}`
+      });
+
+      res.json(payment.result.payment);
+    } catch (error) {
+      console.error('Payment processing error:', error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Payment processing failed"
+      });
+    }
+  });
         id: `sandbox_${Date.now()}`,
         status: "paid",
         amount: amount,
