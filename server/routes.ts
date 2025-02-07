@@ -296,64 +296,16 @@ export function registerRoutes(app: Express): Server {
         throw new Error('Failed to create Square customer');
       }
 
-      // Try to create a segment for the league
-      let segmentId;
-      try {
-        const segmentResponse = await squareClient.customerSegmentsApi.createCustomerSegment({
-          segment: {
-            name: league.name
-          }
-        });
-        segmentId = segmentResponse.result.segment?.id;
-      } catch (error) {
-        console.error('Error creating customer segment:', error);
-        // If segment creation fails, try to find existing segment
-        const segmentsResponse = await squareClient.customerSegmentsApi.listCustomerSegments();
-        const existingSegment = segmentsResponse.result.segments?.find(
-          segment => segment.name === league.name
-        );
-        if (existingSegment) {
-          segmentId = existingSegment.id;
-        }
-      }
-
-      // Enroll in loyalty program if available
-      let loyaltyId = null;
-      try {
-        const programResponse = await squareClient.loyaltyApi.listLoyaltyPrograms();
-        const program = programResponse.result.programs?.[0];
-
-        if (program?.id) {
-          const enrollResponse = await squareClient.loyaltyApi.createLoyaltyAccount({
-            loyaltyAccount: {
-              programId: program.id,
-              mapping: {
-                phoneNumber: "+0000000000" // Placeholder
-              }
-            },
-            idempotencyKey: `enroll-${customerResponse.result.customer.id}-${Date.now()}`
-          });
-
-          if (enrollResponse.result.loyaltyAccount?.id) {
-            loyaltyId = enrollResponse.result.loyaltyAccount.id;
-          }
-        }
-      } catch (error) {
-        console.error('Error enrolling customer in loyalty:', error);
-      }
-
       // Return the created customer info
       res.status(201).json({
         id: customerResponse.result.customer.id,
         name,
-        email,
-        loyaltyId,
-        segmentId
+        email
       });
     } catch (error) {
       console.error('Square customer creation error:', error);
       res.status(500).json({ 
-        message: error instanceof Error ? error.message : "Failed to create Square customer",
+        message: error instanceof Error ? error.message : "Internal server error",
         details: error instanceof Error ? error.stack : undefined
       });
     }
