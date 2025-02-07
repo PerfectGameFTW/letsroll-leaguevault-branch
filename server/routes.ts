@@ -608,27 +608,6 @@ export function registerRoutes(app: Express): Server {
       });
     }
   });
-        id: `sandbox_${Date.now()}`,
-        status: "paid",
-        amount: amount,
-        card: {
-          last4: "1111",
-          brand: "VISA"
-        }
-      };
-
-      res.json({
-        id: squarePayment.id,
-        status: squarePayment.status,
-        card: squarePayment.card
-      });
-    } catch (error) {
-      console.error('Payment processing error:', error);
-      res.status(500).json({
-        message: error instanceof Error ? error.message : "Payment processing failed"
-      });
-    }
-  });
 
   app.patch("/api/payments/:id/status", async (req, res) => {
     try {
