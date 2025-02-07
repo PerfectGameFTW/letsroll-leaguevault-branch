@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bowler, type BowlerLeague } from "@shared/schema";
+import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bowler, type BowlerLeague, type BowlerTeam } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, X } from "lucide-react";
@@ -43,6 +43,7 @@ interface BowlerFormProps {
 export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormProps) {
   const { toast } = useToast();
   const [selectedLeagueIds, setSelectedLeagueIds] = useState<number[]>([]);
+  const [teamAssignments, setTeamAssignments] = useState<Map<number, number>>(new Map());
 
   // Query for leagues
   const { data: leagues } = useQuery<League[]>({
@@ -55,15 +56,28 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     enabled: !!bowler?.id,
   });
 
+  // Query for bowler's teams if editing
+  const { data: bowlerTeams } = useQuery<BowlerTeam[]>({
+    queryKey: [`/api/bowlers/${bowler?.id}/teams`],
+    enabled: !!bowler?.id,
+  });
+
   // Query for teams filtered by selected leagues
-  const { data: teams } = useQuery<Team[]>({
+  const { data: teamsMap } = useQuery<{ [leagueId: number]: Team[] }>({
     queryKey: ["/api/teams", ...selectedLeagueIds],
-    queryFn: () =>
-      selectedLeagueIds.length > 0
-        ? Promise.all(selectedLeagueIds.map(leagueId =>
-            fetch(`/api/teams?leagueId=${leagueId}`).then(res => res.json())
-          )).then(responses => responses.flat())
-        : Promise.resolve([]),
+    queryFn: async () => {
+      if (selectedLeagueIds.length === 0) return {};
+
+      const leagueTeams = await Promise.all(
+        selectedLeagueIds.map(leagueId =>
+          fetch(`/api/teams?leagueId=${leagueId}`)
+            .then(res => res.json())
+            .then(teams => ({ [leagueId]: teams }))
+        )
+      );
+
+      return Object.assign({}, ...leagueTeams);
+    },
     enabled: selectedLeagueIds.length > 0,
   });
 
@@ -73,13 +87,13 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       name: bowler.name,
       email: bowler.email,
       active: bowler.active,
-      teamId: bowler.teamId ?? undefined,
+      teamAssignments: [],
       leagueIds: [],
     } : {
       name: "",
       email: "",
       active: true,
-      teamId: defaultTeamId,
+      teamAssignments: [],
       leagueIds: [],
     },
   });
@@ -87,15 +101,25 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
   // Initialize or reset form when dialog opens/closes
   useEffect(() => {
     if (open) {
-      if (bowler && bowlerLeagues) {
-        // When editing, set the league IDs from bowlerLeagues
+      if (bowler && bowlerLeagues && bowlerTeams) {
+        // When editing, set the league IDs and team assignments from existing data
         const leagueIds = bowlerLeagues.map(bl => bl.leagueId);
         setSelectedLeagueIds(leagueIds);
+
+        const assignments = new Map<number, number>();
+        bowlerTeams.forEach(bt => {
+          assignments.set(bt.leagueId, bt.teamId);
+        });
+        setTeamAssignments(assignments);
+
         form.reset({
           name: bowler.name,
           email: bowler.email,
           active: bowler.active,
-          teamId: bowler.teamId ?? undefined,
+          teamAssignments: bowlerTeams.map(bt => ({
+            leagueId: bt.leagueId,
+            teamId: bt.teamId,
+          })),
           leagueIds,
         });
       }
@@ -105,15 +129,22 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
         name: "",
         email: "",
         active: true,
-        teamId: defaultTeamId,
+        teamAssignments: [],
         leagueIds: [],
       });
       setSelectedLeagueIds([]);
+      setTeamAssignments(new Map());
     }
-  }, [open, bowler, bowlerLeagues, form, defaultTeamId]);
+  }, [open, bowler, bowlerLeagues, bowlerTeams, form]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
+      // Convert teamAssignments Map to array format expected by API
+      data.teamAssignments = Array.from(teamAssignments.entries()).map(([leagueId, teamId]) => ({
+        leagueId,
+        teamId,
+      }));
+
       if (bowler) {
         // Update existing bowler
         const response = await apiRequest("PATCH", `/api/bowlers/${bowler.id}`, data);
@@ -124,12 +155,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
         return await response.json();
       } else {
         // Create new bowler
-        // Only create Square customer if teamId is provided
-        if (data.teamId) {
-          const squareCustomer = await createSquareCustomer(data.name, data.email, data.teamId);
-          data.squareCustomerId = squareCustomer.id;
-        }
-
         const response = await apiRequest("POST", "/api/bowlers", data);
         if (!response.ok) {
           const error = await response.text();
@@ -163,8 +188,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       const newIds = [...selectedLeagueIds, id];
       setSelectedLeagueIds(newIds);
       form.setValue('leagueIds', newIds);
-      // Reset team selection when leagues change
-      form.setValue('teamId', undefined);
     }
   };
 
@@ -172,8 +195,21 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     const newIds = selectedLeagueIds.filter(id => id !== leagueId);
     setSelectedLeagueIds(newIds);
     form.setValue('leagueIds', newIds);
-    // Reset team selection when leagues change
-    form.setValue('teamId', undefined);
+
+    // Also remove any team assignment for this league
+    const newAssignments = new Map(teamAssignments);
+    newAssignments.delete(leagueId);
+    setTeamAssignments(newAssignments);
+  };
+
+  const handleTeamAssignment = (leagueId: number, teamId: string | undefined) => {
+    const newAssignments = new Map(teamAssignments);
+    if (teamId) {
+      newAssignments.set(leagueId, parseInt(teamId));
+    } else {
+      newAssignments.delete(leagueId);
+    }
+    setTeamAssignments(newAssignments);
   };
 
   // Get the available leagues (not currently selected)
@@ -237,18 +273,45 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                   <div className="space-y-2">
                     <div className="text-sm font-medium text-muted-foreground">Current Leagues</div>
                     {currentLeagues.length > 0 ? (
-                      <div className="space-y-2">
+                      <div className="space-y-4">
                         {currentLeagues.map((league) => (
-                          <div key={league.id} className="flex items-center justify-between p-2 border rounded-md">
-                            <span>{league.name}</span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveLeague(league.id)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
+                          <div key={league.id} className="space-y-2">
+                            <div className="flex items-center justify-between p-2 border rounded-md">
+                              <span>{league.name}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveLeague(league.id)}
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            </div>
+
+                            {/* Team selection for this league */}
+                            <div className="pl-4">
+                              <div className="text-sm font-medium text-muted-foreground mb-1">
+                                Team for {league.name}
+                              </div>
+                              <Select
+                                value={teamAssignments.get(league.id)?.toString()}
+                                onValueChange={(value) => handleTeamAssignment(league.id, value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select a team" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {teamsMap?.[league.id]?.map((team) => (
+                                    <SelectItem
+                                      key={team.id}
+                                      value={team.id.toString()}
+                                    >
+                                      {team.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -279,38 +342,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                       </Select>
                     </div>
                   )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="teamId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Team (Optional)</FormLabel>
-                  <Select
-                    onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)}
-                    value={field.value?.toString() || ""}
-                    disabled={selectedLeagueIds.length === 0}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder={selectedLeagueIds.length > 0 ? "Select a team" : "Please select leagues first"} />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {teams?.map((team) => (
-                        <SelectItem
-                          key={team.id}
-                          value={team.id.toString()}
-                        >
-                          {team.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
