@@ -13,6 +13,14 @@ if (process.env.SQUARE_ACCESS_TOKEN) {
   });
 }
 
+// Add custom serializer for BigInt values
+const customJSONReplacer = (key: string, value: any) => {
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+  return value;
+};
+
 export function registerRoutes(app: Express): Server {
   // Leagues
   app.get("/api/leagues", async (_req, res) => {
@@ -323,14 +331,14 @@ export function registerRoutes(app: Express): Server {
         }
       });
 
-      console.log('Search response:', JSON.stringify(searchResponse.result, null, 2));
+      console.log('Search response:', JSON.stringify(searchResponse.result, customJSONReplacer, 2));
 
       let customerId: string;
 
       // If customer exists, use their ID
       if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
         const existingCustomer = searchResponse.result.customers[0];
-        console.log('Found existing customer:', existingCustomer);
+        console.log('Found existing customer:', JSON.stringify(existingCustomer, customJSONReplacer, 2));
         customerId = existingCustomer.id;
 
         // Update customer details if needed
