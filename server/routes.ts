@@ -9,7 +9,7 @@ let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
   squareClient = new Client({
     accessToken: process.env.SQUARE_ACCESS_TOKEN,
-    environment: 'sandbox' as const, // Type assertion to fix the environment type error
+    environment: 'sandbox' as const,
   });
 }
 
@@ -266,55 +266,53 @@ export function registerRoutes(app: Express): Server {
       const { name, email, teamId } = z.object({
         name: z.string(),
         email: z.string().email(),
-        teamId: z.number(),
+        teamId: z.number().optional(),
       }).parse(req.body);
 
       if (!squareClient) {
         throw new Error("Square access token not configured");
       }
 
-      // Get the team and league information
-      const team = await storage.getTeam(teamId);
-      if (!team) {
-        throw new Error("Team not found");
-      }
+      // Only proceed with group management if teamId is provided
+      let groupId: string | undefined;
 
-      const league = await storage.getLeague(team.leagueId);
-      if (!league) {
-        throw new Error("League not found");
-      }
+      if (teamId) {
+        // Get the team and league information
+        const team = await storage.getTeam(teamId);
+        if (!team) {
+          throw new Error("Team not found");
+        }
 
-      // First create or get the league group
-      let groupId;
-      try {
-        // Try to create the group first
-        const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
-          idempotencyKey: `league-${league.id}`,
-          group: {
-            name: league.name,
-          },
-        });
-        groupId = groupResponse.result.group?.id;
-      } catch (error) {
-        if (error instanceof ApiError && error.statusCode === 400) {
-          // Group might already exist, try to find it
-          const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
-          const existingGroup = groupsResponse.result.groups?.find(
-            (g) => g.name === league.name
-          );
-          if (existingGroup) {
-            groupId = existingGroup.id;
-          }
+        const league = await storage.getLeague(team.leagueId);
+        if (!league) {
+          throw new Error("League not found");
+        }
+
+        // First try to find if the league group already exists
+        const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+        const existingGroup = groupsResponse.result.groups?.find(
+          (g) => g.name === league.name
+        );
+
+        if (existingGroup) {
+          groupId = existingGroup.id;
         } else {
-          throw error;
+          // Create new group if it doesn't exist
+          const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+            idempotencyKey: `league-${league.id}`,
+            group: {
+              name: league.name,
+            },
+          });
+          groupId = groupResponse.result.group?.id;
+        }
+
+        if (!groupId) {
+          throw new Error("Failed to create or find league group");
         }
       }
 
-      if (!groupId) {
-        throw new Error("Failed to create or find league group");
-      }
-
-      // Now create the customer
+      // Create the customer
       const customerResponse = await squareClient.customersApi.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
         givenName: name.split(' ')[0],
@@ -326,10 +324,18 @@ export function registerRoutes(app: Express): Server {
         throw new Error('Failed to create Square customer');
       }
 
-      // Add the customer to the group using the correct method
-      await squareClient.customerGroupsApi.addCustomerToGroup(groupId, {
-        customerId: customerResponse.result.customer.id,
-      });
+      // Only add to group if we have both groupId and customer
+      if (groupId) {
+        try {
+          await squareClient.customerGroupsApi.addGroupToCustomer(
+            customerResponse.result.customer.id,
+            groupId
+          );
+        } catch (groupError) {
+          console.error('Error adding customer to group:', groupError);
+          // Don't throw here, as the customer was still created successfully
+        }
+      }
 
       res.status(201).json({
         id: customerResponse.result.customer.id,
@@ -341,7 +347,9 @@ export function registerRoutes(app: Express): Server {
         res.status(400).json(error.issues);
       } else {
         console.error('Square customer creation error:', error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to create Square customer" });
+        res.status(500).json({ 
+          message: error instanceof Error ? error.message : "Failed to create Square customer" 
+        });
       }
     }
   });
