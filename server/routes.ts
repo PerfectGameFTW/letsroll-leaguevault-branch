@@ -268,9 +268,9 @@ export function registerRoutes(app: Express): Server {
       }
 
       const { name, email, teamId } = z.object({
-        name: z.string(),
-        email: z.string().email(),
-        teamId: z.number(),
+        name: z.string().min(1, "Name is required"),
+        email: z.string().email("Valid email is required"),
+        teamId: z.number().optional(),
       }).parse(req.body);
 
       console.log('Creating Square customer with:', { name, email, teamId });
