@@ -3,13 +3,13 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema } from "@shared/schema";
 import { z } from "zod";
-import { ApiError, Client, customerGroupsApi, customersApi } from 'square'; // Added imports
+import { ApiError, Client, Environment } from 'square';
 
 let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
   squareClient = new Client({
     accessToken: process.env.SQUARE_ACCESS_TOKEN,
-    environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
+    environment: (process.env.NODE_ENV === 'production' ? Environment.Production : Environment.Sandbox)
   });
 }
 
@@ -288,7 +288,7 @@ export function registerRoutes(app: Express): Server {
       let groupId;
       try {
         // Try to create the group first
-        const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+        const groupResponse = await squareClient.customerGroups.createCustomerGroup({
           idempotencyKey: `league-${league.id}`,
           group: {
             name: league.name,
@@ -298,7 +298,7 @@ export function registerRoutes(app: Express): Server {
       } catch (error) {
         if (error instanceof ApiError && error.statusCode === 400) {
           // Group might already exist, try to find it
-          const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+          const groupsResponse = await squareClient.customerGroups.listCustomerGroups();
           const existingGroup = groupsResponse.result.groups?.find(
             (group) => group.name === league.name
           );
@@ -315,7 +315,7 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Now create the customer
-      const customerResponse = await squareClient.customersApi.createCustomer({
+      const customerResponse = await squareClient.customers.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
@@ -326,11 +326,11 @@ export function registerRoutes(app: Express): Server {
         throw new Error('Failed to create Square customer');
       }
 
-      // Add the customer to the group
-      await squareClient.customerGroupsApi.addGroupToCustomer(
-        customerResponse.result.customer.id,
-        groupId
-      );
+      // Add the customer to the group using createCustomerGroupMembership
+      await squareClient.customerGroups.createCustomerGroupMembership({
+        customerId: customerResponse.result.customer.id,
+        groupId: groupId,
+      });
 
       // Enroll in loyalty program
       let loyaltyId = null;
