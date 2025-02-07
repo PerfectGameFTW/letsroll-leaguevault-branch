@@ -324,10 +324,18 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Add customer to the group
-      await squareClient.customerGroupsApi.addGroupToCustomer(
-        customerResponse.result.customer.id,
-        groupId
-      );
+      try {
+        await squareClient.customerGroupsApi.createCustomerGroupMembership({
+          idempotencyKey: `membership-${customerResponse.result.customer.id}-${groupId}`,
+          customerGroupMembership: {
+            customerId: customerResponse.result.customer.id,
+            groupId: groupId
+          }
+        });
+      } catch (error) {
+        console.error('Error adding customer to group:', error);
+        // Don't throw - we still want to return the customer even if group membership fails
+      }
 
       // Enroll in loyalty program
       let loyaltyId = null;
