@@ -164,7 +164,12 @@ export default function BowlerViewPage() {
         </Link>
         <div className="flex flex-col gap-4 mb-6">
           <div className="space-y-1">
-            <h1 className="text-2xl font-bold">{bowler.name}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold">{bowler.name}</h1>
+              <Badge variant={bowler.active ? "default" : "secondary"}>
+                {bowler.active ? "Active" : "Inactive"}
+              </Badge>
+            </div>
           </div>
           <div className="flex flex-col gap-2">
             <div className="font-medium">
@@ -173,9 +178,6 @@ export default function BowlerViewPage() {
             <div className="font-medium text-muted-foreground">
               {team?.name || "No Team"}
             </div>
-            <Badge variant={bowler.active ? "default" : "secondary"}>
-              {bowler.active ? "Active" : "Inactive"}
-            </Badge>
           </div>
         </div>
 
