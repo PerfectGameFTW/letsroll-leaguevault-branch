@@ -9,7 +9,7 @@ let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
   squareClient = new Client({
     accessToken: process.env.SQUARE_ACCESS_TOKEN,
-    environment: 'sandbox', // or 'production' for live
+    environment: 'sandbox' as const, // Type assertion to fix the environment type error
   });
 }
 
@@ -326,14 +326,11 @@ export function registerRoutes(app: Express): Server {
         throw new Error('Failed to create Square customer');
       }
 
-      // Add the customer to the group
-      await squareClient.customerGroupsApi.createCustomerGroupMembership({
-        idempotencyKey: `membership-${customerResponse.result.customer.id}-${groupId}`,
-        membership: {
-          customerId: customerResponse.result.customer.id,
-          groupId: groupId,
-        },
-      });
+      // Add the customer to the group using the correct method
+      await squareClient.customerGroupsApi.addGroupToCustomer(
+        customerResponse.result.customer.id,
+        groupId
+      );
 
       res.status(201).json({
         id: customerResponse.result.customer.id,
