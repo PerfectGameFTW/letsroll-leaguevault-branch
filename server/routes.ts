@@ -273,7 +273,7 @@ export function registerRoutes(app: Express): Server {
         teamId: z.number(),
       }).parse(req.body);
 
-      console.log('Creating Square customer with:', { name, email });
+      console.log('Creating Square customer with:', { name, email, teamId });
 
       try {
         const customerResponse = await squareClient.customersApi.createCustomer({
@@ -289,12 +289,21 @@ export function registerRoutes(app: Express): Server {
 
         console.log('Successfully created Square customer:', customerResponse.result.customer);
 
-        const bowler = await storage.createBowler({
+        const bowlerData = {
           name,
           email,
           teamId,
           squareCustomerId: customerResponse.result.customer.id,
-        });
+          order: 0
+        };
+
+        console.log('Creating bowler with data:', bowlerData);
+
+        const bowler = await storage.createBowler(bowlerData);
+
+        if (!bowler) {
+          throw new Error('Failed to create bowler after Square customer creation');
+        }
 
         res.status(201).json(bowler);
       } catch (squareError) {
@@ -308,11 +317,15 @@ export function registerRoutes(app: Express): Server {
     } catch (error) {
       console.error('Request processing error:', {
         error,
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
+        message: error instanceof Error ? error.message : 'Unknown error'
       });
 
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ message: "Invalid input", errors: error.issues });
+        return res.status(400).json({ 
+          message: "Invalid input", 
+          errors: error.issues 
+        });
       }
 
       res.status(500).json({ 
