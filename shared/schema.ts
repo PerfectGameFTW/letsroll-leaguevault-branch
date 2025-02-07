@@ -99,6 +99,7 @@ export const insertBowlerSchema = createInsertSchema(bowlers).extend({
   teamId: z.number().min(1, "Team selection is required").optional(),
   leagueId: z.number().min(1, "League selection is required").optional(),
   order: z.number().optional(),
+  squareCustomerId: z.string().optional(),
 });
 export const insertPaymentSchema = createInsertSchema(payments);
 
