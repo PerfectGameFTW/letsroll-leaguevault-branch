@@ -26,10 +26,10 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bowler } from "@shared/schema";
+import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bowler, type BowlerLeague } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { createSquareCustomer } from "@/lib/square";
 import { useState, useEffect } from "react";
 
@@ -42,21 +42,29 @@ interface BowlerFormProps {
 
 export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormProps) {
   const { toast } = useToast();
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(bowler?.leagueId || null);
+  const [selectedLeagueIds, setSelectedLeagueIds] = useState<number[]>([]);
 
   // Query for leagues
   const { data: leagues } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
   });
 
-  // Query for teams filtered by selected league
+  // Query for bowler's leagues if editing
+  const { data: bowlerLeagues } = useQuery<BowlerLeague[]>({
+    queryKey: [`/api/bowlers/${bowler?.id}/leagues`],
+    enabled: !!bowler?.id,
+  });
+
+  // Query for teams filtered by selected leagues
   const { data: teams } = useQuery<Team[]>({
-    queryKey: ["/api/teams", selectedLeagueId],
+    queryKey: ["/api/teams", ...selectedLeagueIds],
     queryFn: () =>
-      selectedLeagueId
-        ? fetch(`/api/teams?leagueId=${selectedLeagueId}`).then((res) => res.json())
+      selectedLeagueIds.length > 0
+        ? Promise.all(selectedLeagueIds.map(leagueId =>
+            fetch(`/api/teams?leagueId=${leagueId}`).then(res => res.json())
+          )).then(responses => responses.flat())
         : Promise.resolve([]),
-    enabled: !!selectedLeagueId,
+    enabled: selectedLeagueIds.length > 0,
   });
 
   const form = useForm<InsertBowler>({
@@ -66,38 +74,43 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       email: bowler.email,
       active: bowler.active,
       teamId: bowler.teamId ?? undefined,
-      leagueId: bowler.leagueId,
+      leagueIds: [],
     } : {
       name: "",
       email: "",
       active: true,
       teamId: defaultTeamId,
+      leagueIds: [],
     },
   });
 
   // Initialize or reset form when dialog opens/closes
   useEffect(() => {
-    if (open && bowler) {
-      // When editing, set the league ID and form values
-      setSelectedLeagueId(bowler.leagueId || null);
-      form.reset({
-        name: bowler.name,
-        email: bowler.email,
-        active: bowler.active,
-        teamId: bowler.teamId ?? undefined,
-        leagueId: bowler.leagueId,
-      });
-    } else if (!open) {
+    if (open) {
+      if (bowler && bowlerLeagues) {
+        // When editing, set the league IDs from bowlerLeagues
+        const leagueIds = bowlerLeagues.map(bl => bl.leagueId);
+        setSelectedLeagueIds(leagueIds);
+        form.reset({
+          name: bowler.name,
+          email: bowler.email,
+          active: bowler.active,
+          teamId: bowler.teamId ?? undefined,
+          leagueIds,
+        });
+      }
+    } else {
       // When closing, reset everything
       form.reset({
         name: "",
         email: "",
         active: true,
         teamId: defaultTeamId,
+        leagueIds: [],
       });
-      setSelectedLeagueId(null);
+      setSelectedLeagueIds([]);
     }
-  }, [open, bowler, form, defaultTeamId]);
+  }, [open, bowler, bowlerLeagues, form, defaultTeamId]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
@@ -144,31 +157,15 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      if (!bowler) return;
-      const response = await apiRequest("DELETE", `/api/bowlers/${bowler.id}`);
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
-      toast({
-        title: "Bowler deleted",
-        description: "The bowler has been removed from the system.",
-      });
-      onClose();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error deleting bowler",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
+  const handleLeagueSelection = (leagueId: number) => {
+    const newIds = selectedLeagueIds.includes(leagueId)
+      ? selectedLeagueIds.filter(id => id !== leagueId)
+      : [...selectedLeagueIds, leagueId];
+    setSelectedLeagueIds(newIds);
+    form.setValue('leagueIds', newIds);
+    // Reset team selection when leagues change
+    form.setValue('teamId', undefined);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -212,38 +209,26 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
 
             <FormField
               control={form.control}
-              name="leagueId"
-              render={({ field }) => (
+              name="leagueIds"
+              render={() => (
                 <FormItem>
-                  <FormLabel>League (Optional)</FormLabel>
-                  <Select
-                    onValueChange={(value) => {
-                      const leagueId = value ? parseInt(value) : undefined;
-                      setSelectedLeagueId(leagueId ?? null);
-                      field.onChange(leagueId);
-                      // Reset team selection when league changes
-                      if (field.value !== leagueId) {
-                        form.setValue("teamId", undefined);
-                      }
-                    }}
-                    value={field.value?.toString() || ""}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a league" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {leagues?.map((league) => (
-                        <SelectItem
-                          key={league.id}
-                          value={league.id.toString()}
-                        >
-                          {league.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FormLabel>Leagues</FormLabel>
+                  <div className="flex flex-wrap gap-2">
+                    {leagues?.map((league) => (
+                      <Button
+                        key={league.id}
+                        type="button"
+                        size="sm"
+                        variant={selectedLeagueIds.includes(league.id) ? "default" : "outline"}
+                        onClick={() => handleLeagueSelection(league.id)}
+                      >
+                        {league.name}
+                        {selectedLeagueIds.includes(league.id) && (
+                          <X className="ml-2 h-4 w-4" />
+                        )}
+                      </Button>
+                    ))}
+                  </div>
                   <FormMessage />
                 </FormItem>
               )}
@@ -258,11 +243,11 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                   <Select
                     onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)}
                     value={field.value?.toString() || ""}
-                    disabled={!selectedLeagueId}
+                    disabled={selectedLeagueIds.length === 0}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder={selectedLeagueId ? "Select a team" : "Please select a league first"} />
+                        <SelectValue placeholder={selectedLeagueIds.length > 0 ? "Select a team" : "Please select leagues first"} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -280,7 +265,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                 </FormItem>
               )}
             />
-
 
             <FormField
               control={form.control}
@@ -323,12 +307,26 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                   <Button
                     type="button"
                     variant="destructive"
-                    onClick={() => deleteMutation.mutate()}
-                    disabled={deleteMutation.isPending}
+                    onClick={() => {
+                      if (window.confirm("Are you sure you want to delete this bowler?")) {
+                        // Delete bowler
+                        apiRequest("DELETE", `/api/bowlers/${bowler.id}`).then(() => {
+                          queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
+                          toast({
+                            title: "Bowler deleted",
+                            description: "The bowler has been removed from the system.",
+                          });
+                          onClose();
+                        }).catch((error) => {
+                          toast({
+                            title: "Error deleting bowler",
+                            description: error.message,
+                            variant: "destructive",
+                          });
+                        });
+                      }
+                    }}
                   >
-                    {deleteMutation.isPending && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
                     Delete Bowler
                   </Button>
                 </div>

@@ -204,12 +204,6 @@ export function registerRoutes(app: Express): Server {
         });
       }
 
-      // If order is not provided, set it to the next available order number
-      if (bowler.teamId && !bowler.order) {
-        const teamBowlers = await storage.getBowlers(bowler.teamId);
-        bowler.order = teamBowlers.length;
-      }
-
       // Create bowler in database
       const created = await storage.createBowler(bowler);
 
@@ -256,11 +250,10 @@ export function registerRoutes(app: Express): Server {
             squareCustomerId = customerResponse.result.customer.id;
           }
 
-          // If bowler has a team, handle league group assignment
-          if (bowler.teamId) {
-            const team = await storage.getTeam(bowler.teamId);
-            if (team) {
-              const league = await storage.getLeague(team.leagueId);
+          // If bowler has leagues, handle league group assignments
+          if (bowler.leagueIds && bowler.leagueIds.length > 0) {
+            for (const leagueId of bowler.leagueIds) {
+              const league = await storage.getLeague(leagueId);
               if (league) {
                 // Find or create league group
                 const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
@@ -382,6 +375,40 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // Add endpoints for managing bowler league associations
+  app.post("/api/bowlers/:bowlerId/leagues/:leagueId", async (req, res) => {
+    try {
+      const bowlerId = parseInt(req.params.bowlerId);
+      const leagueId = parseInt(req.params.leagueId);
+      const created = await storage.addBowlerToLeague(bowlerId, leagueId);
+      res.status(201).json(created);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/bowlers/:bowlerId/leagues/:leagueId", async (req, res) => {
+    try {
+      const bowlerId = parseInt(req.params.bowlerId);
+      const leagueId = parseInt(req.params.leagueId);
+      await storage.removeBowlerFromLeague(bowlerId, leagueId);
+      res.sendStatus(204);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/bowlers/:bowlerId/leagues", async (req, res) => {
+    try {
+      const bowlerId = parseInt(req.params.bowlerId);
+      const bowlerLeagues = await storage.getBowlerLeagues(bowlerId);
+      res.json(bowlerLeagues);
+    } catch (error) {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
 
   // Square Integration
   app.post("/api/square/customers", async (req, res) => {

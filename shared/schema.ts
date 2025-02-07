@@ -19,7 +19,7 @@ export const leagues = pgTable("leagues", {
   weekDay: text("week_day"),
   practiceStartTime: text("practice_start_time"),
   competitionStartTime: text("competition_start_time"),
-  weeklyFee: integer("weekly_fee").notNull().default(2000), // Adding weekly fee to leagues
+  weeklyFee: integer("weekly_fee").notNull().default(2000),
 });
 
 export const teams = pgTable("teams", {
@@ -38,7 +38,14 @@ export const bowlers = pgTable("bowlers", {
   active: boolean("active").notNull().default(true),
   squareCustomerId: text("square_customer_id"),
   order: integer("order").notNull().default(0),
-  // Removing weeklyFee from bowlers as it's now in leagues
+});
+
+// New junction table for bowler-league relationship
+export const bowlerLeagues = pgTable("bowler_leagues", {
+  id: serial("id").primaryKey(),
+  bowlerId: integer("bowler_id").notNull().references(() => bowlers.id),
+  leagueId: integer("league_id").notNull().references(() => leagues.id),
+  active: boolean("active").notNull().default(true),
 });
 
 export const payments = pgTable("payments", {
@@ -54,6 +61,7 @@ export const payments = pgTable("payments", {
 
 export const leagueRelations = relations(leagues, ({ many }) => ({
   teams: many(teams),
+  bowlerLeagues: many(bowlerLeagues),
   payments: many(payments),
 }));
 
@@ -70,7 +78,19 @@ export const bowlerRelations = relations(bowlers, ({ one, many }) => ({
     fields: [bowlers.teamId],
     references: [teams.id],
   }),
+  bowlerLeagues: many(bowlerLeagues),
   payments: many(payments),
+}));
+
+export const bowlerLeagueRelations = relations(bowlerLeagues, ({ one }) => ({
+  bowler: one(bowlers, {
+    fields: [bowlerLeagues.bowlerId],
+    references: [bowlers.id],
+  }),
+  league: one(leagues, {
+    fields: [bowlerLeagues.leagueId],
+    references: [leagues.id],
+  }),
 }));
 
 export const paymentRelations = relations(payments, ({ one }) => ({
@@ -98,9 +118,10 @@ export const insertTeamSchema = createInsertSchema(teams).extend({
 });
 export const insertBowlerSchema = createInsertSchema(bowlers).extend({
   teamId: z.number().min(1, "Team selection is required").optional(),
-  leagueId: z.number().min(1, "League selection is required").optional(),
+  leagueIds: z.array(z.number()).optional(),
   order: z.number().optional(),
 });
+export const insertBowlerLeagueSchema = createInsertSchema(bowlerLeagues);
 export const insertPaymentSchema = createInsertSchema(payments);
 
 export type User = typeof users.$inferSelect;
@@ -114,6 +135,9 @@ export type InsertTeam = z.infer<typeof insertTeamSchema>;
 
 export type Bowler = typeof bowlers.$inferSelect;
 export type InsertBowler = z.infer<typeof insertBowlerSchema>;
+
+export type BowlerLeague = typeof bowlerLeagues.$inferSelect;
+export type InsertBowlerLeague = z.infer<typeof insertBowlerLeagueSchema>;
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;

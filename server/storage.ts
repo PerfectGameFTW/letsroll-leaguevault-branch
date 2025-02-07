@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, leagues, teams, bowlers, payments,
+  users, leagues, teams, bowlers, payments, bowlerLeagues,
   type User, type InsertUser,
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
+  type BowlerLeague, type InsertBowlerLeague,
   type Payment, type InsertPayment
 } from "@shared/schema";
 
@@ -35,6 +36,11 @@ export interface IStorage {
   createBowler(bowler: InsertBowler): Promise<Bowler>;
   updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler>;
   deleteBowler(id: number): Promise<void>;
+
+  // Bowler Leagues
+  getBowlerLeagues(bowlerId: number): Promise<BowlerLeague[]>;
+  addBowlerToLeague(bowlerId: number, leagueId: number): Promise<BowlerLeague>;
+  removeBowlerFromLeague(bowlerId: number, leagueId: number): Promise<void>;
 
   // Payments
   getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]>;
@@ -132,7 +138,18 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBowler(bowler: InsertBowler): Promise<Bowler> {
-    const [created] = await db.insert(bowlers).values(bowler).returning();
+    const { leagueIds, ...bowlerData } = bowler;
+    const [created] = await db.insert(bowlers).values(bowlerData).returning();
+
+    // Add bowler to leagues if specified
+    if (leagueIds && leagueIds.length > 0) {
+      await Promise.all(
+        leagueIds.map((leagueId) =>
+          this.addBowlerToLeague(created.id, leagueId)
+        )
+      );
+    }
+
     return created;
   }
 
@@ -147,6 +164,31 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBowler(id: number): Promise<void> {
     await db.delete(bowlers).where(eq(bowlers.id, id));
+  }
+
+  // Bowler Leagues
+  async getBowlerLeagues(bowlerId: number): Promise<BowlerLeague[]> {
+    return await db
+      .select()
+      .from(bowlerLeagues)
+      .where(eq(bowlerLeagues.bowlerId, bowlerId));
+  }
+
+  async addBowlerToLeague(bowlerId: number, leagueId: number): Promise<BowlerLeague> {
+    const [created] = await db
+      .insert(bowlerLeagues)
+      .values({ bowlerId, leagueId })
+      .returning();
+    return created;
+  }
+
+  async removeBowlerFromLeague(bowlerId: number, leagueId: number): Promise<void> {
+    await db
+      .delete(bowlerLeagues)
+      .where(
+        eq(bowlerLeagues.bowlerId, bowlerId) &&
+        eq(bowlerLeagues.leagueId, leagueId)
+      );
   }
 
   // Payments
