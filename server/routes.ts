@@ -273,37 +273,45 @@ export function registerRoutes(app: Express): Server {
         teamId: z.number(),
       }).parse(req.body);
 
-      // Get the team and league information
-      const team = await storage.getTeam(teamId);
-      if (!team) {
-        throw new Error("Team not found");
+      console.log('Creating Square customer with:', { name, email });
+
+      try {
+        const customerResponse = await squareClient.customersApi.createCustomer({
+          idempotencyKey: `${Date.now()}-${Math.random()}`,
+          givenName: name.split(' ')[0],
+          familyName: name.split(' ').slice(1).join(' ') || '',
+          emailAddress: email,
+        });
+
+        if (!customerResponse.result?.customer?.id) {
+          throw new Error('Failed to create Square customer: No customer ID returned');
+        }
+
+        console.log('Successfully created Square customer:', customerResponse.result.customer);
+
+        res.status(201).json({
+          id: customerResponse.result.customer.id,
+          name,
+          email
+        });
+      } catch (squareError) {
+        console.error('Square API Error:', {
+          error: squareError,
+          stack: squareError instanceof Error ? squareError.stack : undefined,
+          details: squareError instanceof ApiError ? squareError.errors : undefined
+        });
+        throw new Error(squareError instanceof Error ? squareError.message : 'Failed to create Square customer');
       }
-
-      const league = await storage.getLeague(team.leagueId);
-      if (!league) {
-        throw new Error("League not found");
-      }
-
-      // Create the customer first
-      const customerResponse = await squareClient.customersApi.createCustomer({
-        idempotencyKey: `${Date.now()}-${Math.random()}`,
-        givenName: name.split(' ')[0],
-        familyName: name.split(' ').slice(1).join(' ') || '',
-        emailAddress: email,
-      });
-
-      if (!customerResponse.result?.customer?.id) {
-        throw new Error('Failed to create Square customer');
-      }
-
-      // Return the created customer info
-      res.status(201).json({
-        id: customerResponse.result.customer.id,
-        name,
-        email
-      });
     } catch (error) {
-      console.error('Square customer creation error:', error);
+      console.error('Request processing error:', {
+        error,
+        stack: error instanceof Error ? error.stack : undefined
+      });
+
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid input", errors: error.issues });
+      }
+
       res.status(500).json({ 
         message: error instanceof Error ? error.message : "Internal server error",
         details: error instanceof Error ? error.stack : undefined
