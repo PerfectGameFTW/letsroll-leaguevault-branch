@@ -157,15 +157,34 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     },
   });
 
-  const handleLeagueSelection = (leagueId: number) => {
-    const newIds = selectedLeagueIds.includes(leagueId)
-      ? selectedLeagueIds.filter(id => id !== leagueId)
-      : [...selectedLeagueIds, leagueId];
+  const handleAddLeague = (leagueId: string) => {
+    const id = parseInt(leagueId);
+    if (!selectedLeagueIds.includes(id)) {
+      const newIds = [...selectedLeagueIds, id];
+      setSelectedLeagueIds(newIds);
+      form.setValue('leagueIds', newIds);
+      // Reset team selection when leagues change
+      form.setValue('teamId', undefined);
+    }
+  };
+
+  const handleRemoveLeague = (leagueId: number) => {
+    const newIds = selectedLeagueIds.filter(id => id !== leagueId);
     setSelectedLeagueIds(newIds);
     form.setValue('leagueIds', newIds);
     // Reset team selection when leagues change
     form.setValue('teamId', undefined);
   };
+
+  // Get the available leagues (not currently selected)
+  const availableLeagues = leagues?.filter(league => 
+    !selectedLeagueIds.includes(league.id)
+  ) || [];
+
+  // Get the current leagues
+  const currentLeagues = leagues?.filter(league =>
+    selectedLeagueIds.includes(league.id)
+  ) || [];
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -211,24 +230,55 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
               control={form.control}
               name="leagueIds"
               render={() => (
-                <FormItem>
-                  <FormLabel>Leagues</FormLabel>
-                  <div className="flex flex-wrap gap-2">
-                    {leagues?.map((league) => (
-                      <Button
-                        key={league.id}
-                        type="button"
-                        size="sm"
-                        variant={selectedLeagueIds.includes(league.id) ? "default" : "outline"}
-                        onClick={() => handleLeagueSelection(league.id)}
-                      >
-                        {league.name}
-                        {selectedLeagueIds.includes(league.id) && (
-                          <X className="ml-2 h-4 w-4" />
-                        )}
-                      </Button>
-                    ))}
+                <FormItem className="space-y-4">
+                  <FormLabel>League Memberships</FormLabel>
+
+                  {/* Current Leagues */}
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-muted-foreground">Current Leagues</div>
+                    {currentLeagues.length > 0 ? (
+                      <div className="space-y-2">
+                        {currentLeagues.map((league) => (
+                          <div key={league.id} className="flex items-center justify-between p-2 border rounded-md">
+                            <span>{league.name}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveLeague(league.id)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">
+                        No leagues selected
+                      </div>
+                    )}
                   </div>
+
+                  {/* Add League Dropdown */}
+                  {availableLeagues.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium text-muted-foreground">Add League</div>
+                      <Select onValueChange={handleAddLeague}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a league to add" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {availableLeagues.map((league) => (
+                            <SelectItem key={league.id} value={league.id.toString()}>
+                              {league.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
