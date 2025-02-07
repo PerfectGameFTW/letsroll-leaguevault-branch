@@ -128,6 +128,16 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
             onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
             className="space-y-4"
           >
+            <div id="apple-pay-container" className="mb-4"></div>
+            <div id="google-pay-container" className="mb-4"></div>
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">Or pay with card</span>
+              </div>
+            </div>
             <FormField
               control={form.control}
               name="bowlerId"

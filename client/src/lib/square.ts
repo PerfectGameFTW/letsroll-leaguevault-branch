@@ -22,6 +22,42 @@ export async function initializeSquare() {
   return payments;
 }
 
+export async function initializeDigitalWallets(amount: number) {
+  const payments = await initializeSquare();
+  
+  // Initialize Apple Pay if supported
+  if (window.ApplePaySession?.canMakePayments()) {
+    return await payments.applePay({
+      paymentRequest: {
+        countryCode: 'US',
+        currencyCode: 'USD',
+        total: {
+          amount: (amount / 100).toString(),
+          label: 'League Payment'
+        }
+      }
+    });
+  }
+  
+  // Initialize Google Pay if supported
+  const googlePay = await payments.googlePay({
+    paymentRequest: {
+      countryCode: 'US',
+      currencyCode: 'USD',
+      total: {
+        amount: (amount / 100).toString(),
+        label: 'League Payment'
+      }
+    }
+  });
+  
+  if (await googlePay.canPay()) {
+    return googlePay;
+  }
+  
+  return null;
+}
+
 export async function createPayment(amount: number) {
   try {
     const payments = await initializeSquare();
