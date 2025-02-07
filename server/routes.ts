@@ -289,11 +289,14 @@ export function registerRoutes(app: Express): Server {
 
         console.log('Successfully created Square customer:', customerResponse.result.customer);
 
-        res.status(201).json({
-          id: customerResponse.result.customer.id,
+        const bowler = await storage.createBowler({
           name,
-          email
+          email,
+          teamId,
+          squareCustomerId: customerResponse.result.customer.id,
         });
+
+        res.status(201).json(bowler);
       } catch (squareError) {
         console.error('Square API Error:', {
           error: squareError,
@@ -318,6 +321,7 @@ export function registerRoutes(app: Express): Server {
       });
     }
   });
+
 
   // Payments
   app.get("/api/payments", async (req, res) => {
@@ -392,28 +396,6 @@ export function registerRoutes(app: Express): Server {
       }
     }
   });
-
-  app.get("/api/bowlers/:id/loyalty", async (req, res) => {
-    try {
-      const bowlerId = parseInt(req.params.id);
-      const bowler = await storage.getBowler(bowlerId);
-
-      if (!bowler?.squareLoyaltyId || !squareClient) {
-        return res.json({ points: 0 });
-      }
-
-      const response = await squareClient.loyaltyApi.retrieveLoyaltyAccount(
-        bowler.squareLoyaltyId
-      );
-
-      const points = response.result.loyaltyAccount?.balance ?? 0;
-      res.json({ points });
-    } catch (error) {
-      console.error('Error fetching loyalty points:', error);
-      res.status(500).json({ message: "Failed to fetch loyalty points" });
-    }
-  });
-
 
   const httpServer = createServer(app);
   return httpServer;
