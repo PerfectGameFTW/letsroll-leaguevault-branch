@@ -96,8 +96,8 @@ export const insertTeamSchema = createInsertSchema(teams).extend({
   number: z.number().min(1, "Team number must be at least 1"),
 });
 export const insertBowlerSchema = createInsertSchema(bowlers).extend({
-  teamId: z.number().min(1, "Team selection is required").optional(),
-  leagueId: z.number().min(1, "League selection is required").optional(),
+  teamId: z.number().optional(),
+  leagueId: z.number().optional(),
   order: z.number().optional(),
   squareCustomerId: z.string().optional(),
 });
