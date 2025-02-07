@@ -317,24 +317,36 @@ export function registerRoutes(app: Express): Server {
         query: {
           filter: {
             emailAddress: {
-              exact: email
+              exact: email.toLowerCase()
             }
           }
         }
       });
 
+      console.log('Search response:', JSON.stringify(searchResponse.result, null, 2));
+
       let customerId: string;
 
       // If customer exists, use their ID
       if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
-        customerId = searchResponse.result.customers[0].id;
+        const existingCustomer = searchResponse.result.customers[0];
+        console.log('Found existing customer:', existingCustomer);
+        customerId = existingCustomer.id;
+
+        // Update customer details if needed
+        await squareClient.customersApi.updateCustomer(customerId, {
+          givenName: name.split(' ')[0],
+          familyName: name.split(' ').slice(1).join(' ') || '',
+          emailAddress: email.toLowerCase(),
+        });
       } else {
+        console.log('No existing customer found, creating new one');
         // Create new customer if none exists
         const customerResponse = await squareClient.customersApi.createCustomer({
           idempotencyKey: `${Date.now()}-${Math.random()}`,
           givenName: name.split(' ')[0],
           familyName: name.split(' ').slice(1).join(' ') || '',
-          emailAddress: email,
+          emailAddress: email.toLowerCase(),
         });
 
         if (!customerResponse.result?.customer?.id) {
