@@ -91,3 +91,43 @@ export function getSquareCustomerUrl(customerId: string) {
   // This URL format might need to be adjusted based on your Square account setup
   return `https://squareup.com/dashboard/customers/${customerId}`;
 }
+
+export async function enrollInLoyalty(customerId: string) {
+  try {
+    const response = await fetch('/api/square/loyalty/enroll', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ customerId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || 'Failed to enroll in loyalty program');
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('An unexpected error occurred while enrolling in loyalty program');
+  }
+}
+
+export async function getLoyaltyPoints(customerId: string) {
+  try {
+    const response = await fetch(`/api/square/loyalty/points/${customerId}`);
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(error || 'Failed to get loyalty points');
+    }
+    return await response.json();
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('An unexpected error occurred while getting loyalty points');
+  }
+}

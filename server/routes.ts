@@ -194,13 +194,13 @@ export function registerRoutes(app: Express): Server {
 
       // Check if bowler with this email already exists
       const existingBowlers = await storage.getBowlers();
-      const existingBowler = existingBowlers.find(b => 
+      const existingBowler = existingBowlers.find(b =>
         b.email.toLowerCase() === bowler.email.toLowerCase()
       );
 
       if (existingBowler) {
-        return res.status(400).json({ 
-          message: "A bowler with this email already exists" 
+        return res.status(400).json({
+          message: "A bowler with this email already exists"
         });
       }
 
@@ -293,8 +293,8 @@ export function registerRoutes(app: Express): Server {
           }
 
           // Update bowler with Square customer ID
-          await storage.updateBowler(created.id, { 
-            squareCustomerId 
+          await storage.updateBowler(created.id, {
+            squareCustomerId
           });
 
           // Get updated bowler with Square ID
@@ -315,8 +315,8 @@ export function registerRoutes(app: Express): Server {
         res.status(400).json(error.issues);
       } else {
         console.error('Error creating bowler:', error);
-        res.status(500).json({ 
-          message: error instanceof Error ? error.message : "Internal server error" 
+        res.status(500).json({
+          message: error instanceof Error ? error.message : "Internal server error"
         });
       }
     }
@@ -504,8 +504,8 @@ export function registerRoutes(app: Express): Server {
         res.status(400).json(error.issues);
       } else {
         console.error('Square customer creation error:', error);
-        res.status(500).json({ 
-          message: error instanceof Error ? error.message : "Failed to create Square customer" 
+        res.status(500).json({
+          message: error instanceof Error ? error.message : "Failed to create Square customer"
         });
       }
     }
@@ -584,6 +584,92 @@ export function registerRoutes(app: Express): Server {
       }
     }
   });
+
+  // Loyalty Program Integration
+  app.post("/api/square/loyalty/enroll", async (req, res) => {
+    try {
+      const { customerId } = z.object({
+        customerId: z.string(),
+      }).parse(req.body);
+
+      if (!squareClient) {
+        throw new Error("Square access token not configured");
+      }
+
+      // First, check if a loyalty program exists
+      const programResponse = await squareClient.loyaltyApi.listLoyaltyPrograms();
+
+      if (!programResponse.result.programs || programResponse.result.programs.length === 0) {
+        throw new Error("No loyalty program found. Please set up a loyalty program in Square Dashboard first.");
+      }
+
+      const programId = programResponse.result.programs[0].id;
+
+      // Check if customer is already enrolled
+      const searchResponse = await squareClient.loyaltyApi.searchLoyaltyAccounts({
+        query: {
+          customerIds: [customerId]
+        }
+      });
+
+      if (searchResponse.result.loyaltyAccounts && searchResponse.result.loyaltyAccounts.length > 0) {
+        return res.json(searchResponse.result.loyaltyAccounts[0]);
+      }
+
+      // Enroll the customer in the loyalty program
+      const enrollResponse = await squareClient.loyaltyApi.createLoyaltyAccount({
+        loyaltyAccount: {
+          programId,
+          customerId,
+        },
+        idempotencyKey: `${Date.now()}-${Math.random()}`
+      });
+
+      res.json(enrollResponse.result.loyaltyAccount);
+    } catch (error) {
+      console.error('Loyalty enrollment error:', error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Failed to enroll in loyalty program"
+      });
+    }
+  });
+
+  app.get("/api/square/loyalty/points/:customerId", async (req, res) => {
+    try {
+      const { customerId } = req.params;
+
+      if (!squareClient) {
+        throw new Error("Square access token not configured");
+      }
+
+      // Search for customer's loyalty account
+      const searchResponse = await squareClient.loyaltyApi.searchLoyaltyAccounts({
+        query: {
+          customerIds: [customerId]
+        }
+      });
+
+      if (!searchResponse.result.loyaltyAccounts || searchResponse.result.loyaltyAccounts.length === 0) {
+        return res.status(404).json({
+          message: "Customer is not enrolled in loyalty program"
+        });
+      }
+
+      const loyaltyAccount = searchResponse.result.loyaltyAccounts[0];
+
+      res.json({
+        points: loyaltyAccount.balance,
+        lifetimePoints: loyaltyAccount.lifetimePoints,
+        enrolledAt: loyaltyAccount.createdAt,
+      });
+    } catch (error) {
+      console.error('Loyalty points fetch error:', error);
+      res.status(500).json({
+        message: error instanceof Error ? error.message : "Failed to fetch loyalty points"
+      });
+    }
+  });
+
 
   const httpServer = createServer(app);
   return httpServer;
