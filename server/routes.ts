@@ -267,20 +267,17 @@ export function registerRoutes(app: Express): Server {
         throw new Error("Square client not configured");
       }
 
-      const { name, email, teamId } = z.object({
-        name: z.string().min(1, "Name is required"),
-        email: z.string().email("Valid email is required"),
-        teamId: z.number().optional(),
-      }).parse(req.body);
+      // Validate the incoming request data
+      const bowlerData = insertBowlerSchema.parse(req.body);
 
-      console.log('Creating Square customer with:', { name, email, teamId });
+      console.log('Creating Square customer with:', bowlerData);
 
       try {
         const customerResponse = await squareClient.customersApi.createCustomer({
           idempotencyKey: `${Date.now()}-${Math.random()}`,
-          givenName: name.split(' ')[0],
-          familyName: name.split(' ').slice(1).join(' ') || '',
-          emailAddress: email,
+          givenName: bowlerData.name.split(' ')[0],
+          familyName: bowlerData.name.split(' ').slice(1).join(' ') || '',
+          emailAddress: bowlerData.email,
         });
 
         if (!customerResponse.result?.customer?.id) {
@@ -289,17 +286,11 @@ export function registerRoutes(app: Express): Server {
 
         console.log('Successfully created Square customer:', customerResponse.result.customer);
 
-        const bowlerData = {
-          name,
-          email,
-          teamId,
+        // Create bowler with Square customer ID
+        const created = await storage.createBowler({
+          ...bowlerData,
           squareCustomerId: customerResponse.result.customer.id,
-          order: 0
-        };
-
-        console.log('Creating bowler with data:', bowlerData);
-
-        const created = await storage.createBowler(bowlerData);
+        });
 
         if (!created) {
           throw new Error('Failed to create bowler after Square customer creation');
@@ -323,7 +314,7 @@ export function registerRoutes(app: Express): Server {
 
       if (error instanceof z.ZodError) {
         return res.status(400).json({ 
-          message: "Invalid input", 
+          message: "Validation failed", 
           errors: error.issues 
         });
       }
