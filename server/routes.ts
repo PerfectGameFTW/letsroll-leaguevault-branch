@@ -263,15 +263,15 @@ export function registerRoutes(app: Express): Server {
   // Square Integration
   app.post("/api/square/customers", async (req, res) => {
     try {
+      if (!squareClient) {
+        throw new Error("Square client not configured");
+      }
+
       const { name, email, teamId } = z.object({
         name: z.string(),
         email: z.string().email(),
         teamId: z.number(),
       }).parse(req.body);
-
-      if (!squareClient) {
-        throw new Error("Square access token not configured");
-      }
 
       // Get the team and league information
       const team = await storage.getTeam(teamId);
@@ -296,48 +296,28 @@ export function registerRoutes(app: Express): Server {
         throw new Error('Failed to create Square customer');
       }
 
-      // Create a customer group for the league if it doesn't exist
-      let groupId;
+      // Try to create a segment for the league
+      let segmentId;
       try {
-        const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
-          idempotencyKey: `league-${league.id}`,
-          group: {
-            name: league.name,
-          },
-        });
-        groupId = groupResponse.result.group?.id;
-      } catch (error) {
-        if (error instanceof ApiError && error.statusCode === 400) {
-          // Group might already exist, try to find it
-          const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
-          const existingGroup = groupsResponse.result.groups?.find(
-            (group) => group.name === league.name
-          );
-          if (existingGroup) {
-            groupId = existingGroup.id;
+        const segmentResponse = await squareClient.customerSegmentsApi.createCustomerSegment({
+          segment: {
+            name: league.name
           }
-        }
-
-        if (!groupId) {
-          throw new Error("Failed to create or find league group");
+        });
+        segmentId = segmentResponse.result.segment?.id;
+      } catch (error) {
+        console.error('Error creating customer segment:', error);
+        // If segment creation fails, try to find existing segment
+        const segmentsResponse = await squareClient.customerSegmentsApi.listCustomerSegments();
+        const existingSegment = segmentsResponse.result.segments?.find(
+          segment => segment.name === league.name
+        );
+        if (existingSegment) {
+          segmentId = existingSegment.id;
         }
       }
 
-      // Add customer to the group
-      try {
-        await squareClient.customerGroupsApi.createCustomerGroupMembership({
-          idempotencyKey: `membership-${customerResponse.result.customer.id}-${groupId}`,
-          customerGroupMembership: {
-            customerId: customerResponse.result.customer.id,
-            groupId: groupId
-          }
-        });
-      } catch (error) {
-        console.error('Error adding customer to group:', error);
-        // Don't throw - we still want to return the customer even if group membership fails
-      }
-
-      // Enroll in loyalty program
+      // Enroll in loyalty program if available
       let loyaltyId = null;
       try {
         const programResponse = await squareClient.loyaltyApi.listLoyaltyPrograms();
@@ -360,7 +340,6 @@ export function registerRoutes(app: Express): Server {
         }
       } catch (error) {
         console.error('Error enrolling customer in loyalty:', error);
-        // Don't throw - we still want to return the customer even if loyalty enrollment fails
       }
 
       // Return the created customer info
@@ -368,7 +347,8 @@ export function registerRoutes(app: Express): Server {
         id: customerResponse.result.customer.id,
         name,
         email,
-        loyaltyId
+        loyaltyId,
+        segmentId
       });
     } catch (error) {
       console.error('Square customer creation error:', error);
