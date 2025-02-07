@@ -162,7 +162,7 @@ export default function BowlerViewPage() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Team
         </Link>
-        <div className="flex flex-col gap-4 mb-6">
+        <div className="flex flex-col gap-2 mb-6">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">{bowler.name}</h1>
