@@ -169,9 +169,9 @@ export default function BowlerViewPage() {
           </div>
           <div className="flex items-center gap-4">
             <div>
-              <span className="text-muted-foreground">Weekly Fee:</span>{" "}
+              <span className="text-muted-foreground">League:</span>{" "}
               <span className="font-medium">
-                ${((league?.weeklyFee || 0) / 100).toFixed(2)}
+                {league?.name || "No League"}
               </span>
             </div>
             <Badge variant={bowler.active ? "default" : "secondary"}>
@@ -224,7 +224,7 @@ export default function BowlerViewPage() {
             ) : (
               <div className="flex items-center gap-4">
                 <p className="text-muted-foreground">Not enrolled in loyalty program</p>
-                <Button 
+                <Button
                   onClick={() => enrollMutation.mutate()}
                   disabled={enrollMutation.isPending}
                 >
