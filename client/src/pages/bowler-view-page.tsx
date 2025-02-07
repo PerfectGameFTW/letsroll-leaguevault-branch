@@ -171,8 +171,8 @@ export default function BowlerViewPage() {
               </Badge>
             </div>
           </div>
-          <div className="flex flex-col gap-2">
-            <div className="text-lg font-semibold">
+          <div className="flex flex-col gap-1">
+            <div className="text-lg font-semibold mb-0.25">
               {league?.name || "No League"}
             </div>
             <div className="font-medium text-muted-foreground">
