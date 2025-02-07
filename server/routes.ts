@@ -191,18 +191,133 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/bowlers", async (req, res) => {
     try {
       const bowler = insertBowlerSchema.parse(req.body);
+
+      // Check if bowler with this email already exists
+      const existingBowlers = await storage.getBowlers();
+      const existingBowler = existingBowlers.find(b => 
+        b.email.toLowerCase() === bowler.email.toLowerCase()
+      );
+
+      if (existingBowler) {
+        return res.status(400).json({ 
+          message: "A bowler with this email already exists" 
+        });
+      }
+
       // If order is not provided, set it to the next available order number
       if (bowler.teamId && !bowler.order) {
         const teamBowlers = await storage.getBowlers(bowler.teamId);
         bowler.order = teamBowlers.length;
       }
+
+      // Create bowler in database
       const created = await storage.createBowler(bowler);
+
+      // Create or update Square customer
+      if (squareClient) {
+        try {
+          // Search for existing customer by email
+          const searchResponse = await squareClient.customersApi.searchCustomers({
+            query: {
+              filter: {
+                emailAddress: {
+                  exact: bowler.email.toLowerCase()
+                }
+              }
+            }
+          });
+
+          let squareCustomerId: string;
+
+          // If customer exists, use their ID
+          if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
+            const existingCustomer = searchResponse.result.customers[0];
+            squareCustomerId = existingCustomer.id;
+
+            // Update customer details
+            await squareClient.customersApi.updateCustomer(squareCustomerId, {
+              givenName: bowler.name.split(' ')[0],
+              familyName: bowler.name.split(' ').slice(1).join(' ') || '',
+              emailAddress: bowler.email.toLowerCase(),
+            });
+          } else {
+            // Create new customer
+            const customerResponse = await squareClient.customersApi.createCustomer({
+              idempotencyKey: `${Date.now()}-${Math.random()}`,
+              givenName: bowler.name.split(' ')[0],
+              familyName: bowler.name.split(' ').slice(1).join(' ') || '',
+              emailAddress: bowler.email.toLowerCase(),
+            });
+
+            if (!customerResponse.result?.customer?.id) {
+              throw new Error('Failed to create Square customer');
+            }
+
+            squareCustomerId = customerResponse.result.customer.id;
+          }
+
+          // If bowler has a team, handle league group assignment
+          if (bowler.teamId) {
+            const team = await storage.getTeam(bowler.teamId);
+            if (team) {
+              const league = await storage.getLeague(team.leagueId);
+              if (league) {
+                // Find or create league group
+                const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+                let groupId = groupsResponse.result.groups?.find(
+                  (g) => g.name === league.name
+                )?.id;
+
+                if (!groupId) {
+                  const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+                    idempotencyKey: `league-${league.id}`,
+                    group: {
+                      name: league.name,
+                    },
+                  });
+                  groupId = groupResponse.result.group?.id;
+                }
+
+                if (groupId) {
+                  try {
+                    await squareClient.customerGroupsApi.addCustomerToGroup(
+                      groupId,
+                      { customerId: squareCustomerId }
+                    );
+                  } catch (groupError) {
+                    console.error('Error adding customer to group:', groupError);
+                  }
+                }
+              }
+            }
+          }
+
+          // Update bowler with Square customer ID
+          await storage.updateBowler(created.id, { 
+            squareCustomerId 
+          });
+
+          // Get updated bowler with Square ID
+          const updatedBowler = await storage.getBowler(created.id);
+          if (updatedBowler) {
+            return res.status(201).json(updatedBowler);
+          }
+        } catch (squareError) {
+          console.error('Square API error:', squareError);
+          // Still return the created bowler even if Square integration fails
+          return res.status(201).json(created);
+        }
+      }
+
       res.status(201).json(created);
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json(error.issues);
       } else {
-        res.status(500).json({ message: "Internal server error" });
+        console.error('Error creating bowler:', error);
+        res.status(500).json({ 
+          message: error instanceof Error ? error.message : "Internal server error" 
+        });
       }
     }
   });
@@ -281,45 +396,6 @@ export function registerRoutes(app: Express): Server {
         throw new Error("Square access token not configured");
       }
 
-      // Only proceed with group management if teamId is provided
-      let groupId: string | undefined;
-
-      if (teamId) {
-        // Get the team and league information
-        const team = await storage.getTeam(teamId);
-        if (!team) {
-          throw new Error("Team not found");
-        }
-
-        const league = await storage.getLeague(team.leagueId);
-        if (!league) {
-          throw new Error("League not found");
-        }
-
-        // First try to find if the league group already exists
-        const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
-        const existingGroup = groupsResponse.result.groups?.find(
-          (g) => g.name === league.name
-        );
-
-        if (existingGroup) {
-          groupId = existingGroup.id;
-        } else {
-          // Create new group if it doesn't exist
-          const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
-            idempotencyKey: `league-${league.id}`,
-            group: {
-              name: league.name,
-            },
-          });
-          groupId = groupResponse.result.group?.id;
-        }
-
-        if (!groupId) {
-          throw new Error("Failed to create or find league group");
-        }
-      }
-
       // First, search for existing customer by email
       const searchResponse = await squareClient.customersApi.searchCustomers({
         query: {
@@ -364,12 +440,53 @@ export function registerRoutes(app: Express): Server {
         customerId = customerResponse.result.customer.id;
       }
 
+      // Only proceed with group management if teamId is provided
+      let groupId: string | undefined;
+
+      if (teamId) {
+        // Get the team and league information
+        const team = await storage.getTeam(teamId);
+        if (!team) {
+          throw new Error("Team not found");
+        }
+
+        const league = await storage.getLeague(team.leagueId);
+        if (!league) {
+          throw new Error("League not found");
+        }
+
+        // First try to find if the league group already exists
+        const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+        const existingGroup = groupsResponse.result.groups?.find(
+          (g) => g.name === league.name
+        );
+
+        if (existingGroup) {
+          groupId = existingGroup.id;
+        } else {
+          // Create new group if it doesn't exist
+          const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+            idempotencyKey: `league-${league.id}`,
+            group: {
+              name: league.name,
+            },
+          });
+          groupId = groupResponse.result.group?.id;
+        }
+
+        if (!groupId) {
+          throw new Error("Failed to create or find league group");
+        }
+      }
+
       // Only add to group if we have both groupId and customer
       if (groupId) {
         try {
-          await squareClient.customerGroupsApi.addGroupToCustomer(
-            customerId,
-            groupId
+          await squareClient.customerGroupsApi.addCustomerToGroup(
+            groupId,
+            {
+              customerId: customerId
+            }
           );
         } catch (groupError) {
           console.error('Error adding customer to group:', groupError);
