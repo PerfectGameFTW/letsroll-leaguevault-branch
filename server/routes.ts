@@ -3,13 +3,13 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema } from "@shared/schema";
 import { z } from "zod";
-import { ApiError, Client, Environment } from 'square';
+import { ApiError, Client } from 'square';
 
 let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
   squareClient = new Client({
     accessToken: process.env.SQUARE_ACCESS_TOKEN,
-    environment: (process.env.NODE_ENV === 'production' ? Environment.Production : Environment.Sandbox)
+    environment: 'sandbox', // or 'production' for live
   });
 }
 
@@ -263,69 +263,92 @@ export function registerRoutes(app: Express): Server {
   // Square Integration
   app.post("/api/square/customers", async (req, res) => {
     try {
+      const { name, email, teamId } = z.object({
+        name: z.string(),
+        email: z.string().email(),
+        teamId: z.number(),
+      }).parse(req.body);
+
       if (!squareClient) {
-        throw new Error("Square client not configured");
+        throw new Error("Square access token not configured");
       }
 
-      // Validate the incoming request data
-      const bowlerData = insertBowlerSchema.parse(req.body);
+      // Get the team and league information
+      const team = await storage.getTeam(teamId);
+      if (!team) {
+        throw new Error("Team not found");
+      }
 
-      console.log('Creating Square customer with:', bowlerData);
+      const league = await storage.getLeague(team.leagueId);
+      if (!league) {
+        throw new Error("League not found");
+      }
 
+      // First create or get the league group
+      let groupId;
       try {
-        const customerResponse = await squareClient.customersApi.createCustomer({
-          idempotencyKey: `${Date.now()}-${Math.random()}`,
-          givenName: bowlerData.name.split(' ')[0],
-          familyName: bowlerData.name.split(' ').slice(1).join(' ') || '',
-          emailAddress: bowlerData.email,
+        // Try to create the group first
+        const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+          idempotencyKey: `league-${league.id}`,
+          group: {
+            name: league.name,
+          },
         });
-
-        if (!customerResponse.result?.customer?.id) {
-          throw new Error('Failed to create Square customer: No customer ID returned');
+        groupId = groupResponse.result.group?.id;
+      } catch (error) {
+        if (error instanceof ApiError && error.statusCode === 400) {
+          // Group might already exist, try to find it
+          const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+          const existingGroup = groupsResponse.result.groups?.find(
+            (g) => g.name === league.name
+          );
+          if (existingGroup) {
+            groupId = existingGroup.id;
+          }
+        } else {
+          throw error;
         }
-
-        console.log('Successfully created Square customer:', customerResponse.result.customer);
-
-        // Create bowler with Square customer ID
-        const created = await storage.createBowler({
-          ...bowlerData,
-          squareCustomerId: customerResponse.result.customer.id,
-        });
-
-        if (!created) {
-          throw new Error('Failed to create bowler after Square customer creation');
-        }
-
-        res.status(201).json(created);
-      } catch (squareError) {
-        console.error('Square API Error:', {
-          error: squareError,
-          stack: squareError instanceof Error ? squareError.stack : undefined,
-          details: squareError instanceof ApiError ? squareError.errors : undefined
-        });
-        throw new Error(squareError instanceof Error ? squareError.message : 'Failed to create Square customer');
       }
+
+      if (!groupId) {
+        throw new Error("Failed to create or find league group");
+      }
+
+      // Now create the customer
+      const customerResponse = await squareClient.customersApi.createCustomer({
+        idempotencyKey: `${Date.now()}-${Math.random()}`,
+        givenName: name.split(' ')[0],
+        familyName: name.split(' ').slice(1).join(' ') || '',
+        emailAddress: email,
+      });
+
+      if (!customerResponse.result?.customer?.id) {
+        throw new Error('Failed to create Square customer');
+      }
+
+      // Add the customer to the group
+      await squareClient.customerGroupsApi.createCustomerGroupMembership({
+        idempotencyKey: `membership-${customerResponse.result.customer.id}-${groupId}`,
+        membership: {
+          customerId: customerResponse.result.customer.id,
+          groupId: groupId,
+        },
+      });
+
+      res.status(201).json({
+        id: customerResponse.result.customer.id,
+        name,
+        email,
+      });
     } catch (error) {
-      console.error('Request processing error:', {
-        error,
-        stack: error instanceof Error ? error.stack : undefined,
-        message: error instanceof Error ? error.message : 'Unknown error'
-      });
-
       if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Validation failed", 
-          errors: error.issues 
-        });
+        res.status(400).json(error.issues);
+      } else {
+        console.error('Square customer creation error:', error);
+        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to create Square customer" });
       }
-
-      res.status(500).json({ 
-        message: error instanceof Error ? error.message : "Internal server error",
-        details: error instanceof Error ? error.stack : undefined
-      });
     }
   });
-
 
   // Payments
   app.get("/api/payments", async (req, res) => {

@@ -38,6 +38,7 @@ export const bowlers = pgTable("bowlers", {
   active: boolean("active").notNull().default(true),
   squareCustomerId: text("square_customer_id"),
   order: integer("order").notNull().default(0),
+  // Removing weeklyFee from bowlers as it's now in leagues
 });
 
 export const payments = pgTable("payments", {
@@ -96,11 +97,9 @@ export const insertTeamSchema = createInsertSchema(teams).extend({
   number: z.number().min(1, "Team number must be at least 1"),
 });
 export const insertBowlerSchema = createInsertSchema(bowlers).extend({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Valid email is required"),
-  teamId: z.number().optional(),
+  teamId: z.number().min(1, "Team selection is required").optional(),
+  leagueId: z.number().min(1, "League selection is required").optional(),
   order: z.number().optional(),
-  squareCustomerId: z.string().optional(),
 });
 export const insertPaymentSchema = createInsertSchema(payments);
 

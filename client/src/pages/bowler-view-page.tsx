@@ -21,10 +21,6 @@ import { Badge } from "@/components/ui/badge";
 import type { Bowler, Payment, Team, League } from "@shared/schema";
 import { format, differenceInWeeks, startOfToday } from "date-fns";
 
-type LoyaltyResponse = {
-  points: number;
-};
-
 export default function BowlerViewPage() {
   const params = useParams();
   const bowlerId = parseInt(params.bowlerId!);
@@ -47,11 +43,6 @@ export default function BowlerViewPage() {
     queryKey: ["/api/payments", bowlerId],
     queryFn: () =>
       fetch(`/api/payments?bowlerId=${bowlerId}`).then((res) => res.json()),
-  });
-
-  const { data: loyaltyData } = useQuery<LoyaltyResponse>({
-    queryKey: [`/api/bowlers/${bowlerId}/loyalty`],
-    enabled: !!bowlerId,
   });
 
   if (loadingBowler || loadingPayments || loadingTeam || loadingLeague) {
@@ -210,15 +201,6 @@ export default function BowlerViewPage() {
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold text-orange-600">${(remainingBalance / 100).toFixed(2)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Loyalty Points</CardTitle>
-              <CardDescription>Current reward points balance</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{loyaltyData?.points || 0} points</p>
             </CardContent>
           </Card>
         </div>
