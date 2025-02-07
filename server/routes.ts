@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema } from "@shared/schema";
 import { z } from "zod";
-import { ApiError, Client } from 'square';
+import { ApiError, Client, customerGroupsApi, customersApi } from 'square'; // Added imports
 
 let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
@@ -288,7 +288,7 @@ export function registerRoutes(app: Express): Server {
       let groupId;
       try {
         // Try to create the group first
-        const groupResponse = await squareClient.customerGroups.createCustomerGroup({
+        const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
           idempotencyKey: `league-${league.id}`,
           group: {
             name: league.name,
@@ -298,9 +298,9 @@ export function registerRoutes(app: Express): Server {
       } catch (error) {
         if (error instanceof ApiError && error.statusCode === 400) {
           // Group might already exist, try to find it
-          const groupsResponse = await squareClient.customerGroups.listCustomerGroups();
+          const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
           const existingGroup = groupsResponse.result.groups?.find(
-            (g) => g.name === league.name
+            (group) => group.name === league.name
           );
           if (existingGroup) {
             groupId = existingGroup.id;
@@ -315,7 +315,7 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Now create the customer
-      const customerResponse = await squareClient.customers.createCustomer({
+      const customerResponse = await squareClient.customersApi.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
@@ -327,7 +327,7 @@ export function registerRoutes(app: Express): Server {
       }
 
       // Add the customer to the group
-      await squareClient.customerGroups.addGroupToCustomer(
+      await squareClient.customerGroupsApi.addGroupToCustomer(
         customerResponse.result.customer.id,
         groupId
       );
