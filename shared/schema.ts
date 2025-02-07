@@ -96,8 +96,9 @@ export const insertTeamSchema = createInsertSchema(teams).extend({
   number: z.number().min(1, "Team number must be at least 1"),
 });
 export const insertBowlerSchema = createInsertSchema(bowlers).extend({
+  name: z.string().min(1, "Name is required"),
+  email: z.string().email("Valid email is required"),
   teamId: z.number().optional(),
-  leagueId: z.number().optional(),
   order: z.number().optional(),
   squareCustomerId: z.string().optional(),
 });

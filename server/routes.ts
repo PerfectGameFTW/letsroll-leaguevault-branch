@@ -299,13 +299,13 @@ export function registerRoutes(app: Express): Server {
 
         console.log('Creating bowler with data:', bowlerData);
 
-        const bowler = await storage.createBowler(bowlerData);
+        const created = await storage.createBowler(bowlerData);
 
-        if (!bowler) {
+        if (!created) {
           throw new Error('Failed to create bowler after Square customer creation');
         }
 
-        res.status(201).json(bowler);
+        res.status(201).json(created);
       } catch (squareError) {
         console.error('Square API Error:', {
           error: squareError,
