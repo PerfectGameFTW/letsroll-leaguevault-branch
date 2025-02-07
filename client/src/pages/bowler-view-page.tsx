@@ -167,9 +167,12 @@ export default function BowlerViewPage() {
             <h1 className="text-2xl font-bold">{bowler.name}</h1>
             <p className="text-muted-foreground">{bowler.email}</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-2">
             <div className="font-medium">
               {league?.name || "No League"}
+            </div>
+            <div className="font-medium text-muted-foreground">
+              {team?.name || "No Team"}
             </div>
             <Badge variant={bowler.active ? "default" : "secondary"}>
               {bowler.active ? "Active" : "Inactive"}
