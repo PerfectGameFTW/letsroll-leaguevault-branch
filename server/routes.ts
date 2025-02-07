@@ -9,7 +9,7 @@ let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
   squareClient = new Client({
     accessToken: process.env.SQUARE_ACCESS_TOKEN,
-    environment: 'sandbox', // or 'production' for live
+    environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
   });
 }
 
@@ -335,10 +335,47 @@ export function registerRoutes(app: Express): Server {
         },
       });
 
+      async function enrollCustomerInLoyalty(customerId: string) {
+        if (!squareClient) {
+          throw new Error("Square client not configured");
+        }
+  
+        try {
+          // First get the loyalty program ID
+          const programResponse = await squareClient.loyaltyApi.listLoyaltyPrograms();
+          const program = programResponse.result.programs?.[0];
+  
+          if (!program?.id) {
+            throw new Error("No loyalty program found");
+          }
+  
+          // Enroll the customer in the loyalty program
+          const enrollResponse = await squareClient.loyaltyApi.createLoyaltyAccount({
+            loyaltyAccount: {
+              program_id: program.id,
+              mapping: {
+                phone_number: "+0000000000" // Placeholder, you might want to add phone number to bowler schema
+              }
+            },
+            idempotencyKey: `enroll-${customerId}-${Date.now()}`
+          });
+  
+          return enrollResponse.result.loyaltyAccount;
+        } catch (error) {
+          console.error('Error enrolling customer in loyalty:', error);
+          throw error;
+        }
+      }
+
+      // After creating the customer, enroll them in loyalty
+      const loyaltyAccount = await enrollCustomerInLoyalty(customerResponse.result.customer.id);
+
+      // Update response to include loyalty information
       res.status(201).json({
         id: customerResponse.result.customer.id,
         name,
         email,
+        loyaltyId: loyaltyAccount?.id
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -423,6 +460,28 @@ export function registerRoutes(app: Express): Server {
       }
     }
   });
+
+  app.get("/api/bowlers/:id/loyalty", async (req, res) => {
+    try {
+      const bowlerId = parseInt(req.params.id);
+      const bowler = await storage.getBowler(bowlerId);
+
+      if (!bowler?.squareLoyaltyId || !squareClient) {
+        return res.json({ points: 0 });
+      }
+
+      const response = await squareClient.loyaltyApi.retrieveLoyaltyAccount(
+        bowler.squareLoyaltyId
+      );
+
+      const points = response.result.loyaltyAccount?.balance ?? 0;
+      res.json({ points });
+    } catch (error) {
+      console.error('Error fetching loyalty points:', error);
+      res.status(500).json({ message: "Failed to fetch loyalty points" });
+    }
+  });
+
 
   const httpServer = createServer(app);
   return httpServer;

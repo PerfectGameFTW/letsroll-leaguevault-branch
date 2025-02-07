@@ -37,8 +37,8 @@ export const bowlers = pgTable("bowlers", {
   teamId: integer("team_id").references(() => teams.id),
   active: boolean("active").notNull().default(true),
   squareCustomerId: text("square_customer_id"),
+  squareLoyaltyId: text("square_loyalty_id"),
   order: integer("order").notNull().default(0),
-  // Removing weeklyFee from bowlers as it's now in leagues
 });
 
 export const payments = pgTable("payments", {
