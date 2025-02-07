@@ -284,38 +284,8 @@ export function registerRoutes(app: Express): Server {
         throw new Error("League not found");
       }
 
-      // First create or get the league group
-      let groupId;
-      try {
-        // Try to create the group first
-        const groupResponse = await squareClient.customerGroups.createCustomerGroup({
-          idempotencyKey: `league-${league.id}`,
-          group: {
-            name: league.name,
-          },
-        });
-        groupId = groupResponse.result.group?.id;
-      } catch (error) {
-        if (error instanceof ApiError && error.statusCode === 400) {
-          // Group might already exist, try to find it
-          const groupsResponse = await squareClient.customerGroups.listCustomerGroups();
-          const existingGroup = groupsResponse.result.groups?.find(
-            (group) => group.name === league.name
-          );
-          if (existingGroup) {
-            groupId = existingGroup.id;
-          }
-        } else {
-          throw error;
-        }
-      }
-
-      if (!groupId) {
-        throw new Error("Failed to create or find league group");
-      }
-
-      // Now create the customer
-      const customerResponse = await squareClient.customers.createCustomer({
+      // Create the customer first
+      const customerResponse = await squareClient.customersApi.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
@@ -326,21 +296,46 @@ export function registerRoutes(app: Express): Server {
         throw new Error('Failed to create Square customer');
       }
 
-      // Add the customer to the group using createCustomerGroupMembership
-      await squareClient.customerGroups.createCustomerGroupMembership({
-        customerId: customerResponse.result.customer.id,
-        groupId: groupId,
-      });
+      // Create a customer group for the league if it doesn't exist
+      let groupId;
+      try {
+        const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+          idempotencyKey: `league-${league.id}`,
+          group: {
+            name: league.name,
+          },
+        });
+        groupId = groupResponse.result.group?.id;
+      } catch (error) {
+        if (error instanceof ApiError && error.statusCode === 400) {
+          // Group might already exist, try to find it
+          const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+          const existingGroup = groupsResponse.result.groups?.find(
+            (group) => group.name === league.name
+          );
+          if (existingGroup) {
+            groupId = existingGroup.id;
+          }
+        }
+
+        if (!groupId) {
+          throw new Error("Failed to create or find league group");
+        }
+      }
+
+      // Add customer to the group
+      await squareClient.customerGroupsApi.addGroupToCustomer(
+        customerResponse.result.customer.id,
+        groupId
+      );
 
       // Enroll in loyalty program
       let loyaltyId = null;
       try {
-        // First get the loyalty program ID
         const programResponse = await squareClient.loyaltyApi.listLoyaltyPrograms();
         const program = programResponse.result.programs?.[0];
 
         if (program?.id) {
-          // Enroll the customer in the loyalty program
           const enrollResponse = await squareClient.loyaltyApi.createLoyaltyAccount({
             loyaltyAccount: {
               programId: program.id,
@@ -368,12 +363,11 @@ export function registerRoutes(app: Express): Server {
         loyaltyId
       });
     } catch (error) {
-      if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
-      } else {
-        console.error('Square customer creation error:', error);
-        res.status(500).json({ message: error instanceof Error ? error.message : "Failed to create Square customer" });
-      }
+      console.error('Square customer creation error:', error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Failed to create Square customer",
+        details: error instanceof Error ? error.stack : undefined
+      });
     }
   });
 
