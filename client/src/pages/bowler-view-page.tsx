@@ -172,7 +172,7 @@ export default function BowlerViewPage() {
             </div>
           </div>
           <div className="flex flex-col gap-2">
-            <div className="font-medium">
+            <div className="text-lg font-semibold">
               {league?.name || "No League"}
             </div>
             <div className="font-medium text-muted-foreground">
