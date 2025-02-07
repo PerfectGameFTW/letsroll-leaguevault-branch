@@ -312,33 +312,53 @@ export function registerRoutes(app: Express): Server {
         }
       }
 
-      // Create the customer
-      const customerResponse = await squareClient.customersApi.createCustomer({
-        idempotencyKey: `${Date.now()}-${Math.random()}`,
-        givenName: name.split(' ')[0],
-        familyName: name.split(' ').slice(1).join(' ') || '',
-        emailAddress: email,
+      // First, search for existing customer by email
+      const searchResponse = await squareClient.customersApi.searchCustomers({
+        query: {
+          filter: {
+            emailAddress: {
+              exact: email
+            }
+          }
+        }
       });
 
-      if (!customerResponse.result?.customer?.id) {
-        throw new Error('Failed to create Square customer');
+      let customerId: string;
+
+      // If customer exists, use their ID
+      if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
+        customerId = searchResponse.result.customers[0].id;
+      } else {
+        // Create new customer if none exists
+        const customerResponse = await squareClient.customersApi.createCustomer({
+          idempotencyKey: `${Date.now()}-${Math.random()}`,
+          givenName: name.split(' ')[0],
+          familyName: name.split(' ').slice(1).join(' ') || '',
+          emailAddress: email,
+        });
+
+        if (!customerResponse.result?.customer?.id) {
+          throw new Error('Failed to create Square customer');
+        }
+
+        customerId = customerResponse.result.customer.id;
       }
 
       // Only add to group if we have both groupId and customer
       if (groupId) {
         try {
           await squareClient.customerGroupsApi.addGroupToCustomer(
-            customerResponse.result.customer.id,
+            customerId,
             groupId
           );
         } catch (groupError) {
           console.error('Error adding customer to group:', groupError);
-          // Don't throw here, as the customer was still created successfully
+          // Don't throw here, as we still want to return the customer info
         }
       }
 
       res.status(201).json({
-        id: customerResponse.result.customer.id,
+        id: customerId,
         name,
         email,
       });
