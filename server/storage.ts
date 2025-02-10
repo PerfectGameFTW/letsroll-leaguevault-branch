@@ -327,36 +327,37 @@ export class DatabaseStorage implements IStorage {
 
         console.log('Current bowler league:', bowlerLeague);
 
-        // Get all bowler leagues for this team/league
-        const allLeagues = await tx
-          .select()
-          .from(bowlerLeagues)
-          .where(
-            and(
-              eq(bowlerLeagues.teamId, bowlerLeague.teamId),
-              eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
-            )
-          )
-          .orderBy(bowlerLeagues.order);
+        // Get current order
+        const currentOrder = bowlerLeague.order || 0;
 
-        console.log('All leagues before reorder:', allLeagues);
-
-        // Create a new array without the moved item
-        const otherLeagues = allLeagues.filter(bl => bl.id !== id);
-
-        // Insert the moved item at the new position
-        otherLeagues.splice(newOrder, 0, bowlerLeague);
-
-        console.log('Leagues after reorder:', otherLeagues);
-
-        // Update orders in sequence
-        for (const [index, league] of otherLeagues.entries()) {
-          console.log(`Setting order ${index} for league ${league.id}`);
-          await tx
-            .update(bowlerLeagues)
-            .set({ order: index })
-            .where(eq(bowlerLeagues.id, league.id));
+        // Update orders based on move direction
+        if (newOrder > currentOrder) {
+          // Moving down - shift others up
+          await tx.execute(sql`
+            UPDATE bowler_leagues
+            SET "order" = "order" - 1
+            WHERE team_id = ${bowlerLeague.teamId}
+            AND league_id = ${bowlerLeague.leagueId}
+            AND "order" <= ${newOrder}
+            AND "order" > ${currentOrder}
+          `);
+        } else if (newOrder < currentOrder) {
+          // Moving up - shift others down
+          await tx.execute(sql`
+            UPDATE bowler_leagues
+            SET "order" = "order" + 1
+            WHERE team_id = ${bowlerLeague.teamId}
+            AND league_id = ${bowlerLeague.leagueId}
+            AND "order" >= ${newOrder}
+            AND "order" < ${currentOrder}
+          `);
         }
+
+        // Set the new order for the moved item
+        await tx
+          .update(bowlerLeagues)
+          .set({ order: newOrder })
+          .where(eq(bowlerLeagues.id, id));
 
         // Get and return the final ordered list
         const result = await tx
