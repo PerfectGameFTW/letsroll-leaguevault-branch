@@ -49,13 +49,13 @@ export default function LeaguesPage() {
     }
   });
 
-  const allTeams = teamsResponse?.data;
+  const allTeams = teamsResponse?.data?.data || [];
 
   // Create a map of league ID to team count
-  const teamCounts = allTeams?.reduce((acc, team) => {
+  const teamCounts = allTeams.reduce((acc, team) => {
     acc[team.leagueId] = (acc[team.leagueId] || 0) + 1;
     return acc;
-  }, {} as Record<number, number>) ?? {};
+  }, {} as Record<number, number>);
 
   if (loadingLeagues || loadingTeams) {
     return (
