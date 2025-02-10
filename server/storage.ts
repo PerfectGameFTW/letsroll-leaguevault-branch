@@ -8,6 +8,7 @@ import {
   type BowlerLeague, type InsertBowlerLeague,
   type Payment, type InsertPayment
 } from "@shared/schema";
+import { sql } from 'drizzle-orm';
 
 export interface IStorage {
   // Leagues
@@ -311,7 +312,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]> {
     try {
-      // Get current bowler league to find teamId and leagueId
+      // Step 1: Get the target bowler league and validate it exists
       const [bowlerLeague] = await db
         .select()
         .from(bowlerLeagues)
@@ -321,8 +322,30 @@ export class DatabaseStorage implements IStorage {
         throw new Error('Bowler league not found');
       }
 
-      // Get all bowler leagues for this team/league
-      const teamLeagues = await db
+      // Step 2: Execute the reorder in a single SQL transaction
+      const result = await db.execute(sql`
+        WITH ranked AS (
+          SELECT id, ROW_NUMBER() OVER (ORDER BY 
+            CASE 
+              WHEN id = ${id} THEN ${newOrder}
+              WHEN "order" >= ${newOrder} AND "order" < ${bowlerLeague.order} THEN "order" + 1
+              WHEN "order" <= ${newOrder} AND "order" > ${bowlerLeague.order} THEN "order" - 1
+              ELSE "order"
+            END
+          ) - 1 as new_order
+          FROM bowler_leagues
+          WHERE team_id = ${bowlerLeague.teamId} 
+          AND league_id = ${bowlerLeague.leagueId}
+        )
+        UPDATE bowler_leagues bl
+        SET "order" = r.new_order
+        FROM ranked r
+        WHERE bl.id = r.id
+        RETURNING *;
+      `);
+
+      // Step 3: Get all updated bowler leagues in the correct order
+      const updatedLeagues = await db
         .select()
         .from(bowlerLeagues)
         .where(
@@ -333,25 +356,7 @@ export class DatabaseStorage implements IStorage {
         )
         .orderBy(bowlerLeagues.order);
 
-      // Simple reordering: just assign new consecutive orders
-      const reorderedLeagues = [...teamLeagues];
-      const currentIndex = reorderedLeagues.findIndex(bl => bl.id === id);
-      const [movedLeague] = reorderedLeagues.splice(currentIndex, 1);
-      reorderedLeagues.splice(newOrder, 0, movedLeague);
-
-      // Update all orders in sequence
-      const updates = await Promise.all(
-        reorderedLeagues.map((league, index) =>
-          db
-            .update(bowlerLeagues)
-            .set({ order: index })
-            .where(eq(bowlerLeagues.id, league.id))
-            .returning()
-        )
-      );
-
-      // Return all updated leagues sorted by order
-      return updates.map(update => update[0]).sort((a, b) => a.order - b.order);
+      return updatedLeagues;
     } catch (error) {
       console.error('Error updating bowler league order:', error);
       throw error;
