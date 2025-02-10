@@ -25,12 +25,18 @@ export default function TeamsPage() {
     queryKey: [`/api/leagues/${leagueId}`],
   });
 
-  const { data: teams, isLoading: loadingTeams } = useQuery<Team[]>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams", leagueId],
-    queryFn: () =>
-      fetch(`/api/teams?leagueId=${leagueId}`).then((res) => res.json()),
+    queryFn: async () => {
+      const response = await fetch(`/api/teams?leagueId=${leagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch teams');
+      }
+      return response.json();
+    }
   });
 
+  const teams = teamsResponse?.data;
   const sortedTeams = useMemo(() => {
     return teams?.slice().sort((a, b) => (a.number || 0) - (b.number || 0)) ?? [];
   }, [teams]);
