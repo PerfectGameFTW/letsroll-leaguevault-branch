@@ -44,33 +44,46 @@ export default function BowlerViewPage() {
   const bowlerId = parseInt(params.bowlerId!);
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
-  const { data: bowler, isLoading: loadingBowler } = useQuery<Bowler>({
+  // Query for bowler with proper typing and error handling
+  const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<{ data: Bowler }>({
     queryKey: [`/api/bowlers/${bowlerId}`],
+    queryFn: async () => {
+      const response = await fetch(`/api/bowlers/${bowlerId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowler');
+      }
+      return response.json();
+    }
   });
+  const bowler = bowlerResponse?.data;
 
-  // Query to get bowler's league associations
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
+  // Query to get bowler's league associations with proper typing
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: { data: BowlerLeague[] } }>({
     queryKey: ["/api/bowler-leagues", bowlerId],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?bowlerId=${bowlerId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
-      const result = await response.json();
-      // Ensure we have the correct data structure
-      return { data: Array.isArray(result.data) ? result.data : [] };
+      return response.json();
     },
+    enabled: !!bowlerId
   });
-
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
+  const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
 
   // Get all leagues the bowler is in
-  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
-    enabled: !!bowlerLeagues,
+    queryFn: async () => {
+      const response = await fetch('/api/leagues');
+      if (!response.ok) {
+        throw new Error('Failed to fetch leagues');
+      }
+      return response.json();
+    },
+    enabled: !!bowlerLeagues.length
   });
-  
-  const leagues = leaguesResponse?.data;
+  const leagues = leaguesResponse?.data || [];
 
   // Get the selected league's team
   const selectedAssociation = bowlerLeagues.find(bl => bl.leagueId === selectedLeagueId);
@@ -139,7 +152,7 @@ export default function BowlerViewPage() {
     },
   });
 
-  if (loadingBowler || loadingBowlerLeagues || loadingPayments || loadingTeam || loadingLeague || loadingLoyalty) {
+  if (loadingBowler || loadingBowlerLeagues || loadingPayments || loadingTeam || loadingLeague || loadingLoyalty || loadingLeagues) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -212,9 +225,9 @@ export default function BowlerViewPage() {
         <div className="flex flex-col gap-2 mb-6">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold">{bowler.name}</h1>
-              <Badge variant={bowler.active ? "default" : "secondary"}>
-                {bowler.active ? "Active" : "Inactive"}
+              <h1 className="text-2xl font-bold">{bowler?.name}</h1>
+              <Badge variant={bowler?.active ? "default" : "secondary"}>
+                {bowler?.active ? "Active" : "Inactive"}
               </Badge>
             </div>
           </div>
@@ -227,7 +240,7 @@ export default function BowlerViewPage() {
                 <SelectValue placeholder="Select a league" />
               </SelectTrigger>
               <SelectContent>
-                {bowlerLeaguesFiltered?.map((bl) => {
+                {bowlerLeagues.map((bl) => {
                   const leagueInfo = leagues?.find(l => l.id === bl.leagueId);
                   return leagueInfo ? (
                     <SelectItem key={bl.leagueId} value={bl.leagueId.toString()}>
