@@ -226,7 +226,7 @@ export default function TeamViewPage() {
       // Snapshot current value
       const previousData = queryClient.getQueryData<{ data: BowlerLeague[] }>(queryKey);
 
-      // Update cache optimistically
+      // Optimistically update the cache
       if (previousData?.data) {
         const currentData = [...previousData.data];
         const oldIndex = currentData.findIndex(bl => bl.id === id);
@@ -237,7 +237,7 @@ export default function TeamViewPage() {
           // Insert at new position
           currentData.splice(order, 0, movedItem);
 
-          // Update order values
+          // Update order values for all items
           const updatedData = currentData.map((item, index) => ({
             ...item,
             order: index
@@ -264,12 +264,17 @@ export default function TeamViewPage() {
         variant: "destructive",
       });
     },
-    onSettled: () => {
-      // Always refetch after settled to ensure consistency
-      queryClient.invalidateQueries({
-        queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }]
+    onSuccess: (response) => {
+      const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
+
+      // Update cache with the response from server
+      queryClient.setQueryData(queryKey, { data: response.data });
+
+      toast({
+        title: "Success",
+        description: "Bowler order updated successfully",
       });
-    },
+    }
   });
 
   const handleDragEnd = async (event: DragEndEvent) => {
