@@ -22,23 +22,54 @@ import type { League, Team, Bowler, Payment } from "@shared/schema";
 import { format, isAfter, isBefore, startOfToday } from "date-fns";
 import { Link } from "wouter";
 
-
 export default function ReportsPage() {
-  const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
+  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
+    queryFn: async () => {
+      const response = await fetch('/api/leagues');
+      if (!response.ok) {
+        throw new Error('Failed to fetch leagues');
+      }
+      return response.json();
+    }
   });
+  const leagues = leaguesResponse?.data || [];
 
-  const { data: teams, isLoading: loadingTeams } = useQuery<Team[]>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
+    queryFn: async () => {
+      const response = await fetch('/api/teams');
+      if (!response.ok) {
+        throw new Error('Failed to fetch teams');
+      }
+      return response.json();
+    }
   });
+  const teams = teamsResponse?.data || [];
 
-  const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
+    queryFn: async () => {
+      const response = await fetch('/api/bowlers');
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowlers');
+      }
+      return response.json();
+    }
   });
+  const bowlers = bowlersResponse?.data || [];
 
-  const { data: payments, isLoading: loadingPayments } = useQuery<Payment[]>({
+  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments"],
+    queryFn: async () => {
+      const response = await fetch('/api/payments');
+      if (!response.ok) {
+        throw new Error('Failed to fetch payments');
+      }
+      return response.json();
+    }
   });
+  const payments = paymentsResponse?.data || [];
 
   if (loadingLeagues || loadingTeams || loadingBowlers || loadingPayments) {
     return (
@@ -51,13 +82,13 @@ export default function ReportsPage() {
   }
 
   // Calculate league-wise financial summaries
-  const leagueFinancials = leagues?.map(league => {
-    const leagueTeams = teams?.filter(team => team.leagueId === league.id) || [];
-    const leagueBowlers = bowlers?.filter(bowler =>
+  const leagueFinancials = leagues.map(league => {
+    const leagueTeams = teams.filter(team => team.leagueId === league.id) || [];
+    const leagueBowlers = bowlers.filter(bowler =>
       leagueTeams.some(team => team.id === bowler.teamId)
     ) || [];
 
-    const leaguePayments = payments?.filter(payment =>
+    const leaguePayments = payments.filter(payment =>
       leagueBowlers.some(bowler => bowler.id === payment.bowlerId)
     ) || [];
 
@@ -96,8 +127,8 @@ export default function ReportsPage() {
   });
 
   // Calculate overall totals
-  const totalCollected = leagueFinancials?.reduce((sum, league) => sum + league.collected, 0) || 0;
-  const totalPastDue = leagueFinancials?.reduce((sum, league) => sum + league.pastDueBalance, 0) || 0;
+  const totalCollected = leagueFinancials.reduce((sum, league) => sum + league.collected, 0) || 0;
+  const totalPastDue = leagueFinancials.reduce((sum, league) => sum + league.pastDueBalance, 0) || 0;
 
   return (
     <Layout>
@@ -150,7 +181,7 @@ export default function ReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {leagueFinancials?.map((league) => (
+                {leagueFinancials.map((league) => (
                   <TableRow key={league.id}>
                     <TableCell>
                       <Link 
