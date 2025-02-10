@@ -323,12 +323,6 @@ export class DatabaseStorage implements IStorage {
           throw new Error('Bowler league not found');
         }
 
-        // First, move the target row to a very high order to avoid conflicts
-        await tx
-          .update(bowlerLeagues)
-          .set({ order: 999999 })
-          .where(eq(bowlerLeagues.id, id));
-
         // Get all bowler leagues for this team/league
         const allLeagues = await tx
           .select()
@@ -336,21 +330,23 @@ export class DatabaseStorage implements IStorage {
           .where(
             and(
               eq(bowlerLeagues.teamId, bowlerLeague.teamId),
-              eq(bowlerLeagues.leagueId, bowlerLeague.leagueId),
-              sql`id != ${id}` // Exclude the moved item
+              eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
             )
           )
           .orderBy(bowlerLeagues.order);
 
-        // Reinsert the moved item at the desired position
-        allLeagues.splice(newOrder, 0, { ...bowlerLeague, order: newOrder });
+        // Remove the moved item
+        const filteredLeagues = allLeagues.filter(bl => bl.id !== id);
+
+        // Insert it at the new position
+        filteredLeagues.splice(newOrder, 0, bowlerLeague);
 
         // Update all orders sequentially
-        for (let i = 0; i < allLeagues.length; i++) {
+        for (let i = 0; i < filteredLeagues.length; i++) {
           await tx
             .update(bowlerLeagues)
             .set({ order: i })
-            .where(eq(bowlerLeagues.id, allLeagues[i].id));
+            .where(eq(bowlerLeagues.id, filteredLeagues[i].id));
         }
 
         // Return the final ordered list
