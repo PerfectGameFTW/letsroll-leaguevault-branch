@@ -178,10 +178,40 @@ export default function TeamViewPage() {
         throw new Error("Failed to fetch bowlers");
       }
       const result = await response.json();
-      return result;
+      console.log("API Response:", result); // Debug log raw response
+
+      // Ensure we handle different response structures
+      if (result.data?.data) {
+        return result; // Structure is already correct
+      } else if (Array.isArray(result.data)) {
+        return { success: true, data: { data: result.data } }; // Wrap array in expected structure
+      } else {
+        return { success: true, data: { data: [] } }; // Return empty array as fallback
+      }
     },
     enabled: sortedBowlerLeagues.length > 0,
   });
+
+  // Get the bowlers array with proper fallback and type checking
+  const bowlersData = bowlersResponse?.data?.data;
+  console.log("Raw bowlers response:", bowlersResponse); // Debug full response
+  console.log("Bowlers data before processing:", bowlersData); // Debug extracted data
+
+  // Ensure we have a valid array before filtering
+  const validBowlersData = Array.isArray(bowlersData) ? bowlersData : [];
+  console.log("Valid bowlers data:", validBowlersData); // Debug validated array
+
+  // Create team bowlers array with proper type checking
+  const teamBowlers = validBowlersData.filter((bowler): bowler is Bowler =>
+    bowler !== null && // Ensure bowler is not null
+    typeof bowler === 'object' && // Ensure bowler is an object
+    'id' in bowler && // Ensure bowler has an id
+    sortedBowlerLeagues.some((bl) =>
+      bl.bowlerId === bowler.id &&
+      bl.teamId === teamId &&
+      bl.leagueId === team?.leagueId
+    )
+  );
 
   // Restore the league query
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
@@ -321,19 +351,6 @@ export default function TeamViewPage() {
   // Make sure we have all the data before rendering
   const league = leagueResponse?.data;
 
-  // Get the bowlers array with proper fallback
-  const bowlersData = bowlersResponse?.data?.data || [];
-  console.log("Bowlers response:", bowlersResponse); // Debug log
-  console.log("Bowlers data:", bowlersData); // Debug log
-
-  // Create team bowlers array with proper type checking
-  const teamBowlers = bowlersData.filter((bowler) =>
-    sortedBowlerLeagues.some((bl) =>
-      bl.bowlerId === bowler.id &&
-      bl.teamId === teamId &&
-      bl.leagueId === team?.leagueId
-    )
-  );
   const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
 
   return (
