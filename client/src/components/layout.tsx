@@ -1,17 +1,9 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
+import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
-import {
-  NavigationMenu,
-  NavigationMenuContent,
-  NavigationMenuItem,
-  NavigationMenuLink,
-  NavigationMenuList,
-  NavigationMenuTrigger,
-} from "@/components/ui/navigation-menu";
 import type { League } from "@shared/schema";
 
 // Safe localStorage access function
@@ -48,6 +40,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(() =>
     safeGetLocalStorage("sidebarCollapsed", false)
   );
+  const [isLeaguesExpanded, setIsLeaguesExpanded] = useState(false);
 
   const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
@@ -58,6 +51,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     safeSetLocalStorage("sidebarCollapsed", isCollapsed);
   }, [isCollapsed]);
+
+  const isInLeaguesSection = location.startsWith('/leagues') || 
+    (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -117,54 +113,69 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </span>
               </Link>
 
-              {/* Leagues Navigation Menu */}
-              {!isCollapsed && (
-                <NavigationMenu orientation="vertical" className="w-full">
-                  <NavigationMenuList className="flex-col items-start">
-                    <NavigationMenuItem className="w-full">
-                      <NavigationMenuTrigger className={cn(
-                        "w-full justify-start group flex items-center px-2 py-2 text-sm font-medium rounded-md",
-                        location.startsWith('/leagues') || (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)))
-                          ? "bg-primary text-primary-foreground"
-                          : "text-gray-600 hover:bg-gray-50"
-                      )}>
-                        <Trophy className={cn(
-                          "h-5 w-5 flex-shrink-0 mr-3",
-                          location.startsWith('/leagues') || (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)))
-                            ? "text-primary-foreground"
-                            : "text-gray-400"
-                        )} />
-                        Leagues
-                      </NavigationMenuTrigger>
-                      <NavigationMenuContent>
-                        <div className="w-48 p-2">
-                          <Link href="/leagues" className="block px-2 py-1 text-sm rounded hover:bg-accent">
-                            All Leagues
-                          </Link>
-                          <div className="my-1 border-t" />
-                          {Array.isArray(leagues) && leagues.map((league) => (
-                            <Link
-                              key={league.id}
-                              href={`/leagues/${league.id}/teams`}
-                              className="block px-2 py-1 text-sm rounded hover:bg-accent"
-                            >
-                              {league.name}
-                            </Link>
-                          ))}
-                        </div>
-                      </NavigationMenuContent>
-                    </NavigationMenuItem>
-                  </NavigationMenuList>
-                </NavigationMenu>
-              )}
-
-              {/* Collapsed League Icon */}
-              {isCollapsed && (
+              {/* Leagues Section */}
+              {!isCollapsed ? (
+                <div>
+                  <button
+                    className={cn(
+                      "w-full flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+                      isInLeaguesSection
+                        ? "bg-primary text-primary-foreground"
+                        : "text-gray-600 hover:bg-gray-50"
+                    )}
+                    onClick={() => setIsLeaguesExpanded(!isLeaguesExpanded)}
+                  >
+                    <div className="flex items-center">
+                      <Trophy className={cn(
+                        "h-5 w-5 flex-shrink-0 mr-3",
+                        isInLeaguesSection
+                          ? "text-primary-foreground"
+                          : "text-gray-400"
+                      )} />
+                      Leagues
+                    </div>
+                    {isLeaguesExpanded ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+                  {isLeaguesExpanded && (
+                    <div className="ml-9 mt-1 space-y-1">
+                      <Link href="/leagues">
+                        <span className={cn(
+                          "block px-2 py-1.5 text-sm rounded-md cursor-pointer",
+                          location === "/leagues"
+                            ? "bg-primary/10 text-primary font-medium"
+                            : "text-gray-600 hover:bg-gray-50"
+                        )}>
+                          All Leagues
+                        </span>
+                      </Link>
+                      {Array.isArray(leagues) && leagues.map((league) => (
+                        <Link
+                          key={league.id}
+                          href={`/leagues/${league.id}/teams`}
+                        >
+                          <span className={cn(
+                            "block px-2 py-1.5 text-sm rounded-md cursor-pointer",
+                            location === `/leagues/${league.id}/teams`
+                              ? "bg-primary/10 text-primary font-medium"
+                              : "text-gray-600 hover:bg-gray-50"
+                          )}>
+                            {league.name}
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
                 <Link href="/leagues">
                   <span
                     className={cn(
                       "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-                      location.startsWith('/leagues') || (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)))
+                      isInLeaguesSection
                         ? "bg-primary text-primary-foreground"
                         : "text-gray-600 hover:bg-gray-50"
                     )}
@@ -173,7 +184,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Trophy
                       className={cn(
                         "h-5 w-5 flex-shrink-0",
-                        location.startsWith('/leagues') || (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)))
+                        isInLeaguesSection
                           ? "text-primary-foreground"
                           : "text-gray-400",
                         "mx-auto"
