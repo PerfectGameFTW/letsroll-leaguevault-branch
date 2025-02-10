@@ -33,7 +33,7 @@ export default function BowlersPage() {
   const bowlers = bowlersResponse || [];
 
   // Get associations from bowler leagues with proper typing
-  const { data: bowlerLeaguesResponse } = useQuery<{ data: BowlerLeague[] }>({
+  const { data: bowlerLeaguesResponse } = useQuery<{ data: { data: BowlerLeague[] } }>({
     queryKey: ["/api/bowler-leagues"],
     queryFn: async () => {
       const response = await fetch('/api/bowler-leagues');
@@ -46,19 +46,29 @@ export default function BowlersPage() {
   });
   const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
 
-  const { data: teams } = useQuery<Team[]>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: { data: Team[] } }>({
     queryKey: ["/api/teams"],
+    queryFn: async () => {
+      const response = await fetch('/api/teams');
+      if (!response.ok) {
+        throw new Error('Failed to fetch teams');
+      }
+      const result = await response.json();
+      return result;
+    }
   });
+  const teams = teamsResponse?.data?.data || [];
 
-  const { data: leagues } = useQuery<League[]>({
+  const { data: leaguesResponse } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
   });
+  const leagues = leaguesResponse || [];
 
   // Helper function to get team for a bowler with type safety
   const getBowlerTeam = (bowler: Bowler) => {
-    if (!Array.isArray(bowlerLeagues)) return undefined;
+    if (!Array.isArray(bowlerLeagues) || !Array.isArray(teams)) return undefined;
     const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
-    return bowlerLeague ? teams?.find(t => t.id === bowlerLeague.teamId) : undefined;
+    return bowlerLeague ? teams.find(t => t.id === bowlerLeague.teamId) : undefined;
   };
 
   // Filter bowlers with proper type checking
@@ -69,7 +79,7 @@ export default function BowlersPage() {
     return (showInactive ? true : bowler.active) && matchesSearch;
   });
 
-  if (loadingBowlers) {
+  if (loadingBowlers || loadingTeams) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
