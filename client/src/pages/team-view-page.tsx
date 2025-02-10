@@ -115,10 +115,9 @@ export default function TeamViewPage() {
       return response.json();
     },
     enabled: !!team?.leagueId,
-    // Add refetch settings to ensure we always have fresh data
     refetchOnWindowFocus: true,
     refetchOnMount: true,
-    refetchInterval: 1000, // Refetch every second while changes might be occurring
+    refetchInterval: 1000, 
   });
 
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
@@ -270,11 +269,6 @@ export default function TeamViewPage() {
               <Plus className="h-4 w-4 mr-2" />
               Add Existing Bowler
             </Button>
-            {sortedBowlerLeagues.length > 1 && (
-              <Button variant="outline" onClick={() => setShowReorderDialog(true)}>
-                Reorder Bowlers
-              </Button>
-            )}
           </div>
         </div>
       </div>
@@ -326,6 +320,14 @@ export default function TeamViewPage() {
           </TableBody>
         </Table>
       </div>
+
+      {sortedBowlerLeagues.length > 1 && (
+        <div className="mt-4">
+          <Button variant="outline" onClick={() => setShowReorderDialog(true)}>
+            Reorder Bowlers
+          </Button>
+        </div>
+      )}
 
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent>
