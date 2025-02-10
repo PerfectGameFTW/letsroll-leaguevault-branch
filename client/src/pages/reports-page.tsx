@@ -35,17 +35,18 @@ export default function ReportsPage() {
   });
   const leagues = leaguesResponse?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: { data: Team[] } }>({
     queryKey: ["/api/teams"],
     queryFn: async () => {
       const response = await fetch('/api/teams');
       if (!response.ok) {
         throw new Error('Failed to fetch teams');
       }
-      return response.json();
+      const result = await response.json();
+      return result;
     }
   });
-  const teams = teamsResponse?.data || [];
+  const teams = teamsResponse?.data?.data || [];
 
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
@@ -184,7 +185,7 @@ export default function ReportsPage() {
                 {leagueFinancials.map((league) => (
                   <TableRow key={league.id}>
                     <TableCell>
-                      <Link 
+                      <Link
                         href={`/reports/leagues/${league.id}/past-due`}
                         className="hover:underline text-foreground"
                       >
