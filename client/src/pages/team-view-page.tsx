@@ -149,15 +149,14 @@ export default function TeamViewPage() {
   const team = teamResponse?.data;
 
   // Update the bowler leagues query and reorder mutation
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ data: BowlerLeague[] }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ success: true; data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", teamId, team?.leagueId],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${team?.leagueId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
-      const result = await response.json();
-      return result.data;
+      return response.json();
     },
     enabled: !!team?.leagueId,
   });
@@ -167,25 +166,24 @@ export default function TeamViewPage() {
     : [];
 
   // Update the bowlers query and data handling
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true; data: Bowler[] }>({
     queryKey: ["/api/bowlers", sortedBowlerLeagues],
     queryFn: async () => {
       if (!sortedBowlerLeagues.length) {
-        return [];
+        return { success: true, data: [] };
       }
       const bowlerIds = sortedBowlerLeagues.map((bl) => bl.bowlerId);
       const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
       if (!response.ok) {
         throw new Error("Failed to fetch bowlers");
       }
-      const result = await response.json();
-      return result.data || [];
+      return response.json();
     },
     enabled: sortedBowlerLeagues.length > 0,
   });
 
   // Simplify data handling with proper type safety
-  const bowlers = bowlersResponse || [];
+  const bowlers = bowlersResponse?.data || [];
 
   // Filter bowlers for the team with proper null checks
   const teamBowlers = bowlers.filter((bowler): bowler is Bowler => {
