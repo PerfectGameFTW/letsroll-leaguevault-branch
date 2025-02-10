@@ -27,37 +27,35 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
   });
-  const bowlers = bowlersResponse || [];
+  const bowlers = bowlersResponse?.data || [];
 
   // Get associations from bowler leagues with proper typing
-  const { data: bowlerLeaguesResponse } = useQuery<{ data: { data: BowlerLeague[] } }>({
-    queryKey: ["/api/bowler-leagues"],
+  const { data: bowlerLeaguesResponse } = useQuery<{ data: BowlerLeague[] }>({
+    queryKey: ["/api/bowler-leagues-new"],
     queryFn: async () => {
-      const response = await fetch('/api/bowler-leagues');
+      const response = await fetch('/api/bowler-leagues-new');
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
-      const result = await response.json();
-      return result;
+      return response.json();
     }
   });
-  const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: { data: Team[] } }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
     queryFn: async () => {
       const response = await fetch('/api/teams');
       if (!response.ok) {
         throw new Error('Failed to fetch teams');
       }
-      const result = await response.json();
-      return result;
+      return response.json();
     }
   });
-  const teams = teamsResponse?.data?.data || [];
+  const teams = teamsResponse?.data || [];
 
   const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
@@ -66,11 +64,18 @@ export default function BowlersPage() {
       if (!response.ok) {
         throw new Error('Failed to fetch leagues');
       }
-      const result = await response.json();
-      return result;
+      return response.json();
     }
   });
   const leagues = leaguesResponse?.data || [];
+
+  // Filter bowlers with proper type checking
+  const filteredBowlers = bowlers.filter(bowler => {
+    const matchesSearch = searchQuery === "" || 
+      bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
+    return (showInactive ? true : bowler.active) && matchesSearch;
+  });
 
   // Helper function to get team for a bowler with type safety
   const getBowlerTeam = (bowler: Bowler) => {
@@ -86,14 +91,6 @@ export default function BowlersPage() {
     const league = leagues.find(l => l.id === team.leagueId);
     return league?.weeklyFee || 0;
   };
-
-  // Filter bowlers with proper type checking
-  const filteredBowlers = bowlers.filter(bowler => {
-    const matchesSearch = searchQuery === "" || 
-      bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
-    return (showInactive ? true : bowler.active) && matchesSearch;
-  });
 
   if (loadingBowlers || loadingTeams) {
     return (

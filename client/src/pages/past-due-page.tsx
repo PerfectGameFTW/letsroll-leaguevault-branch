@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, ArrowLeft } from "lucide-react";
-import type { League, Team, Bowler, Payment } from "@shared/schema";
+import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema";
 import { startOfToday } from "date-fns";
 import { Link } from "wouter";
 
@@ -26,7 +26,7 @@ export default function PastDuePage() {
   });
   const leagues = leaguesResponse?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: { data: Team[] } }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
     queryFn: async () => {
       const response = await fetch('/api/teams');
@@ -36,7 +36,7 @@ export default function PastDuePage() {
       return response.json();
     }
   });
-  const teams = teamsResponse?.data?.data || [];
+  const teams = teamsResponse?.data || [];
 
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
@@ -50,7 +50,7 @@ export default function PastDuePage() {
   });
   const bowlers = bowlersResponse?.data || [];
 
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: { data: { id: number; bowlerId: number; leagueId: number; teamId: number; order: number }[] } }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues-new"],
     queryFn: async () => {
       const response = await fetch('/api/bowler-leagues-new');
@@ -60,7 +60,7 @@ export default function PastDuePage() {
       return response.json();
     }
   });
-  const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments"],
