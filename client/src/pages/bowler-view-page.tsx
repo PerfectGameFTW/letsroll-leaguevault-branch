@@ -107,10 +107,12 @@ export default function BowlerViewPage() {
     retry: false,
   });
 
-  // Initialize selectedLeagueId when bowlerLeagues loads
+  // Update initialization logic for selectedLeagueId
   useEffect(() => {
     if (bowlerLeagues?.length && !selectedLeagueId) {
-      setSelectedLeagueId(bowlerLeagues[0].leagueId);
+      // Sort by order and take the first league
+      const sortedLeagues = [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      setSelectedLeagueId(sortedLeagues[0].leagueId);
     }
   }, [bowlerLeagues, selectedLeagueId]);
 
@@ -188,10 +190,12 @@ export default function BowlerViewPage() {
 
   const remainingBalance = fullSeasonAmount - totalPaidAmount;
 
-  const bowlerLeaguesFiltered = bowlerLeagues?.filter(bl => {
-    const leagueInfo = leagues?.find(l => l.id === bl.leagueId);
-    return leagueInfo;
-  });
+  // Update bowlerLeaguesFiltered to maintain order
+  const bowlerLeaguesFiltered = bowlerLeagues?.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .filter(bl => {
+      const leagueInfo = leagues?.find(l => l.id === bl.leagueId);
+      return leagueInfo;
+    });
 
   return (
     <Layout>
