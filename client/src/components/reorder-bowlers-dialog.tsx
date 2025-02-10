@@ -62,17 +62,24 @@ export function ReorderBowlersDialog({
 
       await Promise.all(updates);
 
-      // Force a refetch of the bowler leagues
-      await queryClient.invalidateQueries({
-        queryKey: ["/api/bowler-leagues", { teamId, leagueId }],
-        exact: true
-      });
-
-      // Also invalidate any queries that depend on bowler leagues
-      await queryClient.invalidateQueries({
-        queryKey: ["/api/bowler-leagues"],
-        refetchType: 'all'
-      });
+      // Invalidate all relevant queries to ensure proper refresh
+      await Promise.all([
+        // Invalidate the specific team's bowler leagues
+        queryClient.invalidateQueries({
+          queryKey: ["/api/bowler-leagues", { teamId, leagueId }],
+          exact: true
+        }),
+        // Invalidate the bowlers query that depends on the order
+        queryClient.invalidateQueries({
+          queryKey: ["/api/bowlers"],
+          refetchType: 'all'
+        }),
+        // Invalidate any other bowler leagues queries
+        queryClient.invalidateQueries({
+          queryKey: ["/api/bowler-leagues"],
+          refetchType: 'all'
+        })
+      ]);
 
       toast({
         title: "Success",

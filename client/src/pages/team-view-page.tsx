@@ -143,16 +143,14 @@ export default function TeamViewPage() {
 
   const bowlers = bowlersResponse?.data ?? [];
 
-  const teamBowlers = bowlers.filter((bowler): bowler is Bowler => {
-    if (!bowler || typeof bowler !== 'object' || !('id' in bowler)) {
-      return false;
-    }
-    return sortedBowlerLeagues.some(bl =>
-      bl.bowlerId === bowler.id &&
-      bl.teamId === teamId &&
-      bl.leagueId === team?.leagueId
-    );
-  });
+  // Ensure bowlers are ordered according to sortedBowlerLeagues
+  const teamBowlers = sortedBowlerLeagues
+    .map(bl => bowlers.find(b => b.id === bl.bowlerId))
+    .filter((bowler): bowler is Bowler => {
+      return bowler !== undefined && 
+        typeof bowler === 'object' && 
+        'id' in bowler;
+    });
 
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${team?.leagueId}`],
@@ -288,10 +286,10 @@ export default function TeamViewPage() {
           </TableHeader>
           <TableBody>
             {!loadingBowlerLeagues && !loadingBowlers ? (
-              Array.isArray(teamBowlers) && teamBowlers.length > 0 ? (
-                teamBowlers.map((bowler) => {
-                  const bowlerLeague = sortedBowlerLeagues.find(bl => bl.bowlerId === bowler.id);
-                  if (!bowlerLeague) return null;
+              Array.isArray(sortedBowlerLeagues) && sortedBowlerLeagues.length > 0 ? (
+                sortedBowlerLeagues.map((bowlerLeague) => {
+                  const bowler = teamBowlers.find(b => b.id === bowlerLeague.bowlerId);
+                  if (!bowler) return null;
                   return (
                     <SortableBowlerRow
                       key={bowlerLeague.id}
