@@ -14,12 +14,6 @@ import {
 } from "@/components/ui/navigation-menu";
 import type { League } from "@shared/schema";
 
-const baseNavigation = [
-  { name: "Dashboard", href: "/", icon: Home },
-  { name: "Bowlers", href: "/bowlers", icon: Users },
-  { name: "Payments", href: "/payments", icon: CreditCard },
-];
-
 // Safe localStorage access function
 const safeGetLocalStorage = (key: string, defaultValue: any) => {
   try {
@@ -43,6 +37,12 @@ const safeSetLocalStorage = (key: string, value: any) => {
   }
 };
 
+const baseNavigation = [
+  { name: "Dashboard", href: "/", icon: Home },
+  { name: "Bowlers", href: "/bowlers", icon: Users },
+  { name: "Payments", href: "/payments", icon: CreditCard },
+];
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(() =>
@@ -61,15 +61,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen relative">
         {/* Sidebar */}
         <div
           className={cn(
-            "flex-shrink-0 bg-white border-r transition-all duration-300",
+            "bg-white border-r transition-all duration-300 fixed top-0 bottom-0 left-0 z-50",
             isCollapsed ? "w-16" : "w-64"
           )}
         >
-          <div className="flex flex-col flex-1">
+          <div className="flex flex-col h-full">
             <div className="flex-1 flex flex-col pt-5 pb-4">
               <div className={cn(
                 "flex items-center px-4",
@@ -218,7 +218,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Main content */}
-        <div className="flex-1 overflow-auto">
+        <div className={cn(
+          "flex-1 overflow-auto transition-all duration-300",
+          isCollapsed ? "ml-16" : "ml-64"
+        )}>
           <main className="py-6 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">{children}</main>
         </div>
       </div>
