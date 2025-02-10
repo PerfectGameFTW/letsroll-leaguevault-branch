@@ -14,25 +14,51 @@ import { startOfToday } from "date-fns";
 import { Link } from "wouter";
 
 export default function PastDuePage() {
-  const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
+  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
+    queryFn: async () => {
+      const response = await fetch('/api/leagues');
+      if (!response.ok) {
+        throw new Error('Failed to fetch leagues');
+      }
+      return response.json();
+    }
   });
+  const leagues = leaguesResponse?.data || [];
 
-  const { data: teams, isLoading: loadingTeams } = useQuery<Team[]>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: { data: Team[] } }>({
     queryKey: ["/api/teams"],
+    queryFn: async () => {
+      const response = await fetch('/api/teams');
+      if (!response.ok) {
+        throw new Error('Failed to fetch teams');
+      }
+      return response.json();
+    }
   });
+  const teams = teamsResponse?.data?.data || [];
 
-  const { data: bowlers = [], isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers"],
   });
+  const bowlers = bowlersResponse || [];
 
-  const { data: bowlerLeagues = [], isLoading: loadingBowlerLeagues } = useQuery<BowlerLeague[]>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: { data: BowlerLeague[] } }>({
     queryKey: ["/api/bowler-leagues"],
+    queryFn: async () => {
+      const response = await fetch('/api/bowler-leagues');
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowler leagues');
+      }
+      return response.json();
+    }
   });
+  const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
 
-  const { data: payments, isLoading: loadingPayments } = useQuery<Payment[]>({
+  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<Payment[]>({
     queryKey: ["/api/payments"],
   });
+  const payments = paymentsResponse || [];
 
   if (loadingLeagues || loadingTeams || loadingBowlers || loadingPayments || loadingBowlerLeagues) {
     return (
@@ -53,13 +79,16 @@ export default function PastDuePage() {
     })
     .map(bowler => {
       const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
-      const team = teams?.find(t => t.id === bowlerLeague?.teamId);
-      const league = leagues?.find(l => l.id === bowlerLeague?.leagueId);
+      if (!bowlerLeague) return null;
 
-      if (!bowlerLeague || !team || !league) return null;
+      const team = teams.find(t => t.id === bowlerLeague.teamId);
+      if (!team) return null;
+
+      const league = leagues.find(l => l.id === team.leagueId);
+      if (!league) return null;
 
       const bowlerPayments = payments
-        ?.filter(p => p.bowlerId === bowler.id && p.status === 'paid')
+        .filter(p => p.bowlerId === bowler.id && p.status === 'paid')
         .reduce((sum, p) => sum + p.amount, 0) || 0;
 
       const today = startOfToday();
@@ -112,7 +141,7 @@ export default function PastDuePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pastDueBowlers?.map(item => item && (
+              {pastDueBowlers.map(item => (
                 <TableRow key={item.bowler.id}>
                   <TableCell>
                     <Link href={`/bowlers/${item.bowler.id}`} className="hover:underline">

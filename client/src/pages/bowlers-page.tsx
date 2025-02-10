@@ -59,16 +59,32 @@ export default function BowlersPage() {
   });
   const teams = teamsResponse?.data?.data || [];
 
-  const { data: leaguesResponse } = useQuery<League[]>({
+  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
+    queryFn: async () => {
+      const response = await fetch('/api/leagues');
+      if (!response.ok) {
+        throw new Error('Failed to fetch leagues');
+      }
+      const result = await response.json();
+      return result;
+    }
   });
-  const leagues = leaguesResponse || [];
+  const leagues = leaguesResponse?.data || [];
 
   // Helper function to get team for a bowler with type safety
   const getBowlerTeam = (bowler: Bowler) => {
     if (!Array.isArray(bowlerLeagues) || !Array.isArray(teams)) return undefined;
     const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
     return bowlerLeague ? teams.find(t => t.id === bowlerLeague.teamId) : undefined;
+  };
+
+  // Helper function to get league weekly fee
+  const getWeeklyFee = (bowler: Bowler) => {
+    const team = getBowlerTeam(bowler);
+    if (!team || !Array.isArray(leagues)) return 0;
+    const league = leagues.find(l => l.id === team.leagueId);
+    return league?.weeklyFee || 0;
   };
 
   // Filter bowlers with proper type checking
@@ -88,13 +104,6 @@ export default function BowlersPage() {
       </Layout>
     );
   }
-
-  // Helper function to get league weekly fee
-  const getWeeklyFee = (bowler: Bowler) => {
-    const team = getBowlerTeam(bowler);
-    const league = team ? leagues?.find(l => l.id === team.leagueId) : undefined;
-    return league?.weeklyFee || 0;
-  };
 
   return (
     <Layout>
