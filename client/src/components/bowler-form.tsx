@@ -98,7 +98,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     },
   });
 
-  // Initialize or reset form when dialog opens/closes
+  // Update useEffect to handle default team assignment
   useEffect(() => {
     if (open) {
       if (bowler && bowlerLeagues && bowlerTeams) {
@@ -122,21 +122,40 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
           })),
           leagueIds,
         });
+      } else if (defaultTeamId && leagues) {
+        // For new bowler with default team
+        const team = teamsMap?.[leagues[0]?.id]?.find(t => t.id === defaultTeamId);
+        if (team) {
+          const leagueId = team.leagueId;
+          setSelectedLeagueIds([leagueId]);
+          setTeamAssignments(new Map([[leagueId, defaultTeamId]]));
+          form.reset({
+            name: "",
+            email: "",
+            active: true,
+            teamAssignments: [{
+              leagueId,
+              teamId: defaultTeamId,
+            }],
+            leagueIds: [leagueId],
+          });
+        }
+      } else {
+        // Reset form for new bowler without default team
+        form.reset({
+          name: "",
+          email: "",
+          active: true,
+          teamAssignments: [],
+          leagueIds: [],
+        });
+        setSelectedLeagueIds([]);
+        setTeamAssignments(new Map());
       }
-    } else {
-      // When closing, reset everything
-      form.reset({
-        name: "",
-        email: "",
-        active: true,
-        teamAssignments: [],
-        leagueIds: [],
-      });
-      setSelectedLeagueIds([]);
-      setTeamAssignments(new Map());
     }
-  }, [open, bowler, bowlerLeagues, bowlerTeams, form]);
+  }, [open, bowler, bowlerLeagues, bowlerTeams, leagues, defaultTeamId, form, teamsMap]);
 
+  // Update the form mutation
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
       // Convert teamAssignments Map to array format expected by API
@@ -165,6 +184,10 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
+      // Also invalidate the team bowlers query if we have a team ID
+      if (defaultTeamId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/teams", defaultTeamId, "bowlers"] });
+      }
       toast({
         title: bowler ? "Bowler updated" : "Bowler created",
         description: bowler
@@ -213,7 +236,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
   };
 
   // Get the available leagues (not currently selected)
-  const availableLeagues = leagues?.filter(league => 
+  const availableLeagues = leagues?.filter(league =>
     !selectedLeagueIds.includes(league.id)
   ) || [];
 
