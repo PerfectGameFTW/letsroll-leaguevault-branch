@@ -51,9 +51,9 @@ export default function PastDuePage() {
   const bowlers = bowlersResponse?.data || [];
 
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: { data: { id: number; bowlerId: number; leagueId: number; teamId: number; order: number }[] } }>({
-    queryKey: ["/api/bowler-leagues"],
+    queryKey: ["/api/bowler-leagues-new"],
     queryFn: async () => {
-      const response = await fetch('/api/bowler-leagues');
+      const response = await fetch('/api/bowler-leagues-new');
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
@@ -84,7 +84,7 @@ export default function PastDuePage() {
     );
   }
 
-  // Add console.log statements to debug data
+  // Debug logs for incoming data
   console.log('Active Bowlers:', bowlers.filter(bowler => bowler.active));
   console.log('Bowler Leagues:', bowlerLeagues);
   console.log('Leagues:', leagues);
@@ -105,7 +105,15 @@ export default function PastDuePage() {
 
         console.log(`League and team for ${bowler.name}:`, { league, team });
 
-        if (!league || !team) return null;
+        if (!league || !team) {
+          console.log(`Skipping ${bowler.name} - missing league or team`);
+          return null;
+        }
+
+        if (!league.seasonStart) {
+          console.log(`Skipping ${bowler.name} - league ${league.name} has no season start date`);
+          return null;
+        }
 
         // Get payments for this bowler in this specific league
         const leaguePayments = payments.filter(p =>
@@ -127,12 +135,13 @@ export default function PastDuePage() {
         const pastDueAmount = Math.max(0, dueToDate - totalPaid);
         const weeksPastDue = Math.floor(pastDueAmount / league.weeklyFee);
 
-        console.log(`Calculations for ${bowler.name}:`, {
+        console.log(`Calculations for ${bowler.name} in ${league.name}:`, {
           totalPaid,
           weeksPassed,
           dueToDate,
           pastDueAmount,
-          weeksPastDue
+          weeksPastDue,
+          seasonStart: league.seasonStart,
         });
 
         return pastDueAmount > 0 ? {
