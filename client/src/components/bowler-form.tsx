@@ -30,7 +30,6 @@ import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bow
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { createSquareCustomer } from "@/lib/square";
 import { useState, useEffect } from "react";
 
 interface BowlerFormProps {
@@ -38,7 +37,7 @@ interface BowlerFormProps {
   onClose: () => void;
   defaultTeamId?: number;
   bowler?: Bowler;
-  bowlerLeagues?: { bowlerId: number; leagueId: number }[];
+  bowlerLeagues?: { bowlerId: number; leagueId: number; teamId: number }[];
 }
 
 export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues }: BowlerFormProps) {
@@ -46,12 +45,14 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
   // Query for leagues
-  const { data: leagues = [] } = useQuery<League[]>({
+  const { data: leaguesResponse } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
   });
 
+  const leagues = leaguesResponse || [];
+
   // Query for teams filtered by selected league
-  const { data: teams = [] } = useQuery<Team[]>({
+  const { data: teamsResponse } = useQuery<Team[]>({
     queryKey: ["/api/teams", selectedLeagueId],
     queryFn: () =>
       selectedLeagueId
@@ -60,52 +61,40 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
     enabled: !!selectedLeagueId,
   });
 
+  const teams = teamsResponse || [];
+
   const form = useForm<InsertBowler>({
     resolver: zodResolver(insertBowlerSchema),
     defaultValues: bowler ? {
       name: bowler.name,
       email: bowler.email,
       active: bowler.active,
-      squareCustomerId: bowler.squareCustomerId,
-      order: bowler.order,
       teamId: bowler.teamId,
-      leagueId: bowler.leagueId
     } : {
       name: "",
       email: "",
       active: true,
-      squareCustomerId: null,
-      order: 0,
       teamId: defaultTeamId,
-      leagueId: null
     },
   });
 
   // Initialize or reset form when dialog opens/closes
   useEffect(() => {
     if (open && bowler) {
-      // When editing, set the league ID and form values
       const bowlerLeague = bowlerLeagues?.find(bl => bl.bowlerId === bowler.id);
       setSelectedLeagueId(bowlerLeague?.leagueId || null);
       form.reset({
         name: bowler.name,
         email: bowler.email,
         active: bowler.active,
-        squareCustomerId: bowler.squareCustomerId,
-        order: bowler.order,
         teamId: bowler.teamId,
-        leagueId: bowler.leagueId
       });
     } else if (!open) {
-      // When closing, reset everything
       form.reset({
         name: "",
         email: "",
         active: true,
-        squareCustomerId: null,
-        order: 0,
         teamId: defaultTeamId,
-        leagueId: null
       });
       setSelectedLeagueId(null);
     }
@@ -114,7 +103,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
       if (bowler) {
-        // Update existing bowler
         const response = await apiRequest("PATCH", `/api/bowlers/${bowler.id}`, data);
         if (!response.ok) {
           const error = await response.text();
@@ -122,7 +110,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
         }
         return await response.json();
       } else {
-        // Create new bowler
         const response = await apiRequest("POST", "/api/bowlers", data);
         if (!response.ok) {
           const error = await response.text();
@@ -218,35 +205,18 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
 
             <FormField
               control={form.control}
-              name="leagueId"
+              name="active"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>League</FormLabel>
-                  <Select
-                    onValueChange={(value) => {
-                      const leagueId = value ? parseInt(value) : null;
-                      setSelectedLeagueId(leagueId);
-                      field.onChange(leagueId);
-                    }}
-                    value={field.value?.toString() || ""}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a league" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {leagues.map((league) => (
-                        <SelectItem
-                          key={league.id}
-                          value={league.id.toString()}
-                        >
-                          {league.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
+                <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="space-y-0.5">
+                    <FormLabel>Active</FormLabel>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
                 </FormItem>
               )}
             />
@@ -260,15 +230,14 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
                   <Select
                     onValueChange={(value) => field.onChange(value ? parseInt(value) : null)}
                     value={field.value?.toString() || ""}
-                    disabled={!selectedLeagueId}
                   >
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder={selectedLeagueId ? "Select a team" : "Please select a league first"} />
+                        <SelectValue placeholder="Select a team" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {teams.map((team) => (
+                      {Array.isArray(teams) && teams.map((team) => (
                         <SelectItem
                           key={team.id}
                           value={team.id.toString()}
@@ -279,24 +248,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
                     </SelectContent>
                   </Select>
                   <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="active"
-              render={({ field }) => (
-                <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel>Active</FormLabel>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
                 </FormItem>
               )}
             />
