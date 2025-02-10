@@ -242,14 +242,14 @@ export class DatabaseStorage implements IStorage {
 
       let query = db
         .select()
-        .from(bowlerLeagues)
-        .orderBy(bowlerLeagues.order);
+        .from(bowlerLeagues);
 
       if (conditions.length > 0) {
         query = query.where(and(...conditions));
       }
 
-      return await query;
+      const results = await query.orderBy(bowlerLeagues.order);
+      return results;
     } catch (error) {
       console.error('Error getting bowler leagues:', error);
       throw error;
@@ -318,7 +318,7 @@ export class DatabaseStorage implements IStorage {
           throw new Error('Bowler league not found');
         }
 
-        // Get all bowler leagues for this team/league combination ordered by current order
+        // Get all bowler leagues for this team/league combination
         const currentBowlerLeagues = await tx
           .select()
           .from(bowlerLeagues)
@@ -332,30 +332,38 @@ export class DatabaseStorage implements IStorage {
 
         // Calculate new orders
         const orderedLeagues = [...currentBowlerLeagues];
-        const [moving] = orderedLeagues.splice(
-          orderedLeagues.findIndex(bl => bl.id === id),
-          1
-        );
+        const currentIndex = orderedLeagues.findIndex(bl => bl.id === id);
+
+        if (currentIndex === -1) {
+          throw new Error('Current bowler league not found in ordered list');
+        }
+
+        // Remove from current position and insert at new position
+        const [moving] = orderedLeagues.splice(currentIndex, 1);
         orderedLeagues.splice(newOrder, 0, moving);
 
         // Update all orders within transaction
-        const updates = await Promise.all(
-          orderedLeagues.map((bl, index) =>
-            tx
-              .update(bowlerLeagues)
-              .set({ order: index })
-              .where(eq(bowlerLeagues.id, bl.id))
-              .returning()
-          )
-        );
-
-        // Ensure we have all updates
-        const updatedLeagues = updates.map(u => u[0]);
-        if (updatedLeagues.length !== orderedLeagues.length) {
-          throw new Error('Failed to update all bowler leagues');
+        for (let i = 0; i < orderedLeagues.length; i++) {
+          const league = orderedLeagues[i];
+          await tx
+            .update(bowlerLeagues)
+            .set({ order: i })
+            .where(eq(bowlerLeagues.id, league.id));
         }
 
-        return updatedLeagues.sort((a, b) => a.order - b.order);
+        // Get final state after all updates
+        const updatedLeagues = await tx
+          .select()
+          .from(bowlerLeagues)
+          .where(
+            and(
+              eq(bowlerLeagues.teamId, bowlerLeague.teamId),
+              eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
+            )
+          )
+          .orderBy(bowlerLeagues.order);
+
+        return updatedLeagues;
       });
     } catch (error) {
       console.error('Error updating bowler league order:', error);

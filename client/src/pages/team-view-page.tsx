@@ -166,8 +166,8 @@ export default function TeamViewPage() {
   });
 
   // Ensure we have valid arrays
-  const bowlerLeagues = Array.isArray(bowlerLeaguesResponse?.data) ? bowlerLeaguesResponse.data : [];
-  const sortedBowlerLeagues = bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
+  const sortedBowlerLeagues = [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
 
   // Bowlers query
