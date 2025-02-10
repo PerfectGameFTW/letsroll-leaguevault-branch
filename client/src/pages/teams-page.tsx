@@ -128,16 +128,9 @@ function TeamBowlers({ teamId }: { teamId: number }) {
       <Button variant="outline" size="sm" asChild>
         <Link href={`/teams/${teamId}`}>
           <Users className="h-4 w-4 mr-2" />
-          View Team ({bowlers?.length || 0} Bowlers)
+          View Team ({bowlerLeagues?.length || 0} Bowlers)
         </Link>
       </Button>
-      {bowlers && (
-        <ul>
-          {bowlers.map((bowler) => (
-            <li key={bowler.id}>{bowler.name}</li> // Assuming bowler has a name property
-          ))}
-        </ul>
-      )}
     </>
   );
 }
