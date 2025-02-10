@@ -111,7 +111,7 @@ function TeamBowlers({ teamId }: { teamId: number }) {
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
   
-  const { data: bowlerLeaguesResponse, isLoading } = useQuery<{ data: any[] }>({
+  const { data: bowlerLeagues = [], isLoading } = useQuery<BowlerLeague[]>({
     queryKey: [`/api/bowler-leagues`, teamId, leagueId],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${leagueId}`);
@@ -123,7 +123,7 @@ function TeamBowlers({ teamId }: { teamId: number }) {
     enabled: !!teamId && !!leagueId,
   });
 
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
+  
 
   if (isLoading) return <Loader2 className="h-4 w-4 animate-spin" />;
 

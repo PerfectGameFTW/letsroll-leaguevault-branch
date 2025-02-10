@@ -285,7 +285,7 @@ export function registerRoutes(app: Express): Server {
 
       const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId, leagueId, teamId });
       const sortedBowlerLeagues = bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      sendSuccess(res, { data: sortedBowlerLeagues });
+      sendSuccess(res, sortedBowlerLeagues);
     } catch (error) {
       sendError(res, error);
     }
