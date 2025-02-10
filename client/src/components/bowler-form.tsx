@@ -64,19 +64,21 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
 
   // Query for teams filtered by selected leagues
   const { data: teamsMap } = useQuery<{ [leagueId: number]: Team[] }>({
-    queryKey: ["/api/teams", ...selectedLeagueIds],
+    queryKey: ["/api/teams", selectedLeagueIds],
     queryFn: async () => {
       if (selectedLeagueIds.length === 0) return {};
 
       const leagueTeams = await Promise.all(
-        selectedLeagueIds.map(leagueId =>
-          fetch(`/api/teams?leagueId=${leagueId}`)
-            .then(res => res.json())
-            .then(teams => ({ [leagueId]: teams }))
-        )
+        selectedLeagueIds.map(async leagueId => {
+          const response = await fetch(`/api/teams?leagueId=${leagueId}`);
+          const teams = await response.json();
+          return { [leagueId]: teams };
+        })
       );
 
-      return Object.assign({}, ...leagueTeams);
+      const result = Object.assign({}, ...leagueTeams);
+      console.log('Teams fetched:', result); // For debugging
+      return result;
     },
     enabled: selectedLeagueIds.length > 0,
   });
