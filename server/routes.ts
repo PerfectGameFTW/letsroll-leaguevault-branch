@@ -237,41 +237,25 @@ export function registerRoutes(app: Express): Server {
       const id = parseInt(req.params.id);
       const update = insertBowlerSchema.partial().parse(req.body);
 
-      if (typeof update.order === 'number') {
-        const bowler = await storage.getBowler(id);
-        if (!bowler?.teamId) {
-          return sendError(res, "Bowler must be assigned to a team to reorder", 400, 'INVALID_OPERATION');
-        }
-
-        const teamBowlers = await storage.getBowlers(bowler.teamId);
-        teamBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-        const oldIndex = teamBowlers.findIndex(b => b.id === id);
-        const newIndex = Math.min(Math.max(0, update.order), teamBowlers.length - 1);
-
-        if (oldIndex === -1) {
-          return sendError(res, "Bowler not found in team", 404, 'NOT_FOUND');
-        }
-
-        const [movedBowler] = teamBowlers.splice(oldIndex, 1);
-        teamBowlers.splice(newIndex, 0, movedBowler);
-
-        await Promise.all(teamBowlers.map((b, index) =>
-          storage.updateBowler(b.id, { order: index })
-        ));
-
-        const updatedBowlers = await storage.getBowlers(bowler.teamId);
-        updatedBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        return sendSuccess(res, updatedBowlers);
+      const bowler = await storage.getBowler(id);
+      if (!bowler) {
+        return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
       }
 
-      const updated = await storage.updateBowler(id, update);
+      const updated = await storage.updateBowler(id, {
+        name: update.name,
+        email: update.email,
+        active: update.active,
+        squareCustomerId: update.squareCustomerId,
+        order: update.order
+      });
+
       sendSuccess(res, updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
-        sendError(res, error);
+        sendError(res, error instanceof Error ? error.message : 'Internal server error', 500);
       }
     }
   });
@@ -279,10 +263,16 @@ export function registerRoutes(app: Express): Server {
   app.delete("/api/bowlers/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
+      const bowler = await storage.getBowler(id);
+
+      if (!bowler) {
+        return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
+      }
+
       await storage.deleteBowler(id);
       sendSuccess(res, null, 204);
     } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Internal server error', 500);
     }
   });
 
