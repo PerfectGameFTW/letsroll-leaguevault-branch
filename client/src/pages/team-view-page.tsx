@@ -148,7 +148,7 @@ export default function TeamViewPage() {
   });
   const team = teamResponse?.data;
 
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ success: true; data: BowlerLeague[] }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", teamId, team?.leagueId],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${team?.leagueId}`);
@@ -160,15 +160,16 @@ export default function TeamViewPage() {
     enabled: !!team?.leagueId,
   });
 
-  const sortedBowlerLeagues = bowlerLeaguesResponse?.data
+  // Ensure we have a valid array before sorting
+  const sortedBowlerLeagues = bowlerLeaguesResponse?.data 
     ? [...bowlerLeaguesResponse.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true; data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers", sortedBowlerLeagues],
     queryFn: async () => {
       if (!sortedBowlerLeagues.length) {
-        return { success: true, data: [] };
+        return { data: [] };
       }
       const bowlerIds = sortedBowlerLeagues.map((bl) => bl.bowlerId);
       const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
@@ -254,13 +255,18 @@ export default function TeamViewPage() {
   const handleDragEnd = async (event: DragEndEvent) => {
     try {
       const { active, over } = event;
-      if (!over || !sortedBowlerLeagues?.length) return;
+      if (!over || !active || !sortedBowlerLeagues?.length) return;
 
       if (active.id !== over.id) {
         const oldIndex = sortedBowlerLeagues.findIndex((bl) => bl.id === active.id);
         const newIndex = sortedBowlerLeagues.findIndex((bl) => bl.id === over.id);
 
         if (oldIndex !== -1 && newIndex !== -1) {
+          const newOrder = [...sortedBowlerLeagues];
+          const [movedItem] = newOrder.splice(oldIndex, 1);
+          newOrder.splice(newIndex, 0, movedItem);
+
+          // Update the order in the database
           await reorderMutation.mutateAsync({
             id: Number(active.id),
             order: newIndex,
