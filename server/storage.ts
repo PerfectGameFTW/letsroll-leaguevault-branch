@@ -312,6 +312,8 @@ export class DatabaseStorage implements IStorage {
 
   async updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]> {
     try {
+      console.log(`Updating order for bowler league ${id} to ${newOrder}`);
+
       return await db.transaction(async (tx) => {
         // Get the bowler league we're moving
         const [bowlerLeague] = await tx
@@ -322,6 +324,8 @@ export class DatabaseStorage implements IStorage {
         if (!bowlerLeague) {
           throw new Error('Bowler league not found');
         }
+
+        console.log('Current bowler league:', bowlerLeague);
 
         // Get all bowler leagues for this team/league
         const allLeagues = await tx
@@ -335,22 +339,27 @@ export class DatabaseStorage implements IStorage {
           )
           .orderBy(bowlerLeagues.order);
 
-        // Remove the moved item
-        const filteredLeagues = allLeagues.filter(bl => bl.id !== id);
+        console.log('All leagues before reorder:', allLeagues);
 
-        // Insert it at the new position
-        filteredLeagues.splice(newOrder, 0, bowlerLeague);
+        // Create a new array without the moved item
+        const otherLeagues = allLeagues.filter(bl => bl.id !== id);
 
-        // Update all orders sequentially
-        for (let i = 0; i < filteredLeagues.length; i++) {
+        // Insert the moved item at the new position
+        otherLeagues.splice(newOrder, 0, bowlerLeague);
+
+        console.log('Leagues after reorder:', otherLeagues);
+
+        // Update orders in sequence
+        for (const [index, league] of otherLeagues.entries()) {
+          console.log(`Setting order ${index} for league ${league.id}`);
           await tx
             .update(bowlerLeagues)
-            .set({ order: i })
-            .where(eq(bowlerLeagues.id, filteredLeagues[i].id));
+            .set({ order: index })
+            .where(eq(bowlerLeagues.id, league.id));
         }
 
-        // Return the final ordered list
-        return await tx
+        // Get and return the final ordered list
+        const result = await tx
           .select()
           .from(bowlerLeagues)
           .where(
@@ -360,6 +369,9 @@ export class DatabaseStorage implements IStorage {
             )
           )
           .orderBy(bowlerLeagues.order);
+
+        console.log('Final ordered result:', result);
+        return result;
       });
     } catch (error) {
       console.error('Error updating bowler league order:', error);

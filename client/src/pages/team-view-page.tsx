@@ -218,26 +218,21 @@ export default function TeamViewPage() {
       return response.json();
     },
     onSuccess: (response) => {
-      if (response?.data) {
-        const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
-        queryClient.setQueryData(queryKey, response);
+      // Force refetch instead of using the response
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }] 
+      });
 
-        toast({
-          title: "Success",
-          description: "Bowler order updated successfully",
-        });
-      }
+      toast({
+        title: "Success",
+        description: "Bowler order updated successfully",
+      });
     },
     onError: (error: Error) => {
       toast({
         title: "Error reordering bowlers",
         description: error.message,
         variant: "destructive",
-      });
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }] 
       });
     }
   });
