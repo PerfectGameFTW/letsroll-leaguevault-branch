@@ -49,7 +49,6 @@ export const bowlerLeagues = pgTable("bowler_leagues", {
   order: integer("order").notNull().default(0),
   joinedAt: timestamp("joined_at").notNull().defaultNow(),
 }, (table) => ({
-  uniqueAssignment: unique().on(table.bowlerId, table.leagueId, table.teamId),
   bowlerIdx: index("bowler_leagues_bowler_idx").on(table.bowlerId),
   leagueIdx: index("bowler_leagues_league_idx").on(table.leagueId),
   teamIdx: index("bowler_leagues_team_idx").on(table.teamId),

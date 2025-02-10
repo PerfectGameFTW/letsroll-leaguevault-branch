@@ -333,21 +333,21 @@ export class DatabaseStorage implements IStorage {
         )
         .orderBy(bowlerLeagues.order);
 
-      // Update orders for all affected bowler leagues
-      const updates = teamBowlerLeagues.map((bl, index) => {
-        let order = index;
-        if (bl.id === id) {
-          order = newOrder;
-        } else if (index >= newOrder) {
-          order = index + 1;
-        }
-        return db
+      // Sort bowlers into new order
+      const reorderedLeagues = [...teamBowlerLeagues];
+      const movingBowler = reorderedLeagues.find(bl => bl.id === id);
+      if (!movingBowler) throw new Error('Bowler not found');
+      
+      reorderedLeagues.splice(reorderedLeagues.indexOf(movingBowler), 1);
+      reorderedLeagues.splice(newOrder, 0, movingBowler);
+      
+      // Update all orders sequentially
+      for (let i = 0; i < reorderedLeagues.length; i++) {
+        await db
           .update(bowlerLeagues)
-          .set({ order })
-          .where(eq(bowlerLeagues.id, bl.id));
-      });
-
-      await Promise.all(updates);
+          .set({ order: i })
+          .where(eq(bowlerLeagues.id, reorderedLeagues[i].id));
+      }
 
       return await db
         .select()
