@@ -362,7 +362,7 @@ export class DatabaseStorage implements IStorage {
         }
 
         // Sort by order before returning to ensure correct order
-        return updatedLeagues.sort((a, b) => a.order - b.order);
+        return updatedLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       });
     } catch (error) {
       console.error('Error updating bowler league order:', error);
