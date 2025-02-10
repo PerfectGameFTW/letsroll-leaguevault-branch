@@ -318,7 +318,7 @@ export class DatabaseStorage implements IStorage {
           throw new Error('Bowler league not found');
         }
 
-        // Get all bowler leagues for this team/league combination
+        // Get all bowler leagues for this team/league combination ordered by current order
         const currentBowlerLeagues = await tx
           .select()
           .from(bowlerLeagues)
@@ -330,19 +330,17 @@ export class DatabaseStorage implements IStorage {
           )
           .orderBy(bowlerLeagues.order);
 
-        // Find current index
-        const currentIndex = currentBowlerLeagues.findIndex(bl => bl.id === id);
-        if (currentIndex === -1) {
-          throw new Error('Bowler league not found in sorted list');
-        }
+        // Calculate new orders
+        const orderedLeagues = [...currentBowlerLeagues];
+        const [moving] = orderedLeagues.splice(
+          orderedLeagues.findIndex(bl => bl.id === id),
+          1
+        );
+        orderedLeagues.splice(newOrder, 0, moving);
 
-        // Remove from current position and insert at new position
-        const [movedLeague] = currentBowlerLeagues.splice(currentIndex, 1);
-        currentBowlerLeagues.splice(newOrder, 0, movedLeague);
-
-        // Update all orders in the database within the transaction
+        // Update all orders within transaction
         const updates = await Promise.all(
-          currentBowlerLeagues.map((bl, index) =>
+          orderedLeagues.map((bl, index) =>
             tx
               .update(bowlerLeagues)
               .set({ order: index })
@@ -351,10 +349,13 @@ export class DatabaseStorage implements IStorage {
           )
         );
 
-        // Return the flattened results sorted by order
-        return updates
-          .map(result => result[0])
-          .sort((a, b) => a.order - b.order);
+        // Ensure we have all updates
+        const updatedLeagues = updates.map(u => u[0]);
+        if (updatedLeagues.length !== orderedLeagues.length) {
+          throw new Error('Failed to update all bowler leagues');
+        }
+
+        return updatedLeagues.sort((a, b) => a.order - b.order);
       });
     } catch (error) {
       console.error('Error updating bowler league order:', error);

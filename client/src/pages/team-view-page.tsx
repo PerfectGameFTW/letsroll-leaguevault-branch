@@ -216,9 +216,7 @@ export default function TeamViewPage() {
         const error = await response.text();
         throw new Error(error);
       }
-      const result = await response.json();
-      console.log('Server response:', result);
-      return result;
+      return response.json();
     },
     onMutate: async ({ id, order }) => {
       const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
@@ -229,9 +227,11 @@ export default function TeamViewPage() {
       // Snapshot current value
       const previousData = queryClient.getQueryData<{ data: BowlerLeague[] }>(queryKey);
 
-      // Optimistically update the cache
       if (previousData?.data) {
-        const currentData = [...previousData.data];
+        // Create new array and sort by current order
+        const currentData = [...previousData.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+        // Find indices
         const oldIndex = currentData.findIndex(bl => bl.id === id);
 
         if (oldIndex !== -1) {
@@ -240,7 +240,7 @@ export default function TeamViewPage() {
           // Insert at new position
           currentData.splice(order, 0, movedItem);
 
-          // Update order values for all items
+          // Update all order values
           const updatedData = currentData.map((item, index) => ({
             ...item,
             order: index
@@ -254,10 +254,9 @@ export default function TeamViewPage() {
       return { previousData };
     },
     onError: (error, _, context) => {
-      const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
-
-      // Revert to previous state on error
+      // On error, rollback to previous value
       if (context?.previousData) {
+        const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
         queryClient.setQueryData(queryKey, context.previousData);
       }
 
@@ -268,20 +267,19 @@ export default function TeamViewPage() {
       });
     },
     onSuccess: (response) => {
-      console.log('Successfully updated bowler league order:', response);
       if (response?.data) {
         const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
         // Update cache with server response
         queryClient.setQueryData(queryKey, response);
-      }
 
-      toast({
-        title: "Success",
-        description: "Bowler order updated successfully",
-      });
+        toast({
+          title: "Success",
+          description: "Bowler order updated successfully",
+        });
+      }
     },
     onSettled: () => {
-      // Force a refetch to ensure we have the latest data
+      // Always refetch after mutation to ensure consistency
       const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
       queryClient.invalidateQueries({ queryKey });
     }
