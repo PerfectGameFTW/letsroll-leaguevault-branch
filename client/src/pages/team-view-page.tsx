@@ -164,10 +164,10 @@ export default function TeamViewPage() {
   const bowlerLeagues = bowlerLeaguesResponse.data;
 
   // Get all bowlers referenced in bowlerLeagues
-  const { data: bowlers = [], isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse = { data: [] }, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers", bowlerLeagues],
     queryFn: async () => {
-      if (!bowlerLeagues?.length) return [];
+      if (!bowlerLeagues?.length) return { data: [] };
       const bowlerIds = bowlerLeagues.map(bl => bl.bowlerId);
       const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
       if (!response.ok) {
@@ -177,6 +177,7 @@ export default function TeamViewPage() {
     },
     enabled: bowlerLeagues.length > 0,
   });
+  const bowlers = bowlersResponse.data;
 
   const { data: league, isLoading: loadingLeague } = useQuery<League>({
     queryKey: [`/api/leagues/${team?.leagueId}`],
