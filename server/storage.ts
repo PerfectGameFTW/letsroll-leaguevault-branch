@@ -154,11 +154,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler> {
+    // Handle team assignment separately if present
+    if (bowler.teamId !== undefined || bowler.leagueId !== undefined) {
+      // First, clear any existing team assignments
+      await db
+        .update(bowlers)
+        .set({
+          teamId: bowler.teamId,
+          order: bowler.order ?? 0
+        })
+        .where(eq(bowlers.id, id));
+
+      if (bowler.teamId && bowler.leagueId) {
+        // Add new team assignment
+        await db
+          .insert(bowlerLeagues)
+          .values({
+            bowlerId: id,
+            leagueId: bowler.leagueId,
+          })
+          .onConflictDoNothing();
+      }
+    }
+
+    // Update other bowler fields
     const [updated] = await db
       .update(bowlers)
       .set(bowler)
       .where(eq(bowlers.id, id))
       .returning();
+
     return updated;
   }
 
