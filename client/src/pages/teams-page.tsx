@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Users } from "lucide-react";
-import type { Team, League } from "@shared/schema";
+import type { Team, League, Bowler } from "@shared/schema"; // Added Bowler type
 import { useParams, Link } from "wouter";
 
 export default function TeamsPage() {
@@ -90,16 +90,7 @@ export default function TeamsPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    asChild
-                  >
-                    <Link href={`/teams/${team.id}`}>
-                      <Users className="h-4 w-4 mr-2" />
-                      View Team
-                    </Link>
-                  </Button>
+                  <TeamBowlers teamId={team.id} /> {/*Added component to display bowlers */}
                 </TableCell>
               </TableRow>
             ))}
@@ -113,5 +104,39 @@ export default function TeamsPage() {
         leagueId={leagueId}
       />
     </Layout>
+  );
+}
+
+function TeamBowlers({ teamId }: { teamId: number }) {
+  const { data: bowlers, isLoading } = useQuery<Bowler[]>({
+    queryKey: [`/api/teams/${teamId}/bowlers`],
+    queryFn: async () => {
+      const response = await fetch(`/api/teams/${teamId}/bowlers`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch bowlers for team ${teamId}`);
+      }
+      return response.json();
+    },
+    enabled: !!teamId, // Only run query if teamId is available
+  });
+
+  if (isLoading) return <Loader2 className="h-4 w-4 animate-spin" />;
+
+  return (
+    <>
+      <Button variant="outline" size="sm" asChild>
+        <Link href={`/teams/${teamId}`}>
+          <Users className="h-4 w-4 mr-2" />
+          View Team ({bowlers?.length || 0} Bowlers)
+        </Link>
+      </Button>
+      {bowlers && (
+        <ul>
+          {bowlers.map((bowler) => (
+            <li key={bowler.id}>{bowler.name}</li> // Assuming bowler has a name property
+          ))}
+        </ul>
+      )}
+    </>
   );
 }
