@@ -17,20 +17,48 @@ export default function LeaguePastDuePage() {
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
 
-  const { data: league, isLoading: loadingLeague } = useQuery<League>({
+  const { data: league, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
+    queryFn: async () => {
+      const response = await fetch(`/api/leagues/${leagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch league');
+      }
+      return response.json();
+    }
   });
 
-  const { data: teams, isLoading: loadingTeams } = useQuery<Team[]>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: { data: Team[] } }>({
     queryKey: ["/api/teams"],
+    queryFn: async () => {
+      const response = await fetch('/api/teams');
+      if (!response.ok) {
+        throw new Error('Failed to fetch teams');
+      }
+      return response.json();
+    }
   });
 
-  const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
+    queryFn: async () => {
+      const response = await fetch('/api/bowlers');
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowlers');
+      }
+      return response.json();
+    }
   });
 
-  const { data: payments, isLoading: loadingPayments } = useQuery<Payment[]>({
+  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments"],
+    queryFn: async () => {
+      const response = await fetch('/api/payments');
+      if (!response.ok) {
+        throw new Error('Failed to fetch payments');
+      }
+      return response.json();
+    }
   });
 
   if (loadingLeague || loadingTeams || loadingBowlers || loadingPayments) {
@@ -43,7 +71,7 @@ export default function LeaguePastDuePage() {
     );
   }
 
-  if (!league) {
+  if (!league?.data) {
     return (
       <Layout>
         <div>League not found</div>
@@ -52,11 +80,18 @@ export default function LeaguePastDuePage() {
   }
 
   // Get teams for this league
-  const leagueTeams = teams?.filter(team => team.leagueId === leagueId) || [];
-  
-  // Get bowlers for these teams
-  const leagueBowlers = bowlers?.filter(bowler => 
-    leagueTeams.some(team => team.id === bowler.teamId)
+  const teams = teamsResponse?.data?.data || [];
+  const leagueTeams = teams.filter(team => team.leagueId === leagueId) || [];
+
+  // Get bowlers and payments
+  const bowlers = bowlersResponse?.data || [];
+  const payments = paymentsResponse?.data || [];
+
+  // Get bowlers for these teams using bowler leagues
+  const leagueBowlers = bowlers.filter(bowler => 
+    leagueTeams.some(team => 
+      team.id === bowler.teamId
+    )
   ) || [];
 
   // Calculate past due details for each bowler in this league
@@ -71,14 +106,14 @@ export default function LeaguePastDuePage() {
         .reduce((sum, p) => sum + p.amount, 0) || 0;
 
       const today = startOfToday();
-      const seasonStart = new Date(league.seasonStart);
+      const seasonStart = new Date(league.data.seasonStart);
       const weeksPassed = Math.max(0, Math.floor(
         (today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
       ));
 
-      const dueToDate = league.weeklyFee * weeksPassed;
+      const dueToDate = league.data.weeklyFee * weeksPassed;
       const pastDueAmount = Math.max(0, dueToDate - bowlerPayments);
-      const weeksPastDue = Math.floor(pastDueAmount / league.weeklyFee);
+      const weeksPastDue = Math.floor(pastDueAmount / league.data.weeklyFee);
 
       return {
         bowler,
@@ -99,9 +134,9 @@ export default function LeaguePastDuePage() {
         </Link>
 
         <div>
-          <h1 className="text-2xl font-bold mb-2">{league.name} - Past Due Balances</h1>
+          <h1 className="text-2xl font-bold mb-2">{league.data.name} - Past Due Balances</h1>
           <p className="text-muted-foreground mb-6">
-            List of bowlers with past due balances in {league.name}
+            List of bowlers with past due balances in {league.data.name}
           </p>
         </div>
 
