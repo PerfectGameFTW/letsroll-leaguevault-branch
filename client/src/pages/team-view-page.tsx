@@ -177,9 +177,9 @@ export default function TeamViewPage() {
     },
     enabled: bowlerLeagues.length > 0,
   });
-  const bowlers = bowlersResponse.data;
+  const bowlers = bowlersResponse?.data || [];
 
-  const { data: league, isLoading: loadingLeague } = useQuery<League>({
+  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${team?.leagueId}`],
     enabled: !!team?.leagueId,
   });
@@ -317,7 +317,8 @@ export default function TeamViewPage() {
   const sortedBowlerLeagues = Array.isArray(bowlerLeaguesResponse?.data) 
     ? [...bowlerLeaguesResponse.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
-  const teamBowlers = (bowlers || []).filter(bowler => 
+  const league = leagueResponse?.data;
+  const teamBowlers = bowlers.filter(bowler => 
     sortedBowlerLeagues.some(bl => 
       bl.bowlerId === bowler.id && 
       bl.teamId === parseInt(teamId) && 
