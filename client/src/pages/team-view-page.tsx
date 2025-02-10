@@ -312,12 +312,12 @@ export default function TeamViewPage() {
   }
 
   // Make sure we have all the data before rendering
-  const sortedBowlerLeagues = Array.isArray(bowlerLeagues) 
-    ? [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const sortedBowlerLeagues = Array.isArray(bowlerLeagues?.data) 
+    ? [...bowlerLeagues.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
-  const teamBowlers = Array.isArray(bowlers) && Array.isArray(bowlerLeagues)
+  const teamBowlers = Array.isArray(bowlers) && sortedBowlerLeagues.length > 0
     ? bowlers.filter(bowler => 
-        bowlerLeagues.some(bl => 
+        sortedBowlerLeagues.some(bl => 
           bl.bowlerId === bowler.id && 
           bl.teamId === parseInt(teamId) && 
           bl.leagueId === team?.leagueId
@@ -329,7 +329,7 @@ export default function TeamViewPage() {
   return (
     <Layout>
       <div className="mb-6">
-        <Link href={team?.leagueId ? `/leagues/${team.leagueId}/teams` : '/leagues'} className="text-muted-foreground hover:text-foreground flex items-center mb-4">
+        <Link href={`/leagues/${team.leagueId}/teams`} className="text-muted-foreground hover:text-foreground flex items-center mb-4">
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Teams
         </Link>
