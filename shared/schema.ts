@@ -52,6 +52,7 @@ export const bowlerLeagues = pgTable("bowler_leagues", {
   bowlerIdx: index("bowler_leagues_bowler_idx").on(table.bowlerId),
   leagueIdx: index("bowler_leagues_league_idx").on(table.leagueId),
   teamIdx: index("bowler_leagues_team_idx").on(table.teamId),
+  orderIdx: index("bowler_leagues_order_idx").on(table.teamId, table.leagueId, table.order),
 }));
 
 export const payments = pgTable("payments", {

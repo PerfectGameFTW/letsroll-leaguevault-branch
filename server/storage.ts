@@ -312,7 +312,8 @@ export class DatabaseStorage implements IStorage {
 
   async updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]> {
     try {
-      const result = await db.transaction(async (tx) => {
+      return await db.transaction(async (tx) => {
+        // Get the bowler league we're moving
         const [bowlerLeague] = await tx
           .select()
           .from(bowlerLeagues)
@@ -322,16 +323,8 @@ export class DatabaseStorage implements IStorage {
           throw new Error('Bowler league not found');
         }
 
-        // First, update all orders to be very high numbers to avoid conflicts
-        await tx.execute(sql`
-          UPDATE bowler_leagues 
-          SET "order" = "order" + 1000000
-          WHERE team_id = ${bowlerLeague.teamId} 
-          AND league_id = ${bowlerLeague.leagueId}
-        `);
-
-        // Get current order
-        const teamBowlerLeagues = await tx
+        // Get all bowler leagues for this team/league
+        const allBowlerLeagues = await tx
           .select()
           .from(bowlerLeagues)
           .where(
@@ -342,27 +335,22 @@ export class DatabaseStorage implements IStorage {
           )
           .orderBy(bowlerLeagues.order);
 
-        // Calculate new orders
-        const reorderedLeagues = [...teamBowlerLeagues];
-        const movingBowler = reorderedLeagues.find(bl => bl.id === id);
-        if (!movingBowler) throw new Error('Bowler not found');
-        
-        reorderedLeagues.splice(reorderedLeagues.indexOf(movingBowler), 1);
-        reorderedLeagues.splice(newOrder, 0, movingBowler);
-
-        // Update all orders in a single query
+        // Simple reorder query that handles all cases
         await tx.execute(sql`
-          UPDATE bowler_leagues bl
-          SET "order" = c.new_order
-          FROM (VALUES ${sql.join(
-            reorderedLeagues.map((bl, idx) => sql`(${bl.id}, ${idx})`),
-            ','
-          )}) AS c(id, new_order)
-          WHERE bl.id = c.id
+          UPDATE bowler_leagues
+          SET "order" = CASE
+            WHEN id = ${id} THEN ${newOrder}
+            WHEN "order" >= ${newOrder} AND "order" < ${bowlerLeague.order} THEN "order" + 1
+            WHEN "order" <= ${newOrder} AND "order" > ${bowlerLeague.order} THEN "order" - 1
+            ELSE "order"
+          END
+          WHERE team_id = ${bowlerLeague.teamId}
+          AND league_id = ${bowlerLeague.leagueId}
         `);
 
+        // Return updated list
         return await tx
-        .select()
+          .select()
           .from(bowlerLeagues)
           .where(
             and(
@@ -372,8 +360,6 @@ export class DatabaseStorage implements IStorage {
           )
           .orderBy(bowlerLeagues.order);
       });
-
-      return result;
     } catch (error) {
       console.error('Error updating bowler league order:', error);
       throw error;
