@@ -149,7 +149,7 @@ export default function TeamViewPage() {
   const team = teamResponse?.data;
 
   // Get bowler leagues for this team
-  const { data: bowlerLeaguesResponse = { data: [] }, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ data: BowlerLeague[] }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", teamId, team?.leagueId],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${team?.leagueId}`);
@@ -161,23 +161,25 @@ export default function TeamViewPage() {
     enabled: !!team?.leagueId,
   });
 
-  const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
+  const sortedBowlerLeagues = (bowlerLeaguesResponse?.data || []).sort((a, b) =>
+    (a.order ?? 0) - (b.order ?? 0)
+  );
 
   // Get all bowlers referenced in bowlerLeagues
-  const { data: bowlersResponse = { data: [] }, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
-    queryKey: ["/api/bowlers", bowlerLeagues],
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: { data: Bowler[] } }>({
+    queryKey: ["/api/bowlers", sortedBowlerLeagues],
     queryFn: async () => {
-      if (!bowlerLeagues.length) return { data: [] };
-      const bowlerIds = bowlerLeagues.map(bl => bl.bowlerId);
+      if (!sortedBowlerLeagues.length) return { data: { data: [] } };
+      const bowlerIds = sortedBowlerLeagues.map(bl => bl.bowlerId);
       const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
       if (!response.ok) {
         throw new Error('Failed to fetch bowlers');
       }
       return response.json();
     },
-    enabled: bowlerLeagues.length > 0,
+    enabled: sortedBowlerLeagues.length > 0,
   });
-  
+
 
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${team?.leagueId}`],
@@ -264,9 +266,9 @@ export default function TeamViewPage() {
       const { active, over } = event;
       if (!over) return;
 
-      if (active.id !== over.id && bowlerLeagues?.length) {
-        const oldIndex = bowlerLeagues.findIndex((bl) => bl.id === active.id);
-        const newIndex = bowlerLeagues.findIndex((bl) => bl.id === over.id);
+      if (active.id !== over.id && sortedBowlerLeagues?.length) {
+        const oldIndex = sortedBowlerLeagues.findIndex((bl) => bl.id === active.id);
+        const newIndex = sortedBowlerLeagues.findIndex((bl) => bl.id === over.id);
 
         if (oldIndex !== -1 && newIndex !== -1) {
           await reorderMutation.mutateAsync({
@@ -314,9 +316,6 @@ export default function TeamViewPage() {
   }
 
   // Make sure we have all the data before rendering
-  const sortedBowlerLeagues = Array.isArray(bowlerLeaguesResponse?.data)
-    ? [...bowlerLeaguesResponse.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    : [];
   const league = leagueResponse?.data;
   const bowlersList = bowlersResponse?.data?.data ?? [];
   const teamBowlers = bowlersList.filter(bowler =>
@@ -381,7 +380,7 @@ export default function TeamViewPage() {
                     strategy={verticalListSortingStrategy}
                   >
                     {teamBowlers.map((bowler) => {
-                      const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
+                      const bowlerLeague = sortedBowlerLeagues.find(bl => bl.bowlerId === bowler.id);
                       if (!bowlerLeague) return null;
                       return (
                         <SortableBowlerRow
