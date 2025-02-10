@@ -162,7 +162,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Add this endpoint after the other team endpoints
+  // Update the teams/:id/bowlers endpoint
   app.get("/api/teams/:id/bowlers", async (req, res) => {
     try {
       const teamId = parseInt(req.params.id);
@@ -171,15 +171,28 @@ export function registerRoutes(app: Express): Server {
         return res.status(404).json({ message: "Team not found" });
       }
 
-      // Get bowlers directly assigned to this team
+      // Get bowlers assigned to this team
       const bowlers = await storage.getBowlers(teamId);
 
-      // Sort bowlers by order if available
-      const sortedBowlers = bowlers.sort((a, b) =>
-        (a.order ?? 0) - (b.order ?? 0)
-      );
+      // Get team and league details for each bowler
+      const bowlersWithDetails = await Promise.all(bowlers.map(async (bowler) => {
+        const assignments = await Promise.all((bowler.teamAssignments || []).map(async (assignment) => {
+          const team = await storage.getTeam(assignment.teamId);
+          const league = team ? await storage.getLeague(team.leagueId) : null;
+          return {
+            ...assignment,
+            teamName: team?.name || '',
+            leagueName: league?.name || '',
+          };
+        }));
 
-      res.json(sortedBowlers);
+        return {
+          ...bowler,
+          teamAssignments: assignments,
+        };
+      }));
+
+      res.json(bowlersWithDetails);
     } catch (error) {
       console.error('Error fetching team bowlers:', error);
       res.status(500).json({ message: "Internal server error" });
@@ -363,19 +376,43 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Update the PATCH /api/bowlers/:id endpoint
   app.patch("/api/bowlers/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const update = insertBowlerSchema.partial().parse(req.body);
 
-      // If teamId and leagueId are provided, handle team assignment
-      if (update.teamId !== undefined && update.leagueId !== undefined) {
-        await storage.addBowlerTeam(id, update.teamId, update.leagueId);
+      // Handle team assignments
+      if (update.teamAssignments && update.teamAssignments.length > 0) {
+        for (const assignment of update.teamAssignments) {
+          await storage.addBowlerTeam(id, assignment.teamId, assignment.leagueId);
+        }
+        delete update.teamAssignments;
       }
 
-      // Handle other updates if any exist
-      const updated = await storage.updateBowler(id, update);
-      res.json(updated);
+      // Handle other updates
+      const updatedBowler = await storage.updateBowler(id, update);
+
+      // Get fresh bowler data with all assignments
+      const bowler = await storage.getBowler(id);
+      if (!bowler) {
+        return res.status(404).json({ message: "Bowler not found" });
+      }
+
+      const assignments = await Promise.all((bowler.teamAssignments || []).map(async (assignment) => {
+        const team = await storage.getTeam(assignment.teamId);
+        const league = team ? await storage.getLeague(team.leagueId) : null;
+        return {
+          ...assignment,
+          teamName: team?.name || '',
+          leagueName: league?.name || '',
+        };
+      }));
+
+      res.json({
+        ...bowler,
+        teamAssignments: assignments,
+      });
     } catch (error) {
       console.error('Error updating bowler:', error);
       if (error instanceof z.ZodError) {
@@ -734,7 +771,6 @@ export function registerRoutes(app: Express): Server {
       });
     }
   });
-
 
   const httpServer = createServer(app);
   return httpServer;

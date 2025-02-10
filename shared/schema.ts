@@ -65,7 +65,6 @@ export const bowlerLeagues = pgTable("bowler_leagues", {
   active: boolean("active").notNull().default(true),
 });
 
-
 export const leagueRelations = relations(leagues, ({ many }) => ({
   teams: many(teams),
   bowlerLeagues: many(bowlerLeagues),
@@ -166,4 +165,4 @@ export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 
 export type BowlerTeam = typeof bowlerTeams.$inferSelect;
-export type InsertBowlerTeam = z.infer<typeof insertBowlerTeamSchema>;
+export type InsertBowlerTeam = typeof bowlerTeams.$inferSelect;

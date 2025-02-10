@@ -7,7 +7,8 @@ import {
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
   type BowlerLeague, type InsertBowlerLeague,
-  type Payment, type InsertPayment
+  type Payment, type InsertPayment,
+  type BowlerTeam
 } from "@shared/schema";
 
 export interface IStorage {
@@ -46,7 +47,7 @@ export interface IStorage {
   getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePaymentStatus(id: number, status: string, squarePaymentId?: string): Promise<Payment>;
-  addBowlerTeam(bowlerId: number, teamId: number, leagueId: number): Promise<BowlerTeam | undefined>;
+  addBowlerTeam(bowlerId: number, teamId: number, leagueId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -137,11 +138,39 @@ export class DatabaseStorage implements IStorage {
           squareCustomerId: bowlers.squareCustomerId,
         })
         .from(bowlers)
-        .innerJoin(bowlerTeams, eq(bowlerTeams.bowlerId, bowlers.id))
+        .leftJoin(bowlerTeams, eq(bowlerTeams.bowlerId, bowlers.id))
         .where(eq(bowlerTeams.teamId, teamId));
-      return result;
+
+      // Get team assignments for each bowler
+      const bowlersWithAssignments = await Promise.all(result.map(async (bowler) => {
+        const assignments = await db
+          .select()
+          .from(bowlerTeams)
+          .where(eq(bowlerTeams.bowlerId, bowler.id));
+
+        return {
+          ...bowler,
+          teamAssignments: assignments,
+        };
+      }));
+
+      return bowlersWithAssignments;
     }
-    return await db.select().from(bowlers);
+
+    const bowlers = await db.select().from(bowlers);
+    const bowlersWithAssignments = await Promise.all(bowlers.map(async (bowler) => {
+      const assignments = await db
+        .select()
+        .from(bowlerTeams)
+        .where(eq(bowlerTeams.bowlerId, bowler.id));
+
+      return {
+        ...bowler,
+        teamAssignments: assignments,
+      };
+    }));
+
+    return bowlersWithAssignments;
   }
 
   async getBowler(id: number): Promise<Bowler | undefined> {
@@ -273,26 +302,23 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async addBowlerTeam(bowlerId: number, teamId: number, leagueId: number): Promise<BowlerTeam | undefined> {
-    // First update the bowler's team association
+  async addBowlerTeam(bowlerId: number, teamId: number, leagueId: number): Promise<void> {
     await db
-      .update(bowlers)
-      .set({ 
-        teamId,
-        leagueId
-      })
-      .where(eq(bowlers.id, bowlerId));
-
-    // Then create the bowler team record
-    const [created] = await db
       .insert(bowlerTeams)
       .values({
         bowlerId,
         teamId,
         leagueId,
+        active: true,
+        order: 0,
       })
-      .onConflictDoNothing()
-      .returning();
+      .onConflictDoUpdate({
+        target: [bowlerTeams.bowlerId, bowlerTeams.teamId],
+        set: {
+          leagueId,
+          active: true,
+        },
+      });
 
     // Also ensure there's a bowler league association
     await db
@@ -302,8 +328,6 @@ export class DatabaseStorage implements IStorage {
         leagueId,
       })
       .onConflictDoNothing();
-
-    return created;
   }
 }
 
