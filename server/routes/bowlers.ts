@@ -12,16 +12,14 @@ router.get("/", async (req, res) => {
     const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
     const bowlers = await storage.getBowlers(teamId);
 
-    // Return all active bowlers if no teamId is provided, otherwise filter by team
     if (!bowlers) {
       console.log('No bowlers found');
       return sendSuccess(res, []);
     }
 
-    const filteredBowlers = bowlers.filter(bowler => bowler.active);
-    console.log(`Retrieved ${filteredBowlers.length} active bowlers`);
-
-    sendSuccess(res, filteredBowlers);
+    // Return all bowlers without filtering
+    console.log(`Retrieved ${bowlers.length} bowlers`);
+    sendSuccess(res, bowlers);
   } catch (error) {
     console.error('Error fetching bowlers:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowlers');

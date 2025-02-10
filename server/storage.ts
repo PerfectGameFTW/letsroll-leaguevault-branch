@@ -330,7 +330,6 @@ export class DatabaseStorage implements IStorage {
           )
           .orderBy(bowlerLeagues.order);
 
-        // Calculate new orders
         const orderedLeagues = [...currentBowlerLeagues];
         const currentIndex = orderedLeagues.findIndex(bl => bl.id === id);
 
@@ -352,7 +351,7 @@ export class DatabaseStorage implements IStorage {
         }
 
         // Get final state after all updates
-        const updatedLeagues = await tx
+        return await tx
           .select()
           .from(bowlerLeagues)
           .where(
@@ -362,8 +361,6 @@ export class DatabaseStorage implements IStorage {
             )
           )
           .orderBy(bowlerLeagues.order);
-
-        return updatedLeagues;
       });
     } catch (error) {
       console.error('Error updating bowler league order:', error);
