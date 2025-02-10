@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { BowlerForm } from "@/components/bowler-form";
 import { AssignBowlerForm } from "@/components/assign-bowler-form";
+import { ReorderBowlersDialog } from "@/components/reorder-bowlers-dialog";
 import {
   Table,
   TableBody,
@@ -16,29 +17,13 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { Loader2, Plus, ArrowLeft, ExternalLink, Pencil, GripVertical } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, ExternalLink, Pencil } from "lucide-react";
 import type { Team, Bowler, League, BowlerLeague } from "@shared/schema";
 import { getSquareCustomerUrl } from "@/lib/square";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -50,33 +35,8 @@ interface SortableBowlerRowProps {
 }
 
 function SortableBowlerRow({ bowler, bowlerLeague, league, onEdit }: SortableBowlerRowProps) {
-  const {
-    attributes,
-    listeners,
-    transform,
-    transition,
-    setNodeRef,
-  } = useSortable({ id: bowlerLeague.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
   return (
-    <TableRow ref={setNodeRef} style={style}>
-      <TableCell>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="p-0 cursor-grab active:cursor-grabbing"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
-          <span className="sr-only">Drag to reorder</span>
-        </Button>
-      </TableCell>
+    <TableRow>
       <TableCell>
         <div className="flex items-center gap-2">
           <Link href={`/bowlers/${bowler.id}`} className="hover:underline">
@@ -124,6 +84,7 @@ export default function TeamViewPage() {
   const [showForm, setShowForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showReorderDialog, setShowReorderDialog] = useState(false);
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
   const params = useParams();
@@ -136,20 +97,12 @@ export default function TeamViewPage() {
     },
   });
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
 
-  // Team query
   const { data: teamResponse, isLoading: loadingTeam } = useQuery<{ data: Team }>({
     queryKey: [`/api/teams/${teamId}`],
   });
   const team = teamResponse?.data;
 
-  // Bowler leagues query
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
     queryFn: async () => {
@@ -165,12 +118,9 @@ export default function TeamViewPage() {
     enabled: !!team?.leagueId,
   });
 
-  // Ensure we have valid arrays
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
   const sortedBowlerLeagues = [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
-
-  // Bowlers query
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers", sortedBowlerLeagues],
     queryFn: async () => {
@@ -189,7 +139,6 @@ export default function TeamViewPage() {
 
   const bowlers = bowlersResponse?.data ?? [];
 
-  // Filter and type-check bowlers
   const teamBowlers = bowlers.filter((bowler): bowler is Bowler => {
     if (!bowler || typeof bowler !== 'object' || !('id' in bowler)) {
       return false;
@@ -218,7 +167,6 @@ export default function TeamViewPage() {
       return response.json();
     },
     onSuccess: (response) => {
-      // Force refetch instead of using the response
       queryClient.invalidateQueries({ 
         queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }] 
       });
@@ -236,26 +184,6 @@ export default function TeamViewPage() {
       });
     }
   });
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-
-    if (!over || active.id === over.id || !Array.isArray(sortedBowlerLeagues)) return;
-
-    const oldIndex = sortedBowlerLeagues.findIndex(bl => bl.id === Number(active.id));
-    const newIndex = sortedBowlerLeagues.findIndex(bl => bl.id === Number(over.id));
-
-    if (oldIndex !== -1 && newIndex !== -1) {
-      try {
-        await reorderMutation.mutateAsync({
-          id: Number(active.id),
-          order: newIndex,
-        });
-      } catch (error) {
-        console.error('Error in handleDragEnd:', error);
-      }
-    }
-  };
 
   const updateTeamMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editTeamSchema>) => {
@@ -339,6 +267,11 @@ export default function TeamViewPage() {
               <Plus className="h-4 w-4 mr-2" />
               Add Existing Bowler
             </Button>
+            {sortedBowlerLeagues.length > 1 && (
+              <Button variant="outline" onClick={() => setShowReorderDialog(true)}>
+                Reorder Bowlers
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -347,7 +280,6 @@ export default function TeamViewPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[50px]"></TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Weekly Fee</TableHead>
@@ -358,43 +290,32 @@ export default function TeamViewPage() {
           <TableBody>
             {!loadingBowlerLeagues && !loadingBowlers ? (
               Array.isArray(teamBowlers) && teamBowlers.length > 0 ? (
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleDragEnd}
-                >
-                  <SortableContext
-                    items={sortedBowlerLeagues.map(bl => bl.id)}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {teamBowlers.map((bowler) => {
-                      const bowlerLeague = sortedBowlerLeagues.find(bl => bl.bowlerId === bowler.id);
-                      if (!bowlerLeague) return null;
-                      return (
-                        <SortableBowlerRow
-                          key={bowlerLeague.id}
-                          bowler={bowler}
-                          bowlerLeague={bowlerLeague}
-                          league={league}
-                          onEdit={(b) => {
-                            setSelectedBowler(b);
-                            setShowForm(true);
-                          }}
-                        />
-                      );
-                    })}
-                  </SortableContext>
-                </DndContext>
+                teamBowlers.map((bowler) => {
+                  const bowlerLeague = sortedBowlerLeagues.find(bl => bl.bowlerId === bowler.id);
+                  if (!bowlerLeague) return null;
+                  return (
+                    <SortableBowlerRow
+                      key={bowlerLeague.id}
+                      bowler={bowler}
+                      bowlerLeague={bowlerLeague}
+                      league={league}
+                      onEdit={(b) => {
+                        setSelectedBowler(b);
+                        setShowForm(true);
+                      }}
+                    />
+                  );
+                })
               ) : (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center">
+                  <TableCell colSpan={5} className="text-center">
                     No bowlers assigned to this team
                   </TableCell>
                 </TableRow>
               )
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="text-center">
+                <TableCell colSpan={5} className="text-center">
                   <Loader2 className="h-4 w-4 animate-spin mx-auto" />
                 </TableCell>
               </TableRow>
@@ -449,7 +370,16 @@ export default function TeamViewPage() {
         open={showAssignForm}
         onClose={() => setShowAssignForm(false)}
         teamId={teamId}
-        leagueId={team.leagueId}
+        leagueId={team?.leagueId}
+      />
+
+      <ReorderBowlersDialog
+        open={showReorderDialog}
+        onClose={() => setShowReorderDialog(false)}
+        bowlers={teamBowlers}
+        bowlerLeagues={sortedBowlerLeagues}
+        teamId={teamId}
+        leagueId={team?.leagueId}
       />
     </Layout>
   );
