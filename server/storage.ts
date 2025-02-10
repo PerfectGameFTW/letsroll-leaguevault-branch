@@ -127,7 +127,18 @@ export class DatabaseStorage implements IStorage {
   // Bowlers
   async getBowlers(teamId?: number): Promise<Bowler[]> {
     if (teamId) {
-      return await db.select().from(bowlers).where(eq(bowlers.teamId, teamId));
+      const result = await db
+        .select({
+          id: bowlers.id,
+          name: bowlers.name,
+          email: bowlers.email,
+          active: bowlers.active,
+          squareCustomerId: bowlers.squareCustomerId,
+        })
+        .from(bowlers)
+        .innerJoin(bowlerTeams, eq(bowlerTeams.bowlerId, bowlers.id))
+        .where(eq(bowlerTeams.teamId, teamId));
+      return result;
     }
     return await db.select().from(bowlers);
   }
@@ -154,37 +165,48 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler> {
-    // Handle team assignment separately if present
-    if (bowler.teamId !== undefined || bowler.leagueId !== undefined) {
-      // First, clear any existing team assignments
+    // Handle team assignments
+    if (bowler.teamId !== undefined && bowler.leagueId !== undefined) {
       await db
-        .update(bowlers)
-        .set({
+        .insert(bowlerTeams)
+        .values({
+          bowlerId: id,
           teamId: bowler.teamId,
+          leagueId: bowler.leagueId,
           order: bowler.order ?? 0
         })
-        .where(eq(bowlers.id, id));
+        .onConflictDoNothing();
 
-      if (bowler.teamId && bowler.leagueId) {
-        // Add new team assignment
-        await db
-          .insert(bowlerLeagues)
-          .values({
-            bowlerId: id,
-            leagueId: bowler.leagueId,
-          })
-          .onConflictDoNothing();
-      }
+      // Also add league association
+      await db
+        .insert(bowlerLeagues)
+        .values({
+          bowlerId: id,
+          leagueId: bowler.leagueId,
+        })
+        .onConflictDoNothing();
+
+      // Remove teamId and leagueId from bowler object
+      delete bowler.teamId;
+      delete bowler.leagueId;
     }
 
-    // Update other bowler fields
-    const [updated] = await db
-      .update(bowlers)
-      .set(bowler)
-      .where(eq(bowlers.id, id))
-      .returning();
+    // Update other bowler fields if any
+    if (Object.keys(bowler).length > 0) {
+      const [updated] = await db
+        .update(bowlers)
+        .set(bowler)
+        .where(eq(bowlers.id, id))
+        .returning();
+      return updated;
+    }
 
-    return updated;
+    // If no other fields to update, return the existing bowler
+    const [existing] = await db
+      .select()
+      .from(bowlers)
+      .where(eq(bowlers.id, id));
+    return existing;
   }
 
   async deleteBowler(id: number): Promise<void> {
