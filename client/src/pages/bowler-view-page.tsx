@@ -88,24 +88,49 @@ export default function BowlerViewPage() {
   // Get the selected league's team
   const selectedAssociation = bowlerLeagues.find(bl => bl.leagueId === selectedLeagueId);
 
-  const { data: team, isLoading: loadingTeam } = useQuery<Team>({
+  const { data: team, isLoading: loadingTeam } = useQuery<{ data: Team }>({
     queryKey: [`/api/teams/${selectedAssociation?.teamId}`],
+    queryFn: async () => {
+      if (!selectedAssociation?.teamId) {
+        throw new Error('No team ID selected');
+      }
+      const response = await fetch(`/api/teams/${selectedAssociation.teamId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch team');
+      }
+      return response.json();
+    },
     enabled: !!selectedAssociation?.teamId,
   });
 
-  const { data: league, isLoading: loadingLeague } = useQuery<League>({
+  const { data: league, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${selectedLeagueId}`],
+    queryFn: async () => {
+      if (!selectedLeagueId) {
+        throw new Error('No league ID selected');
+      }
+      const response = await fetch(`/api/leagues/${selectedLeagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch league');
+      }
+      return response.json();
+    },
     enabled: !!selectedLeagueId,
   });
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments", bowlerId, selectedLeagueId],
-    queryFn: () =>
-      fetch(`/api/payments?bowlerId=${bowlerId}&leagueId=${selectedLeagueId}`).then((res) => res.json()),
+    queryFn: async () => {
+      const response = await fetch(`/api/payments?bowlerId=${bowlerId}&leagueId=${selectedLeagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch payments');
+      }
+      return response.json();
+    },
     enabled: !!selectedLeagueId,
   });
 
-  const payments = paymentsResponse?.data;
+  const payments = paymentsResponse?.data || [];
 
   // Add loyalty points query
   const { data: loyaltyInfo, isLoading: loadingLoyalty } = useQuery<LoyaltyInfo>({
@@ -171,9 +196,9 @@ export default function BowlerViewPage() {
   }
 
   // Financial calculations based on selected league
-  const totalPaidPayments = payments?.filter(p => p.status === 'paid') || [];
+  const totalPaidPayments = payments.filter(p => p.status === 'paid') || [];
   const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
-  const totalUnpaidPayments = payments?.filter(p => p.status !== 'paid') || [];
+  const totalUnpaidPayments = payments.filter(p => p.status !== 'paid') || [];
   const totalUnpaidAmount = totalUnpaidPayments.reduce((sum, p) => sum + p.amount, 0);
 
   let weeksDue = 0;
@@ -182,10 +207,10 @@ export default function BowlerViewPage() {
   let fullSeasonAmount = 0;
   let amountPastDue = 0;
 
-  if (league && league.seasonStart && league.seasonEnd && league.weeklyFee) {
-    const seasonStart = new Date(league.seasonStart);
+  if (league?.data?.seasonStart && league.data.seasonEnd && league.data.weeklyFee) {
+    const seasonStart = new Date(league.data.seasonStart);
     const today = startOfToday();
-    const seasonEnd = new Date(league.seasonEnd);
+    const seasonEnd = new Date(league.data.seasonEnd);
 
     if (today < seasonStart) {
       weeksDue = 0;
@@ -195,9 +220,9 @@ export default function BowlerViewPage() {
       weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
     }
 
-    totalSeasonDues = league.weeklyFee * weeksDue;
+    totalSeasonDues = league.data.weeklyFee * weeksDue;
     totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
-    fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
+    fullSeasonAmount = league.data.weeklyFee * totalWeeksInSeason;
     amountPastDue = totalSeasonDues - totalPaidAmount;
   }
 
@@ -324,7 +349,7 @@ export default function BowlerViewPage() {
               <CardDescription>Regular payment amount</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">${((league?.weeklyFee || 0) / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">${((league?.data?.weeklyFee || 0) / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
 
@@ -333,7 +358,7 @@ export default function BowlerViewPage() {
               <CardTitle className="text-lg">Amount Due to Date</CardTitle>
               <CardDescription>
                 {weeksDue} week{weeksDue === 1 ? "" : "s"} at ${(
-                  (league?.weeklyFee || 0) / 100
+                  (league?.data?.weeklyFee || 0) / 100
                 ).toFixed(2)}
               </CardDescription>
             </CardHeader>
@@ -367,7 +392,7 @@ export default function BowlerViewPage() {
               <CardTitle className="text-lg">Full Season Lineage Amount Due</CardTitle>
               <CardDescription>
                 {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at ${(
-                  (league?.weeklyFee || 0) / 100
+                  (league?.data?.weeklyFee || 0) / 100
                 ).toFixed(2)}
               </CardDescription>
             </CardHeader>
