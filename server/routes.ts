@@ -92,7 +92,10 @@ export function registerRoutes(app: Express): Server {
     try {
       const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
       const teams = await storage.getTeams(leagueId);
-      sendSuccess(res, teams);
+      if (!Array.isArray(teams)) {
+        throw new Error("Invalid teams data format");
+      }
+      sendSuccess(res, { data: teams });
     } catch (error) {
       sendError(res, error);
     }
@@ -156,11 +159,10 @@ export function registerRoutes(app: Express): Server {
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
       const bowlers = await storage.getBowlers(teamId);
       if (!Array.isArray(bowlers)) {
-        sendError(res, "Invalid bowlers data format", 500);
-        return;
+        throw new Error("Invalid bowlers data format");
       }
       bowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      sendSuccess(res, bowlers);
+      sendSuccess(res, { data: bowlers });
     } catch (error) {
       sendError(res, error);
     }
