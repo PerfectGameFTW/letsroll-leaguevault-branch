@@ -47,6 +47,7 @@ export default function BowlerViewPage() {
   // Query for bowler with proper typing and error handling
   const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<{ data: Bowler }>({
     queryKey: [`/api/bowlers/${bowlerId}`],
+    retry: false,
     queryFn: async () => {
       const response = await fetch(`/api/bowlers/${bowlerId}`);
       if (!response.ok) {
@@ -58,8 +59,9 @@ export default function BowlerViewPage() {
   const bowler = bowlerResponse?.data;
 
   // Query to get bowler's league associations with proper typing
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: { data: BowlerLeague[] } }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", bowlerId],
+    retry: false,
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?bowlerId=${bowlerId}`);
       if (!response.ok) {
@@ -69,11 +71,12 @@ export default function BowlerViewPage() {
     },
     enabled: !!bowlerId
   });
-  const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
   // Get all leagues the bowler is in
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
+    retry: false,
     queryFn: async () => {
       const response = await fetch('/api/leagues');
       if (!response.ok) {
@@ -88,8 +91,9 @@ export default function BowlerViewPage() {
   // Get the selected league's team
   const selectedAssociation = bowlerLeagues.find(bl => bl.leagueId === selectedLeagueId);
 
-  const { data: team, isLoading: loadingTeam } = useQuery<{ data: Team }>({
+  const { data: teamResponse, isLoading: loadingTeam } = useQuery<{ data: Team }>({
     queryKey: [`/api/teams/${selectedAssociation?.teamId}`],
+    retry: false,
     queryFn: async () => {
       if (!selectedAssociation?.teamId) {
         throw new Error('No team ID selected');
@@ -102,9 +106,11 @@ export default function BowlerViewPage() {
     },
     enabled: !!selectedAssociation?.teamId,
   });
+  const team = teamResponse?.data;
 
   const { data: league, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${selectedLeagueId}`],
+    retry: false,
     queryFn: async () => {
       if (!selectedLeagueId) {
         throw new Error('No league ID selected');
@@ -120,6 +126,7 @@ export default function BowlerViewPage() {
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments", bowlerId, selectedLeagueId],
+    retry: false,
     queryFn: async () => {
       const response = await fetch(`/api/payments?bowlerId=${bowlerId}&leagueId=${selectedLeagueId}`);
       if (!response.ok) {
