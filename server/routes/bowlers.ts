@@ -10,7 +10,10 @@ const router = Router();
 router.get("/", async (req, res) => {
   try {
     const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
-    const bowlers = await storage.getBowlers(teamId);
+    const ids = req.query.ids ? (req.query.ids as string).split(',').map(id => parseInt(id)) : undefined;
+
+    console.log('Fetching bowlers with params:', { teamId, ids });
+    const bowlers = await storage.getBowlers(teamId, ids);
 
     if (!bowlers) {
       console.log('No bowlers found');
