@@ -148,21 +148,22 @@ export default function TeamViewPage() {
   });
   const team = teamResponse?.data;
 
-  // Get bowler leagues for this team
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ data: { data: BowlerLeague[] } }>({
+  // Update the bowler leagues query and reorder mutation
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", teamId, team?.leagueId],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${team?.leagueId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
-      return response.json();
+      const result = await response.json();
+      return result.data;
     },
     enabled: !!team?.leagueId,
   });
 
-  const sortedBowlerLeagues = bowlerLeaguesResponse?.data?.data
-    ? [...bowlerLeaguesResponse.data.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const sortedBowlerLeagues = bowlerLeaguesResponse?.data
+    ? [...bowlerLeaguesResponse.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
 
   // Update the bowlers query and data handling
@@ -252,25 +253,36 @@ export default function TeamViewPage() {
       return response.json();
     },
     onMutate: async ({ id, order }) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/bowler-leagues", teamId] });
-      const previousBowlerLeagues = queryClient.getQueryData<BowlerLeague[]>(["/api/bowler-leagues", teamId]);
-      if (previousBowlerLeagues) {
-        const bowlerLeagues = [...previousBowlerLeagues];
-        const oldIndex = bowlerLeagues.findIndex((bl) => bl.id === id);
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["/api/bowler-leagues", teamId, team?.leagueId] });
+
+      // Snapshot the previous value
+      const previousData = queryClient.getQueryData<{ data: BowlerLeague[] }>(["/api/bowler-leagues", teamId, team?.leagueId]);
+
+      // Optimistically update to the new value
+      if (previousData?.data) {
+        const newData = [...previousData.data];
+        const oldIndex = newData.findIndex((bl) => bl.id === id);
         if (oldIndex !== -1) {
-          const [movedBowlerLeague] = bowlerLeagues.splice(oldIndex, 1);
-          bowlerLeagues.splice(order, 0, movedBowlerLeague);
-          bowlerLeagues.forEach((bl, index) => {
+          const [movedItem] = newData.splice(oldIndex, 1);
+          newData.splice(order, 0, movedItem);
+
+          // Update order values
+          newData.forEach((bl, index) => {
             bl.order = index;
           });
-          queryClient.setQueryData(["/api/bowler-leagues", teamId], bowlerLeagues);
+
+          queryClient.setQueryData(["/api/bowler-leagues", teamId, team?.leagueId], {
+            data: newData
+          });
         }
       }
-      return { previousBowlerLeagues };
+
+      return { previousData };
     },
-    onError: (error: Error, _, context) => {
-      if (context?.previousBowlerLeagues) {
-        queryClient.setQueryData(["/api/bowler-leagues", teamId], context.previousBowlerLeagues);
+    onError: (error, _, context) => {
+      if (context?.previousData) {
+        queryClient.setQueryData(["/api/bowler-leagues", teamId, team?.leagueId], context.previousData);
       }
       toast({
         title: "Error reordering bowlers",
@@ -278,6 +290,11 @@ export default function TeamViewPage() {
         variant: "destructive",
       });
     },
+    onSuccess: (updatedData) => {
+      queryClient.setQueryData(["/api/bowler-leagues", teamId, team?.leagueId], {
+        data: updatedData
+      });
+    }
   });
 
   const handleDragEnd = async (event: DragEndEvent) => {
