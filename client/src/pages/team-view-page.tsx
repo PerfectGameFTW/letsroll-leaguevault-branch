@@ -30,6 +30,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  DragEndEvent,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -155,12 +156,16 @@ export default function TeamViewPage() {
   // Get all bowlers referenced in bowlerLeagues
   const { data: bowlers = [], isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers", bowlerLeagues],
-    queryFn: () => {
-      if (!bowlerLeagues?.length) return Promise.resolve([]);
+    queryFn: async () => {
+      if (!bowlerLeagues?.length) return [];
       const bowlerIds = bowlerLeagues.map(bl => bl.bowlerId);
-      return fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`).then(res => res.json());
+      const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowlers');
+      }
+      return response.json();
     },
-    enabled: !!bowlerLeagues?.length,
+    enabled: bowlerLeagues.length > 0,
   });
 
   const { data: league, isLoading: loadingLeague } = useQuery<League>({
@@ -230,16 +235,14 @@ export default function TeamViewPage() {
         variant: "destructive",
       });
     },
-    onSuccess: (updatedBowlerLeagues) => {
-      queryClient.setQueryData(["/api/bowler-leagues", teamId], updatedBowlerLeagues);
-    },
   });
 
-  const handleDragEnd = async (event: any) => {
+  const handleDragEnd = async (event: DragEndEvent) => {
     try {
       const { active, over } = event;
+      if (!over) return;
 
-      if (active.id !== over?.id && bowlerLeagues?.length) {
+      if (active.id !== over.id && bowlerLeagues?.length) {
         const oldIndex = bowlerLeagues.findIndex((bl) => bl.id === active.id);
         const newIndex = bowlerLeagues.findIndex((bl) => bl.id === over.id);
 
@@ -288,7 +291,9 @@ export default function TeamViewPage() {
     );
   }
 
-  const sortedBowlerLeagues = (bowlerLeagues || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  // Make sure we have all the data before rendering
+  const sortedBowlerLeagues = bowlerLeagues.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
 
   return (
     <Layout>
@@ -331,33 +336,41 @@ export default function TeamViewPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={sortedBowlerLeagues.map((bl) => bl.id)}
-                strategy={verticalListSortingStrategy}
+            {allDataLoaded ? (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                {sortedBowlerLeagues.map((bowlerLeague) => {
-                  const bowler = bowlers?.find(b => b.id === bowlerLeague.bowlerId);
-                  if (!bowler) return null;
-                  return (
-                    <SortableBowlerRow
-                      key={bowlerLeague.id}
-                      bowler={bowler}
-                      bowlerLeague={bowlerLeague}
-                      league={league}
-                      onEdit={(b) => {
-                        setSelectedBowler(b);
-                        setShowForm(true);
-                      }}
-                    />
-                  );
-                })}
-              </SortableContext>
-            </DndContext>
+                <SortableContext
+                  items={sortedBowlerLeagues.map((bl) => bl.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {sortedBowlerLeagues.map((bowlerLeague) => {
+                    const bowler = bowlers.find(b => b.id === bowlerLeague.bowlerId);
+                    if (!bowler) return null;
+                    return (
+                      <SortableBowlerRow
+                        key={bowlerLeague.id}
+                        bowler={bowler}
+                        bowlerLeague={bowlerLeague}
+                        league={league}
+                        onEdit={(b) => {
+                          setSelectedBowler(b);
+                          setShowForm(true);
+                        }}
+                      />
+                    );
+                  })}
+                </SortableContext>
+              </DndContext>
+            ) : (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center">
+                  <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
