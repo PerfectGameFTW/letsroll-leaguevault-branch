@@ -210,7 +210,6 @@ export default function TeamViewPage() {
 
   const reorderMutation = useMutation({
     mutationFn: async ({ id, order }: { id: number; order: number }) => {
-      console.log(`Reordering bowler league ${id} to position ${order}`);
       const response = await apiRequest("PATCH", `/api/bowler-leagues/${id}`, { order });
       if (!response.ok) {
         const error = await response.text();
@@ -218,75 +217,7 @@ export default function TeamViewPage() {
       }
       return response.json();
     },
-    onMutate: async ({ id, order }) => {
-      console.log('Starting optimistic update for reorder:', { id, order });
-      const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
-
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey });
-
-      // Snapshot current value
-      const previousData = queryClient.getQueryData<{ data: BowlerLeague[] }>(queryKey);
-      console.log('Previous data:', previousData);
-
-      if (previousData?.data) {
-        // Create new array and sort by current order
-        const currentData = [...previousData.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        console.log('Sorted current data:', currentData);
-
-        // Find current index of the item being moved
-        const oldIndex = currentData.findIndex(bl => bl.id === id);
-        if (oldIndex !== -1) {
-          // Calculate new orders for all items
-          const updatedData = currentData.map((item, index) => {
-            let newOrder: number;
-
-            if (item.id === id) {
-              newOrder = order;
-            } else if (oldIndex < order) {
-              if (index > oldIndex && index <= order) {
-                newOrder = index - 1;
-              } else {
-                newOrder = index;
-              }
-            } else {
-              if (index >= order && index < oldIndex) {
-                newOrder = index + 1;
-              } else {
-                newOrder = index;
-              }
-            }
-
-            return {
-              ...item,
-              order: newOrder
-            };
-          });
-
-          console.log('Updated data for cache:', updatedData);
-
-          // Update cache with optimistic data
-          queryClient.setQueryData(queryKey, { data: updatedData.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) });
-        }
-      }
-
-      return { previousData };
-    },
-    onError: (error, _, context) => {
-      console.error('Error in reorder mutation:', error);
-      if (context?.previousData) {
-        const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
-        queryClient.setQueryData(queryKey, context.previousData);
-      }
-
-      toast({
-        title: "Error reordering bowlers",
-        description: error instanceof Error ? error.message : "Failed to update order",
-        variant: "destructive",
-      });
-    },
     onSuccess: (response) => {
-      console.log('Reorder mutation succeeded:', response);
       if (response?.data) {
         const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
         queryClient.setQueryData(queryKey, response);
@@ -297,8 +228,14 @@ export default function TeamViewPage() {
         });
       }
     },
+    onError: (error: Error) => {
+      toast({
+        title: "Error reordering bowlers",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
     onSettled: () => {
-      console.log('Reorder mutation settled, invalidating queries');
       queryClient.invalidateQueries({ 
         queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }] 
       });
@@ -308,13 +245,12 @@ export default function TeamViewPage() {
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (!over || !active || !Array.isArray(sortedBowlerLeagues)) return;
+    if (!over || active.id === over.id || !Array.isArray(sortedBowlerLeagues)) return;
 
     const oldIndex = sortedBowlerLeagues.findIndex(bl => bl.id === Number(active.id));
     const newIndex = sortedBowlerLeagues.findIndex(bl => bl.id === Number(over.id));
 
-    if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-      console.log(`Moving bowler league from position ${oldIndex} to ${newIndex}`);
+    if (oldIndex !== -1 && newIndex !== -1) {
       try {
         await reorderMutation.mutateAsync({
           id: Number(active.id),
