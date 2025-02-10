@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema, insertBowlerLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { ApiError, Client } from 'square';
+import { sendSuccess, sendError } from './utils/api';
 
 let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
@@ -13,19 +14,15 @@ if (process.env.SQUARE_ACCESS_TOKEN) {
   });
 }
 
-// Add custom serializer for BigInt values
-const customJSONReplacer = (key: string, value: any) => {
-  if (typeof value === 'bigint') {
-    return value.toString();
-  }
-  return value;
-};
-
 export function registerRoutes(app: Express): Server {
   // Leagues
   app.get("/api/leagues", async (_req, res) => {
-    const leagues = await storage.getLeagues();
-    res.json(leagues);
+    try {
+      const leagues = await storage.getLeagues();
+      sendSuccess(res, leagues);
+    } catch (error) {
+      sendError(res, error);
+    }
   });
 
   app.get("/api/leagues/:id", async (req, res) => {
@@ -33,11 +30,11 @@ export function registerRoutes(app: Express): Server {
       const id = parseInt(req.params.id);
       const league = await storage.getLeague(id);
       if (!league) {
-        return res.status(404).json({ message: "League not found" });
+        return sendError(res, "League not found", 404, 'NOT_FOUND');
       }
-      res.json(league);
+      sendSuccess(res, league);
     } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+      sendError(res, error);
     }
   });
 
@@ -45,12 +42,12 @@ export function registerRoutes(app: Express): Server {
     try {
       const league = insertLeagueSchema.parse(req.body);
       const created = await storage.createLeague(league);
-      res.status(201).json(created);
+      sendSuccess(res, created, 201);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
-        res.status(500).json({ message: "Internal server error" });
+        sendError(res, error);
       }
     }
   });
@@ -60,12 +57,12 @@ export function registerRoutes(app: Express): Server {
       const id = parseInt(req.params.id);
       const update = insertLeagueSchema.partial().parse(req.body);
       const updated = await storage.updateLeague(id, update);
-      res.json(updated);
+      sendSuccess(res, updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
-        res.status(500).json({ message: "Internal server error" });
+        sendError(res, error);
       }
     }
   });
@@ -73,29 +70,20 @@ export function registerRoutes(app: Express): Server {
   app.delete("/api/leagues/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-
-      // Get all teams in the league
       const teams = await storage.getTeams(id);
 
-      // Update all bowlers from these teams to remove team association
       for (const team of teams) {
         const teamBowlers = await storage.getBowlers(team.id);
         for (const bowler of teamBowlers) {
-          await storage.updateBowler(bowler.id, {
-            teamId: null,
-            order: 0  // Set to 0 instead of null
-          });
+          await storage.updateBowler(bowler.id, { teamId: null, order: 0 });
         }
-        // Delete the team
         await storage.deleteTeam(team.id);
       }
 
-      // Finally delete the league
       await storage.deleteLeague(id);
-      res.sendStatus(204);
+      sendSuccess(res, null, 204);
     } catch (error) {
-      console.error('Error deleting league:', error);
-      res.status(500).json({ message: "Internal server error" });
+      sendError(res, error);
     }
   });
 
@@ -104,9 +92,9 @@ export function registerRoutes(app: Express): Server {
     try {
       const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
       const teams = await storage.getTeams(leagueId);
-      res.json(teams);
+      sendSuccess(res, teams);
     } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+      sendError(res, error);
     }
   });
 
@@ -115,11 +103,11 @@ export function registerRoutes(app: Express): Server {
       const id = parseInt(req.params.id);
       const team = await storage.getTeam(id);
       if (!team) {
-        return res.status(404).json({ message: "Team not found" });
+        return sendError(res, "Team not found", 404, 'NOT_FOUND');
       }
-      res.json(team);
+      sendSuccess(res, team);
     } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+      sendError(res, error);
     }
   });
 
@@ -127,12 +115,12 @@ export function registerRoutes(app: Express): Server {
     try {
       const team = insertTeamSchema.parse(req.body);
       const created = await storage.createTeam(team);
-      res.status(201).json(created);
+      sendSuccess(res, created, 201);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
-        res.status(500).json({ message: "Internal server error" });
+        sendError(res, error);
       }
     }
   });
@@ -142,12 +130,12 @@ export function registerRoutes(app: Express): Server {
       const id = parseInt(req.params.id);
       const update = insertTeamSchema.partial().parse(req.body);
       const updated = await storage.updateTeam(id, update);
-      res.json(updated);
+      sendSuccess(res, updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
-        res.status(500).json({ message: "Internal server error" });
+        sendError(res, error);
       }
     }
   });
@@ -156,9 +144,9 @@ export function registerRoutes(app: Express): Server {
     try {
       const id = parseInt(req.params.id);
       await storage.deleteTeam(id);
-      res.sendStatus(204);
+      sendSuccess(res, null, 204);
     } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+      sendError(res, error);
     }
   });
 
@@ -167,11 +155,10 @@ export function registerRoutes(app: Express): Server {
     try {
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
       const bowlers = await storage.getBowlers(teamId);
-      // Sort bowlers by order
       bowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      res.json(bowlers);
+      sendSuccess(res, bowlers);
     } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+      sendError(res, error);
     }
   });
 
@@ -180,11 +167,11 @@ export function registerRoutes(app: Express): Server {
       const id = parseInt(req.params.id);
       const bowler = await storage.getBowler(id);
       if (!bowler) {
-        return res.status(404).json({ message: "Bowler not found" });
+        return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
       }
-      res.json(bowler);
+      sendSuccess(res, bowler);
     } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+      sendError(res, error);
     }
   });
 
@@ -192,132 +179,41 @@ export function registerRoutes(app: Express): Server {
     try {
       const bowler = insertBowlerSchema.parse(req.body);
 
-      // Check if bowler with this email already exists
       const existingBowlers = await storage.getBowlers();
-      const existingBowler = existingBowlers.find(b =>
+      const existingBowler = existingBowlers.find(b => 
         b.email.toLowerCase() === bowler.email.toLowerCase()
       );
 
       if (existingBowler) {
-        return res.status(400).json({
-          message: "A bowler with this email already exists"
-        });
+        return sendError(res, "A bowler with this email already exists", 400, 'DUPLICATE_EMAIL');
       }
 
-      // If order is not provided, set it to the next available order number
       if (bowler.teamId && !bowler.order) {
         const teamBowlers = await storage.getBowlers(bowler.teamId);
         bowler.order = teamBowlers.length;
       }
 
-      // Create bowler in database
       const created = await storage.createBowler(bowler);
 
-      // Create or update Square customer
       if (squareClient) {
         try {
-          // Search for existing customer by email
-          const searchResponse = await squareClient.customersApi.searchCustomers({
-            query: {
-              filter: {
-                emailAddress: {
-                  exact: bowler.email.toLowerCase()
-                }
-              }
-            }
-          });
-
-          let squareCustomerId: string;
-
-          // If customer exists, use their ID
-          if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
-            const existingCustomer = searchResponse.result.customers[0];
-            squareCustomerId = existingCustomer.id;
-
-            // Update customer details
-            await squareClient.customersApi.updateCustomer(squareCustomerId, {
-              givenName: bowler.name.split(' ')[0],
-              familyName: bowler.name.split(' ').slice(1).join(' ') || '',
-              emailAddress: bowler.email.toLowerCase(),
-            });
-          } else {
-            // Create new customer
-            const customerResponse = await squareClient.customersApi.createCustomer({
-              idempotencyKey: `${Date.now()}-${Math.random()}`,
-              givenName: bowler.name.split(' ')[0],
-              familyName: bowler.name.split(' ').slice(1).join(' ') || '',
-              emailAddress: bowler.email.toLowerCase(),
-            });
-
-            if (!customerResponse.result?.customer?.id) {
-              throw new Error('Failed to create Square customer');
-            }
-
-            squareCustomerId = customerResponse.result.customer.id;
-          }
-
-          // If bowler has a team, handle league group assignment
-          if (bowler.teamId) {
-            const team = await storage.getTeam(bowler.teamId);
-            if (team) {
-              const league = await storage.getLeague(team.leagueId);
-              if (league) {
-                // Find or create league group
-                const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
-                let groupId = groupsResponse.result.groups?.find(
-                  (g) => g.name === league.name
-                )?.id;
-
-                if (!groupId) {
-                  const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
-                    idempotencyKey: `league-${league.id}`,
-                    group: {
-                      name: league.name,
-                    },
-                  });
-                  groupId = groupResponse.result.group?.id;
-                }
-
-                if (groupId) {
-                  try {
-                    await squareClient.customerGroupsApi.addCustomerToGroup(
-                      groupId,
-                      { customerId: squareCustomerId }
-                    );
-                  } catch (groupError) {
-                    console.error('Error adding customer to group:', groupError);
-                  }
-                }
-              }
-            }
-          }
-
-          // Update bowler with Square customer ID
-          await storage.updateBowler(created.id, {
-            squareCustomerId
-          });
-
-          // Get updated bowler with Square ID
-          const updatedBowler = await storage.getBowler(created.id);
-          if (updatedBowler) {
-            return res.status(201).json(updatedBowler);
+          const squareCustomerId = await handleSquareCustomer(created, bowler.teamId);
+          if (squareCustomerId) {
+            await storage.updateBowler(created.id, { squareCustomerId });
+            const updatedBowler = await storage.getBowler(created.id);
+            return sendSuccess(res, updatedBowler, 201);
           }
         } catch (squareError) {
           console.error('Square API error:', squareError);
-          // Still return the created bowler even if Square integration fails
-          return res.status(201).json(created);
         }
       }
 
-      res.status(201).json(created);
+      sendSuccess(res, created, 201);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
-        console.error('Error creating bowler:', error);
-        res.status(500).json({
-          message: error instanceof Error ? error.message : "Internal server error"
-        });
+        sendError(res, error);
       }
     }
   });
@@ -327,48 +223,41 @@ export function registerRoutes(app: Express): Server {
       const id = parseInt(req.params.id);
       const update = insertBowlerSchema.partial().parse(req.body);
 
-      // If we're updating the order, we need to handle reordering
       if (typeof update.order === 'number') {
         const bowler = await storage.getBowler(id);
         if (!bowler?.teamId) {
-          return res.status(400).json({ message: "Bowler must be assigned to a team to reorder" });
+          return sendError(res, "Bowler must be assigned to a team to reorder", 400, 'INVALID_OPERATION');
         }
 
-        // Get all bowlers for the team and sort them by current order
         const teamBowlers = await storage.getBowlers(bowler.teamId);
         teamBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
         const oldIndex = teamBowlers.findIndex(b => b.id === id);
-        const newIndex = Math.min(Math.max(0, update.order), teamBowlers.length - 1); // Clamp order value
+        const newIndex = Math.min(Math.max(0, update.order), teamBowlers.length - 1);
 
         if (oldIndex === -1) {
-          return res.status(404).json({ message: "Bowler not found in team" });
+          return sendError(res, "Bowler not found in team", 404, 'NOT_FOUND');
         }
 
-        // Remove bowler from old position and insert at new position
         const [movedBowler] = teamBowlers.splice(oldIndex, 1);
         teamBowlers.splice(newIndex, 0, movedBowler);
 
-        // Update all bowlers with their new sequential order
         await Promise.all(teamBowlers.map((b, index) =>
           storage.updateBowler(b.id, { order: index })
         ));
 
-        // Return the updated and sorted list
         const updatedBowlers = await storage.getBowlers(bowler.teamId);
         updatedBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        return res.json(updatedBowlers);
+        return sendSuccess(res, updatedBowlers);
       }
 
-      // Handle non-order updates
       const updated = await storage.updateBowler(id, update);
-      res.json(updated);
+      sendSuccess(res, updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
-        console.error('Error updating bowler:', error);
-        res.status(500).json({ message: "Internal server error" });
+        sendError(res, error);
       }
     }
   });
@@ -377,9 +266,9 @@ export function registerRoutes(app: Express): Server {
     try {
       const id = parseInt(req.params.id);
       await storage.deleteBowler(id);
-      res.sendStatus(204);
+      sendSuccess(res, null, 204);
     } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+      sendError(res, error);
     }
   });
 
@@ -390,24 +279,17 @@ export function registerRoutes(app: Express): Server {
       const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
 
-      // Get all bowler leagues filtered by the provided parameters
       const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId, leagueId, teamId });
-
-      // Sort by order if available
       bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-      res.json(bowlerLeagues);
+      sendSuccess(res, bowlerLeagues);
     } catch (error) {
-      console.error('Error getting bowler leagues:', error);
-      res.status(500).json({ message: "Internal server error" });
+      sendError(res, error);
     }
   });
 
   app.post("/api/bowler-leagues", async (req, res) => {
     try {
       const association = insertBowlerLeagueSchema.parse(req.body);
-
-      // Check if this association already exists
       const existing = await storage.getBowlerLeagues({
         bowlerId: association.bowlerId,
         leagueId: association.leagueId,
@@ -415,25 +297,19 @@ export function registerRoutes(app: Express): Server {
       });
 
       if (existing.length > 0) {
-        return res.status(400).json({
-          message: "Bowler is already assigned to this league and team"
-        });
+        return sendError(res, "Bowler is already assigned to this league and team", 400, 'DUPLICATE_ASSOCIATION');
       }
 
-      // Get all bowler leagues for this team to determine the next order
       const teamBowlerLeagues = await storage.getBowlerLeagues({ teamId: association.teamId });
       association.order = teamBowlerLeagues.length;
 
       const created = await storage.createBowlerLeague(association);
-      res.status(201).json(created);
+      sendSuccess(res, created, 201);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
-        console.error('Error creating bowler league:', error);
-        res.status(500).json({ 
-          message: error instanceof Error ? error.message : "Internal server error"
-        });
+        sendError(res, error);
       }
     }
   });
@@ -447,7 +323,7 @@ export function registerRoutes(app: Express): Server {
       if (typeof update.order === 'number') {
         const bowlerLeague = await storage.getBowlerLeague(id);
         if (!bowlerLeague) {
-          return res.status(404).json({ message: "Bowler league association not found" });
+          return sendError(res, "Bowler league association not found", 404, 'NOT_FOUND');
         }
 
         // Get all bowler leagues for the team and sort them
@@ -458,7 +334,7 @@ export function registerRoutes(app: Express): Server {
         const newIndex = Math.min(Math.max(0, update.order), teamBowlerLeagues.length - 1);
 
         if (oldIndex === -1) {
-          return res.status(404).json({ message: "Bowler league not found in team" });
+          return sendError(res, "Bowler league not found in team", 404, 'NOT_FOUND');
         }
 
         // Remove from old position and insert at new position
@@ -473,18 +349,17 @@ export function registerRoutes(app: Express): Server {
         // Return the updated and sorted list
         const updatedBowlerLeagues = await storage.getBowlerLeagues({ teamId: bowlerLeague.teamId });
         updatedBowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        return res.json(updatedBowlerLeagues);
+        return sendSuccess(res, updatedBowlerLeagues);
       }
 
       // Handle non-order updates
       const updated = await storage.updateBowlerLeague(id, update);
-      res.json(updated);
+      sendSuccess(res, updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
-        console.error('Error updating bowler league:', error);
-        res.status(500).json({ message: "Internal server error" });
+        sendError(res, error);
       }
     }
   });
@@ -513,14 +388,11 @@ export function registerRoutes(app: Express): Server {
         }
       });
 
-      console.log('Search response:', JSON.stringify(searchResponse.result, customJSONReplacer, 2));
-
       let customerId: string;
 
       // If customer exists, use their ID
       if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
         const existingCustomer = searchResponse.result.customers[0];
-        console.log('Found existing customer:', JSON.stringify(existingCustomer, customJSONReplacer, 2));
         customerId = existingCustomer.id;
 
         // Update customer details if needed
@@ -530,7 +402,6 @@ export function registerRoutes(app: Express): Server {
           emailAddress: email.toLowerCase(),
         });
       } else {
-        console.log('No existing customer found, creating new one');
         // Create new customer if none exists
         const customerResponse = await squareClient.customersApi.createCustomer({
           idempotencyKey: `${Date.now()}-${Math.random()}`,
@@ -600,19 +471,13 @@ export function registerRoutes(app: Express): Server {
         }
       }
 
-      res.status(201).json({
-        id: customerId,
-        name,
-        email,
-      });
+      sendSuccess(res, { id: customerId, name, email }, 201);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
         console.error('Square customer creation error:', error);
-        res.status(500).json({
-          message: error instanceof Error ? error.message : "Failed to create Square customer"
-        });
+        sendError(res, error instanceof Error ? error.message : "Failed to create Square customer", 500);
       }
     }
   });
@@ -623,9 +488,9 @@ export function registerRoutes(app: Express): Server {
       const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
       const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
       const payments = await storage.getPayments(bowlerId, leagueId);
-      res.json(payments);
+      sendSuccess(res, payments);
     } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
+      sendError(res, error);
     }
   });
 
@@ -633,12 +498,12 @@ export function registerRoutes(app: Express): Server {
     try {
       const payment = insertPaymentSchema.parse(req.body);
       const created = await storage.createPayment(payment);
-      res.status(201).json(created);
+      sendSuccess(res, created, 201);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
-        res.status(500).json({ message: "Internal server error" });
+        sendError(res, error);
       }
     }
   });
@@ -659,16 +524,14 @@ export function registerRoutes(app: Express): Server {
         }
       };
 
-      res.json({
+      sendSuccess(res, {
         id: squarePayment.id,
         status: squarePayment.status,
         card: squarePayment.card
       });
     } catch (error) {
       console.error('Payment processing error:', error);
-      res.status(500).json({
-        message: error instanceof Error ? error.message : "Payment processing failed"
-      });
+      sendError(res, error instanceof Error ? error.message : "Payment processing failed", 500);
     }
   });
 
@@ -681,12 +544,12 @@ export function registerRoutes(app: Express): Server {
       }).parse(req.body);
 
       const updated = await storage.updatePaymentStatus(id, status, squarePaymentId);
-      res.json(updated);
+      sendSuccess(res, updated);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        res.status(400).json(error.issues);
+        sendError(res, error, 400);
       } else {
-        res.status(500).json({ message: "Internal server error" });
+        sendError(res, error);
       }
     }
   });
@@ -719,7 +582,7 @@ export function registerRoutes(app: Express): Server {
       });
 
       if (searchResponse.result.loyaltyAccounts && searchResponse.result.loyaltyAccounts.length > 0) {
-        return res.json(searchResponse.result.loyaltyAccounts[0]);
+        sendSuccess(res, searchResponse.result.loyaltyAccounts[0]);
       }
 
       // Enroll the customer in the loyalty program
@@ -731,12 +594,10 @@ export function registerRoutes(app: Express): Server {
         idempotencyKey: `${Date.now()}-${Math.random()}`
       });
 
-      res.json(enrollResponse.result.loyaltyAccount);
+      sendSuccess(res, enrollResponse.result.loyaltyAccount);
     } catch (error) {
       console.error('Loyalty enrollment error:', error);
-      res.status(500).json({
-        message: error instanceof Error ? error.message : "Failed to enroll in loyalty program"
-      });
+      sendError(res, error instanceof Error ? error.message : "Failed to enroll in loyalty program", 500);
     }
   });
 
@@ -756,23 +617,19 @@ export function registerRoutes(app: Express): Server {
       });
 
       if (!searchResponse.result.loyaltyAccounts || searchResponse.result.loyaltyAccounts.length === 0) {
-        return res.status(404).json({
-          message: "Customer is not enrolled in loyalty program"
-        });
+        return sendError(res, "Customer is not enrolled in loyalty program", 404, 'NOT_FOUND');
       }
 
       const loyaltyAccount = searchResponse.result.loyaltyAccounts[0];
 
-      res.json({
+      sendSuccess(res, {
         points: loyaltyAccount.balance,
         lifetimePoints: loyaltyAccount.lifetimePoints,
         enrolledAt: loyaltyAccount.createdAt,
       });
     } catch (error) {
       console.error('Loyalty points fetch error:', error);
-      res.status(500).json({
-        message: error instanceof Error ? error.message : "Failed to fetch loyalty points"
-      });
+      sendError(res, error instanceof Error ? error.message : "Failed to fetch loyalty points", 500);
     }
   });
 
@@ -780,3 +637,76 @@ export function registerRoutes(app: Express): Server {
   const httpServer = createServer(app);
   return httpServer;
 }
+
+async function handleSquareCustomer(bowler: any, teamId?: number | null) {
+    if (!squareClient) return null;
+
+    const searchResponse = await squareClient.customersApi.searchCustomers({
+      query: {
+        filter: {
+          emailAddress: {
+            exact: bowler.email.toLowerCase()
+          }
+        }
+      }
+    });
+
+    let customerId: string;
+
+    if (searchResponse.result.customers?.length) {
+      customerId = searchResponse.result.customers[0].id;
+      await squareClient.customersApi.updateCustomer(customerId, {
+        givenName: bowler.name.split(' ')[0],
+        familyName: bowler.name.split(' ').slice(1).join(' ') || '',
+        emailAddress: bowler.email.toLowerCase(),
+      });
+    } else {
+      const customerResponse = await squareClient.customersApi.createCustomer({
+        idempotencyKey: `${Date.now()}-${Math.random()}`,
+        givenName: bowler.name.split(' ')[0],
+        familyName: bowler.name.split(' ').slice(1).join(' ') || '',
+        emailAddress: bowler.email.toLowerCase(),
+      });
+
+      if (!customerResponse.result?.customer?.id) {
+        throw new Error('Failed to create Square customer');
+      }
+
+      customerId = customerResponse.result.customer.id;
+    }
+
+    if (teamId) {
+      await handleSquareGroup(customerId, teamId);
+    }
+
+    return customerId;
+  }
+
+  async function handleSquareGroup(customerId: string, teamId: number) {
+    if (!squareClient) return;
+
+    const team = await storage.getTeam(teamId);
+    if (!team) return;
+
+    const league = await storage.getLeague(team.leagueId);
+    if (!league) return;
+
+    const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+    let groupId = groupsResponse.result.groups?.find(g => g.name === league.name)?.id;
+
+    if (!groupId) {
+      const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+        idempotencyKey: `league-${league.id}`,
+        group: { name: league.name },
+      });
+      groupId = groupResponse.result.group?.id;
+    }
+
+    if (groupId) {
+      try {
+        await squareClient.customerGroupsApi.addCustomerToGroup(groupId, { customerId });
+      } catch (error) {
+        console.error('Error adding customer to group:', error);
+      }
+    }
+  }
