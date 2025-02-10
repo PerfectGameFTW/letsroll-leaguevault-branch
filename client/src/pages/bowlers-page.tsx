@@ -32,11 +32,19 @@ export default function BowlersPage() {
   });
   const bowlers = bowlersResponse || [];
 
-  // Get associations from bowler leagues
-  const { data: bowlerLeaguesResponse } = useQuery<BowlerLeague[]>({
+  // Get associations from bowler leagues with proper typing
+  const { data: bowlerLeaguesResponse } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues"],
+    queryFn: async () => {
+      const response = await fetch('/api/bowler-leagues');
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowler leagues');
+      }
+      const result = await response.json();
+      return result;
+    }
   });
-  const bowlerLeagues = bowlerLeaguesResponse || [];
+  const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
 
   const { data: teams } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
@@ -46,8 +54,9 @@ export default function BowlersPage() {
     queryKey: ["/api/leagues"],
   });
 
-  // Helper function to get team for a bowler
+  // Helper function to get team for a bowler with type safety
   const getBowlerTeam = (bowler: Bowler) => {
+    if (!Array.isArray(bowlerLeagues)) return undefined;
     const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
     return bowlerLeague ? teams?.find(t => t.id === bowlerLeague.teamId) : undefined;
   };
