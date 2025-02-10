@@ -314,8 +314,8 @@ export default function TeamViewPage() {
   }
 
   // Make sure we have all the data before rendering
-  const sortedBowlerLeagues = Array.isArray(bowlerLeaguesResponse?.data) 
-    ? [...bowlerLeaguesResponse.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const sortedBowlerLeagues = Array.isArray(bowlerLeaguesResponse?.data?.data) 
+    ? [...bowlerLeaguesResponse.data.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
   const league = leagueResponse?.data;
   const teamBowlers = bowlers.filter(bowler => 
