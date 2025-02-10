@@ -31,6 +31,10 @@ export default function BowlersPage() {
     queryKey: ["/api/bowlers"],
   });
 
+  const { data: bowlerLeagues } = useQuery({
+    queryKey: ["/api/bowler-leagues"],
+  });
+
   const { data: teams } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
   });
@@ -38,6 +42,12 @@ export default function BowlersPage() {
   const { data: leagues } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
   });
+
+  // Helper function to get team for a bowler
+  const getBowlerTeam = (bowler: Bowler) => {
+    const bowlerLeague = bowlerLeagues?.data?.find(bl => bl.bowlerId === bowler.id);
+    return teams?.find(t => t.id === bowlerLeague?.teamId);
+  };
 
   const filteredBowlers = bowlers?.filter(bowler => {
     const matchesSearch = searchQuery === "" || 

@@ -63,10 +63,12 @@ export default function BowlerViewPage() {
   const bowlerLeagues = bowlerLeaguesResponse?.data;
 
   // Get all leagues the bowler is in
-  const { data: leagues } = useQuery<League[]>({
+  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
     enabled: !!bowlerLeagues,
   });
+  
+  const leagues = leaguesResponse?.data;
 
   // Get the selected league's team
   const selectedAssociation = bowlerLeagues?.find(bl => bl.leagueId === selectedLeagueId);
