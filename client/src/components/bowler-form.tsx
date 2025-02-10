@@ -183,8 +183,8 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       }
     },
     onSuccess: () => {
+      // Invalidate both the bowlers list and the specific team's bowlers
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
-      // Also invalidate the team bowlers query if we have a team ID
       if (defaultTeamId) {
         queryClient.invalidateQueries({ queryKey: ["/api/teams", defaultTeamId, "bowlers"] });
       }

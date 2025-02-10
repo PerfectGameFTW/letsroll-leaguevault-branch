@@ -181,7 +181,7 @@ export function registerRoutes(app: Express): Server {
       });
 
       // Sort bowlers by order if available
-      const sortedBowlers = teamBowlers.sort((a, b) => 
+      const sortedBowlers = teamBowlers.sort((a, b) =>
         (a.order ?? 0) - (b.order ?? 0)
       );
 
@@ -381,8 +381,8 @@ export function registerRoutes(app: Express): Server {
       if (error instanceof z.ZodError) {
         res.status(400).json(error.issues);
       } else {
-        res.status(500).json({ 
-          message: error instanceof Error ? error.message : "Internal server error" 
+        res.status(500).json({
+          message: error instanceof Error ? error.message : "Internal server error"
         });
       }
     }

@@ -146,7 +146,7 @@ export default function TeamViewPage() {
   });
 
   const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
-    queryKey: ["/api/bowlers", teamId],
+    queryKey: ["/api/teams", teamId, "bowlers"],
     queryFn: async () => {
       const response = await fetch(`/api/teams/${teamId}/bowlers`);
       if (!response.ok) {
@@ -261,7 +261,6 @@ export default function TeamViewPage() {
   const sortedBowlers = bowlers?.slice().sort((a, b) => 
     (a.order ?? 0) - (b.order ?? 0)
   ) ?? [];
-
 
   if (loadingTeam || loadingBowlers || loadingLeague) {
     return (
