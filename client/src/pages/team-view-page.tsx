@@ -149,7 +149,7 @@ export default function TeamViewPage() {
   });
   const team = teamResponse?.data;
 
-  // Bowler leagues query with error handling
+  // Bowler leagues query
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
     queryFn: async () => {
@@ -160,15 +160,15 @@ export default function TeamViewPage() {
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
-      return response.json();
+      const data = await response.json();
+      return data;
     },
     enabled: !!team?.leagueId,
   });
 
-  // Safe access to bowler leagues data with sorting
-  const sortedBowlerLeagues = bowlerLeaguesResponse?.data
-    ? [...bowlerLeaguesResponse.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    : [];
+  // Ensure bowlerLeagues is always an array
+  const bowlerLeagues = bowlerLeaguesResponse?.data ?? [];
+  const sortedBowlerLeagues = [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   // Bowlers query
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
@@ -187,7 +187,7 @@ export default function TeamViewPage() {
     enabled: sortedBowlerLeagues.length > 0,
   });
 
-  const bowlers = bowlersResponse?.data || [];
+  const bowlers = bowlersResponse?.data ?? [];
 
   // Filter and type-check bowlers
   const teamBowlers = bowlers.filter((bowler): bowler is Bowler => {
@@ -206,6 +206,8 @@ export default function TeamViewPage() {
     enabled: !!team?.leagueId,
   });
 
+  const league = leagueResponse?.data;
+
   const reorderMutation = useMutation({
     mutationFn: async ({ id, order }: { id: number; order: number }) => {
       const response = await apiRequest("PATCH", `/api/bowler-leagues/${id}`, { order });
@@ -217,36 +219,41 @@ export default function TeamViewPage() {
     },
     onMutate: async ({ id, order }) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["/api/bowler-leagues"] });
+      await queryClient.cancelQueries({ 
+        queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }] 
+      });
 
       // Snapshot the previous value
-      const previousData = queryClient.getQueryData<{ data: BowlerLeague[] }>(["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }]);
+      const previousData = queryClient.getQueryData<{ data: BowlerLeague[] }>([
+        "/api/bowler-leagues",
+        { teamId, leagueId: team?.leagueId }
+      ]);
 
       // Optimistically update the cache
       if (previousData?.data) {
-        const newData = [...previousData.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const newData = [...previousData.data];
         const oldIndex = newData.findIndex(bl => bl.id === id);
-        const itemToMove = newData[oldIndex];
 
-        // Remove the item from its current position
-        newData.splice(oldIndex, 1);
-        // Insert it at the new position
-        newData.splice(order, 0, itemToMove);
+        if (oldIndex !== -1) {
+          const [movedItem] = newData.splice(oldIndex, 1);
+          newData.splice(order, 0, movedItem);
 
-        // Update orders for all items
-        newData.forEach((bl, index) => {
-          bl.order = index;
-        });
+          // Update orders for all items
+          newData.forEach((bl, index) => {
+            bl.order = index;
+          });
 
-        queryClient.setQueryData(["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }], {
-          data: newData
-        });
+          queryClient.setQueryData(
+            ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
+            { data: newData }
+          );
+        }
       }
 
       return { previousData };
     },
-    onError: (err, newData, context) => {
-      // Roll back to the previous state on error
+    onError: (error, _, context) => {
+      // Revert optimistic update on error
       if (context?.previousData) {
         queryClient.setQueryData(
           ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
@@ -255,14 +262,15 @@ export default function TeamViewPage() {
       }
       toast({
         title: "Error reordering bowlers",
-        description: err instanceof Error ? err.message : "Failed to update order",
+        description: error instanceof Error ? error.message : "Failed to update order",
         variant: "destructive",
       });
     },
     onSuccess: (updatedData) => {
-      queryClient.setQueryData(["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }], {
-        data: updatedData
-      });
+      queryClient.setQueryData(
+        ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
+        { data: updatedData }
+      );
       toast({
         title: "Success",
         description: "Bowler order updated successfully",
@@ -270,7 +278,9 @@ export default function TeamViewPage() {
     },
     onSettled: () => {
       // Refetch after error or success to ensure consistency
-      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }]
+      });
     },
   });
 
@@ -351,12 +361,13 @@ export default function TeamViewPage() {
     );
   }
 
-  const league = leagueResponse?.data;
-
   return (
     <Layout>
       <div className="mb-6">
-        <Link href={`/leagues/${team.leagueId}/teams`} className="text-muted-foreground hover:text-foreground flex items-center mb-4">
+        <Link
+          href={`/leagues/${team.leagueId}/teams`}
+          className="text-muted-foreground hover:text-foreground flex items-center mb-4"
+        >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Teams
         </Link>
