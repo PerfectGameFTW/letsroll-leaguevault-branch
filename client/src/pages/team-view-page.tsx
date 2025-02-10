@@ -177,8 +177,8 @@ export default function TeamViewPage() {
       if (!response.ok) {
         throw new Error('Failed to fetch bowlers');
       }
-      const data = await response.json();
-      return data;
+      const result = await response.json();
+      return { data: { data: Array.isArray(result.data) ? result.data : [] } };
     },
     enabled: sortedBowlerLeagues.length > 0,
   });
@@ -320,18 +320,16 @@ export default function TeamViewPage() {
 
   // Make sure we have all the data before rendering
   const league = leagueResponse?.data;
-  const bowlers = bowlersResponse?.data?.data ?? [];
+  const bowlers = bowlersResponse?.data?.data || [];
 
   // Ensure we have an array before filtering
-  const teamBowlers = Array.isArray(bowlers)
-    ? bowlers.filter(bowler =>
-        sortedBowlerLeagues.some(bl =>
-          bl.bowlerId === bowler.id &&
-          bl.teamId === teamId &&
-          bl.leagueId === team?.leagueId
-        )
-      )
-    : [];
+  const teamBowlers = bowlers.filter(bowler =>
+    sortedBowlerLeagues.some(bl =>
+      bl.bowlerId === bowler.id &&
+      bl.teamId === teamId &&
+      bl.leagueId === team?.leagueId
+    )
+  );
   const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
 
   return (
