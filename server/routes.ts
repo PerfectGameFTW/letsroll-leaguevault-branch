@@ -155,6 +155,10 @@ export function registerRoutes(app: Express): Server {
     try {
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
       const bowlers = await storage.getBowlers(teamId);
+      if (!Array.isArray(bowlers)) {
+        sendError(res, "Invalid bowlers data format", 500);
+        return;
+      }
       bowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       sendSuccess(res, bowlers);
     } catch (error) {

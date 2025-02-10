@@ -24,8 +24,8 @@ export default function HomePage() {
     );
   }
 
-  const activeBowlers = bowlers?.filter(b => b.active).length || 0;
-  const totalLeagues = leagues?.length || 0;
+  const activeBowlers = Array.isArray(bowlers) ? bowlers.filter(b => b.active).length : 0;
+  const totalLeagues = Array.isArray(leagues) ? leagues.length : 0;
 
   return (
     <Layout>
