@@ -197,10 +197,34 @@ export function registerRoutes(app: Express): Server {
     try {
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
       const bowlers = await storage.getBowlers(teamId);
+
+      // For each bowler, fetch their team and league information
+      const bowlersWithDetails = await Promise.all(bowlers.map(async (bowler) => {
+        if (!bowler.teamAssignments) {
+          return bowler;
+        }
+
+        const assignments = await Promise.all(bowler.teamAssignments.map(async (assignment) => {
+          const team = await storage.getTeam(assignment.teamId);
+          const league = team ? await storage.getLeague(team.leagueId) : null;
+          return {
+            ...assignment,
+            teamName: team?.name,
+            leagueName: league?.name
+          };
+        }));
+
+        return {
+          ...bowler,
+          teamAssignments: assignments
+        };
+      }));
+
       // Sort bowlers by order
-      bowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      res.json(bowlers);
+      bowlersWithDetails.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      res.json(bowlersWithDetails);
     } catch (error) {
+      console.error('Error fetching bowlers:', error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
