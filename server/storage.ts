@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, leagues, teams, bowlers, payments, bowlerLeagues,
+  users, leagues, teams, bowlers, payments, bowlerLeagues, bowlerTeams,
   type User, type InsertUser,
   type League, type InsertLeague,
   type Team, type InsertTeam,
