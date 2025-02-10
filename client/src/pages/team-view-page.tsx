@@ -146,15 +146,9 @@ export default function TeamViewPage() {
   });
 
   const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
-    queryKey: ["/api/teams", teamId, "bowlers"],
-    queryFn: async () => {
-      const response = await fetch(`/api/teams/${teamId}/bowlers`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowlers');
-      }
-      const data = await response.json();
-      return Array.isArray(data) ? data : []; // Ensure we always have an array
-    },
+    queryKey: ["/api/bowlers", teamId],
+    queryFn: () =>
+      fetch(`/api/bowlers?teamId=${teamId}`).then((res) => res.json()),
   });
 
   const updateTeamMutation = useMutation({
@@ -257,11 +251,6 @@ export default function TeamViewPage() {
   });
 
 
-  // Add this utility function for ordering
-  const sortedBowlers = bowlers?.slice().sort((a, b) => 
-    (a.order ?? 0) - (b.order ?? 0)
-  ) ?? [];
-
   if (loadingTeam || loadingBowlers || loadingLeague) {
     return (
       <Layout>
@@ -280,6 +269,7 @@ export default function TeamViewPage() {
     );
   }
 
+  const sortedBowlers = bowlers?.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   return (
     <Layout>

@@ -1,14 +1,12 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, leagues, teams, bowlers, payments, bowlerLeagues, bowlerTeams,
+  users, leagues, teams, bowlers, payments,
   type User, type InsertUser,
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
-  type BowlerLeague, type InsertBowlerLeague,
-  type Payment, type InsertPayment,
-  type BowlerTeam
+  type Payment, type InsertPayment
 } from "@shared/schema";
 
 export interface IStorage {
@@ -38,16 +36,10 @@ export interface IStorage {
   updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler>;
   deleteBowler(id: number): Promise<void>;
 
-  // Bowler Leagues
-  getBowlerLeagues(bowlerId: number): Promise<BowlerLeague[]>;
-  addBowlerToLeague(bowlerId: number, leagueId: number): Promise<BowlerLeague>;
-  removeBowlerFromLeague(bowlerId: number, leagueId: number): Promise<void>;
-
   // Payments
   getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePaymentStatus(id: number, status: string, squarePaymentId?: string): Promise<Payment>;
-  addBowlerTeam(bowlerId: number, teamId: number, leagueId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -129,71 +121,9 @@ export class DatabaseStorage implements IStorage {
   // Bowlers
   async getBowlers(teamId?: number): Promise<Bowler[]> {
     if (teamId) {
-      const result = await db
-        .select({
-          id: bowlers.id,
-          name: bowlers.name,
-          email: bowlers.email,
-          active: bowlers.active,
-          squareCustomerId: bowlers.squareCustomerId,
-        })
-        .from(bowlers)
-        .leftJoin(bowlerTeams, eq(bowlerTeams.bowlerId, bowlers.id))
-        .where(eq(bowlerTeams.teamId, teamId));
-
-      // Get team assignments for each bowler
-      const bowlersWithAssignments = await Promise.all(result.map(async (bowler) => {
-        const assignments = await db
-          .select({
-            id: bowlerTeams.id,
-            bowlerId: bowlerTeams.bowlerId,
-            teamId: bowlerTeams.teamId,
-            leagueId: bowlerTeams.leagueId,
-            active: bowlerTeams.active,
-            order: bowlerTeams.order,
-          })
-          .from(bowlerTeams)
-          .where(eq(bowlerTeams.bowlerId, bowler.id));
-
-        return {
-          ...bowler,
-          teamAssignments: assignments,
-        };
-      }));
-
-      return bowlersWithAssignments;
+      return await db.select().from(bowlers).where(eq(bowlers.teamId, teamId));
     }
-
-    const allBowlers = await db
-      .select({
-        id: bowlers.id,
-        name: bowlers.name,
-        email: bowlers.email,
-        active: bowlers.active,
-        squareCustomerId: bowlers.squareCustomerId,
-      })
-      .from(bowlers);
-
-    const bowlersWithAssignments = await Promise.all(allBowlers.map(async (bowler) => {
-      const assignments = await db
-        .select({
-          id: bowlerTeams.id,
-          bowlerId: bowlerTeams.bowlerId,
-          teamId: bowlerTeams.teamId,
-          leagueId: bowlerTeams.leagueId,
-          active: bowlerTeams.active,
-          order: bowlerTeams.order,
-        })
-        .from(bowlerTeams)
-        .where(eq(bowlerTeams.bowlerId, bowler.id));
-
-      return {
-        ...bowler,
-        teamAssignments: assignments,
-      };
-    }));
-
-    return bowlersWithAssignments;
+    return await db.select().from(bowlers);
   }
 
   async getBowler(id: number): Promise<Bowler | undefined> {
@@ -202,93 +132,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createBowler(bowler: InsertBowler): Promise<Bowler> {
-    const { leagueIds, ...bowlerData } = bowler;
-    const [created] = await db.insert(bowlers).values(bowlerData).returning();
-
-    // Add bowler to leagues if specified
-    if (leagueIds && leagueIds.length > 0) {
-      await Promise.all(
-        leagueIds.map((leagueId) =>
-          this.addBowlerToLeague(created.id, leagueId)
-        )
-      );
-    }
-
+    const [created] = await db.insert(bowlers).values(bowler).returning();
     return created;
   }
 
   async updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler> {
-    // Handle team assignments
-    if (bowler.teamId !== undefined && bowler.leagueId !== undefined) {
-      await db
-        .insert(bowlerTeams)
-        .values({
-          bowlerId: id,
-          teamId: bowler.teamId,
-          leagueId: bowler.leagueId,
-          order: bowler.order ?? 0
-        })
-        .onConflictDoNothing();
-
-      // Also add league association
-      await db
-        .insert(bowlerLeagues)
-        .values({
-          bowlerId: id,
-          leagueId: bowler.leagueId,
-        })
-        .onConflictDoNothing();
-
-      // Remove teamId and leagueId from bowler object
-      delete bowler.teamId;
-      delete bowler.leagueId;
-    }
-
-    // Update other bowler fields if any
-    if (Object.keys(bowler).length > 0) {
-      const [updated] = await db
-        .update(bowlers)
-        .set(bowler)
-        .where(eq(bowlers.id, id))
-        .returning();
-      return updated;
-    }
-
-    // If no other fields to update, return the existing bowler
-    const [existing] = await db
-      .select()
-      .from(bowlers)
-      .where(eq(bowlers.id, id));
-    return existing;
+    const [updated] = await db
+      .update(bowlers)
+      .set(bowler)
+      .where(eq(bowlers.id, id))
+      .returning();
+    return updated;
   }
 
   async deleteBowler(id: number): Promise<void> {
     await db.delete(bowlers).where(eq(bowlers.id, id));
-  }
-
-  // Bowler Leagues
-  async getBowlerLeagues(bowlerId: number): Promise<BowlerLeague[]> {
-    return await db
-      .select()
-      .from(bowlerLeagues)
-      .where(eq(bowlerLeagues.bowlerId, bowlerId));
-  }
-
-  async addBowlerToLeague(bowlerId: number, leagueId: number): Promise<BowlerLeague> {
-    const [created] = await db
-      .insert(bowlerLeagues)
-      .values({ bowlerId, leagueId })
-      .returning();
-    return created;
-  }
-
-  async removeBowlerFromLeague(bowlerId: number, leagueId: number): Promise<void> {
-    await db
-      .delete(bowlerLeagues)
-      .where(
-        eq(bowlerLeagues.bowlerId, bowlerId) &&
-        eq(bowlerLeagues.leagueId, leagueId)
-      );
   }
 
   // Payments
@@ -323,34 +181,6 @@ export class DatabaseStorage implements IStorage {
       .where(eq(payments.id, id))
       .returning();
     return updated;
-  }
-
-  async addBowlerTeam(bowlerId: number, teamId: number, leagueId: number): Promise<void> {
-    await db
-      .insert(bowlerTeams)
-      .values({
-        bowlerId,
-        teamId,
-        leagueId,
-        active: true,
-        order: 0,
-      })
-      .onConflictDoUpdate({
-        target: [bowlerTeams.bowlerId, bowlerTeams.teamId],
-        set: {
-          leagueId,
-          active: true,
-        },
-      });
-
-    // Also ensure there's a bowler league association
-    await db
-      .insert(bowlerLeagues)
-      .values({
-        bowlerId,
-        leagueId,
-      })
-      .onConflictDoNothing();
   }
 }
 

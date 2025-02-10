@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Eye, EyeOff, Search, Pencil, ExternalLink } from "lucide-react";
+import { Loader2, Plus, Eye, EyeOff, Search, Pencil } from "lucide-react";
 import type { Bowler, Team, League } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -45,12 +45,6 @@ export default function BowlersPage() {
       bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
     return (showInactive ? true : bowler.active) && matchesSearch;
   });
-
-  const getSquareCustomerUrl = (squareCustomerId: string) => {
-    // Implement your logic to generate the Square customer URL here.  This is a placeholder.
-    return `https://squareup.com/customer/${squareCustomerId}`;
-  };
-
 
   if (loadingBowlers) {
     return (
@@ -111,7 +105,6 @@ export default function BowlersPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Email</TableHead>
-              <TableHead>Team & League</TableHead>
               <TableHead>Weekly Fee</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
@@ -121,32 +114,14 @@ export default function BowlersPage() {
             {filteredBowlers?.map((bowler) => (
               <TableRow key={bowler.id}>
                 <TableCell>
-                  <div className="flex items-center gap-2">
-                    <Link href={`/bowlers/${bowler.id}`} className="hover:underline">
-                      {bowler.name}
-                    </Link>
-                    {bowler.squareCustomerId && (
-                      <a
-                        href={getSquareCustomerUrl(bowler.squareCustomerId)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground"
-                        title="View in Square"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
-                    )}
-                  </div>
+                  <Link 
+                    href={`/bowlers/${bowler.id}`}
+                    className="hover:underline text-foreground"
+                  >
+                    {bowler.name}
+                  </Link>
                 </TableCell>
                 <TableCell>{bowler.email}</TableCell>
-                <TableCell>
-                  {bowler.teamAssignments?.map((assignment, index) => (
-                    <div key={`${assignment.teamId}-${assignment.leagueId}`} className="text-sm">
-                      {assignment.teamName} ({assignment.leagueName})
-                      {index < (bowler.teamAssignments?.length || 0) - 1 && ", "}
-                    </div>
-                  ))}
-                </TableCell>
                 <TableCell>${(getWeeklyFee(bowler) / 100).toFixed(2)}</TableCell>
                 <TableCell>
                   <Badge variant={bowler.active ? "default" : "secondary"}>

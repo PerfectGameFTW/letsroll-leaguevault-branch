@@ -22,84 +22,9 @@ export async function initializeSquare() {
   return payments;
 }
 
-export async function initializeDigitalWallets(amount: number) {
-  const payments = await initializeSquare();
-  
-  // Initialize Apple Pay if supported
-  if (window.ApplePaySession?.canMakePayments()) {
-    return await payments.applePay({
-      paymentRequest: {
-        countryCode: 'US',
-        currencyCode: 'USD',
-        total: {
-          amount: (amount / 100).toString(),
-          label: 'League Payment'
-        }
-      }
-    });
-  }
-  
-  // Initialize Google Pay if supported
-  const googlePay = await payments.googlePay({
-    paymentRequest: {
-      countryCode: 'US',
-      currencyCode: 'USD',
-      total: {
-        amount: (amount / 100).toString(),
-        label: 'League Payment'
-      }
-    }
-  });
-  
-  if (await googlePay.canPay()) {
-    return googlePay;
-  }
-  
-  return null;
-}
-
-export async function getStoredCards(customerId: string) {
-  try {
-    const response = await fetch(`/api/square/customers/${customerId}/cards`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch stored cards');
-    }
-    return await response.json();
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error;
-    }
-    throw new Error('An unexpected error occurred while fetching stored cards');
-  }
-}
-
-export async function createPayment(amount: number, customerId?: string, cardId?: string) {
+export async function createPayment(amount: number) {
   try {
     const payments = await initializeSquare();
-    
-    if (cardId && customerId) {
-      // Use stored card
-      const response = await fetch('/api/payments/process', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          customerId,
-          sourceId: cardId,
-          amount,
-          locationId: import.meta.env.VITE_SQUARE_LOCATION_ID,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Payment processing failed');
-      }
-
-      return await response.json();
-    }
-    
-    // Otherwise use new card
     const card = await payments.card();
     await card.attach('#card-container');
 

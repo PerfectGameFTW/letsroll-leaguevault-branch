@@ -162,76 +162,15 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Update the teams/:id/bowlers endpoint
-  app.get("/api/teams/:id/bowlers", async (req, res) => {
-    try {
-      const teamId = parseInt(req.params.id);
-      const team = await storage.getTeam(teamId);
-      if (!team) {
-        return res.status(404).json({ message: "Team not found" });
-      }
-
-      // Get bowlers assigned to this team
-      const bowlers = await storage.getBowlers(teamId);
-
-      // Get team and league details for each bowler
-      const bowlersWithDetails = await Promise.all(bowlers.map(async (bowler) => {
-        const assignments = await Promise.all((bowler.teamAssignments || []).map(async (assignment) => {
-          const team = await storage.getTeam(assignment.teamId);
-          const league = team ? await storage.getLeague(team.leagueId) : null;
-          return {
-            ...assignment,
-            teamName: team?.name || '',
-            leagueName: league?.name || '',
-          };
-        }));
-
-        return {
-          ...bowler,
-          teamAssignments: assignments,
-        };
-      }));
-
-      res.json(bowlersWithDetails);
-    } catch (error) {
-      console.error('Error fetching team bowlers:', error);
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
   // Bowlers
   app.get("/api/bowlers", async (req, res) => {
     try {
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
       const bowlers = await storage.getBowlers(teamId);
-
-      // For each bowler, fetch their team and league information
-      const bowlersWithDetails = await Promise.all(bowlers.map(async (bowler) => {
-        if (!bowler.teamAssignments) {
-          return bowler;
-        }
-
-        const assignments = await Promise.all(bowler.teamAssignments.map(async (assignment) => {
-          const team = await storage.getTeam(assignment.teamId);
-          const league = team ? await storage.getLeague(team.leagueId) : null;
-          return {
-            ...assignment,
-            teamName: team?.name,
-            leagueName: league?.name
-          };
-        }));
-
-        return {
-          ...bowler,
-          teamAssignments: assignments
-        };
-      }));
-
       // Sort bowlers by order
-      bowlersWithDetails.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      res.json(bowlersWithDetails);
+      bowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      res.json(bowlers);
     } catch (error) {
-      console.error('Error fetching bowlers:', error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -263,6 +202,12 @@ export function registerRoutes(app: Express): Server {
         return res.status(400).json({
           message: "A bowler with this email already exists"
         });
+      }
+
+      // If order is not provided, set it to the next available order number
+      if (bowler.teamId && !bowler.order) {
+        const teamBowlers = await storage.getBowlers(bowler.teamId);
+        bowler.order = teamBowlers.length;
       }
 
       // Create bowler in database
@@ -311,10 +256,11 @@ export function registerRoutes(app: Express): Server {
             squareCustomerId = customerResponse.result.customer.id;
           }
 
-          // If bowler has leagues, handle league group assignments
-          if (bowler.leagueIds && bowler.leagueIds.length > 0) {
-            for (const leagueId of bowler.leagueIds) {
-              const league = await storage.getLeague(leagueId);
+          // If bowler has a team, handle league group assignment
+          if (bowler.teamId) {
+            const team = await storage.getTeam(bowler.teamId);
+            if (team) {
+              const league = await storage.getLeague(team.leagueId);
               if (league) {
                 // Find or create league group
                 const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
@@ -376,51 +322,53 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Update the PATCH /api/bowlers/:id endpoint
   app.patch("/api/bowlers/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const update = insertBowlerSchema.partial().parse(req.body);
 
-      // Handle team assignments
-      if (update.teamAssignments && update.teamAssignments.length > 0) {
-        for (const assignment of update.teamAssignments) {
-          await storage.addBowlerTeam(id, assignment.teamId, assignment.leagueId);
+      // If we're updating the order, we need to handle reordering
+      if (typeof update.order === 'number') {
+        const bowler = await storage.getBowler(id);
+        if (!bowler?.teamId) {
+          return res.status(400).json({ message: "Bowler must be assigned to a team to reorder" });
         }
-        delete update.teamAssignments;
+
+        // Get all bowlers for the team and sort them by current order
+        const teamBowlers = await storage.getBowlers(bowler.teamId);
+        teamBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+        const oldIndex = teamBowlers.findIndex(b => b.id === id);
+        const newIndex = Math.min(Math.max(0, update.order), teamBowlers.length - 1); // Clamp order value
+
+        if (oldIndex === -1) {
+          return res.status(404).json({ message: "Bowler not found in team" });
+        }
+
+        // Remove bowler from old position and insert at new position
+        const [movedBowler] = teamBowlers.splice(oldIndex, 1);
+        teamBowlers.splice(newIndex, 0, movedBowler);
+
+        // Update all bowlers with their new sequential order
+        await Promise.all(teamBowlers.map((b, index) =>
+          storage.updateBowler(b.id, { order: index })
+        ));
+
+        // Return the updated and sorted list
+        const updatedBowlers = await storage.getBowlers(bowler.teamId);
+        updatedBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        return res.json(updatedBowlers);
       }
 
-      // Handle other updates
-      const updatedBowler = await storage.updateBowler(id, update);
-
-      // Get fresh bowler data with all assignments
-      const bowler = await storage.getBowler(id);
-      if (!bowler) {
-        return res.status(404).json({ message: "Bowler not found" });
-      }
-
-      const assignments = await Promise.all((bowler.teamAssignments || []).map(async (assignment) => {
-        const team = await storage.getTeam(assignment.teamId);
-        const league = team ? await storage.getLeague(team.leagueId) : null;
-        return {
-          ...assignment,
-          teamName: team?.name || '',
-          leagueName: league?.name || '',
-        };
-      }));
-
-      res.json({
-        ...bowler,
-        teamAssignments: assignments,
-      });
+      // Handle non-order updates
+      const updated = await storage.updateBowler(id, update);
+      res.json(updated);
     } catch (error) {
-      console.error('Error updating bowler:', error);
       if (error instanceof z.ZodError) {
         res.status(400).json(error.issues);
       } else {
-        res.status(500).json({
-          message: error instanceof Error ? error.message : "Internal server error"
-        });
+        console.error('Error updating bowler:', error);
+        res.status(500).json({ message: "Internal server error" });
       }
     }
   });
@@ -434,40 +382,6 @@ export function registerRoutes(app: Express): Server {
       res.status(500).json({ message: "Internal server error" });
     }
   });
-
-  // Add endpoints for managing bowler league associations
-  app.post("/api/bowlers/:bowlerId/leagues/:leagueId", async (req, res) => {
-    try {
-      const bowlerId = parseInt(req.params.bowlerId);
-      const leagueId = parseInt(req.params.leagueId);
-      const created = await storage.addBowlerToLeague(bowlerId, leagueId);
-      res.status(201).json(created);
-    } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.delete("/api/bowlers/:bowlerId/leagues/:leagueId", async (req, res) => {
-    try {
-      const bowlerId = parseInt(req.params.bowlerId);
-      const leagueId = parseInt(req.params.leagueId);
-      await storage.removeBowlerFromLeague(bowlerId, leagueId);
-      res.sendStatus(204);
-    } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.get("/api/bowlers/:bowlerId/leagues", async (req, res) => {
-    try {
-      const bowlerId = parseInt(req.params.bowlerId);
-      const bowlerLeagues = await storage.getBowlerLeagues(bowlerId);
-      res.json(bowlerLeagues);
-    } catch (error) {
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
 
   // Square Integration
   app.post("/api/square/customers", async (req, res) => {
@@ -623,43 +537,27 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  app.get("/api/square/customers/:customerId/cards", async (req, res) => {
-    try {
-      if (!squareClient) {
-        throw new Error("Square access token not configured");
-      }
-
-      const { customerId } = req.params;
-      const response = await squareClient.customersApi.listCustomerCards(customerId);
-      res.json(response.result.cards || []);
-    } catch (error) {
-      console.error('Error fetching stored cards:', error);
-      res.status(500).json({
-        message: error instanceof Error ? error.message : "Failed to fetch stored cards"
-      });
-    }
-  });
-
   app.post("/api/payments/process", async (req, res) => {
     try {
-      const { sourceId, amount, locationId, customerId } = req.body;
+      const { sourceId, amount, locationId } = req.body;
 
-      if (!squareClient) {
-        throw new Error("Square access token not configured");
-      }
+      // TODO: Replace with actual Square API call once credentials are configured
+      // For now, simulate a successful payment for testing
+      const squarePayment = {
+        id: `sandbox_${Date.now()}`,
+        status: "paid",
+        amount: amount,
+        card: {
+          last4: "1111",
+          brand: "VISA"
+        }
+      };
 
-      const payment = await squareClient.paymentsApi.createPayment({
-        sourceId,
-        customerId,
-        amountMoney: {
-          amount,
-          currency: 'USD'
-        },
-        locationId,
-        idempotencyKey: `${Date.now()}-${Math.random()}`
+      res.json({
+        id: squarePayment.id,
+        status: squarePayment.status,
+        card: squarePayment.card
       });
-
-      res.json(payment.result.payment);
     } catch (error) {
       console.error('Payment processing error:', error);
       res.status(500).json({
@@ -771,6 +669,7 @@ export function registerRoutes(app: Express): Server {
       });
     }
   });
+
 
   const httpServer = createServer(app);
   return httpServer;
