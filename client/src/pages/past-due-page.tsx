@@ -14,7 +14,7 @@ import { startOfToday } from "date-fns";
 import { Link } from "wouter";
 
 export default function PastDuePage() {
-  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ success: true, data: League[] }>({
     queryKey: ["/api/leagues"],
     queryFn: async () => {
       const response = await fetch('/api/leagues');
@@ -24,9 +24,10 @@ export default function PastDuePage() {
       return response.json();
     }
   });
+  console.log('Past Due - Leagues Response:', leaguesResponse);
   const leagues = leaguesResponse?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true, data: Team[] }>({
     queryKey: ["/api/teams"],
     queryFn: async () => {
       const response = await fetch('/api/teams');
@@ -36,9 +37,10 @@ export default function PastDuePage() {
       return response.json();
     }
   });
+  console.log('Past Due - Teams Response:', teamsResponse);
   const teams = teamsResponse?.data || [];
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true, data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
     queryFn: async () => {
       const response = await fetch('/api/bowlers');
@@ -48,9 +50,10 @@ export default function PastDuePage() {
       return response.json();
     }
   });
+  console.log('Past Due - Bowlers Response:', bowlersResponse);
   const bowlers = bowlersResponse?.data || [];
 
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ success: true, data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues-new"],
     queryFn: async () => {
       const response = await fetch('/api/bowler-leagues-new');
@@ -60,6 +63,7 @@ export default function PastDuePage() {
       return response.json();
     }
   });
+  console.log('Past Due - Bowler Leagues Response:', bowlerLeaguesResponse);
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({

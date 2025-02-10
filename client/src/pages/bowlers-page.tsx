@@ -27,13 +27,14 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true, data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
   });
+  console.log('Bowlers Response:', bowlersResponse);
   const bowlers = bowlersResponse?.data || [];
 
   // Get associations from bowler leagues with proper typing
-  const { data: bowlerLeaguesResponse } = useQuery<{ data: BowlerLeague[] }>({
+  const { data: bowlerLeaguesResponse } = useQuery<{ success: true, data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues-new"],
     queryFn: async () => {
       const response = await fetch('/api/bowler-leagues-new');
@@ -43,9 +44,10 @@ export default function BowlersPage() {
       return response.json();
     }
   });
+  console.log('Bowler Leagues Response:', bowlerLeaguesResponse);
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true, data: Team[] }>({
     queryKey: ["/api/teams"],
     queryFn: async () => {
       const response = await fetch('/api/teams');
@@ -55,9 +57,10 @@ export default function BowlersPage() {
       return response.json();
     }
   });
+  console.log('Teams Response:', teamsResponse);
   const teams = teamsResponse?.data || [];
 
-  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse } = useQuery<{ success: true, data: League[] }>({
     queryKey: ["/api/leagues"],
     queryFn: async () => {
       const response = await fetch('/api/leagues');
@@ -67,6 +70,7 @@ export default function BowlersPage() {
       return response.json();
     }
   });
+  console.log('Leagues Response:', leaguesResponse);
   const leagues = leaguesResponse?.data || [];
 
   // Filter bowlers with proper type checking
