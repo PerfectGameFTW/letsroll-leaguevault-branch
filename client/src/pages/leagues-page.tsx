@@ -24,30 +24,32 @@ export default function LeaguesPage() {
   const [selectedLeague, setSelectedLeague] = useState<League | undefined>();
   const { toast } = useToast();
 
-  const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
+  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
     queryFn: async () => {
       const response = await fetch("/api/leagues");
       if (!response.ok) {
         throw new Error('Failed to fetch leagues');
       }
-      const json = await response.json();
-      return json.data;
+      return response.json();
     }
   });
 
+  const leagues = leaguesResponse?.data;
+
   // Get teams for each league
-  const { data: allTeams, isLoading: loadingTeams } = useQuery<Team[]>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
     queryFn: async () => {
       const response = await fetch("/api/teams");
       if (!response.ok) {
         throw new Error('Failed to fetch teams');
       }
-      const json = await response.json();
-      return json.data;
+      return response.json();
     }
   });
+
+  const allTeams = teamsResponse?.data;
 
   // Create a map of league ID to team count
   const teamCounts = allTeams?.reduce((acc, team) => {
