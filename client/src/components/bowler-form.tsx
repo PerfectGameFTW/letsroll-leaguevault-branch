@@ -30,7 +30,7 @@ import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bow
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface BowlerFormProps {
   open: boolean;
@@ -45,23 +45,23 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
   // Query for leagues
-  const { data: leaguesResponse } = useQuery<League[]>({
+  const { data: leaguesResponse } = useQuery<{ success: true, data: League[] }>({
     queryKey: ["/api/leagues"],
   });
 
-  const leagues = leaguesResponse || [];
+  const leagues = leaguesResponse?.data || [];
 
   // Query for teams filtered by selected league
-  const { data: teamsResponse } = useQuery<Team[]>({
+  const { data: teamsResponse } = useQuery<{ success: true, data: Team[] }>({
     queryKey: ["/api/teams", selectedLeagueId],
     queryFn: () =>
       selectedLeagueId
         ? fetch(`/api/teams?leagueId=${selectedLeagueId}`).then((res) => res.json())
-        : Promise.resolve([]),
+        : Promise.resolve({ success: true, data: [] }),
     enabled: !!selectedLeagueId,
   });
 
-  const teams = teamsResponse || [];
+  const teams = teamsResponse?.data || [];
 
   const form = useForm<InsertBowler>({
     resolver: zodResolver(insertBowlerSchema),
@@ -69,36 +69,12 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
       name: bowler.name,
       email: bowler.email,
       active: bowler.active,
-      teamId: bowler.teamId,
     } : {
       name: "",
       email: "",
       active: true,
-      teamId: defaultTeamId,
     },
   });
-
-  // Initialize or reset form when dialog opens/closes
-  useEffect(() => {
-    if (open && bowler) {
-      const bowlerLeague = bowlerLeagues?.find(bl => bl.bowlerId === bowler.id);
-      setSelectedLeagueId(bowlerLeague?.leagueId || null);
-      form.reset({
-        name: bowler.name,
-        email: bowler.email,
-        active: bowler.active,
-        teamId: bowler.teamId,
-      });
-    } else if (!open) {
-      form.reset({
-        name: "",
-        email: "",
-        active: true,
-        teamId: defaultTeamId,
-      });
-      setSelectedLeagueId(null);
-    }
-  }, [open, bowler, form, defaultTeamId, bowlerLeagues]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
@@ -217,37 +193,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
                       onCheckedChange={field.onChange}
                     />
                   </FormControl>
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="teamId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Team</FormLabel>
-                  <Select
-                    onValueChange={(value) => field.onChange(value ? parseInt(value) : null)}
-                    value={field.value?.toString() || ""}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a team" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {Array.isArray(teams) && teams.map((team) => (
-                        <SelectItem
-                          key={team.id}
-                          value={team.id.toString()}
-                        >
-                          {team.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
                 </FormItem>
               )}
             />
