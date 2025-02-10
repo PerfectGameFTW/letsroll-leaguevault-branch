@@ -27,55 +27,77 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true; data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
   });
 
   const bowlers = bowlersResponse?.data || [];
 
-  const { data: bowlerLeaguesResponse } = useQuery<{ success: true; data: BowlerLeague[] }>({
-    queryKey: ["/api/bowler-leagues-new"],
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
+    queryKey: ["/api/bowler-leagues"],
+    queryFn: async () => {
+      const response = await fetch('/api/bowler-leagues');
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowler leagues');
+      }
+      return response.json();
+    }
   });
 
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true; data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
+    queryFn: async () => {
+      const response = await fetch('/api/teams');
+      if (!response.ok) {
+        throw new Error('Failed to fetch teams');
+      }
+      return response.json();
+    }
   });
 
   const teams = teamsResponse?.data || [];
 
-  const { data: leaguesResponse } = useQuery<{ success: true; data: League[] }>({
+  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
+    queryFn: async () => {
+      const response = await fetch('/api/leagues');
+      if (!response.ok) {
+        throw new Error('Failed to fetch leagues');
+      }
+      return response.json();
+    }
   });
 
   const leagues = leaguesResponse?.data || [];
 
-  const filteredBowlers = Array.isArray(bowlers) ? bowlers.filter(bowler => {
+  const filteredBowlers = bowlers.filter(bowler => {
     const matchesSearch = searchQuery === "" || 
       bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
     return (showInactive ? true : bowler.active) && matchesSearch;
-  }) : [];
+  });
 
   const getBowlerTeam = (bowler: Bowler) => {
-    if (!Array.isArray(bowlerLeagues) || !Array.isArray(teams)) return undefined;
-    // Find the active league association for this bowler
     const activeBowlerLeague = bowlerLeagues.find(bl => 
-      bl.bowlerId === bowler.id && bl.active
+      bl.bowlerId === bowler.id && 
+      bl.active
     );
-    return activeBowlerLeague ? teams.find(t => t.id === activeBowlerLeague.teamId) : undefined;
+    if (!activeBowlerLeague) return undefined;
+
+    return teams.find(t => t.id === activeBowlerLeague.teamId);
   };
 
   const getWeeklyFee = (bowler: Bowler) => {
     const team = getBowlerTeam(bowler);
-    if (!team || !Array.isArray(leagues)) return 0;
-    // Find the league for this team and get its weekly fee
+    if (!team) return 0;
+
     const league = leagues.find(l => l.id === team.leagueId);
     return league?.weeklyFee || 0;
   };
 
-  if (loadingBowlers || loadingTeams) {
+  if (loadingBowlers || loadingTeams || loadingLeagues || loadingBowlerLeagues) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -131,38 +153,41 @@ export default function BowlersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredBowlers.map((bowler) => (
-              <TableRow key={bowler.id}>
-                <TableCell>
-                  <Link 
-                    href={`/bowlers/${bowler.id}`}
-                    className="hover:underline text-foreground"
-                  >
-                    {bowler.name}
-                  </Link>
-                </TableCell>
-                <TableCell>{bowler.email}</TableCell>
-                <TableCell>${(getWeeklyFee(bowler) / 100).toFixed(2)}</TableCell>
-                <TableCell>
-                  <Badge variant={bowler.active ? "default" : "secondary"}>
-                    {bowler.active ? "Active" : "Inactive"}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedBowler(bowler);
-                      setShowForm(true);
-                    }}
-                  >
-                    <Pencil className="h-4 w-4 mr-2" />
-                    Edit
-                  </Button>
-                </TableCell>
-              </TableRow>
-            ))}
+            {filteredBowlers.map((bowler) => {
+              const weeklyFee = getWeeklyFee(bowler);
+              return (
+                <TableRow key={bowler.id}>
+                  <TableCell>
+                    <Link 
+                      href={`/bowlers/${bowler.id}`}
+                      className="hover:underline text-foreground"
+                    >
+                      {bowler.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{bowler.email}</TableCell>
+                  <TableCell>${(weeklyFee / 100).toFixed(2)}</TableCell>
+                  <TableCell>
+                    <Badge variant={bowler.active ? "default" : "secondary"}>
+                      {bowler.active ? "Active" : "Inactive"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedBowler(bowler);
+                        setShowForm(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
