@@ -8,10 +8,26 @@ import type { Bowler, League } from "@shared/schema";
 export default function HomePage() {
   const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers"],
+    queryFn: async () => {
+      const response = await fetch("/api/bowlers");
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowlers');
+      }
+      const json = await response.json();
+      return json.data;
+    }
   });
 
   const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
+    queryFn: async () => {
+      const response = await fetch("/api/leagues");
+      if (!response.ok) {
+        throw new Error('Failed to fetch leagues');
+      }
+      const json = await response.json();
+      return json.data;
+    }
   });
 
   if (loadingBowlers || loadingLeagues) {
