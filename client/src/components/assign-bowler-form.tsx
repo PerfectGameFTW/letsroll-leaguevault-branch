@@ -33,14 +33,14 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   // Query to get all bowlers
   const { data: bowlers = [] } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers"],
-    select: (data) => Array.isArray(data) ? data : [], // Ensure we always have an array
+    select: (data) => Array.isArray(data?.data) ? data.data : [], // Ensure we always have an array and handle the API response structure
   });
 
   // Query to get existing associations
   const { data: bowlerLeagues = [] } = useQuery<BowlerLeague[]>({
-    queryKey: ["/api/bowler-leagues"],
+    queryKey: ["/api/bowler-leagues", { leagueId, teamId }],
     queryFn: async () => {
-      const response = await fetch(`/api/bowler-leagues?leagueId=${leagueId}`);
+      const response = await fetch(`/api/bowler-leagues?leagueId=${leagueId}&teamId=${teamId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
@@ -51,12 +51,12 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
 
   // Filter out bowlers already in this specific league/team combination
   const availableBowlers = bowlers.filter(bowler => {
-    const existingAssociation = bowlerLeagues.find(bl => 
+    const alreadyInTeam = bowlerLeagues.some(bl => 
       bl.bowlerId === bowler.id && 
       bl.leagueId === leagueId && 
       bl.teamId === teamId
     );
-    return !existingAssociation && bowler.active;
+    return !alreadyInTeam && bowler.active;
   });
 
   const mutation = useMutation({
