@@ -65,6 +65,13 @@ export function ReorderBowlersDialog({
       // Force a refetch of the bowler leagues
       await queryClient.invalidateQueries({
         queryKey: ["/api/bowler-leagues", { teamId, leagueId }],
+        exact: true
+      });
+
+      // Also invalidate any queries that depend on bowler leagues
+      await queryClient.invalidateQueries({
+        queryKey: ["/api/bowler-leagues"],
+        refetchType: 'all'
       });
 
       toast({

@@ -117,7 +117,7 @@ export default function TeamViewPage() {
     enabled: !!team?.leagueId,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
-    refetchInterval: 1000, 
+    // refetchInterval: 1000, 
   });
 
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
@@ -137,6 +137,8 @@ export default function TeamViewPage() {
       return response.json();
     },
     enabled: sortedBowlerLeagues.length > 0,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   const bowlers = bowlersResponse?.data ?? [];
