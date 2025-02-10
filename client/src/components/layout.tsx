@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, BarChart } from "lucide-react";
+import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -18,31 +18,45 @@ const baseNavigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
-  { name: "Reports", href: "/reports", icon: BarChart },
 ];
+
+// Safe localStorage access function
+const safeGetLocalStorage = (key: string, defaultValue: any) => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : defaultValue;
+    }
+  } catch (error) {
+    console.warn('localStorage access error:', error);
+  }
+  return defaultValue;
+};
+
+const safeSetLocalStorage = (key: string, value: any) => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+  } catch (error) {
+    console.warn('localStorage access error:', error);
+  }
+};
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const [isCollapsed, setIsCollapsed] = useState(() => {
-    const saved = localStorage.getItem("sidebarCollapsed");
-    return saved ? JSON.parse(saved) : false;
-  });
+  const [isCollapsed, setIsCollapsed] = useState(() => 
+    safeGetLocalStorage("sidebarCollapsed", false)
+  );
 
-  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse } = useQuery<{ success: true, data: League[] }>({
     queryKey: ["/api/leagues"],
-    queryFn: async () => {
-      const response = await fetch("/api/leagues");
-      if (!response.ok) {
-        throw new Error('Failed to fetch leagues');
-      }
-      return response.json();
-    }
   });
 
-  const leagues = leaguesResponse?.data;
+  const leagues = leaguesResponse?.data || [];
 
   useEffect(() => {
-    localStorage.setItem("sidebarCollapsed", JSON.stringify(isCollapsed));
+    safeSetLocalStorage("sidebarCollapsed", isCollapsed);
   }, [isCollapsed]);
 
   return (
@@ -171,7 +185,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 )}
 
                 {/* Rest of the navigation items */}
-                {baseNavigation.slice(1).map((item) => {
+                {baseNavigation.map((item) => {
                   const Icon = item.icon;
                   return (
                     <Link key={item.name} href={item.href}>

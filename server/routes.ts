@@ -95,7 +95,7 @@ export function registerRoutes(app: Express): Server {
       if (!Array.isArray(teams)) {
         throw new Error("Invalid teams data format");
       }
-      sendSuccess(res, { data: teams });
+      sendSuccess(res, teams);
     } catch (error) {
       sendError(res, error);
     }
