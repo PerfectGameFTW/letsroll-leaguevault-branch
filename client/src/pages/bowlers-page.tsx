@@ -27,38 +27,38 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true, data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
   });
 
-  // Use the bowlers array directly since the API now returns the array
-  const bowlers = bowlersResponse || [];
+  // Make sure we have an array of bowlers
+  const bowlers = bowlersResponse?.data || [];
 
-  const { data: bowlerLeaguesResponse } = useQuery<{ data: { bowlerId: number, leagueId: number, teamId: number }[] }>({
+  const { data: bowlerLeaguesResponse } = useQuery<{ success: true, data: { bowlerId: number, leagueId: number, teamId: number }[] }>({
     queryKey: ["/api/bowler-leagues-new"],
   });
 
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<Team[]>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true, data: Team[] }>({
     queryKey: ["/api/teams"],
   });
 
-  const teams = teamsResponse || [];
+  const teams = teamsResponse?.data || [];
 
-  const { data: leaguesResponse } = useQuery<League[]>({
+  const { data: leaguesResponse } = useQuery<{ success: true, data: League[] }>({
     queryKey: ["/api/leagues"],
   });
 
-  const leagues = leaguesResponse || [];
+  const leagues = leaguesResponse?.data || [];
 
   // Filter bowlers with proper type checking
-  const filteredBowlers = bowlers.filter(bowler => {
+  const filteredBowlers = Array.isArray(bowlers) ? bowlers.filter(bowler => {
     const matchesSearch = searchQuery === "" || 
       bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
     return (showInactive ? true : bowler.active) && matchesSearch;
-  });
+  }) : [];
 
   // Helper function to get team for a bowler with type safety
   const getBowlerTeam = (bowler: Bowler) => {
@@ -131,7 +131,7 @@ export default function BowlersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredBowlers?.map((bowler) => (
+            {filteredBowlers.map((bowler) => (
               <TableRow key={bowler.id}>
                 <TableCell>
                   <Link 
