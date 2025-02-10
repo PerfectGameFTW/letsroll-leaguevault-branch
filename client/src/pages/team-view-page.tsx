@@ -147,13 +147,13 @@ export default function TeamViewPage() {
   });
 
   // Get bowler leagues for this team
-  const { data: bowlerLeagues, isLoading: loadingBowlerLeagues } = useQuery<BowlerLeague[]>({
+  const { data: bowlerLeagues = [], isLoading: loadingBowlerLeagues } = useQuery<BowlerLeague[]>({
     queryKey: ["/api/bowler-leagues", teamId],
     queryFn: () => fetch(`/api/bowler-leagues?teamId=${teamId}`).then(res => res.json()),
   });
 
   // Get all bowlers referenced in bowlerLeagues
-  const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlers = [], isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers", bowlerLeagues],
     queryFn: () => {
       if (!bowlerLeagues?.length) return Promise.resolve([]);
@@ -236,18 +236,26 @@ export default function TeamViewPage() {
   });
 
   const handleDragEnd = async (event: any) => {
-    const { active, over } = event;
+    try {
+      const { active, over } = event;
 
-    if (active.id !== over.id && bowlerLeagues) {
-      const oldIndex = bowlerLeagues.findIndex((bl) => bl.id === active.id);
-      const newIndex = bowlerLeagues.findIndex((bl) => bl.id === over.id);
+      if (active.id !== over?.id && bowlerLeagues?.length) {
+        const oldIndex = bowlerLeagues.findIndex((bl) => bl.id === active.id);
+        const newIndex = bowlerLeagues.findIndex((bl) => bl.id === over.id);
 
-      if (oldIndex !== -1 && newIndex !== -1) {
-        await reorderMutation.mutateAsync({
-          id: active.id,
-          order: newIndex,
-        });
+        if (oldIndex !== -1 && newIndex !== -1) {
+          await reorderMutation.mutateAsync({
+            id: active.id,
+            order: newIndex,
+          });
+        }
       }
+    } catch (error) {
+      toast({
+        title: "Error reordering bowlers",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive",
+      });
     }
   };
 
@@ -280,7 +288,7 @@ export default function TeamViewPage() {
     );
   }
 
-  const sortedBowlerLeagues = bowlerLeagues?.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) || [];
+  const sortedBowlerLeagues = (bowlerLeagues || []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   return (
     <Layout>
