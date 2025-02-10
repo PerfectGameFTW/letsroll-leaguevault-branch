@@ -37,7 +37,7 @@ export default function LeaguesPage() {
 
   const leagues = leaguesResponse?.data;
 
-  // Get teams for each league
+  // Query to get teams for each league with proper typing
   const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
     queryFn: async () => {
@@ -49,7 +49,7 @@ export default function LeaguesPage() {
     }
   });
 
-  const allTeams = teamsResponse?.data?.data || [];
+  const allTeams = teamsResponse?.data || [];
 
   // Create a map of league ID to team count
   const teamCounts = allTeams.reduce((acc, team) => {
@@ -126,19 +126,17 @@ export default function LeaguesPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedLeague(league);
-                          setShowForm(true);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
-                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedLeague(league);
+                        setShowForm(true);
+                      }}
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
                   </TableCell>
                 </TableRow>
               );
