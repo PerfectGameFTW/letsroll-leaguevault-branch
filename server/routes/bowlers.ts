@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertBowlerSchema, partialBowlerSchema, type Bowler } from "@shared/schema";
+import { insertBowlerSchema, partialBowlerSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
 import { createOrUpdateCustomer } from '../services/square';
@@ -12,12 +12,15 @@ router.get("/", async (req, res) => {
     const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
     const bowlers = await storage.getBowlers(teamId);
 
-    // Ensure proper filtering of active bowlers when teamId is provided
-    const filteredBowlers = bowlers?.filter(bowler => 
-      teamId ? bowler.active && bowler.teamId === teamId : bowler.active
-    ) || [];
+    // Return all active bowlers if no teamId is provided, otherwise filter by team
+    if (!bowlers) {
+      console.log('No bowlers found');
+      return sendSuccess(res, []);
+    }
 
-    console.log(`Retrieved ${filteredBowlers.length} bowlers for ${teamId ? `team ${teamId}` : 'all teams'}`);
+    const filteredBowlers = bowlers.filter(bowler => bowler.active);
+    console.log(`Retrieved ${filteredBowlers.length} active bowlers`);
+
     sendSuccess(res, filteredBowlers);
   } catch (error) {
     console.error('Error fetching bowlers:', error);
