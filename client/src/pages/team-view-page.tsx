@@ -149,7 +149,7 @@ export default function TeamViewPage() {
   const team = teamResponse?.data;
 
   // Get bowler leagues for this team
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ data: BowlerLeague[] }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ data: { data: BowlerLeague[] } }>({
     queryKey: ["/api/bowler-leagues", teamId, team?.leagueId],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${team?.leagueId}`);
@@ -161,9 +161,9 @@ export default function TeamViewPage() {
     enabled: !!team?.leagueId,
   });
 
-  const sortedBowlerLeagues = (bowlerLeaguesResponse?.data || []).sort((a, b) =>
-    (a.order ?? 0) - (b.order ?? 0)
-  );
+  const sortedBowlerLeagues = bowlerLeaguesResponse?.data?.data
+    ? [...bowlerLeaguesResponse.data.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    : [];
 
   // Get all bowlers referenced in bowlerLeagues
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: { data: Bowler[] } }>({
@@ -376,7 +376,7 @@ export default function TeamViewPage() {
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext
-                    items={teamBowlers}
+                    items={sortedBowlerLeagues.map(bl => bl.id)}
                     strategy={verticalListSortingStrategy}
                   >
                     {teamBowlers.map((bowler) => {
