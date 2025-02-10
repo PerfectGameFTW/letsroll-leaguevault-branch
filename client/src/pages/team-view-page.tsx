@@ -183,6 +183,12 @@ export default function TeamViewPage() {
     enabled: sortedBowlerLeagues.length > 0,
   });
 
+  // Restore the league query
+  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
+    queryKey: [`/api/leagues/${team?.leagueId}`],
+    enabled: !!team?.leagueId,
+  });
+
   // Show error toast only when error changes and component is mounted
   useEffect(() => {
     if (bowlerLeaguesError) {
@@ -294,7 +300,7 @@ export default function TeamViewPage() {
     }
   };
 
-  if (loadingTeam || loadingBowlers || loadingBowlerLeagues) {
+  if (loadingTeam || loadingBowlers || loadingBowlerLeagues || loadingLeague) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -326,7 +332,7 @@ export default function TeamViewPage() {
         )
       )
     : [];
-  const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues;
+  const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
 
   return (
     <Layout>
