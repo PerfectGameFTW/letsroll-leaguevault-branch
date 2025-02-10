@@ -1,12 +1,13 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, leagues, teams, bowlers, payments,
+  users, leagues, teams, bowlers, bowlerLeagues, payments,
   type User, type InsertUser,
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
-  type Payment, type InsertPayment
+  type Payment, type InsertPayment,
+  type BowlerLeague, type InsertBowlerLeague
 } from "@shared/schema";
 
 export interface IStorage {
@@ -35,6 +36,12 @@ export interface IStorage {
   createBowler(bowler: InsertBowler): Promise<Bowler>;
   updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler>;
   deleteBowler(id: number): Promise<void>;
+
+  // Bowler Leagues
+  getBowlerLeagues(filters: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]>;
+  getBowlerLeague(id: number): Promise<BowlerLeague | undefined>;
+  createBowlerLeague(association: InsertBowlerLeague): Promise<BowlerLeague>;
+  updateBowlerLeague(id: number, bowlerLeague: Partial<InsertBowlerLeague>): Promise<BowlerLeague>;
 
   // Payments
   getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]>;
@@ -147,6 +154,55 @@ export class DatabaseStorage implements IStorage {
 
   async deleteBowler(id: number): Promise<void> {
     await db.delete(bowlers).where(eq(bowlers.id, id));
+  }
+
+  // Bowler Leagues
+  async getBowlerLeagues(filters: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]> {
+    let conditions = [];
+
+    if (filters.bowlerId !== undefined) {
+      conditions.push(eq(bowlerLeagues.bowlerId, filters.bowlerId));
+    }
+    if (filters.leagueId !== undefined) {
+      conditions.push(eq(bowlerLeagues.leagueId, filters.leagueId));
+    }
+    if (filters.teamId !== undefined) {
+      conditions.push(eq(bowlerLeagues.teamId, filters.teamId));
+    }
+
+    if (conditions.length === 0) {
+      return await db.select().from(bowlerLeagues);
+    }
+
+    return await db
+      .select()
+      .from(bowlerLeagues)
+      .where(and(...conditions));
+  }
+
+  async getBowlerLeague(id: number): Promise<BowlerLeague | undefined> {
+    const [bowlerLeague] = await db
+      .select()
+      .from(bowlerLeagues)
+      .where(eq(bowlerLeagues.id, id));
+    return bowlerLeague;
+  }
+
+  async createBowlerLeague(association: InsertBowlerLeague): Promise<BowlerLeague> {
+    const [created] = await db
+      .insert(bowlerLeagues)
+      .values(association)
+      .returning();
+    return created;
+  }
+
+  async updateBowlerLeague(id: number, update: Partial<InsertBowlerLeague>): Promise<BowlerLeague> {
+    const [updated] = await db
+      .update(bowlerLeagues)
+      .set(update)
+      .where(eq(bowlerLeagues.id, id))
+      .returning();
+    return updated;
   }
 
   // Payments

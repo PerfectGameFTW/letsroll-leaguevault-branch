@@ -24,6 +24,7 @@ export const bowlerLeagues = pgTable("bowler_leagues", {
   leagueId: integer("league_id").notNull().references(() => leagues.id),
   teamId: integer("team_id").notNull().references(() => teams.id),
   active: boolean("active").notNull().default(true),
+  order: integer("order").notNull().default(0),
 });
 
 export const leagues = pgTable("leagues", {

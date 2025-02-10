@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema } from "@shared/schema";
+import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema, insertBowlerLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { ApiError, Client } from 'square';
 
@@ -380,6 +380,112 @@ export function registerRoutes(app: Express): Server {
       res.sendStatus(204);
     } catch (error) {
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Bowler Leagues
+  app.get("/api/bowler-leagues", async (req, res) => {
+    try {
+      const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
+      const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
+      const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
+
+      // Get all bowler leagues filtered by the provided parameters
+      const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId, leagueId, teamId });
+
+      // Sort by order if available
+      bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      res.json(bowlerLeagues);
+    } catch (error) {
+      console.error('Error getting bowler leagues:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/bowler-leagues", async (req, res) => {
+    try {
+      const association = insertBowlerLeagueSchema.parse(req.body);
+
+      // Check if this association already exists
+      const existing = await storage.getBowlerLeagues({
+        bowlerId: association.bowlerId,
+        leagueId: association.leagueId,
+        teamId: association.teamId
+      });
+
+      if (existing.length > 0) {
+        return res.status(400).json({
+          message: "Bowler is already assigned to this league and team"
+        });
+      }
+
+      // Get all bowler leagues for this team to determine the next order
+      const teamBowlerLeagues = await storage.getBowlerLeagues({ teamId: association.teamId });
+      association.order = teamBowlerLeagues.length;
+
+      const created = await storage.createBowlerLeague(association);
+      res.status(201).json(created);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json(error.issues);
+      } else {
+        console.error('Error creating bowler league:', error);
+        res.status(500).json({ 
+          message: error instanceof Error ? error.message : "Internal server error"
+        });
+      }
+    }
+  });
+
+  app.patch("/api/bowler-leagues/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const update = insertBowlerLeagueSchema.partial().parse(req.body);
+
+      // If we're updating the order, handle reordering
+      if (typeof update.order === 'number') {
+        const bowlerLeague = await storage.getBowlerLeague(id);
+        if (!bowlerLeague) {
+          return res.status(404).json({ message: "Bowler league association not found" });
+        }
+
+        // Get all bowler leagues for the team and sort them
+        const teamBowlerLeagues = await storage.getBowlerLeagues({ teamId: bowlerLeague.teamId });
+        teamBowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+        const oldIndex = teamBowlerLeagues.findIndex(bl => bl.id === id);
+        const newIndex = Math.min(Math.max(0, update.order), teamBowlerLeagues.length - 1);
+
+        if (oldIndex === -1) {
+          return res.status(404).json({ message: "Bowler league not found in team" });
+        }
+
+        // Remove from old position and insert at new position
+        const [moved] = teamBowlerLeagues.splice(oldIndex, 1);
+        teamBowlerLeagues.splice(newIndex, 0, moved);
+
+        // Update all bowler leagues with their new order
+        await Promise.all(teamBowlerLeagues.map((bl, index) =>
+          storage.updateBowlerLeague(bl.id, { order: index })
+        ));
+
+        // Return the updated and sorted list
+        const updatedBowlerLeagues = await storage.getBowlerLeagues({ teamId: bowlerLeague.teamId });
+        updatedBowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        return res.json(updatedBowlerLeagues);
+      }
+
+      // Handle non-order updates
+      const updated = await storage.updateBowlerLeague(id, update);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json(error.issues);
+      } else {
+        console.error('Error updating bowler league:', error);
+        res.status(500).json({ message: "Internal server error" });
+      }
     }
   });
 
