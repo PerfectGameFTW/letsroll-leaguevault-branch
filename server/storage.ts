@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, leagues, teams, bowlers, bowlerLeagues, payments,
+  users, leagues, teams, bowlers, bowlerLeaguesNew as bowlerLeagues, payments,
   type User, type InsertUser,
   type League, type InsertLeague,
   type Team, type InsertTeam,
@@ -31,7 +31,7 @@ export interface IStorage {
   deleteTeam(id: number): Promise<void>;
 
   // Bowlers
-  getBowlers(teamId?: number): Promise<Bowler[]>;
+  getBowlers(): Promise<Bowler[]>;
   getBowler(id: number): Promise<Bowler | undefined>;
   createBowler(bowler: InsertBowler): Promise<Bowler>;
   updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler>;
@@ -126,10 +126,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Bowlers
-  async getBowlers(teamId?: number): Promise<Bowler[]> {
-    if (teamId) {
-      return await db.select().from(bowlers).where(eq(bowlers.teamId, teamId));
-    }
+  async getBowlers(): Promise<Bowler[]> {
     return await db.select().from(bowlers);
   }
 
@@ -207,14 +204,22 @@ export class DatabaseStorage implements IStorage {
 
   // Payments
   async getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]> {
-    let query = db.select().from(payments);
-    if (bowlerId) {
-      query = query.where(eq(payments.bowlerId, bowlerId));
+    const conditions = [];
+    if (bowlerId !== undefined) {
+      conditions.push(eq(payments.bowlerId, bowlerId));
     }
-    if (leagueId) {
-      query = query.where(eq(payments.leagueId, leagueId));
+    if (leagueId !== undefined) {
+      conditions.push(eq(payments.leagueId, leagueId));
     }
-    return await query;
+
+    if (conditions.length === 0) {
+      return await db.select().from(payments);
+    }
+
+    return await db
+      .select()
+      .from(payments)
+      .where(and(...conditions));
   }
 
   async createPayment(payment: InsertPayment): Promise<Payment> {
