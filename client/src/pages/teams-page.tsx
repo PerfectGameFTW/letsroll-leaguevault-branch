@@ -108,16 +108,17 @@ export default function TeamsPage() {
 }
 
 function TeamBowlers({ teamId }: { teamId: number }) {
-  const { data: bowlers, isLoading } = useQuery<Bowler[]>({
-    queryKey: [`/api/teams/${teamId}/bowlers`],
+  const { data: bowlerLeagues = [], isLoading } = useQuery<any[]>({
+    queryKey: [`/api/bowler-leagues`, teamId],
     queryFn: async () => {
-      const response = await fetch(`/api/teams/${teamId}/bowlers`);
+      const response = await fetch(`/api/bowler-leagues?teamId=${teamId}`);
       if (!response.ok) {
-        throw new Error(`Failed to fetch bowlers for team ${teamId}`);
+        throw new Error(`Failed to fetch bowler leagues for team ${teamId}`);
       }
-      return response.json();
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
     },
-    enabled: !!teamId, // Only run query if teamId is available
+    enabled: !!teamId,
   });
 
   if (isLoading) return <Loader2 className="h-4 w-4 animate-spin" />;
