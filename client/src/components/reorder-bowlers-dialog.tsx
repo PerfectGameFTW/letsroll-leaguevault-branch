@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -34,6 +34,13 @@ export function ReorderBowlersDialog({
     () => [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
   );
 
+  // Reset the ordered list when the dialog opens with new data
+  useEffect(() => {
+    if (open) {
+      setOrderedBowlerLeagues([...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+    }
+  }, [open, bowlerLeagues]);
+
   const moveItem = (index: number, direction: "up" | "down") => {
     const newOrder = [...orderedBowlerLeagues];
     const newIndex = direction === "up" ? index - 1 : index + 1;
@@ -55,7 +62,8 @@ export function ReorderBowlersDialog({
 
       await Promise.all(updates);
 
-      queryClient.invalidateQueries({
+      // Force a refetch of the bowler leagues
+      await queryClient.invalidateQueries({
         queryKey: ["/api/bowler-leagues", { teamId, leagueId }],
       });
 

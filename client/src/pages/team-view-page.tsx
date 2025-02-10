@@ -97,7 +97,6 @@ export default function TeamViewPage() {
     },
   });
 
-
   const { data: teamResponse, isLoading: loadingTeam } = useQuery<{ data: Team }>({
     queryKey: [`/api/teams/${teamId}`],
   });
@@ -116,6 +115,10 @@ export default function TeamViewPage() {
       return response.json();
     },
     enabled: !!team?.leagueId,
+    // Add refetch settings to ensure we always have fresh data
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+    refetchInterval: 1000, // Refetch every second while changes might be occurring
   });
 
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
