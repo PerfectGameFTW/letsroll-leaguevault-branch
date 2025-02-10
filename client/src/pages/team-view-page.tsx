@@ -219,7 +219,7 @@ export default function TeamViewPage() {
       return response.json();
     },
     onMutate: async ({ id, order }) => {
-      console.log('Starting optimistic update for reorder');
+      console.log('Starting optimistic update for reorder:', { id, order });
       const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
 
       // Cancel outgoing refetches
@@ -234,25 +234,39 @@ export default function TeamViewPage() {
         const currentData = [...previousData.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         console.log('Sorted current data:', currentData);
 
-        // Find indices
+        // Find current index of the item being moved
         const oldIndex = currentData.findIndex(bl => bl.id === id);
-
         if (oldIndex !== -1) {
-          // Remove item from old position
-          const [movedItem] = currentData.splice(oldIndex, 1);
-          // Insert at new position
-          currentData.splice(order, 0, movedItem);
+          // Calculate new orders for all items
+          const updatedData = currentData.map((item, index) => {
+            let newOrder: number;
 
-          // Update all order values
-          const updatedData = currentData.map((item, index) => ({
-            ...item,
-            order: index
-          }));
+            if (item.id === id) {
+              newOrder = order;
+            } else if (oldIndex < order) {
+              if (index > oldIndex && index <= order) {
+                newOrder = index - 1;
+              } else {
+                newOrder = index;
+              }
+            } else {
+              if (index >= order && index < oldIndex) {
+                newOrder = index + 1;
+              } else {
+                newOrder = index;
+              }
+            }
+
+            return {
+              ...item,
+              order: newOrder
+            };
+          });
 
           console.log('Updated data for cache:', updatedData);
 
           // Update cache with optimistic data
-          queryClient.setQueryData(queryKey, { data: updatedData });
+          queryClient.setQueryData(queryKey, { data: updatedData.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) });
         }
       }
 
@@ -260,7 +274,6 @@ export default function TeamViewPage() {
     },
     onError: (error, _, context) => {
       console.error('Error in reorder mutation:', error);
-      // On error, rollback to previous value
       if (context?.previousData) {
         const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
         queryClient.setQueryData(queryKey, context.previousData);
@@ -276,7 +289,6 @@ export default function TeamViewPage() {
       console.log('Reorder mutation succeeded:', response);
       if (response?.data) {
         const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
-        // Update cache with server response
         queryClient.setQueryData(queryKey, response);
 
         toast({
@@ -287,9 +299,9 @@ export default function TeamViewPage() {
     },
     onSettled: () => {
       console.log('Reorder mutation settled, invalidating queries');
-      // Always refetch after mutation to ensure consistency
-      const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
-      queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }] 
+      });
     }
   });
 
