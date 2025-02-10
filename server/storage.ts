@@ -46,6 +46,7 @@ export interface IStorage {
   getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePaymentStatus(id: number, status: string, squarePaymentId?: string): Promise<Payment>;
+  addBowlerTeam(bowlerId: number, teamId: number, leagueId: number): Promise<BowlerTeam | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -270,6 +271,39 @@ export class DatabaseStorage implements IStorage {
       .where(eq(payments.id, id))
       .returning();
     return updated;
+  }
+
+  async addBowlerTeam(bowlerId: number, teamId: number, leagueId: number): Promise<BowlerTeam | undefined> {
+    // First update the bowler's team association
+    await db
+      .update(bowlers)
+      .set({ 
+        teamId,
+        leagueId
+      })
+      .where(eq(bowlers.id, bowlerId));
+
+    // Then create the bowler team record
+    const [created] = await db
+      .insert(bowlerTeams)
+      .values({
+        bowlerId,
+        teamId,
+        leagueId,
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    // Also ensure there's a bowler league association
+    await db
+      .insert(bowlerLeagues)
+      .values({
+        bowlerId,
+        leagueId,
+      })
+      .onConflictDoNothing();
+
+    return created;
   }
 }
 
