@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertBowlerSchema, partialBowlerSchema } from "@shared/schema";
+import { insertBowlerSchema, partialBowlerSchema, type Bowler } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
 import { createOrUpdateCustomer } from '../services/square';
@@ -11,8 +11,10 @@ router.get("/", async (req, res) => {
   try {
     const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
     const bowlers = await storage.getBowlers(teamId);
-    sendSuccess(res, bowlers);
+    // Ensure we always return an array, even if empty
+    sendSuccess(res, bowlers || []);
   } catch (error) {
+    console.error('Error fetching bowlers:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowlers');
   }
 });
@@ -35,7 +37,8 @@ router.post("/", async (req, res) => {
     const bowler = insertBowlerSchema.parse(req.body);
 
     const existingBowlers = await storage.getBowlers();
-    const existingBowler = existingBowlers.find(b =>
+    // Handle the case where getBowlers returns undefined
+    const existingBowler = (existingBowlers || []).find(b =>
       b.email.toLowerCase() === bowler.email.toLowerCase()
     );
 
@@ -62,6 +65,7 @@ router.post("/", async (req, res) => {
     if (error instanceof z.ZodError) {
       sendError(res, error, 400);
     } else {
+      console.error('Error creating bowler:', error);
       sendError(res, error instanceof Error ? error.message : 'Failed to create bowler');
     }
   }
@@ -83,6 +87,7 @@ router.patch("/:id", async (req, res) => {
     if (error instanceof z.ZodError) {
       sendError(res, error, 400);
     } else {
+      console.error('Error updating bowler:', error);
       sendError(res, error instanceof Error ? error.message : 'Failed to update bowler');
     }
   }
