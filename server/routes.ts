@@ -171,17 +171,11 @@ export function registerRoutes(app: Express): Server {
         return res.status(404).json({ message: "Team not found" });
       }
 
-      // Get all bowlers and filter those assigned to this team's league
-      const bowlers = await storage.getBowlers();
-      const teamBowlers = bowlers.filter(bowler => {
-        const teamAssignment = bowler.teamAssignments?.find(
-          assignment => assignment.teamId === teamId && assignment.leagueId === team.leagueId
-        );
-        return !!teamAssignment;
-      });
-
+      // Get bowlers directly assigned to this team
+      const bowlers = await storage.getBowlers(teamId);
+      
       // Sort bowlers by order if available
-      const sortedBowlers = teamBowlers.sort((a, b) =>
+      const sortedBowlers = bowlers.sort((a, b) =>
         (a.order ?? 0) - (b.order ?? 0)
       );
 
