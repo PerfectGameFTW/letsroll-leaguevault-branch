@@ -178,7 +178,8 @@ export default function TeamViewPage() {
         throw new Error('Failed to fetch bowlers');
       }
       const result = await response.json();
-      return { data: Array.isArray(result.data) ? result.data : [] };
+      // Ensure we're returning the correct data structure
+      return result;
     },
     enabled: sortedBowlerLeagues.length > 0,
   });
@@ -323,11 +324,12 @@ export default function TeamViewPage() {
 
   // Get the bowlers array with proper fallback
   const bowlersData = bowlersResponse?.data || [];
+  console.log('Bowlers response:', bowlersResponse); // Debug log
   console.log('Bowlers data:', bowlersData); // Debug log
 
   // Create team bowlers array with proper type checking
-  const teamBowlers = bowlersData.filter(bowler => 
-    sortedBowlerLeagues.some(bl => 
+  const teamBowlers = bowlersData.filter(bowler =>
+    sortedBowlerLeagues.some(bl =>
       bl.bowlerId === bowler.id &&
       bl.teamId === teamId &&
       bl.leagueId === team?.leagueId
