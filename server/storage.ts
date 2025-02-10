@@ -240,14 +240,16 @@ export class DatabaseStorage implements IStorage {
         conditions.push(eq(bowlerLeagues.teamId, filters.teamId));
       }
 
-      if (conditions.length === 0) {
-        return await db.select().from(bowlerLeagues);
-      }
-
-      return await db
+      let query = db
         .select()
         .from(bowlerLeagues)
-        .where(and(...conditions));
+        .orderBy(bowlerLeagues.order);
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      return await query;
     } catch (error) {
       console.error('Error getting bowler leagues:', error);
       throw error;
@@ -325,24 +327,22 @@ export class DatabaseStorage implements IStorage {
               eq(bowlerLeagues.teamId, bowlerLeague.teamId),
               eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
             )
-          );
-
-        // Sort by current order
-        const sortedLeagues = [...currentBowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+          )
+          .orderBy(bowlerLeagues.order);
 
         // Find current index
-        const currentIndex = sortedLeagues.findIndex(bl => bl.id === id);
+        const currentIndex = currentBowlerLeagues.findIndex(bl => bl.id === id);
         if (currentIndex === -1) {
           throw new Error('Bowler league not found in sorted list');
         }
 
         // Remove from current position and insert at new position
-        const [movedLeague] = sortedLeagues.splice(currentIndex, 1);
-        sortedLeagues.splice(newOrder, 0, movedLeague);
+        const [movedLeague] = currentBowlerLeagues.splice(currentIndex, 1);
+        currentBowlerLeagues.splice(newOrder, 0, movedLeague);
 
         // Update all orders in the database within the transaction
         const updates = await Promise.all(
-          sortedLeagues.map((bl, index) =>
+          currentBowlerLeagues.map((bl, index) =>
             tx
               .update(bowlerLeagues)
               .set({ order: index })
@@ -351,8 +351,10 @@ export class DatabaseStorage implements IStorage {
           )
         );
 
-        // Return the flattened results
-        return updates.map(result => result[0]);
+        // Return the flattened results sorted by order
+        return updates
+          .map(result => result[0])
+          .sort((a, b) => a.order - b.order);
       });
     } catch (error) {
       console.error('Error updating bowler league order:', error);

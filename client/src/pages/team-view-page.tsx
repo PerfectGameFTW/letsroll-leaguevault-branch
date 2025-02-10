@@ -246,7 +246,7 @@ export default function TeamViewPage() {
             order: index
           }));
 
-          // Update cache
+          // Update cache with optimistic data
           queryClient.setQueryData(queryKey, { data: updatedData });
         }
       }
@@ -303,7 +303,6 @@ export default function TeamViewPage() {
           order: newIndex,
         });
       } catch (error) {
-        // Error handled by mutation error handler
         console.error('Error in handleDragEnd:', error);
       }
     }
