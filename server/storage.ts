@@ -144,7 +144,14 @@ export class DatabaseStorage implements IStorage {
       // Get team assignments for each bowler
       const bowlersWithAssignments = await Promise.all(result.map(async (bowler) => {
         const assignments = await db
-          .select()
+          .select({
+            id: bowlerTeams.id,
+            bowlerId: bowlerTeams.bowlerId,
+            teamId: bowlerTeams.teamId,
+            leagueId: bowlerTeams.leagueId,
+            active: bowlerTeams.active,
+            order: bowlerTeams.order,
+          })
           .from(bowlerTeams)
           .where(eq(bowlerTeams.bowlerId, bowler.id));
 
@@ -157,10 +164,26 @@ export class DatabaseStorage implements IStorage {
       return bowlersWithAssignments;
     }
 
-    const bowlers = await db.select().from(bowlers);
-    const bowlersWithAssignments = await Promise.all(bowlers.map(async (bowler) => {
+    const allBowlers = await db
+      .select({
+        id: bowlers.id,
+        name: bowlers.name,
+        email: bowlers.email,
+        active: bowlers.active,
+        squareCustomerId: bowlers.squareCustomerId,
+      })
+      .from(bowlers);
+
+    const bowlersWithAssignments = await Promise.all(allBowlers.map(async (bowler) => {
       const assignments = await db
-        .select()
+        .select({
+          id: bowlerTeams.id,
+          bowlerId: bowlerTeams.bowlerId,
+          teamId: bowlerTeams.teamId,
+          leagueId: bowlerTeams.leagueId,
+          active: bowlerTeams.active,
+          order: bowlerTeams.order,
+        })
         .from(bowlerTeams)
         .where(eq(bowlerTeams.bowlerId, bowler.id));
 
