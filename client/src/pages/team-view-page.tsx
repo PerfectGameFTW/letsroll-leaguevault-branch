@@ -166,19 +166,18 @@ export default function TeamViewPage() {
     : [];
 
   // Get all bowlers referenced in bowlerLeagues
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: boolean; data: { data: Bowler[] } }>({
     queryKey: ["/api/bowlers", sortedBowlerLeagues],
     queryFn: async () => {
       if (!sortedBowlerLeagues.length) {
-        return { data: [] };
+        return { success: true, data: { data: [] } };
       }
-      const bowlerIds = sortedBowlerLeagues.map(bl => bl.bowlerId);
+      const bowlerIds = sortedBowlerLeagues.map((bl) => bl.bowlerId);
       const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
       if (!response.ok) {
-        throw new Error('Failed to fetch bowlers');
+        throw new Error("Failed to fetch bowlers");
       }
       const result = await response.json();
-      // Ensure we're returning the correct data structure
       return result;
     },
     enabled: sortedBowlerLeagues.length > 0,
@@ -241,7 +240,7 @@ export default function TeamViewPage() {
       const previousBowlerLeagues = queryClient.getQueryData<BowlerLeague[]>(["/api/bowler-leagues", teamId]);
       if (previousBowlerLeagues) {
         const bowlerLeagues = [...previousBowlerLeagues];
-        const oldIndex = bowlerLeagues.findIndex(bl => bl.id === id);
+        const oldIndex = bowlerLeagues.findIndex((bl) => bl.id === id);
         if (oldIndex !== -1) {
           const [movedBowlerLeague] = bowlerLeagues.splice(oldIndex, 1);
           bowlerLeagues.splice(order, 0, movedBowlerLeague);
@@ -323,13 +322,13 @@ export default function TeamViewPage() {
   const league = leagueResponse?.data;
 
   // Get the bowlers array with proper fallback
-  const bowlersData = bowlersResponse?.data || [];
-  console.log('Bowlers response:', bowlersResponse); // Debug log
-  console.log('Bowlers data:', bowlersData); // Debug log
+  const bowlersData = bowlersResponse?.data?.data || [];
+  console.log("Bowlers response:", bowlersResponse); // Debug log
+  console.log("Bowlers data:", bowlersData); // Debug log
 
   // Create team bowlers array with proper type checking
-  const teamBowlers = bowlersData.filter(bowler =>
-    sortedBowlerLeagues.some(bl =>
+  const teamBowlers = bowlersData.filter((bowler) =>
+    sortedBowlerLeagues.some((bl) =>
       bl.bowlerId === bowler.id &&
       bl.teamId === teamId &&
       bl.leagueId === team?.leagueId
@@ -386,11 +385,11 @@ export default function TeamViewPage() {
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext
-                    items={sortedBowlerLeagues.map(bl => bl.id)}
+                    items={sortedBowlerLeagues.map((bl) => bl.id)}
                     strategy={verticalListSortingStrategy}
                   >
                     {teamBowlers.map((bowler) => {
-                      const bowlerLeague = sortedBowlerLeagues.find(bl => bl.bowlerId === bowler.id);
+                      const bowlerLeague = sortedBowlerLeagues.find((bl) => bl.bowlerId === bowler.id);
                       if (!bowlerLeague) return null;
                       return (
                         <SortableBowlerRow
