@@ -60,13 +60,17 @@ export default function BowlersPage() {
 
   const getBowlerTeam = (bowler: Bowler) => {
     if (!Array.isArray(bowlerLeagues) || !Array.isArray(teams)) return undefined;
-    const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
-    return bowlerLeague ? teams.find(t => t.id === bowlerLeague.teamId) : undefined;
+    // Find the active league association for this bowler
+    const activeBowlerLeague = bowlerLeagues.find(bl => 
+      bl.bowlerId === bowler.id && bl.active
+    );
+    return activeBowlerLeague ? teams.find(t => t.id === activeBowlerLeague.teamId) : undefined;
   };
 
   const getWeeklyFee = (bowler: Bowler) => {
     const team = getBowlerTeam(bowler);
     if (!team || !Array.isArray(leagues)) return 0;
+    // Find the league for this team and get its weekly fee
     const league = leagues.find(l => l.id === team.leagueId);
     return league?.weeklyFee || 0;
   };
