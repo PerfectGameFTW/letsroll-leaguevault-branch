@@ -313,6 +313,7 @@ export default function TeamViewPage() {
   const sortedBowlerLeagues = Array.isArray(bowlerLeagues) 
     ? [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
+  const teamBowlers = bowlers.filter(bowler => sortedBowlerLeagues.some(bl => bl.bowlerId === bowler.id));
   const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
 
   return (
@@ -356,20 +357,20 @@ export default function TeamViewPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {allDataLoaded ? (
-              sortedBowlerLeagues.length > 0 ? (
+            {!loadingBowlerLeagues && !loadingBowlers ? (
+              teamBowlers?.length > 0 ? (
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
                   onDragEnd={handleDragEnd}
                 >
                   <SortableContext
-                    items={sortedBowlerLeagues.map((bl) => bl.id)}
+                    items={teamBowlers}
                     strategy={verticalListSortingStrategy}
                   >
-                    {sortedBowlerLeagues.map((bowlerLeague) => {
-                      const bowler = bowlers.find(b => b.id === bowlerLeague.bowlerId);
-                      if (!bowler) return null;
+                    {teamBowlers.map((bowler) => {
+                      const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
+                      if (!bowlerLeague) return null;
                       return (
                         <SortableBowlerRow
                           key={bowlerLeague.id}
