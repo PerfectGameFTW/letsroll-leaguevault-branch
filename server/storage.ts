@@ -347,8 +347,9 @@ export class DatabaseStorage implements IStorage {
         reorderedLeagues.splice(newOrder, 0, moving);
 
         // Update orders and collect the updated records
-        const updatedLeagues: BowlerLeague[] = [];
+        const updatedLeagues: BowlerLeague[] = new Array(reorderedLeagues.length);
 
+        // Update each record with its new order
         for (let i = 0; i < reorderedLeagues.length; i++) {
           const league = reorderedLeagues[i];
           const [updated] = await tx
@@ -360,7 +361,8 @@ export class DatabaseStorage implements IStorage {
           updatedLeagues[i] = updated;
         }
 
-        return updatedLeagues;
+        // Sort by order before returning to ensure correct order
+        return updatedLeagues.sort((a, b) => a.order - b.order);
       });
     } catch (error) {
       console.error('Error updating bowler league order:', error);
