@@ -2,20 +2,14 @@ import { eq, and, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   users, leagues, teams, bowlers, bowlerLeagues, payments,
-  type User, type InsertUser,
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
-  type Payment, type InsertPayment,
-  type BowlerLeague, type InsertBowlerLeague
+  type BowlerLeague, type InsertBowlerLeague,
+  type Payment, type InsertPayment
 } from "@shared/schema";
 
 export interface IStorage {
-  // Users
-  getUser(id: number): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-
   // Leagues
   getLeagues(): Promise<League[]>;
   getLeague(id: number): Promise<League | undefined>;
@@ -52,200 +46,295 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // Users
-  async getUser(id: number): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user;
-  }
-
-  async createUser(user: InsertUser): Promise<User> {
-    const [created] = await db.insert(users).values(user).returning();
-    return created;
-  }
-
   // Leagues
   async getLeagues(): Promise<League[]> {
-    return await db.select().from(leagues);
+    try {
+      return await db.select().from(leagues);
+    } catch (error) {
+      console.error('Error getting leagues:', error);
+      throw error;
+    }
   }
 
   async getLeague(id: number): Promise<League | undefined> {
-    const [league] = await db.select().from(leagues).where(eq(leagues.id, id));
-    return league;
+    try {
+      const [league] = await db.select().from(leagues).where(eq(leagues.id, id));
+      return league;
+    } catch (error) {
+      console.error('Error getting league:', error);
+      throw error;
+    }
   }
 
   async createLeague(league: InsertLeague): Promise<League> {
-    const [created] = await db.insert(leagues).values(league).returning();
-    return created;
+    try {
+      const [created] = await db.insert(leagues).values(league).returning();
+      return created;
+    } catch (error) {
+      console.error('Error creating league:', error);
+      throw error;
+    }
   }
 
   async updateLeague(id: number, league: Partial<InsertLeague>): Promise<League> {
-    const [updated] = await db
-      .update(leagues)
-      .set(league)
-      .where(eq(leagues.id, id))
-      .returning();
-    return updated;
+    try {
+      const [updated] = await db
+        .update(leagues)
+        .set(league)
+        .where(eq(leagues.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error('Error updating league:', error);
+      throw error;
+    }
   }
 
   async deleteLeague(id: number): Promise<void> {
-    await db.delete(leagues).where(eq(leagues.id, id));
+    try {
+      await db.delete(leagues).where(eq(leagues.id, id));
+    } catch (error) {
+      console.error('Error deleting league:', error);
+      throw error;
+    }
   }
 
   // Teams
   async getTeams(leagueId?: number): Promise<Team[]> {
-    if (leagueId) {
-      return await db.select().from(teams).where(eq(teams.leagueId, leagueId));
+    try {
+      if (leagueId) {
+        return await db.select().from(teams).where(eq(teams.leagueId, leagueId));
+      }
+      return await db.select().from(teams);
+    } catch (error) {
+      console.error('Error getting teams:', error);
+      throw error;
     }
-    return await db.select().from(teams);
   }
 
   async getTeam(id: number): Promise<Team | undefined> {
-    const [team] = await db.select().from(teams).where(eq(teams.id, id));
-    return team;
+    try {
+      const [team] = await db.select().from(teams).where(eq(teams.id, id));
+      return team;
+    } catch (error) {
+      console.error('Error getting team:', error);
+      throw error;
+    }
   }
 
   async createTeam(team: InsertTeam): Promise<Team> {
-    const [created] = await db.insert(teams).values(team).returning();
-    return created;
+    try {
+      const [created] = await db.insert(teams).values(team).returning();
+      return created;
+    } catch (error) {
+      console.error('Error creating team:', error);
+      throw error;
+    }
   }
 
   async updateTeam(id: number, team: Partial<InsertTeam>): Promise<Team> {
-    const [updated] = await db
-      .update(teams)
-      .set(team)
-      .where(eq(teams.id, id))
-      .returning();
-    return updated;
+    try {
+      const [updated] = await db
+        .update(teams)
+        .set(team)
+        .where(eq(teams.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error('Error updating team:', error);
+      throw error;
+    }
   }
 
   async deleteTeam(id: number): Promise<void> {
-    await db.delete(teams).where(eq(teams.id, id));
+    try {
+      await db.delete(teams).where(eq(teams.id, id));
+    } catch (error) {
+      console.error('Error deleting team:', error);
+      throw error;
+    }
   }
 
   // Bowlers
   async getBowlers(teamId?: number): Promise<Bowler[]> {
-    if (teamId) {
-      const bowlerLeaguesList = await db
-        .select()
-        .from(bowlerLeagues)
-        .where(eq(bowlerLeagues.teamId, teamId));
-      const bowlerIds = [...new Set(bowlerLeaguesList.map(bl => bl.bowlerId))];
-      return await db
-        .select()
-        .from(bowlers)
-        .where(
-          bowlerIds.length > 0 
-            ? inArray(bowlers.id, bowlerIds)
-            : undefined
-        );
+    try {
+      if (teamId) {
+        const bowlerLeaguesList = await db
+          .select()
+          .from(bowlerLeagues)
+          .where(eq(bowlerLeagues.teamId, teamId));
+        const bowlerIds = Array.from(new Set(bowlerLeaguesList.map(bl => bl.bowlerId)));
+        if (bowlerIds.length === 0) return [];
+        return await db
+          .select()
+          .from(bowlers)
+          .where(inArray(bowlers.id, bowlerIds));
+      }
+      return await db.select().from(bowlers);
+    } catch (error) {
+      console.error('Error getting bowlers:', error);
+      throw error;
     }
-    return await db.select().from(bowlers);
   }
 
   async getBowler(id: number): Promise<Bowler | undefined> {
-    const [bowler] = await db.select().from(bowlers).where(eq(bowlers.id, id));
-    return bowler;
+    try {
+      const [bowler] = await db.select().from(bowlers).where(eq(bowlers.id, id));
+      return bowler;
+    } catch (error) {
+      console.error('Error getting bowler:', error);
+      throw error;
+    }
   }
 
   async createBowler(bowler: InsertBowler): Promise<Bowler> {
-    const [created] = await db.insert(bowlers).values(bowler).returning();
-    return created;
+    try {
+      const [created] = await db.insert(bowlers).values(bowler).returning();
+      return created;
+    } catch (error) {
+      console.error('Error creating bowler:', error);
+      throw error;
+    }
   }
 
   async updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler> {
-    const [updated] = await db
-      .update(bowlers)
-      .set(bowler)
-      .where(eq(bowlers.id, id))
-      .returning();
-    return updated;
+    try {
+      const [updated] = await db
+        .update(bowlers)
+        .set(bowler)
+        .where(eq(bowlers.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error('Error updating bowler:', error);
+      throw error;
+    }
   }
 
   async deleteBowler(id: number): Promise<void> {
-    await db.delete(bowlers).where(eq(bowlers.id, id));
+    try {
+      await db.delete(bowlers).where(eq(bowlers.id, id));
+    } catch (error) {
+      console.error('Error deleting bowler:', error);
+      throw error;
+    }
   }
 
   // Bowler Leagues
-  async getBowlerLeagues(filters: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]> {
-    let conditions = [];
+  async getBowlerLeagues(filters: {
+    bowlerId?: number;
+    leagueId?: number;
+    teamId?: number;
+  }): Promise<BowlerLeague[]> {
+    try {
+      const conditions = [];
 
-    if (filters.bowlerId !== undefined) {
-      conditions.push(eq(bowlerLeagues.bowlerId, filters.bowlerId));
-    }
-    if (filters.leagueId !== undefined) {
-      conditions.push(eq(bowlerLeagues.leagueId, filters.leagueId));
-    }
-    if (filters.teamId !== undefined) {
-      conditions.push(eq(bowlerLeagues.teamId, filters.teamId));
-    }
+      if (filters.bowlerId !== undefined) {
+        conditions.push(eq(bowlerLeagues.bowlerId, filters.bowlerId));
+      }
+      if (filters.leagueId !== undefined) {
+        conditions.push(eq(bowlerLeagues.leagueId, filters.leagueId));
+      }
+      if (filters.teamId !== undefined) {
+        conditions.push(eq(bowlerLeagues.teamId, filters.teamId));
+      }
 
-    if (conditions.length === 0) {
-      return await db.select().from(bowlerLeagues);
-    }
+      if (conditions.length === 0) {
+        return await db.select().from(bowlerLeagues);
+      }
 
-    return await db
-      .select()
-      .from(bowlerLeagues)
-      .where(and(...conditions));
+      return await db
+        .select()
+        .from(bowlerLeagues)
+        .where(and(...conditions));
+    } catch (error) {
+      console.error('Error getting bowler leagues:', error);
+      throw error;
+    }
   }
 
   async getBowlerLeague(id: number): Promise<BowlerLeague | undefined> {
-    const [bowlerLeague] = await db
-      .select()
-      .from(bowlerLeagues)
-      .where(eq(bowlerLeagues.id, id));
-    return bowlerLeague;
+    try {
+      const [bowlerLeague] = await db
+        .select()
+        .from(bowlerLeagues)
+        .where(eq(bowlerLeagues.id, id));
+      return bowlerLeague;
+    } catch (error) {
+      console.error('Error getting bowler league:', error);
+      throw error;
+    }
   }
 
   async createBowlerLeague(association: InsertBowlerLeague): Promise<BowlerLeague> {
-    const [created] = await db
-      .insert(bowlerLeagues)
-      .values(association)
-      .returning();
-    return created;
+    try {
+      const [created] = await db
+        .insert(bowlerLeagues)
+        .values(association)
+        .returning();
+      return created;
+    } catch (error) {
+      console.error('Error creating bowler league:', error);
+      throw error;
+    }
   }
 
   async updateBowlerLeague(id: number, update: Partial<InsertBowlerLeague>): Promise<BowlerLeague> {
-    const [updated] = await db
-      .update(bowlerLeagues)
-      .set(update)
-      .where(eq(bowlerLeagues.id, id))
-      .returning();
-    return updated;
+    try {
+      const [updated] = await db
+        .update(bowlerLeagues)
+        .set(update)
+        .where(eq(bowlerLeagues.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error('Error updating bowler league:', error);
+      throw error;
+    }
   }
 
   async deleteBowlerLeague(id: number): Promise<void> {
-    await db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id));
+    try {
+      await db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id));
+    } catch (error) {
+      console.error('Error deleting bowler league:', error);
+      throw error;
+    }
   }
 
   // Payments
   async getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]> {
-    const conditions = [];
-    if (bowlerId !== undefined) {
-      conditions.push(eq(payments.bowlerId, bowlerId));
-    }
-    if (leagueId !== undefined) {
-      conditions.push(eq(payments.leagueId, leagueId));
-    }
+    try {
+      const conditions = [];
+      if (bowlerId !== undefined) {
+        conditions.push(eq(payments.bowlerId, bowlerId));
+      }
+      if (leagueId !== undefined) {
+        conditions.push(eq(payments.leagueId, leagueId));
+      }
 
-    if (conditions.length === 0) {
-      return await db.select().from(payments);
-    }
+      if (conditions.length === 0) {
+        return await db.select().from(payments);
+      }
 
-    return await db
-      .select()
-      .from(payments)
-      .where(and(...conditions));
+      return await db
+        .select()
+        .from(payments)
+        .where(and(...conditions));
+    } catch (error) {
+      console.error('Error getting payments:', error);
+      throw error;
+    }
   }
 
   async createPayment(payment: InsertPayment): Promise<Payment> {
-    const [created] = await db.insert(payments).values(payment).returning();
-    return created;
+    try {
+      const [created] = await db.insert(payments).values(payment).returning();
+      return created;
+    } catch (error) {
+      console.error('Error creating payment:', error);
+      throw error;
+    }
   }
 
   async updatePaymentStatus(
@@ -253,20 +342,30 @@ export class DatabaseStorage implements IStorage {
     status: string,
     squarePaymentId?: string
   ): Promise<Payment> {
-    const [updated] = await db
-      .update(payments)
-      .set({
-        status,
-        squarePaymentId,
-        paidAt: status === "paid" ? new Date() : null,
-      })
-      .where(eq(payments.id, id))
-      .returning();
-    return updated;
+    try {
+      const [updated] = await db
+        .update(payments)
+        .set({
+          status,
+          squarePaymentId,
+          paidAt: status === "paid" ? new Date() : null,
+        })
+        .where(eq(payments.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error('Error updating payment status:', error);
+      throw error;
+    }
   }
 
   async deletePayment(id: number): Promise<void> {
-    await db.delete(payments).where(eq(payments.id, id));
+    try {
+      await db.delete(payments).where(eq(payments.id, id));
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+      throw error;
+    }
   }
 }
 
