@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, ArrowLeft } from "lucide-react";
-import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema";
+import type { League, Team, Bowler, Payment } from "@shared/schema";
 import { startOfToday } from "date-fns";
 import { Link } from "wouter";
 
@@ -38,12 +38,19 @@ export default function PastDuePage() {
   });
   const teams = teamsResponse?.data?.data || [];
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
+    queryFn: async () => {
+      const response = await fetch('/api/bowlers');
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowlers');
+      }
+      return response.json();
+    }
   });
-  const bowlers = bowlersResponse || [];
+  const bowlers = bowlersResponse?.data || [];
 
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: { data: BowlerLeague[] } }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: { data: { id: number; bowlerId: number; leagueId: number; teamId: number; order: number }[] } }>({
     queryKey: ["/api/bowler-leagues"],
     queryFn: async () => {
       const response = await fetch('/api/bowler-leagues');
@@ -55,10 +62,17 @@ export default function PastDuePage() {
   });
   const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
 
-  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<Payment[]>({
+  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments"],
+    queryFn: async () => {
+      const response = await fetch('/api/payments');
+      if (!response.ok) {
+        throw new Error('Failed to fetch payments');
+      }
+      return response.json();
+    }
   });
-  const payments = paymentsResponse || [];
+  const payments = paymentsResponse?.data || [];
 
   if (loadingLeagues || loadingTeams || loadingBowlers || loadingPayments || loadingBowlerLeagues) {
     return (
@@ -72,46 +86,47 @@ export default function PastDuePage() {
 
   // Calculate past due details with proper type checking
   const pastDueBowlers = bowlers
-    .filter((bowler): bowler is Bowler => {
-      if (!bowler || typeof bowler !== 'object') return false;
-      // Check if bowler is active and has a league association
-      return bowler.active && bowlerLeagues.some(bl => bl.bowlerId === bowler.id);
-    })
+    .filter(bowler => bowler.active)
     .map(bowler => {
-      const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
-      if (!bowlerLeague) return null;
+      // Find all league associations for this bowler
+      const bowlerLeagueAssociations = bowlerLeagues.filter(bl => bl.bowlerId === bowler.id);
 
-      const team = teams.find(t => t.id === bowlerLeague.teamId);
-      if (!team) return null;
+      // Calculate past due for each league association
+      const leagueDues = bowlerLeagueAssociations.map(association => {
+        const team = teams.find(t => t.id === association.teamId);
+        if (!team) return null;
 
-      const league = leagues.find(l => l.id === team.leagueId);
-      if (!league) return null;
+        const league = leagues.find(l => l.id === association.leagueId);
+        if (!league) return null;
 
-      const bowlerPayments = payments
-        .filter(p => p.bowlerId === bowler.id && p.status === 'paid')
-        .reduce((sum, p) => sum + p.amount, 0) || 0;
+        const bowlerPayments = payments
+          .filter(p => p.bowlerId === bowler.id && p.status === 'paid')
+          .reduce((sum, p) => sum + p.amount, 0) || 0;
 
-      const today = startOfToday();
-      const seasonStart = new Date(league.seasonStart);
-      const weeksPassed = Math.max(0, Math.floor(
-        (today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
-      ));
+        const today = startOfToday();
+        const seasonStart = new Date(league.seasonStart);
+        const weeksPassed = Math.max(0, Math.floor(
+          (today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
+        ));
 
-      const dueToDate = league.weeklyFee * weeksPassed;
-      const pastDueAmount = Math.max(0, dueToDate - bowlerPayments);
-      const weeksPastDue = Math.floor(pastDueAmount / league.weeklyFee);
+        const dueToDate = league.weeklyFee * weeksPassed;
+        const pastDueAmount = Math.max(0, dueToDate - bowlerPayments);
+        const weeksPastDue = Math.floor(pastDueAmount / league.weeklyFee);
 
-      return {
-        bowler,
-        team,
-        league,
-        weeksPastDue,
-        pastDueAmount,
-      };
+        return {
+          bowler,
+          team,
+          league,
+          weeksPastDue,
+          pastDueAmount,
+        };
+      }).filter((item): item is NonNullable<typeof item> => 
+        item !== null && item.pastDueAmount > 0
+      );
+
+      return leagueDues;
     })
-    .filter((item): item is NonNullable<typeof item> => 
-      item !== null && item.pastDueAmount > 0
-    )
+    .flat()
     .sort((a, b) => b.pastDueAmount - a.pastDueAmount);
 
   return (
@@ -142,7 +157,7 @@ export default function PastDuePage() {
             </TableHeader>
             <TableBody>
               {pastDueBowlers.map(item => (
-                <TableRow key={item.bowler.id}>
+                <TableRow key={`${item.bowler.id}-${item.league.id}`}>
                   <TableCell>
                     <Link href={`/bowlers/${item.bowler.id}`} className="hover:underline">
                       {item.bowler.name}
