@@ -322,29 +322,53 @@ export class DatabaseStorage implements IStorage {
         throw new Error('Bowler league not found');
       }
 
-      // Step 2: Execute the reorder in a single SQL transaction
-      const result = await db.execute(sql`
-        WITH ranked AS (
-          SELECT id, ROW_NUMBER() OVER (ORDER BY 
+      // Step 2: Execute the reorder in a single SQL transaction with temporary orders
+      await db.execute(sql`
+        WITH to_move AS (
+          SELECT id, "order" as old_order
+          FROM bowler_leagues 
+          WHERE id = ${id}
+        ),
+        affected_range AS (
+          SELECT id, "order"
+          FROM bowler_leagues bl, to_move tm
+          WHERE bl.team_id = ${bowlerLeague.teamId}
+          AND bl.league_id = ${bowlerLeague.leagueId}
+          AND (
             CASE 
-              WHEN id = ${id} THEN ${newOrder}
-              WHEN "order" >= ${newOrder} AND "order" < ${bowlerLeague.order} THEN "order" + 1
-              WHEN "order" <= ${newOrder} AND "order" > ${bowlerLeague.order} THEN "order" - 1
-              ELSE "order"
+              WHEN ${newOrder} > tm.old_order 
+              THEN bl."order" <= ${newOrder} AND bl."order" > tm.old_order
+              ELSE bl."order" >= ${newOrder} AND bl."order" < tm.old_order
             END
-          ) - 1 as new_order
+          )
+        )
+        UPDATE bowler_leagues bl
+        SET "order" = 
+          CASE 
+            WHEN bl.id = ${id} THEN ${newOrder} * 1000
+            WHEN ${newOrder} > (SELECT old_order FROM to_move)
+            THEN bl."order" - 1
+            ELSE bl."order" + 1
+          END
+        WHERE bl.id IN (SELECT id FROM affected_range)
+        OR bl.id = ${id}
+      `);
+
+      // Step 3: Normalize all orders to be sequential
+      await db.execute(sql`
+        WITH indexed AS (
+          SELECT id, ROW_NUMBER() OVER (ORDER BY "order") - 1 as new_order
           FROM bowler_leagues
-          WHERE team_id = ${bowlerLeague.teamId} 
+          WHERE team_id = ${bowlerLeague.teamId}
           AND league_id = ${bowlerLeague.leagueId}
         )
         UPDATE bowler_leagues bl
-        SET "order" = r.new_order
-        FROM ranked r
-        WHERE bl.id = r.id
-        RETURNING *;
+        SET "order" = i.new_order
+        FROM indexed i
+        WHERE bl.id = i.id;
       `);
 
-      // Step 3: Get all updated bowler leagues in the correct order
+      // Step 4: Return updated bowler leagues in correct order
       const updatedLeagues = await db
         .select()
         .from(bowlerLeagues)
