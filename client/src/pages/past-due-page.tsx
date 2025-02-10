@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, ArrowLeft } from "lucide-react";
-import type { League, Team, Bowler, Payment } from "@shared/schema";
+import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema";
 import { startOfToday } from "date-fns";
 import { Link } from "wouter";
 
@@ -22,15 +22,19 @@ export default function PastDuePage() {
     queryKey: ["/api/teams"],
   });
 
-  const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlers = [], isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers"],
+  });
+
+  const { data: bowlerLeagues = [], isLoading: loadingBowlerLeagues } = useQuery<BowlerLeague[]>({
+    queryKey: ["/api/bowler-leagues"],
   });
 
   const { data: payments, isLoading: loadingPayments } = useQuery<Payment[]>({
     queryKey: ["/api/payments"],
   });
 
-  if (loadingLeagues || loadingTeams || loadingBowlers || loadingPayments) {
+  if (loadingLeagues || loadingTeams || loadingBowlers || loadingPayments || loadingBowlerLeagues) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -40,14 +44,19 @@ export default function PastDuePage() {
     );
   }
 
-  // Calculate past due details for each bowler
+  // Calculate past due details with proper type checking
   const pastDueBowlers = bowlers
-    ?.filter(bowler => bowler.active && bowler.teamId)
+    .filter((bowler): bowler is Bowler => {
+      if (!bowler || typeof bowler !== 'object') return false;
+      // Check if bowler is active and has a league association
+      return bowler.active && bowlerLeagues.some(bl => bl.bowlerId === bowler.id);
+    })
     .map(bowler => {
-      const team = teams?.find(t => t.id === bowler.teamId);
-      const league = leagues?.find(l => l.id === team?.leagueId);
+      const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
+      const team = teams?.find(t => t.id === bowlerLeague?.teamId);
+      const league = leagues?.find(l => l.id === bowlerLeague?.leagueId);
 
-      if (!team || !league) return null;
+      if (!bowlerLeague || !team || !league) return null;
 
       const bowlerPayments = payments
         ?.filter(p => p.bowlerId === bowler.id && p.status === 'paid')
@@ -71,8 +80,10 @@ export default function PastDuePage() {
         pastDueAmount,
       };
     })
-    .filter(item => item && item.pastDueAmount > 0)
-    .sort((a, b) => (b?.pastDueAmount || 0) - (a?.pastDueAmount || 0));
+    .filter((item): item is NonNullable<typeof item> => 
+      item !== null && item.pastDueAmount > 0
+    )
+    .sort((a, b) => b.pastDueAmount - a.pastDueAmount);
 
   return (
     <Layout>

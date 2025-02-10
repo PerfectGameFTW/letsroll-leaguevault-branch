@@ -165,12 +165,12 @@ export default function TeamViewPage() {
     ? [...bowlerLeaguesResponse.data.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
 
-  // Get all bowlers referenced in bowlerLeagues
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: boolean; data: { data: Bowler[] } }>({
+  // Update the bowlers query and data handling
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers", sortedBowlerLeagues],
     queryFn: async () => {
       if (!sortedBowlerLeagues.length) {
-        return { success: true, data: { data: [] } };
+        return [];
       }
       const bowlerIds = sortedBowlerLeagues.map((bl) => bl.bowlerId);
       const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
@@ -178,40 +178,26 @@ export default function TeamViewPage() {
         throw new Error("Failed to fetch bowlers");
       }
       const result = await response.json();
-      console.log("API Response:", result); // Debug log raw response
-
-      // Ensure we handle different response structures
-      if (result.data?.data) {
-        return result; // Structure is already correct
-      } else if (Array.isArray(result.data)) {
-        return { success: true, data: { data: result.data } }; // Wrap array in expected structure
-      } else {
-        return { success: true, data: { data: [] } }; // Return empty array as fallback
-      }
+      return result.data || [];
     },
     enabled: sortedBowlerLeagues.length > 0,
   });
 
-  // Get the bowlers array with proper fallback and type checking
-  const bowlersData = bowlersResponse?.data?.data;
-  console.log("Raw bowlers response:", bowlersResponse); // Debug full response
-  console.log("Bowlers data before processing:", bowlersData); // Debug extracted data
+  // Simplify data handling with proper type safety
+  const bowlers = bowlersResponse || [];
 
-  // Ensure we have a valid array before filtering
-  const validBowlersData = Array.isArray(bowlersData) ? bowlersData : [];
-  console.log("Valid bowlers data:", validBowlersData); // Debug validated array
-
-  // Create team bowlers array with proper type checking
-  const teamBowlers = validBowlersData.filter((bowler): bowler is Bowler =>
-    bowler !== null && // Ensure bowler is not null
-    typeof bowler === 'object' && // Ensure bowler is an object
-    'id' in bowler && // Ensure bowler has an id
-    sortedBowlerLeagues.some((bl) =>
+  // Filter bowlers for the team with proper null checks
+  const teamBowlers = bowlers.filter((bowler): bowler is Bowler => {
+    if (!bowler || typeof bowler !== 'object' || !('id' in bowler)) {
+      return false;
+    }
+    return sortedBowlerLeagues.some((bl) =>
       bl.bowlerId === bowler.id &&
       bl.teamId === teamId &&
       bl.leagueId === team?.leagueId
-    )
-  );
+    );
+  });
+
 
   // Restore the league query
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Eye, EyeOff, Search, Pencil } from "lucide-react";
-import type { Bowler, Team, League } from "@shared/schema";
+import type { Bowler, Team, League, BowlerLeague } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
@@ -27,14 +27,16 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers"],
   });
-  const bowlers = bowlersResponse?.data;
+  const bowlers = bowlersResponse || [];
 
-  const { data: bowlerLeagues } = useQuery({
+  // Get associations from bowler leagues
+  const { data: bowlerLeaguesResponse } = useQuery<BowlerLeague[]>({
     queryKey: ["/api/bowler-leagues"],
   });
+  const bowlerLeagues = bowlerLeaguesResponse || [];
 
   const { data: teams } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
@@ -46,11 +48,12 @@ export default function BowlersPage() {
 
   // Helper function to get team for a bowler
   const getBowlerTeam = (bowler: Bowler) => {
-    const bowlerLeague = bowlerLeagues?.data?.find(bl => bl.bowlerId === bowler.id);
-    return teams?.find(t => t.id === bowlerLeague?.teamId);
+    const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
+    return bowlerLeague ? teams?.find(t => t.id === bowlerLeague.teamId) : undefined;
   };
 
-  const filteredBowlers = bowlers?.filter(bowler => {
+  // Filter bowlers with proper type checking
+  const filteredBowlers = bowlers.filter(bowler => {
     const matchesSearch = searchQuery === "" || 
       bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
@@ -69,10 +72,8 @@ export default function BowlersPage() {
 
   // Helper function to get league weekly fee
   const getWeeklyFee = (bowler: Bowler) => {
-    if (!bowler.teamId) return 0;
-    const team = teams?.find(t => t.id === bowler.teamId);
-    if (!team) return 0;
-    const league = leagues?.find(l => l.id === team.leagueId);
+    const team = getBowlerTeam(bowler);
+    const league = team ? leagues?.find(l => l.id === team.leagueId) : undefined;
     return league?.weeklyFee || 0;
   };
 

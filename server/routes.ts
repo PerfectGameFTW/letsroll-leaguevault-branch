@@ -157,12 +157,20 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/bowlers", async (req, res) => {
     try {
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
-      const bowlers = await storage.getBowlers(teamId);
+      const bowlers = await storage.getBowlers();
       if (!Array.isArray(bowlers)) {
         throw new Error("Invalid bowlers data format");
       }
-      bowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      sendSuccess(res, { data: bowlers });
+      // Apply team filter if provided
+      const filteredBowlers = teamId 
+        ? bowlers.filter(bowler => bowler.teamId === teamId)
+        : bowlers;
+
+      // Sort by order
+      filteredBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+      // Return in consistent format
+      sendSuccess(res, filteredBowlers);
     } catch (error) {
       sendError(res, error);
     }
@@ -648,74 +656,74 @@ export function registerRoutes(app: Express): Server {
 }
 
 async function handleSquareCustomer(bowler: any, teamId?: number | null) {
-    if (!squareClient) return null;
+  if (!squareClient) return null;
 
-    const searchResponse = await squareClient.customersApi.searchCustomers({
-      query: {
-        filter: {
-          emailAddress: {
-            exact: bowler.email.toLowerCase()
-          }
+  const searchResponse = await squareClient.customersApi.searchCustomers({
+    query: {
+      filter: {
+        emailAddress: {
+          exact: bowler.email.toLowerCase()
         }
       }
+    }
+  });
+
+  let customerId: string;
+
+  if (searchResponse.result.customers?.length) {
+    customerId = searchResponse.result.customers[0].id;
+    await squareClient.customersApi.updateCustomer(customerId, {
+      givenName: bowler.name.split(' ')[0],
+      familyName: bowler.name.split(' ').slice(1).join(' ') || '',
+      emailAddress: bowler.email.toLowerCase(),
+    });
+  } else {
+    const customerResponse = await squareClient.customersApi.createCustomer({
+      idempotencyKey: `${Date.now()}-${Math.random()}`,
+      givenName: bowler.name.split(' ')[0],
+      familyName: bowler.name.split(' ').slice(1).join(' ') || '',
+      emailAddress: bowler.email.toLowerCase(),
     });
 
-    let customerId: string;
-
-    if (searchResponse.result.customers?.length) {
-      customerId = searchResponse.result.customers[0].id;
-      await squareClient.customersApi.updateCustomer(customerId, {
-        givenName: bowler.name.split(' ')[0],
-        familyName: bowler.name.split(' ').slice(1).join(' ') || '',
-        emailAddress: bowler.email.toLowerCase(),
-      });
-    } else {
-      const customerResponse = await squareClient.customersApi.createCustomer({
-        idempotencyKey: `${Date.now()}-${Math.random()}`,
-        givenName: bowler.name.split(' ')[0],
-        familyName: bowler.name.split(' ').slice(1).join(' ') || '',
-        emailAddress: bowler.email.toLowerCase(),
-      });
-
-      if (!customerResponse.result?.customer?.id) {
-        throw new Error('Failed to create Square customer');
-      }
-
-      customerId = customerResponse.result.customer.id;
+    if (!customerResponse.result?.customer?.id) {
+      throw new Error('Failed to create Square customer');
     }
 
-    if (teamId) {
-      await handleSquareGroup(customerId, teamId);
-    }
-
-    return customerId;
+    customerId = customerResponse.result.customer.id;
   }
 
-  async function handleSquareGroup(customerId: string, teamId: number) {
-    if (!squareClient) return;
+  if (teamId) {
+    await handleSquareGroup(customerId, teamId);
+  }
 
-    const team = await storage.getTeam(teamId);
-    if (!team) return;
+  return customerId;
+}
 
-    const league = await storage.getLeague(team.leagueId);
-    if (!league) return;
+async function handleSquareGroup(customerId: string, teamId: number) {
+  if (!squareClient) return;
 
-    const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
-    let groupId = groupsResponse.result.groups?.find(g => g.name === league.name)?.id;
+  const team = await storage.getTeam(teamId);
+  if (!team) return;
 
-    if (!groupId) {
-      const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
-        idempotencyKey: `league-${league.id}`,
-        group: { name: league.name },
-      });
-      groupId = groupResponse.result.group?.id;
-    }
+  const league = await storage.getLeague(team.leagueId);
+  if (!league) return;
 
-    if (groupId) {
-      try {
-        await squareClient.customerGroupsApi.addCustomerToGroup(groupId, { customerId });
-      } catch (error) {
-        console.error('Error adding customer to group:', error);
-      }
+  const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+  let groupId = groupsResponse.result.groups?.find(g => g.name === league.name)?.id;
+
+  if (!groupId) {
+    const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+      idempotencyKey: `league-${league.id}`,
+      group: { name: league.name },
+    });
+    groupId = groupResponse.result.group?.id;
+  }
+
+  if (groupId) {
+    try {
+      await squareClient.customerGroupsApi.addCustomerToGroup(groupId, { customerId });
+    } catch (error) {
+      console.error('Error adding customer to group:', error);
     }
   }
+}
