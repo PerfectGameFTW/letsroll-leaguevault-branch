@@ -169,21 +169,18 @@ export default function TeamViewPage() {
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: { data: Bowler[] } }>({
     queryKey: ["/api/bowlers", sortedBowlerLeagues],
     queryFn: async () => {
-      if (!sortedBowlerLeagues.length) return { data: { data: [] } };
+      if (!sortedBowlerLeagues.length) {
+        return { data: { data: [] } };
+      }
       const bowlerIds = sortedBowlerLeagues.map(bl => bl.bowlerId);
       const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
       if (!response.ok) {
         throw new Error('Failed to fetch bowlers');
       }
-      return response.json();
+      const data = await response.json();
+      return data;
     },
     enabled: sortedBowlerLeagues.length > 0,
-  });
-
-
-  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
-    queryKey: [`/api/leagues/${team?.leagueId}`],
-    enabled: !!team?.leagueId,
   });
 
   // Show error toast only when error changes and component is mounted
@@ -297,7 +294,7 @@ export default function TeamViewPage() {
     }
   };
 
-  if (loadingTeam || loadingBowlers || loadingBowlerLeagues || loadingLeague) {
+  if (loadingTeam || loadingBowlers || loadingBowlerLeagues) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -317,15 +314,19 @@ export default function TeamViewPage() {
 
   // Make sure we have all the data before rendering
   const league = leagueResponse?.data;
-  const bowlersList = bowlersResponse?.data?.data ?? [];
-  const teamBowlers = Array.isArray(bowlersList) ? bowlersList.filter(bowler =>
-    sortedBowlerLeagues.some(bl =>
-      bl.bowlerId === bowler.id &&
-      bl.teamId === teamId &&
-      bl.leagueId === team?.leagueId
-    )
-  ) : [];
-  const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
+  const bowlers = bowlersResponse?.data?.data ?? [];
+
+  // Ensure we have an array before filtering
+  const teamBowlers = Array.isArray(bowlers)
+    ? bowlers.filter(bowler =>
+        sortedBowlerLeagues.some(bl =>
+          bl.bowlerId === bowler.id &&
+          bl.teamId === teamId &&
+          bl.leagueId === team?.leagueId
+        )
+      )
+    : [];
+  const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues;
 
   return (
     <Layout>
