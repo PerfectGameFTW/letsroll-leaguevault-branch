@@ -27,9 +27,10 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
   });
+  const bowlers = bowlersResponse?.data;
 
   const { data: bowlerLeagues } = useQuery({
     queryKey: ["/api/bowler-leagues"],

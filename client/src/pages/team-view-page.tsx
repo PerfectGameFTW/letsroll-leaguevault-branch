@@ -143,9 +143,10 @@ export default function TeamViewPage() {
     })
   );
 
-  const { data: team, isLoading: loadingTeam } = useQuery<Team>({
+  const { data: teamResponse, isLoading: loadingTeam } = useQuery<{ data: Team }>({
     queryKey: [`/api/teams/${teamId}`],
   });
+  const team = teamResponse?.data;
 
   // Get bowler leagues for this team
   const { data: bowlerLeaguesResponse = { data: [] }, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ data: BowlerLeague[] }>({

@@ -21,9 +21,10 @@ export default function TeamsPage() {
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
 
-  const { data: league, isLoading: loadingLeague } = useQuery<League>({
+  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
   });
+  const league = leagueResponse?.data;
 
   const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams", leagueId],
