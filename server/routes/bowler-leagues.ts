@@ -52,4 +52,18 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
+router.post("/", async (req, res) => {
+  try {
+    const association = insertBowlerLeagueSchema.parse(req.body);
+    const created = await storage.createBowlerLeague(association);
+    sendSuccess(res, created, 201);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      sendError(res, error, 400);
+    } else {
+      sendError(res, error instanceof Error ? error.message : 'Failed to create bowler league');
+    }
+  }
+});
+
 export default router;

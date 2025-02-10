@@ -216,7 +216,9 @@ export default function TeamViewPage() {
         const error = await response.text();
         throw new Error(error);
       }
-      return response.json();
+      const result = await response.json();
+      console.log('Server response:', result);
+      return result;
     },
     onMutate: async ({ id, order }) => {
       const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
@@ -267,15 +269,20 @@ export default function TeamViewPage() {
     },
     onSuccess: (response) => {
       console.log('Successfully updated bowler league order:', response);
-      const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
-
-      // Update cache with the response from server
-      queryClient.setQueryData(queryKey, { data: response.data });
+      if (response?.data) {
+        const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
+        queryClient.setQueryData(queryKey, response);
+      }
 
       toast({
         title: "Success",
         description: "Bowler order updated successfully",
       });
+    },
+    onSettled: () => {
+      // Refetch after mutation is settled
+      const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
+      queryClient.invalidateQueries({ queryKey });
     }
   });
 
