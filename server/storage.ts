@@ -346,27 +346,21 @@ export class DatabaseStorage implements IStorage {
         const [moving] = reorderedLeagues.splice(currentIndex, 1);
         reorderedLeagues.splice(newOrder, 0, moving);
 
-        // Update orders for all affected bowler leagues
+        // Update orders and collect the updated records
+        const updatedLeagues: BowlerLeague[] = [];
+
         for (let i = 0; i < reorderedLeagues.length; i++) {
           const league = reorderedLeagues[i];
-          await tx
+          const [updated] = await tx
             .update(bowlerLeagues)
             .set({ order: i })
             .where(eq(bowlerLeagues.id, league.id))
             .returning();
+
+          updatedLeagues[i] = updated;
         }
 
-        // Return updated list in correct order
-        return await tx
-          .select()
-          .from(bowlerLeagues)
-          .where(
-            and(
-              eq(bowlerLeagues.teamId, bowlerLeague.teamId),
-              eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
-            )
-          )
-          .orderBy(bowlerLeagues.order);
+        return updatedLeagues;
       });
     } catch (error) {
       console.error('Error updating bowler league order:', error);
