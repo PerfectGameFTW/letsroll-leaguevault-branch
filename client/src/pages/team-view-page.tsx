@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
@@ -180,6 +180,17 @@ export default function TeamViewPage() {
     enabled: !!team?.leagueId,
   });
 
+  // Show error toast only when error changes and component is mounted
+  useEffect(() => {
+    if (bowlerLeaguesError) {
+      toast({
+        title: "Error loading bowler leagues",
+        description: bowlerLeaguesError instanceof Error ? bowlerLeaguesError.message : "An unknown error occurred",
+        variant: "destructive",
+      });
+    }
+  }, [bowlerLeaguesError, toast]);
+
   const updateTeamMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editTeamSchema>) => {
       const response = await apiRequest("PATCH", `/api/teams/${teamId}`, values);
@@ -303,14 +314,6 @@ export default function TeamViewPage() {
     ? [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
   const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
-
-  if (bowlerLeaguesError) {
-    toast({
-      title: "Error loading bowler leagues",
-      description: bowlerLeaguesError instanceof Error ? bowlerLeaguesError.message : "An unknown error occurred",
-      variant: "destructive",
-    });
-  }
 
   return (
     <Layout>
