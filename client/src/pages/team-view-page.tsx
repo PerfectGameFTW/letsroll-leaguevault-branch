@@ -315,15 +315,13 @@ export default function TeamViewPage() {
   const sortedBowlerLeagues = Array.isArray(bowlerLeagues?.data) 
     ? [...bowlerLeagues.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
-  const teamBowlers = Array.isArray(bowlers) && sortedBowlerLeagues.length > 0
-    ? bowlers.filter(bowler => 
-        sortedBowlerLeagues.some(bl => 
-          bl.bowlerId === bowler.id && 
-          bl.teamId === parseInt(teamId) && 
-          bl.leagueId === team?.leagueId
-        )
-      )
-    : [];
+  const teamBowlers = (bowlers || []).filter(bowler => 
+    sortedBowlerLeagues.some(bl => 
+      bl.bowlerId === bowler.id && 
+      bl.teamId === parseInt(teamId) && 
+      bl.leagueId === team?.leagueId
+    )
+  );
   const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
 
   return (
