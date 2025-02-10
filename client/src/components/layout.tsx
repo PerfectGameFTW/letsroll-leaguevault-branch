@@ -49,7 +49,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     safeGetLocalStorage("sidebarCollapsed", false)
   );
 
-  const { data: leaguesResponse } = useQuery<{ success: true, data: League[] }>({
+  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
   });
 
@@ -61,169 +61,173 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="flex min-h-screen relative">
-        {/* Sidebar */}
-        <div
-          className={cn(
-            "bg-white border-r transition-all duration-300 fixed top-0 bottom-0 left-0 z-50",
-            isCollapsed ? "w-16" : "w-64"
-          )}
-        >
-          <div className="flex flex-col h-full">
-            <div className="flex-1 flex flex-col pt-5 pb-4">
-              <div className={cn(
-                "flex items-center px-4",
-                isCollapsed ? "justify-center" : "justify-between"
-              )}>
-                {!isCollapsed && (
-                  <h1 className="text-xl font-bold text-gray-900">
-                    League Manager
-                  </h1>
+      {/* Fixed sidebar */}
+      <div 
+        className={cn(
+          "fixed top-0 bottom-0 left-0 z-50 bg-white border-r transition-all duration-300",
+          isCollapsed ? "w-16" : "w-64"
+        )}
+      >
+        <div className="flex flex-col h-full">
+          <div className="flex-1 flex flex-col pt-5 pb-4">
+            <div className={cn(
+              "flex items-center px-4",
+              isCollapsed ? "justify-center" : "justify-between"
+            )}>
+              {!isCollapsed && (
+                <h1 className="text-xl font-bold text-gray-900">
+                  League Manager
+                </h1>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="p-0 w-8 h-8"
+                onClick={() => setIsCollapsed(!isCollapsed)}
+              >
+                {isCollapsed ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4" />
                 )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="p-0 w-8 h-8"
-                  onClick={() => setIsCollapsed(!isCollapsed)}
-                >
-                  {isCollapsed ? (
-                    <ChevronRight className="h-4 w-4" />
-                  ) : (
-                    <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </div>
+            <nav className="mt-8 flex-1 space-y-1 px-2">
+              {/* Dashboard */}
+              <Link href="/">
+                <span
+                  className={cn(
+                    "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+                    location === "/"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-gray-600 hover:bg-gray-50"
                   )}
-                </Button>
-              </div>
-              <nav className="mt-8 flex-1 space-y-1 px-2">
-                {/* Dashboard */}
-                <Link href="/">
-                  <span
+                  title={isCollapsed ? "Dashboard" : undefined}
+                >
+                  <Home
                     className={cn(
-                      "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+                      "h-5 w-5 flex-shrink-0",
                       location === "/"
-                        ? "bg-primary text-primary-foreground"
-                        : "text-gray-600 hover:bg-gray-50"
+                        ? "text-primary-foreground"
+                        : "text-gray-400",
+                      isCollapsed ? "mx-auto" : "mr-3"
                     )}
-                    title={isCollapsed ? "Dashboard" : undefined}
-                  >
-                    <Home
-                      className={cn(
-                        "h-5 w-5 flex-shrink-0",
-                        location === "/"
-                          ? "text-primary-foreground"
-                          : "text-gray-400",
-                        isCollapsed ? "mx-auto" : "mr-3"
-                      )}
-                    />
-                    {!isCollapsed && "Dashboard"}
-                  </span>
-                </Link>
+                  />
+                  {!isCollapsed && "Dashboard"}
+                </span>
+              </Link>
 
-                {/* Leagues Navigation Menu */}
-                {!isCollapsed && (
-                  <NavigationMenu orientation="vertical" className="w-full">
-                    <NavigationMenuList className="flex-col items-start">
-                      <NavigationMenuItem className="w-full">
-                        <NavigationMenuTrigger className={cn(
-                          "w-full justify-start group flex items-center px-2 py-2 text-sm font-medium rounded-md",
-                          location.startsWith('/leagues') || (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)))
-                            ? "bg-primary text-primary-foreground"
-                            : "text-gray-600 hover:bg-gray-50"
-                        )}>
-                          <Trophy className={cn(
-                            "h-5 w-5 flex-shrink-0 mr-3",
-                            location.startsWith('/leagues') || (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)))
-                              ? "text-primary-foreground"
-                              : "text-gray-400"
-                          )} />
-                          Leagues
-                        </NavigationMenuTrigger>
-                        <NavigationMenuContent>
-                          <div className="w-48 p-2">
-                            <Link href="/leagues" className="block px-2 py-1 text-sm rounded hover:bg-accent">
-                              All Leagues
-                            </Link>
-                            <div className="my-1 border-t" />
-                            {Array.isArray(leagues) && leagues.map((league) => (
-                              <Link
-                                key={league.id}
-                                href={`/leagues/${league.id}/teams`}
-                                className="block px-2 py-1 text-sm rounded hover:bg-accent"
-                              >
-                                {league.name}
-                              </Link>
-                            ))}
-                          </div>
-                        </NavigationMenuContent>
-                      </NavigationMenuItem>
-                    </NavigationMenuList>
-                  </NavigationMenu>
-                )}
-
-                {/* Collapsed League Icon */}
-                {isCollapsed && (
-                  <Link href="/leagues">
-                    <span
-                      className={cn(
-                        "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+              {/* Leagues Navigation Menu */}
+              {!isCollapsed && (
+                <NavigationMenu orientation="vertical" className="w-full">
+                  <NavigationMenuList className="flex-col items-start">
+                    <NavigationMenuItem className="w-full">
+                      <NavigationMenuTrigger className={cn(
+                        "w-full justify-start group flex items-center px-2 py-2 text-sm font-medium rounded-md",
                         location.startsWith('/leagues') || (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)))
                           ? "bg-primary text-primary-foreground"
                           : "text-gray-600 hover:bg-gray-50"
-                      )}
-                      title="Leagues"
-                    >
-                      <Trophy
-                        className={cn(
-                          "h-5 w-5 flex-shrink-0",
+                      )}>
+                        <Trophy className={cn(
+                          "h-5 w-5 flex-shrink-0 mr-3",
                           location.startsWith('/leagues') || (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)))
                             ? "text-primary-foreground"
+                            : "text-gray-400"
+                        )} />
+                        Leagues
+                      </NavigationMenuTrigger>
+                      <NavigationMenuContent>
+                        <div className="w-48 p-2">
+                          <Link href="/leagues" className="block px-2 py-1 text-sm rounded hover:bg-accent">
+                            All Leagues
+                          </Link>
+                          <div className="my-1 border-t" />
+                          {Array.isArray(leagues) && leagues.map((league) => (
+                            <Link
+                              key={league.id}
+                              href={`/leagues/${league.id}/teams`}
+                              className="block px-2 py-1 text-sm rounded hover:bg-accent"
+                            >
+                              {league.name}
+                            </Link>
+                          ))}
+                        </div>
+                      </NavigationMenuContent>
+                    </NavigationMenuItem>
+                  </NavigationMenuList>
+                </NavigationMenu>
+              )}
+
+              {/* Collapsed League Icon */}
+              {isCollapsed && (
+                <Link href="/leagues">
+                  <span
+                    className={cn(
+                      "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+                      location.startsWith('/leagues') || (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)))
+                        ? "bg-primary text-primary-foreground"
+                        : "text-gray-600 hover:bg-gray-50"
+                    )}
+                    title="Leagues"
+                  >
+                    <Trophy
+                      className={cn(
+                        "h-5 w-5 flex-shrink-0",
+                        location.startsWith('/leagues') || (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)))
+                          ? "text-primary-foreground"
+                          : "text-gray-400",
+                        "mx-auto"
+                      )}
+                    />
+                  </span>
+                </Link>
+              )}
+
+              {/* Rest of the navigation items */}
+              {baseNavigation.slice(1).map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link key={item.name} href={item.href}>
+                    <span
+                      className={cn(
+                        "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+                        location === item.href
+                          ? "bg-primary text-primary-foreground"
+                          : "text-gray-600 hover:bg-gray-50"
+                      )}
+                      title={isCollapsed ? item.name : undefined}
+                    >
+                      <Icon
+                        className={cn(
+                          "h-5 w-5 flex-shrink-0",
+                          location === item.href
+                            ? "text-primary-foreground"
                             : "text-gray-400",
-                          "mx-auto"
+                          isCollapsed ? "mx-auto" : "mr-3"
                         )}
                       />
+                      {!isCollapsed && item.name}
                     </span>
                   </Link>
-                )}
-
-                {/* Rest of the navigation items */}
-                {baseNavigation.slice(1).map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <Link key={item.name} href={item.href}>
-                      <span
-                        className={cn(
-                          "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-                          location === item.href
-                            ? "bg-primary text-primary-foreground"
-                            : "text-gray-600 hover:bg-gray-50"
-                        )}
-                        title={isCollapsed ? item.name : undefined}
-                      >
-                        <Icon
-                          className={cn(
-                            "h-5 w-5 flex-shrink-0",
-                            location === item.href
-                              ? "text-primary-foreground"
-                              : "text-gray-400",
-                            isCollapsed ? "mx-auto" : "mr-3"
-                          )}
-                        />
-                        {!isCollapsed && item.name}
-                      </span>
-                    </Link>
-                  );
-                })}
-              </nav>
-            </div>
+                );
+              })}
+            </nav>
           </div>
         </div>
+      </div>
 
-        {/* Main content */}
-        <div className={cn(
-          "flex-1 overflow-auto transition-all duration-300",
-          isCollapsed ? "ml-16" : "ml-64"
-        )}>
-          <main className="py-6 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">{children}</main>
-        </div>
+      {/* Main content */}
+      <div className="pl-16">
+        {/* Add semi-transparent backdrop when sidebar is expanded */}
+        {!isCollapsed && (
+          <div
+            className="fixed inset-0 bg-black/20 z-40"
+            onClick={() => setIsCollapsed(true)}
+          />
+        )}
+        <main className="py-6 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
+          {children}
+        </main>
       </div>
     </div>
   );
