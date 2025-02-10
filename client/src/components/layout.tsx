@@ -120,7 +120,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                               All Leagues
                             </Link>
                             <div className="my-1 border-t" />
-                            {leagues?.map((league) => (
+                            {Array.isArray(leagues) && leagues.map((league) => (
                               <Link
                                 key={league.id}
                                 href={`/leagues/${league.id}/teams`}
