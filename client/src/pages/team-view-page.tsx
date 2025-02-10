@@ -152,7 +152,8 @@ export default function TeamViewPage() {
       if (!response.ok) {
         throw new Error('Failed to fetch bowlers');
       }
-      return response.json();
+      const data = await response.json();
+      return Array.isArray(data) ? data : []; // Ensure we always have an array
     },
   });
 
@@ -256,6 +257,12 @@ export default function TeamViewPage() {
   });
 
 
+  // Add this utility function for ordering
+  const sortedBowlers = bowlers?.slice().sort((a, b) => 
+    (a.order ?? 0) - (b.order ?? 0)
+  ) ?? [];
+
+
   if (loadingTeam || loadingBowlers || loadingLeague) {
     return (
       <Layout>
@@ -274,7 +281,6 @@ export default function TeamViewPage() {
     );
   }
 
-  const sortedBowlers = bowlers?.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 
   return (
     <Layout>

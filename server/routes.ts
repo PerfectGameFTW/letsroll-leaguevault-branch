@@ -177,7 +177,7 @@ export function registerRoutes(app: Express): Server {
       });
 
       // Sort bowlers by order if available
-      const sortedBowlers = [...teamBowlers].sort((a, b) => 
+      const sortedBowlers = [...teamBowlers].sort((a, b) =>
         (a.order ?? 0) - (b.order ?? 0)
       );
 
@@ -346,42 +346,24 @@ export function registerRoutes(app: Express): Server {
       const id = parseInt(req.params.id);
       const update = insertBowlerSchema.partial().parse(req.body);
 
-      // If we're updating the order, we need to handle reordering
-      if (typeof update.order === 'number') {
-        const bowler = await storage.getBowler(id);
-        if (!bowler?.teamId) {
-          return res.status(400).json({ message: "Bowler must be assigned to a team to reorder" });
+      // Handle team assignments separately if present
+      if (update.teamAssignments) {
+        for (const assignment of update.teamAssignments) {
+          await storage.addBowlerTeam(id, assignment.teamId, assignment.leagueId);
         }
-
-        // Get all bowlers for the team and sort them by current order
-        const teamBowlers = await storage.getBowlers(bowler.teamId);
-        teamBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-        const oldIndex = teamBowlers.findIndex(b => b.id === id);
-        const newIndex = Math.min(Math.max(0, update.order), teamBowlers.length - 1); // Clamp order value
-
-        if (oldIndex === -1) {
-          return res.status(404).json({ message: "Bowler not found in team" });
-        }
-
-        // Remove bowler from old position and insert at new position
-        const [movedBowler] = teamBowlers.splice(oldIndex, 1);
-        teamBowlers.splice(newIndex, 0, movedBowler);
-
-        // Update all bowlers with their new sequential order
-        await Promise.all(teamBowlers.map((b, index) =>
-          storage.updateBowler(b.id, { order: index })
-        ));
-
-        // Return the updated and sorted list
-        const updatedBowlers = await storage.getBowlers(bowler.teamId);
-        updatedBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        return res.json(updatedBowlers);
+        // Remove teamAssignments from update object since we handled it separately
+        delete update.teamAssignments;
       }
 
-      // Handle non-order updates
-      const updated = await storage.updateBowler(id, update);
-      res.json(updated);
+      // Only proceed with other updates if there are fields to update
+      if (Object.keys(update).length > 0) {
+        const updated = await storage.updateBowler(id, update);
+        res.json(updated);
+      } else {
+        // If we only had team assignments, return the updated bowler
+        const bowler = await storage.getBowler(id);
+        res.json(bowler);
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json(error.issues);
