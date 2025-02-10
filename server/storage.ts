@@ -323,32 +323,37 @@ export class DatabaseStorage implements IStorage {
           throw new Error('Bowler league not found');
         }
 
+        // First, move the target row to a very high order to avoid conflicts
+        await tx
+          .update(bowlerLeagues)
+          .set({ order: 999999 })
+          .where(eq(bowlerLeagues.id, id));
+
         // Get all bowler leagues for this team/league
-        const allBowlerLeagues = await tx
+        const allLeagues = await tx
           .select()
           .from(bowlerLeagues)
           .where(
             and(
               eq(bowlerLeagues.teamId, bowlerLeague.teamId),
-              eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
+              eq(bowlerLeagues.leagueId, bowlerLeague.leagueId),
+              sql`id != ${id}` // Exclude the moved item
             )
           )
           .orderBy(bowlerLeagues.order);
 
-        // Simple reorder query that handles all cases
-        await tx.execute(sql`
-          UPDATE bowler_leagues
-          SET "order" = CASE
-            WHEN id = ${id} THEN ${newOrder}
-            WHEN "order" >= ${newOrder} AND "order" < ${bowlerLeague.order} THEN "order" + 1
-            WHEN "order" <= ${newOrder} AND "order" > ${bowlerLeague.order} THEN "order" - 1
-            ELSE "order"
-          END
-          WHERE team_id = ${bowlerLeague.teamId}
-          AND league_id = ${bowlerLeague.leagueId}
-        `);
+        // Reinsert the moved item at the desired position
+        allLeagues.splice(newOrder, 0, { ...bowlerLeague, order: newOrder });
 
-        // Return updated list
+        // Update all orders sequentially
+        for (let i = 0; i < allLeagues.length; i++) {
+          await tx
+            .update(bowlerLeagues)
+            .set({ order: i })
+            .where(eq(bowlerLeagues.id, allLeagues[i].id));
+        }
+
+        // Return the final ordered list
         return await tx
           .select()
           .from(bowlerLeagues)
