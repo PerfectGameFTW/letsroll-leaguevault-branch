@@ -33,18 +33,19 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   // Query to get all bowlers
   const { data: bowlers = [] } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers"],
+    select: (data) => Array.isArray(data) ? data : [], // Ensure we always have an array
   });
 
   // Query to get existing associations
   const { data: bowlerLeagues = [] } = useQuery<BowlerLeague[]>({
-    queryKey: ["/api/bowler-leagues", leagueId],
+    queryKey: ["/api/bowler-leagues"],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?leagueId=${leagueId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
       const data = await response.json();
-      return Array.isArray(data) ? data : [];
+      return Array.isArray(data.data) ? data.data : [];
     },
   });
 
@@ -55,12 +56,11 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
       bl.leagueId === leagueId && 
       bl.teamId === teamId
     );
-    return !existingAssociation;
+    return !existingAssociation && bowler.active;
   });
 
   const mutation = useMutation({
     mutationFn: async (bowlerId: number) => {
-      // Create a new association without affecting existing ones
       const response = await apiRequest("POST", "/api/bowler-leagues", {
         bowlerId,
         leagueId,

@@ -270,10 +270,20 @@ export function registerRoutes(app: Express): Server {
       const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
 
+      console.log('Fetching bowler leagues with params:', { bowlerId, leagueId, teamId });
+
       const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId, leagueId, teamId });
+      if (!bowlerLeagues) {
+        console.log('No bowler leagues found');
+        return sendSuccess(res, []);
+      }
+
       const sortedBowlerLeagues = bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      console.log(`Found ${sortedBowlerLeagues.length} bowler leagues`);
+
       sendSuccess(res, sortedBowlerLeagues);
     } catch (error) {
+      console.error('Error fetching bowler leagues:', error);
       sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler leagues');
     }
   });
@@ -281,6 +291,7 @@ export function registerRoutes(app: Express): Server {
   app.post("/api/bowler-leagues", async (req, res) => {
     try {
       const association = insertBowlerLeagueSchema.parse(req.body);
+      console.log('Creating bowler league association:', association);
 
       // Check for existing association
       const existing = await storage.getBowlerLeagues({
@@ -289,17 +300,22 @@ export function registerRoutes(app: Express): Server {
         teamId: association.teamId
       });
 
-      if (existing.length > 0) {
+      if (existing && existing.length > 0) {
+        console.log('Found existing association');
         return sendError(res, "Bowler is already assigned to this league and team", 400, 'DUPLICATE_ASSOCIATION');
       }
 
       // Set order to the end of the current team's list
-      const teamBowlerLeagues = await storage.getBowlerLeagues({ teamId: association.teamId });
+      const teamBowlerLeagues = await storage.getBowlerLeagues({ teamId: association.teamId }) || [];
       association.order = teamBowlerLeagues.length;
 
+      console.log('Creating new association with order:', association.order);
       const created = await storage.createBowlerLeague(association);
+      console.log('Created bowler league association:', created);
+
       sendSuccess(res, created, 201);
     } catch (error) {
+      console.error('Error creating bowler league association:', error);
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
