@@ -269,23 +269,7 @@ export function registerRoutes(app: Express): Server {
         return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
       }
 
-      // First, delete all bowler league associations
-      const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: id });
-      if (Array.isArray(bowlerLeagues)) {
-        for (const bl of bowlerLeagues) {
-          await storage.deleteBowlerLeague(bl.id);
-        }
-      }
-
-      // Then delete any payments associated with the bowler
-      const payments = await storage.getPayments(id);
-      if (Array.isArray(payments)) {
-        for (const payment of payments) {
-          await storage.deletePayment(payment.id);
-        }
-      }
-
-      // Finally delete the bowler
+      // With CASCADE constraints, this will automatically delete related records
       await storage.deleteBowler(id);
       sendSuccess(res, null, 204);
     } catch (error) {
