@@ -166,18 +166,22 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/teams/:id/bowlers", async (req, res) => {
     try {
       const teamId = parseInt(req.params.id);
-      const bowlers = await storage.getBowlers();
+      const team = await storage.getTeam(teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
 
-      // Filter bowlers who are assigned to this team
+      // Get all bowlers and filter those assigned to this team's league
+      const bowlers = await storage.getBowlers();
       const teamBowlers = bowlers.filter(bowler => {
         const teamAssignment = bowler.teamAssignments?.find(
-          assignment => assignment.teamId === teamId
+          assignment => assignment.teamId === teamId && assignment.leagueId === team.leagueId
         );
         return !!teamAssignment;
       });
 
       // Sort bowlers by order if available
-      const sortedBowlers = [...teamBowlers].sort((a, b) =>
+      const sortedBowlers = teamBowlers.sort((a, b) => 
         (a.order ?? 0) - (b.order ?? 0)
       );
 
@@ -347,15 +351,23 @@ export function registerRoutes(app: Express): Server {
       const update = insertBowlerSchema.partial().parse(req.body);
 
       // Handle team assignments separately if present
-      if (update.teamAssignments) {
+      if (update.teamAssignments && update.teamAssignments.length > 0) {
+        // First, get the bowler to check existing assignments
+        const bowler = await storage.getBowler(id);
+        if (!bowler) {
+          return res.status(404).json({ message: "Bowler not found" });
+        }
+
+        // Add new team assignments
         for (const assignment of update.teamAssignments) {
           await storage.addBowlerTeam(id, assignment.teamId, assignment.leagueId);
         }
-        // Remove teamAssignments from update object since we handled it separately
+
+        // Remove teamAssignments from update since we handled it
         delete update.teamAssignments;
       }
 
-      // Only proceed with other updates if there are fields to update
+      // Handle other updates if any exist
       if (Object.keys(update).length > 0) {
         const updated = await storage.updateBowler(id, update);
         res.json(updated);
@@ -365,11 +377,13 @@ export function registerRoutes(app: Express): Server {
         res.json(bowler);
       }
     } catch (error) {
+      console.error('Error updating bowler:', error);
       if (error instanceof z.ZodError) {
         res.status(400).json(error.issues);
       } else {
-        console.error('Error updating bowler:', error);
-        res.status(500).json({ message: "Internal server error" });
+        res.status(500).json({ 
+          message: error instanceof Error ? error.message : "Internal server error" 
+        });
       }
     }
   });
