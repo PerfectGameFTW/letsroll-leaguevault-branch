@@ -3,13 +3,13 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Database table definitions remain unchanged
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
 });
 
-// Core tables with improved constraints and relations
 export const bowlers = pgTable("bowlers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -40,7 +40,6 @@ export const teams = pgTable("teams", {
   active: boolean("active").notNull().default(true),
 });
 
-// Improved bowler leagues table with better constraints
 export const bowlerLeagues = pgTable("bowler_leagues", {
   id: serial("id").primaryKey(),
   bowlerId: integer("bowler_id").notNull().references(() => bowlers.id, { onDelete: 'cascade' }),
@@ -50,9 +49,7 @@ export const bowlerLeagues = pgTable("bowler_leagues", {
   order: integer("order").notNull().default(0),
   joinedAt: timestamp("joined_at").notNull().defaultNow(),
 }, (table) => ({
-  // Add unique constraint to prevent duplicate assignments
   uniqueAssignment: unique().on(table.bowlerId, table.leagueId, table.teamId),
-  // Add indexes for better query performance
   bowlerIdx: index("bowler_leagues_bowler_idx").on(table.bowlerId),
   leagueIdx: index("bowler_leagues_league_idx").on(table.leagueId),
   teamIdx: index("bowler_leagues_team_idx").on(table.teamId),
@@ -69,7 +66,7 @@ export const payments = pgTable("payments", {
   paidAt: timestamp("paid_at"),
 });
 
-// Improved relations with type safety
+// Relations remain unchanged
 export const leagueRelations = relations(leagues, ({ many }) => ({
   teams: many(teams),
   bowlerLeagues: many(bowlerLeagues),
@@ -104,29 +101,100 @@ export const bowlerLeagueRelations = relations(bowlerLeagues, ({ one }) => ({
   }),
 }));
 
-// Improved schema validation with better error messages
-export const insertBowlerSchema = createInsertSchema(bowlers, {
-  email: z.string().email("Invalid email address"),
-  name: z.string().min(1, "Name is required"),
+// Base schemas
+const baseBowlerSchema = z.object({
+  name: z.string()
+    .min(2, "Name must be at least 2 characters")
+    .max(100, "Name must not exceed 100 characters")
+    .regex(/^[a-zA-Z\s-']+$/, "Name can only contain letters, spaces, hyphens, and apostrophes"),
+  email: z.string().email("Invalid email address")
+    .min(3, "Email must be at least 3 characters")
+    .max(255, "Email must not exceed 255 characters"),
+  active: z.boolean().default(true),
+  order: z.number().min(0, "Order must be non-negative").default(0),
+  squareCustomerId: z.string().nullable().optional(),
 });
 
-export const insertLeagueSchema = createInsertSchema(leagues).extend({
+const baseLeagueSchema = z.object({
+  name: z.string().min(2, "League name must be at least 2 characters"),
+  description: z.string().nullable().optional(),
+  active: z.boolean().default(true),
   seasonStart: z.coerce.date(),
   seasonEnd: z.coerce.date(),
-  weekDay: z.string().optional(),
-  practiceStartTime: z.string().optional(),
-  competitionStartTime: z.string().optional(),
-  weeklyFee: z.number().min(0, "Weekly fee must be non-negative"),
+  weekDay: z.string()
+    .regex(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/, "Invalid week day")
+    .optional(),
+  practiceStartTime: z.string()
+    .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)")
+    .optional(),
+  competitionStartTime: z.string()
+    .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)")
+    .optional(),
+  weeklyFee: z.number()
+    .min(0, "Weekly fee must be non-negative")
+    .max(1000000, "Weekly fee cannot exceed 10,000")
+    .multipleOf(100, "Weekly fee must be in whole dollars"),
 });
 
-export const insertTeamSchema = createInsertSchema(teams).extend({
-  number: z.number().min(1, "Team number must be at least 1"),
+const baseTeamSchema = z.object({
+  name: z.string()
+    .min(2, "Team name must be at least 2 characters")
+    .max(100, "Team name must not exceed 100 characters"),
+  number: z.number()
+    .min(1, "Team number must be at least 1")
+    .max(999, "Team number must not exceed 999")
+    .int("Team number must be an integer"),
+  leagueId: z.number().positive("League ID is required"),
+  active: z.boolean().default(true),
 });
 
-export const insertBowlerLeagueSchema = createInsertSchema(bowlerLeagues);
-export const insertPaymentSchema = createInsertSchema(payments);
+const baseBowlerLeagueSchema = z.object({
+  bowlerId: z.number().positive("Bowler ID is required"),
+  leagueId: z.number().positive("League ID is required"),
+  teamId: z.number().positive("Team ID is required"),
+  order: z.number().min(0, "Order must be non-negative").default(0),
+  active: z.boolean().default(true),
+});
 
-// Improved type exports with better naming
+const basePaymentSchema = z.object({
+  bowlerId: z.number().positive("Bowler ID is required"),
+  leagueId: z.number().positive("League ID is required"),
+  amount: z.number()
+    .min(100, "Payment amount must be at least $1")
+    .max(1000000, "Payment amount cannot exceed $10,000")
+    .multipleOf(100, "Payment amount must be in whole dollars"),
+  weekOf: z.coerce.date(),
+  status: z.enum(["pending", "paid", "failed", "refunded"], {
+    errorMap: () => ({ message: "Invalid payment status" })
+  }).default("pending"),
+  squarePaymentId: z.string().optional(),
+});
+
+// Create insert schemas with validation
+export const insertBowlerSchema = baseBowlerSchema;
+export const insertLeagueSchema = baseLeagueSchema.refine(
+  data => data.seasonEnd > data.seasonStart,
+  "Season end date must be after season start date"
+);
+export const insertTeamSchema = baseTeamSchema;
+export const insertBowlerLeagueSchema = baseBowlerLeagueSchema;
+export const insertPaymentSchema = basePaymentSchema.refine(
+  data => {
+    const now = new Date();
+    const threeMonthsAgo = new Date(now.setMonth(now.getMonth() - 3));
+    return data.weekOf >= threeMonthsAgo;
+  },
+  "Week of date cannot be more than 3 months in the past"
+);
+
+// Create partial schemas from base schemas
+export const partialBowlerSchema = baseBowlerSchema.partial();
+export const partialLeagueSchema = baseLeagueSchema.partial();
+export const partialTeamSchema = baseTeamSchema.partial();
+export const partialBowlerLeagueSchema = baseBowlerLeagueSchema.partial();
+export const partialPaymentSchema = basePaymentSchema.partial();
+
+// Type exports
 export type League = typeof leagues.$inferSelect;
 export type InsertLeague = z.infer<typeof insertLeagueSchema>;
 
@@ -142,7 +210,7 @@ export type InsertBowlerLeague = z.infer<typeof insertBowlerLeagueSchema>;
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 
-// API response types for consistent handling
+// API response types
 export interface ApiResponse<T> {
   success: boolean;
   data: T;

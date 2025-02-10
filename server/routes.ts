@@ -7,6 +7,16 @@ import { ApiResponse, ApiListResponse } from "@shared/schema";
 import { ApiError, Client, Environment } from 'square';
 import { sendSuccess, sendError } from './utils/api';
 
+interface Bowler {
+  id: number;
+  name: string;
+  email: string;
+  active: boolean;
+  squareCustomerId: string | null;
+  order: number;
+  teamId: number | null;
+}
+
 let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
   squareClient = new Client({
@@ -218,18 +228,7 @@ export function registerRoutes(app: Express): Server {
       const id = parseInt(req.params.id);
       const update = insertBowlerSchema.partial().parse(req.body);
 
-      const bowler = await storage.getBowler(id);
-      if (!bowler) {
-        return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
-      }
-
-      const updated = await storage.updateBowler(id, {
-        name: update.name,
-        email: update.email,
-        active: update.active,
-        squareCustomerId: update.squareCustomerId,
-        order: update.order
-      });
+      const updated = await updateBowler(id, update);
 
       sendSuccess(res, updated);
     } catch (error) {
@@ -372,7 +371,7 @@ export function registerRoutes(app: Express): Server {
         throw new Error("Square access token not configured");
       }
 
-      // First, search for existing customer by email
+      // Search for existing customer by email
       const searchResponse = await squareClient.customersApi.searchCustomers({
         query: {
           filter: {
@@ -386,9 +385,8 @@ export function registerRoutes(app: Express): Server {
       let customerId: string;
 
       // If customer exists, use their ID
-      if (searchResponse.result.customers && searchResponse.result.customers.length > 0) {
-        const existingCustomer = searchResponse.result.customers[0];
-        customerId = existingCustomer.id;
+      if (searchResponse.result.customers?.[0]?.id) {
+        customerId = searchResponse.result.customers[0].id;
 
         // Update customer details if needed
         await squareClient.customersApi.updateCustomer(customerId, {
@@ -433,7 +431,7 @@ export function registerRoutes(app: Express): Server {
           (g) => g.name === league.name
         );
 
-        if (existingGroup) {
+        if (existingGroup?.id) {
           groupId = existingGroup.id;
         } else {
           // Create new group if it doesn't exist
@@ -449,20 +447,14 @@ export function registerRoutes(app: Express): Server {
         if (!groupId) {
           throw new Error("Failed to create or find league group");
         }
-      }
 
-      // Only add to group if we have both groupId and customer
-      if (groupId) {
+        // Add customer to group using the correct API method
         try {
-          await squareClient.customerGroupsApi.addCustomerToGroup(
-            groupId,
-            {
-              customerId: customerId
-            }
-          );
+          await squareClient.customerGroupsApi.addCustomerToGroup(groupId, {
+            customerId
+          });
         } catch (groupError) {
           console.error('Error adding customer to group:', groupError);
-          // Don't throw here, as we still want to return the customer info
         }
       }
 
@@ -568,6 +560,9 @@ export function registerRoutes(app: Express): Server {
       }
 
       const programId = programResponse.result.programs[0].id;
+      if (!programId) {
+        throw new Error("Invalid loyalty program configuration");
+      }
 
       // Check if customer is already enrolled
       const searchResponse = await squareClient.loyaltyApi.searchLoyaltyAccounts({
@@ -577,7 +572,7 @@ export function registerRoutes(app: Express): Server {
       });
 
       if (searchResponse.result.loyaltyAccounts && searchResponse.result.loyaltyAccounts.length > 0) {
-        sendSuccess(res, searchResponse.result.loyaltyAccounts[0]);
+        return sendSuccess(res, searchResponse.result.loyaltyAccounts[0]);
       }
 
       // Enroll the customer in the loyalty program
@@ -588,6 +583,10 @@ export function registerRoutes(app: Express): Server {
         },
         idempotencyKey: `${Date.now()}-${Math.random()}`
       });
+
+      if (!enrollResponse.result.loyaltyAccount) {
+        throw new Error("Failed to create loyalty account");
+      }
 
       sendSuccess(res, enrollResponse.result.loyaltyAccount);
     } catch (error) {
@@ -633,7 +632,23 @@ export function registerRoutes(app: Express): Server {
   return httpServer;
 }
 
-async function handleSquareCustomer(bowler: any) {
+async function updateBowler(id: number, update: {
+  name?: string;
+  email?: string;
+  active?: boolean;
+  squareCustomerId?: string | null;
+  order?: number;
+}): Promise<Bowler> {
+  const bowler = await storage.getBowler(id);
+  if (!bowler) {
+    throw new Error("Bowler not found");
+  }
+
+  const updated = await storage.updateBowler(id, update);
+  return updated;
+}
+
+async function handleSquareCustomer(bowler: Bowler): Promise<string | null> {
   if (!squareClient) return null;
 
   const searchResponse = await squareClient.customersApi.searchCustomers({
@@ -648,9 +663,8 @@ async function handleSquareCustomer(bowler: any) {
 
   let customerId: string;
 
-  if (searchResponse.result.customers?.length) {
-    const existingCustomer = searchResponse.result.customers[0];
-    customerId = existingCustomer.id;
+  if (searchResponse.result.customers?.[0]?.id) {
+    customerId = searchResponse.result.customers[0].id;
 
     await squareClient.customersApi.updateCustomer(customerId, {
       givenName: bowler.name.split(' ')[0],
