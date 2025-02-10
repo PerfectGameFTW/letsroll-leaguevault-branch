@@ -37,9 +37,9 @@ export default function TeamsPage() {
     }
   });
 
-  const teams = teamsResponse?.data;
+  const teams = teamsResponse?.data?.data ?? [];
   const sortedTeams = useMemo(() => {
-    return teams?.slice().sort((a, b) => (a.number || 0) - (b.number || 0)) ?? [];
+    return teams.slice().sort((a, b) => (a.number || 0) - (b.number || 0));
   }, [teams]);
 
   if (loadingLeague || loadingTeams) {
