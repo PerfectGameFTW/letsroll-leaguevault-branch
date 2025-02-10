@@ -162,7 +162,7 @@ export function registerRoutes(app: Express): Server {
         throw new Error("Invalid bowlers data format");
       }
       // Apply team filter if provided
-      const filteredBowlers = teamId 
+      const filteredBowlers = teamId
         ? bowlers.filter(bowler => bowler.teamId === teamId)
         : bowlers;
 
@@ -194,7 +194,7 @@ export function registerRoutes(app: Express): Server {
       const bowler = insertBowlerSchema.parse(req.body);
 
       const existingBowlers = await storage.getBowlers();
-      const existingBowler = existingBowlers.find(b => 
+      const existingBowler = existingBowlers.find(b =>
         b.email.toLowerCase() === bowler.email.toLowerCase()
       );
 
@@ -299,6 +299,23 @@ export function registerRoutes(app: Express): Server {
       }
       const sortedBowlerLeagues = bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       sendSuccess(res, { data: sortedBowlerLeagues });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  app.get("/api/bowler-leagues-new", async (req, res) => {
+    try {
+      const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
+      const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
+      const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
+
+      const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId, leagueId, teamId });
+      if (!Array.isArray(bowlerLeagues)) {
+        throw new Error("Invalid bowler leagues data format");
+      }
+      const sortedBowlerLeagues = bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      sendSuccess(res, sortedBowlerLeagues);
     } catch (error) {
       sendError(res, error);
     }
