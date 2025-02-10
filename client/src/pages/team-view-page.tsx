@@ -148,7 +148,7 @@ export default function TeamViewPage() {
   });
   const team = teamResponse?.data;
 
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ success: true; data: { data: BowlerLeague[] } }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ success: true; data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", teamId, team?.leagueId],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${team?.leagueId}`);
@@ -160,8 +160,8 @@ export default function TeamViewPage() {
     enabled: !!team?.leagueId,
   });
 
-  const sortedBowlerLeagues = bowlerLeaguesResponse?.data?.data
-    ? [...bowlerLeaguesResponse.data.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const sortedBowlerLeagues = bowlerLeaguesResponse?.data
+    ? [...bowlerLeaguesResponse.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
 
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true; data: Bowler[] }>({
@@ -246,10 +246,10 @@ export default function TeamViewPage() {
     onMutate: async ({ id, order }) => {
       await queryClient.cancelQueries({ queryKey: ["/api/bowler-leagues", teamId, team?.leagueId] });
 
-      const previousData = queryClient.getQueryData<{ success: true, data: { data: BowlerLeague[] } }>(["/api/bowler-leagues", teamId, team?.leagueId]);
+      const previousData = queryClient.getQueryData<{ success: true; data: BowlerLeague[] }>(["/api/bowler-leagues", teamId, team?.leagueId]);
 
-      if (previousData?.data?.data) {
-        const newData = [...previousData.data.data];
+      if (previousData?.data) {
+        const newData = [...previousData.data];
         const oldIndex = newData.findIndex((bl) => bl.id === id);
         if (oldIndex !== -1) {
           const [movedItem] = newData.splice(oldIndex, 1);
@@ -261,7 +261,7 @@ export default function TeamViewPage() {
 
           queryClient.setQueryData(["/api/bowler-leagues", teamId, team?.leagueId], {
             success: true,
-            data: { data: newData }
+            data: newData
           });
         }
       }
@@ -281,7 +281,7 @@ export default function TeamViewPage() {
     onSuccess: (updatedData) => {
       queryClient.setQueryData(["/api/bowler-leagues", teamId, team?.leagueId], {
         success: true,
-        data: { data: updatedData }
+        data: updatedData
       });
     }
   });

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Eye, EyeOff, Search, Pencil } from "lucide-react";
-import type { Bowler, Team, League } from "@shared/schema";
+import type { Bowler, Team, League, BowlerLeague } from "@shared/schema";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
@@ -27,25 +27,25 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true; data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
   });
 
   const bowlers = bowlersResponse?.data || [];
 
-  const { data: bowlerLeaguesResponse } = useQuery<{ data: { data: { bowlerId: number, leagueId: number, teamId: number }[] } }>({
+  const { data: bowlerLeaguesResponse } = useQuery<{ success: true; data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues-new"],
   });
 
-  const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true; data: Team[] }>({
     queryKey: ["/api/teams"],
   });
 
   const teams = teamsResponse?.data || [];
 
-  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse } = useQuery<{ success: true; data: League[] }>({
     queryKey: ["/api/leagues"],
   });
 

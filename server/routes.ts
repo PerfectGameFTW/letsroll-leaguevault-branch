@@ -274,10 +274,10 @@ export function registerRoutes(app: Express): Server {
       sendSuccess(res, null, 204);
     } catch (error) {
       console.error('Error deleting bowler:', error);
-      sendError(res, 
-        error instanceof Error ? 
-        `Failed to delete bowler: ${error.message}` : 
-        'Internal server error', 
+      sendError(res,
+        error instanceof Error ?
+          `Failed to delete bowler: ${error.message}` :
+          'Internal server error',
         500
       );
     }
@@ -295,7 +295,7 @@ export function registerRoutes(app: Express): Server {
         throw new Error("Invalid bowler leagues data format");
       }
       const sortedBowlerLeagues = bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      sendSuccess(res, { data: sortedBowlerLeagues });
+      sendSuccess(res, sortedBowlerLeagues);
     } catch (error) {
       sendError(res, error);
     }
