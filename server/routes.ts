@@ -284,8 +284,8 @@ export function registerRoutes(app: Express): Server {
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
 
       const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId, leagueId, teamId });
-      bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      sendSuccess(res, bowlerLeagues);
+      const sortedBowlerLeagues = bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      sendSuccess(res, { data: sortedBowlerLeagues });
     } catch (error) {
       sendError(res, error);
     }
