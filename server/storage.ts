@@ -325,39 +325,36 @@ export class DatabaseStorage implements IStorage {
           throw new Error('Bowler league not found');
         }
 
-        console.log('Current bowler league:', bowlerLeague);
+        console.log('Current bowler league:', JSON.stringify(bowlerLeague, null, 2));
 
-        // Get current order
-        const currentOrder = bowlerLeague.order || 0;
+        // Use a temporary high order number to avoid conflicts
+        await tx.execute(sql`
+          UPDATE bowler_leagues 
+          SET "order" = "order" + 1000 
+          WHERE team_id = ${bowlerLeague.teamId} 
+          AND league_id = ${bowlerLeague.leagueId}
+        `);
 
-        // Update orders based on move direction
-        if (newOrder > currentOrder) {
-          // Moving down - shift others up
-          await tx.execute(sql`
-            UPDATE bowler_leagues
-            SET "order" = "order" - 1
+        // Then update all orders sequentially
+        await tx.execute(sql`
+          WITH ordered_leagues AS (
+            SELECT id,
+                   ROW_NUMBER() OVER (ORDER BY 
+                     CASE 
+                       WHEN id = ${id} THEN ${newOrder}
+                       WHEN "order" - 1000 >= ${newOrder} THEN "order" - 999
+                       ELSE "order" - 1000
+                     END
+                   ) - 1 as new_order
+            FROM bowler_leagues
             WHERE team_id = ${bowlerLeague.teamId}
             AND league_id = ${bowlerLeague.leagueId}
-            AND "order" <= ${newOrder}
-            AND "order" > ${currentOrder}
-          `);
-        } else if (newOrder < currentOrder) {
-          // Moving up - shift others down
-          await tx.execute(sql`
-            UPDATE bowler_leagues
-            SET "order" = "order" + 1
-            WHERE team_id = ${bowlerLeague.teamId}
-            AND league_id = ${bowlerLeague.leagueId}
-            AND "order" >= ${newOrder}
-            AND "order" < ${currentOrder}
-          `);
-        }
-
-        // Set the new order for the moved item
-        await tx
-          .update(bowlerLeagues)
-          .set({ order: newOrder })
-          .where(eq(bowlerLeagues.id, id));
+          )
+          UPDATE bowler_leagues bl
+          SET "order" = ol.new_order
+          FROM ordered_leagues ol
+          WHERE bl.id = ol.id
+        `);
 
         // Get and return the final ordered list
         const result = await tx
@@ -371,7 +368,7 @@ export class DatabaseStorage implements IStorage {
           )
           .orderBy(bowlerLeagues.order);
 
-        console.log('Final ordered result:', result);
+        console.log('Final ordered result:', JSON.stringify(result, null, 2));
         return result;
       });
     } catch (error) {
