@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Users } from "lucide-react";
-import type { Team, League, Bowler } from "@shared/schema"; // Added Bowler type
+import type { Team, League, Bowler } from "@shared/schema";
 import { useParams, Link } from "wouter";
 
 export default function TeamsPage() {
@@ -21,12 +21,12 @@ export default function TeamsPage() {
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
 
-  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
+  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ success: true; data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
   });
   const league = leagueResponse?.data;
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true; data: Team[] }>({
     queryKey: ["/api/teams", leagueId],
     queryFn: async () => {
       const response = await fetch(`/api/teams?leagueId=${leagueId}`);
@@ -37,10 +37,8 @@ export default function TeamsPage() {
     }
   });
 
-  const teams = teamsResponse?.data?.data ?? [];
-  const sortedTeams = useMemo(() => {
-    return teams.slice().sort((a, b) => (a.number || 0) - (b.number || 0));
-  }, [teams]);
+  const teams = teamsResponse?.data || [];
+  const sortedTeams = teams.slice().sort((a, b) => (a.number || 0) - (b.number || 0));
 
   if (loadingLeague || loadingTeams) {
     return (
@@ -91,7 +89,12 @@ export default function TeamsPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <TeamBowlers teamId={team.id} /> {/*Added component to display bowlers */}
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={`/teams/${team.id}`}>
+                      <Users className="h-4 w-4 mr-2" />
+                      View Team
+                    </Link>
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
@@ -105,39 +108,5 @@ export default function TeamsPage() {
         leagueId={leagueId}
       />
     </Layout>
-  );
-}
-
-function TeamBowlers({ teamId }: { teamId: number }) {
-  const params = useParams();
-  const leagueId = parseInt(params.leagueId!);
-  
-  const { data: bowlerLeaguesResponse, isLoading } = useQuery<{ data: BowlerLeague[] }>({
-    queryKey: [`/api/bowler-leagues`, teamId, leagueId],
-    queryFn: async () => {
-      const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${leagueId}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch bowler leagues for team ${teamId}`);
-      }
-      return response.json();
-    },
-    enabled: !!teamId && !!leagueId,
-  });
-
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
-
-  
-
-  if (isLoading) return <Loader2 className="h-4 w-4 animate-spin" />;
-
-  return (
-    <>
-      <Button variant="outline" size="sm" asChild>
-        <Link href={`/teams/${teamId}`}>
-          <Users className="h-4 w-4 mr-2" />
-          View Team ({bowlerLeagues?.length || 0} Bowlers)
-        </Link>
-      </Button>
-    </>
   );
 }
