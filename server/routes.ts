@@ -162,6 +162,32 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Add this endpoint after the other team endpoints
+  app.get("/api/teams/:id/bowlers", async (req, res) => {
+    try {
+      const teamId = parseInt(req.params.id);
+      const bowlers = await storage.getBowlers();
+
+      // Filter bowlers who are assigned to this team
+      const teamBowlers = bowlers.filter(bowler => {
+        const teamAssignment = bowler.teamAssignments?.find(
+          assignment => assignment.teamId === teamId
+        );
+        return !!teamAssignment;
+      });
+
+      // Sort bowlers by order if available
+      const sortedBowlers = [...teamBowlers].sort((a, b) => 
+        (a.order ?? 0) - (b.order ?? 0)
+      );
+
+      res.json(sortedBowlers);
+    } catch (error) {
+      console.error('Error fetching team bowlers:', error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // Bowlers
   app.get("/api/bowlers", async (req, res) => {
     try {

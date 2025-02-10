@@ -147,8 +147,13 @@ export default function TeamViewPage() {
 
   const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers", teamId],
-    queryFn: () =>
-      fetch(`/api/bowlers?teamId=${teamId}`).then((res) => res.json()),
+    queryFn: async () => {
+      const response = await fetch(`/api/teams/${teamId}/bowlers`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowlers');
+      }
+      return response.json();
+    },
   });
 
   const updateTeamMutation = useMutation({

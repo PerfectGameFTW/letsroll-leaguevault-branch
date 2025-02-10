@@ -1,0 +1,131 @@
+1 Introduction
+
+The purpose of this document is to specify the resources and operations required as part of the RESTful web service built by QubicaAMF providing the information about played games.
+
+The RESTful web service built by QubicaAMF will use the HTTPS protocol for secure transmission, XML for resource representation, and HMAC for authentication.
+
+There are two alternative methods of utilizing the ScoreInfo APIs:
+	•	Access to the APIs directly on the Conqueror Server
+	•	Access to the APIs using the QubicaAMF Cloud Connection
+
+The second one is the recommended method.
+
+2 Prerequisites
+
+The ‘Score Information API’ license is required.
+
+If you access the APIs through the QubicaAMF Cloud Connection, a personal account must be issued by QubicaAMF to authenticate your external application. Furthermore, the “Cloud Connection” license is required.
+
+3 Access to the APIs directly on the Conqueror Server
+
+In this case, the APIs are accessible over HTTPS on port 10011 of the Conqueror server.
+
+Example:
+
+https://{CenterAddress}:10011/Scores
+
+where {CenterAddress} is the ‘public’ IP address of the Conqueror server (for example, the IP address of the server in your VPN).
+
+For the bowling center IT requirements, please refer to the “Internet Gateway and Conqueror Pro API – Direct Access” document.
+
+3.1 HMAC Authentication (Revision A)
+
+Access to the APIs is granted only to authenticated clients.
+
+Refer to the “HMAC Authentication for Conqueror Pro API - RevA” document for implementation details and examples.
+
+The application name and the associated secret key are fixed for this API version:
+	•	Application name: Conqueror
+	•	Secret key: C7DD662A-8AAD-4EA0-BE7F-5CE43586E950
+
+4 Access to the APIs using the QubicaAMF Cloud Connection
+
+In this case, APIs are accessible over HTTPS on the internet domain:
+
+https://centerapi.qubicaamf.com
+
+The template URL is:
+
+https://centerapi.qubicaamf.com/rest/{CenterID}/ScoreInfo/{Resource}
+
+where {CenterID} is the Qupee Center ID associated with the center.
+
+Example:
+
+https://centerapi.qubicaamf.com/rest/1234/ScoreInfo/Scores
+
+For the bowling center IT requirements, please refer to the “Internet Gateway and Conqueror Pro API - Cloud Connection” document.
+
+4.1 HMAC Authentication (Revision B)
+
+Access to the APIs is granted only to authenticated clients.
+
+Refer to the “HMAC Authentication for Conqueror Pro API - RevB” document for implementation details and examples.
+
+The application name and the associated secret key are personal and must be issued by QubicaAMF.
+
+5 APIs
+
+This section describes the resources, including how resource states are addressed and transferred over HTTPS.
+
+The XML string transmitted is encoded using UTF-8.
+
+HTTP Method | URI Template | Operation
+
+GET /Version
+
+	•	GetAPIVersion – Returns the version of the APIs.
+
+GET /Scores?lanes={lanes}&fromDate={fromDate}&toDate={toDate}
+
+	•	GetScores – Reads all the scores from the lanes.
+	•	Request parameters:
+	•	lanes (optional): Indicates the lanes from which scores need to be retrieved.
+	•	Comma-separated for specific lanes (e.g., lanes=1,3,4 selects lanes 1, 3, and 4).
+	•	Dash-separated for a lane range (e.g., lanes=1-4 is equivalent to lanes=1,2,3,4).
+	•	If omitted, scores for all lanes will be returned.
+	•	fromDate (optional, YYYYMMDD): Indicates the starting date for retrieving scores.
+	•	If omitted, the last event’s scores are returned, and toDate is ignored.
+	•	toDate (optional, YYYYMMDD): Specifies the end date for retrieving scores.
+	•	Response: Scores are returned in the Score data structure.
+
+GET /Scores/Last/{lanes}
+
+	•	GetLastScores – Retrieves the last scores from the specified lanes (comma-separated, e.g., 1,2,5,6).
+	•	Response: Scores are returned in the Score data structure.
+
+GET /Scores/Reservation/{idReservation}
+
+	•	GetReservationScores – Retrieves all scores associated with a given reservation.
+	•	Response: Scores are returned in the Score data structure.
+
+6 Requests and Responses
+
+This section specifies the XML messages sent and received in the HTTP body for various resources and operations.
+
+Conventions
+	•	Lane URIs in XML messages are relative.
+	•	Example for lane 5:
+
+/Scores?lanes=5&fromDate=20111128&toDate=20111128
+
+
+	•	Date format: YYYYMMDD
+	•	Example: 20120131 (January 31, 2012)
+	•	Time format: HHMM
+	•	Example: 1845 (18:45)
+	•	Boolean values: Represented as Yes or No.
+
+7 HTTP Status Codes
+
+The following HTTP status codes are used:
+
+Status Code	Description
+200	Success – The request was fulfilled.
+400	Bad Request – Validation errors or incorrectly formatted messages.
+401	Unauthorized – Authentication failure.
+404	Not Found – No matching resource found for the specified URI.
+409	Conflict – The request could not be completed due to a resource conflict.
+500	Internal Server Error – An unexpected error occurred while processing the request.
+
+This is the full, verbatim API-related content from the document. Let me know if you need any further breakdown or assistance!
