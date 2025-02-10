@@ -160,15 +160,15 @@ export default function TeamViewPage() {
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
-      const data = await response.json();
-      return data;
+      return response.json();
     },
     enabled: !!team?.leagueId,
   });
 
-  // Ensure bowlerLeagues is always an array
-  const bowlerLeagues = bowlerLeaguesResponse?.data ?? [];
-  const sortedBowlerLeagues = [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  // Ensure we have valid arrays
+  const bowlerLeagues = Array.isArray(bowlerLeaguesResponse?.data) ? bowlerLeaguesResponse.data : [];
+  const sortedBowlerLeagues = bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
 
   // Bowlers query
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
@@ -218,66 +218,54 @@ export default function TeamViewPage() {
       return response.json();
     },
     onMutate: async ({ id, order }) => {
-      // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ 
-        queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }] 
-      });
+      const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
 
-      // Snapshot the previous value
-      const previousData = queryClient.getQueryData<{ data: BowlerLeague[] }>([
-        "/api/bowler-leagues",
-        { teamId, leagueId: team?.leagueId }
-      ]);
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey });
 
-      // Optimistically update the cache
+      // Snapshot current value
+      const previousData = queryClient.getQueryData<{ data: BowlerLeague[] }>(queryKey);
+
+      // Update cache optimistically
       if (previousData?.data) {
-        const newData = [...previousData.data];
-        const oldIndex = newData.findIndex(bl => bl.id === id);
+        const currentData = [...previousData.data];
+        const oldIndex = currentData.findIndex(bl => bl.id === id);
 
         if (oldIndex !== -1) {
-          const [movedItem] = newData.splice(oldIndex, 1);
-          newData.splice(order, 0, movedItem);
+          // Remove item from old position
+          const [movedItem] = currentData.splice(oldIndex, 1);
+          // Insert at new position
+          currentData.splice(order, 0, movedItem);
 
-          // Update orders for all items
-          newData.forEach((bl, index) => {
-            bl.order = index;
-          });
+          // Update order values
+          const updatedData = currentData.map((item, index) => ({
+            ...item,
+            order: index
+          }));
 
-          queryClient.setQueryData(
-            ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
-            { data: newData }
-          );
+          // Update cache
+          queryClient.setQueryData(queryKey, { data: updatedData });
         }
       }
 
       return { previousData };
     },
     onError: (error, _, context) => {
-      // Revert optimistic update on error
+      const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
+
+      // Revert to previous state on error
       if (context?.previousData) {
-        queryClient.setQueryData(
-          ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
-          context.previousData
-        );
+        queryClient.setQueryData(queryKey, context.previousData);
       }
+
       toast({
         title: "Error reordering bowlers",
         description: error instanceof Error ? error.message : "Failed to update order",
         variant: "destructive",
       });
     },
-    onSuccess: (updatedData) => {
-      queryClient.setQueryData(
-        ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
-        { data: updatedData }
-      );
-      toast({
-        title: "Success",
-        description: "Bowler order updated successfully",
-      });
-    },
     onSettled: () => {
-      // Refetch after error or success to ensure consistency
+      // Always refetch after settled to ensure consistency
       queryClient.invalidateQueries({
         queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }]
       });
@@ -287,21 +275,19 @@ export default function TeamViewPage() {
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (!over || !active || !sortedBowlerLeagues) return;
+    if (!over || !active || !Array.isArray(sortedBowlerLeagues)) return;
 
-    if (active.id !== over.id) {
-      const oldIndex = sortedBowlerLeagues.findIndex(bl => bl.id === Number(active.id));
-      const newIndex = sortedBowlerLeagues.findIndex(bl => bl.id === Number(over.id));
+    const oldIndex = sortedBowlerLeagues.findIndex(bl => bl.id === Number(active.id));
+    const newIndex = sortedBowlerLeagues.findIndex(bl => bl.id === Number(over.id));
 
-      if (oldIndex !== -1 && newIndex !== -1) {
-        try {
-          await reorderMutation.mutateAsync({
-            id: Number(active.id),
-            order: newIndex,
-          });
-        } catch (error) {
-          // Error is handled by mutation's onError callback
-        }
+    if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+      try {
+        await reorderMutation.mutateAsync({
+          id: Number(active.id),
+          order: newIndex,
+        });
+      } catch (error) {
+        // Error handled by mutation error handler
       }
     }
   };
@@ -406,7 +392,7 @@ export default function TeamViewPage() {
           </TableHeader>
           <TableBody>
             {!loadingBowlerLeagues && !loadingBowlers ? (
-              teamBowlers?.length > 0 ? (
+              Array.isArray(teamBowlers) && teamBowlers.length > 0 ? (
                 <DndContext
                   sensors={sensors}
                   collisionDetection={closestCenter}
