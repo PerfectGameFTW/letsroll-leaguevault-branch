@@ -311,6 +311,8 @@ export class DatabaseStorage implements IStorage {
 
   async updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]> {
     try {
+      console.log(`Updating bowler league ${id} to order ${newOrder}`);
+
       return await db.transaction(async (tx) => {
         // Get current bowler league
         const [bowlerLeague] = await tx
@@ -321,6 +323,8 @@ export class DatabaseStorage implements IStorage {
         if (!bowlerLeague) {
           throw new Error('Bowler league not found');
         }
+
+        console.log('Current bowler league:', bowlerLeague);
 
         // Get all bowler leagues for this team/league combination
         const currentBowlerLeagues = await tx
@@ -334,7 +338,9 @@ export class DatabaseStorage implements IStorage {
           )
           .orderBy(bowlerLeagues.order);
 
-        // Calculate new orders
+        console.log('Current bowler leagues:', currentBowlerLeagues);
+
+        // Remove from current position and insert at new position
         const reorderedLeagues = [...currentBowlerLeagues];
         const currentIndex = reorderedLeagues.findIndex(bl => bl.id === id);
 
@@ -342,26 +348,26 @@ export class DatabaseStorage implements IStorage {
           throw new Error('Current bowler league not found in ordered list');
         }
 
-        // Remove from current position and insert at new position
         const [moving] = reorderedLeagues.splice(currentIndex, 1);
         reorderedLeagues.splice(newOrder, 0, moving);
 
-        // Update orders and collect the updated records
-        const updatedLeagues: BowlerLeague[] = new Array(reorderedLeagues.length);
+        console.log('Reordered leagues:', reorderedLeagues.map(l => ({ id: l.id, order: l.order })));
 
         // Update each record with its new order
-        for (let i = 0; i < reorderedLeagues.length; i++) {
-          const league = reorderedLeagues[i];
-          const [updated] = await tx
-            .update(bowlerLeagues)
-            .set({ order: i })
-            .where(eq(bowlerLeagues.id, league.id))
-            .returning();
+        const updatedLeagues = await Promise.all(
+          reorderedLeagues.map(async (league, index) => {
+            const [updated] = await tx
+              .update(bowlerLeagues)
+              .set({ order: index })
+              .where(eq(bowlerLeagues.id, league.id))
+              .returning();
+            return updated;
+          })
+        );
 
-          updatedLeagues[i] = updated;
-        }
+        console.log('Updated leagues:', updatedLeagues.map(l => ({ id: l.id, order: l.order })));
 
-        // Sort by order before returning to ensure correct order
+        // Return sorted by order
         return updatedLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       });
     } catch (error) {

@@ -219,6 +219,7 @@ export default function TeamViewPage() {
       return response.json();
     },
     onMutate: async ({ id, order }) => {
+      console.log('Starting optimistic update for reorder');
       const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
 
       // Cancel outgoing refetches
@@ -226,10 +227,12 @@ export default function TeamViewPage() {
 
       // Snapshot current value
       const previousData = queryClient.getQueryData<{ data: BowlerLeague[] }>(queryKey);
+      console.log('Previous data:', previousData);
 
       if (previousData?.data) {
         // Create new array and sort by current order
         const currentData = [...previousData.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        console.log('Sorted current data:', currentData);
 
         // Find indices
         const oldIndex = currentData.findIndex(bl => bl.id === id);
@@ -246,6 +249,8 @@ export default function TeamViewPage() {
             order: index
           }));
 
+          console.log('Updated data for cache:', updatedData);
+
           // Update cache with optimistic data
           queryClient.setQueryData(queryKey, { data: updatedData });
         }
@@ -254,6 +259,7 @@ export default function TeamViewPage() {
       return { previousData };
     },
     onError: (error, _, context) => {
+      console.error('Error in reorder mutation:', error);
       // On error, rollback to previous value
       if (context?.previousData) {
         const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
@@ -267,6 +273,7 @@ export default function TeamViewPage() {
       });
     },
     onSuccess: (response) => {
+      console.log('Reorder mutation succeeded:', response);
       if (response?.data) {
         const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
         // Update cache with server response
@@ -279,6 +286,7 @@ export default function TeamViewPage() {
       }
     },
     onSettled: () => {
+      console.log('Reorder mutation settled, invalidating queries');
       // Always refetch after mutation to ensure consistency
       const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
       queryClient.invalidateQueries({ queryKey });
