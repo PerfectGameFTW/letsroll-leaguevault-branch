@@ -166,11 +166,11 @@ export default function TeamViewPage() {
     : [];
 
   // Get all bowlers referenced in bowlerLeagues
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: { data: Bowler[] } }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers", sortedBowlerLeagues],
     queryFn: async () => {
       if (!sortedBowlerLeagues.length) {
-        return { data: { data: [] } };
+        return { data: [] };
       }
       const bowlerIds = sortedBowlerLeagues.map(bl => bl.bowlerId);
       const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
@@ -178,7 +178,8 @@ export default function TeamViewPage() {
         throw new Error('Failed to fetch bowlers');
       }
       const result = await response.json();
-      return { data: { data: Array.isArray(result.data) ? result.data : [] } };
+      // Ensure we return the correct data structure
+      return { data: result.data };
     },
     enabled: sortedBowlerLeagues.length > 0,
   });
@@ -320,16 +321,21 @@ export default function TeamViewPage() {
 
   // Make sure we have all the data before rendering
   const league = leagueResponse?.data;
-  const bowlers = bowlersResponse?.data?.data || [];
 
-  // Ensure we have an array before filtering
-  const teamBowlers = bowlers.filter(bowler =>
-    sortedBowlerLeagues.some(bl =>
-      bl.bowlerId === bowler.id &&
-      bl.teamId === teamId &&
-      bl.leagueId === team?.leagueId
-    )
-  );
+  // Get the bowlers array with proper fallback
+  const bowlersData = bowlersResponse?.data || [];
+  console.log('Bowlers data:', bowlersData); // Debug log
+
+  // Create team bowlers array with proper type checking
+  const teamBowlers = Array.isArray(bowlersData) 
+    ? bowlersData.filter(bowler => 
+        sortedBowlerLeagues.some(bl => 
+          bl.bowlerId === bowler.id &&
+          bl.teamId === teamId &&
+          bl.leagueId === team?.leagueId
+        )
+      )
+    : [];
   const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
 
   return (
