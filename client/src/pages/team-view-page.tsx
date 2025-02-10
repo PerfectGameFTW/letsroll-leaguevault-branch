@@ -148,9 +148,16 @@ export default function TeamViewPage() {
   });
 
   // Get bowler leagues for this team
-  const { data: bowlerLeagues = [], isLoading: loadingBowlerLeagues } = useQuery<BowlerLeague[]>({
+  const { data: bowlerLeagues = [], isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<BowlerLeague[]>({
     queryKey: ["/api/bowler-leagues", teamId],
-    queryFn: () => fetch(`/api/bowler-leagues?teamId=${teamId}`).then(res => res.json()),
+    queryFn: async () => {
+      const response = await fetch(`/api/bowler-leagues?teamId=${teamId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowler leagues');
+      }
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    },
   });
 
   // Get all bowlers referenced in bowlerLeagues
@@ -248,7 +255,7 @@ export default function TeamViewPage() {
 
         if (oldIndex !== -1 && newIndex !== -1) {
           await reorderMutation.mutateAsync({
-            id: active.id,
+            id: Number(active.id),
             order: newIndex,
           });
         }
@@ -292,8 +299,18 @@ export default function TeamViewPage() {
   }
 
   // Make sure we have all the data before rendering
-  const sortedBowlerLeagues = bowlerLeagues.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const sortedBowlerLeagues = Array.isArray(bowlerLeagues) 
+    ? [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    : [];
   const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
+
+  if (bowlerLeaguesError) {
+    toast({
+      title: "Error loading bowler leagues",
+      description: bowlerLeaguesError instanceof Error ? bowlerLeaguesError.message : "An unknown error occurred",
+      variant: "destructive",
+    });
+  }
 
   return (
     <Layout>
@@ -337,33 +354,41 @@ export default function TeamViewPage() {
           </TableHeader>
           <TableBody>
             {allDataLoaded ? (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={sortedBowlerLeagues.map((bl) => bl.id)}
-                  strategy={verticalListSortingStrategy}
+              sortedBowlerLeagues.length > 0 ? (
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
                 >
-                  {sortedBowlerLeagues.map((bowlerLeague) => {
-                    const bowler = bowlers.find(b => b.id === bowlerLeague.bowlerId);
-                    if (!bowler) return null;
-                    return (
-                      <SortableBowlerRow
-                        key={bowlerLeague.id}
-                        bowler={bowler}
-                        bowlerLeague={bowlerLeague}
-                        league={league}
-                        onEdit={(b) => {
-                          setSelectedBowler(b);
-                          setShowForm(true);
-                        }}
-                      />
-                    );
-                  })}
-                </SortableContext>
-              </DndContext>
+                  <SortableContext
+                    items={sortedBowlerLeagues.map((bl) => bl.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {sortedBowlerLeagues.map((bowlerLeague) => {
+                      const bowler = bowlers.find(b => b.id === bowlerLeague.bowlerId);
+                      if (!bowler) return null;
+                      return (
+                        <SortableBowlerRow
+                          key={bowlerLeague.id}
+                          bowler={bowler}
+                          bowlerLeague={bowlerLeague}
+                          league={league}
+                          onEdit={(b) => {
+                            setSelectedBowler(b);
+                            setShowForm(true);
+                          }}
+                        />
+                      );
+                    })}
+                  </SortableContext>
+                </DndContext>
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center">
+                    No bowlers assigned to this team
+                  </TableCell>
+                </TableRow>
+              )
             ) : (
               <TableRow>
                 <TableCell colSpan={6} className="text-center">
