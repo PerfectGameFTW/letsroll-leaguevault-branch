@@ -38,7 +38,14 @@ export default function TeamsPage() {
   });
 
   const teams = teamsResponse?.data || [];
-  const sortedTeams = teams.slice().sort((a, b) => (a.number || 0) - (b.number || 0));
+  // Ensure we sort by team number, handling undefined/null cases
+  const sortedTeams = teams
+    .slice()
+    .sort((a, b) => {
+      const numA = a.number ?? Number.MAX_SAFE_INTEGER;
+      const numB = b.number ?? Number.MAX_SAFE_INTEGER;
+      return numA - numB;
+    });
 
   if (loadingLeague || loadingTeams) {
     return (
@@ -61,7 +68,7 @@ export default function TeamsPage() {
   return (
     <Layout>
       <div className="space-y-4 mb-6">
-        <h1 className="text-2xl font-bold">{league.name}</h1>
+        <h1 className="text-2xl font-bold">{league?.name}</h1>
         <Button onClick={() => setShowForm(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Team
@@ -81,7 +88,7 @@ export default function TeamsPage() {
           <TableBody>
             {sortedTeams.map((team) => (
               <TableRow key={team.id}>
-                <TableCell>{team.number}</TableCell>
+                <TableCell>{team.number || 'Not assigned'}</TableCell>
                 <TableCell>{team.name}</TableCell>
                 <TableCell>
                   <Badge variant={team.active ? "default" : "secondary"}>

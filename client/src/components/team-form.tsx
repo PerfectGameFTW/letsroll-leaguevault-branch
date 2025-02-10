@@ -18,16 +18,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { insertTeamSchema, type InsertTeam } from "@shared/schema";
+import { insertTeamSchema, type InsertTeam, type Team } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-
-interface TeamProps {
-  number: number;
-  name: string;
-  active: boolean;
-}
+import { useEffect } from "react";
 
 interface TeamFormProps {
   open: boolean;
@@ -39,11 +34,22 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
   const { toast } = useToast();
 
   // Query existing teams to determine next available number
-  const { data: teams } = useQuery<TeamProps[]>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true; data: Team[] }>({
     queryKey: ["/api/teams", leagueId],
-    queryFn: () =>
-      fetch(`/api/teams?leagueId=${leagueId}`).then((res) => res.json()),
+    queryFn: async () => {
+      const response = await fetch(`/api/teams?leagueId=${leagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch teams');
+      }
+      return response.json();
+    }
   });
+
+  const teams = teamsResponse?.data || [];
+  // Calculate next team number, ensuring we handle undefined/null values
+  const nextTeamNumber = teams.length > 0
+    ? Math.max(...teams.map(t => t.number || 0)) + 1
+    : 1;
 
   const form = useForm<InsertTeam>({
     resolver: zodResolver(insertTeamSchema),
@@ -51,9 +57,16 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
       name: "",
       leagueId,
       active: true,
-      number: teams?.length ? Math.max(...teams.map((t) => t.number)) + 1 : 1,
+      number: nextTeamNumber,
     },
   });
+
+  // Update form value when teams data loads
+  useEffect(() => {
+    if (!loadingTeams) {
+      form.setValue('number', nextTeamNumber);
+    }
+  }, [loadingTeams, nextTeamNumber, form]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertTeam) => {
@@ -122,6 +135,7 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
                       onChange={(e) =>
                         field.onChange(parseInt(e.target.value, 10))
                       }
+                      value={field.value || ''}
                     />
                   </FormControl>
                   <FormMessage />
