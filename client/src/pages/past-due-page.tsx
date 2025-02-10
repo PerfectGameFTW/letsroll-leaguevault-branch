@@ -84,25 +84,39 @@ export default function PastDuePage() {
     );
   }
 
-  // Calculate past due details with proper type checking
+  // Add console.log statements to debug data
+  console.log('Active Bowlers:', bowlers.filter(bowler => bowler.active));
+  console.log('Bowler Leagues:', bowlerLeagues);
+  console.log('Leagues:', leagues);
+  console.log('Teams:', teams);
+  console.log('Payments:', payments);
+
+  // Calculate past due details for each bowler in each league
   const pastDueBowlers = bowlers
     .filter(bowler => bowler.active)
-    .map(bowler => {
-      // Find all league associations for this bowler
-      const bowlerLeagueAssociations = bowlerLeagues.filter(bl => bl.bowlerId === bowler.id);
+    .flatMap(bowler => {
+      // Get all league associations for this bowler
+      const bowlerAssociations = bowlerLeagues.filter(bl => bl.bowlerId === bowler.id);
+      console.log(`Associations for bowler ${bowler.name}:`, bowlerAssociations);
 
-      // Calculate past due for each league association
-      const leagueDues = bowlerLeagueAssociations.map(association => {
-        const team = teams.find(t => t.id === association.teamId);
-        if (!team) return null;
-
+      return bowlerAssociations.map(association => {
         const league = leagues.find(l => l.id === association.leagueId);
-        if (!league) return null;
+        const team = teams.find(t => t.id === association.teamId);
 
-        const bowlerPayments = payments
-          .filter(p => p.bowlerId === bowler.id && p.status === 'paid')
-          .reduce((sum, p) => sum + p.amount, 0) || 0;
+        console.log(`League and team for ${bowler.name}:`, { league, team });
 
+        if (!league || !team) return null;
+
+        // Get payments for this bowler in this specific league
+        const leaguePayments = payments.filter(p =>
+          p.bowlerId === bowler.id &&
+          p.leagueId === league.id &&
+          p.status === 'paid'
+        );
+
+        console.log(`Payments for ${bowler.name} in league ${league.name}:`, leaguePayments);
+
+        const totalPaid = leaguePayments.reduce((sum, p) => sum + p.amount, 0);
         const today = startOfToday();
         const seasonStart = new Date(league.seasonStart);
         const weeksPassed = Math.max(0, Math.floor(
@@ -110,24 +124,30 @@ export default function PastDuePage() {
         ));
 
         const dueToDate = league.weeklyFee * weeksPassed;
-        const pastDueAmount = Math.max(0, dueToDate - bowlerPayments);
+        const pastDueAmount = Math.max(0, dueToDate - totalPaid);
         const weeksPastDue = Math.floor(pastDueAmount / league.weeklyFee);
 
-        return {
+        console.log(`Calculations for ${bowler.name}:`, {
+          totalPaid,
+          weeksPassed,
+          dueToDate,
+          pastDueAmount,
+          weeksPastDue
+        });
+
+        return pastDueAmount > 0 ? {
           bowler,
           team,
           league,
           weeksPastDue,
           pastDueAmount,
-        };
-      }).filter((item): item is NonNullable<typeof item> => 
-        item !== null && item.pastDueAmount > 0
-      );
-
-      return leagueDues;
+        } : null;
+      });
     })
-    .flat()
+    .filter((item): item is NonNullable<typeof item> => item !== null)
     .sort((a, b) => b.pastDueAmount - a.pastDueAmount);
+
+  console.log('Final pastDueBowlers:', pastDueBowlers);
 
   return (
     <Layout>
@@ -156,21 +176,29 @@ export default function PastDuePage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pastDueBowlers.map(item => (
-                <TableRow key={`${item.bowler.id}-${item.league.id}`}>
-                  <TableCell>
-                    <Link href={`/bowlers/${item.bowler.id}`} className="hover:underline">
-                      {item.bowler.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{item.league.name}</TableCell>
-                  <TableCell>{item.team.name}</TableCell>
-                  <TableCell>{item.weeksPastDue}</TableCell>
-                  <TableCell className="text-destructive">
-                    ${(item.pastDueAmount / 100).toFixed(2)}
+              {pastDueBowlers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-4">
+                    No past due balances found
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                pastDueBowlers.map(item => (
+                  <TableRow key={`${item.bowler.id}-${item.league.id}`}>
+                    <TableCell>
+                      <Link href={`/bowlers/${item.bowler.id}`} className="hover:underline">
+                        {item.bowler.name}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{item.league.name}</TableCell>
+                    <TableCell>{item.team.name}</TableCell>
+                    <TableCell>{item.weeksPastDue}</TableCell>
+                    <TableCell className="text-destructive">
+                      ${(item.pastDueAmount / 100).toFixed(2)}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>
