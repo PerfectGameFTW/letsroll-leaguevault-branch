@@ -27,32 +27,30 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true, data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
   });
 
-  // Make sure we have an array of bowlers
   const bowlers = bowlersResponse?.data || [];
 
-  const { data: bowlerLeaguesResponse } = useQuery<{ success: true, data: { bowlerId: number, leagueId: number, teamId: number }[] }>({
+  const { data: bowlerLeaguesResponse } = useQuery<{ data: { data: { bowlerId: number, leagueId: number, teamId: number }[] } }>({
     queryKey: ["/api/bowler-leagues-new"],
   });
 
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
+  const bowlerLeagues = bowlerLeaguesResponse?.data?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true, data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
   });
 
   const teams = teamsResponse?.data || [];
 
-  const { data: leaguesResponse } = useQuery<{ success: true, data: League[] }>({
+  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
   });
 
   const leagues = leaguesResponse?.data || [];
 
-  // Filter bowlers with proper type checking
   const filteredBowlers = Array.isArray(bowlers) ? bowlers.filter(bowler => {
     const matchesSearch = searchQuery === "" || 
       bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -60,14 +58,12 @@ export default function BowlersPage() {
     return (showInactive ? true : bowler.active) && matchesSearch;
   }) : [];
 
-  // Helper function to get team for a bowler with type safety
   const getBowlerTeam = (bowler: Bowler) => {
     if (!Array.isArray(bowlerLeagues) || !Array.isArray(teams)) return undefined;
     const bowlerLeague = bowlerLeagues.find(bl => bl.bowlerId === bowler.id);
     return bowlerLeague ? teams.find(t => t.id === bowlerLeague.teamId) : undefined;
   };
 
-  // Helper function to get league weekly fee
   const getWeeklyFee = (bowler: Bowler) => {
     const team = getBowlerTeam(bowler);
     if (!team || !Array.isArray(leagues)) return 0;

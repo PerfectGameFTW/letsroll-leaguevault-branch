@@ -148,7 +148,6 @@ export default function TeamViewPage() {
   });
   const team = teamResponse?.data;
 
-  // Update the bowler leagues query and reorder mutation
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ success: true; data: { data: BowlerLeague[] } }>({
     queryKey: ["/api/bowler-leagues", teamId, team?.leagueId],
     queryFn: async () => {
@@ -165,7 +164,6 @@ export default function TeamViewPage() {
     ? [...bowlerLeaguesResponse.data.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
 
-  // Update the bowlers query and data handling
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true; data: Bowler[] }>({
     queryKey: ["/api/bowlers", sortedBowlerLeagues],
     queryFn: async () => {
@@ -182,10 +180,8 @@ export default function TeamViewPage() {
     enabled: sortedBowlerLeagues.length > 0,
   });
 
-  // Simplify data handling with proper type safety
   const bowlers = bowlersResponse?.data || [];
 
-  // Filter bowlers for the team with proper null checks
   const teamBowlers = bowlers.filter((bowler): bowler is Bowler => {
     if (!bowler || typeof bowler !== 'object' || !('id' in bowler)) {
       return false;
@@ -197,14 +193,11 @@ export default function TeamViewPage() {
     );
   });
 
-
-  // Restore the league query
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${team?.leagueId}`],
     enabled: !!team?.leagueId,
   });
 
-  // Show error toast only when error changes and component is mounted
   useEffect(() => {
     if (bowlerLeaguesError) {
       toast({
@@ -251,13 +244,10 @@ export default function TeamViewPage() {
       return response.json();
     },
     onMutate: async ({ id, order }) => {
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ["/api/bowler-leagues", teamId, team?.leagueId] });
 
-      // Snapshot the previous value
       const previousData = queryClient.getQueryData<{ success: true, data: { data: BowlerLeague[] } }>(["/api/bowler-leagues", teamId, team?.leagueId]);
 
-      // Optimistically update to the new value
       if (previousData?.data?.data) {
         const newData = [...previousData.data.data];
         const oldIndex = newData.findIndex((bl) => bl.id === id);
@@ -265,7 +255,6 @@ export default function TeamViewPage() {
           const [movedItem] = newData.splice(oldIndex, 1);
           newData.splice(order, 0, movedItem);
 
-          // Update order values
           newData.forEach((bl, index) => {
             bl.order = index;
           });
@@ -351,7 +340,6 @@ export default function TeamViewPage() {
     );
   }
 
-  // Make sure we have all the data before rendering
   const league = leagueResponse?.data;
 
   const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;
