@@ -1,3 +1,4 @@
+import { useState } from "react";  
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
@@ -17,10 +18,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import type { Bowler, Payment, Team, League } from "@shared/schema";
+import type { Bowler, Payment, Team, League, BowlerLeague } from "@shared/schema";
 import { format, differenceInWeeks, startOfToday } from "date-fns";
 import { enrollInLoyalty, getLoyaltyPoints } from "@/lib/square";
 
@@ -34,25 +42,42 @@ export default function BowlerViewPage() {
   const params = useParams();
   const { toast } = useToast();
   const bowlerId = parseInt(params.bowlerId!);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
   const { data: bowler, isLoading: loadingBowler } = useQuery<Bowler>({
     queryKey: [`/api/bowlers/${bowlerId}`],
   });
 
+  // Query to get bowler's league associations
+  const { data: bowlerLeagues, isLoading: loadingBowlerLeagues } = useQuery<BowlerLeague[]>({
+    queryKey: ["/api/bowler-leagues", bowlerId],
+    queryFn: () => fetch(`/api/bowler-leagues?bowlerId=${bowlerId}`).then(res => res.json()),
+  });
+
+  // Get all leagues the bowler is in
+  const { data: leagues } = useQuery<League[]>({
+    queryKey: ["/api/leagues"],
+    enabled: !!bowlerLeagues,
+  });
+
+  // Get the selected league's team
+  const selectedAssociation = bowlerLeagues?.find(bl => bl.leagueId === selectedLeagueId);
+
   const { data: team, isLoading: loadingTeam } = useQuery<Team>({
-    queryKey: [`/api/teams/${bowler?.teamId}`],
-    enabled: !!bowler?.teamId,
+    queryKey: [`/api/teams/${selectedAssociation?.teamId}`],
+    enabled: !!selectedAssociation?.teamId,
   });
 
   const { data: league, isLoading: loadingLeague } = useQuery<League>({
-    queryKey: [`/api/leagues/${team?.leagueId}`],
-    enabled: !!team?.leagueId,
+    queryKey: [`/api/leagues/${selectedLeagueId}`],
+    enabled: !!selectedLeagueId,
   });
 
   const { data: payments, isLoading: loadingPayments } = useQuery<Payment[]>({
-    queryKey: ["/api/payments", bowlerId],
+    queryKey: ["/api/payments", bowlerId, selectedLeagueId],
     queryFn: () =>
-      fetch(`/api/payments?bowlerId=${bowlerId}`).then((res) => res.json()),
+      fetch(`/api/payments?bowlerId=${bowlerId}&leagueId=${selectedLeagueId}`).then((res) => res.json()),
+    enabled: !!selectedLeagueId,
   });
 
   // Add loyalty points query
@@ -65,8 +90,15 @@ export default function BowlerViewPage() {
       return getLoyaltyPoints(bowler.squareCustomerId);
     },
     enabled: !!bowler?.squareCustomerId,
-    retry: false, // Don't retry if customer isn't enrolled
+    retry: false,
   });
+
+  // Initialize selectedLeagueId when bowlerLeagues loads
+  React.useEffect(() => {
+    if (bowlerLeagues?.length && !selectedLeagueId) {
+      setSelectedLeagueId(bowlerLeagues[0].leagueId);
+    }
+  }, [bowlerLeagues, selectedLeagueId]);
 
   // Add enroll mutation
   const enrollMutation = useMutation({
@@ -91,7 +123,7 @@ export default function BowlerViewPage() {
     },
   });
 
-  if (loadingBowler || loadingPayments || loadingTeam || loadingLeague || loadingLoyalty) {
+  if (loadingBowler || loadingBowlerLeagues || loadingPayments || loadingTeam || loadingLeague || loadingLoyalty) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -109,13 +141,12 @@ export default function BowlerViewPage() {
     );
   }
 
-  // Calculate financial summary
+  // Financial calculations based on selected league
   const totalPaidPayments = payments?.filter(p => p.status === 'paid') || [];
   const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
   const totalUnpaidPayments = payments?.filter(p => p.status !== 'paid') || [];
   const totalUnpaidAmount = totalUnpaidPayments.reduce((sum, p) => sum + p.amount, 0);
 
-  // Calculate weeks passed in the season
   let weeksDue = 0;
   let totalSeasonDues = 0;
   let totalWeeksInSeason = 0;
@@ -127,41 +158,39 @@ export default function BowlerViewPage() {
     const today = startOfToday();
     const seasonEnd = new Date(league.seasonEnd);
 
-    // If season hasn't started yet, no weeks due
     if (today < seasonStart) {
       weeksDue = 0;
-    }
-    // If we're past season end, use total weeks in season
-    else if (today > seasonEnd) {
+    } else if (today > seasonEnd) {
       weeksDue = differenceInWeeks(seasonEnd, seasonStart);
-    }
-    // Otherwise, calculate weeks from start to today
-    else {
+    } else {
       weeksDue = differenceInWeeks(today, seasonStart);
     }
 
-    // Calculate dues based on weeks passed using league's weekly fee
     totalSeasonDues = league.weeklyFee * weeksDue;
     totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
     fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
-
-    // Calculate amount past due (only for weeks that have passed)
     amountPastDue = totalSeasonDues - totalPaidAmount;
   }
 
-  // Calculate remaining balance for the full season
   const remainingBalance = fullSeasonAmount - totalPaidAmount;
+
+  const bowlerLeaguesFiltered = bowlerLeagues?.filter(bl => {
+    const leagueInfo = leagues?.find(l => l.id === bl.leagueId);
+    return leagueInfo;
+  });
 
   return (
     <Layout>
       <div className="mb-6">
-        <Link
-          href={`/teams/${bowler.teamId}`}
-          className="text-muted-foreground hover:text-foreground flex items-center mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Team
-        </Link>
+        {selectedAssociation && (
+          <Link
+            href={`/teams/${selectedAssociation.teamId}`}
+            className="text-muted-foreground hover:text-foreground flex items-center mb-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Team
+          </Link>
+        )}
         <div className="flex flex-col gap-2 mb-6">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -172,12 +201,29 @@ export default function BowlerViewPage() {
             </div>
           </div>
           <div className="flex flex-col gap-1">
-            <div className="text-lg font-semibold mb-0.25">
-              {league?.name || "No League"}
-            </div>
-            <div className="font-medium text-muted-foreground">
-              {team?.name || "No Team"}
-            </div>
+            <Select
+              value={selectedLeagueId?.toString() || ""}
+              onValueChange={(value) => setSelectedLeagueId(parseInt(value))}
+            >
+              <SelectTrigger className="w-[300px]">
+                <SelectValue placeholder="Select a league" />
+              </SelectTrigger>
+              <SelectContent>
+                {bowlerLeaguesFiltered?.map((bl) => {
+                  const leagueInfo = leagues?.find(l => l.id === bl.leagueId);
+                  return leagueInfo ? (
+                    <SelectItem key={bl.leagueId} value={bl.leagueId.toString()}>
+                      {leagueInfo.name}
+                    </SelectItem>
+                  ) : null;
+                })}
+              </SelectContent>
+            </Select>
+            {team && (
+              <div className="font-medium text-muted-foreground">
+                {team.name}
+              </div>
+            )}
           </div>
         </div>
 

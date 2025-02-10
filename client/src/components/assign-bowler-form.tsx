@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
-import type { Bowler } from "@shared/schema";
+import type { Bowler, BowlerLeague } from "@shared/schema";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -31,19 +31,33 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   const [selectedBowlerId, setSelectedBowlerId] = useState<string>("");
 
   // Query to get all bowlers
-  const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers"],
   });
 
-  // Filter out bowlers already in this specific league
-  const availableBowlers = bowlers?.filter(bowler => bowler.leagueId !== leagueId) || [];
+  // Query to get existing associations
+  const { data: bowlerLeagues } = useQuery<BowlerLeague[]>({
+    queryKey: ["/api/bowler-leagues", leagueId],
+    queryFn: () => fetch(`/api/bowler-leagues?leagueId=${leagueId}`).then(res => res.json()),
+  });
+
+  // Filter out bowlers already in this specific league/team combination
+  const availableBowlers = bowlers?.filter(bowler => {
+    const existingAssociation = bowlerLeagues?.find(bl => 
+      bl.bowlerId === bowler.id && 
+      bl.leagueId === leagueId && 
+      bl.teamId === teamId
+    );
+    return !existingAssociation;
+  }) || [];
 
   const mutation = useMutation({
     mutationFn: async (bowlerId: number) => {
-      // Create a new association for this bowler in this league/team
-      const response = await apiRequest("PATCH", `/api/bowlers/${bowlerId}`, {
-        teamId,
+      // Create a new association without affecting existing ones
+      const response = await apiRequest("POST", "/api/bowler-leagues", {
+        bowlerId,
         leagueId,
+        teamId,
       });
       if (!response.ok) {
         const error = await response.text();
@@ -52,6 +66,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
       return response.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       toast({
         title: "Success",
@@ -93,11 +108,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
                 <SelectValue placeholder="Choose a bowler" />
               </SelectTrigger>
               <SelectContent>
-                {loadingBowlers ? (
-                  <div className="flex items-center justify-center p-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  </div>
-                ) : availableBowlers.length > 0 ? (
+                {availableBowlers.length > 0 ? (
                   availableBowlers.map((bowler) => (
                     <SelectItem
                       key={bowler.id}
