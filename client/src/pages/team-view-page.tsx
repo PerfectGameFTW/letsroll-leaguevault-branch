@@ -215,16 +215,62 @@ export default function TeamViewPage() {
       }
       return response.json();
     },
-    onSuccess: () => {
-      // Invalidate queries to refresh the data
-      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+    onMutate: async ({ id, order }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["/api/bowler-leagues"] });
+
+      // Snapshot the previous value
+      const previousData = queryClient.getQueryData<{ data: BowlerLeague[] }>(["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }]);
+
+      // Optimistically update the cache
+      if (previousData?.data) {
+        const newData = [...previousData.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const oldIndex = newData.findIndex(bl => bl.id === id);
+        const itemToMove = newData[oldIndex];
+
+        // Remove the item from its current position
+        newData.splice(oldIndex, 1);
+        // Insert it at the new position
+        newData.splice(order, 0, itemToMove);
+
+        // Update orders for all items
+        newData.forEach((bl, index) => {
+          bl.order = index;
+        });
+
+        queryClient.setQueryData(["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }], {
+          data: newData
+        });
+      }
+
+      return { previousData };
     },
-    onError: (error: Error) => {
+    onError: (err, newData, context) => {
+      // Roll back to the previous state on error
+      if (context?.previousData) {
+        queryClient.setQueryData(
+          ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
+          context.previousData
+        );
+      }
       toast({
         title: "Error reordering bowlers",
-        description: error.message,
+        description: err instanceof Error ? err.message : "Failed to update order",
         variant: "destructive",
       });
+    },
+    onSuccess: (updatedData) => {
+      queryClient.setQueryData(["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }], {
+        data: updatedData
+      });
+      toast({
+        title: "Success",
+        description: "Bowler order updated successfully",
+      });
+    },
+    onSettled: () => {
+      // Refetch after error or success to ensure consistency
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
     },
   });
 
@@ -238,10 +284,14 @@ export default function TeamViewPage() {
       const newIndex = sortedBowlerLeagues.findIndex(bl => bl.id === Number(over.id));
 
       if (oldIndex !== -1 && newIndex !== -1) {
-        await reorderMutation.mutateAsync({
-          id: Number(active.id),
-          order: newIndex,
-        });
+        try {
+          await reorderMutation.mutateAsync({
+            id: Number(active.id),
+            order: newIndex,
+          });
+        } catch (error) {
+          // Error is handled by mutation's onError callback
+        }
       }
     }
   };
