@@ -312,7 +312,6 @@ export class DatabaseStorage implements IStorage {
 
   async updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]> {
     try {
-      // Step 1: Get the target bowler league and validate it exists
       const [bowlerLeague] = await db
         .select()
         .from(bowlerLeagues)
@@ -322,54 +321,8 @@ export class DatabaseStorage implements IStorage {
         throw new Error('Bowler league not found');
       }
 
-      // Step 2: Execute the reorder in a single SQL transaction with temporary orders
-      await db.execute(sql`
-        WITH to_move AS (
-          SELECT id, "order" as old_order
-          FROM bowler_leagues 
-          WHERE id = ${id}
-        ),
-        affected_range AS (
-          SELECT id, "order"
-          FROM bowler_leagues bl, to_move tm
-          WHERE bl.team_id = ${bowlerLeague.teamId}
-          AND bl.league_id = ${bowlerLeague.leagueId}
-          AND (
-            CASE 
-              WHEN ${newOrder} > tm.old_order 
-              THEN bl."order" <= ${newOrder} AND bl."order" > tm.old_order
-              ELSE bl."order" >= ${newOrder} AND bl."order" < tm.old_order
-            END
-          )
-        )
-        UPDATE bowler_leagues bl
-        SET "order" = 
-          CASE 
-            WHEN bl.id = ${id} THEN ${newOrder} * 1000
-            WHEN ${newOrder} > (SELECT old_order FROM to_move)
-            THEN bl."order" - 1
-            ELSE bl."order" + 1
-          END
-        WHERE bl.id IN (SELECT id FROM affected_range)
-        OR bl.id = ${id}
-      `);
-
-      // Step 3: Normalize all orders to be sequential
-      await db.execute(sql`
-        WITH indexed AS (
-          SELECT id, ROW_NUMBER() OVER (ORDER BY "order") - 1 as new_order
-          FROM bowler_leagues
-          WHERE team_id = ${bowlerLeague.teamId}
-          AND league_id = ${bowlerLeague.leagueId}
-        )
-        UPDATE bowler_leagues bl
-        SET "order" = i.new_order
-        FROM indexed i
-        WHERE bl.id = i.id;
-      `);
-
-      // Step 4: Return updated bowler leagues in correct order
-      const updatedLeagues = await db
+      // Get all bowler leagues for this team/league
+      const teamBowlerLeagues = await db
         .select()
         .from(bowlerLeagues)
         .where(
@@ -380,7 +333,32 @@ export class DatabaseStorage implements IStorage {
         )
         .orderBy(bowlerLeagues.order);
 
-      return updatedLeagues;
+      // Update orders for all affected bowler leagues
+      const updates = teamBowlerLeagues.map((bl, index) => {
+        let order = index;
+        if (bl.id === id) {
+          order = newOrder;
+        } else if (index >= newOrder) {
+          order = index + 1;
+        }
+        return db
+          .update(bowlerLeagues)
+          .set({ order })
+          .where(eq(bowlerLeagues.id, bl.id));
+      });
+
+      await Promise.all(updates);
+
+      return await db
+        .select()
+        .from(bowlerLeagues)
+        .where(
+          and(
+            eq(bowlerLeagues.teamId, bowlerLeague.teamId),
+            eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
+          )
+        )
+        .orderBy(bowlerLeagues.order);
     } catch (error) {
       console.error('Error updating bowler league order:', error);
       throw error;
