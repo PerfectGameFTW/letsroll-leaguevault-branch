@@ -243,41 +243,6 @@ export default function TeamViewPage() {
       }
       return response.json();
     },
-    onMutate: async ({ id, order }) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/bowler-leagues", teamId, team?.leagueId] });
-
-      const previousData = queryClient.getQueryData<{ success: true; data: BowlerLeague[] }>(["/api/bowler-leagues", teamId, team?.leagueId]);
-
-      if (previousData?.data) {
-        const newData = [...previousData.data];
-        const oldIndex = newData.findIndex((bl) => bl.id === id);
-        if (oldIndex !== -1) {
-          const [movedItem] = newData.splice(oldIndex, 1);
-          newData.splice(order, 0, movedItem);
-
-          newData.forEach((bl, index) => {
-            bl.order = index;
-          });
-
-          queryClient.setQueryData(["/api/bowler-leagues", teamId, team?.leagueId], {
-            success: true,
-            data: newData
-          });
-        }
-      }
-
-      return { previousData };
-    },
-    onError: (error, _, context) => {
-      if (context?.previousData) {
-        queryClient.setQueryData(["/api/bowler-leagues", teamId, team?.leagueId], context.previousData);
-      }
-      toast({
-        title: "Error reordering bowlers",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
     onSuccess: (updatedData) => {
       queryClient.setQueryData(["/api/bowler-leagues", teamId, team?.leagueId], {
         success: true,
@@ -289,9 +254,9 @@ export default function TeamViewPage() {
   const handleDragEnd = async (event: DragEndEvent) => {
     try {
       const { active, over } = event;
-      if (!over) return;
+      if (!over || !sortedBowlerLeagues?.length) return;
 
-      if (active.id !== over.id && sortedBowlerLeagues?.length) {
+      if (active.id !== over.id) {
         const oldIndex = sortedBowlerLeagues.findIndex((bl) => bl.id === active.id);
         const newIndex = sortedBowlerLeagues.findIndex((bl) => bl.id === over.id);
 
