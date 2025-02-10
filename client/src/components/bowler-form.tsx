@@ -38,19 +38,20 @@ interface BowlerFormProps {
   onClose: () => void;
   defaultTeamId?: number;
   bowler?: Bowler;
+  bowlerLeagues?: { bowlerId: number; leagueId: number }[];
 }
 
-export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormProps) {
+export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues }: BowlerFormProps) {
   const { toast } = useToast();
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(bowler?.leagueId || null);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
   // Query for leagues
-  const { data: leagues } = useQuery<League[]>({
+  const { data: leagues = [] } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
   });
 
   // Query for teams filtered by selected league
-  const { data: teams } = useQuery<Team[]>({
+  const { data: teams = [] } = useQuery<Team[]>({
     queryKey: ["/api/teams", selectedLeagueId],
     queryFn: () =>
       selectedLeagueId
@@ -65,13 +66,18 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
       name: bowler.name,
       email: bowler.email,
       active: bowler.active,
-      teamId: bowler.teamId ?? undefined,
-      leagueId: bowler.leagueId,
+      squareCustomerId: bowler.squareCustomerId,
+      order: bowler.order,
+      teamId: bowler.teamId,
+      leagueId: bowler.leagueId
     } : {
       name: "",
       email: "",
       active: true,
+      squareCustomerId: null,
+      order: 0,
       teamId: defaultTeamId,
+      leagueId: null
     },
   });
 
@@ -79,13 +85,16 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
   useEffect(() => {
     if (open && bowler) {
       // When editing, set the league ID and form values
-      setSelectedLeagueId(bowler.leagueId || null);
+      const bowlerLeague = bowlerLeagues?.find(bl => bl.bowlerId === bowler.id);
+      setSelectedLeagueId(bowlerLeague?.leagueId || null);
       form.reset({
         name: bowler.name,
         email: bowler.email,
         active: bowler.active,
-        teamId: bowler.teamId ?? undefined,
-        leagueId: bowler.leagueId,
+        squareCustomerId: bowler.squareCustomerId,
+        order: bowler.order,
+        teamId: bowler.teamId,
+        leagueId: bowler.leagueId
       });
     } else if (!open) {
       // When closing, reset everything
@@ -93,11 +102,14 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
         name: "",
         email: "",
         active: true,
+        squareCustomerId: null,
+        order: 0,
         teamId: defaultTeamId,
+        leagueId: null
       });
       setSelectedLeagueId(null);
     }
-  }, [open, bowler, form, defaultTeamId]);
+  }, [open, bowler, form, defaultTeamId, bowlerLeagues]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
@@ -111,12 +123,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
         return await response.json();
       } else {
         // Create new bowler
-        // Only create Square customer if teamId is provided
-        if (data.teamId) {
-          const squareCustomer = await createSquareCustomer(data.name, data.email, data.teamId);
-          data.squareCustomerId = squareCustomer.id;
-        }
-
         const response = await apiRequest("POST", "/api/bowlers", data);
         if (!response.ok) {
           const error = await response.text();
@@ -215,16 +221,12 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
               name="leagueId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>League (Optional)</FormLabel>
+                  <FormLabel>League</FormLabel>
                   <Select
                     onValueChange={(value) => {
-                      const leagueId = value ? parseInt(value) : undefined;
-                      setSelectedLeagueId(leagueId ?? null);
+                      const leagueId = value ? parseInt(value) : null;
+                      setSelectedLeagueId(leagueId);
                       field.onChange(leagueId);
-                      // Reset team selection when league changes
-                      if (field.value !== leagueId) {
-                        form.setValue("teamId", undefined);
-                      }
                     }}
                     value={field.value?.toString() || ""}
                   >
@@ -234,7 +236,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {leagues?.map((league) => (
+                      {leagues.map((league) => (
                         <SelectItem
                           key={league.id}
                           value={league.id.toString()}
@@ -254,9 +256,9 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
               name="teamId"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Team (Optional)</FormLabel>
+                  <FormLabel>Team</FormLabel>
                   <Select
-                    onValueChange={(value) => field.onChange(value ? parseInt(value) : undefined)}
+                    onValueChange={(value) => field.onChange(value ? parseInt(value) : null)}
                     value={field.value?.toString() || ""}
                     disabled={!selectedLeagueId}
                   >
@@ -266,7 +268,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {teams?.map((team) => (
+                      {teams.map((team) => (
                         <SelectItem
                           key={team.id}
                           value={team.id.toString()}
@@ -280,7 +282,6 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler }: BowlerFormP
                 </FormItem>
               )}
             />
-
 
             <FormField
               control={form.control}
