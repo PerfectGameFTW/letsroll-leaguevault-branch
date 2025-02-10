@@ -210,6 +210,7 @@ export default function TeamViewPage() {
 
   const reorderMutation = useMutation({
     mutationFn: async ({ id, order }: { id: number; order: number }) => {
+      console.log(`Reordering bowler league ${id} to position ${order}`);
       const response = await apiRequest("PATCH", `/api/bowler-leagues/${id}`, { order });
       if (!response.ok) {
         const error = await response.text();
@@ -265,6 +266,7 @@ export default function TeamViewPage() {
       });
     },
     onSuccess: (response) => {
+      console.log('Successfully updated bowler league order:', response);
       const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
 
       // Update cache with the response from server

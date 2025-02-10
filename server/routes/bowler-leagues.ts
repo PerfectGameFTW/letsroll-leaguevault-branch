@@ -10,13 +10,14 @@ router.get("/", async (req, res) => {
   try {
     const { bowlerId, leagueId, teamId } = req.query;
     console.log('Fetching bowler leagues with params:', { bowlerId, leagueId, teamId });
-    
-    const bowlerLeagues = await storage.getBowlerLeagues(
-      bowlerId ? parseInt(bowlerId as string) : undefined,
-      leagueId ? parseInt(leagueId as string) : undefined,
-      teamId ? parseInt(teamId as string) : undefined
-    );
 
+    const filters = {
+      bowlerId: bowlerId ? parseInt(bowlerId as string) : undefined,
+      leagueId: leagueId ? parseInt(leagueId as string) : undefined,
+      teamId: teamId ? parseInt(teamId as string) : undefined
+    };
+
+    const bowlerLeagues = await storage.getBowlerLeagues(filters);
     console.log(`Found ${bowlerLeagues.length} bowler leagues`);
     sendSuccess(res, bowlerLeagues);
   } catch (error) {
@@ -29,13 +30,16 @@ router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const update = partialBowlerLeagueSchema.parse(req.body);
-    
+
+    // Handle order updates separately from other updates
     if (typeof update.order === 'number') {
+      console.log(`Updating bowler league ${id} order to ${update.order}`);
       const updatedBowlerLeagues = await storage.updateBowlerLeagueOrder(id, update.order);
-      console.log('Updated bowler league order:', updatedBowlerLeagues);
+      console.log('Updated bowler league orders:', updatedBowlerLeagues);
       return sendSuccess(res, updatedBowlerLeagues);
     }
-    
+
+    // Handle other updates
     const updated = await storage.updateBowlerLeague(id, update);
     sendSuccess(res, updated);
   } catch (error) {
