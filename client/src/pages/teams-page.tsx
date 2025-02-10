@@ -108,18 +108,19 @@ export default function TeamsPage() {
 }
 
 function TeamBowlers({ teamId }: { teamId: number }) {
-  const { data: bowlerLeagues = [], isLoading } = useQuery<any[]>({
+  const { data: bowlerLeaguesResponse, isLoading } = useQuery<{ data: any[] }>({
     queryKey: [`/api/bowler-leagues`, teamId],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?teamId=${teamId}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch bowler leagues for team ${teamId}`);
       }
-      const data = await response.json();
-      return Array.isArray(data) ? data : [];
+      return response.json();
     },
     enabled: !!teamId,
   });
+
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
   if (isLoading) return <Loader2 className="h-4 w-4 animate-spin" />;
 

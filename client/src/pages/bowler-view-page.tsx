@@ -49,10 +49,18 @@ export default function BowlerViewPage() {
   });
 
   // Query to get bowler's league associations
-  const { data: bowlerLeagues, isLoading: loadingBowlerLeagues } = useQuery<BowlerLeague[]>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", bowlerId],
-    queryFn: () => fetch(`/api/bowler-leagues?bowlerId=${bowlerId}`).then(res => res.json()),
+    queryFn: async () => {
+      const response = await fetch(`/api/bowler-leagues?bowlerId=${bowlerId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowler leagues');
+      }
+      return response.json();
+    },
   });
+
+  const bowlerLeagues = bowlerLeaguesResponse?.data;
 
   // Get all leagues the bowler is in
   const { data: leagues } = useQuery<League[]>({
