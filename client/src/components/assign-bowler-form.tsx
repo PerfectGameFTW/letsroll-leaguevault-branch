@@ -35,11 +35,12 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
     queryKey: ["/api/bowlers"],
   });
 
-  // Filter out bowlers already in a team
-  const availableBowlers = bowlers?.filter(bowler => !bowler.teamId) || [];
+  // Filter out bowlers already in this specific league
+  const availableBowlers = bowlers?.filter(bowler => bowler.leagueId !== leagueId) || [];
 
   const mutation = useMutation({
     mutationFn: async (bowlerId: number) => {
+      // Create a new association for this bowler in this league/team
       const response = await apiRequest("PATCH", `/api/bowlers/${bowlerId}`, {
         teamId,
         leagueId,
