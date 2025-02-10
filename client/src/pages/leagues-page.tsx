@@ -26,11 +26,27 @@ export default function LeaguesPage() {
 
   const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
+    queryFn: async () => {
+      const response = await fetch("/api/leagues");
+      if (!response.ok) {
+        throw new Error('Failed to fetch leagues');
+      }
+      const json = await response.json();
+      return json.data;
+    }
   });
 
   // Get teams for each league
   const { data: allTeams, isLoading: loadingTeams } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
+    queryFn: async () => {
+      const response = await fetch("/api/teams");
+      if (!response.ok) {
+        throw new Error('Failed to fetch teams');
+      }
+      const json = await response.json();
+      return json.data;
+    }
   });
 
   // Create a map of league ID to team count
