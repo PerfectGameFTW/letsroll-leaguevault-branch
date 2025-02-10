@@ -10,6 +10,7 @@ import {
   type BowlerLeague, type InsertBowlerLeague
 } from "@shared/schema";
 
+// Add new deletion methods to the IStorage interface
 export interface IStorage {
   // Users
   getUser(id: number): Promise<User | undefined>;
@@ -47,6 +48,10 @@ export interface IStorage {
   getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePaymentStatus(id: number, status: string, squarePaymentId?: string): Promise<Payment>;
+
+  // Add these new methods
+  deleteBowlerLeague(id: number): Promise<void>;
+  deletePayment(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -202,6 +207,11 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  // Add implementation for deleting bowler league associations
+  async deleteBowlerLeague(id: number): Promise<void> {
+    await db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id));
+  }
+
   // Payments
   async getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]> {
     const conditions = [];
@@ -242,6 +252,11 @@ export class DatabaseStorage implements IStorage {
       .where(eq(payments.id, id))
       .returning();
     return updated;
+  }
+
+  // Add implementation for deleting payments
+  async deletePayment(id: number): Promise<void> {
+    await db.delete(payments).where(eq(payments.id, id));
   }
 }
 

@@ -269,7 +269,7 @@ export function registerRoutes(app: Express): Server {
         return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
       }
 
-      // First, delete any bowler league associations
+      // First, delete all bowler league associations
       const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: id });
       if (Array.isArray(bowlerLeagues)) {
         for (const bl of bowlerLeagues) {
