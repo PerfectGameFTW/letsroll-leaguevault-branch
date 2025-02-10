@@ -317,7 +317,11 @@ export default function TeamViewPage() {
     : [];
   const teamBowlers = Array.isArray(bowlers) && Array.isArray(sortedBowlerLeagues)
     ? bowlers.filter(bowler => 
-        sortedBowlerLeagues.some(bl => bl.bowlerId === bowler.id)
+        sortedBowlerLeagues.some(bl => 
+          bl.bowlerId === bowler.id && 
+          bl.teamId === teamId && 
+          bl.leagueId === team?.leagueId
+        )
       )
     : [];
   const allDataLoaded = !loadingTeam && !loadingBowlers && !loadingBowlerLeagues && !loadingLeague;

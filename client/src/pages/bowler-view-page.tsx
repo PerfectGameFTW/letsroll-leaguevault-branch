@@ -83,12 +83,14 @@ export default function BowlerViewPage() {
     enabled: !!selectedLeagueId,
   });
 
-  const { data: payments, isLoading: loadingPayments } = useQuery<Payment[]>({
+  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments", bowlerId, selectedLeagueId],
     queryFn: () =>
       fetch(`/api/payments?bowlerId=${bowlerId}&leagueId=${selectedLeagueId}`).then((res) => res.json()),
     enabled: !!selectedLeagueId,
   });
+
+  const payments = paymentsResponse?.data;
 
   // Add loyalty points query
   const { data: loyaltyInfo, isLoading: loadingLoyalty } = useQuery<LoyaltyInfo>({
