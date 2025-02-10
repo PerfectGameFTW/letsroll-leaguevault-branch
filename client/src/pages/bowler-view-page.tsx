@@ -1,4 +1,4 @@
-import { useState } from "react";  
+import { useState, useEffect } from "react";  
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
@@ -94,7 +94,7 @@ export default function BowlerViewPage() {
   });
 
   // Initialize selectedLeagueId when bowlerLeagues loads
-  React.useEffect(() => {
+  useEffect(() => {
     if (bowlerLeagues?.length && !selectedLeagueId) {
       setSelectedLeagueId(bowlerLeagues[0].leagueId);
     }

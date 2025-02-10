@@ -17,7 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Loader2, Plus, ArrowLeft, ExternalLink, Pencil, GripVertical } from "lucide-react";
-import type { Team, Bowler, League } from "@shared/schema"; // Added League import
+import type { Team, Bowler, League, BowlerLeague } from "@shared/schema";
 import { getSquareCustomerUrl } from "@/lib/square";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
@@ -44,18 +44,19 @@ import { useToast } from "@/hooks/use-toast";
 
 interface SortableBowlerRowProps {
   bowler: Bowler;
+  bowlerLeague: BowlerLeague;
   league: League | undefined;
   onEdit: (bowler: Bowler) => void;
 }
 
-function SortableBowlerRow({ bowler, league, onEdit }: SortableBowlerRowProps) {
+function SortableBowlerRow({ bowler, bowlerLeague, league, onEdit }: SortableBowlerRowProps) {
   const {
     attributes,
     listeners,
     transform,
     transition,
     setNodeRef,
-  } = useSortable({ id: bowler.id });
+  } = useSortable({ id: bowlerLeague.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -96,8 +97,8 @@ function SortableBowlerRow({ bowler, league, onEdit }: SortableBowlerRowProps) {
       <TableCell>{bowler.email}</TableCell>
       <TableCell>${((league?.weeklyFee || 0) / 100).toFixed(2)}</TableCell>
       <TableCell>
-        <Badge variant={bowler.active ? "default" : "secondary"}>
-          {bowler.active ? "Active" : "Inactive"}
+        <Badge variant={bowlerLeague.active ? "default" : "secondary"}>
+          {bowlerLeague.active ? "Active" : "Inactive"}
         </Badge>
       </TableCell>
       <TableCell>
@@ -145,10 +146,26 @@ export default function TeamViewPage() {
     queryKey: [`/api/teams/${teamId}`],
   });
 
+  // Get bowler leagues for this team
+  const { data: bowlerLeagues, isLoading: loadingBowlerLeagues } = useQuery<BowlerLeague[]>({
+    queryKey: ["/api/bowler-leagues", teamId],
+    queryFn: () => fetch(`/api/bowler-leagues?teamId=${teamId}`).then(res => res.json()),
+  });
+
+  // Get all bowlers referenced in bowlerLeagues
   const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
-    queryKey: ["/api/bowlers", teamId],
-    queryFn: () =>
-      fetch(`/api/bowlers?teamId=${teamId}`).then((res) => res.json()),
+    queryKey: ["/api/bowlers", bowlerLeagues],
+    queryFn: () => {
+      if (!bowlerLeagues?.length) return Promise.resolve([]);
+      const bowlerIds = bowlerLeagues.map(bl => bl.bowlerId);
+      return fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`).then(res => res.json());
+    },
+    enabled: !!bowlerLeagues?.length,
+  });
+
+  const { data: league, isLoading: loadingLeague } = useQuery<League>({
+    queryKey: [`/api/leagues/${team?.leagueId}`],
+    enabled: !!team?.leagueId,
   });
 
   const updateTeamMutation = useMutation({
@@ -179,7 +196,7 @@ export default function TeamViewPage() {
 
   const reorderMutation = useMutation({
     mutationFn: async ({ id, order }: { id: number; order: number }) => {
-      const response = await apiRequest("PATCH", `/api/bowlers/${id}`, { order });
+      const response = await apiRequest("PATCH", `/api/bowler-leagues/${id}`, { order });
       if (!response.ok) {
         const error = await response.text();
         throw new Error(error);
@@ -187,25 +204,25 @@ export default function TeamViewPage() {
       return response.json();
     },
     onMutate: async ({ id, order }) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/bowlers", teamId] });
-      const previousBowlers = queryClient.getQueryData<Bowler[]>(["/api/bowlers", teamId]);
-      if (previousBowlers) {
-        const bowlers = [...previousBowlers];
-        const oldIndex = bowlers.findIndex(b => b.id === id);
+      await queryClient.cancelQueries({ queryKey: ["/api/bowler-leagues", teamId] });
+      const previousBowlerLeagues = queryClient.getQueryData<BowlerLeague[]>(["/api/bowler-leagues", teamId]);
+      if (previousBowlerLeagues) {
+        const bowlerLeagues = [...previousBowlerLeagues];
+        const oldIndex = bowlerLeagues.findIndex(bl => bl.id === id);
         if (oldIndex !== -1) {
-          const [movedBowler] = bowlers.splice(oldIndex, 1);
-          bowlers.splice(order, 0, movedBowler);
-          bowlers.forEach((b, index) => {
-            b.order = index;
+          const [movedBowlerLeague] = bowlerLeagues.splice(oldIndex, 1);
+          bowlerLeagues.splice(order, 0, movedBowlerLeague);
+          bowlerLeagues.forEach((bl, index) => {
+            bl.order = index;
           });
-          queryClient.setQueryData(["/api/bowlers", teamId], bowlers);
+          queryClient.setQueryData(["/api/bowler-leagues", teamId], bowlerLeagues);
         }
       }
-      return { previousBowlers };
+      return { previousBowlerLeagues };
     },
     onError: (error: Error, _, context) => {
-      if (context?.previousBowlers) {
-        queryClient.setQueryData(["/api/bowlers", teamId], context.previousBowlers);
+      if (context?.previousBowlerLeagues) {
+        queryClient.setQueryData(["/api/bowler-leagues", teamId], context.previousBowlerLeagues);
       }
       toast({
         title: "Error reordering bowlers",
@@ -213,17 +230,17 @@ export default function TeamViewPage() {
         variant: "destructive",
       });
     },
-    onSuccess: (updatedBowlers) => {
-      queryClient.setQueryData(["/api/bowlers", teamId], updatedBowlers);
+    onSuccess: (updatedBowlerLeagues) => {
+      queryClient.setQueryData(["/api/bowler-leagues", teamId], updatedBowlerLeagues);
     },
   });
 
   const handleDragEnd = async (event: any) => {
     const { active, over } = event;
 
-    if (active.id !== over.id && bowlers) {
-      const oldIndex = bowlers.findIndex((b) => b.id === active.id);
-      const newIndex = bowlers.findIndex((b) => b.id === over.id);
+    if (active.id !== over.id && bowlerLeagues) {
+      const oldIndex = bowlerLeagues.findIndex((bl) => bl.id === active.id);
+      const newIndex = bowlerLeagues.findIndex((bl) => bl.id === over.id);
 
       if (oldIndex !== -1 && newIndex !== -1) {
         await reorderMutation.mutateAsync({
@@ -245,13 +262,7 @@ export default function TeamViewPage() {
     }
   };
 
-  const { data: league, isLoading: loadingLeague } = useQuery<League>({
-    queryKey: [`/api/leagues/${team?.leagueId}`],
-    enabled: !!team?.leagueId, // Only run if team and leagueId exist
-  });
-
-
-  if (loadingTeam || loadingBowlers || loadingLeague) {
+  if (loadingTeam || loadingBowlers || loadingBowlerLeagues || loadingLeague) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -269,7 +280,7 @@ export default function TeamViewPage() {
     );
   }
 
-  const sortedBowlers = bowlers?.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const sortedBowlerLeagues = bowlerLeagues?.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)) || [];
 
   return (
     <Layout>
@@ -318,20 +329,25 @@ export default function TeamViewPage() {
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={sortedBowlers?.map((b) => b.id) ?? []}
+                items={sortedBowlerLeagues.map((bl) => bl.id)}
                 strategy={verticalListSortingStrategy}
               >
-                {sortedBowlers?.map((bowler) => (
-                  <SortableBowlerRow
-                    key={bowler.id}
-                    bowler={bowler}
-                    league={league}
-                    onEdit={(b) => {
-                      setSelectedBowler(b);
-                      setShowForm(true);
-                    }}
-                  />
-                ))}
+                {sortedBowlerLeagues.map((bowlerLeague) => {
+                  const bowler = bowlers?.find(b => b.id === bowlerLeague.bowlerId);
+                  if (!bowler) return null;
+                  return (
+                    <SortableBowlerRow
+                      key={bowlerLeague.id}
+                      bowler={bowler}
+                      bowlerLeague={bowlerLeague}
+                      league={league}
+                      onEdit={(b) => {
+                        setSelectedBowler(b);
+                        setShowForm(true);
+                      }}
+                    />
+                  );
+                })}
               </SortableContext>
             </DndContext>
           </TableBody>
