@@ -45,7 +45,7 @@ const safeSetLocalStorage = (key: string, value: any) => {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-  const [isCollapsed, setIsCollapsed] = useState(() => 
+  const [isCollapsed, setIsCollapsed] = useState(() =>
     safeGetLocalStorage("sidebarCollapsed", false)
   );
 
@@ -185,7 +185,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 )}
 
                 {/* Rest of the navigation items */}
-                {baseNavigation.map((item) => {
+                {baseNavigation.slice(1).map((item) => {
                   const Icon = item.icon;
                   return (
                     <Link key={item.name} href={item.href}>

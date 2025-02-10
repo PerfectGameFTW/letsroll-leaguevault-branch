@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { BowlerForm } from "@/components/bowler-form";
@@ -13,8 +13,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Eye, EyeOff, Search, Pencil } from "lucide-react";
-import type { Bowler, Team, League, BowlerLeague } from "@shared/schema";
-import { queryClient, apiRequest } from "@/lib/queryClient";
+import type { Bowler, Team, League } from "@shared/schema";
+import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
@@ -27,51 +27,30 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true, data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<Bowler[]>({
     queryKey: ["/api/bowlers"],
   });
-  console.log('Bowlers Response:', bowlersResponse);
-  const bowlers = bowlersResponse?.data || [];
 
-  // Get associations from bowler leagues with proper typing
-  const { data: bowlerLeaguesResponse } = useQuery<{ success: true, data: BowlerLeague[] }>({
+  // Use the bowlers array directly since the API now returns the array
+  const bowlers = bowlersResponse || [];
+
+  const { data: bowlerLeaguesResponse } = useQuery<{ data: { bowlerId: number, leagueId: number, teamId: number }[] }>({
     queryKey: ["/api/bowler-leagues-new"],
-    queryFn: async () => {
-      const response = await fetch('/api/bowler-leagues-new');
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowler leagues');
-      }
-      return response.json();
-    }
   });
-  console.log('Bowler Leagues Response:', bowlerLeaguesResponse);
+
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true, data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
-    queryFn: async () => {
-      const response = await fetch('/api/teams');
-      if (!response.ok) {
-        throw new Error('Failed to fetch teams');
-      }
-      return response.json();
-    }
   });
-  console.log('Teams Response:', teamsResponse);
-  const teams = teamsResponse?.data || [];
 
-  const { data: leaguesResponse } = useQuery<{ success: true, data: League[] }>({
+  const teams = teamsResponse || [];
+
+  const { data: leaguesResponse } = useQuery<League[]>({
     queryKey: ["/api/leagues"],
-    queryFn: async () => {
-      const response = await fetch('/api/leagues');
-      if (!response.ok) {
-        throw new Error('Failed to fetch leagues');
-      }
-      return response.json();
-    }
   });
-  console.log('Leagues Response:', leaguesResponse);
-  const leagues = leaguesResponse?.data || [];
+
+  const leagues = leaguesResponse || [];
 
   // Filter bowlers with proper type checking
   const filteredBowlers = bowlers.filter(bowler => {
