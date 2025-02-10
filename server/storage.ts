@@ -312,53 +312,68 @@ export class DatabaseStorage implements IStorage {
 
   async updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]> {
     try {
-      const [bowlerLeague] = await db
-        .select()
-        .from(bowlerLeagues)
-        .where(eq(bowlerLeagues.id, id));
+      const result = await db.transaction(async (tx) => {
+        const [bowlerLeague] = await tx
+          .select()
+          .from(bowlerLeagues)
+          .where(eq(bowlerLeagues.id, id));
 
-      if (!bowlerLeague) {
-        throw new Error('Bowler league not found');
-      }
+        if (!bowlerLeague) {
+          throw new Error('Bowler league not found');
+        }
 
-      // Get all bowler leagues for this team/league
-      const teamBowlerLeagues = await db
-        .select()
-        .from(bowlerLeagues)
-        .where(
-          and(
-            eq(bowlerLeagues.teamId, bowlerLeague.teamId),
-            eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
+        // First, update all orders to be very high numbers to avoid conflicts
+        await tx.execute(sql`
+          UPDATE bowler_leagues 
+          SET "order" = "order" + 1000000
+          WHERE team_id = ${bowlerLeague.teamId} 
+          AND league_id = ${bowlerLeague.leagueId}
+        `);
+
+        // Get current order
+        const teamBowlerLeagues = await tx
+          .select()
+          .from(bowlerLeagues)
+          .where(
+            and(
+              eq(bowlerLeagues.teamId, bowlerLeague.teamId),
+              eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
+            )
           )
-        )
-        .orderBy(bowlerLeagues.order);
+          .orderBy(bowlerLeagues.order);
 
-      // Sort bowlers into new order
-      const reorderedLeagues = [...teamBowlerLeagues];
-      const movingBowler = reorderedLeagues.find(bl => bl.id === id);
-      if (!movingBowler) throw new Error('Bowler not found');
-      
-      reorderedLeagues.splice(reorderedLeagues.indexOf(movingBowler), 1);
-      reorderedLeagues.splice(newOrder, 0, movingBowler);
-      
-      // Update all orders sequentially
-      for (let i = 0; i < reorderedLeagues.length; i++) {
-        await db
-          .update(bowlerLeagues)
-          .set({ order: i })
-          .where(eq(bowlerLeagues.id, reorderedLeagues[i].id));
-      }
+        // Calculate new orders
+        const reorderedLeagues = [...teamBowlerLeagues];
+        const movingBowler = reorderedLeagues.find(bl => bl.id === id);
+        if (!movingBowler) throw new Error('Bowler not found');
+        
+        reorderedLeagues.splice(reorderedLeagues.indexOf(movingBowler), 1);
+        reorderedLeagues.splice(newOrder, 0, movingBowler);
 
-      return await db
+        // Update all orders in a single query
+        await tx.execute(sql`
+          UPDATE bowler_leagues bl
+          SET "order" = c.new_order
+          FROM (VALUES ${sql.join(
+            reorderedLeagues.map((bl, idx) => sql`(${bl.id}, ${idx})`),
+            ','
+          )}) AS c(id, new_order)
+          WHERE bl.id = c.id
+        `);
+
+        return await tx
         .select()
-        .from(bowlerLeagues)
-        .where(
-          and(
-            eq(bowlerLeagues.teamId, bowlerLeague.teamId),
-            eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
+          .from(bowlerLeagues)
+          .where(
+            and(
+              eq(bowlerLeagues.teamId, bowlerLeague.teamId),
+              eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
+            )
           )
-        )
-        .orderBy(bowlerLeagues.order);
+          .orderBy(bowlerLeagues.order);
+      });
+
+      return result;
     } catch (error) {
       console.error('Error updating bowler league order:', error);
       throw error;
