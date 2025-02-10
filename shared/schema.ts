@@ -122,7 +122,16 @@ const baseLeagueSchema = z.object({
   seasonStart: z.coerce.date(),
   seasonEnd: z.coerce.date(),
   weekDay: z.string()
-    .regex(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)$/, "Invalid week day")
+    .transform(val => {
+      // Normalize input to capitalized first letter format
+      const normalized = val.trim().toLowerCase();
+      return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+    })
+    .pipe(
+      z.enum(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], {
+        errorMap: () => ({ message: "Please select a valid day of the week" })
+      })
+    )
     .optional(),
   practiceStartTime: z.string()
     .regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)")
