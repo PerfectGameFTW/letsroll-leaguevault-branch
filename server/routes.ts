@@ -173,7 +173,7 @@ export function registerRoutes(app: Express): Server {
 
       // Get bowlers directly assigned to this team
       const bowlers = await storage.getBowlers(teamId);
-      
+
       // Sort bowlers by order if available
       const sortedBowlers = bowlers.sort((a, b) =>
         (a.order ?? 0) - (b.order ?? 0)
@@ -368,32 +368,14 @@ export function registerRoutes(app: Express): Server {
       const id = parseInt(req.params.id);
       const update = insertBowlerSchema.partial().parse(req.body);
 
-      // Handle team assignments separately if present
-      if (update.teamAssignments && update.teamAssignments.length > 0) {
-        // First, get the bowler to check existing assignments
-        const bowler = await storage.getBowler(id);
-        if (!bowler) {
-          return res.status(404).json({ message: "Bowler not found" });
-        }
-
-        // Add new team assignments
-        for (const assignment of update.teamAssignments) {
-          await storage.addBowlerTeam(id, assignment.teamId, assignment.leagueId);
-        }
-
-        // Remove teamAssignments from update since we handled it
-        delete update.teamAssignments;
+      // If teamId and leagueId are provided, handle team assignment
+      if (update.teamId !== undefined && update.leagueId !== undefined) {
+        await storage.addBowlerTeam(id, update.teamId, update.leagueId);
       }
 
       // Handle other updates if any exist
-      if (Object.keys(update).length > 0) {
-        const updated = await storage.updateBowler(id, update);
-        res.json(updated);
-      } else {
-        // If we only had team assignments, return the updated bowler
-        const bowler = await storage.getBowler(id);
-        res.json(bowler);
-      }
+      const updated = await storage.updateBowler(id, update);
+      res.json(updated);
     } catch (error) {
       console.error('Error updating bowler:', error);
       if (error instanceof z.ZodError) {
