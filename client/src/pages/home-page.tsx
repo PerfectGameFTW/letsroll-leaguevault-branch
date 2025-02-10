@@ -18,17 +18,20 @@ export default function HomePage() {
     }
   });
 
-  const { data: leagues, isLoading: loadingLeagues } = useQuery<League[]>({
+  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
     queryFn: async () => {
       const response = await fetch("/api/leagues");
       if (!response.ok) {
         throw new Error('Failed to fetch leagues');
       }
-      const json = await response.json();
-      return json.data;
+      return response.json();
     }
   });
+
+  const leagues = leaguesResponse?.data;
+  const activeBowlers = Array.isArray(bowlers) ? bowlers.filter(b => b.active).length : 0;
+  const totalLeagues = Array.isArray(leagues) ? leagues.length : 0;
 
   if (loadingBowlers || loadingLeagues) {
     return (
@@ -39,9 +42,6 @@ export default function HomePage() {
       </Layout>
     );
   }
-
-  const activeBowlers = Array.isArray(bowlers) ? bowlers.filter(b => b.active).length : 0;
-  const totalLeagues = leagues?.length || 0;
 
   return (
     <Layout>
