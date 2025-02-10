@@ -1,7 +1,7 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, leagues, teams, bowlers, bowlerLeaguesNew as bowlerLeagues, payments,
+  users, leagues, teams, bowlers, bowlerLeagues, payments,
   type User, type InsertUser,
   type League, type InsertLeague,
   type Team, type InsertTeam,
@@ -10,7 +10,6 @@ import {
   type BowlerLeague, type InsertBowlerLeague
 } from "@shared/schema";
 
-// Add new deletion methods to the IStorage interface
 export interface IStorage {
   // Users
   getUser(id: number): Promise<User | undefined>;
@@ -32,7 +31,7 @@ export interface IStorage {
   deleteTeam(id: number): Promise<void>;
 
   // Bowlers
-  getBowlers(): Promise<Bowler[]>;
+  getBowlers(teamId?: number): Promise<Bowler[]>;
   getBowler(id: number): Promise<Bowler | undefined>;
   createBowler(bowler: InsertBowler): Promise<Bowler>;
   updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler>;
@@ -43,14 +42,12 @@ export interface IStorage {
   getBowlerLeague(id: number): Promise<BowlerLeague | undefined>;
   createBowlerLeague(association: InsertBowlerLeague): Promise<BowlerLeague>;
   updateBowlerLeague(id: number, bowlerLeague: Partial<InsertBowlerLeague>): Promise<BowlerLeague>;
+  deleteBowlerLeague(id: number): Promise<void>;
 
   // Payments
   getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePaymentStatus(id: number, status: string, squarePaymentId?: string): Promise<Payment>;
-
-  // Add these new methods
-  deleteBowlerLeague(id: number): Promise<void>;
   deletePayment(id: number): Promise<void>;
 }
 
@@ -131,7 +128,22 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Bowlers
-  async getBowlers(): Promise<Bowler[]> {
+  async getBowlers(teamId?: number): Promise<Bowler[]> {
+    if (teamId) {
+      const bowlerLeaguesList = await db
+        .select()
+        .from(bowlerLeagues)
+        .where(eq(bowlerLeagues.teamId, teamId));
+      const bowlerIds = [...new Set(bowlerLeaguesList.map(bl => bl.bowlerId))];
+      return await db
+        .select()
+        .from(bowlers)
+        .where(
+          bowlerIds.length > 0 
+            ? inArray(bowlers.id, bowlerIds)
+            : undefined
+        );
+    }
     return await db.select().from(bowlers);
   }
 
@@ -207,7 +219,6 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  // Add implementation for deleting bowler league associations
   async deleteBowlerLeague(id: number): Promise<void> {
     await db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id));
   }
@@ -254,7 +265,6 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  // Add implementation for deleting payments
   async deletePayment(id: number): Promise<void> {
     await db.delete(payments).where(eq(payments.id, id));
   }

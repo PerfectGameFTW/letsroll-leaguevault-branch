@@ -3,14 +3,15 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema, insertBowlerLeagueSchema } from "@shared/schema";
 import { z } from "zod";
-import { ApiError, Client } from 'square';
+import { ApiResponse, ApiListResponse } from "@shared/schema";
+import { ApiError, Client, Environment } from 'square';
 import { sendSuccess, sendError } from './utils/api';
 
 let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
   squareClient = new Client({
     accessToken: process.env.SQUARE_ACCESS_TOKEN,
-    environment: 'sandbox' as const,
+    environment: 'sandbox' as Environment,
   });
 }
 
@@ -21,7 +22,7 @@ export function registerRoutes(app: Express): Server {
       const leagues = await storage.getLeagues();
       sendSuccess(res, leagues);
     } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Failed to fetch leagues');
     }
   });
 
@@ -34,7 +35,7 @@ export function registerRoutes(app: Express): Server {
       }
       sendSuccess(res, league);
     } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Failed to fetch league');
     }
   });
 
@@ -47,7 +48,7 @@ export function registerRoutes(app: Express): Server {
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
-        sendError(res, error);
+        sendError(res, error instanceof Error ? error.message : 'Failed to create league');
       }
     }
   });
@@ -62,7 +63,7 @@ export function registerRoutes(app: Express): Server {
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
-        sendError(res, error);
+        sendError(res, error instanceof Error ? error.message : 'Failed to update league');
       }
     }
   });
@@ -83,7 +84,7 @@ export function registerRoutes(app: Express): Server {
       await storage.deleteLeague(id);
       sendSuccess(res, null, 204);
     } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Failed to delete league');
     }
   });
 
@@ -92,12 +93,9 @@ export function registerRoutes(app: Express): Server {
     try {
       const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
       const teams = await storage.getTeams(leagueId);
-      if (!Array.isArray(teams)) {
-        throw new Error("Invalid teams data format");
-      }
       sendSuccess(res, teams);
     } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Failed to fetch teams');
     }
   });
 
@@ -110,7 +108,7 @@ export function registerRoutes(app: Express): Server {
       }
       sendSuccess(res, team);
     } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Failed to fetch team');
     }
   });
 
@@ -123,7 +121,7 @@ export function registerRoutes(app: Express): Server {
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
-        sendError(res, error);
+        sendError(res, error instanceof Error ? error.message : 'Failed to create team');
       }
     }
   });
@@ -138,7 +136,7 @@ export function registerRoutes(app: Express): Server {
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
-        sendError(res, error);
+        sendError(res, error instanceof Error ? error.message : 'Failed to update team');
       }
     }
   });
@@ -149,7 +147,7 @@ export function registerRoutes(app: Express): Server {
       await storage.deleteTeam(id);
       sendSuccess(res, null, 204);
     } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Failed to delete team');
     }
   });
 
@@ -157,22 +155,10 @@ export function registerRoutes(app: Express): Server {
   app.get("/api/bowlers", async (req, res) => {
     try {
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
-      const bowlers = await storage.getBowlers();
-      if (!Array.isArray(bowlers)) {
-        throw new Error("Invalid bowlers data format");
-      }
-      // Apply team filter if provided
-      const filteredBowlers = teamId
-        ? bowlers.filter(bowler => bowler.teamId === teamId)
-        : bowlers;
-
-      // Sort by order
-      filteredBowlers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-      // Return in consistent format
-      sendSuccess(res, filteredBowlers);
+      const bowlers = await storage.getBowlers(teamId);
+      sendSuccess(res, bowlers);
     } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowlers');
     }
   });
 
@@ -185,7 +171,7 @@ export function registerRoutes(app: Express): Server {
       }
       sendSuccess(res, bowler);
     } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler');
     }
   });
 
@@ -202,16 +188,11 @@ export function registerRoutes(app: Express): Server {
         return sendError(res, "A bowler with this email already exists", 400, 'DUPLICATE_EMAIL');
       }
 
-      if (bowler.teamId && !bowler.order) {
-        const teamBowlers = await storage.getBowlers(bowler.teamId);
-        bowler.order = teamBowlers.length;
-      }
-
       const created = await storage.createBowler(bowler);
 
       if (squareClient) {
         try {
-          const squareCustomerId = await handleSquareCustomer(created, bowler.teamId);
+          const squareCustomerId = await handleSquareCustomer(created);
           if (squareCustomerId) {
             await storage.updateBowler(created.id, { squareCustomerId });
             const updatedBowler = await storage.getBowler(created.id);
@@ -227,7 +208,7 @@ export function registerRoutes(app: Express): Server {
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
-        sendError(res, error);
+        sendError(res, error instanceof Error ? error.message : 'Failed to create bowler');
       }
     }
   });
@@ -291,36 +272,18 @@ export function registerRoutes(app: Express): Server {
       const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
 
       const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId, leagueId, teamId });
-      if (!Array.isArray(bowlerLeagues)) {
-        throw new Error("Invalid bowler leagues data format");
-      }
       const sortedBowlerLeagues = bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       sendSuccess(res, sortedBowlerLeagues);
     } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  app.get("/api/bowler-leagues-new", async (req, res) => {
-    try {
-      const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
-      const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
-      const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
-
-      const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId, leagueId, teamId });
-      if (!Array.isArray(bowlerLeagues)) {
-        throw new Error("Invalid bowler leagues data format");
-      }
-      const sortedBowlerLeagues = bowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      sendSuccess(res, sortedBowlerLeagues);
-    } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler leagues');
     }
   });
 
   app.post("/api/bowler-leagues", async (req, res) => {
     try {
       const association = insertBowlerLeagueSchema.parse(req.body);
+
+      // Check for existing association
       const existing = await storage.getBowlerLeagues({
         bowlerId: association.bowlerId,
         leagueId: association.leagueId,
@@ -331,6 +294,7 @@ export function registerRoutes(app: Express): Server {
         return sendError(res, "Bowler is already assigned to this league and team", 400, 'DUPLICATE_ASSOCIATION');
       }
 
+      // Set order to the end of the current team's list
       const teamBowlerLeagues = await storage.getBowlerLeagues({ teamId: association.teamId });
       association.order = teamBowlerLeagues.length;
 
@@ -340,7 +304,7 @@ export function registerRoutes(app: Express): Server {
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
-        sendError(res, error);
+        sendError(res, error instanceof Error ? error.message : 'Failed to create bowler league association');
       }
     }
   });
@@ -390,7 +354,7 @@ export function registerRoutes(app: Express): Server {
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
-        sendError(res, error);
+        sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league association');
       }
     }
   });
@@ -521,7 +485,7 @@ export function registerRoutes(app: Express): Server {
       const payments = await storage.getPayments(bowlerId, leagueId);
       sendSuccess(res, payments);
     } catch (error) {
-      sendError(res, error);
+      sendError(res, error instanceof Error ? error.message : 'Failed to fetch payments');
     }
   });
 
@@ -534,7 +498,7 @@ export function registerRoutes(app: Express): Server {
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
-        sendError(res, error);
+        sendError(res, error instanceof Error ? error.message : 'Failed to create payment');
       }
     }
   });
@@ -580,7 +544,7 @@ export function registerRoutes(app: Express): Server {
       if (error instanceof z.ZodError) {
         sendError(res, error, 400);
       } else {
-        sendError(res, error);
+        sendError(res, error instanceof Error ? error.message : 'Failed to update payment status');
       }
     }
   });
@@ -669,7 +633,7 @@ export function registerRoutes(app: Express): Server {
   return httpServer;
 }
 
-async function handleSquareCustomer(bowler: any, teamId?: number | null) {
+async function handleSquareCustomer(bowler: any) {
   if (!squareClient) return null;
 
   const searchResponse = await squareClient.customersApi.searchCustomers({
@@ -685,7 +649,9 @@ async function handleSquareCustomer(bowler: any, teamId?: number | null) {
   let customerId: string;
 
   if (searchResponse.result.customers?.length) {
-    customerId = searchResponse.result.customers[0].id;
+    const existingCustomer = searchResponse.result.customers[0];
+    customerId = existingCustomer.id;
+
     await squareClient.customersApi.updateCustomer(customerId, {
       givenName: bowler.name.split(' ')[0],
       familyName: bowler.name.split(' ').slice(1).join(' ') || '',
@@ -706,38 +672,5 @@ async function handleSquareCustomer(bowler: any, teamId?: number | null) {
     customerId = customerResponse.result.customer.id;
   }
 
-  if (teamId) {
-    await handleSquareGroup(customerId, teamId);
-  }
-
   return customerId;
-}
-
-async function handleSquareGroup(customerId: string, teamId: number) {
-  if (!squareClient) return;
-
-  const team = await storage.getTeam(teamId);
-  if (!team) return;
-
-  const league = await storage.getLeague(team.leagueId);
-  if (!league) return;
-
-  const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
-  let groupId = groupsResponse.result.groups?.find(g => g.name === league.name)?.id;
-
-  if (!groupId) {
-    const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
-      idempotencyKey: `league-${league.id}`,
-      group: { name: league.name },
-    });
-    groupId = groupResponse.result.group?.id;
-  }
-
-  if (groupId) {
-    try {
-      await squareClient.customerGroupsApi.addCustomerToGroup(groupId, { customerId });
-    } catch (error) {
-      console.error('Error adding customer to group:', error);
-    }
-  }
 }
