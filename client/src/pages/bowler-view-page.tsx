@@ -56,11 +56,13 @@ export default function BowlerViewPage() {
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
-      return response.json();
+      const result = await response.json();
+      // Ensure we have the correct data structure
+      return { data: Array.isArray(result.data) ? result.data : [] };
     },
   });
 
-  const bowlerLeagues = bowlerLeaguesResponse?.data;
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
   // Get all leagues the bowler is in
   const { data: leaguesResponse } = useQuery<{ data: League[] }>({
@@ -71,7 +73,7 @@ export default function BowlerViewPage() {
   const leagues = leaguesResponse?.data;
 
   // Get the selected league's team
-  const selectedAssociation = bowlerLeagues?.find(bl => bl.leagueId === selectedLeagueId);
+  const selectedAssociation = bowlerLeagues.find(bl => bl.leagueId === selectedLeagueId);
 
   const { data: team, isLoading: loadingTeam } = useQuery<Team>({
     queryKey: [`/api/teams/${selectedAssociation?.teamId}`],
