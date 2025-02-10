@@ -271,6 +271,7 @@ export default function TeamViewPage() {
       console.log('Successfully updated bowler league order:', response);
       if (response?.data) {
         const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
+        // Update cache with server response
         queryClient.setQueryData(queryKey, response);
       }
 
@@ -280,7 +281,7 @@ export default function TeamViewPage() {
       });
     },
     onSettled: () => {
-      // Refetch after mutation is settled
+      // Force a refetch to ensure we have the latest data
       const queryKey = ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }];
       queryClient.invalidateQueries({ queryKey });
     }
@@ -295,6 +296,7 @@ export default function TeamViewPage() {
     const newIndex = sortedBowlerLeagues.findIndex(bl => bl.id === Number(over.id));
 
     if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+      console.log(`Moving bowler league from position ${oldIndex} to ${newIndex}`);
       try {
         await reorderMutation.mutateAsync({
           id: Number(active.id),
@@ -302,6 +304,7 @@ export default function TeamViewPage() {
         });
       } catch (error) {
         // Error handled by mutation error handler
+        console.error('Error in handleDragEnd:', error);
       }
     }
   };

@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
     };
 
     const bowlerLeagues = await storage.getBowlerLeagues(filters);
-    console.log(`Found ${bowlerLeagues.length} bowler leagues`);
+    console.log(`Found ${bowlerLeagues.length} bowler leagues:`, bowlerLeagues);
     sendSuccess(res, bowlerLeagues);
   } catch (error) {
     console.error('Error fetching bowler leagues:', error);
@@ -35,7 +35,7 @@ router.patch("/:id", async (req, res) => {
     if (typeof update.order === 'number') {
       console.log(`Updating bowler league ${id} order to ${update.order}`);
       const updatedBowlerLeagues = await storage.updateBowlerLeagueOrder(id, update.order);
-      console.log('Updated bowler league orders:', updatedBowlerLeagues);
+      console.log('Updated bowler league orders:', JSON.stringify(updatedBowlerLeagues, null, 2));
       return sendSuccess(res, updatedBowlerLeagues);
     }
 

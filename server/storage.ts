@@ -305,51 +305,55 @@ export class DatabaseStorage implements IStorage {
 
   async updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]> {
     try {
-      // Get current bowler league to find team and league IDs
-      const [bowlerLeague] = await db
-        .select()
-        .from(bowlerLeagues)
-        .where(eq(bowlerLeagues.id, id));
+      return await db.transaction(async (tx) => {
+        // Get current bowler league to find team and league IDs
+        const [bowlerLeague] = await tx
+          .select()
+          .from(bowlerLeagues)
+          .where(eq(bowlerLeagues.id, id));
 
-      if (!bowlerLeague) {
-        throw new Error('Bowler league not found');
-      }
+        if (!bowlerLeague) {
+          throw new Error('Bowler league not found');
+        }
 
-      // Get all bowler leagues for this team/league combination
-      const currentBowlerLeagues = await db
-        .select()
-        .from(bowlerLeagues)
-        .where(
-          and(
-            eq(bowlerLeagues.teamId, bowlerLeague.teamId),
-            eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
+        // Get all bowler leagues for this team/league combination
+        const currentBowlerLeagues = await tx
+          .select()
+          .from(bowlerLeagues)
+          .where(
+            and(
+              eq(bowlerLeagues.teamId, bowlerLeague.teamId),
+              eq(bowlerLeagues.leagueId, bowlerLeague.leagueId)
+            )
+          );
+
+        // Sort by current order
+        const sortedLeagues = [...currentBowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+        // Find current index
+        const currentIndex = sortedLeagues.findIndex(bl => bl.id === id);
+        if (currentIndex === -1) {
+          throw new Error('Bowler league not found in sorted list');
+        }
+
+        // Remove from current position and insert at new position
+        const [movedLeague] = sortedLeagues.splice(currentIndex, 1);
+        sortedLeagues.splice(newOrder, 0, movedLeague);
+
+        // Update all orders in the database within the transaction
+        const updates = await Promise.all(
+          sortedLeagues.map((bl, index) =>
+            tx
+              .update(bowlerLeagues)
+              .set({ order: index })
+              .where(eq(bowlerLeagues.id, bl.id))
+              .returning()
           )
         );
 
-      // Sort by current order
-      const sortedLeagues = currentBowlerLeagues.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-      // Find current index
-      const currentIndex = sortedLeagues.findIndex(bl => bl.id === id);
-      if (currentIndex === -1) {
-        throw new Error('Bowler league not found in sorted list');
-      }
-
-      // Remove from current position and insert at new position
-      const [movedLeague] = sortedLeagues.splice(currentIndex, 1);
-      sortedLeagues.splice(newOrder, 0, movedLeague);
-
-      // Update all orders in the database
-      const updates = sortedLeagues.map((bl, index) =>
-        db
-          .update(bowlerLeagues)
-          .set({ order: index })
-          .where(eq(bowlerLeagues.id, bl.id))
-          .returning()
-      );
-
-      const results = await Promise.all(updates);
-      return results.map(r => r[0]);
+        // Return the flattened results
+        return updates.map(result => result[0]);
+      });
     } catch (error) {
       console.error('Error updating bowler league order:', error);
       throw error;
