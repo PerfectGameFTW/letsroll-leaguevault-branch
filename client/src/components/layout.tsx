@@ -28,9 +28,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return saved ? JSON.parse(saved) : false;
   });
 
-  const { data: leagues } = useQuery<League[]>({
+  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
+    queryFn: async () => {
+      const response = await fetch("/api/leagues");
+      if (!response.ok) {
+        throw new Error('Failed to fetch leagues');
+      }
+      return response.json();
+    }
   });
+
+  const leagues = leaguesResponse?.data;
 
   useEffect(() => {
     localStorage.setItem("sidebarCollapsed", JSON.stringify(isCollapsed));
