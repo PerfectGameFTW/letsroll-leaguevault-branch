@@ -149,14 +149,15 @@ export default function TeamViewPage() {
 
   // Get bowler leagues for this team
   const { data: bowlerLeaguesResponse = { data: [] }, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<{ data: BowlerLeague[] }>({
-    queryKey: ["/api/bowler-leagues", teamId],
+    queryKey: ["/api/bowler-leagues", teamId, team?.leagueId],
     queryFn: async () => {
-      const response = await fetch(`/api/bowler-leagues?teamId=${teamId}`);
+      const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${team?.leagueId}`);
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
       return response.json();
     },
+    enabled: !!team?.leagueId,
   });
 
   const bowlerLeagues = bowlerLeaguesResponse.data;

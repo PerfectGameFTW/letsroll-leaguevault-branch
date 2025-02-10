@@ -108,8 +108,11 @@ export default function TeamsPage() {
 }
 
 function TeamBowlers({ teamId }: { teamId: number }) {
+  const params = useParams();
+  const leagueId = parseInt(params.leagueId!);
+  
   const { data: bowlerLeaguesResponse, isLoading } = useQuery<{ data: any[] }>({
-    queryKey: [`/api/bowler-leagues`, teamId],
+    queryKey: [`/api/bowler-leagues`, teamId, leagueId],
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${leagueId}`);
       if (!response.ok) {
@@ -117,7 +120,7 @@ function TeamBowlers({ teamId }: { teamId: number }) {
       }
       return response.json();
     },
-    enabled: !!teamId,
+    enabled: !!teamId && !!leagueId,
   });
 
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
