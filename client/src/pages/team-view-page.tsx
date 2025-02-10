@@ -315,11 +315,11 @@ export default function TeamViewPage() {
   const sortedBowlerLeagues = Array.isArray(bowlerLeagues) 
     ? [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
-  const teamBowlers = Array.isArray(bowlers) && Array.isArray(sortedBowlerLeagues)
+  const teamBowlers = Array.isArray(bowlers) && Array.isArray(bowlerLeagues)
     ? bowlers.filter(bowler => 
-        sortedBowlerLeagues.some(bl => 
+        bowlerLeagues.some(bl => 
           bl.bowlerId === bowler.id && 
-          bl.teamId === teamId && 
+          bl.teamId === parseInt(teamId) && 
           bl.leagueId === team?.leagueId
         )
       )

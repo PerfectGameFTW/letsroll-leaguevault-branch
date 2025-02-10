@@ -165,7 +165,7 @@ export default function BowlerViewPage() {
   let fullSeasonAmount = 0;
   let amountPastDue = 0;
 
-  if (league) {
+  if (league && league.seasonStart && league.seasonEnd && league.weeklyFee) {
     const seasonStart = new Date(league.seasonStart);
     const today = startOfToday();
     const seasonEnd = new Date(league.seasonEnd);
@@ -173,9 +173,9 @@ export default function BowlerViewPage() {
     if (today < seasonStart) {
       weeksDue = 0;
     } else if (today > seasonEnd) {
-      weeksDue = differenceInWeeks(seasonEnd, seasonStart);
+      weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
     } else {
-      weeksDue = differenceInWeeks(today, seasonStart);
+      weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
     }
 
     totalSeasonDues = league.weeklyFee * weeksDue;
