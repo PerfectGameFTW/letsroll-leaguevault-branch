@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, index, unique } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -9,22 +9,13 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
 });
 
+// Core tables with improved constraints and relations
 export const bowlers = pgTable("bowlers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull(),
   active: boolean("active").notNull().default(true),
   squareCustomerId: text("square_customer_id"),
-  order: integer("order").notNull().default(0),
-});
-
-// First create bowler_leagues_new to avoid data loss
-export const bowlerLeaguesNew = pgTable("bowler_leagues_new", {
-  id: serial("id").primaryKey(),
-  bowlerId: integer("bowler_id").notNull().references(() => bowlers.id),
-  leagueId: integer("league_id").notNull().references(() => leagues.id),
-  teamId: integer("team_id").notNull().references(() => teams.id),
-  active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
 });
 
@@ -45,14 +36,32 @@ export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   number: integer("number"),
-  leagueId: integer("league_id").notNull().references(() => leagues.id),
+  leagueId: integer("league_id").notNull().references(() => leagues.id, { onDelete: 'cascade' }),
   active: boolean("active").notNull().default(true),
 });
 
+// Improved bowler leagues table with better constraints
+export const bowlerLeagues = pgTable("bowler_leagues", {
+  id: serial("id").primaryKey(),
+  bowlerId: integer("bowler_id").notNull().references(() => bowlers.id, { onDelete: 'cascade' }),
+  leagueId: integer("league_id").notNull().references(() => leagues.id, { onDelete: 'cascade' }),
+  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: 'cascade' }),
+  active: boolean("active").notNull().default(true),
+  order: integer("order").notNull().default(0),
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+}, (table) => ({
+  // Add unique constraint to prevent duplicate assignments
+  uniqueAssignment: unique().on(table.bowlerId, table.leagueId, table.teamId),
+  // Add indexes for better query performance
+  bowlerIdx: index("bowler_leagues_bowler_idx").on(table.bowlerId),
+  leagueIdx: index("bowler_leagues_league_idx").on(table.leagueId),
+  teamIdx: index("bowler_leagues_team_idx").on(table.teamId),
+}));
+
 export const payments = pgTable("payments", {
   id: serial("id").primaryKey(),
-  bowlerId: integer("bowler_id").notNull().references(() => bowlers.id),
-  leagueId: integer("league_id").notNull().references(() => leagues.id),
+  bowlerId: integer("bowler_id").notNull().references(() => bowlers.id, { onDelete: 'cascade' }),
+  leagueId: integer("league_id").notNull().references(() => leagues.id, { onDelete: 'cascade' }),
   amount: integer("amount").notNull(),
   weekOf: timestamp("week_of").notNull(),
   squarePaymentId: text("square_payment_id"),
@@ -60,10 +69,10 @@ export const payments = pgTable("payments", {
   paidAt: timestamp("paid_at"),
 });
 
-// Keep the relations definitions
+// Improved relations with type safety
 export const leagueRelations = relations(leagues, ({ many }) => ({
   teams: many(teams),
-  bowlerLeaguesNew: many(bowlerLeaguesNew),
+  bowlerLeagues: many(bowlerLeagues),
   payments: many(payments),
 }));
 
@@ -72,33 +81,35 @@ export const teamRelations = relations(teams, ({ one, many }) => ({
     fields: [teams.leagueId],
     references: [leagues.id],
   }),
-  bowlerLeaguesNew: many(bowlerLeaguesNew),
+  bowlerLeagues: many(bowlerLeagues),
 }));
 
 export const bowlerRelations = relations(bowlers, ({ many }) => ({
-  bowlerLeaguesNew: many(bowlerLeaguesNew),
+  bowlerLeagues: many(bowlerLeagues),
   payments: many(payments),
 }));
 
-export const bowlerLeagueNewRelations = relations(bowlerLeaguesNew, ({ one }) => ({
+export const bowlerLeagueRelations = relations(bowlerLeagues, ({ one }) => ({
   bowler: one(bowlers, {
-    fields: [bowlerLeaguesNew.bowlerId],
+    fields: [bowlerLeagues.bowlerId],
     references: [bowlers.id],
   }),
   league: one(leagues, {
-    fields: [bowlerLeaguesNew.leagueId],
+    fields: [bowlerLeagues.leagueId],
     references: [leagues.id],
   }),
   team: one(teams, {
-    fields: [bowlerLeaguesNew.teamId],
+    fields: [bowlerLeagues.teamId],
     references: [teams.id],
   }),
 }));
 
-// Schema exports remain the same
-export const insertUserSchema = createInsertSchema(users);
-export const insertBowlerSchema = createInsertSchema(bowlers);
-export const insertBowlerLeagueSchema = createInsertSchema(bowlerLeaguesNew);
+// Improved schema validation with better error messages
+export const insertBowlerSchema = createInsertSchema(bowlers, {
+  email: z.string().email("Invalid email address"),
+  name: z.string().min(1, "Name is required"),
+});
+
 export const insertLeagueSchema = createInsertSchema(leagues).extend({
   seasonStart: z.coerce.date(),
   seasonEnd: z.coerce.date(),
@@ -107,15 +118,15 @@ export const insertLeagueSchema = createInsertSchema(leagues).extend({
   competitionStartTime: z.string().optional(),
   weeklyFee: z.number().min(0, "Weekly fee must be non-negative"),
 });
+
 export const insertTeamSchema = createInsertSchema(teams).extend({
   number: z.number().min(1, "Team number must be at least 1"),
 });
+
+export const insertBowlerLeagueSchema = createInsertSchema(bowlerLeagues);
 export const insertPaymentSchema = createInsertSchema(payments);
 
-// Type exports
-export type User = typeof users.$inferSelect;
-export type InsertUser = z.infer<typeof insertUserSchema>;
-
+// Improved type exports with better naming
 export type League = typeof leagues.$inferSelect;
 export type InsertLeague = z.infer<typeof insertLeagueSchema>;
 
@@ -125,8 +136,21 @@ export type InsertTeam = z.infer<typeof insertTeamSchema>;
 export type Bowler = typeof bowlers.$inferSelect;
 export type InsertBowler = z.infer<typeof insertBowlerSchema>;
 
-export type BowlerLeague = typeof bowlerLeaguesNew.$inferSelect;
+export type BowlerLeague = typeof bowlerLeagues.$inferSelect;
 export type InsertBowlerLeague = z.infer<typeof insertBowlerLeagueSchema>;
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+
+// API response types for consistent handling
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: string;
+}
+
+export interface ApiListResponse<T> {
+  success: boolean;
+  data: T[];
+  error?: string;
+}
