@@ -111,7 +111,7 @@ function TeamBowlers({ teamId }: { teamId: number }) {
   const { data: bowlerLeaguesResponse, isLoading } = useQuery<{ data: any[] }>({
     queryKey: [`/api/bowler-leagues`, teamId],
     queryFn: async () => {
-      const response = await fetch(`/api/bowler-leagues?teamId=${teamId}`);
+      const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${leagueId}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch bowler leagues for team ${teamId}`);
       }
