@@ -177,7 +177,7 @@ export default function TeamViewPage() {
     },
     enabled: bowlerLeagues.length > 0,
   });
-  const bowlers = bowlersResponse?.data || [];
+  
 
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${team?.leagueId}`],
@@ -314,14 +314,15 @@ export default function TeamViewPage() {
   }
 
   // Make sure we have all the data before rendering
-  const sortedBowlerLeagues = Array.isArray(bowlerLeaguesResponse?.data?.data) 
-    ? [...bowlerLeaguesResponse.data.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const sortedBowlerLeagues = Array.isArray(bowlerLeaguesResponse?.data)
+    ? [...bowlerLeaguesResponse.data].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
     : [];
   const league = leagueResponse?.data;
-  const teamBowlers = bowlers.filter(bowler => 
-    sortedBowlerLeagues.some(bl => 
-      bl.bowlerId === bowler.id && 
-      bl.teamId === parseInt(teamId) && 
+  const bowlersList = bowlersResponse?.data?.data ?? [];
+  const teamBowlers = bowlersList.filter(bowler =>
+    sortedBowlerLeagues.some(bl =>
+      bl.bowlerId === bowler.id &&
+      bl.teamId === teamId &&
       bl.leagueId === team?.leagueId
     )
   );
