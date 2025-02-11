@@ -357,7 +357,7 @@ export default function WeeklyPaymentsPage() {
     });
   };
 
-  // Add delete mutation
+  // Update the delete mutation
   const deletePaymentMutation = useMutation({
     mutationFn: async (id: number) => {
       const response = await apiRequest("DELETE", `/api/payments/${id}`);
@@ -367,7 +367,9 @@ export default function WeeklyPaymentsPage() {
       }
     },
     onSuccess: () => {
+      // Invalidate all related queries to ensure proper cache updates
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       toast({
         title: "Payment deleted",
         description: "The payment has been successfully deleted.",
@@ -384,7 +386,13 @@ export default function WeeklyPaymentsPage() {
   });
 
   const handleDelete = async (id: number) => {
-    await deletePaymentMutation.mutate(id);
+    try {
+      await deletePaymentMutation.mutateAsync(id);
+      // Force refetch the payments after deletion
+      await queryClient.refetchQueries({ queryKey: ["/api/payments"] });
+    } catch (error) {
+      console.error('Error deleting payment:', error);
+    }
   };
 
 
