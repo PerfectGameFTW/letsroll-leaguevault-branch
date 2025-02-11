@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
 import { format, differenceInWeeks, startOfToday, subDays } from "date-fns";
-import type { League, Team } from "@shared/schema";
+import type { League, Team, Payment, Bowler, BowlerLeague } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -20,6 +20,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 export default function WeeklyPaymentsPage() {
@@ -45,8 +54,63 @@ export default function WeeklyPaymentsPage() {
     }
   });
 
+  // Fetch payments for selected team and week
+  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
+    queryKey: ["/api/payments", selectedTeam, selectedDate],
+    queryFn: async () => {
+      if (!selectedTeam || !selectedDate) {
+        return { data: [] };
+      }
+      const response = await fetch(
+        `/api/payments?teamId=${selectedTeam}&weekOf=${selectedDate.toISOString()}`
+      );
+      if (!response.ok) {
+        throw new Error('Failed to fetch payments');
+      }
+      return response.json();
+    },
+    enabled: !!selectedTeam && !!selectedDate,
+  });
+
+  // Fetch bowlers for the selected team
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
+    queryKey: ["/api/bowler-leagues", selectedTeam, leagueId],
+    queryFn: async () => {
+      if (!selectedTeam) {
+        return { data: [] };
+      }
+      const response = await fetch(`/api/bowler-leagues?teamId=${selectedTeam}&leagueId=${leagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowler leagues');
+      }
+      return response.json();
+    },
+    enabled: !!selectedTeam,
+  });
+
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
+
+  // Fetch bowler details
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
+    queryKey: ["/api/bowlers", bowlerLeagues],
+    queryFn: async () => {
+      if (!bowlerLeagues.length) {
+        return { data: [] };
+      }
+      const bowlerIds = bowlerLeagues.map(bl => bl.bowlerId);
+      const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowlers');
+      }
+      return response.json();
+    },
+    enabled: bowlerLeagues.length > 0,
+  });
+
   const league = leagueResponse?.data;
   const teams = teamsResponse?.data || [];
+  const payments = paymentsResponse?.data || [];
+  const bowlers = bowlersResponse?.data || [];
 
   // Update the getNearestBowlingDay function
   const getNearestBowlingDay = (date: Date, weekDay: string): Date => {
@@ -103,11 +167,9 @@ export default function WeeklyPaymentsPage() {
   // Calculate the disabled dates (outside season range)
   let disabledDates: { before: Date; after: Date } | undefined;
   if (league) {
-    const startDate = new Date(league.seasonStart);
-    const endDate = new Date(league.seasonEnd);
     disabledDates = {
-      before: startDate,
-      after: endDate,
+      before: new Date(league.seasonStart),
+      after: new Date(league.seasonEnd),
     };
   }
 
@@ -227,8 +289,50 @@ export default function WeeklyPaymentsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {/* Payment log content will be implemented next */}
-              <p className="text-muted-foreground">Payment log content coming soon...</p>
+              {loadingPayments || loadingBowlers ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Bowler</TableHead>
+                      <TableHead>Payment Type</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {payments.length > 0 ? (
+                      payments.map((payment) => {
+                        const bowler = bowlers.find(b => b.id === payment.bowlerId);
+                        return (
+                          <TableRow key={payment.id}>
+                            <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
+                            <TableCell>
+                              <Badge variant={payment.type === 'cash' ? 'default' : 'secondary'}>
+                                {payment.type === 'square' ? 'Square' : 
+                                 payment.type === 'cash' ? 'Cash' : 
+                                 payment.type === 'check' ? 'Check' : 
+                                 'Other'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              ${(payment.amount / 100).toFixed(2)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center text-muted-foreground">
+                          No payments recorded for this week
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         )}
