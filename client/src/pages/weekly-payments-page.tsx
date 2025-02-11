@@ -329,8 +329,8 @@ export default function WeeklyPaymentsPage() {
   const handleSaveEdit = async (id: number) => {
     if (!editingPayment) return;
 
-    const amountInCents = Math.round(parseFloat(editingPayment.amount) * 100);
-    if (isNaN(amountInCents)) {
+    const amount = editingPayment.amount.trim();
+    if (!amount || isNaN(parseFloat(amount))) {
       toast({
         title: "Invalid amount",
         description: "Please enter a valid number",
@@ -338,6 +338,9 @@ export default function WeeklyPaymentsPage() {
       });
       return;
     }
+
+    // Convert amount to cents as integer
+    const amountInCents = Math.round(parseFloat(amount) * 100);
 
     await updatePaymentMutation.mutate({
       id,
