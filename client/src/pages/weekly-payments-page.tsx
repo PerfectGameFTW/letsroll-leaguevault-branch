@@ -367,15 +367,41 @@ export default function WeeklyPaymentsPage() {
         console.error('[Frontend] Payment deletion failed:', error);
         throw new Error(error);
       }
+      return id;
     },
-    onSuccess: () => {
-      console.log('[Frontend] Payment deletion successful');
-      // Force refetch all payment queries
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/payments"],
-        refetchType: "all"
+    onMutate: async (deletedId) => {
+      await queryClient.cancelQueries({ 
+        queryKey: ["/api/payments"]
       });
 
+      const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
+
+      if (previousPayments?.data) {
+        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
+          data: previousPayments.data.filter(payment => payment.id !== deletedId)
+        });
+      }
+
+      return { previousPayments };
+    },
+    onError: (error: Error, _, context) => {
+      if (context?.previousPayments) {
+        queryClient.setQueryData(["/api/payments"], context.previousPayments);
+      }
+      toast({
+        title: "Error deleting payment",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+    onSuccess: (deletedId) => {
+      const payments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
+      if (payments?.data) {
+        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
+          data: payments.data.filter(payment => payment.id !== deletedId)
+        });
+      }
+      
       toast({
         title: "Payment deleted",
         description: "The payment has been successfully deleted.",
