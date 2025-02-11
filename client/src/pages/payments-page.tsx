@@ -53,6 +53,8 @@ export default function PaymentsPage() {
         console.error('[Frontend] Payment deletion failed:', error);
         throw new Error(error);
       }
+      // Return the deleted ID for use in cache updates
+      return id;
     },
     onMutate: async (deletedId) => {
       await queryClient.cancelQueries({ 
@@ -80,10 +82,14 @@ export default function PaymentsPage() {
         variant: "destructive",
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["/api/payments"]
-      });
+    onSuccess: (deletedId) => {
+      // Update the cache directly instead of invalidating
+      const payments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
+      if (payments?.data) {
+        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
+          data: payments.data.filter(payment => payment.id !== deletedId)
+        });
+      }
       
       toast({
         title: "Payment deleted",
