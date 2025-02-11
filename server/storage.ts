@@ -183,25 +183,12 @@ export class DatabaseStorage implements IStorage {
     try {
       console.log('[Storage] Getting bowlers with filters:', { teamId, ids });
 
-      let query = db.select({
-        id: bowlers.id,
-        name: bowlers.name,
-        email: bowlers.email,
-        active: bowlers.active,
-        order: bowlers.order,
-        squareCustomerId: bowlers.squareCustomerId
-      }).from(bowlers);
+      let query = db.select().from(bowlers).orderBy(bowlers.order);
 
       if (teamId !== undefined) {
         console.log('[Storage] Applying team filter:', teamId);
-        query = db.select({
-          id: bowlers.id,
-          name: bowlers.name,
-          email: bowlers.email,
-          active: bowlers.active,
-          order: bowlers.order,
-          squareCustomerId: bowlers.squareCustomerId
-        })
+        query = db
+          .select()
           .from(bowlers)
           .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
           .where(eq(bowlerLeagues.teamId, teamId))
