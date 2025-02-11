@@ -156,7 +156,10 @@ export default function WeeklyPaymentsPage() {
       leagueId: number;
       status: string;
     }) => {
-      const response = await apiRequest("POST", "/api/payments", payment);
+      const response = await apiRequest("POST", "/api/payments", {
+        ...payment,
+        squarePaymentId: payment.type, // Store payment type in squarePaymentId for non-Square payments
+      });
       if (!response.ok) {
         const error = await response.text();
         throw new Error(error);
@@ -459,10 +462,10 @@ export default function WeeklyPaymentsPage() {
                               <TableRow key={payment.id}>
                                 <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
                                 <TableCell>
-                                  <Badge variant={payment.type === 'cash' ? 'default' : 'secondary'}>
-                                    {payment.type === 'square' ? 'Square' : 
-                                     payment.type === 'cash' ? 'Cash' : 
-                                     payment.type === 'check' ? 'Check' : 
+                                  <Badge variant={payment.squarePaymentId === 'cash' ? 'default' : 'secondary'}>
+                                    {payment.squarePaymentId === 'square' ? 'Square' : 
+                                     payment.squarePaymentId === 'cash' ? 'Cash' : 
+                                     payment.squarePaymentId === 'check' ? 'Check' : 
                                      'Other'}
                                   </Badge>
                                 </TableCell>
