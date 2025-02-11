@@ -357,7 +357,7 @@ export default function WeeklyPaymentsPage() {
     });
   };
 
-  // Update the delete mutation with proper cache handling
+  // Update the deletion mutation to handle cache properly
   const deletePaymentMutation = useMutation({
     mutationFn: async (id: number) => {
       console.log('[Frontend] Deleting payment:', id);
@@ -369,39 +369,14 @@ export default function WeeklyPaymentsPage() {
       }
       return id;
     },
-    onMutate: async (deletedId) => {
-      await queryClient.cancelQueries({ 
-        queryKey: ["/api/payments"]
-      });
-
-      const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
-
-      if (previousPayments?.data) {
-        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
-          data: previousPayments.data.filter(payment => payment.id !== deletedId)
-        });
-      }
-
-      return { previousPayments };
-    },
-    onError: (error: Error, _, context) => {
-      if (context?.previousPayments) {
-        queryClient.setQueryData(["/api/payments"], context.previousPayments);
-      }
-      toast({
-        title: "Error deleting payment",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
     onSuccess: (deletedId) => {
-      const payments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
-      if (payments?.data) {
-        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
-          data: payments.data.filter(payment => payment.id !== deletedId)
-        });
-      }
-      
+      // Invalidate all payment queries to ensure proper cache updates
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/payments"],
+        refetchType: "all",
+        exact: false  // This ensures we catch all payment-related queries
+      });
+
       toast({
         title: "Payment deleted",
         description: "The payment has been successfully deleted.",
