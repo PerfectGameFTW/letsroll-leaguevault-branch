@@ -391,6 +391,7 @@ export default function WeeklyPaymentsPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       }, 500);
     },
+    onError: (error: Error, _, context) => {
       if (context?.previousPayments) {
         queryClient.setQueryData(["/api/payments"], context.previousPayments);
       }
@@ -400,7 +401,7 @@ export default function WeeklyPaymentsPage() {
         description: error.message,
         variant: "destructive",
       });
-    },
+    }
   });
 
   const handleDelete = async (id: number) => {
