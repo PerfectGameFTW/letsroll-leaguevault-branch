@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import {
   Select,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
 import { format, differenceInWeeks, startOfToday, subDays } from "date-fns";
 import type { League, Team, Payment, Bowler, BowlerLeague } from "@shared/schema";
@@ -30,12 +31,22 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+interface PaymentEntry {
+  bowlerId: number;
+  type: string;
+  amount: string;
+}
 
 export default function WeeklyPaymentsPage() {
   const params = useParams();
+  const { toast } = useToast();
   const leagueId = parseInt(params.leagueId!);
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTeam, setSelectedTeam] = useState<string>();
+  const [paymentEntries, setPaymentEntries] = useState<{ [key: number]: PaymentEntry }>({});
 
   // Fetch league details
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
@@ -111,6 +122,77 @@ export default function WeeklyPaymentsPage() {
   const teams = teamsResponse?.data || [];
   const payments = paymentsResponse?.data || [];
   const bowlers = bowlersResponse?.data || [];
+
+  // Handle payment input changes
+  const handlePaymentTypeChange = (bowlerId: number, type: string) => {
+    setPaymentEntries(prev => ({
+      ...prev,
+      [bowlerId]: {
+        ...prev[bowlerId],
+        bowlerId,
+        type,
+      }
+    }));
+  };
+
+  const handleAmountChange = (bowlerId: number, amount: string) => {
+    setPaymentEntries(prev => ({
+      ...prev,
+      [bowlerId]: {
+        ...prev[bowlerId],
+        bowlerId,
+        amount: amount.replace(/[^0-9.]/g, ''),
+      }
+    }));
+  };
+
+  // Payment submission mutation
+  const submitPaymentMutation = useMutation({
+    mutationFn: async (payment: { bowlerId: number; type: string; amount: number; weekOf: Date }) => {
+      const response = await apiRequest("POST", "/api/payments", payment);
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({
+        title: "Payment recorded",
+        description: "The payment has been successfully recorded.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error recording payment",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSubmitPayment = async (bowlerId: number) => {
+    const entry = paymentEntries[bowlerId];
+    if (!entry?.type || !entry?.amount || !selectedDate) return;
+
+    const amountInCents = Math.round(parseFloat(entry.amount) * 100);
+    if (isNaN(amountInCents)) return;
+
+    await submitPaymentMutation.mutate({
+      bowlerId,
+      type: entry.type,
+      amount: amountInCents,
+      weekOf: selectedDate,
+    });
+
+    // Clear the entry after successful submission
+    setPaymentEntries(prev => {
+      const newEntries = { ...prev };
+      delete newEntries[bowlerId];
+      return newEntries;
+    });
+  };
 
   // Update the getNearestBowlingDay function
   const getNearestBowlingDay = (date: Date, weekDay: string): Date => {
@@ -294,44 +376,109 @@ export default function WeeklyPaymentsPage() {
                   <Loader2 className="h-8 w-8 animate-spin" />
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Bowler</TableHead>
-                      <TableHead>Payment Type</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {payments.length > 0 ? (
-                      payments.map((payment) => {
-                        const bowler = bowlers.find(b => b.id === payment.bowlerId);
-                        return (
-                          <TableRow key={payment.id}>
-                            <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
+                <div className="space-y-6">
+                  {/* Payment Entry Interface */}
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Bowler</TableHead>
+                          <TableHead>Payment Type</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {bowlers.map((bowler) => (
+                          <TableRow key={bowler.id}>
+                            <TableCell>{bowler.name}</TableCell>
                             <TableCell>
-                              <Badge variant={payment.type === 'cash' ? 'default' : 'secondary'}>
-                                {payment.type === 'square' ? 'Square' : 
-                                 payment.type === 'cash' ? 'Cash' : 
-                                 payment.type === 'check' ? 'Check' : 
-                                 'Other'}
-                              </Badge>
+                              <Select
+                                value={paymentEntries[bowler.id]?.type || ""}
+                                onValueChange={(value) => handlePaymentTypeChange(bowler.id, value)}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="cash">Cash</SelectItem>
+                                  <SelectItem value="check">Check</SelectItem>
+                                  <SelectItem value="credit" disabled>Credit Card (Customer Portal)</SelectItem>
+                                </SelectContent>
+                              </Select>
                             </TableCell>
-                            <TableCell className="text-right">
-                              ${(payment.amount / 100).toFixed(2)}
+                            <TableCell>
+                              <Input
+                                type="text"
+                                placeholder="0.00"
+                                value={paymentEntries[bowler.id]?.amount || ""}
+                                onChange={(e) => handleAmountChange(bowler.id, e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                onClick={() => handleSubmitPayment(bowler.id)}
+                                disabled={
+                                  !paymentEntries[bowler.id]?.type ||
+                                  !paymentEntries[bowler.id]?.amount ||
+                                  submitPaymentMutation.isPending
+                                }
+                                size="sm"
+                              >
+                                {submitPaymentMutation.isPending && (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                )}
+                                Record Payment
+                              </Button>
                             </TableCell>
                           </TableRow>
-                        );
-                      })
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={3} className="text-center text-muted-foreground">
-                          No payments recorded for this week
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  {/* Payment History */}
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Bowler</TableHead>
+                          <TableHead>Payment Type</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {payments.length > 0 ? (
+                          payments.map((payment) => {
+                            const bowler = bowlers.find(b => b.id === payment.bowlerId);
+                            return (
+                              <TableRow key={payment.id}>
+                                <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
+                                <TableCell>
+                                  <Badge variant={payment.type === 'cash' ? 'default' : 'secondary'}>
+                                    {payment.type === 'square' ? 'Square' : 
+                                     payment.type === 'cash' ? 'Cash' : 
+                                     payment.type === 'check' ? 'Check' : 
+                                     'Other'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  ${(payment.amount / 100).toFixed(2)}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={3} className="text-center text-muted-foreground">
+                              No payments recorded for this week
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
               )}
             </CardContent>
           </Card>
