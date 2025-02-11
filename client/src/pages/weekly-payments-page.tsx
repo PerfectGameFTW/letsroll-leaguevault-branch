@@ -11,7 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
-import { format, differenceInWeeks, startOfToday, addDays, subDays } from "date-fns";
+import { format, differenceInWeeks, startOfToday, subDays } from "date-fns";
 import type { League, Team } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { Calendar } from "@/components/ui/calendar";
@@ -75,6 +75,14 @@ export default function WeeklyPaymentsPage() {
     }
 
     return subDays(date, daysToSubtract);
+  };
+
+  // Function to get week number
+  const getWeekNumber = (date: Date): number => {
+    if (!league?.seasonStart) return 0;
+    const seasonStart = new Date(league.seasonStart);
+    const weeksDiff = differenceInWeeks(date, seasonStart);
+    return weeksDiff + 1; // Add 1 to start from Week 1 instead of Week 0
   };
 
   // Initialize selectedDate and selectedTeam on component mount
@@ -168,7 +176,7 @@ export default function WeeklyPaymentsPage() {
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {selectedDate ? (
-                      format(selectedDate, "MMM d, yyyy")
+                      `Week ${getWeekNumber(selectedDate)}`
                     ) : (
                       <span>Select a week</span>
                     )}
@@ -215,7 +223,7 @@ export default function WeeklyPaymentsPage() {
           <Card>
             <CardHeader>
               <CardTitle>
-                Payments for {selectedTeamData.name} - Week of {format(selectedDate, "MMMM d, yyyy")}
+                {selectedTeamData.name} - Week {getWeekNumber(selectedDate)}
               </CardTitle>
             </CardHeader>
             <CardContent>
