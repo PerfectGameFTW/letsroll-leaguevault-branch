@@ -11,7 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
+import { Loader2, ArrowLeft, Calendar as CalendarIcon, Pencil, Check, X } from "lucide-react";
 import { format, differenceInWeeks, startOfToday, subDays } from "date-fns";
 import type { League, Team, Payment, Bowler, BowlerLeague } from "@shared/schema";
 import { useParams, Link } from "wouter";
@@ -40,6 +40,11 @@ interface PaymentEntry {
   amount: string;
 }
 
+interface EditingPayment {
+  id: number;
+  amount: string;
+}
+
 export default function WeeklyPaymentsPage() {
   const params = useParams();
   const { toast } = useToast();
@@ -47,6 +52,7 @@ export default function WeeklyPaymentsPage() {
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTeam, setSelectedTeam] = useState<string>();
   const [paymentEntries, setPaymentEntries] = useState<{ [key: number]: PaymentEntry }>({});
+  const [editingPayment, setEditingPayment] = useState<EditingPayment | null>(null);
 
   // Fetch league details
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
@@ -280,6 +286,65 @@ export default function WeeklyPaymentsPage() {
     return date.getDay() !== bowlingDayNumber;
   };
 
+  // Add update payment mutation
+  const updatePaymentMutation = useMutation({
+    mutationFn: async ({ id, amount }: { id: number; amount: number }) => {
+      const response = await apiRequest("PATCH", `/api/payments/${id}`, {
+        amount,
+      });
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({
+        title: "Success",
+        description: "Payment amount has been updated.",
+      });
+      setEditingPayment(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error updating payment",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleStartEdit = (payment: Payment) => {
+    setEditingPayment({
+      id: payment.id,
+      amount: (payment.amount / 100).toFixed(2),
+    });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPayment(null);
+  };
+
+  const handleSaveEdit = async (id: number) => {
+    if (!editingPayment) return;
+
+    const amountInCents = Math.round(parseFloat(editingPayment.amount) * 100);
+    if (isNaN(amountInCents)) {
+      toast({
+        title: "Invalid amount",
+        description: "Please enter a valid number",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    await updatePaymentMutation.mutate({
+      id,
+      amount: amountInCents,
+    });
+  };
+
   if (loadingLeague || loadingTeams) {
     return (
       <Layout>
@@ -455,9 +520,17 @@ export default function WeeklyPaymentsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {payments.length > 0 ? (
-                          payments.map((payment) => {
+                        {payments?.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center">
+                              No payment history
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          payments?.map((payment) => {
                             const bowler = bowlers.find(b => b.id === payment.bowlerId);
+                            const isEditing = editingPayment?.id === payment.id;
+
                             return (
                               <TableRow key={payment.id}>
                                 <TableCell>
@@ -481,17 +554,53 @@ export default function WeeklyPaymentsPage() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  ${(payment.amount / 100).toFixed(2)}
+                                  {isEditing ? (
+                                    <div className="flex items-center justify-end space-x-2">
+                                      <Input
+                                        type="text"
+                                        value={editingPayment.amount}
+                                        onChange={(e) => setEditingPayment({
+                                          ...editingPayment,
+                                          amount: e.target.value.replace(/[^0-9.]/g, ''),
+                                        })}
+                                        className="w-24 text-right"
+                                      />
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => handleSaveEdit(payment.id)}
+                                        disabled={updatePaymentMutation.isPending}
+                                      >
+                                        {updatePaymentMutation.isPending ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Check className="h-4 w-4" />
+                                        )}
+                                      </Button>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={handleCancelEdit}
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-end space-x-2">
+                                      <span>${(payment.amount / 100).toFixed(2)}</span>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => handleStartEdit(payment)}
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  )}
                                 </TableCell>
                               </TableRow>
                             );
                           })
-                        ) : (
-                          <TableRow>
-                            <TableCell colSpan={3} className="text-center text-muted-foreground">
-                              No payments recorded for this week
-                            </TableCell>
-                          </TableRow>
                         )}
                       </TableBody>
                     </Table>
