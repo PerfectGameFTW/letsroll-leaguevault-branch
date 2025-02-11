@@ -386,7 +386,9 @@ export default function WeeklyPaymentsPage() {
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      }, 500);
       setPaymentToDelete(null);
     },
     onError: (error: Error, _, context) => {
