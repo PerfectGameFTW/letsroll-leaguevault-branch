@@ -55,35 +55,16 @@ export default function PaymentsPage() {
       }
     },
     onMutate: async (deletedId) => {
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ 
         queryKey: ["/api/payments"]
       });
 
-      // Snapshot the previous state
-      const previousPayments = queryClient.getQueryData(["/api/payments"]);
+      const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
 
-      // Optimistically update the cache
       if (previousPayments?.data) {
-        const updatedData = {
-          data: previousPayments.data.filter((payment: Payment) => payment.id !== deletedId)
-        };
-
-        // Update the main payments list
-        queryClient.setQueryData(["/api/payments"], updatedData);
-
-        // Also update any filtered views that might exist
-        queryClient.setQueriesData(
-          { queryKey: ["/api/payments"] },
-          (oldData: any) => {
-            if (oldData?.data) {
-              return {
-                data: oldData.data.filter((payment: Payment) => payment.id !== deletedId)
-              };
-            }
-            return oldData;
-          }
-        );
+        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
+          data: previousPayments.data.filter(payment => payment.id !== deletedId)
+        });
       }
 
       return { previousPayments };
@@ -100,12 +81,10 @@ export default function PaymentsPage() {
       });
     },
     onSuccess: () => {
-      // Force refetch all payment queries to ensure consistency
       queryClient.invalidateQueries({
-        queryKey: ["/api/payments"],
-        refetchType: "all"
+        queryKey: ["/api/payments"]
       });
-
+      
       toast({
         title: "Payment deleted",
         description: "The payment has been successfully deleted.",
