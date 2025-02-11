@@ -42,17 +42,6 @@ function SortableBowlerRow({ bowler, bowlerLeague, league, onEdit }: SortableBow
           <Link href={`/bowlers/${bowler.id}`} className="hover:underline">
             {bowler.name}
           </Link>
-          {bowler.squareCustomerId && (
-            <a
-              href={getSquareCustomerUrl(bowler.squareCustomerId)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-muted-foreground hover:text-foreground"
-              title="View in Square"
-            >
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          )}
         </div>
       </TableCell>
       <TableCell>{bowler.email}</TableCell>
