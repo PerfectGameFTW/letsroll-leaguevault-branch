@@ -148,7 +148,14 @@ export default function WeeklyPaymentsPage() {
 
   // Payment submission mutation
   const submitPaymentMutation = useMutation({
-    mutationFn: async (payment: { bowlerId: number; type: string; amount: number; weekOf: Date }) => {
+    mutationFn: async (payment: { 
+      bowlerId: number; 
+      type: string; 
+      amount: number; 
+      weekOf: Date;
+      leagueId: number;
+      status: string;
+    }) => {
       const response = await apiRequest("POST", "/api/payments", payment);
       if (!response.ok) {
         const error = await response.text();
@@ -181,9 +188,11 @@ export default function WeeklyPaymentsPage() {
 
     await submitPaymentMutation.mutate({
       bowlerId,
+      leagueId,
       type: entry.type,
       amount: amountInCents,
       weekOf: selectedDate,
+      status: 'paid', // Cash and check payments are marked as paid immediately
     });
 
     // Clear the entry after successful submission
@@ -194,7 +203,6 @@ export default function WeeklyPaymentsPage() {
     });
   };
 
-  // Update the getNearestBowlingDay function
   const getNearestBowlingDay = (date: Date, weekDay: string): Date => {
     const weekDayMap: { [key: string]: number } = {
       'sunday': 0,
@@ -223,7 +231,6 @@ export default function WeeklyPaymentsPage() {
     return subDays(date, daysToSubtract);
   };
 
-  // Function to get week number
   const getWeekNumber = (date: Date): number => {
     if (!league?.seasonStart) return 0;
     const seasonStart = new Date(league.seasonStart);
@@ -231,7 +238,6 @@ export default function WeeklyPaymentsPage() {
     return weeksDiff + 1; // Add 1 to start from Week 1 instead of Week 0
   };
 
-  // Initialize selectedDate and selectedTeam on component mount
   useEffect(() => {
     if (league?.weekDay && !selectedDate) {
       const today = startOfToday();
@@ -246,7 +252,6 @@ export default function WeeklyPaymentsPage() {
     }
   }, [league?.weekDay, teams, selectedDate, selectedTeam]);
 
-  // Calculate the disabled dates (outside season range)
   let disabledDates: { before: Date; after: Date } | undefined;
   if (league) {
     disabledDates = {
@@ -255,7 +260,6 @@ export default function WeeklyPaymentsPage() {
     };
   }
 
-  // Function to determine if a date should be disabled based on bowling day
   const isDateDisabled = (date: Date) => {
     if (!league?.weekDay) return false;
 
