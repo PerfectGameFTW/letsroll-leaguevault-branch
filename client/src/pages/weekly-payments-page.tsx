@@ -360,17 +360,27 @@ export default function WeeklyPaymentsPage() {
   // Update the delete mutation
   const deletePaymentMutation = useMutation({
     mutationFn: async (id: number) => {
-      console.log('Deleting payment:', id);
+      console.log('[Frontend] Deleting payment:', id);
       const response = await apiRequest("DELETE", `/api/payments/${id}`);
+
       if (!response.ok) {
         const error = await response.text();
+        console.error('[Frontend] Payment deletion failed:', error);
         throw new Error(error);
       }
     },
     onSuccess: () => {
-      // Invalidate all payment-related queries
-      queryClient.invalidateQueries({ 
+      console.log('[Frontend] Payment deletion successful');
+
+      // Invalidate and refetch all payment-related queries
+      queryClient.invalidateQueries({
         queryKey: ["/api/payments"],
+        refetchType: "all"
+      });
+
+      // Also refetch bowler data
+      queryClient.invalidateQueries({
+        queryKey: ["/api/bowlers"],
         refetchType: "all"
       });
 
@@ -381,7 +391,7 @@ export default function WeeklyPaymentsPage() {
       setPaymentToDelete(null);
     },
     onError: (error: Error) => {
-      console.error('Payment deletion error:', error);
+      console.error('[Frontend] Payment deletion error:', error);
       toast({
         title: "Error deleting payment",
         description: error.message,
@@ -392,20 +402,22 @@ export default function WeeklyPaymentsPage() {
 
   const handleDelete = async (id: number) => {
     try {
-      console.log('Handling payment deletion:', id);
+      console.log('[Frontend] Handling payment deletion:', id);
       await deletePaymentMutation.mutateAsync(id);
 
-      // Force refetch all payment queries
+      // Force immediate refetch of all payment queries to ensure UI is up to date
       await queryClient.invalidateQueries({ 
         queryKey: ["/api/payments"],
+        refetchType: "all"
       });
 
-      // Also refetch bowler data since it might include payment information
+      // Also refetch bowler data
       await queryClient.invalidateQueries({ 
         queryKey: ["/api/bowlers"],
+        refetchType: "all"
       });
     } catch (error) {
-      console.error('Error deleting payment:', error);
+      console.error('[Frontend] Error in handleDelete:', error);
       toast({
         title: "Error",
         description: "Failed to delete payment",

@@ -12,13 +12,13 @@ router.get("/", async (req, res) => {
     const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
     const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
     const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
-    console.log('Fetching payments with filters:', { bowlerId, leagueId, teamId });
+    console.log('GET /api/payments - Fetching with filters:', { bowlerId, leagueId, teamId });
 
     const payments = await storage.getPayments(bowlerId, leagueId);
-    console.log(`Found ${payments.length} payments`);
+    console.log(`GET /api/payments - Found ${payments.length} payments`);
     sendSuccess(res, payments);
   } catch (error) {
-    console.error('Error fetching payments:', error);
+    console.error('GET /api/payments - Error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch payments');
   }
 });
@@ -40,7 +40,6 @@ router.post("/", async (req, res) => {
 router.post("/process", async (req, res) => {
   try {
     const { sourceId, amount, locationId } = req.body;
-
     const result = await processPayment(sourceId, amount, locationId);
     sendSuccess(res, result);
   } catch (error) {
@@ -71,24 +70,28 @@ router.patch("/:id/status", async (req, res) => {
 // Delete payment endpoint
 router.delete("/:id", async (req, res) => {
   try {
-    console.log(`Received DELETE request for payment ID: ${req.params.id}`);
-    const id = parseInt(req.params.id);
+    console.log(`DELETE /api/payments/${req.params.id} - Starting deletion`);
 
+    const id = parseInt(req.params.id);
     if (isNaN(id)) {
       console.error('Invalid payment ID format:', req.params.id);
       return sendError(res, "Invalid payment ID", 400);
     }
 
     // Verify payment exists before deletion
-    const payment = await storage.getPayments(undefined, undefined, [id]);
-    if (!payment.length) {
+    const existingPayment = await storage.getPayments(undefined, undefined, [id]);
+    console.log('Found payment to delete:', existingPayment);
+
+    if (!existingPayment.length) {
       console.error(`Payment not found with ID: ${id}`);
       return sendError(res, "Payment not found", 404);
     }
 
     await storage.deletePayment(id);
     console.log(`Successfully deleted payment ID: ${id}`);
-    sendSuccess(res, null, 204);
+
+    // Return 204 No Content on successful deletion
+    res.status(204).end();
   } catch (error) {
     console.error('Error in payment deletion route:', error);
     sendError(res,
