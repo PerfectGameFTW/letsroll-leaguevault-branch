@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
+import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -33,6 +33,7 @@ const baseNavigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
+  { name: "Reports", href: "/reports", icon: FileText },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -52,13 +53,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     safeSetLocalStorage("sidebarCollapsed", isCollapsed);
   }, [isCollapsed]);
 
-  const isInLeaguesSection = location.startsWith('/leagues') || 
+  const isInLeaguesSection = location.startsWith('/leagues') ||
     (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/leagues/${league.id}`)));
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Fixed sidebar */}
-      <div 
+      <div
         className={cn(
           "fixed top-0 bottom-0 left-0 z-50 bg-white border-r transition-all duration-300",
           isCollapsed ? "w-16" : "w-64"
