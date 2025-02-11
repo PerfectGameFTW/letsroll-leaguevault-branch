@@ -101,6 +101,8 @@ export default function LeaguesPage() {
               const weeks = differenceInWeeks(endDate, startDate);
               const bowlingDay = league.weekDay ? league.weekDay.charAt(0).toUpperCase() + league.weekDay.slice(1) : 'Not set';
 
+              const leagueTeams = allTeams.filter(team => team.leagueId === league.id);
+
               return (
                 <TableRow key={league.id}>
                   <TableCell>{bowlingDay}</TableCell>
@@ -112,7 +114,22 @@ export default function LeaguesPage() {
                       {league.name}
                     </Link>
                   </TableCell>
-                  <TableCell>{teamCounts[league.id] || 0}</TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      {leagueTeams.map(team => (
+                        <Link 
+                          key={team.id}
+                          href={`/teams/${team.id}`}
+                          className="block text-sm text-muted-foreground hover:text-foreground hover:underline"
+                        >
+                          {team.name}
+                        </Link>
+                      ))}
+                      {leagueTeams.length === 0 && (
+                        <span className="text-sm text-muted-foreground">No teams</span>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell className="whitespace-nowrap">
                     {format(startDate, "MMM d, yyyy")}
                   </TableCell>
