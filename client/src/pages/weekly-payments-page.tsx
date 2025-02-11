@@ -388,10 +388,11 @@ export default function WeeklyPaymentsPage() {
   const handleDelete = async (id: number) => {
     try {
       await deletePaymentMutation.mutateAsync(id);
-      // Force refetch all payment queries
+      // Invalidate and immediately refetch the current view's data
       await queryClient.invalidateQueries({
-        queryKey: ["/api/payments"],
-        refetchType: 'all'
+        queryKey: ["/api/payments", selectedTeam, selectedDate],
+        exact: true,
+        refetchType: 'active'
       });
     } catch (error) {
       console.error('Error deleting payment:', error);
