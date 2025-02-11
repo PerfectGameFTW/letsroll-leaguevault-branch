@@ -10,10 +10,10 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 import { format, addWeeks, startOfWeek } from "date-fns";
 import type { League, Team } from "@shared/schema";
-import { useParams } from "wouter";
+import { useParams, Link } from "wouter";
 
 export default function WeeklyPaymentsPage() {
   const params = useParams();
@@ -47,7 +47,7 @@ export default function WeeklyPaymentsPage() {
     const startDate = new Date(league.seasonStart);
     const endDate = new Date(league.seasonEnd);
     let currentWeek = startOfWeek(startDate);
-    
+
     while (currentWeek <= endDate) {
       weeks.push({
         start: currentWeek,
@@ -79,6 +79,14 @@ export default function WeeklyPaymentsPage() {
   return (
     <Layout>
       <div className="space-y-6">
+        <Link
+          href={`/leagues/${leagueId}`}
+          className="text-muted-foreground hover:text-foreground flex items-center mb-4"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to League Dashboard
+        </Link>
+
         <h1 className="text-2xl font-bold">Weekly Payments - {league.name}</h1>
 
         <Card>
