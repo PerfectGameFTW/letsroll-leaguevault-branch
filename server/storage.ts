@@ -45,6 +45,7 @@ export interface IStorage {
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePaymentStatus(id: number, status: string, squarePaymentId?: string): Promise<Payment>;
   deletePayment(id: number): Promise<void>;
+  updatePayment(id: number, payment: Partial<InsertPayment>): Promise<Payment>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -439,6 +440,19 @@ export class DatabaseStorage implements IStorage {
       await db.delete(payments).where(eq(payments.id, id));
     } catch (error) {
       console.error('Error deleting payment:', error);
+      throw error;
+    }
+  }
+  async updatePayment(id: number, update: Partial<InsertPayment>): Promise<Payment> {
+    try {
+      const [updated] = await db
+        .update(payments)
+        .set(update)
+        .where(eq(payments.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error('Error updating payment:', error);
       throw error;
     }
   }
