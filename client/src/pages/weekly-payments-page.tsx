@@ -389,7 +389,10 @@ export default function WeeklyPaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       setPaymentToDelete(null);
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _, context) => {
+      if (context?.previousPayments) {
+        queryClient.setQueryData(["/api/payments"], context.previousPayments);
+      }
       console.error('[Frontend] Payment deletion error:', error);
       toast({
         title: "Error deleting payment",
