@@ -148,10 +148,10 @@ export default function WeeklyPaymentsPage() {
 
   // Payment submission mutation
   const submitPaymentMutation = useMutation({
-    mutationFn: async (payment: { 
-      bowlerId: number; 
-      type: string; 
-      amount: number; 
+    mutationFn: async (payment: {
+      bowlerId: number;
+      type: string;
+      amount: number;
       weekOf: Date;
       leagueId: number;
       status: string;
@@ -460,13 +460,24 @@ export default function WeeklyPaymentsPage() {
                             const bowler = bowlers.find(b => b.id === payment.bowlerId);
                             return (
                               <TableRow key={payment.id}>
-                                <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
+                                <TableCell>
+                                  {bowler ? (
+                                    <Link
+                                      href={`/bowlers/${bowler.id}`}
+                                      className="text-foreground hover:underline"
+                                    >
+                                      {bowler.name}
+                                    </Link>
+                                  ) : (
+                                    'Unknown Bowler'
+                                  )}
+                                </TableCell>
                                 <TableCell>
                                   <Badge variant={payment.squarePaymentId === 'cash' ? 'default' : 'secondary'}>
-                                    {payment.squarePaymentId === 'square' ? 'Square' : 
-                                     payment.squarePaymentId === 'cash' ? 'Cash' : 
-                                     payment.squarePaymentId === 'check' ? 'Check' : 
-                                     'Other'}
+                                    {payment.squarePaymentId === 'square' ? 'Square' :
+                                      payment.squarePaymentId === 'cash' ? 'Cash' :
+                                      payment.squarePaymentId === 'check' ? 'Check' :
+                                      'Other'}
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">
