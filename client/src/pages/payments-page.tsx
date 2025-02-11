@@ -86,11 +86,6 @@ export default function PaymentsPage() {
         queryKey: ["/api/payments"],
         refetchType: "all"
       });
-      
-      toast({
-        title: "Payment deleted",
-        description: "The payment has been successfully deleted.",
-      });
     },
   });
 

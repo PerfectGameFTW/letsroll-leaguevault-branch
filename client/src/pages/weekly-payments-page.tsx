@@ -375,11 +375,6 @@ export default function WeeklyPaymentsPage() {
         queryKey: ["/api/payments"],
         refetchType: "all"
       });
-
-      toast({
-        title: "Payment deleted",
-        description: "The payment has been successfully deleted.",
-      });
       setPaymentToDelete(null);
     },
     onError: (error: Error) => {
