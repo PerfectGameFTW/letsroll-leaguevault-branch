@@ -11,9 +11,14 @@ router.get("/", async (req, res) => {
   try {
     const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
     const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
+    const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
+    console.log('Fetching payments with filters:', { bowlerId, leagueId, teamId });
+
     const payments = await storage.getPayments(bowlerId, leagueId);
+    console.log(`Found ${payments.length} payments`);
     sendSuccess(res, payments);
   } catch (error) {
+    console.error('Error fetching payments:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch payments');
   }
 });
@@ -70,19 +75,19 @@ router.delete("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
 
     if (isNaN(id)) {
+      console.error('Invalid payment ID format:', req.params.id);
       return sendError(res, "Invalid payment ID", 400);
     }
 
     // Verify payment exists before deletion
-    const payments = await storage.getPayments();
-    const paymentExists = payments.some(p => p.id === id);
-
-    if (!paymentExists) {
+    const payment = await storage.getPayments(undefined, undefined, [id]);
+    if (!payment.length) {
+      console.error(`Payment not found with ID: ${id}`);
       return sendError(res, "Payment not found", 404);
     }
 
     await storage.deletePayment(id);
-    console.log(`Successfully processed deletion request for payment ID: ${id}`);
+    console.log(`Successfully deleted payment ID: ${id}`);
     sendSuccess(res, null, 204);
   } catch (error) {
     console.error('Error in payment deletion route:', error);

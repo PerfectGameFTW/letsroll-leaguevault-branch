@@ -360,6 +360,7 @@ export default function WeeklyPaymentsPage() {
   // Update the delete mutation
   const deletePaymentMutation = useMutation({
     mutationFn: async (id: number) => {
+      console.log('Deleting payment:', id);
       const response = await apiRequest("DELETE", `/api/payments/${id}`);
       if (!response.ok) {
         const error = await response.text();
@@ -367,9 +368,12 @@ export default function WeeklyPaymentsPage() {
       }
     },
     onSuccess: () => {
-      // Invalidate and refetch all related queries to ensure proper cache updates
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
+      // Invalidate all payment-related queries
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/payments"],
+        refetchType: "all"
+      });
+
       toast({
         title: "Payment deleted",
         description: "The payment has been successfully deleted.",
@@ -377,6 +381,7 @@ export default function WeeklyPaymentsPage() {
       setPaymentToDelete(null);
     },
     onError: (error: Error) => {
+      console.error('Payment deletion error:', error);
       toast({
         title: "Error deleting payment",
         description: error.message,
@@ -387,12 +392,17 @@ export default function WeeklyPaymentsPage() {
 
   const handleDelete = async (id: number) => {
     try {
+      console.log('Handling payment deletion:', id);
       await deletePaymentMutation.mutateAsync(id);
-      // Invalidate and immediately refetch the current view's data
-      await queryClient.invalidateQueries({
-        queryKey: ["/api/payments", selectedTeam, selectedDate],
-        exact: true,
-        refetchType: 'active'
+
+      // Force refetch all payment queries
+      await queryClient.invalidateQueries({ 
+        queryKey: ["/api/payments"],
+      });
+
+      // Also refetch bowler data since it might include payment information
+      await queryClient.invalidateQueries({ 
+        queryKey: ["/api/bowlers"],
       });
     } catch (error) {
       console.error('Error deleting payment:', error);

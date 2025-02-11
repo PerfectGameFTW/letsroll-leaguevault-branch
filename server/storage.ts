@@ -10,7 +10,7 @@ import {
 } from "@shared/schema";
 import { sql } from 'drizzle-orm';
 
-export interface IStorage {
+interface IStorage {
   // Leagues
   getLeagues(): Promise<League[]>;
   getLeague(id: number): Promise<League | undefined>;
@@ -41,7 +41,7 @@ export interface IStorage {
   updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]>;
 
   // Payments
-  getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]>;
+  getPayments(bowlerId?: number, leagueId?: number, ids?: number[]): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePaymentStatus(id: number, status: string, squarePaymentId?: string): Promise<Payment>;
   deletePayment(id: number): Promise<void>;
@@ -379,8 +379,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Payments
-  async getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]> {
+  async getPayments(bowlerId?: number, leagueId?: number, ids?: number[]): Promise<Payment[]> {
     try {
+      console.log('Getting payments with filters:', { bowlerId, leagueId, ids });
+
       const conditions = [];
       if (bowlerId !== undefined) {
         conditions.push(eq(payments.bowlerId, bowlerId));
@@ -388,15 +390,18 @@ export class DatabaseStorage implements IStorage {
       if (leagueId !== undefined) {
         conditions.push(eq(payments.leagueId, leagueId));
       }
-
-      if (conditions.length === 0) {
-        return await db.select().from(payments);
+      if (ids && ids.length > 0) {
+        conditions.push(inArray(payments.id, ids));
       }
 
-      return await db
-        .select()
-        .from(payments)
-        .where(and(...conditions));
+      let query = db.select().from(payments);
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions));
+      }
+
+      const results = await query;
+      console.log(`Found ${results.length} payments`);
+      return results;
     } catch (error) {
       console.error('Error getting payments:', error);
       throw error;
@@ -442,14 +447,16 @@ export class DatabaseStorage implements IStorage {
       // Execute delete operation
       const result = await db
         .delete(payments)
-        .where(eq(payments.id, id));
+        .where(eq(payments.id, id))
+        .returning();
 
-      // Check if deletion was successful
-      if (!result.rowCount) {
+      console.log('Delete operation result:', result);
+
+      if (!result.length) {
         throw new Error(`No payment found with ID ${id}`);
       }
 
-      console.log(`Successfully deleted payment ${id}, rows affected: ${result.rowCount}`);
+      console.log(`Successfully deleted payment ${id}`);
     } catch (error) {
       console.error('Error in deletePayment:', error);
       throw error;
