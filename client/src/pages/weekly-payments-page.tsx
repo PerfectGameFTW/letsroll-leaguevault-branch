@@ -357,7 +357,7 @@ export default function WeeklyPaymentsPage() {
     });
   };
 
-  // Update the delete mutation
+  // Update the delete mutation to be more explicit about refetching
   const deletePaymentMutation = useMutation({
     mutationFn: async (id: number) => {
       console.log('[Frontend] Deleting payment:', id);
@@ -372,11 +372,10 @@ export default function WeeklyPaymentsPage() {
     onSuccess: () => {
       console.log('[Frontend] Payment deletion successful');
 
-      // Invalidate all payment-related queries to ensure UI updates
+      // Invalidate all payment queries to force a refetch
       queryClient.invalidateQueries({
         queryKey: ["/api/payments"],
-        type: 'all',
-        refetchType: 'all'
+        exact: false, // This ensures we catch all payment-related queries
       });
 
       toast({
@@ -399,13 +398,6 @@ export default function WeeklyPaymentsPage() {
     try {
       console.log('[Frontend] Handling payment deletion:', id);
       await deletePaymentMutation.mutateAsync(id);
-
-      // Force an immediate refetch of all payment queries
-      await queryClient.invalidateQueries({
-        queryKey: ["/api/payments"],
-        type: 'all',
-        refetchType: 'all'
-      });
     } catch (error) {
       console.error('[Frontend] Error in handleDelete:', error);
       toast({
