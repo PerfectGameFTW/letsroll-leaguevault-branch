@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
-import { Button } from "@/components/ui/button";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Loader2, Users, DollarSign } from "lucide-react";
 import type { League } from "@shared/schema";
 import { useParams, Link } from "wouter";
@@ -38,19 +38,43 @@ export default function LeagueViewPage() {
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">{league.name}</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Link href={`/leagues/${leagueId}/teams`}>
-            <Button className="w-full" variant="outline">
-              <Users className="h-4 w-4 mr-2" />
-              Manage Teams
-            </Button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Link href={`/leagues/${leagueId}/teams`} className="block">
+            <Card className="hover:bg-accent transition-colors">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Users className="h-5 w-5 mr-2" />
+                  Teams Management
+                </CardTitle>
+                <CardDescription>
+                  View and manage teams and bowlers in this league
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Add or remove teams, manage bowlers, and organize team rosters
+                </p>
+              </CardContent>
+            </Card>
           </Link>
 
-          <Link href={`/leagues/${leagueId}/weekly-payments`}>
-            <Button className="w-full" variant="outline">
-              <DollarSign className="h-4 w-4 mr-2" />
-              Weekly Payments
-            </Button>
+          <Link href={`/leagues/${leagueId}/weekly-payments`} className="block">
+            <Card className="hover:bg-accent transition-colors">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <DollarSign className="h-5 w-5 mr-2" />
+                  Weekly Payments
+                </CardTitle>
+                <CardDescription>
+                  Log and track weekly cash/check payments
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Record manual payments by team and week, view payment history
+                </p>
+              </CardContent>
+            </Card>
           </Link>
         </div>
       </div>
