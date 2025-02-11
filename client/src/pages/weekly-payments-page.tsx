@@ -386,12 +386,11 @@ export default function WeeklyPaymentsPage() {
       }
     },
     onSuccess: () => {
+      setPaymentToDelete(null);
       setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       }, 500);
-      setPaymentToDelete(null);
     },
-    onError: (error: Error, _, context) => {
       if (context?.previousPayments) {
         queryClient.setQueryData(["/api/payments"], context.previousPayments);
       }
