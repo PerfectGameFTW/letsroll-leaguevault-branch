@@ -375,7 +375,7 @@ export class DatabaseStorage implements IStorage {
   // Payments
   async getPayments(bowlerId?: number, leagueId?: number, ids?: number[]): Promise<Payment[]> {
     try {
-      console.log('Getting payments with filters:', { bowlerId, leagueId, ids });
+      console.log('[Storage] Getting payments with filters:', { bowlerId, leagueId, ids });
 
       const conditions = [];
       if (bowlerId !== undefined) {
@@ -394,10 +394,10 @@ export class DatabaseStorage implements IStorage {
       }
 
       const results = await query;
-      console.log(`Found ${results.length} payments`);
+      console.log(`[Storage] Found ${results.length} payments`);
       return results;
     } catch (error) {
-      console.error('Error getting payments:', error);
+      console.error('[Storage] Error getting payments:', error);
       throw error;
     }
   }
@@ -435,21 +435,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deletePayment(id: number): Promise<void> {
-    try {
-      console.log(`[Storage] Attempting to delete payment with ID: ${id}`);
-      
-      const result = await db.transaction(async (tx) => {
-        return await tx
-          .delete(payments)
-          .where(eq(payments.id, id))
-          .execute();
-      });
-
-      console.log(`[Storage] Successfully deleted payment ${id}`);
-    } catch (error) {
-      console.error('[Storage] Error in deletePayment:', error);
-      throw error;
-    }
+    console.log('[Storage] Deleting payment:', id);
+    const result = await db.delete(payments)
+      .where(eq(payments.id, id))
+      .execute();
+    console.log('[Storage] Delete result:', result);
   }
 
   async updatePayment(id: number, update: Partial<InsertPayment>): Promise<Payment> {
