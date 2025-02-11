@@ -439,18 +439,38 @@ export class DatabaseStorage implements IStorage {
       console.log(`[Storage] Attempting to delete payment with ID: ${id}`);
 
       await db.transaction(async (tx) => {
-        // Execute delete operation with transaction
-        await tx.delete(payments).where(eq(payments.id, id));
+        // First verify the payment exists
+        const [paymentExists] = await tx
+          .select()
+          .from(payments)
+          .where(eq(payments.id, id));
 
-        // Verify the deletion was successful within the same transaction
-        const [verifyDeleted] = await tx.select().from(payments).where(eq(payments.id, id));
+        if (!paymentExists) {
+          console.log(`[Storage] Payment ${id} not found for deletion`);
+          throw new Error('Payment not found');
+        }
+
+        console.log(`[Storage] Found payment to delete:`, paymentExists);
+
+        // Execute delete operation
+        const result = await tx
+          .delete(payments)
+          .where(eq(payments.id, id));
+
+        // Verify the deletion was successful
+        const [verifyDeleted] = await tx
+          .select()
+          .from(payments)
+          .where(eq(payments.id, id));
 
         if (verifyDeleted) {
+          console.error(`[Storage] Payment ${id} still exists after deletion attempt`);
           throw new Error('Payment deletion failed - payment still exists');
         }
+
+        console.log(`[Storage] Successfully deleted payment ${id}`);
       });
 
-      console.log(`[Storage] Successfully deleted payment ${id}`);
     } catch (error) {
       console.error('[Storage] Error in deletePayment:', error);
       throw error;
