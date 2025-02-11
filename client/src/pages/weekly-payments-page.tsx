@@ -11,7 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
-import { format, addWeeks, startOfWeek, isSameDay } from "date-fns";
+import { format, differenceInWeeks, startOfToday } from "date-fns";
 import type { League, Team } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { Calendar } from "@/components/ui/calendar";
@@ -58,6 +58,25 @@ export default function WeeklyPaymentsPage() {
       after: endDate,
     };
   }
+
+  // Function to determine if a date should be disabled based on bowling day
+  const isDateDisabled = (date: Date) => {
+    if (!league?.weekDay) return false;
+
+    // Convert weekDay to day number (0 = Sunday, 1 = Monday, etc.)
+    const weekDayMap: { [key: string]: number } = {
+      'sunday': 0,
+      'monday': 1,
+      'tuesday': 2,
+      'wednesday': 3,
+      'thursday': 4,
+      'friday': 5,
+      'saturday': 6
+    };
+
+    const bowlingDayNumber = weekDayMap[league.weekDay.toLowerCase()];
+    return date.getDay() !== bowlingDayNumber;
+  };
 
   if (loadingLeague || loadingTeams) {
     return (
@@ -119,7 +138,15 @@ export default function WeeklyPaymentsPage() {
                     mode="single"
                     selected={selectedDate}
                     onSelect={setSelectedDate}
-                    disabled={disabledDates}
+                    disabled={(date) => {
+                      if (disabledDates) {
+                        const beforeDisabled = date < disabledDates.before;
+                        const afterDisabled = date > disabledDates.after;
+                        const dayDisabled = isDateDisabled(date);
+                        return beforeDisabled || afterDisabled || dayDisabled;
+                      }
+                      return false;
+                    }}
                     initialFocus
                   />
                 </PopoverContent>
