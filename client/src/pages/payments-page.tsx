@@ -81,12 +81,10 @@ export default function PaymentsPage() {
       });
     },
     onSuccess: (deletedId) => {
-      // Update cache instead of invalidating
-      queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], (old) => {
-        if (!old?.data) return old;
-        return {
-          data: old.data.filter(payment => payment.id !== deletedId)
-        };
+      // Invalidate all payment queries
+      queryClient.invalidateQueries({ 
+        queryKey: ["/api/payments"],
+        refetchType: "all"
       });
       
       toast({

@@ -370,11 +370,10 @@ export default function WeeklyPaymentsPage() {
       return id;
     },
     onSuccess: (deletedId) => {
-      // Invalidate all payment queries to ensure proper cache updates
+      // Invalidate all payment queries
       queryClient.invalidateQueries({ 
         queryKey: ["/api/payments"],
-        refetchType: "all",
-        exact: false  // This ensures we catch all payment-related queries
+        refetchType: "all"
       });
 
       toast({
