@@ -161,7 +161,7 @@ export default function WeeklyPaymentsPage() {
         </Link>
 
         <div className="flex flex-col space-y-4">
-          <h1 className="text-2xl font-bold">Weekly Payments - {league.name}</h1>
+          <h1 className="text-2xl font-bold">{league.name}: Weekly Payments</h1>
 
           <div className="flex gap-4">
             <div className="w-[200px]">
