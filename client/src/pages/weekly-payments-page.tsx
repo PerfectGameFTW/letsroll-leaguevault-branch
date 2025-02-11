@@ -48,7 +48,7 @@ export default function WeeklyPaymentsPage() {
   const league = leagueResponse?.data;
   const teams = teamsResponse?.data || [];
 
-  // Function to get nearest bowling day
+  // Update the getNearestBowlingDay function
   const getNearestBowlingDay = (date: Date, weekDay: string): Date => {
     const weekDayMap: { [key: string]: number } = {
       'sunday': 0,
@@ -62,14 +62,19 @@ export default function WeeklyPaymentsPage() {
 
     const targetDay = weekDayMap[weekDay.toLowerCase()];
     const currentDay = date.getDay();
-    const diff = targetDay - currentDay;
 
-    // If we're past the bowling day this week, go to next week
-    if (diff < 0) {
-      return addDays(date, diff + 7);
+    // If we're on the target day (e.g., Monday), use today's date
+    if (currentDay === targetDay) {
+      return date;
     }
-    // If we're before the bowling day this week, go to this week's bowling day
-    return addDays(date, diff);
+
+    // Calculate days to go back to reach the previous target day
+    let daysToSubtract = currentDay - targetDay;
+    if (daysToSubtract <= 0) {
+      daysToSubtract += 7;
+    }
+
+    return subDays(date, daysToSubtract);
   };
 
   // Initialize selectedDate and selectedTeam on component mount
