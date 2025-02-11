@@ -440,7 +440,7 @@ export class DatabaseStorage implements IStorage {
       .delete(payments)
       .where(eq(payments.id, id))
       .execute();
-    console.log('[Storage] Rows deleted:', result);
+    console.log('[Storage] Delete operation result:', JSON.stringify(result, null, 2));
     if (!result) {
       throw new Error(`Payment ${id} not found or deletion failed`);
     }
