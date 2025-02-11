@@ -372,7 +372,7 @@ export default function WeeklyPaymentsPage() {
     onMutate: async (deletedId) => {
       await queryClient.cancelQueries({ queryKey: ["/api/payments"] });
       const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
-      
+
       if (previousPayments?.data) {
         queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
           data: previousPayments.data.filter(payment => payment.id !== deletedId)
@@ -380,28 +380,20 @@ export default function WeeklyPaymentsPage() {
       }
       return { previousPayments };
     },
-    onError: (error, _, context) => {
-      if (context?.previousPayments) {
-        queryClient.setQueryData(["/api/payments"], context.previousPayments);
-      }
-    },
-    onSuccess: () => {
-      setPaymentToDelete(null);
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      }, 500);
-    },
     onError: (error: Error, _, context) => {
       if (context?.previousPayments) {
         queryClient.setQueryData(["/api/payments"], context.previousPayments);
       }
-      console.error('[Frontend] Payment deletion error:', error);
       toast({
         title: "Error deleting payment",
         description: error.message,
         variant: "destructive",
       });
-    }
+    },
+    onSuccess: () => {
+      setPaymentToDelete(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+    },
   });
 
   const handleDelete = async (id: number) => {
