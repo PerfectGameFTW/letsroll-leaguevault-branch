@@ -192,6 +192,7 @@ export class DatabaseStorage implements IStorage {
       }).from(bowlers);
 
       if (teamId !== undefined) {
+        console.log('[Storage] Applying team filter:', teamId);
         query = db.select({
           id: bowlers.id,
           name: bowlers.name,
@@ -205,11 +206,14 @@ export class DatabaseStorage implements IStorage {
           .where(eq(bowlerLeagues.teamId, teamId))
           .orderBy(bowlerLeagues.order);
       } else if (ids && ids.length > 0) {
+        console.log('[Storage] Applying IDs filter:', ids);
         query = query.where(inArray(bowlers.id, ids));
+      } else {
+        console.log('[Storage] No filters applied, getting all bowlers');
       }
 
       const results = await query;
-      console.log(`[Storage] Found ${results.length} bowlers`);
+      console.log(`[Storage] Found ${results.length} bowlers:`, results);
       return results;
     } catch (error) {
       console.error('[Storage] Error getting bowlers:', error);
