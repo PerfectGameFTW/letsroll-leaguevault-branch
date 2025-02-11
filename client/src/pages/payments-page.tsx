@@ -55,17 +55,32 @@ export default function PaymentsPage() {
     },
     onMutate: async (deletedId) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ["/api/payments"] });
+      await queryClient.cancelQueries({ 
+        queryKey: ["/api/payments"] 
+      });
 
       // Get the current payments
       const previousPayments = queryClient.getQueryData(["/api/payments"]);
 
       // Optimistically update the cache
       if (previousPayments?.data) {
-        queryClient.setQueryData(
-          ["/api/payments"],
-          {
-            data: previousPayments.data.filter((payment: Payment) => payment.id !== deletedId)
+        const updatedData = {
+          data: previousPayments.data.filter((payment: Payment) => payment.id !== deletedId)
+        };
+
+        // Update the main payments list
+        queryClient.setQueryData(["/api/payments"], updatedData);
+
+        // Also update any filtered views that might exist
+        queryClient.setQueriesData(
+          { queryKey: ["/api/payments"] },
+          (oldData: any) => {
+            if (oldData?.data) {
+              return {
+                data: oldData.data.filter((payment: Payment) => payment.id !== deletedId)
+              };
+            }
+            return oldData;
           }
         );
       }
@@ -84,10 +99,9 @@ export default function PaymentsPage() {
       });
     },
     onSuccess: () => {
-      // Force refetch all payment queries
+      // Force refetch all payment queries to ensure consistency
       queryClient.invalidateQueries({
         queryKey: ["/api/payments"],
-        exact: false,
         refetchType: "all"
       });
 
