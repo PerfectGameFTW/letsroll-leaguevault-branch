@@ -369,12 +369,24 @@ export default function WeeklyPaymentsPage() {
       }
       return id;
     },
-    onSuccess: (deletedId) => {
-      // Invalidate all payment queries
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/payments"],
-        refetchType: "all"
-      });
+    onMutate: async (deletedId) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/payments"] });
+      const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
+      
+      if (previousPayments?.data) {
+        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
+          data: previousPayments.data.filter(payment => payment.id !== deletedId)
+        });
+      }
+      return { previousPayments };
+    },
+    onError: (error, _, context) => {
+      if (context?.previousPayments) {
+        queryClient.setQueryData(["/api/payments"], context.previousPayments);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       setPaymentToDelete(null);
     },
     onError: (error: Error) => {

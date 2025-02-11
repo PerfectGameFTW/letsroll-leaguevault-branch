@@ -80,12 +80,8 @@ export default function PaymentsPage() {
         variant: "destructive",
       });
     },
-    onSuccess: (deletedId) => {
-      // Invalidate all payment queries
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/payments"],
-        refetchType: "all"
-      });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
     },
   });
 
