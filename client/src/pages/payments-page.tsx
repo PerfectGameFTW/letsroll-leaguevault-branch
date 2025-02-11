@@ -20,7 +20,6 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function PaymentsPage() {
   const [showForm, setShowForm] = useState(false);
-  const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
   const { toast } = useToast();
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
@@ -47,19 +46,21 @@ export default function PaymentsPage() {
 
   const deletePaymentMutation = useMutation({
     mutationFn: async (id: number) => {
+      console.log('[Frontend] Deleting payment:', id);
       const response = await apiRequest("DELETE", `/api/payments/${id}`);
       if (!response.ok) {
         const error = await response.text();
+        console.error('[Frontend] Payment deletion failed:', error);
         throw new Error(error);
       }
     },
     onMutate: async (deletedId) => {
       // Cancel any outgoing refetches
       await queryClient.cancelQueries({ 
-        queryKey: ["/api/payments"] 
+        queryKey: ["/api/payments"]
       });
 
-      // Get the current payments
+      // Snapshot the previous state
       const previousPayments = queryClient.getQueryData(["/api/payments"]);
 
       // Optimistically update the cache
@@ -114,9 +115,10 @@ export default function PaymentsPage() {
 
   const handleDelete = async (id: number) => {
     try {
+      console.log('[Frontend] Handling payment deletion:', id);
       await deletePaymentMutation.mutateAsync(id);
     } catch (error) {
-      console.error('Error in handleDelete:', error);
+      console.error('[Frontend] Error in handleDelete:', error);
     }
   };
 
