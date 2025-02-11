@@ -15,7 +15,15 @@ router.get("/", async (req, res) => {
     console.log('GET /api/payments - Fetching with filters:', { bowlerId, leagueId, teamId });
 
     const payments = await storage.getPayments(bowlerId, leagueId);
-    console.log(`GET /api/payments - Found ${payments.length} payments`);
+    console.log(`GET /api/payments - Found ${payments.length} payments:`, 
+      payments.map(p => ({
+        id: p.id,
+        bowlerId: p.bowlerId,
+        amount: p.amount,
+        weekOf: p.weekOf,
+        status: p.status
+      }))
+    );
     sendSuccess(res, payments);
   } catch (error) {
     console.error('GET /api/payments - Error:', error);
