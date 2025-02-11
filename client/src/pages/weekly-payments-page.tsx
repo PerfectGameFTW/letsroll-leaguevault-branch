@@ -369,13 +369,48 @@ export default function WeeklyPaymentsPage() {
         throw new Error(error);
       }
     },
+    onMutate: async (deletedId) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ["/api/payments"] });
+
+      // Get the current payments
+      const previousPayments = queryClient.getQueryData(["/api/payments", selectedTeam, selectedDate, leagueId]);
+
+      // Optimistically remove the deleted payment
+      if (previousPayments?.data) {
+        queryClient.setQueryData(
+          ["/api/payments", selectedTeam, selectedDate, leagueId],
+          {
+            data: previousPayments.data.filter((payment: Payment) => payment.id !== deletedId)
+          }
+        );
+      }
+
+      return { previousPayments };
+    },
+    onError: (error: Error, _, context) => {
+      console.error('[Frontend] Payment deletion error:', error);
+      // Restore the previous data on error
+      if (context?.previousPayments) {
+        queryClient.setQueryData(
+          ["/api/payments", selectedTeam, selectedDate, leagueId],
+          context.previousPayments
+        );
+      }
+      toast({
+        title: "Error deleting payment",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
     onSuccess: () => {
       console.log('[Frontend] Payment deletion successful');
 
-      // Invalidate all payment queries to force a refetch
+      // Force refetch all payment queries
       queryClient.invalidateQueries({
         queryKey: ["/api/payments"],
-        exact: false, // This ensures we catch all payment-related queries
+        exact: false,
+        refetchType: "all"
       });
 
       toast({
@@ -383,14 +418,6 @@ export default function WeeklyPaymentsPage() {
         description: "The payment has been successfully deleted.",
       });
       setPaymentToDelete(null);
-    },
-    onError: (error: Error) => {
-      console.error('[Frontend] Payment deletion error:', error);
-      toast({
-        title: "Error deleting payment",
-        description: error.message,
-        variant: "destructive",
-      });
     },
   });
 
@@ -400,11 +427,6 @@ export default function WeeklyPaymentsPage() {
       await deletePaymentMutation.mutateAsync(id);
     } catch (error) {
       console.error('[Frontend] Error in handleDelete:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete payment",
-        variant: "destructive"
-      });
     }
   };
 
