@@ -5,11 +5,13 @@ import { Toaster } from "@/components/ui/toaster";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home-page";
 import LeaguesPage from "@/pages/leagues-page";
+import LeagueViewPage from "@/pages/league-view-page";
 import TeamsPage from "@/pages/teams-page";
 import TeamViewPage from "@/pages/team-view-page";
 import BowlersPage from "@/pages/bowlers-page";
 import BowlerViewPage from "@/pages/bowler-view-page";
 import PaymentsPage from "@/pages/payments-page";
+import WeeklyPaymentsPage from "@/pages/weekly-payments-page";
 import { useEffect } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -19,7 +21,9 @@ function Router() {
     <Switch>
       <Route path="/" component={HomePage} />
       <Route path="/leagues" component={LeaguesPage} />
+      <Route path="/leagues/:leagueId" component={LeagueViewPage} />
       <Route path="/leagues/:leagueId/teams" component={TeamsPage} />
+      <Route path="/leagues/:leagueId/weekly-payments" component={WeeklyPaymentsPage} />
       <Route path="/teams/:teamId" component={TeamViewPage} />
       <Route path="/bowlers" component={BowlersPage} />
       <Route path="/bowlers/:bowlerId" component={BowlerViewPage} />
