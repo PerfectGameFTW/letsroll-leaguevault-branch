@@ -442,13 +442,12 @@ export class DatabaseStorage implements IStorage {
         .where(eq(payments.id, id))
         .execute();
       
-      if (!result) {
-        throw new Error(`Payment ${id} not found`);
+      if (!result.rowCount || result.rowCount === 0) {
+        throw new Error(`Payment ${id} not found or could not be deleted`);
       }
       
-      console.log('[Storage] Deleted payment');
+      console.log(`[Storage] Deleted payment ${id}, rows affected: ${result.rowCount}`);
     });
-    console.log(`[Storage] Successfully deleted payment ${id}`);
   }
 
   async updatePayment(id: number, update: Partial<InsertPayment>): Promise<Payment> {
