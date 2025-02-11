@@ -87,15 +87,18 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "Payment not found", 404);
     }
 
+    // Perform the deletion
     await storage.deletePayment(id);
     console.log(`[API] Successfully deleted payment ID: ${id}`);
 
-    // Verify deletion
+    // Verify deletion by checking if the payment still exists
     const verifyDeleted = await storage.getPayments(undefined, undefined, [id]);
     if (verifyDeleted.length > 0) {
       console.error(`[API] Payment ${id} still exists after deletion`);
       throw new Error('Payment deletion failed - payment still exists');
     }
+
+    console.log(`[API] Successfully verified deletion of payment ${id}`);
 
     // Return 204 No Content on successful deletion
     res.status(204).end();

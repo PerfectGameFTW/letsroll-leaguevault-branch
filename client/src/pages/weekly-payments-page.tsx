@@ -394,35 +394,21 @@ export default function WeeklyPaymentsPage() {
           updatedData
         );
 
-        // Update the main payments list
-        const mainPaymentsData = queryClient.getQueryData(["/api/payments"]);
-        if (mainPaymentsData?.data) {
-          queryClient.setQueryData(
-            ["/api/payments"],
-            {
-              data: mainPaymentsData.data.filter((payment: Payment) => payment.id !== deletedId)
+        // Also update any filtered views that might exist
+        queryClient.setQueriesData(
+          { queryKey: ["/api/payments"] },
+          (oldData: any) => {
+            if (oldData?.data) {
+              return {
+                data: oldData.data.filter((payment: Payment) => payment.id !== deletedId)
+              };
             }
-          );
-        }
-      }
-
-      return { previousData };
-    },
-    onError: (error: Error, _, context) => {
-      console.error('[Frontend] Payment deletion error:', error);
-      // Restore the previous data on error
-      if (context?.previousData) {
-        queryClient.setQueryData(
-          ["/api/payments", { teamId: selectedTeam, weekOf: selectedDate?.toISOString(), leagueId }],
-          context.previousData
+            return oldData;
+          }
         );
       }
 
-      toast({
-        title: "Error deleting payment",
-        description: error.message,
-        variant: "destructive",
-      });
+      return { previousData };
     },
     onSuccess: () => {
       console.log('[Frontend] Payment deletion successful');
@@ -438,6 +424,23 @@ export default function WeeklyPaymentsPage() {
         description: "The payment has been successfully deleted.",
       });
       setPaymentToDelete(null);
+    },
+    onError: (error: Error, _, context) => {
+      console.error('[Frontend] Payment deletion error:', error);
+
+      // Restore the previous data on error
+      if (context?.previousData) {
+        queryClient.setQueryData(
+          ["/api/payments", { teamId: selectedTeam, weekOf: selectedDate?.toISOString(), leagueId }],
+          context.previousData
+        );
+      }
+
+      toast({
+        title: "Error deleting payment",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
