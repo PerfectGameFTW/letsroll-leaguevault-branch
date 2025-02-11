@@ -34,6 +34,11 @@ router.patch("/:id", async (req, res) => {
     // Handle order updates separately from other updates
     if (typeof update.order === 'number') {
       console.log(`Updating bowler league ${id} order to ${update.order}`);
+      const bowlerLeague = await storage.getBowlerLeague(id);
+      if (!bowlerLeague) {
+        return sendError(res, "Bowler league not found", 404, 'NOT_FOUND');
+      }
+
       const updatedBowlerLeagues = await storage.updateBowlerLeagueOrder(id, update.order);
       console.log('Updated bowler league orders:', JSON.stringify(updatedBowlerLeagues, null, 2));
       return sendSuccess(res, updatedBowlerLeagues);

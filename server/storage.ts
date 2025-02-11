@@ -34,6 +34,7 @@ export interface IStorage {
   updateBowlerLeague(id: number, bowlerLeague: Partial<InsertBowlerLeague>): Promise<BowlerLeague>;
   updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]>;
   createBowlerLeague(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague>;
+  getBowlerLeague(id: number): Promise<BowlerLeague | undefined>;
 
   // Leagues and Teams
   getLeague(id: number): Promise<League | undefined>;
@@ -479,6 +480,19 @@ export class DatabaseStorage implements IStorage {
       return updated;
     } catch (error) {
       console.error('Error updating payment:', error);
+      throw error;
+    }
+  }
+  // Add the getBowlerLeague method to DatabaseStorage class
+  async getBowlerLeague(id: number): Promise<BowlerLeague | undefined> {
+    try {
+      const [bowlerLeague] = await db
+        .select()
+        .from(bowlerLeagues)
+        .where(eq(bowlerLeagues.id, id));
+      return bowlerLeague;
+    } catch (error) {
+      console.error('Error getting bowler league:', error);
       throw error;
     }
   }

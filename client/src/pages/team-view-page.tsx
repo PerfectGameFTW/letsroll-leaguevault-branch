@@ -150,14 +150,17 @@ export default function TeamViewPage() {
 
   const reorderMutation = useMutation({
     mutationFn: async ({ id, order }: { id: number; order: number }) => {
+      console.log("Attempting to reorder bowler league:", { id, order });
       const response = await apiRequest("PATCH", `/api/bowler-leagues/${id}`, { order });
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+        const errorText = await response.text();
+        console.error("Reorder mutation failed:", errorText);
+        throw new Error(errorText || "Failed to reorder bowlers");
       }
       return response.json();
     },
     onSuccess: (response) => {
+      console.log("Successfully reordered bowler league:", response);
       queryClient.invalidateQueries({ 
         queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }] 
       });
@@ -168,9 +171,10 @@ export default function TeamViewPage() {
       });
     },
     onError: (error: Error) => {
+      console.error("Error in reorder mutation:", error);
       toast({
         title: "Error reordering bowlers",
-        description: error.message,
+        description: error.message || "Failed to update bowler order",
         variant: "destructive",
       });
     }
