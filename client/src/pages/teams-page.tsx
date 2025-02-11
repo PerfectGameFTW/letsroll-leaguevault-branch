@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Users } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 import type { Team, League } from "@shared/schema";
 import { useParams, Link } from "wouter";
 
@@ -82,7 +82,6 @@ export default function TeamsPage() {
               <TableHead>Number</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -98,14 +97,6 @@ export default function TeamsPage() {
                   <Badge variant={team.active ? "default" : "secondary"}>
                     {team.active ? "Active" : "Inactive"}
                   </Badge>
-                </TableCell>
-                <TableCell>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href={`/teams/${team.id}`}>
-                      <Users className="h-4 w-4 mr-2" />
-                      View Team
-                    </Link>
-                  </Button>
                 </TableCell>
               </TableRow>
             ))}
