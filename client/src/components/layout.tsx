@@ -53,7 +53,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   }, [isCollapsed]);
 
   const isInLeaguesSection = location.startsWith('/leagues') || 
-    (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/teams/${league.id}`)));
+    (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/leagues/${league.id}`)));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -155,11 +155,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       {Array.isArray(leagues) && leagues.map((league) => (
                         <Link
                           key={league.id}
-                          href={`/leagues/${league.id}/teams`}
+                          href={`/leagues/${league.id}`}
                         >
                           <span className={cn(
                             "block px-2 py-1.5 text-sm rounded-md cursor-pointer",
-                            location === `/leagues/${league.id}/teams`
+                            location === `/leagues/${league.id}`
                               ? "bg-primary/10 text-primary font-medium"
                               : "text-gray-600 hover:bg-gray-50"
                           )}>

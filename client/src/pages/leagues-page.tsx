@@ -106,7 +106,7 @@ export default function LeaguesPage() {
                   <TableCell>{bowlingDay}</TableCell>
                   <TableCell>
                     <Link 
-                      href={`/leagues/${league.id}/teams`}
+                      href={`/leagues/${league.id}`}
                       className="text-foreground hover:underline font-medium"
                     >
                       {league.name}
