@@ -10,15 +10,22 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, ArrowLeft } from "lucide-react";
-import { format, addWeeks, startOfWeek } from "date-fns";
+import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
+import { format, addWeeks, startOfWeek, isSameDay } from "date-fns";
 import type { League, Team } from "@shared/schema";
 import { useParams, Link } from "wouter";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 export default function WeeklyPaymentsPage() {
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
-  const [selectedWeek, setSelectedWeek] = useState<string>();
+  const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTeam, setSelectedTeam] = useState<string>();
 
   // Fetch league details
@@ -41,21 +48,15 @@ export default function WeeklyPaymentsPage() {
   const league = leagueResponse?.data;
   const teams = teamsResponse?.data || [];
 
-  // Generate weeks from league start to end date
-  const weeks = [];
+  // Calculate the disabled dates (outside season range)
+  let disabledDates: { before: Date; after: Date } | undefined;
   if (league) {
     const startDate = new Date(league.seasonStart);
     const endDate = new Date(league.seasonEnd);
-    let currentWeek = startOfWeek(startDate);
-
-    while (currentWeek <= endDate) {
-      weeks.push({
-        start: currentWeek,
-        label: format(currentWeek, "MMM d, yyyy"),
-        value: currentWeek.toISOString(),
-      });
-      currentWeek = addWeeks(currentWeek, 1);
-    }
+    disabledDates = {
+      before: startDate,
+      after: endDate,
+    };
   }
 
   if (loadingLeague || loadingTeams) {
@@ -96,18 +97,33 @@ export default function WeeklyPaymentsPage() {
           <CardContent className="space-y-4">
             <div>
               <label className="text-sm font-medium mb-2 block">Week</label>
-              <Select value={selectedWeek} onValueChange={setSelectedWeek}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a week" />
-                </SelectTrigger>
-                <SelectContent>
-                  {weeks.map((week) => (
-                    <SelectItem key={week.value} value={week.value}>
-                      Week of {week.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !selectedDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {selectedDate ? (
+                      format(selectedDate, "MMM d, yyyy")
+                    ) : (
+                      <span>Select a week</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={setSelectedDate}
+                    disabled={disabledDates}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div>
@@ -127,11 +143,11 @@ export default function WeeklyPaymentsPage() {
             </div>
 
             <Button 
-              disabled={!selectedWeek || !selectedTeam}
+              disabled={!selectedDate || !selectedTeam}
               onClick={() => {
                 // This will be implemented in the next step
                 console.log("View/Log payments for:", {
-                  week: selectedWeek,
+                  week: selectedDate?.toISOString(),
                   teamId: selectedTeam
                 });
               }}
