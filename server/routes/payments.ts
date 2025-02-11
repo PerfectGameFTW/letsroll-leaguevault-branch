@@ -93,20 +93,24 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, `Payment ${id} not found`, 404);
     }
 
-    // Perform the deletion
-    await storage.deletePayment(id);
-    
-    // Verify deletion was successful
-    const verifyDeleted = await storage.getPayments(undefined, undefined, [id]);
-    if (verifyDeleted.length > 0) {
-      console.error(`[API] Payment ${id} still exists after deletion`);
-      return sendError(res, `Failed to delete payment ${id}`, 500);
+    try {
+      // Perform the deletion
+      console.log(`[API] Calling storage.deletePayment for ID: ${id}`);
+      await storage.deletePayment(id);
+      
+      // Verify deletion was successful
+      const verifyDeleted = await storage.getPayments(undefined, undefined, [id]);
+      if (verifyDeleted.length > 0) {
+        console.error(`[API] Payment ${id} still exists after deletion`);
+        return sendError(res, `Failed to delete payment ${id}`, 500);
+      }
+      
+      console.log(`[API] Successfully deleted payment ID: ${id}`);
+      sendSuccess(res, { id });
+    } catch (error) {
+      console.error(`[API] Error in deletePayment:`, error);
+      return sendError(res, error instanceof Error ? error.message : 'Failed to delete payment', 500);
     }
-    
-    console.log(`[API] Successfully deleted payment ID: ${id}`);
-    
-    // Send success response
-    sendSuccess(res, { id });
   } catch (error) {
     console.error('[API] Error in payment deletion route:', error);
     sendError(res,
