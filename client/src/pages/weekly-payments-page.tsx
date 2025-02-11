@@ -362,7 +362,6 @@ export default function WeeklyPaymentsPage() {
     mutationFn: async (id: number) => {
       console.log('[Frontend] Deleting payment:', id);
       const response = await apiRequest("DELETE", `/api/payments/${id}`);
-
       if (!response.ok) {
         const error = await response.text();
         console.error('[Frontend] Payment deletion failed:', error);
@@ -371,52 +370,37 @@ export default function WeeklyPaymentsPage() {
     },
     onMutate: async (deletedId) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ 
+      await queryClient.cancelQueries({
+        queryKey: ["/api/payments"],
+        exact: false
+      });
+
+      // Get all matching queries
+      const queries = queryClient.getQueriesData<{ data: Payment[] }>({ 
         queryKey: ["/api/payments"]
       });
 
-      // Snapshot the previous state
-      const previousData = queryClient.getQueryData(["/api/payments", { 
-        teamId: selectedTeam, 
-        weekOf: selectedDate?.toISOString(), 
-        leagueId 
-      }]);
+      // Store previous state of all affected queries
+      const previousQueries = new Map(queries);
 
-      // Optimistically update both query caches
-      if (previousData?.data) {
-        const updatedData = {
-          data: previousData.data.filter((payment: Payment) => payment.id !== deletedId)
-        };
+      // Optimistically update all matching queries
+      queries.forEach(([queryKey, queryData]) => {
+        if (queryData?.data) {
+          queryClient.setQueryData(queryKey, {
+            data: queryData.data.filter(payment => payment.id !== deletedId)
+          });
+        }
+      });
 
-        // Update the filtered view
-        queryClient.setQueryData(
-          ["/api/payments", { teamId: selectedTeam, weekOf: selectedDate?.toISOString(), leagueId }],
-          updatedData
-        );
-
-        // Also update any filtered views that might exist
-        queryClient.setQueriesData(
-          { queryKey: ["/api/payments"] },
-          (oldData: any) => {
-            if (oldData?.data) {
-              return {
-                data: oldData.data.filter((payment: Payment) => payment.id !== deletedId)
-              };
-            }
-            return oldData;
-          }
-        );
-      }
-
-      return { previousData };
+      return { previousQueries };
     },
     onSuccess: () => {
       console.log('[Frontend] Payment deletion successful');
 
-      // Invalidate and refetch all payment queries
-      queryClient.invalidateQueries({
+      // Remove all payment queries from cache completely
+      queryClient.removeQueries({ 
         queryKey: ["/api/payments"],
-        refetchType: "all"
+        exact: false 
       });
 
       toast({
@@ -428,12 +412,11 @@ export default function WeeklyPaymentsPage() {
     onError: (error: Error, _, context) => {
       console.error('[Frontend] Payment deletion error:', error);
 
-      // Restore the previous data on error
-      if (context?.previousData) {
-        queryClient.setQueryData(
-          ["/api/payments", { teamId: selectedTeam, weekOf: selectedDate?.toISOString(), leagueId }],
-          context.previousData
-        );
+      // Restore all previous query states on error
+      if (context?.previousQueries) {
+        context.previousQueries.forEach((queryData, queryKey) => {
+          queryClient.setQueryData(queryKey, queryData);
+        });
       }
 
       toast({
