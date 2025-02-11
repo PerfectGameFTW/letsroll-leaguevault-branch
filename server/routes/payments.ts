@@ -44,26 +44,6 @@ router.post("/process", async (req, res) => {
   }
 });
 
-// Add PATCH endpoint for updating payment amount
-router.patch("/:id", async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const { amount } = z.object({
-      amount: z.number().int().positive(),
-    }).parse(req.body);
-
-    // Update payment amount in storage
-    const updated = await storage.updatePayment(id, { amount });
-    sendSuccess(res, updated);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to update payment');
-    }
-  }
-});
-
 router.patch("/:id/status", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -80,6 +60,23 @@ router.patch("/:id/status", async (req, res) => {
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to update payment status');
     }
+  }
+});
+
+// Add DELETE endpoint
+router.delete("/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await storage.deletePayment(id);
+    sendSuccess(res, null, 204);
+  } catch (error) {
+    console.error('Error deleting payment:', error);
+    sendError(res,
+      error instanceof Error ?
+        `Failed to delete payment: ${error.message}` :
+        'Internal server error',
+      500
+    );
   }
 });
 
