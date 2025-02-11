@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import {
@@ -11,7 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
-import { format, differenceInWeeks, startOfToday } from "date-fns";
+import { format, differenceInWeeks, startOfToday, addDays, subDays } from "date-fns";
 import type { League, Team } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { Calendar } from "@/components/ui/calendar";
@@ -48,6 +48,45 @@ export default function WeeklyPaymentsPage() {
   const league = leagueResponse?.data;
   const teams = teamsResponse?.data || [];
 
+  // Function to get nearest bowling day
+  const getNearestBowlingDay = (date: Date, weekDay: string): Date => {
+    const weekDayMap: { [key: string]: number } = {
+      'sunday': 0,
+      'monday': 1,
+      'tuesday': 2,
+      'wednesday': 3,
+      'thursday': 4,
+      'friday': 5,
+      'saturday': 6
+    };
+
+    const targetDay = weekDayMap[weekDay.toLowerCase()];
+    const currentDay = date.getDay();
+    const diff = targetDay - currentDay;
+
+    // If we're past the bowling day this week, go to next week
+    if (diff < 0) {
+      return addDays(date, diff + 7);
+    }
+    // If we're before the bowling day this week, go to this week's bowling day
+    return addDays(date, diff);
+  };
+
+  // Initialize selectedDate and selectedTeam on component mount
+  useEffect(() => {
+    if (league?.weekDay && !selectedDate) {
+      const today = startOfToday();
+      const nearestBowlingDay = getNearestBowlingDay(today, league.weekDay);
+      setSelectedDate(nearestBowlingDay);
+    }
+
+    if (teams.length > 0 && !selectedTeam) {
+      // Find Team 1 or use the first team in the list
+      const team1 = teams.find(t => t.number === 1) || teams[0];
+      setSelectedTeam(team1.id.toString());
+    }
+  }, [league?.weekDay, teams, selectedDate, selectedTeam]);
+
   // Calculate the disabled dates (outside season range)
   let disabledDates: { before: Date; after: Date } | undefined;
   if (league) {
@@ -63,7 +102,6 @@ export default function WeeklyPaymentsPage() {
   const isDateDisabled = (date: Date) => {
     if (!league?.weekDay) return false;
 
-    // Convert weekDay to day number (0 = Sunday, 1 = Monday, etc.)
     const weekDayMap: { [key: string]: number } = {
       'sunday': 0,
       'monday': 1,
@@ -96,6 +134,8 @@ export default function WeeklyPaymentsPage() {
     );
   }
 
+  const selectedTeamData = teams.find(t => t.id.toString() === selectedTeam);
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -107,15 +147,11 @@ export default function WeeklyPaymentsPage() {
           Back to League Dashboard
         </Link>
 
-        <h1 className="text-2xl font-bold">Weekly Payments - {league.name}</h1>
+        <div className="flex flex-col space-y-4">
+          <h1 className="text-2xl font-bold">Weekly Payments - {league.name}</h1>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Select Week and Team</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">Week</label>
+          <div className="flex gap-4">
+            <div className="w-[200px]">
               <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -153,8 +189,7 @@ export default function WeeklyPaymentsPage() {
               </Popover>
             </div>
 
-            <div>
-              <label className="text-sm font-medium mb-2 block">Team</label>
+            <div className="w-[200px]">
               <Select value={selectedTeam} onValueChange={setSelectedTeam}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a team" />
@@ -162,27 +197,28 @@ export default function WeeklyPaymentsPage() {
                 <SelectContent>
                   {teams.map((team) => (
                     <SelectItem key={team.id.toString()} value={team.id.toString()}>
-                      {team.name}
+                      Team {team.number} - {team.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+          </div>
+        </div>
 
-            <Button 
-              disabled={!selectedDate || !selectedTeam}
-              onClick={() => {
-                // This will be implemented in the next step
-                console.log("View/Log payments for:", {
-                  week: selectedDate?.toISOString(),
-                  teamId: selectedTeam
-                });
-              }}
-            >
-              View/Log Payments
-            </Button>
-          </CardContent>
-        </Card>
+        {selectedDate && selectedTeamData && (
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                Payments for {selectedTeamData.name} - Week of {format(selectedDate, "MMMM d, yyyy")}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {/* Payment log content will be implemented next */}
+              <p className="text-muted-foreground">Payment log content coming soon...</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </Layout>
   );
