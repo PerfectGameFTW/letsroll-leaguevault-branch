@@ -370,9 +370,9 @@ export default function WeeklyPaymentsPage() {
     },
     onMutate: async (deletedId) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({
+      await queryClient.cancelQueries({ 
         queryKey: ["/api/payments"],
-        exact: false
+        exact: false 
       });
 
       // Get all matching queries

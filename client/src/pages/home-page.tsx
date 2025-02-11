@@ -6,7 +6,7 @@ import { Link } from "wouter";
 import type { Bowler, League } from "@shared/schema";
 
 export default function HomePage() {
-  const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
     queryFn: async () => {
       const response = await fetch("/api/bowlers");
@@ -14,7 +14,7 @@ export default function HomePage() {
         throw new Error('Failed to fetch bowlers');
       }
       const json = await response.json();
-      return json.data;
+      return json;
     }
   });
 
@@ -29,9 +29,10 @@ export default function HomePage() {
     }
   });
 
-  const leagues = leaguesResponse?.data;
-  const activeBowlers = Array.isArray(bowlers) ? bowlers.filter(b => b.active).length : 0;
-  const totalLeagues = Array.isArray(leagues) ? leagues.length : 0;
+  const bowlers = bowlersResponse?.data || [];
+  const leagues = leaguesResponse?.data || [];
+  const activeBowlers = bowlers.filter(b => b.active).length;
+  const totalLeagues = leagues.length;
 
   if (loadingBowlers || loadingLeagues) {
     return (
