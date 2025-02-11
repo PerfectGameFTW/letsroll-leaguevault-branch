@@ -80,15 +80,15 @@ export default function WeeklyPaymentsPage() {
     }
   });
 
-  // Fetch payments for selected team and week
+  // Update the payments query to include all relevant parameters
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
-    queryKey: ["/api/payments", selectedTeam, selectedDate],
+    queryKey: ["/api/payments", selectedTeam, selectedDate, leagueId],
     queryFn: async () => {
       if (!selectedTeam || !selectedDate) {
         return { data: [] };
       }
       const response = await fetch(
-        `/api/payments?teamId=${selectedTeam}&weekOf=${selectedDate.toISOString()}`
+        `/api/payments?teamId=${selectedTeam}&weekOf=${selectedDate.toISOString()}&leagueId=${leagueId}`
       );
       if (!response.ok) {
         throw new Error('Failed to fetch payments');
@@ -372,16 +372,11 @@ export default function WeeklyPaymentsPage() {
     onSuccess: () => {
       console.log('[Frontend] Payment deletion successful');
 
-      // Invalidate and refetch all payment-related queries
+      // Invalidate all payment-related queries to ensure UI updates
       queryClient.invalidateQueries({
         queryKey: ["/api/payments"],
-        refetchType: "all"
-      });
-
-      // Also refetch bowler data
-      queryClient.invalidateQueries({
-        queryKey: ["/api/bowlers"],
-        refetchType: "all"
+        type: 'all',
+        refetchType: 'all'
       });
 
       toast({
@@ -405,16 +400,11 @@ export default function WeeklyPaymentsPage() {
       console.log('[Frontend] Handling payment deletion:', id);
       await deletePaymentMutation.mutateAsync(id);
 
-      // Force immediate refetch of all payment queries to ensure UI is up to date
-      await queryClient.invalidateQueries({ 
+      // Force an immediate refetch of all payment queries
+      await queryClient.invalidateQueries({
         queryKey: ["/api/payments"],
-        refetchType: "all"
-      });
-
-      // Also refetch bowler data
-      await queryClient.invalidateQueries({ 
-        queryKey: ["/api/bowlers"],
-        refetchType: "all"
+        type: 'all',
+        refetchType: 'all'
       });
     } catch (error) {
       console.error('[Frontend] Error in handleDelete:', error);

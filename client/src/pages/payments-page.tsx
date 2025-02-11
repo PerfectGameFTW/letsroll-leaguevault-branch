@@ -21,10 +21,24 @@ export default function PaymentsPage() {
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments"],
+    queryFn: async () => {
+      const response = await fetch('/api/payments');
+      if (!response.ok) {
+        throw new Error('Failed to fetch payments');
+      }
+      return response.json();
+    },
   });
 
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
+    queryFn: async () => {
+      const response = await fetch('/api/bowlers');
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowlers');
+      }
+      return response.json();
+    },
   });
 
   if (loadingPayments || loadingBowlers) {
