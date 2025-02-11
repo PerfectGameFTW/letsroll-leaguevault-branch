@@ -435,17 +435,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deletePayment(id: number): Promise<void> {
-    console.log('[Storage] Attempting to delete payment:', id);
-    const result = await db
-      .delete(payments)
-      .where(eq(payments.id, id))
-      .execute();
+    console.log('[Storage] Starting delete operation for payment:', id);
     
-    if (!result.rowCount || result.rowCount === 0) {
-      throw new Error(`Payment ${id} not found or could not be deleted`);
+    try {
+      const result = await db
+        .delete(payments)
+        .where(eq(payments.id, id))
+        .execute();
+      
+      console.log('[Storage] Delete query executed. Result:', result);
+      console.log('[Storage] Row count:', result.rowCount);
+      
+      if (!result.rowCount || result.rowCount === 0) {
+        console.error('[Storage] Delete operation returned 0 rows affected');
+        throw new Error(`Payment ${id} not found or could not be deleted`);
+      }
+      
+      // Verify deletion
+      const verifyResult = await db
+        .select()
+        .from(payments)
+        .where(eq(payments.id, id))
+        .execute();
+      
+      console.log('[Storage] Verification query result:', verifyResult);
+      
+      if (verifyResult.length > 0) {
+        console.error('[Storage] Payment still exists after deletion');
+        throw new Error('Delete operation did not remove the payment');
+      }
+      
+      console.log(`[Storage] Successfully deleted payment ${id}`);
+    } catch (error) {
+      console.error('[Storage] Error in delete operation:', error);
+      throw error;
     }
-    
-    console.log(`[Storage] Deleted payment ${id}, rows affected: ${result.rowCount}`);
   }
 
   async updatePayment(id: number, update: Partial<InsertPayment>): Promise<Payment> {
