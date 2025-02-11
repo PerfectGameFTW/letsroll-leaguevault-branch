@@ -11,7 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Calendar as CalendarIcon, Pencil, Check, X } from "lucide-react";
+import { Loader2, ArrowLeft, Calendar as CalendarIcon, Trash2 } from "lucide-react";
 import { format, differenceInWeeks, startOfToday, subDays } from "date-fns";
 import type { League, Team, Payment, Bowler, BowlerLeague } from "@shared/schema";
 import { useParams, Link } from "wouter";
@@ -33,6 +33,14 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface PaymentEntry {
   bowlerId: number;
@@ -53,6 +61,7 @@ export default function WeeklyPaymentsPage() {
   const [selectedTeam, setSelectedTeam] = useState<string>();
   const [paymentEntries, setPaymentEntries] = useState<{ [key: number]: PaymentEntry }>({});
   const [editingPayment, setEditingPayment] = useState<EditingPayment | null>(null);
+  const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
 
   // Fetch league details
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
@@ -348,6 +357,37 @@ export default function WeeklyPaymentsPage() {
     });
   };
 
+  // Add delete mutation
+  const deletePaymentMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await apiRequest("DELETE", `/api/payments/${id}`);
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({
+        title: "Payment deleted",
+        description: "The payment has been successfully deleted.",
+      });
+      setPaymentToDelete(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error deleting payment",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDelete = async (id: number) => {
+    await deletePaymentMutation.mutate(id);
+  };
+
+
   if (loadingLeague || loadingTeams) {
     return (
       <Layout>
@@ -525,14 +565,13 @@ export default function WeeklyPaymentsPage() {
                       <TableBody>
                         {payments?.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={4} className="text-center">
+                            <TableCell colSpan={3} className="text-center">
                               No payment history
                             </TableCell>
                           </TableRow>
                         ) : (
                           payments?.map((payment) => {
                             const bowler = bowlers.find(b => b.id === payment.bowlerId);
-                            const isEditing = editingPayment?.id === payment.id;
 
                             return (
                               <TableRow key={payment.id}>
@@ -557,49 +596,16 @@ export default function WeeklyPaymentsPage() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  {isEditing ? (
-                                    <div className="flex items-center justify-end space-x-2">
-                                      <Input
-                                        type="text"
-                                        value={editingPayment.amount}
-                                        onChange={(e) => setEditingPayment({
-                                          ...editingPayment,
-                                          amount: e.target.value.replace(/[^0-9.]/g, ''),
-                                        })}
-                                        className="w-24 text-right"
-                                      />
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={() => handleSaveEdit(payment.id)}
-                                        disabled={updatePaymentMutation.isPending}
-                                      >
-                                        {updatePaymentMutation.isPending ? (
-                                          <Loader2 className="h-4 w-4 animate-spin" />
-                                        ) : (
-                                          <Check className="h-4 w-4" />
-                                        )}
-                                      </Button>
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={handleCancelEdit}
-                                      >
-                                        <X className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  ) : (
-                                    <div className="flex items-center justify-end space-x-2">
-                                      <span>${(payment.amount / 100).toFixed(2)}</span>
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        onClick={() => handleStartEdit(payment)}
-                                      >
-                                        <Pencil className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  )}
+                                  <div className="flex items-center justify-end space-x-2">
+                                    <span>${(payment.amount / 100).toFixed(2)}</span>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => setPaymentToDelete(payment.id)}
+                                    >
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             );
@@ -614,6 +620,35 @@ export default function WeeklyPaymentsPage() {
           </Card>
         )}
       </div>
+      <Dialog open={paymentToDelete !== null} onOpenChange={() => setPaymentToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Payment</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this payment? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPaymentToDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => handleDelete(paymentToDelete!)}
+              disabled={deletePaymentMutation.isPending}
+            >
+              {deletePaymentMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Delete"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
