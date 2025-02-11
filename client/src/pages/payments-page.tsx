@@ -19,11 +19,11 @@ import { format } from "date-fns";
 export default function PaymentsPage() {
   const [showForm, setShowForm] = useState(false);
 
-  const { data: payments, isLoading: loadingPayments } = useQuery<Payment[]>({
+  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments"],
   });
 
-  const { data: bowlers, isLoading: loadingBowlers } = useQuery<Bowler[]>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
   });
 
@@ -36,6 +36,9 @@ export default function PaymentsPage() {
       </Layout>
     );
   }
+
+  const payments = paymentsResponse?.data || [];
+  const bowlers = bowlersResponse?.data || [];
 
   return (
     <Layout>
@@ -55,30 +58,44 @@ export default function PaymentsPage() {
               <TableHead>Week Of</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Square Payment ID</TableHead>
+              <TableHead>Payment Type</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {payments?.map((payment) => {
-              const bowler = bowlers?.find((b) => b.id === payment.bowlerId);
-              return (
-                <TableRow key={payment.id}>
-                  <TableCell>{bowler?.name}</TableCell>
-                  <TableCell>
-                    {format(new Date(payment.weekOf), "MMM d, yyyy")}
-                  </TableCell>
-                  <TableCell>${(payment.amount / 100).toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={payment.status === "paid" ? "default" : "secondary"}
-                    >
-                      {payment.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{payment.squarePaymentId || "N/A"}</TableCell>
-                </TableRow>
-              );
-            })}
+            {payments.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center">
+                  No payments found
+                </TableCell>
+              </TableRow>
+            ) : (
+              payments.map((payment) => {
+                const bowler = bowlers.find((b) => b.id === payment.bowlerId);
+                return (
+                  <TableRow key={payment.id}>
+                    <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
+                    <TableCell>
+                      {format(new Date(payment.weekOf), "MMM d, yyyy")}
+                    </TableCell>
+                    <TableCell>${(payment.amount / 100).toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={payment.status === "paid" ? "default" : "secondary"}
+                      >
+                        {payment.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {payment.squarePaymentId === 'cash' ? 'Cash' :
+                         payment.squarePaymentId === 'check' ? 'Check' :
+                         payment.squarePaymentId === 'square' ? 'Square' : 'Other'}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
           </TableBody>
         </Table>
       </div>
@@ -86,7 +103,7 @@ export default function PaymentsPage() {
       <PaymentForm
         open={showForm}
         onClose={() => setShowForm(false)}
-        bowlers={bowlers || []}
+        bowlers={bowlers}
       />
     </Layout>
   );
