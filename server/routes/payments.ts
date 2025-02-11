@@ -86,6 +86,13 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "Invalid payment ID", 400);
     }
 
+    // Check if payment exists first
+    const payments = await storage.getPayments(undefined, undefined, [id]);
+    if (payments.length === 0) {
+      console.error(`[API] Payment ${id} not found`);
+      return sendError(res, `Payment ${id} not found`, 404);
+    }
+
     // Perform the deletion
     await storage.deletePayment(id);
     console.log(`[API] Successfully deleted payment ID: ${id}`);
