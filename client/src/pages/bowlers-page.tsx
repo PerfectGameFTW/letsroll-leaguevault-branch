@@ -27,11 +27,21 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
+  // Add error handling and debugging for bowlers query
+  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
+    onError: (error) => {
+      console.error("Error fetching bowlers:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load bowlers",
+        variant: "destructive",
+      });
+    },
   });
 
   const bowlers = bowlersResponse?.data || [];
+  console.log("Bowlers data:", { bowlers, response: bowlersResponse });
 
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues"],
@@ -97,11 +107,23 @@ export default function BowlersPage() {
     return league?.weeklyFee || 0;
   };
 
+  // Show loading state
   if (loadingBowlers || loadingTeams || loadingLeagues || loadingBowlerLeagues) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
           <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
+
+  // Show error state
+  if (bowlersError) {
+    return (
+      <Layout>
+        <div className="text-center text-destructive">
+          Error loading bowlers. Please try again.
         </div>
       </Layout>
     );
@@ -153,41 +175,49 @@ export default function BowlersPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredBowlers.map((bowler) => {
-              const weeklyFee = getWeeklyFee(bowler);
-              return (
-                <TableRow key={bowler.id}>
-                  <TableCell>
-                    <Link 
-                      href={`/bowlers/${bowler.id}`}
-                      className="hover:underline text-foreground"
-                    >
-                      {bowler.name}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{bowler.email}</TableCell>
-                  <TableCell>${(weeklyFee / 100).toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge variant={bowler.active ? "default" : "secondary"}>
-                      {bowler.active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedBowler(bowler);
-                        setShowForm(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
+            {filteredBowlers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-4">
+                  No bowlers found
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredBowlers.map((bowler) => {
+                const weeklyFee = getWeeklyFee(bowler);
+                return (
+                  <TableRow key={bowler.id}>
+                    <TableCell>
+                      <Link 
+                        href={`/bowlers/${bowler.id}`}
+                        className="hover:underline text-foreground"
+                      >
+                        {bowler.name}
+                      </Link>
+                    </TableCell>
+                    <TableCell>{bowler.email}</TableCell>
+                    <TableCell>${(weeklyFee / 100).toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Badge variant={bowler.active ? "default" : "secondary"}>
+                        {bowler.active ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedBowler(bowler);
+                          setShowForm(true);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
+            )}
           </TableBody>
         </Table>
       </div>
