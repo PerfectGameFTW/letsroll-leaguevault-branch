@@ -367,7 +367,7 @@ export default function WeeklyPaymentsPage() {
       }
     },
     onSuccess: () => {
-      // Invalidate and refetch all related queries to ensure proper cache updates
+      // Invalidate and refetch all payment-related queries
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       toast({
@@ -388,10 +388,11 @@ export default function WeeklyPaymentsPage() {
   const handleDelete = async (id: number) => {
     try {
       await deletePaymentMutation.mutateAsync(id);
-      // Force immediate refetch of payments after deletion
-      await queryClient.refetchQueries({ 
+      // Force immediate refetch to update the UI
+      await queryClient.invalidateQueries({ 
         queryKey: ["/api/payments"],
-        exact: false
+        exact: false,
+        refetchType: "all"
       });
     } catch (error) {
       console.error('Error deleting payment:', error);
