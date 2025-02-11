@@ -438,15 +438,14 @@ export class DatabaseStorage implements IStorage {
     console.log('[Storage] Starting delete operation for payment:', id);
     
     try {
-      const [deleted] = await db
+      const result = await db
         .delete(payments)
         .where(eq(payments.id, id))
-        .returning()
         .execute();
       
-      console.log('[Storage] Delete result:', deleted);
+      console.log('[Storage] Delete result:', result);
       
-      if (!deleted) {
+      if (!result.rowCount || result.rowCount === 0) {
         throw new Error(`Payment ${id} not found or could not be deleted`);
       }
       
