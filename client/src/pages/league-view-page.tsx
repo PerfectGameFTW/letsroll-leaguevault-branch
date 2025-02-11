@@ -44,15 +44,15 @@ export default function LeagueViewPage() {
               <CardHeader>
                 <CardTitle className="flex items-center">
                   <Users className="h-5 w-5 mr-2" />
-                  Teams Management
+                  Roster Management
                 </CardTitle>
                 <CardDescription>
-                  View and manage teams and bowlers in this league
+                  Manage bowlers and teams in your league
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-muted-foreground">
-                  Add or remove teams, manage bowlers, and organize team rosters
+                  Add or remove bowlers, organize team rosters, and manage team assignments
                 </p>
               </CardContent>
             </Card>
