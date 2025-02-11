@@ -10,6 +10,18 @@ import {
 } from "@shared/schema";
 
 export interface IStorage {
+  // League methods
+  getLeagues(): Promise<League[]>;
+  createLeague(league: InsertLeague): Promise<League>;
+  updateLeague(id: number, league: Partial<InsertLeague>): Promise<League>;
+  deleteLeague(id: number): Promise<void>;
+
+  // Team methods
+  getTeams(leagueId?: number): Promise<Team[]>;
+  createTeam(team: InsertTeam): Promise<Team>;
+  updateTeam(id: number, team: Partial<InsertTeam>): Promise<Team>;
+  deleteTeam(id: number): Promise<void>;
+
   // Bowlers
   getBowler(id: number): Promise<Bowler | undefined>;
   getBowlers(teamId?: number, ids?: number[]): Promise<Bowler[]>;
@@ -36,6 +48,125 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Add new League methods
+  async getLeagues(): Promise<League[]> {
+    try {
+      console.log('[Storage] Fetching all leagues');
+      const result = await db.select().from(leagues).orderBy(leagues.id);
+      console.log(`[Storage] Found ${result.length} leagues`);
+      return result;
+    } catch (error) {
+      console.error('[Storage] Error getting leagues:', error);
+      throw error;
+    }
+  }
+
+  async createLeague(league: InsertLeague): Promise<League> {
+    try {
+      console.log('[Storage] Creating new league:', league);
+      const [created] = await db.insert(leagues).values(league).returning();
+      console.log('[Storage] Created league:', created);
+      return created;
+    } catch (error) {
+      console.error('[Storage] Error creating league:', error);
+      throw error;
+    }
+  }
+
+  async updateLeague(id: number, update: Partial<InsertLeague>): Promise<League> {
+    try {
+      console.log(`[Storage] Updating league ${id}:`, update);
+      const [updated] = await db
+        .update(leagues)
+        .set(update)
+        .where(eq(leagues.id, id))
+        .returning();
+      console.log('[Storage] Updated league:', updated);
+      return updated;
+    } catch (error) {
+      console.error('[Storage] Error updating league:', error);
+      throw error;
+    }
+  }
+
+  async deleteLeague(id: number): Promise<void> {
+    try {
+      console.log(`[Storage] Deleting league ${id}`);
+      await db.transaction(async (tx) => {
+        await tx.delete(leagues).where(eq(leagues.id, id));
+        const [verifyDeleted] = await tx.select().from(leagues).where(eq(leagues.id, id));
+        if (verifyDeleted) {
+          throw new Error('League deletion failed - league still exists');
+        }
+      });
+      console.log(`[Storage] Successfully deleted league ${id}`);
+    } catch (error) {
+      console.error('[Storage] Error deleting league:', error);
+      throw error;
+    }
+  }
+
+  // Add new Team methods
+  async getTeams(leagueId?: number): Promise<Team[]> {
+    try {
+      console.log('[Storage] Fetching teams with filters:', { leagueId });
+      let query = db.select().from(teams);
+      if (leagueId !== undefined) {
+        query = query.where(eq(teams.leagueId, leagueId));
+      }
+      const result = await query.orderBy(teams.number);
+      console.log(`[Storage] Found ${result.length} teams`);
+      return result;
+    } catch (error) {
+      console.error('[Storage] Error getting teams:', error);
+      throw error;
+    }
+  }
+
+  async createTeam(team: InsertTeam): Promise<Team> {
+    try {
+      console.log('[Storage] Creating new team:', team);
+      const [created] = await db.insert(teams).values(team).returning();
+      console.log('[Storage] Created team:', created);
+      return created;
+    } catch (error) {
+      console.error('[Storage] Error creating team:', error);
+      throw error;
+    }
+  }
+
+  async updateTeam(id: number, update: Partial<InsertTeam>): Promise<Team> {
+    try {
+      console.log(`[Storage] Updating team ${id}:`, update);
+      const [updated] = await db
+        .update(teams)
+        .set(update)
+        .where(eq(teams.id, id))
+        .returning();
+      console.log('[Storage] Updated team:', updated);
+      return updated;
+    } catch (error) {
+      console.error('[Storage] Error updating team:', error);
+      throw error;
+    }
+  }
+
+  async deleteTeam(id: number): Promise<void> {
+    try {
+      console.log(`[Storage] Deleting team ${id}`);
+      await db.transaction(async (tx) => {
+        await tx.delete(teams).where(eq(teams.id, id));
+        const [verifyDeleted] = await tx.select().from(teams).where(eq(teams.id, id));
+        if (verifyDeleted) {
+          throw new Error('Team deletion failed - team still exists');
+        }
+      });
+      console.log(`[Storage] Successfully deleted team ${id}`);
+    } catch (error) {
+      console.error('[Storage] Error deleting team:', error);
+      throw error;
+    }
+  }
   // Bowlers
   async getBowler(id: number): Promise<Bowler | undefined> {
     try {
