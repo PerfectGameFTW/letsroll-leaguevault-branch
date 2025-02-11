@@ -70,30 +70,37 @@ router.patch("/:id/status", async (req, res) => {
 // Delete payment endpoint
 router.delete("/:id", async (req, res) => {
   try {
-    console.log(`DELETE /api/payments/${req.params.id} - Starting deletion`);
+    console.log(`[API] DELETE /api/payments/${req.params.id} - Starting deletion`);
 
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
-      console.error('Invalid payment ID format:', req.params.id);
+      console.error('[API] Invalid payment ID format:', req.params.id);
       return sendError(res, "Invalid payment ID", 400);
     }
 
-    // Verify payment exists before deletion
-    const existingPayment = await storage.getPayments(undefined, undefined, [id]);
-    console.log('Found payment to delete:', existingPayment);
+    // First verify the payment exists
+    const existingPayments = await storage.getPayments(undefined, undefined, [id]);
+    console.log('[API] Found payment to delete:', existingPayments);
 
-    if (!existingPayment.length) {
-      console.error(`Payment not found with ID: ${id}`);
+    if (!existingPayments.length) {
+      console.error(`[API] Payment not found with ID: ${id}`);
       return sendError(res, "Payment not found", 404);
     }
 
     await storage.deletePayment(id);
-    console.log(`Successfully deleted payment ID: ${id}`);
+    console.log(`[API] Successfully deleted payment ID: ${id}`);
+
+    // Verify deletion
+    const verifyDeleted = await storage.getPayments(undefined, undefined, [id]);
+    if (verifyDeleted.length > 0) {
+      console.error(`[API] Payment ${id} still exists after deletion`);
+      throw new Error('Payment deletion failed - payment still exists');
+    }
 
     // Return 204 No Content on successful deletion
     res.status(204).end();
   } catch (error) {
-    console.error('Error in payment deletion route:', error);
+    console.error('[API] Error in payment deletion route:', error);
     sendError(res,
       error instanceof Error ?
         `Failed to delete payment: ${error.message}` :

@@ -410,7 +410,6 @@ export default function WeeklyPaymentsPage() {
     },
     onError: (error: Error, _, context) => {
       console.error('[Frontend] Payment deletion error:', error);
-
       // Restore the previous data on error
       if (context?.previousData) {
         queryClient.setQueryData(
