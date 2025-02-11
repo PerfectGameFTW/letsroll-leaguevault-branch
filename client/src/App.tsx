@@ -12,6 +12,9 @@ import BowlersPage from "@/pages/bowlers-page";
 import BowlerViewPage from "@/pages/bowler-view-page";
 import PaymentsPage from "@/pages/payments-page";
 import WeeklyPaymentsPage from "@/pages/weekly-payments-page";
+import ReportsPage from "@/pages/reports-page";
+import LeaguePastDuePage from "@/pages/league-past-due-page";
+import PastDuePage from "@/pages/past-due-page";
 import { useEffect } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -28,6 +31,9 @@ function Router() {
       <Route path="/bowlers" component={BowlersPage} />
       <Route path="/bowlers/:bowlerId" component={BowlerViewPage} />
       <Route path="/payments" component={PaymentsPage} />
+      <Route path="/reports" component={ReportsPage} />
+      <Route path="/reports/leagues/:leagueId/past-due" component={LeaguePastDuePage} />
+      <Route path="/reports/past-due" component={PastDuePage} />
       <Route component={NotFound} />
     </Switch>
   );
