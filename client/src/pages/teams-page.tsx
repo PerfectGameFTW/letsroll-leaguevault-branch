@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Users } from "lucide-react";
-import type { Team, League, Bowler } from "@shared/schema";
+import type { Team, League } from "@shared/schema";
 import { useParams, Link } from "wouter";
 
 export default function TeamsPage() {
@@ -89,7 +89,11 @@ export default function TeamsPage() {
             {sortedTeams.map((team) => (
               <TableRow key={team.id}>
                 <TableCell>{team.number || 'Not assigned'}</TableCell>
-                <TableCell>{team.name}</TableCell>
+                <TableCell>
+                  <Link href={`/teams/${team.id}`} className="hover:underline text-foreground">
+                    {team.name}
+                  </Link>
+                </TableCell>
                 <TableCell>
                   <Badge variant={team.active ? "default" : "secondary"}>
                     {team.active ? "Active" : "Inactive"}
