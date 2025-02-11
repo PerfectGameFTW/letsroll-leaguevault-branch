@@ -180,22 +180,39 @@ export class DatabaseStorage implements IStorage {
 
   async getBowlers(teamId?: number, ids?: number[]): Promise<Bowler[]> {
     try {
-      const conditions = [];
+      console.log('[Storage] Getting bowlers with filters:', { teamId, ids });
+
+      let query = db.select({
+        id: bowlers.id,
+        name: bowlers.name,
+        email: bowlers.email,
+        active: bowlers.active,
+        order: bowlers.order,
+        squareCustomerId: bowlers.squareCustomerId
+      }).from(bowlers);
+
       if (teamId !== undefined) {
-        conditions.push(eq(bowlerLeagues.teamId, teamId));
-      }
-      if (ids && ids.length > 0) {
-        conditions.push(inArray(bowlers.id, ids));
+        query = db.select({
+          id: bowlers.id,
+          name: bowlers.name,
+          email: bowlers.email,
+          active: bowlers.active,
+          order: bowlers.order,
+          squareCustomerId: bowlers.squareCustomerId
+        })
+          .from(bowlers)
+          .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
+          .where(eq(bowlerLeagues.teamId, teamId))
+          .orderBy(bowlerLeagues.order);
+      } else if (ids && ids.length > 0) {
+        query = query.where(inArray(bowlers.id, ids));
       }
 
-      let query = db.select().from(bowlers);
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions));
-      }
-
-      return await query;
+      const results = await query;
+      console.log(`[Storage] Found ${results.length} bowlers`);
+      return results;
     } catch (error) {
-      console.error('Error getting bowlers:', error);
+      console.error('[Storage] Error getting bowlers:', error);
       throw error;
     }
   }
