@@ -20,7 +20,10 @@ export const pool = new Pool({
 });
 
 // Configure Drizzle with our schema
-export const db = drizzle(pool, { schema });
+export const db = drizzle(pool, { 
+  schema,
+  logger: true
+});
 
 // Add error handling for the pool
 pool.on('error', (err) => {
