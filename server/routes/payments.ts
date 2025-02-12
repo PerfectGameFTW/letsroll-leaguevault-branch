@@ -40,14 +40,7 @@ router.delete("/:id", async (req, res) => {
 
     console.log('[Payments Router] Before storage.deletePayment call');
     const result = await storage.deletePayment(id);
-    console.log('[Payments Router] After storage.deletePayment call. Result:', result, typeof result);
-    
-    if (!result) {
-      console.log('[Payments Router] Payment not found');
-      return sendError(res, "Payment not found", 404);
-    }
-    
-    console.log('[Payments Router] Payment deleted successfully');
+    console.log('[Payments Router] After storage.deletePayment call');
     return sendSuccess(res, { success: true, id });
   } catch (error) {
     console.error('[Payments Router] Delete error:', error);
