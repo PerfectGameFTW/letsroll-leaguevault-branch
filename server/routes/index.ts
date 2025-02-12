@@ -4,7 +4,7 @@ import leaguesRouter from './leagues';
 import teamsRouter from './teams';
 import bowlersRouter from './bowlers';
 console.log('[Routes] Loading payment routes...');
-import paymentsRouter from './routes/payments';
+import paymentsRouter from './payments';
 console.log('[Routes] Payment routes loaded');
 import { enrollInLoyalty, getLoyaltyPoints, createOrUpdateCustomer, addCustomerToLeagueGroup } from '../services/square';
 import { z } from "zod";
