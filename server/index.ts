@@ -18,25 +18,27 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  // API routes first - ensures all API endpoints return JSON
-  app.use('/api', (req, res, next) => {
-    res.setHeader('Content-Type', 'application/json');
-    next();
-  });
+// Ensure JSON responses for all API routes
+app.use('/api', (req, res, next) => {
+  res.setHeader('Content-Type', 'application/json');
+  next();
+});
 
+(async () => {
   // Register routes (includes payment deletion endpoints)
   const server = registerRoutes(app);
 
-  // Global API error handler
+  // Global API error handler - ensure JSON responses even for errors
   app.use('/api', (err: any, req: Request, res: Response, next: NextFunction) => {
     console.error('[API Error]', err);
-    res.status(err.status || 500).json({
-      success: false,
-      error: {
-        message: err.message || "Internal Server Error"
-      }
-    });
+    if (!res.headersSent) {
+      res.status(err.status || 500).json({
+        success: false,
+        error: {
+          message: err.message || "Internal Server Error"
+        }
+      });
+    }
   });
 
   // Frontend handling

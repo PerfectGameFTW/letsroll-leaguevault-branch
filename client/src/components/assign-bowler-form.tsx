@@ -33,13 +33,21 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   // Query to get all bowlers
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
-    retry: false,
+    queryFn: async () => {
+      const response = await fetch("/api/bowlers");
+      if (!response.ok) throw new Error("Failed to fetch bowlers");
+      return response.json();
+    },
   });
 
   // Query to get bowler leagues to filter out already assigned bowlers
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", leagueId],
-    retry: false,
+    queryFn: async () => {
+      const response = await fetch(`/api/bowler-leagues?leagueId=${leagueId}`);
+      if (!response.ok) throw new Error("Failed to fetch bowler leagues");
+      return response.json();
+    },
   });
 
   const bowlers = bowlersResponse?.data || [];
@@ -63,22 +71,17 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
         leagueId,
         teamId,
       };
-      console.log("[AssignBowler] Assigning bowler with payload:", payload);
-      try {
-        const response = await apiRequest("POST", "/api/bowler-leagues", payload);
-        const data = await response.json();
-        console.log("[AssignBowler] Assignment successful:", data);
-        return data;
-      } catch (error) {
-        console.error("[AssignBowler] Assignment failed:", error);
-        throw error;
+      const response = await apiRequest("POST", "/api/bowler-leagues", payload);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to assign bowler");
       }
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}`] });
-
       toast({
         title: "Success",
         description: "Bowler has been added to the team.",
@@ -87,7 +90,6 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
       setSelectedBowlerId("");
     },
     onError: (error: Error) => {
-      console.error("[AssignBowler] Error:", error);
       toast({
         title: "Error assigning bowler",
         description: error.message,
