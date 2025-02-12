@@ -435,7 +435,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deletePayment(id: number): Promise<void> {
-    console.log('[Storage] Starting delete for payment:', id, typeof id);
+    console.log('[Storage] deletePayment function entered');
+    console.log('[Storage] Payment ID to delete:', id, 'Type:', typeof id);
+    console.log('[Storage] Stack trace:', new Error().stack);
     
     if (typeof id !== 'number' || isNaN(id)) {
       throw new Error(`Invalid payment ID type: ${typeof id}`);

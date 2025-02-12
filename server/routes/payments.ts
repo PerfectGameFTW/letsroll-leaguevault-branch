@@ -78,8 +78,9 @@ router.patch("/:id/status", async (req, res) => {
 // Delete payment endpoint
 router.delete("/:id", async (req, res) => {
   try {
+      console.log('[API] DELETE route handler entered');
       const id = parseInt(req.params.id);
-      console.log(`[API] DELETE /api/payments/${id} - Starting deletion`);
+      console.log(`[API] DELETE /api/payments/${id} - Parsed ID:`, id, typeof id);
 
       if (isNaN(id)) {
         console.error('[API] Invalid payment ID format:', req.params.id);
