@@ -30,7 +30,7 @@ import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bow
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 interface BowlerFormProps {
   open: boolean;
@@ -44,21 +44,23 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const { toast } = useToast();
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
-  // Query for leagues
-  const { data: leaguesResponse } = useQuery<{ success: true, data: League[] }>({
+  // Query for leagues with proper caching
+  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ success: true, data: League[] }>({
     queryKey: ["/api/leagues"],
+    staleTime: 1000 * 60 * 30, // Cache for 30 minutes as league data changes very infrequently
   });
 
   const leagues = leaguesResponse?.data || [];
 
-  // Query for teams filtered by selected league
-  const { data: teamsResponse } = useQuery<{ success: true, data: Team[] }>({
+  // Query for teams filtered by selected league with proper caching
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true, data: Team[] }>({
     queryKey: ["/api/teams", selectedLeagueId],
     queryFn: () =>
       selectedLeagueId
         ? fetch(`/api/teams?leagueId=${selectedLeagueId}`).then((res) => res.json())
         : Promise.resolve({ success: true, data: [] }),
     enabled: !!selectedLeagueId,
+    staleTime: 1000 * 60 * 15, // Cache for 15 minutes as team data changes less frequently
   });
 
   const teams = teamsResponse?.data || [];
@@ -75,6 +77,27 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
       active: true,
     },
   });
+
+  // Memoize mutation callbacks to prevent unnecessary re-renders
+  const onSuccess = useCallback(() => {
+    // Invalidate only the bowlers query when a bowler is updated
+    queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
+    toast({
+      title: bowler ? "Bowler updated" : "Bowler created",
+      description: bowler
+        ? "Bowler has been updated successfully."
+        : "Bowler has been added to the system.",
+    });
+    onClose();
+  }, [bowler, onClose, toast]);
+
+  const onError = useCallback((error: Error) => {
+    toast({
+      title: bowler ? "Error updating bowler" : "Error creating bowler",
+      description: error.message,
+      variant: "destructive",
+    });
+  }, [bowler, toast]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
@@ -94,23 +117,8 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
         return await response.json();
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
-      toast({
-        title: bowler ? "Bowler updated" : "Bowler created",
-        description: bowler
-          ? "Bowler has been updated successfully."
-          : "Bowler has been added to the system.",
-      });
-      onClose();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: bowler ? "Error updating bowler" : "Error creating bowler",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
+    onSuccess,
+    onError,
   });
 
   const deleteMutation = useMutation({
@@ -122,22 +130,11 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
         throw new Error(error);
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
-      toast({
-        title: "Bowler deleted",
-        description: "The bowler has been removed from the system.",
-      });
-      onClose();
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error deleting bowler",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
+    onSuccess,
+    onError,
   });
+
+  const isLoading = loadingLeagues || loadingTeams;
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -146,93 +143,113 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
           <DialogTitle>{bowler ? "Edit Bowler" : "Add New Bowler"}</DialogTitle>
         </DialogHeader>
 
-        <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
-            className="space-y-4"
-          >
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Name</FormLabel>
-                  <FormControl>
-                    <Input {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input type="email" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="active"
-              render={({ field }) => (
-                <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5">
-                    <FormLabel>Active</FormLabel>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-
-            <div className="flex justify-end space-x-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin" />
+          </div>
+        ) : (
+          <Form {...form}>
+            <form
+              onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+              className="space-y-4"
+            >
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
                 )}
-                {bowler ? "Update" : "Add"} Bowler
-              </Button>
-            </div>
+              />
 
-            {bowler && (
-              <>
-                <Separator className="my-4" />
-                <div className="flex justify-center">
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={() => deleteMutation.mutate()}
-                    disabled={deleteMutation.isPending}
-                  >
-                    {deleteMutation.isPending && (
+              <FormField
+                control={form.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="active"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel>Active</FormLabel>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-end space-x-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={mutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={mutation.isPending || isLoading}
+                  className="min-w-[120px]"
+                >
+                  {mutation.isPending ? (
+                    <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
-                    Delete Bowler
-                  </Button>
-                </div>
-              </>
-            )}
-          </form>
-        </Form>
+                      {bowler ? "Updating..." : "Creating..."}
+                    </>
+                  ) : (
+                    bowler ? "Update" : "Add Bowler"
+                  )}
+                </Button>
+              </div>
+
+              {bowler && (
+                <>
+                  <Separator className="my-4" />
+                  <div className="flex justify-center">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => deleteMutation.mutate()}
+                      disabled={deleteMutation.isPending}
+                      className="min-w-[120px]"
+                    >
+                      {deleteMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Deleting...
+                        </>
+                      ) : (
+                        "Delete Bowler"
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </form>
+          </Form>
+        )}
       </DialogContent>
     </Dialog>
   );

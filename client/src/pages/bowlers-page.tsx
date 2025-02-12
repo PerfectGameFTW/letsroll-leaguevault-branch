@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
@@ -14,11 +14,48 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Eye, EyeOff, Search, Pencil } from "lucide-react";
 import type { Bowler, Team, League, BowlerLeague } from "@shared/schema";
-import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
+
+// Loading skeleton component
+function BowlerTableSkeleton() {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Name</TableHead>
+          <TableHead>Email</TableHead>
+          <TableHead>Weekly Fee</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead>Actions</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {[...Array(5)].map((_, i) => (
+          <TableRow key={i}>
+            <TableCell>
+              <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+            </TableCell>
+            <TableCell>
+              <div className="h-4 w-48 bg-muted animate-pulse rounded" />
+            </TableCell>
+            <TableCell>
+              <div className="h-4 w-16 bg-muted animate-pulse rounded" />
+            </TableCell>
+            <TableCell>
+              <div className="h-6 w-16 bg-muted animate-pulse rounded-full" />
+            </TableCell>
+            <TableCell>
+              <div className="h-8 w-16 bg-muted animate-pulse rounded" />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
 
 export default function BowlersPage() {
   const [showForm, setShowForm] = useState(false);
@@ -27,69 +64,50 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  // Add error handling and debugging for bowlers query
-  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<{ data: Bowler[] }>({
+  // Query for bowlers with proper error handling and longer cache time
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
-    onError: (error) => {
-      console.error("Error fetching bowlers:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load bowlers",
-        variant: "destructive",
-      });
-    },
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  // Only fetch bowler leagues if we have bowlers
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
+    queryKey: ["/api/bowler-leagues"],
+    enabled: !!bowlersResponse?.data?.length,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  // Only fetch teams if we have bowler leagues that need team information
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
+    queryKey: ["/api/teams"],
+    enabled: !!bowlerLeaguesResponse?.data?.length,
+    staleTime: 1000 * 60 * 15, // Cache for 15 minutes as team data changes less frequently
+  });
+
+  // Only fetch leagues if we have teams that need league information
+  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
+    queryKey: ["/api/leagues"],
+    enabled: !!teamsResponse?.data?.length,
+    staleTime: 1000 * 60 * 30, // Cache for 30 minutes as league data changes very infrequently
   });
 
   const bowlers = bowlersResponse?.data || [];
-  console.log("Bowlers data:", { bowlers, response: bowlersResponse });
-
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
-    queryKey: ["/api/bowler-leagues"],
-    queryFn: async () => {
-      const response = await fetch('/api/bowler-leagues');
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowler leagues');
-      }
-      return response.json();
-    }
-  });
-
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
-
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
-    queryKey: ["/api/teams"],
-    queryFn: async () => {
-      const response = await fetch('/api/teams');
-      if (!response.ok) {
-        throw new Error('Failed to fetch teams');
-      }
-      return response.json();
-    }
-  });
-
   const teams = teamsResponse?.data || [];
-
-  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
-    queryKey: ["/api/leagues"],
-    queryFn: async () => {
-      const response = await fetch('/api/leagues');
-      if (!response.ok) {
-        throw new Error('Failed to fetch leagues');
-      }
-      return response.json();
-    }
-  });
-
   const leagues = leaguesResponse?.data || [];
 
-  const filteredBowlers = bowlers.filter(bowler => {
-    const matchesSearch = searchQuery === "" || 
-      bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
-    return (showInactive ? true : bowler.active) && matchesSearch;
-  });
+  // Memoize filtered bowlers to avoid unnecessary recalculations
+  const filteredBowlers = useMemo(() => {
+    return bowlers.filter(bowler => {
+      const matchesSearch = searchQuery === "" || 
+        bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
+      return (showInactive ? true : bowler.active) && matchesSearch;
+    });
+  }, [bowlers, searchQuery, showInactive]);
 
-  const getBowlerTeam = (bowler: Bowler) => {
+  // Memoize bowler-team-league relationships to avoid recalculations
+  const getBowlerTeam = useMemo(() => (bowler: Bowler) => {
     const activeBowlerLeague = bowlerLeagues.find(bl => 
       bl.bowlerId === bowler.id && 
       bl.active
@@ -97,37 +115,19 @@ export default function BowlersPage() {
     if (!activeBowlerLeague) return undefined;
 
     return teams.find(t => t.id === activeBowlerLeague.teamId);
-  };
+  }, [bowlerLeagues, teams]);
 
-  const getWeeklyFee = (bowler: Bowler) => {
+  const getWeeklyFee = useMemo(() => (bowler: Bowler) => {
     const team = getBowlerTeam(bowler);
     if (!team) return 0;
 
     const league = leagues.find(l => l.id === team.leagueId);
     return league?.weeklyFee || 0;
-  };
+  }, [getBowlerTeam, leagues]);
 
-  // Show loading state
-  if (loadingBowlers || loadingTeams || loadingLeagues || loadingBowlerLeagues) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-      </Layout>
-    );
-  }
-
-  // Show error state
-  if (bowlersError) {
-    return (
-      <Layout>
-        <div className="text-center text-destructive">
-          Error loading bowlers. Please try again.
-        </div>
-      </Layout>
-    );
-  }
+  // Show loading skeleton while initial data is being fetched
+  const isInitialLoading = loadingBowlers && !bowlers.length;
+  const isLoadingRelatedData = (loadingBowlerLeagues || loadingTeams || loadingLeagues) && bowlers.length > 0;
 
   return (
     <Layout>
@@ -164,62 +164,79 @@ export default function BowlersPage() {
       </div>
 
       <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Weekly Fee</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredBowlers.length === 0 ? (
+        {isInitialLoading ? (
+          <BowlerTableSkeleton />
+        ) : (
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-4">
-                  No bowlers found
-                </TableCell>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Weekly Fee</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ) : (
-              filteredBowlers.map((bowler) => {
-                const weeklyFee = getWeeklyFee(bowler);
-                return (
-                  <TableRow key={bowler.id}>
-                    <TableCell>
-                      <Link 
-                        href={`/bowlers/${bowler.id}`}
-                        className="hover:underline text-foreground"
-                      >
-                        {bowler.name}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{bowler.email}</TableCell>
-                    <TableCell>${(weeklyFee / 100).toFixed(2)}</TableCell>
-                    <TableCell>
-                      <Badge variant={bowler.active ? "default" : "secondary"}>
-                        {bowler.active ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedBowler(bowler);
-                          setShowForm(true);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4 mr-2" />
-                        Edit
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {filteredBowlers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-4">
+                    {isLoadingRelatedData ? (
+                      <div className="flex items-center justify-center">
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Loading bowler details...
+                      </div>
+                    ) : (
+                      "No bowlers found"
+                    )}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredBowlers.map((bowler) => {
+                  const weeklyFee = getWeeklyFee(bowler);
+                  return (
+                    <TableRow key={bowler.id}>
+                      <TableCell>
+                        <Link 
+                          href={`/bowlers/${bowler.id}`}
+                          className="hover:underline text-foreground"
+                        >
+                          {bowler.name}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{bowler.email}</TableCell>
+                      <TableCell>
+                        {isLoadingRelatedData ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          `$${(weeklyFee / 100).toFixed(2)}`
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={bowler.active ? "default" : "secondary"}>
+                          {bowler.active ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedBowler(bowler);
+                            setShowForm(true);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        )}
       </div>
 
       <BowlerForm 

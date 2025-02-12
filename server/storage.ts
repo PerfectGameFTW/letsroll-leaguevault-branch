@@ -108,6 +108,7 @@ export class DatabaseStorage implements IStorage {
           email: bowlers.email,
           active: bowlers.active,
           order: bowlers.order,
+          squareCustomerId: bowlers.squareCustomerId,
         })
         .from(bowlers)
         .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))

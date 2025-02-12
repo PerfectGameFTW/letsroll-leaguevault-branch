@@ -44,47 +44,29 @@ export default function BowlerViewPage() {
   const bowlerId = parseInt(params.bowlerId!);
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
-  // Query for bowler with proper typing and error handling
+  // Query for bowler with proper typing and caching
   const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<{ data: Bowler }>({
     queryKey: [`/api/bowlers/${bowlerId}`],
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     retry: false,
-    queryFn: async () => {
-      const response = await fetch(`/api/bowlers/${bowlerId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowler');
-      }
-      return response.json();
-    }
   });
   const bowler = bowlerResponse?.data;
 
-  // Query to get bowler's league associations with proper typing
+  // Query to get bowler's league associations with proper typing and caching
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", bowlerId],
+    enabled: !!bowlerId,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     retry: false,
-    queryFn: async () => {
-      const response = await fetch(`/api/bowler-leagues?bowlerId=${bowlerId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowler leagues');
-      }
-      return response.json();
-    },
-    enabled: !!bowlerId
   });
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  // Get all leagues the bowler is in
+  // Get all leagues with longer cache time since they change less frequently
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
+    enabled: !!bowlerLeagues.length,
+    staleTime: 1000 * 60 * 30, // Cache for 30 minutes
     retry: false,
-    queryFn: async () => {
-      const response = await fetch('/api/leagues');
-      if (!response.ok) {
-        throw new Error('Failed to fetch leagues');
-      }
-      return response.json();
-    },
-    enabled: !!bowlerLeagues.length
   });
   const leagues = leaguesResponse?.data || [];
 
@@ -93,75 +75,45 @@ export default function BowlerViewPage() {
 
   const { data: teamResponse, isLoading: loadingTeam } = useQuery<{ data: Team }>({
     queryKey: [`/api/teams/${selectedAssociation?.teamId}`],
-    retry: false,
-    queryFn: async () => {
-      if (!selectedAssociation?.teamId) {
-        throw new Error('No team ID selected');
-      }
-      const response = await fetch(`/api/teams/${selectedAssociation.teamId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch team');
-      }
-      return response.json();
-    },
     enabled: !!selectedAssociation?.teamId,
+    staleTime: 1000 * 60 * 15, // Cache for 15 minutes
+    retry: false,
   });
   const team = teamResponse?.data;
 
   const { data: league, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${selectedLeagueId}`],
-    retry: false,
-    queryFn: async () => {
-      if (!selectedLeagueId) {
-        throw new Error('No league ID selected');
-      }
-      const response = await fetch(`/api/leagues/${selectedLeagueId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch league');
-      }
-      return response.json();
-    },
     enabled: !!selectedLeagueId,
+    staleTime: 1000 * 60 * 30, // Cache for 30 minutes
+    retry: false,
   });
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments", bowlerId, selectedLeagueId],
-    retry: false,
-    queryFn: async () => {
-      const response = await fetch(`/api/payments?bowlerId=${bowlerId}&leagueId=${selectedLeagueId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch payments');
-      }
-      return response.json();
-    },
     enabled: !!selectedLeagueId,
+    staleTime: 1000 * 60, // Cache for 1 minute since payments change frequently
+    retry: false,
   });
 
   const payments = paymentsResponse?.data || [];
 
-  // Add loyalty points query
+  // Add loyalty points query with proper caching
   const { data: loyaltyInfo, isLoading: loadingLoyalty } = useQuery<LoyaltyInfo>({
     queryKey: ["/api/square/loyalty", bowler?.squareCustomerId],
-    queryFn: () => {
-      if (!bowler?.squareCustomerId) {
-        throw new Error("No Square customer ID");
-      }
-      return getLoyaltyPoints(bowler.squareCustomerId);
-    },
     enabled: !!bowler?.squareCustomerId,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     retry: false,
   });
 
   // Update initialization logic for selectedLeagueId
   useEffect(() => {
     if (bowlerLeagues?.length && !selectedLeagueId) {
-      // Sort by order and take the first league
       const sortedLeagues = [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       setSelectedLeagueId(sortedLeagues[0].leagueId);
     }
   }, [bowlerLeagues, selectedLeagueId]);
 
-  // Add enroll mutation
+  // Add enroll mutation with proper error handling
   const enrollMutation = useMutation({
     mutationFn: async () => {
       if (!bowler?.squareCustomerId) {
@@ -184,7 +136,8 @@ export default function BowlerViewPage() {
     },
   });
 
-  if (loadingBowler || loadingBowlerLeagues || loadingPayments || loadingTeam || loadingLeague || loadingLoyalty || loadingLeagues) {
+  // Show initial loading state only when critical data is loading
+  if (loadingBowler) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">

@@ -13,6 +13,8 @@ export const leagues = pgTable("leagues", {
   seasonEnd: timestamp("season_end").notNull(),
   weekDay: text("week_day").notNull(),
   weeklyFee: integer("weekly_fee").notNull().default(2000), // Store in cents
+  practiceStartTime: text("practice_start_time"),
+  competitionStartTime: text("competition_start_time"),
 });
 
 export const teams = pgTable("teams", {
@@ -31,6 +33,7 @@ export const bowlers = pgTable("bowlers", {
   email: text("email").notNull(),
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
+  squareCustomerId: text("square_customer_id"),
 });
 
 export const bowlerLeagues = pgTable("bowler_leagues", {
@@ -113,6 +116,7 @@ const baseBowlerSchema = z.object({
   email: z.string().email("Invalid email address"),
   active: z.boolean().default(true),
   order: z.number().min(0).default(0),
+  squareCustomerId: z.string().nullable().optional(),
 });
 
 const baseLeagueSchema = z.object({
