@@ -108,7 +108,7 @@ router.delete("/:id", async (req, res) => {
         }
 
         console.log(`[API] Successfully deleted payment ${id}`);
-        res.status(200).json({ success: true, message: 'Payment deleted' });
+        res.json({ success: true, message: 'Payment deleted' });
       } catch (deleteError) {
         console.error(`[API] Error in deletePayment operation:`, deleteError);
         throw deleteError;
