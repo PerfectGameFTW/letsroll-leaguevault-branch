@@ -15,18 +15,19 @@ export function registerRoutes(app: Express): Server {
   console.log('[Routes] Registering API routes...');
 
   // Register route modules
+  // Register specific route handlers first
   app.use('/api/leagues', leaguesRouter);
   app.use('/api/teams', teamsRouter);
   app.use('/api/bowlers', bowlersRouter);
   app.use('/api/payments', paymentsRouter);
+  
+  console.log('[Routes] API routes registered');
 
-  // Catch-all middleware to detect unhandled routes
+  // Catch-all middleware for unhandled routes should be last
   app.use('/api/*', (req, res, next) => {
     console.log('[Routes] Unhandled API route:', req.method, req.path);
     next();
   });
-
-  console.log('[Routes] API routes registered');
 
   // Square customer management endpoints
   app.post("/api/square/customers", async (req, res) => {
