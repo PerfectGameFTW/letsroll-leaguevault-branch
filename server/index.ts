@@ -90,30 +90,19 @@ async function initializeServer() {
 
     // Frontend handling
     if (app.get("env") === "development") {
-      app.use((req, res, next) => {
-        if (req.path.startsWith('/api')) {
-          return next('route');
-        }
-        next();
-      });
-
       await setupVite(app, server);
     } else {
-      app.use((req, res, next) => {
-        if (req.path.startsWith('/api')) {
-          return next('route');
-        }
-        next();
-      });
       serveStatic(app);
     }
 
-    // Start server with health check
-    await new Promise<void>((resolve, reject) => {
-      server.listen(PORT, "0.0.0.0", () => {
+    // Start server with explicit port binding and logging
+    return new Promise<void>((resolve, reject) => {
+      const serverInstance = server.listen(PORT, "0.0.0.0", () => {
         console.log(`[Server] Ready and listening on port ${PORT}`);
         resolve();
-      }).on('error', (error: any) => {
+      });
+
+      serverInstance.on('error', (error: any) => {
         console.error('[Server] Failed to start server:', error);
         reject(error);
       });
@@ -123,17 +112,13 @@ async function initializeServer() {
         reject(new Error('Server startup timeout after 30 seconds'));
       }, 30000);
     });
-
-    console.log('[Server] Initialization complete');
-
-    return server;
   } catch (error) {
     console.error('[Server] Fatal error during initialization:', error);
     process.exit(1);
   }
 }
 
-// Start the server
+// Start the server with error handling
 initializeServer().catch((error) => {
   console.error('[Server] Unhandled error during startup:', error);
   process.exit(1);
