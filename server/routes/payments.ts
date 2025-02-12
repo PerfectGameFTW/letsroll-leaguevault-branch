@@ -1,3 +1,4 @@
+
 import { Router } from 'express';
 import { storage } from '../storage';
 import { insertPaymentSchema, payments } from "@shared/schema";
@@ -8,6 +9,7 @@ import { db } from '../db';
 import { sql, eq } from 'drizzle-orm';
 
 const router = Router();
+console.log('[Payments Router] Initializing routes');
 
 router.get("/", async (req, res) => {
   try {
@@ -30,6 +32,33 @@ router.get("/", async (req, res) => {
   } catch (error) {
     console.error('GET /api/payments - Error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch payments');
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  console.log('[API] DELETE route handler entered for payment:', req.params.id);
+  try {
+    const id = parseInt(req.params.id);
+    console.log('[API] Parsed ID:', id);
+    
+    if (isNaN(id)) {
+      console.error('[API] Invalid payment ID:', req.params.id);
+      return sendError(res, "Invalid payment ID", 400);
+    }
+    
+    console.log('[API] Attempting to delete payment:', id);
+    const result = await storage.deletePayment(id);
+    console.log('[API] Delete operation result:', result);
+    
+    if (!result) {
+      return sendError(res, "Payment not found", 404);
+    }
+    
+    console.log('[API] Payment deleted successfully');
+    return sendSuccess(res, { message: 'Payment deleted' });
+  } catch (error) {
+    console.error('[API] Error in DELETE handler:', error);
+    return sendError(res, error instanceof Error ? error.message : 'Failed to delete payment');
   }
 });
 
@@ -74,35 +103,6 @@ router.patch("/:id/status", async (req, res) => {
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to update payment status');
     }
-  }
-});
-
-// Delete payment endpoint
-router.delete("/:id", async (req, res) => {
-  try {
-    console.log('[API] DELETE route handler entered');
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) {
-      console.error('[API] Invalid payment ID:', req.params.id);
-      return sendError(res, "Invalid payment ID", 400);
-    }
-    
-    console.log('[API] Attempting to delete payment:', id);
-    const result = await storage.deletePayment(id);
-    console.log('[API] Delete operation result:', result);
-    
-    if (!result) {
-      return sendError(res, "Payment not found", 404);
-    }
-    
-    console.log('[API] Payment deleted successfully');
-    return sendSuccess(res, { message: 'Payment deleted' }, 200);
-  } catch (error) {
-    console.error('[API] Error in payment deletion route:', error);
-    return sendError(res, 
-      error instanceof Error ? error.message : 'Internal server error',
-      500
-    );
   }
 });
 
