@@ -2,8 +2,21 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
-    const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    let errorMessage;
+    try {
+      // Try to parse error as JSON first
+      const contentType = res.headers.get("content-type");
+      if (contentType && contentType.includes("application/json")) {
+        const errorData = await res.json();
+        errorMessage = errorData.message || errorData.error || res.statusText;
+      } else {
+        // Fallback to text if not JSON
+        errorMessage = await res.text();
+      }
+    } catch (e) {
+      errorMessage = res.statusText;
+    }
+    throw new Error(`${res.status}: ${errorMessage}`);
   }
 }
 
@@ -12,15 +25,34 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(url, {
-    method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
-    credentials: "include",
-  });
+  try {
+    console.log(`[API] ${method} request to ${url}`, data ? { data } : '');
+    const res = await fetch(url, {
+      method,
+      headers: data ? { 
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      } : {
+        "Accept": "application/json"
+      },
+      body: data ? JSON.stringify(data) : undefined,
+      credentials: "include",
+    });
 
-  await throwIfResNotOk(res);
-  return res;
+    await throwIfResNotOk(res);
+
+    // Verify JSON response
+    const contentType = res.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      throw new Error("Expected JSON response but received different content type");
+    }
+
+    console.log(`[API] ${method} request to ${url} successful`);
+    return res;
+  } catch (error) {
+    console.error(`[API] ${method} request to ${url} failed:`, error);
+    throw error;
+  }
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
@@ -29,16 +61,28 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
     async ({ queryKey }) => {
-      const res = await fetch(queryKey[0] as string, {
-        credentials: "include",
-      });
+      try {
+        console.log(`[Query] Fetching ${queryKey[0]}`);
+        const res = await fetch(queryKey[0] as string, {
+          credentials: "include",
+          headers: {
+            "Accept": "application/json"
+          }
+        });
 
-      if (unauthorizedBehavior === "returnNull" && res.status === 401) {
-        return null;
+        if (unauthorizedBehavior === "returnNull" && res.status === 401) {
+          console.log(`[Query] Unauthorized access to ${queryKey[0]}, returning null`);
+          return null;
+        }
+
+        await throwIfResNotOk(res);
+        const data = await res.json();
+        console.log(`[Query] Successfully fetched ${queryKey[0]}`, data);
+        return data;
+      } catch (error) {
+        console.error(`[Query] Error fetching ${queryKey[0]}:`, error);
+        throw error;
       }
-
-      await throwIfResNotOk(res);
-      return await res.json();
     };
 
 export const queryClient = new QueryClient({
@@ -54,9 +98,14 @@ export const queryClient = new QueryClient({
       refetchOnReconnect: true,
       // Add retry configuration
       retry: (failureCount, error) => {
-        // Retry up to 3 times unless it's a 404 or 401
-        if (error instanceof Error && error.message.startsWith('404')) return false;
-        if (error instanceof Error && error.message.startsWith('401')) return false;
+        // Don't retry on specific error conditions
+        if (error instanceof Error) {
+          // Don't retry on 404 or 401
+          if (error.message.startsWith('404')) return false;
+          if (error.message.startsWith('401')) return false;
+          // Don't retry on content type mismatch
+          if (error.message.includes('Expected JSON response')) return false;
+        }
         return failureCount < 3;
       },
       retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
@@ -64,7 +113,7 @@ export const queryClient = new QueryClient({
     mutations: {
       retry: false,
       onError: (error) => {
-        console.error('Mutation error:', error);
+        console.error('[Mutation] Error:', error);
       },
     },
   },

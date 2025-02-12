@@ -19,7 +19,6 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Loader2, Plus, ArrowLeft, ExternalLink, Pencil } from "lucide-react";
 import type { Team, Bowler, League, BowlerLeague } from "@shared/schema";
-import { getSquareCustomerUrl } from "@/lib/square";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -27,47 +26,21 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-interface SortableBowlerRowProps {
-  bowler: Bowler;
-  bowlerLeague: BowlerLeague;
-  league: League | undefined;
-  onEdit: (bowler: Bowler) => void;
-}
-
-function SortableBowlerRow({ bowler, bowlerLeague, league, onEdit }: SortableBowlerRowProps) {
-  return (
-    <TableRow>
-      <TableCell>
-        <div className="flex items-center gap-2">
-          <Link href={`/bowlers/${bowler.id}`} className="hover:underline">
-            {bowler.name}
-          </Link>
-        </div>
-      </TableCell>
-      <TableCell>{bowler.email}</TableCell>
-      <TableCell>${((league?.weeklyFee || 0) / 100).toFixed(2)}</TableCell>
-      <TableCell>
-        <Badge variant={bowlerLeague.active ? "default" : "secondary"}>
-          {bowlerLeague.active ? "Active" : "Inactive"}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onEdit(bowler)}
-        >
-          <Pencil className="h-4 w-4 mr-2" />
-          Edit
-        </Button>
-      </TableCell>
-    </TableRow>
-  );
-}
-
 const editTeamSchema = z.object({
   name: z.string().min(1, "Team name is required"),
 });
+
+interface ErrorBoundaryProps {
+  error: Error;
+}
+
+function ErrorMessage({ error }: ErrorBoundaryProps) {
+  return (
+    <div className="p-4 rounded-md bg-destructive/10 text-destructive">
+      <p className="font-medium">Error: {error.message}</p>
+    </div>
+  );
+}
 
 export default function TeamViewPage() {
   const [showForm, setShowForm] = useState(false);
@@ -79,6 +52,7 @@ export default function TeamViewPage() {
   const params = useParams();
   const teamId = parseInt(params.teamId!);
 
+  // Form for editing team name
   const editForm = useForm({
     resolver: zodResolver(editTeamSchema),
     defaultValues: {
@@ -86,106 +60,106 @@ export default function TeamViewPage() {
     },
   });
 
-  const { data: teamResponse, isLoading: loadingTeam } = useQuery<{ data: Team }>({
+  // Query for team data with proper error handling
+  const { data: teamResponse, isLoading: loadingTeam, error: teamError } = useQuery({
     queryKey: [`/api/teams/${teamId}`],
+    queryFn: async () => {
+      console.log("[TeamView] Fetching team data for ID:", teamId);
+      const response = await fetch(`/api/teams/${teamId}`);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to fetch team: ${text}`);
+      }
+      const data = await response.json();
+      console.log("[TeamView] Team data received:", data);
+      return data as { data: Team };
+    },
   });
+
   const team = teamResponse?.data;
 
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
-    queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
-    queryFn: async () => {
-      if (!team?.leagueId) {
-        return { data: [] };
-      }
-      const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${team.leagueId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowler leagues');
-      }
-      return response.json();
-    },
-    enabled: !!team?.leagueId,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
-    // refetchInterval: 1000, 
-  });
-
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
-  const sortedBowlerLeagues = [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
-    queryKey: ["/api/bowlers", sortedBowlerLeagues],
-    queryFn: async () => {
-      if (!sortedBowlerLeagues.length) {
-        return { data: [] };
-      }
-      const bowlerIds = sortedBowlerLeagues.map(bl => bl.bowlerId);
-      const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowlers');
-      }
-      return response.json();
-    },
-    enabled: sortedBowlerLeagues.length > 0,
-    staleTime: 30000, // Cache results for 30 seconds
-    refetchOnWindowFocus: false,
-  });
-
-  const bowlers = bowlersResponse?.data ?? [];
-
-  // Ensure bowlers are ordered according to sortedBowlerLeagues
-  const teamBowlers = sortedBowlerLeagues
-    .map(bl => bowlers.find(b => b.id === bl.bowlerId))
-    .filter((bowler): bowler is Bowler => {
-      return bowler !== undefined && 
-        typeof bowler === 'object' && 
-        'id' in bowler;
-    });
-
-  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
+  // Get league info with proper error handling
+  const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery({
     queryKey: [`/api/leagues/${team?.leagueId}`],
+    queryFn: async () => {
+      console.log("[TeamView] Fetching league data for ID:", team?.leagueId);
+      if (!team?.leagueId) throw new Error('No league ID found');
+      const response = await fetch(`/api/leagues/${team.leagueId}`);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to fetch league: ${text}`);
+      }
+      const data = await response.json();
+      console.log("[TeamView] League data received:", data);
+      return data as { data: League };
+    },
     enabled: !!team?.leagueId,
   });
 
   const league = leagueResponse?.data;
 
-  const reorderMutation = useMutation({
-    mutationFn: async ({ id, order }: { id: number; order: number }) => {
-      console.log("Attempting to reorder bowler league:", { id, order });
-      const response = await apiRequest("PATCH", `/api/bowler-leagues/${id}`, { order });
+  // Get bowler leagues for this team with proper error handling
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery({
+    queryKey: ["/api/bowler-leagues", teamId, team?.leagueId],
+    queryFn: async () => {
+      console.log("[TeamView] Fetching bowler leagues for team:", teamId, "league:", team?.leagueId);
+      if (!team?.leagueId) throw new Error('No league ID found');
+      const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${team.leagueId}`);
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error("Reorder mutation failed:", errorText);
-        throw new Error(errorText || "Failed to reorder bowlers");
+        const text = await response.text();
+        throw new Error(`Failed to fetch bowler leagues: ${text}`);
       }
-      return response.json();
+      const data = await response.json();
+      console.log("[TeamView] Bowler leagues received:", data);
+      return data as { data: BowlerLeague[] };
     },
-    onSuccess: (response) => {
-      console.log("Successfully reordered bowler league:", response);
-      queryClient.invalidateQueries({ 
-        queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }] 
-      });
-
-      toast({
-        title: "Success",
-        description: "Bowler order updated successfully",
-      });
-    },
-    onError: (error: Error) => {
-      console.error("Error in reorder mutation:", error);
-      toast({
-        title: "Error reordering bowlers",
-        description: error.message || "Failed to update bowler order",
-        variant: "destructive",
-      });
-    }
+    enabled: !!team?.leagueId,
+    retry: false,
   });
+
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
+
+  // Get bowlers data with proper error handling
+  const bowlerIds = bowlerLeagues.map(bl => bl.bowlerId);
+  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery({
+    queryKey: ["/api/bowlers", bowlerIds],
+    queryFn: async () => {
+      console.log("[TeamView] Fetching bowlers for IDs:", bowlerIds);
+      if (!bowlerIds.length) return { data: [] };
+      const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to fetch bowlers: ${text}`);
+      }
+      const data = await response.json();
+      console.log("[TeamView] Bowlers data received:", data);
+      return data as { data: Bowler[] };
+    },
+    enabled: bowlerIds.length > 0,
+    retry: false,
+  });
+
+  const bowlers = bowlersResponse?.data || [];
+
+  // Create team bowlers array with proper ordering
+  const teamBowlers = bowlerLeagues
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map(bl => ({
+      bowler: bowlers.find(b => b.id === bl.bowlerId),
+      bowlerLeague: bl,
+    }))
+    .filter((item): item is { bowler: Bowler; bowlerLeague: BowlerLeague } => {
+      return !!item.bowler;
+    });
+
+  console.log("[TeamView] Final team bowlers array:", teamBowlers);
 
   const updateTeamMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editTeamSchema>) => {
       const response = await apiRequest("PATCH", `/api/teams/${teamId}`, values);
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+        const text = await response.text();
+        throw new Error(text);
       }
       return response.json();
     },
@@ -206,10 +180,6 @@ export default function TeamViewPage() {
     },
   });
 
-  const onEditTeam = (values: z.infer<typeof editTeamSchema>) => {
-    updateTeamMutation.mutate(values);
-  };
-
   const handleEditClick = () => {
     if (team) {
       editForm.reset({ name: team.name });
@@ -217,7 +187,16 @@ export default function TeamViewPage() {
     }
   };
 
-  if (loadingTeam || loadingBowlers || loadingBowlerLeagues || loadingLeague) {
+  const onEditTeam = (values: z.infer<typeof editTeamSchema>) => {
+    updateTeamMutation.mutate(values);
+  };
+
+  // Handle errors
+  if (teamError) return <Layout><ErrorMessage error={teamError} /></Layout>;
+
+  // Handle loading states
+  const isLoading = loadingTeam || loadingBowlers || loadingBowlerLeagues || loadingLeague;
+  if (isLoading) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -230,7 +209,7 @@ export default function TeamViewPage() {
   if (!team) {
     return (
       <Layout>
-        <div className="text-center">Team not found</div>
+        <div className="text-center text-destructive">Team not found</div>
       </Layout>
     );
   }
@@ -266,6 +245,15 @@ export default function TeamViewPage() {
         </div>
       </div>
 
+      {/* Show any fetch errors */}
+      {(leagueError || bowlerLeaguesError || bowlersError) && (
+        <div className="mb-4">
+          {leagueError && <ErrorMessage error={leagueError} />}
+          {bowlerLeaguesError && <ErrorMessage error={bowlerLeaguesError} />}
+          {bowlersError && <ErrorMessage error={bowlersError} />}
+        </div>
+      )}
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -278,35 +266,40 @@ export default function TeamViewPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {!loadingBowlerLeagues && !loadingBowlers ? (
-              Array.isArray(sortedBowlerLeagues) && sortedBowlerLeagues.length > 0 ? (
-                sortedBowlerLeagues.map((bowlerLeague) => {
-                  const bowler = teamBowlers.find(b => b.id === bowlerLeague.bowlerId);
-                  if (!bowler) return null;
-                  return (
-                    <SortableBowlerRow
-                      key={bowlerLeague.id}
-                      bowler={bowler}
-                      bowlerLeague={bowlerLeague}
-                      league={league}
-                      onEdit={(b) => {
-                        setSelectedBowler(b);
+            {teamBowlers.length > 0 ? (
+              teamBowlers.map(({ bowler, bowlerLeague }) => (
+                <TableRow key={bowlerLeague.id}>
+                  <TableCell>
+                    <Link href={`/bowlers/${bowler.id}`} className="hover:underline">
+                      {bowler.name}
+                    </Link>
+                  </TableCell>
+                  <TableCell>{bowler.email}</TableCell>
+                  <TableCell>${((league?.weeklyFee || 0) / 100).toFixed(2)}</TableCell>
+                  <TableCell>
+                    <Badge variant={bowlerLeague.active ? "default" : "secondary"}>
+                      {bowlerLeague.active ? "Active" : "Inactive"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedBowler(bowler);
                         setShowForm(true);
                       }}
-                    />
-                  );
-                })
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center">
-                    No bowlers assigned to this team
+                    >
+                      <Pencil className="h-4 w-4 mr-2" />
+                      Edit
+                    </Button>
                   </TableCell>
                 </TableRow>
-              )
+              ))
             ) : (
               <TableRow>
                 <TableCell colSpan={5} className="text-center">
-                  <Loader2 className="h-4 w-4 animate-spin mx-auto" />
+                  No bowlers assigned to this team
                 </TableCell>
               </TableRow>
             )}
@@ -314,7 +307,7 @@ export default function TeamViewPage() {
         </Table>
       </div>
 
-      {sortedBowlerLeagues.length > 1 && (
+      {teamBowlers.length > 1 && (
         <div className="mt-4">
           <Button variant="outline" onClick={() => setShowReorderDialog(true)}>
             Reorder Bowlers
@@ -322,6 +315,7 @@ export default function TeamViewPage() {
         </div>
       )}
 
+      {/* Edit Team Dialog */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent>
           <DialogHeader>
@@ -354,6 +348,7 @@ export default function TeamViewPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Bowler Forms */}
       <BowlerForm
         open={showForm}
         onClose={() => {
@@ -368,16 +363,16 @@ export default function TeamViewPage() {
         open={showAssignForm}
         onClose={() => setShowAssignForm(false)}
         teamId={teamId}
-        leagueId={team?.leagueId}
+        leagueId={team.leagueId}
       />
 
       <ReorderBowlersDialog
         open={showReorderDialog}
         onClose={() => setShowReorderDialog(false)}
-        bowlers={teamBowlers}
-        bowlerLeagues={sortedBowlerLeagues}
+        bowlers={bowlers}
+        bowlerLeagues={bowlerLeagues}
         teamId={teamId}
-        leagueId={team?.leagueId}
+        leagueId={team.leagueId}
       />
     </Layout>
   );

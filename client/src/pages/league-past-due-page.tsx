@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, ArrowLeft } from "lucide-react";
-import type { League, Team, Bowler, Payment } from "@shared/schema";
+import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema";
 import { startOfToday } from "date-fns";
 import { Link, useParams } from "wouter";
 
@@ -39,6 +39,18 @@ export default function LeaguePastDuePage() {
     }
   });
 
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
+    queryKey: ["/api/bowler-leagues", leagueId],
+    queryFn: async () => {
+      const response = await fetch(`/api/bowler-leagues?leagueId=${leagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowler leagues');
+      }
+      return response.json();
+    },
+    enabled: !!leagueId,
+  });
+
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
     queryFn: async () => {
@@ -61,7 +73,7 @@ export default function LeaguePastDuePage() {
     }
   });
 
-  if (loadingLeague || loadingTeams || loadingBowlers || loadingPayments) {
+  if (loadingLeague || loadingTeams || loadingBowlers || loadingPayments || loadingBowlerLeagues) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -83,14 +95,17 @@ export default function LeaguePastDuePage() {
   const teams = teamsResponse?.data?.data || [];
   const leagueTeams = teams.filter(team => team.leagueId === leagueId) || [];
 
-  // Get bowlers and payments
+  // Get bowlers, bowler leagues and payments
   const bowlers = bowlersResponse?.data || [];
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
   const payments = paymentsResponse?.data || [];
 
   // Get bowlers for these teams using bowler leagues
   const leagueBowlers = bowlers.filter(bowler => 
-    leagueTeams.some(team => 
-      team.id === bowler.teamId
+    bowlerLeagues.some(bl => 
+      bl.bowlerId === bowler.id && 
+      bl.leagueId === leagueId &&
+      leagueTeams.some(team => team.id === bl.teamId)
     )
   ) || [];
 
@@ -98,7 +113,13 @@ export default function LeaguePastDuePage() {
   const pastDueBowlers = leagueBowlers
     .filter(bowler => bowler.active)
     .map(bowler => {
-      const team = teams?.find(t => t.id === bowler.teamId);
+      const bowlerLeague = bowlerLeagues.find(bl => 
+        bl.bowlerId === bowler.id && 
+        bl.leagueId === leagueId
+      );
+      if (!bowlerLeague) return null;
+
+      const team = teams?.find(t => t.id === bowlerLeague.teamId);
       if (!team) return null;
 
       const bowlerPayments = payments
