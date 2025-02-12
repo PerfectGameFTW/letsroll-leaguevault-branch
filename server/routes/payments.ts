@@ -22,6 +22,11 @@ router.get("/", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
+  console.log('[DEBUG] Route hit:', {
+    path: req.path,
+    params: req.params,
+    method: req.method
+  });
   console.log('[API] DELETE route handler entered for payment:', req.params.id, typeof req.params.id);
   try {
     const id = parseInt(req.params.id);
