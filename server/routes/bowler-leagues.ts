@@ -17,14 +17,15 @@ router.get("/", async (req, res) => {
       teamId: teamId ? parseInt(teamId as string) : undefined
     };
 
+    // Validate that all provided IDs are valid numbers
     if ((bowlerId && isNaN(filters.bowlerId!)) || 
         (leagueId && isNaN(filters.leagueId!)) || 
         (teamId && isNaN(filters.teamId!))) {
-      return sendError(res, "Invalid ID parameters provided");
+      return sendError(res, "Invalid ID parameters provided", 400);
     }
 
     const bowlerLeagues = await storage.getBowlerLeagues(filters);
-    console.log(`[BowlerLeagues] Found ${bowlerLeagues.length} bowler leagues`);
+    console.log(`[BowlerLeagues] Found ${bowlerLeagues.length} bowler leagues for filters:`, filters);
     sendSuccess(res, bowlerLeagues);
   } catch (error) {
     console.error('[BowlerLeagues] Error:', error);
@@ -43,7 +44,7 @@ router.post("/", async (req, res) => {
     });
 
     if (existing.length > 0) {
-      return sendError(res, "Bowler is already in this league");
+      return sendError(res, "Bowler is already in this league", 400);
     }
 
     const created = await storage.createBowlerLeague(data);
@@ -81,6 +82,27 @@ router.patch("/:id", async (req, res) => {
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league');
     }
+  }
+});
+
+router.patch("/:id/order", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { newOrder } = req.body;
+
+    if (isNaN(id)) {
+      return sendError(res, "Invalid bowler league ID", 400);
+    }
+
+    if (typeof newOrder !== 'number') {
+      return sendError(res, "New order must be a number", 400);
+    }
+
+    const updated = await storage.updateBowlerLeagueOrder(id, newOrder);
+    sendSuccess(res, updated);
+  } catch (error) {
+    console.error('[BowlerLeagues] Error:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league order');
   }
 });
 

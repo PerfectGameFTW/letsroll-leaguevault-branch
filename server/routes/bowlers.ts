@@ -13,16 +13,30 @@ router.get("/", async (req, res) => {
     const ids = req.query.ids ? (req.query.ids as string).split(',').map(id => parseInt(id)) : undefined;
 
     console.log('Fetching bowlers with params:', { teamId, ids });
-    const bowlers = await storage.getBowlers(teamId, ids);
 
+    // Validate the teamId if provided
+    if (teamId !== undefined && isNaN(teamId)) {
+      return sendError(res, "Invalid team ID format", 400);
+    }
+
+    // Validate the ids if provided
+    if (ids && ids.some(isNaN)) {
+      return sendError(res, "Invalid bowler ID format in list", 400);
+    }
+
+    const bowlers = await storage.getBowlers(teamId);
     if (!bowlers) {
       console.log('No bowlers found');
       return sendSuccess(res, []);
     }
 
-    // Return all bowlers without filtering
-    console.log(`Retrieved ${bowlers.length} bowlers`);
-    sendSuccess(res, bowlers);
+    // Filter by IDs if provided
+    const filteredBowlers = ids 
+      ? bowlers.filter(b => ids.includes(b.id))
+      : bowlers;
+
+    console.log(`Retrieved ${filteredBowlers.length} bowlers`);
+    sendSuccess(res, filteredBowlers);
   } catch (error) {
     console.error('Error fetching bowlers:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowlers');
