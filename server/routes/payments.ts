@@ -95,8 +95,9 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, `Payment ${id} not found`, 404);
     }
 
-    console.log(`[API] Starting deletion of payment ${id}`);
+    console.log(`[API] Starting deletion of payment ${id}`, typeof id);
     await storage.deletePayment(id);
+    console.log(`[API] After deletePayment call for ${id}`);
 
     console.log(`[API] Verifying deletion of payment ${id}`);
     const verifyPayments = await storage.getPayments(undefined, undefined, [id]);

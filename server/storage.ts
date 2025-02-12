@@ -436,6 +436,7 @@ export class DatabaseStorage implements IStorage {
 
   async deletePayment(id: number): Promise<void> {
     try {
+      console.log('[Storage] deletePayment called with ID:', id, typeof id);
       await db.transaction(async (tx) => {
         await tx.delete(payments)
           .where(eq(payments.id, id));
