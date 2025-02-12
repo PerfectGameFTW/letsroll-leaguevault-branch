@@ -7,30 +7,49 @@ declare global {
 }
 
 let payments: any = null;
+let card: any = null;
 
 export async function initializeSquare() {
-  if (!payments) {
-    await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
-    if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
-      throw new Error("Square credentials are not configured");
+  try {
+    if (!payments) {
+      console.log('Loading Square SDK...');
+      await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
+
+      if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
+        throw new Error("Square credentials are not configured");
+      }
+
+      console.log('Initializing Square payments...');
+      payments = await window.Square.payments(
+        import.meta.env.VITE_SQUARE_APP_ID,
+        import.meta.env.VITE_SQUARE_LOCATION_ID
+      );
     }
-    payments = await window.Square.payments(
-      import.meta.env.VITE_SQUARE_APP_ID,
-      import.meta.env.VITE_SQUARE_LOCATION_ID
-    );
+
+    // Always create a new card instance
+    console.log('Creating new card form...');
+    card = await payments.card();
+    await card.attach('#card-container');
+    console.log('Card form attached successfully');
+
+    return payments;
+  } catch (error) {
+    console.error('Error initializing Square:', error);
+    throw error;
   }
-  return payments;
 }
 
 export async function createPayment(amount: number) {
   try {
-    const payments = await initializeSquare();
-    const card = await payments.card();
-    await card.attach('#card-container');
+    if (!card) {
+      throw new Error("Card form not initialized");
+    }
 
+    console.log('Tokenizing card...');
     const result = await card.tokenize();
     if (result.status === 'OK') {
-      const response = await fetch('/api/payments/process', {
+      console.log('Card tokenized successfully');
+      const response = await fetch('/api/square/payments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -48,6 +67,7 @@ export async function createPayment(amount: number) {
       }
 
       const payment = await response.json();
+      console.log('Payment processed:', payment);
       return {
         id: payment.id,
         status: payment.status
@@ -56,10 +76,23 @@ export async function createPayment(amount: number) {
       throw new Error(result.errors[0].message);
     }
   } catch (error) {
+    console.error('Error processing payment:', error);
     if (error instanceof Error) {
       throw error;
     }
     throw new Error('An unexpected error occurred while processing payment');
+  }
+}
+
+// Clean up the card instance
+export function cleanupCard() {
+  if (card) {
+    try {
+      card.destroy();
+      card = null;
+    } catch (error) {
+      console.error('Error destroying card instance:', error);
+    }
   }
 }
 

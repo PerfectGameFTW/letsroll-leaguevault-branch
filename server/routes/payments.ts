@@ -88,7 +88,12 @@ router.delete("/:id", async (req, res) => {
 
     console.log('[Payments Route] Deleting payment:', id);
     await storage.deletePayment(id);
-    sendSuccess(res, null, 204);
+
+    // Return a JSON response instead of an empty response
+    res.status(200).json({
+      success: true,
+      message: "Payment deleted successfully"
+    });
   } catch (error) {
     console.error('[Payments Route] Delete error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to delete payment');

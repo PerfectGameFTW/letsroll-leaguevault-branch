@@ -29,7 +29,7 @@ import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/sc
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { createPayment, initializeSquare } from "@/lib/square";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 interface PaymentFormProps {
   open: boolean;
@@ -40,6 +40,8 @@ interface PaymentFormProps {
 
 export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormProps) {
   const { toast } = useToast();
+  const cardContainerRef = useRef<HTMLDivElement>(null);
+  const squareInitializedRef = useRef(false);
 
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
@@ -59,14 +61,72 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [leagueId, form]);
 
+  // Initialize Square when credit card is selected
+  useEffect(() => {
+    const paymentType = form.watch("type");
+
+    async function setupSquare() {
+      if (paymentType === "credit_card" && !squareInitializedRef.current) {
+        try {
+          await initializeSquare();
+          squareInitializedRef.current = true;
+          console.log('Square payment form initialized successfully');
+        } catch (error) {
+          console.error('Failed to initialize Square:', error);
+          toast({
+            title: "Error",
+            description: "Failed to initialize payment form. Please try again or choose a different payment method.",
+            variant: "destructive",
+          });
+          // Reset payment type to cash on error
+          form.setValue("type", "cash");
+        }
+      }
+    }
+
+    if (open) {
+      setupSquare();
+    }
+
+    // Cleanup when form closes
+    return () => {
+      if (cardContainerRef.current) {
+        cardContainerRef.current.innerHTML = '';
+      }
+      squareInitializedRef.current = false;
+    };
+  }, [form.watch("type"), open, toast, form]);
+
+  const onSubmit = async (data: InsertPayment) => {
+    console.log('Form submission started:', data);
+    if (!data.leagueId) {
+      console.error('Missing leagueId in form submission');
+      toast({
+        title: "Error",
+        description: "League ID is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      await mutation.mutateAsync(data);
+    } catch (error) {
+      console.error('Form submission error:', error);
+      // Error is already handled by mutation's onError
+    }
+  };
+
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
-      console.log('Submitting payment:', data);
+      console.log('Payment mutation started:', data);
 
       // Handle credit card payment through Square
       if (data.type === 'credit_card') {
         try {
+          console.log('Processing credit card payment...');
           const result = await createPayment(data.amount);
+          console.log('Square payment result:', result);
           if (result.status !== 'COMPLETED') {
             throw new Error('Payment processing failed');
           }
@@ -79,6 +139,11 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
       // Record the payment in our system
       try {
+        console.log('Sending payment to API:', {
+          ...data,
+          weekOf: data.weekOf.toISOString(),
+        });
+
         const response = await apiRequest("POST", "/api/payments", {
           ...data,
           weekOf: data.weekOf.toISOString(),
@@ -90,13 +155,16 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           throw new Error(error || 'Failed to record payment');
         }
 
-        return response.json();
+        const result = await response.json();
+        console.log('Payment API response:', result);
+        return result;
       } catch (error) {
         console.error('Payment submission error:', error);
         throw error;
       }
     },
     onSuccess: () => {
+      console.log('Payment mutation succeeded');
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({
         title: "Success",
@@ -114,38 +182,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       });
     },
   });
-
-  const onSubmit = async (data: InsertPayment) => {
-    console.log('Form submission:', data);
-    if (!data.leagueId) {
-      toast({
-        title: "Error",
-        description: "League ID is required",
-        variant: "destructive",
-      });
-      return;
-    }
-    await mutation.mutateAsync(data);
-  };
-
-  useEffect(() => {
-    if (form.watch("type") === "credit_card") {
-      // Initialize Square payment form when credit card is selected
-      const initSquare = async () => {
-        try {
-          await initializeSquare();
-        } catch (error) {
-          console.error('Failed to initialize Square:', error);
-          toast({
-            title: "Error",
-            description: "Failed to initialize payment form. Please try again.",
-            variant: "destructive",
-          });
-        }
-      };
-      initSquare();
-    }
-  }, [form.watch("type")]);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -240,7 +276,11 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
             />
 
             {form.watch("type") === "credit_card" && (
-              <div id="card-container" className="min-h-[100px] border rounded-md p-4" />
+              <div 
+                id="card-container" 
+                ref={cardContainerRef}
+                className="min-h-[100px] border rounded-md p-4"
+              />
             )}
 
             {form.watch("type") === "check" && (
@@ -279,16 +319,15 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 </FormItem>
               )}
             />
+
             <FormField
               control={form.control}
               name="leagueId"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>League ID</FormLabel>
+                <FormItem className="hidden">
                   <FormControl>
                     <Input {...field} type="number"/>
                   </FormControl>
-                  <FormMessage/>
                 </FormItem>
               )}
             />
