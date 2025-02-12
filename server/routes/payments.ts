@@ -10,6 +10,9 @@ import { sql, eq } from 'drizzle-orm';
 
 const router = Router();
 console.log('[Payments Router] Initializing routes');
+console.log('[Payments Router] Routes:', {
+  delete: router.stack.filter(r => r.route?.methods?.delete).map(r => r.route?.path)
+});
 
 router.get("/", async (req, res) => {
   try {
