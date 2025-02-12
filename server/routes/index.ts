@@ -3,10 +3,10 @@ import { createServer, type Server } from "http";
 import leaguesRouter from './leagues';
 import teamsRouter from './teams';
 import bowlersRouter from './bowlers';
-console.log('[Routes] Loading payment routes...');
 import paymentsRouter from './payments';
-console.log('[Routes] Payment routes loaded');
 import { enrollInLoyalty, getLoyaltyPoints, createOrUpdateCustomer, addCustomerToLeagueGroup } from '../services/square';
+
+console.log('[Routes] All routes loaded, including payments router');
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
 import { storage } from '../storage';
@@ -19,7 +19,12 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/teams', teamsRouter);
   app.use('/api/bowlers', bowlersRouter);
   
-  app.use('/api/payments', paymentsRouter);
+  console.log('[Routes] Registering payments router...');
+  app.use('/api/payments', (req, res, next) => {
+    console.log('[Payments Router] Incoming request:', req.method, req.path);
+    paymentsRouter(req, res, next);
+  });
+  console.log('[Routes] Payments router registered');
 
   // Catch-all middleware to detect unhandled routes
   app.use('/api/*', (req, res, next) => {
