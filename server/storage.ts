@@ -73,12 +73,11 @@ export class DatabaseStorage implements IStorage {
 
   // Team methods
   async getTeams(leagueId?: number): Promise<Team[]> {
-    let query = db.select().from(teams);
+    const query = db.select().from(teams);
     if (leagueId !== undefined) {
-      query = query.where(eq(teams.leagueId, leagueId));
+      return query.where(eq(teams.leagueId, leagueId));
     }
-    const results = await query.orderBy(teams.number);
-    return results;
+    return query.orderBy(teams.number);
   }
 
   async getTeam(id: number): Promise<Team | undefined> {
@@ -103,11 +102,20 @@ export class DatabaseStorage implements IStorage {
   // Bowlers
   async getBowlers(teamId?: number): Promise<Bowler[]> {
     if (teamId !== undefined) {
-      return db.select()
+      const results = await db
+        .select({
+          id: bowlers.id,
+          name: bowlers.name,
+          email: bowlers.email,
+          active: bowlers.active,
+          squareCustomerId: bowlers.squareCustomerId,
+          order: bowlers.order,
+        })
         .from(bowlers)
         .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
         .where(eq(bowlerLeagues.teamId, teamId))
         .orderBy(bowlerLeagues.order);
+      return results;
     }
     return db.select().from(bowlers).orderBy(bowlers.order);
   }
@@ -133,7 +141,7 @@ export class DatabaseStorage implements IStorage {
 
   // BowlerLeagues
   async getBowlerLeagues(filters?: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]> {
-    let query = db.select().from(bowlerLeagues);
+    const query = db.select().from(bowlerLeagues);
 
     if (filters) {
       const conditions = [];
@@ -147,12 +155,11 @@ export class DatabaseStorage implements IStorage {
         conditions.push(eq(bowlerLeagues.teamId, filters.teamId));
       }
       if (conditions.length > 0) {
-        query = query.where(and(...conditions));
+        return query.where(and(...conditions)).orderBy(bowlerLeagues.order);
       }
     }
 
-    const results = await query.orderBy(bowlerLeagues.order);
-    return results;
+    return query.orderBy(bowlerLeagues.order);
   }
 
   async getBowlerLeague(id: number): Promise<BowlerLeague | undefined> {
@@ -223,19 +230,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Payments
-  async getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]> {
-    let query = db.select().from(payments);
-
+  async getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date): Promise<Payment[]> {
+    const query = db.select().from(payments);
     const conditions = [];
+
     if (bowlerId !== undefined) {
       conditions.push(eq(payments.bowlerId, bowlerId));
     }
     if (leagueId !== undefined) {
       conditions.push(eq(payments.leagueId, leagueId));
     }
+    // Add weekOf filter if provided
+    if (weekOf !== undefined) {
+      const startDate = new Date(weekOf);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(weekOf);
+      endDate.setHours(23, 59, 59, 999);
+      conditions.push(sql`${payments.weekOf} BETWEEN ${startDate} AND ${endDate}`);
+    }
 
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      return query.where(and(...conditions)).orderBy(desc(payments.weekOf));
     }
 
     return query.orderBy(desc(payments.weekOf));

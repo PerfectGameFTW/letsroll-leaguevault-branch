@@ -11,8 +11,10 @@ router.get("/", async (req, res) => {
   try {
     const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
     const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
+    const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
+    const weekOf = req.query.weekOf ? new Date(req.query.weekOf as string) : undefined;
 
-    const payments = await storage.getPayments(bowlerId, leagueId);
+    const payments = await storage.getPayments(bowlerId, leagueId, teamId, weekOf);
     sendSuccess(res, payments);
   } catch (error) {
     console.error('[Payments Route] Get error:', error);
@@ -25,6 +27,12 @@ router.post("/", async (req, res) => {
   try {
     console.log('[Payments Route] Creating payment with body:', req.body);
     const payment = insertPaymentSchema.parse(req.body);
+
+    // Validate check number if payment type is check
+    if (payment.type === 'check' && !payment.checkNumber) {
+      return sendError(res, 'Check number is required for check payments', 400, 'VALIDATION_ERROR');
+    }
+
     const created = await storage.createPayment(payment);
     sendSuccess(res, created, 201);
   } catch (error) {
@@ -42,6 +50,11 @@ router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const update = partialPaymentSchema.parse(req.body);
+
+    // If updating to check payment type, ensure check number is provided
+    if (update.type === 'check' && !update.checkNumber) {
+      return sendError(res, 'Check number is required for check payments', 400, 'VALIDATION_ERROR');
+    }
 
     const updated = await storage.updatePayment(id, update);
     if (!updated) {

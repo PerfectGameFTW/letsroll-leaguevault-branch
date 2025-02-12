@@ -46,11 +46,7 @@ interface PaymentEntry {
   bowlerId: number;
   type: string;
   amount: string;
-}
-
-interface EditingPayment {
-  id: number;
-  amount: string;
+  checkNumber?: string;
 }
 
 export default function WeeklyPaymentsPage() {
@@ -60,8 +56,8 @@ export default function WeeklyPaymentsPage() {
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTeam, setSelectedTeam] = useState<string>();
   const [paymentEntries, setPaymentEntries] = useState<{ [key: number]: PaymentEntry }>({});
-  const [editingPayment, setEditingPayment] = useState<EditingPayment | null>(null);
   const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
+  const [editingPayment, setEditingPayment] = useState<{id: number, amount: string} | null>(null);
 
   // Fetch league details
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
@@ -161,6 +157,17 @@ export default function WeeklyPaymentsPage() {
     }));
   };
 
+  const handleCheckNumberChange = (bowlerId: number, checkNumber: string) => {
+    setPaymentEntries(prev => ({
+      ...prev,
+      [bowlerId]: {
+        ...prev[bowlerId],
+        bowlerId,
+        checkNumber,
+      }
+    }));
+  };
+
   // Payment submission mutation
   const submitPaymentMutation = useMutation({
     mutationFn: async (payment: {
@@ -170,10 +177,11 @@ export default function WeeklyPaymentsPage() {
       weekOf: Date;
       leagueId: number;
       status: string;
+      checkNumber?: string;
     }) => {
       const response = await apiRequest("POST", "/api/payments", {
         ...payment,
-        squarePaymentId: payment.type, // Store payment type in squarePaymentId for non-Square payments
+        weekOf: payment.weekOf.toISOString(),
       });
       if (!response.ok) {
         const error = await response.text();
@@ -210,7 +218,8 @@ export default function WeeklyPaymentsPage() {
       type: entry.type,
       amount: amountInCents,
       weekOf: selectedDate,
-      status: 'paid', // Cash and check payments are marked as paid immediately
+      status: 'paid',
+      checkNumber: entry.type === 'check' ? entry.checkNumber : undefined,
     });
 
     // Clear the entry after successful submission
@@ -219,6 +228,56 @@ export default function WeeklyPaymentsPage() {
       delete newEntries[bowlerId];
       return newEntries;
     });
+  };
+
+  // Delete payment mutation
+  const deletePaymentMutation = useMutation({
+    mutationFn: async (id: number) => {
+      console.log('[Frontend] Deleting payment:', id);
+      const response = await apiRequest("DELETE", `/api/payments/${id}`);
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error);
+      }
+      return id;
+    },
+    onMutate: async (deletedId) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/payments"] });
+      const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
+
+      if (previousPayments?.data) {
+        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
+          data: previousPayments.data.filter(payment => payment.id !== deletedId)
+        });
+      }
+      return { previousPayments };
+    },
+    onError: (error: Error, _, context) => {
+      if (context?.previousPayments) {
+        queryClient.setQueryData(["/api/payments"], context.previousPayments);
+      }
+      toast({
+        title: "Error deleting payment",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      setPaymentToDelete(null);
+      toast({
+        title: "Payment deleted",
+        description: "The payment has been successfully deleted.",
+      });
+    },
+  });
+
+  const handleDelete = async (id: number) => {
+    try {
+      await deletePaymentMutation.mutateAsync(id);
+    } catch (error) {
+      console.error('[Frontend] Error in handleDelete:', error);
+    }
   };
 
   const getNearestBowlingDay = (date: Date, weekDay: string): Date => {
@@ -235,12 +294,10 @@ export default function WeeklyPaymentsPage() {
     const targetDay = weekDayMap[weekDay.toLowerCase()];
     const currentDay = date.getDay();
 
-    // If we're on the target day (e.g., Monday), use today's date
     if (currentDay === targetDay) {
       return date;
     }
 
-    // Calculate days to go back to reach the previous target day
     let daysToSubtract = currentDay - targetDay;
     if (daysToSubtract <= 0) {
       daysToSubtract += 7;
@@ -253,7 +310,7 @@ export default function WeeklyPaymentsPage() {
     if (!league?.seasonStart) return 0;
     const seasonStart = new Date(league.seasonStart);
     const weeksDiff = differenceInWeeks(date, seasonStart);
-    return weeksDiff + 1; // Add 1 to start from Week 1 instead of Week 0
+    return weeksDiff + 1;
   };
 
   useEffect(() => {
@@ -264,7 +321,6 @@ export default function WeeklyPaymentsPage() {
     }
 
     if (teams.length > 0 && !selectedTeam) {
-      // Find Team 1 or use the first team in the list
       const team1 = teams.find(t => t.number === 1) || teams[0];
       setSelectedTeam(team1.id.toString());
     }
@@ -355,54 +411,6 @@ export default function WeeklyPaymentsPage() {
       id,
       amount: amountInCents,
     });
-  };
-
-  // Update the deletion mutation to handle cache properly
-  const deletePaymentMutation = useMutation({
-    mutationFn: async (id: number) => {
-      console.log('[Frontend] Deleting payment:', id);
-      const response = await apiRequest("DELETE", `/api/payments/${id}`);
-      if (!response.ok) {
-        const error = await response.text();
-        console.error('[Frontend] Payment deletion failed:', error);
-        throw new Error(error);
-      }
-      return id;
-    },
-    onMutate: async (deletedId) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/payments"] });
-      const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
-
-      if (previousPayments?.data) {
-        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
-          data: previousPayments.data.filter(payment => payment.id !== deletedId)
-        });
-      }
-      return { previousPayments };
-    },
-    onError: (error: Error, _, context) => {
-      if (context?.previousPayments) {
-        queryClient.setQueryData(["/api/payments"], context.previousPayments);
-      }
-      toast({
-        title: "Error deleting payment",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-    onSuccess: () => {
-      setPaymentToDelete(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-    },
-  });
-
-  const handleDelete = async (id: number) => {
-    try {
-      console.log('[Frontend] Handling payment deletion:', id);
-      await deletePaymentMutation.mutateAsync(id);
-    } catch (error) {
-      console.error('[Frontend] Error in handleDelete:', error);
-    }
   };
 
 
@@ -536,9 +544,16 @@ export default function WeeklyPaymentsPage() {
                                 <SelectContent>
                                   <SelectItem value="cash">Cash</SelectItem>
                                   <SelectItem value="check">Check</SelectItem>
-                                  <SelectItem value="credit" disabled>Credit Card (Customer Portal)</SelectItem>
                                 </SelectContent>
                               </Select>
+                              {paymentEntries[bowler.id]?.type === 'check' && (
+                                <Input
+                                  className="mt-2"
+                                  placeholder="Check number"
+                                  value={paymentEntries[bowler.id]?.checkNumber || ""}
+                                  onChange={(e) => handleCheckNumberChange(bowler.id, e.target.value)}
+                                />
+                              )}
                             </TableCell>
                             <TableCell>
                               <Input
@@ -554,6 +569,7 @@ export default function WeeklyPaymentsPage() {
                                 disabled={
                                   !paymentEntries[bowler.id]?.type ||
                                   !paymentEntries[bowler.id]?.amount ||
+                                  (paymentEntries[bowler.id]?.type === 'check' && !paymentEntries[bowler.id]?.checkNumber) ||
                                   submitPaymentMutation.isPending
                                 }
                                 size="sm"
@@ -578,12 +594,13 @@ export default function WeeklyPaymentsPage() {
                           <TableHead>Bowler</TableHead>
                           <TableHead>Payment Type</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
+                          <TableHead className="w-[100px]"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {payments?.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={3} className="text-center">
+                            <TableCell colSpan={4} className="text-center">
                               No payment history
                             </TableCell>
                           </TableRow>
@@ -593,37 +610,28 @@ export default function WeeklyPaymentsPage() {
 
                             return (
                               <TableRow key={payment.id}>
+                                <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
                                 <TableCell>
-                                  {bowler ? (
-                                    <Link
-                                      href={`/bowlers/${bowler.id}`}
-                                      className="text-foreground hover:underline"
-                                    >
-                                      {bowler.name}
-                                    </Link>
-                                  ) : (
-                                    'Unknown Bowler'
-                                  )}
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant={payment.squarePaymentId === 'cash' ? 'default' : 'secondary'}>
-                                    {payment.squarePaymentId === 'square' ? 'Square' :
-                                      payment.squarePaymentId === 'cash' ? 'Cash' :
-                                      payment.squarePaymentId === 'check' ? 'Check' :
-                                      'Other'}
+                                  <Badge variant="outline">
+                                    {payment.type === 'cash' ? 'Cash' :
+                                      payment.type === 'check' ? `Check #${payment.checkNumber}` :
+                                      payment.type}
                                   </Badge>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                  <div className="flex items-center justify-end space-x-2">
-                                    <span>${(payment.amount / 100).toFixed(2)}</span>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      onClick={() => setPaymentToDelete(payment.id)}
-                                    >
-                                      <Trash2 className="h-4 w-4 text-destructive" />
-                                    </Button>
-                                  </div>
+                                  ${(payment.amount / 100).toFixed(2)}
+                                </TableCell>
+                                <TableCell>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => handleStartEdit(payment)} //Start edit instead of delete
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4 text-primary">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+                                    </svg>
+                                  </Button>
+                                  
                                 </TableCell>
                               </TableRow>
                             );
@@ -637,36 +645,37 @@ export default function WeeklyPaymentsPage() {
             </CardContent>
           </Card>
         )}
+
+        <Dialog open={paymentToDelete !== null} onOpenChange={() => setPaymentToDelete(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Payment</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this payment? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setPaymentToDelete(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleDelete(paymentToDelete!)}
+                disabled={deletePaymentMutation.isPending}
+              >
+                {deletePaymentMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Delete"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
-      <Dialog open={paymentToDelete !== null} onOpenChange={() => setPaymentToDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Payment</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this payment? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setPaymentToDelete(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => handleDelete(paymentToDelete!)}
-              disabled={deletePaymentMutation.isPending}
-            >
-              {deletePaymentMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Delete"
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Layout>
   );
 }

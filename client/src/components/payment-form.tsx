@@ -29,7 +29,6 @@ import { Loader2 } from "lucide-react";
 import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { createPayment, initializeSquare } from "@/lib/square";
 
 interface PaymentFormProps {
   open: boolean;
@@ -44,72 +43,37 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     defaultValues: {
       amount: 2000, // $20.00
       weekOf: new Date(),
-      status: "pending",
+      status: "paid",
+      type: "cash",
     },
   });
 
-  // Initialize Square card form when dialog opens
-  useEffect(() => {
-    let card: any = null;
-
-    async function setupCard() {
-      try {
-        const payments = await initializeSquare();
-        card = await payments.card();
-        await card.attach('#card-container');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to initialize payment form";
-        toast({
-          title: "Payment Form Error",
-          description: message,
-          variant: "destructive",
-        });
-      }
-    }
-
-    if (open) {
-      setupCard();
-    }
-
-    // Cleanup function
-    return () => {
-      if (card) {
-        card.destroy();
-      }
-    };
-  }, [open, toast]);
-
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
-      try {
-        // Process payment through Square
-        const squarePayment = await createPayment(data.amount);
+      const response = await apiRequest("POST", "/api/payments", {
+        ...data,
+        weekOf: data.weekOf.toISOString(),
+      });
 
-        // Create payment record
-        await apiRequest("POST", "/api/payments", {
-          ...data,
-          weekOf: data.weekOf.toISOString(),
-          status: squarePayment.status,
-          squarePaymentId: squarePayment.id,
-          paidAt: new Date().toISOString(),
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Payment processing failed";
-        throw new Error(message);
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error || 'Failed to record payment');
       }
+
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({
-        title: "Payment Successful",
-        description: "The payment has been processed and recorded.",
+        title: "Success",
+        description: "Payment has been recorded.",
       });
       onClose();
       form.reset();
     },
     onError: (error: Error) => {
       toast({
-        title: "Payment Failed",
+        title: "Error",
         description: error.message,
         variant: "destructive",
       });
@@ -120,7 +84,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Process Payment</DialogTitle>
+          <DialogTitle>Record Payment</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -161,6 +125,31 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
 
             <FormField
               control={form.control}
+              name="type"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Payment Type</FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select payment type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="check">Check</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="amount"
               render={({ field }) => (
                 <FormItem>
@@ -182,13 +171,21 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               )}
             />
 
-            <div className="space-y-2">
-              <FormLabel>Card Details</FormLabel>
-              <div 
-                id="card-container" 
-                className="p-3 border rounded-md min-h-[40px]"
+            {form.watch("type") === "check" && (
+              <FormField
+                control={form.control}
+                name="checkNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Check Number</FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
+            )}
 
             <FormField
               control={form.control}
@@ -231,7 +228,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                     Processing...
                   </>
                 ) : (
-                  'Pay Now'
+                  'Record Payment'
                 )}
               </Button>
             </div>
