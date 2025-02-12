@@ -20,10 +20,7 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/bowlers', bowlersRouter);
   
   console.log('[Routes] Registering payments router...');
-  app.use('/api/payments', (req, res, next) => {
-    console.log('[Payments Router] Incoming request:', req.method, req.path);
-    paymentsRouter(req, res, next);
-  });
+  app.use('/api/payments', paymentsRouter);
   console.log('[Routes] Payments router registered');
 
   // Catch-all middleware to detect unhandled routes
