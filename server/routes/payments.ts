@@ -88,18 +88,9 @@ router.delete("/:id", async (req, res) => {
     }
     
     console.log('[API] Attempting to delete payment:', id);
-    const result = await db.delete(payments)
-      .where(eq(payments.id, id))
-      .returning();
-    console.log('[API] Delete query executed, result:', result);
-    
-    if (!result || result.length === 0) {
-      console.log('[API] No payment found to delete');
-      return sendError(res, `Payment ${id} not found`, 404);
-    }
-    
-    console.log('[API] Successfully deleted payment:', result[0]);
-    return sendSuccess(res, { message: 'Payment deleted', deletedPayment: result[0] }, 200);
+    await storage.deletePayment(id);
+    console.log('[API] Payment deleted successfully');
+    return sendSuccess(res, { message: 'Payment deleted' }, 200);
   } catch (error) {
     console.error('[API] Error in payment deletion route:', error);
     return sendError(res, 
