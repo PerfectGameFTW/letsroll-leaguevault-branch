@@ -65,8 +65,9 @@ export const payments = pgTable("payments", {
   amount: integer("amount").notNull(), // Store in cents
   weekOf: timestamp("week_of").notNull(),
   status: text("status", { enum: ['paid', 'pending', 'failed'] }).notNull().default('paid'),
-  type: text("type", { enum: ['cash', 'check'] }).notNull(),
+  type: text("type", { enum: ['cash', 'check', 'credit_card'] }).notNull(),
   checkNumber: text("check_number"),
+  squarePaymentId: text("square_payment_id"),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -147,8 +148,9 @@ const basePaymentSchema = z.object({
   amount: z.number().positive(),
   weekOf: z.coerce.date(),
   status: z.enum(["paid", "pending", "failed"]).default("paid"),
-  type: z.enum(["cash", "check"]),
+  type: z.enum(["cash", "check", "credit_card"]),
   checkNumber: z.string().optional(),
+  squarePaymentId: z.string().optional(),
   notes: z.string().optional(),
 });
 

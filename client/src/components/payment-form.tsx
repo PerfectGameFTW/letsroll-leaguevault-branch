@@ -28,14 +28,17 @@ import { Loader2 } from "lucide-react";
 import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { createPayment, initializeSquare } from "@/lib/square";
+import { useEffect } from "react";
 
 interface PaymentFormProps {
   open: boolean;
   onClose: () => void;
   bowlers: Bowler[];
+  leagueId?: number;
 }
 
-export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
+export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormProps) {
   const { toast } = useToast();
 
   const form = useForm<InsertPayment>({
@@ -45,22 +48,53 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
       weekOf: new Date(),
       status: "paid",
       type: "cash",
+      leagueId: leagueId,
     },
   });
 
+  // Update leagueId when it changes
+  useEffect(() => {
+    if (leagueId) {
+      form.setValue('leagueId', leagueId);
+    }
+  }, [leagueId, form]);
+
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
-      const response = await apiRequest("POST", "/api/payments", {
-        ...data,
-        weekOf: data.weekOf.toISOString(),
-      });
+      console.log('Submitting payment:', data);
 
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || 'Failed to record payment');
+      // Handle credit card payment through Square
+      if (data.type === 'credit_card') {
+        try {
+          const result = await createPayment(data.amount);
+          if (result.status !== 'COMPLETED') {
+            throw new Error('Payment processing failed');
+          }
+          data.squarePaymentId = result.id;
+        } catch (error) {
+          console.error('Square payment error:', error);
+          throw new Error(error instanceof Error ? error.message : 'Payment processing failed');
+        }
       }
 
-      return response.json();
+      // Record the payment in our system
+      try {
+        const response = await apiRequest("POST", "/api/payments", {
+          ...data,
+          weekOf: data.weekOf.toISOString(),
+        });
+
+        if (!response.ok) {
+          const error = await response.text();
+          console.error('Payment API error:', error);
+          throw new Error(error || 'Failed to record payment');
+        }
+
+        return response.json();
+      } catch (error) {
+        console.error('Payment submission error:', error);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
@@ -72,6 +106,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
       form.reset();
     },
     onError: (error: Error) => {
+      console.error('Payment mutation error:', error);
       toast({
         title: "Error",
         description: error.message,
@@ -79,6 +114,38 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
       });
     },
   });
+
+  const onSubmit = async (data: InsertPayment) => {
+    console.log('Form submission:', data);
+    if (!data.leagueId) {
+      toast({
+        title: "Error",
+        description: "League ID is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    await mutation.mutateAsync(data);
+  };
+
+  useEffect(() => {
+    if (form.watch("type") === "credit_card") {
+      // Initialize Square payment form when credit card is selected
+      const initSquare = async () => {
+        try {
+          await initializeSquare();
+        } catch (error) {
+          console.error('Failed to initialize Square:', error);
+          toast({
+            title: "Error",
+            description: "Failed to initialize payment form. Please try again.",
+            variant: "destructive",
+          });
+        }
+      };
+      initSquare();
+    }
+  }, [form.watch("type")]);
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -89,7 +156,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
 
         <Form {...form}>
           <form
-            onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+            onSubmit={form.handleSubmit(onSubmit)}
             className="space-y-4"
           >
             <FormField
@@ -141,6 +208,7 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                     <SelectContent>
                       <SelectItem value="cash">Cash</SelectItem>
                       <SelectItem value="check">Check</SelectItem>
+                      <SelectItem value="credit_card">Credit Card</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -170,6 +238,10 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                 </FormItem>
               )}
             />
+
+            {form.watch("type") === "credit_card" && (
+              <div id="card-container" className="min-h-[100px] border rounded-md p-4" />
+            )}
 
             {form.watch("type") === "check" && (
               <FormField
@@ -207,6 +279,19 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="leagueId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>League ID</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="number"/>
+                  </FormControl>
+                  <FormMessage/>
+                </FormItem>
+              )}
+            />
 
             <div className="flex justify-end space-x-2">
               <Button
@@ -217,8 +302,8 @@ export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
               >
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
+              <Button
+                type="submit"
                 disabled={mutation.isPending}
                 className="min-w-[120px]"
               >

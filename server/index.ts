@@ -16,10 +16,18 @@ app.use((req, res, next) => {
   const requestId = Math.random().toString(36).substring(7);
   console.log(`[${requestId}][${req.method}] ${req.originalUrl}`);
 
+  if (req.method === 'POST' && req.path.startsWith('/api/payments')) {
+    console.log(`[${requestId}] Payment request body:`, JSON.stringify(req.body, null, 2));
+  }
+
   // Add response logging
   const oldJson = res.json;
   res.json = function(body) {
-    console.log(`[${requestId}] Response body:`, JSON.stringify(body));
+    if (req.path.startsWith('/api/payments')) {
+      console.log(`[${requestId}] Payment response body:`, JSON.stringify(body));
+    } else {
+      console.log(`[${requestId}] Response body:`, JSON.stringify(body));
+    }
     return oldJson.call(this, body);
   };
 

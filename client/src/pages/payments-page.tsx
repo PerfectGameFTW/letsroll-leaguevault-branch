@@ -13,34 +13,62 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Trash2 } from "lucide-react";
-import type { Payment, Bowler } from "@shared/schema";
+import type { Payment, Bowler, League } from "@shared/schema";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function PaymentsPage() {
   const [showForm, setShowForm] = useState(false);
+  const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
   const { toast } = useToast();
+
+  // Query to get all leagues
+  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
+    queryKey: ["/api/leagues"],
+  });
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments"],
     queryFn: async () => {
-      const response = await fetch('/api/payments');
-      if (!response.ok) {
-        throw new Error('Failed to fetch payments');
+      try {
+        const response = await fetch('/api/payments');
+        if (!response.ok) {
+          const error = await response.text();
+          console.error('Failed to fetch payments:', error);
+          throw new Error('Failed to fetch payments');
+        }
+        return response.json();
+      } catch (error) {
+        console.error('Error fetching payments:', error);
+        throw error;
       }
-      return response.json();
     },
   });
 
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
     queryFn: async () => {
-      const response = await fetch('/api/bowlers');
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowlers');
+      try {
+        const response = await fetch('/api/bowlers');
+        if (!response.ok) {
+          const error = await response.text();
+          console.error('Failed to fetch bowlers:', error);
+          throw new Error('Failed to fetch bowlers');
+        }
+        return response.json();
+      } catch (error) {
+        console.error('Error fetching bowlers:', error);
+        throw error;
       }
-      return response.json();
     },
   });
 
@@ -59,39 +87,25 @@ export default function PaymentsPage() {
       }
       return id;
     },
-    onMutate: async (deletedId) => {
-      await queryClient.cancelQueries({ 
-        queryKey: ["/api/payments"]
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({
+        title: "Success",
+        description: "Payment has been deleted.",
       });
-
-      const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
-
-      if (previousPayments?.data) {
-        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
-          data: previousPayments.data.filter(payment => payment.id !== deletedId)
-        });
-      }
-
-      return { previousPayments };
+      setPaymentToDelete(null);
     },
-    onError: (error: Error, _, context) => {
-      if (context?.previousPayments) {
-        queryClient.setQueryData(["/api/payments"], context.previousPayments);
-      }
+    onError: (error: Error) => {
       toast({
         title: "Error deleting payment",
         description: error.message,
         variant: "destructive",
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-    },
   });
 
   const handleDelete = async (id: number) => {
     try {
-      console.log('[Frontend] Handling payment deletion:', id);
       await deletePaymentMutation.mutateAsync(id);
     } catch (error) {
       console.error('[Frontend] Error in handleDelete:', error);
@@ -110,6 +124,8 @@ export default function PaymentsPage() {
 
   const payments = paymentsResponse?.data || [];
   const bowlers = bowlersResponse?.data || [];
+  const leagues = leaguesResponse?.data || [];
+  const defaultLeagueId = leagues.length > 0 ? leagues[0].id : undefined;
 
   return (
     <Layout>
@@ -159,18 +175,24 @@ export default function PaymentsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {payment.type === 'cash' ? 'Cash' : 
-                         payment.type === 'check' ? `Check #${payment.checkNumber}` : 
-                         'Unknown'}
+                        {payment.type === 'cash' ? 'Cash' :
+                          payment.type === 'check' ? `Check #${payment.checkNumber}` :
+                            payment.type === 'credit_card' ? 'Credit Card' :
+                              'Unknown'}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <Button
                         size="icon"
                         variant="ghost"
-                        onClick={() => handleDelete(payment.id)}
+                        onClick={() => setPaymentToDelete(payment.id)}
+                        disabled={deletePaymentMutation.isPending}
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        {deletePaymentMutation.isPending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        )}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -185,7 +207,38 @@ export default function PaymentsPage() {
         open={showForm}
         onClose={() => setShowForm(false)}
         bowlers={bowlers}
+        leagueId={defaultLeagueId}
       />
+
+      <Dialog open={paymentToDelete !== null} onOpenChange={setOpen => setPaymentToDelete(setOpen ? paymentToDelete : null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Payment</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this payment? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPaymentToDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => handleDelete(paymentToDelete!)}
+              disabled={deletePaymentMutation.isPending}
+            >
+              {deletePaymentMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Delete"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }
