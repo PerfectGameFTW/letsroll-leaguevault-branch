@@ -4,57 +4,51 @@ import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 
-// Early request logging middleware
-app.use((req, res, next) => {
-  console.log(`[EARLY-MIDDLEWARE] Incoming ${req.method} request to ${req.originalUrl}`);
-  next();
-});
-
+// Basic middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Request logging
 app.use((req, res, next) => {
   const start = Date.now();
-  console.log(`[express] Incoming ${req.method} request to ${req.originalUrl}`);
-  
+  console.log(`[${req.method}] ${req.originalUrl}`);
   res.on('finish', () => {
-    const duration = Date.now() - start;
-    console.log(`[express] ${req.method} ${req.originalUrl} ${res.statusCode} in ${duration}ms`);
+    console.log(`[${req.method}] ${req.originalUrl} ${res.statusCode} (${Date.now() - start}ms)`);
   });
-  
   next();
 });
 
 (async () => {
-  const server = registerRoutes(app);
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
-
-  // Register API routes before Vite middleware
+  // API routes first - ensures all API endpoints return JSON
   app.use('/api', (req, res, next) => {
-    console.log('[API Router] Request:', req.method, req.path);
+    res.setHeader('Content-Type', 'application/json');
     next();
   });
 
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
+  // Register routes (includes payment deletion endpoints)
+  const server = registerRoutes(app);
+
+  // Global API error handler
+  app.use('/api', (err: any, req: Request, res: Response, next: NextFunction) => {
+    console.error('[API Error]', err);
+    res.status(err.status || 500).json({
+      success: false,
+      error: {
+        message: err.message || "Internal Server Error"
+      }
+    });
+  });
+
+  // Frontend handling
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client
+  // Start server
   const PORT = 5000;
   server.listen(PORT, "0.0.0.0", () => {
-    log(`serving on port ${PORT}`);
+    log(`Server running on port ${PORT}`);
   });
 })();

@@ -6,17 +6,7 @@ import { sendSuccess, sendError } from '../utils/api';
 
 const router = Router();
 
-// Debug middleware at router level
-router.use((req, res, next) => {
-  console.log('[Payments Router] Request received:', {
-    method: req.method,
-    path: req.path,
-    url: req.url,
-    params: req.params
-  });
-  next();
-});
-
+// Get payments with optional filters
 router.get("/", async (req, res) => {
   try {
     const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
@@ -28,36 +18,27 @@ router.get("/", async (req, res) => {
   }
 });
 
+// Delete payment by ID
 router.delete("/:id", async (req, res) => {
-  console.log('[Payments Router] TESTING ROUTE ACCESS');
-  const id = parseInt(req.params.id);
-  console.log('[Payments Router] DELETE route hit with ID:', id, typeof id);
-  console.log('[Payments Router] storage object available:', !!storage);
-  console.log('[Payments Router] deletePayment method exists:', !!storage.deletePayment);
-  
   try {
+    const id = parseInt(req.params.id);
     if (isNaN(id)) {
-      console.error('[Payments Router] Invalid ID:', req.params.id);
-      return sendError(res, "Invalid payment ID", 400);
+      return sendError(res, "Invalid payment ID", 400, "INVALID_ID");
     }
 
-    console.trace('[Payments Router] About to delete payment');
     const result = await storage.deletePayment(id);
-    console.log('[Payments Router] Delete operation result:', result);
-    
     if (!result) {
-      console.error('[Payments Router] Payment deletion failed');
-      return sendError(res, "Failed to delete payment", 400);
+      return sendError(res, "Payment not found", 404, "NOT_FOUND");
     }
-    
-    console.log('[Payments Router] Payment deleted successfully');
+
     return sendSuccess(res, { success: true, id });
   } catch (error) {
-    console.error('[Payments Router] Delete error:', error);
-    return sendError(res, error instanceof Error ? error.message : 'Failed to delete payment');
+    console.error('[Payments Route] Delete error:', error);
+    return sendError(res, error instanceof Error ? error.message : 'Failed to delete payment', 500);
   }
 });
 
+// Create new payment
 router.post("/", async (req, res) => {
   try {
     const payment = insertPaymentSchema.parse(req.body);
@@ -65,13 +46,14 @@ router.post("/", async (req, res) => {
     sendSuccess(res, created, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
+      sendError(res, error, 400, "VALIDATION_ERROR");
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to create payment');
     }
   }
 });
 
+// Update payment status
 router.patch("/:id/status", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -84,12 +66,11 @@ router.patch("/:id/status", async (req, res) => {
     sendSuccess(res, updated);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
+      sendError(res, error, 400, "VALIDATION_ERROR");
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to update payment status');
     }
   }
 });
-
 
 export default router;

@@ -6,7 +6,7 @@ import { sendSuccess, sendError } from '../utils/api';
 
 const router = Router();
 
-// Middleware to ensure JSON responses
+// Ensure JSON responses for all routes
 router.use((req, res, next) => {
   res.setHeader('Content-Type', 'application/json');
   next();
@@ -15,7 +15,7 @@ router.use((req, res, next) => {
 router.get("/", async (req, res) => {
   try {
     const { bowlerId, leagueId, teamId } = req.query;
-    console.log('[BowlerLeagues Router] Fetching with params:', { bowlerId, leagueId, teamId });
+    console.log('[BowlerLeagues Route] Fetching with params:', { bowlerId, leagueId, teamId });
 
     const filters = {
       bowlerId: bowlerId ? parseInt(bowlerId as string) : undefined,
@@ -27,15 +27,42 @@ router.get("/", async (req, res) => {
     if ((bowlerId && isNaN(filters.bowlerId!)) || 
         (leagueId && isNaN(filters.leagueId!)) || 
         (teamId && isNaN(filters.teamId!))) {
-      return sendError(res, "Invalid ID parameters provided", 400);
+      return sendError(res, "Invalid ID parameters provided", 400, "INVALID_PARAMS");
     }
 
     const bowlerLeagues = await storage.getBowlerLeagues(filters);
-    console.log(`[BowlerLeagues Router] Found ${bowlerLeagues.length} bowler leagues`);
-    sendSuccess(res, bowlerLeagues);
+    console.log(`[BowlerLeagues Route] Found ${bowlerLeagues.length} bowler leagues`);
+    return sendSuccess(res, bowlerLeagues);
   } catch (error) {
-    console.error('[BowlerLeagues Router] Error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler leagues');
+    console.error('[BowlerLeagues Route] Error:', error);
+    return sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler leagues', 500);
+  }
+});
+
+router.post("/", async (req, res) => {
+  try {
+    console.log('[BowlerLeagues Route] Creating new bowler league with body:', req.body);
+    const data = insertBowlerLeagueSchema.parse(req.body);
+
+    // Check if bowler is already in the league
+    const existing = await storage.getBowlerLeagues({
+      bowlerId: data.bowlerId,
+      leagueId: data.leagueId,
+    });
+
+    if (existing.length > 0) {
+      return sendError(res, "Bowler is already in this league", 400, "DUPLICATE_ENTRY");
+    }
+
+    const created = await storage.createBowlerLeague(data);
+    console.log('[BowlerLeagues Route] Created bowler league:', created);
+    return sendSuccess(res, created, 201);
+  } catch (error) {
+    console.error('[BowlerLeagues Route] Error creating bowler league:', error);
+    if (error instanceof z.ZodError) {
+      return sendError(res, error, 400, "VALIDATION_ERROR");
+    }
+    return sendError(res, error instanceof Error ? error.message : 'Failed to create bowler league', 500);
   }
 });
 
@@ -43,51 +70,36 @@ router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
-      return sendError(res, "Invalid ID provided", 400);
+      return sendError(res, "Invalid ID provided", 400, "INVALID_ID");
     }
 
     const update = partialBowlerLeagueSchema.parse(req.body);
+    console.log(`[BowlerLeagues Route] Updating bowler league ${id}:`, update);
 
-    // Handle order updates separately from other updates
+    // Handle order updates separately
     if (typeof update.order === 'number') {
-      console.log(`[BowlerLeagues Router] Updating bowler league ${id} order to ${update.order}`);
       const bowlerLeague = await storage.getBowlerLeague(id);
       if (!bowlerLeague) {
-        return sendError(res, "Bowler league not found", 404);
+        return sendError(res, "Bowler league not found", 404, "NOT_FOUND");
       }
 
       const updatedBowlerLeagues = await storage.updateBowlerLeagueOrder(id, update.order);
-      console.log('[BowlerLeagues Router] Updated bowler league orders:', updatedBowlerLeagues);
+      console.log('[BowlerLeagues Route] Updated bowler league orders:', updatedBowlerLeagues);
       return sendSuccess(res, updatedBowlerLeagues);
     }
 
     // Handle other updates
     const updated = await storage.updateBowlerLeague(id, update);
-    sendSuccess(res, updated);
-  } catch (error) {
-    console.error('[BowlerLeagues Router] Error updating bowler league:', error);
-    if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league');
+    if (!updated) {
+      return sendError(res, "Bowler league not found", 404, "NOT_FOUND");
     }
-  }
-});
-
-router.post("/", async (req, res) => {
-  try {
-    console.log('[BowlerLeagues Router] Creating new bowler league with body:', req.body);
-    const association = insertBowlerLeagueSchema.parse(req.body);
-    const created = await storage.createBowlerLeague(association);
-    console.log('[BowlerLeagues Router] Created bowler league:', created);
-    sendSuccess(res, created, 201);
+    return sendSuccess(res, updated);
   } catch (error) {
-    console.error('[BowlerLeagues Router] Error creating bowler league:', error);
+    console.error('[BowlerLeagues Route] Error updating bowler league:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to create bowler league');
+      return sendError(res, error, 400, "VALIDATION_ERROR");
     }
+    return sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league', 500);
   }
 });
 

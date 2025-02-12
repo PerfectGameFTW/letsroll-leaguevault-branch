@@ -1,4 +1,3 @@
-
 import { Response } from 'express';
 import { ZodError } from 'zod';
 
@@ -30,14 +29,10 @@ export function sendError(
     success: false,
     error: {
       code,
-      message: error instanceof Error ? error.message : error
+      message: error instanceof Error ? error.message : error,
+      details: error instanceof ZodError ? error.issues : undefined
     }
   };
-
-  if (error instanceof ZodError) {
-    response.error.code = 'VALIDATION_ERROR';
-    response.error.details = error.issues;
-  }
 
   res.status(status).json(response);
 }
