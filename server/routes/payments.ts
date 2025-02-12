@@ -15,6 +15,10 @@ router.get("/", async (req, res) => {
     const weekOf = req.query.weekOf ? new Date(req.query.weekOf as string) : undefined;
 
     const payments = await storage.getPayments(bowlerId, leagueId, teamId, weekOf);
+    console.log('[Payments Route] Retrieved payments:', {
+      filters: { bowlerId, leagueId, teamId, weekOf },
+      count: payments.length
+    });
     sendSuccess(res, payments);
   } catch (error) {
     console.error('[Payments Route] Get error:', error);
@@ -34,6 +38,7 @@ router.post("/", async (req, res) => {
     }
 
     const created = await storage.createPayment(payment);
+    console.log('[Payments Route] Created payment:', created);
     sendSuccess(res, created, 201);
   } catch (error) {
     console.error('[Payments Route] Create error:', error);
@@ -61,6 +66,7 @@ router.patch("/:id", async (req, res) => {
       return sendError(res, "Payment not found", 404, "NOT_FOUND");
     }
 
+    console.log('[Payments Route] Updated payment:', updated);
     sendSuccess(res, updated);
   } catch (error) {
     console.error('[Payments Route] Update error:', error);
@@ -80,6 +86,7 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "Invalid payment ID", 400, "INVALID_ID");
     }
 
+    console.log('[Payments Route] Deleting payment:', id);
     await storage.deletePayment(id);
     sendSuccess(res, null, 204);
   } catch (error) {

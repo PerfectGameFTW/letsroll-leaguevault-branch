@@ -10,12 +10,21 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT) : 5000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Request logging
+// Request logging with more detailed information
 app.use((req, res, next) => {
   const start = Date.now();
-  console.log(`[${req.method}] ${req.originalUrl}`);
+  const requestId = Math.random().toString(36).substring(7);
+  console.log(`[${requestId}][${req.method}] ${req.originalUrl}`);
+
+  // Add response logging
+  const oldJson = res.json;
+  res.json = function(body) {
+    console.log(`[${requestId}] Response body:`, JSON.stringify(body));
+    return oldJson.call(this, body);
+  };
+
   res.on('finish', () => {
-    console.log(`[${req.method}] ${req.originalUrl} ${res.statusCode} (${Date.now() - start}ms)`);
+    console.log(`[${requestId}][${req.method}] ${req.originalUrl} ${res.statusCode} (${Date.now() - start}ms)`);
   });
   next();
 });
@@ -26,14 +35,17 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Health check endpoint
+// Health check endpoint with more detailed status
 app.get('/api/health', async (req, res) => {
   try {
     await testConnection();
     res.json({
       success: true,
       status: 'healthy',
-      database: 'connected'
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      port: PORT
     });
   } catch (error) {
     console.error('[Health Check] Database connection failed:', error);
@@ -41,14 +53,24 @@ app.get('/api/health', async (req, res) => {
       success: false,
       status: 'unhealthy',
       database: 'disconnected',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
     });
   }
 });
 
-(async () => {
+// Initialize server with proper startup sequence
+async function initializeServer() {
   try {
-    // Register API routes first
+    console.log('[Server] Starting initialization...');
+
+    // Test database connection first
+    console.log('[Server] Testing database connection...');
+    await testConnection();
+    console.log('[Server] Database connection successful');
+
+    // Register API routes
+    console.log('[Server] Registering API routes...');
     const server = registerRoutes(app);
 
     // Global API error handler
@@ -58,15 +80,16 @@ app.get('/api/health', async (req, res) => {
         res.status(err.status || 500).json({
           success: false,
           error: {
-            message: err.message || "Internal Server Error"
+            message: err.message || "Internal Server Error",
+            code: err.code,
+            timestamp: new Date().toISOString()
           }
         });
       }
     });
 
-    // Frontend handling after API routes
+    // Frontend handling
     if (app.get("env") === "development") {
-      // Skip Vite for API routes
       app.use((req, res, next) => {
         if (req.path.startsWith('/api')) {
           return next('route');
@@ -85,20 +108,33 @@ app.get('/api/health', async (req, res) => {
       serveStatic(app);
     }
 
-    // Start server with proper error handling
-    server.listen(PORT, "0.0.0.0", () => {
-      console.log(`[Server] Ready and listening on port ${PORT}`);
-    }).on('error', (error: any) => {
-      if (error.code === 'EADDRINUSE') {
-        console.error(`[Server] Port ${PORT} is already in use`);
-      } else {
+    // Start server with health check
+    await new Promise<void>((resolve, reject) => {
+      server.listen(PORT, "0.0.0.0", () => {
+        console.log(`[Server] Ready and listening on port ${PORT}`);
+        resolve();
+      }).on('error', (error: any) => {
         console.error('[Server] Failed to start server:', error);
-      }
-      process.exit(1);
+        reject(error);
+      });
+
+      // Add timeout for startup
+      setTimeout(() => {
+        reject(new Error('Server startup timeout after 30 seconds'));
+      }, 30000);
     });
 
+    console.log('[Server] Initialization complete');
+
+    return server;
   } catch (error) {
-    console.error('[Server] Fatal error during startup:', error);
+    console.error('[Server] Fatal error during initialization:', error);
     process.exit(1);
   }
-})();
+}
+
+// Start the server
+initializeServer().catch((error) => {
+  console.error('[Server] Unhandled error during startup:', error);
+  process.exit(1);
+});
