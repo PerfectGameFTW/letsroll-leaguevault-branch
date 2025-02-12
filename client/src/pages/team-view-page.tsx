@@ -14,10 +14,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { Loader2, Plus, ArrowLeft, ExternalLink, Pencil } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, ExternalLink, Pencil, Trash2 } from "lucide-react";
 import type { Team, Bowler, League, BowlerLeague } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
@@ -48,6 +48,7 @@ export default function TeamViewPage() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showReorderDialog, setShowReorderDialog] = useState(false);
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
+  const [showRemoveDialog, setShowRemoveDialog] = useState<{ bowlerId: number; name: string } | null>(null);
   const { toast } = useToast();
   const params = useParams();
   const teamId = parseInt(params.teamId!);
@@ -180,6 +181,46 @@ export default function TeamViewPage() {
     },
   });
 
+  const removeBowlerMutation = useMutation({
+    mutationFn: async ({ bowlerId }: { bowlerId: number }) => {
+      const bowlerLeague = bowlerLeagues.find(bl =>
+        bl.bowlerId === bowlerId &&
+        bl.teamId === teamId &&
+        bl.leagueId === team?.leagueId
+      );
+
+      if (!bowlerLeague) {
+        throw new Error("Bowler league association not found");
+      }
+
+      const response = await apiRequest(
+        "DELETE",
+        `/api/bowler-leagues/${bowlerLeague.id}`
+      );
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text);
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      setShowRemoveDialog(null);
+      toast({
+        title: "Bowler removed",
+        description: "Bowler has been removed from the team.",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error removing bowler",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+
   const handleEditClick = () => {
     if (team) {
       editForm.reset({ name: team.name });
@@ -189,6 +230,11 @@ export default function TeamViewPage() {
 
   const onEditTeam = (values: z.infer<typeof editTeamSchema>) => {
     updateTeamMutation.mutate(values);
+  };
+
+  const handleRemoveBowler = async () => {
+    if (!showRemoveDialog) return;
+    await removeBowlerMutation.mutate({ bowlerId: showRemoveDialog.bowlerId });
   };
 
   // Handle errors
@@ -282,17 +328,27 @@ export default function TeamViewPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedBowler(bowler);
-                        setShowForm(true);
-                      }}
-                    >
-                      <Pencil className="h-4 w-4 mr-2" />
-                      Edit
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedBowler(bowler);
+                          setShowForm(true);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowRemoveDialog({ bowlerId: bowler.id, name: bowler.name })}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Remove
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -374,6 +430,35 @@ export default function TeamViewPage() {
         teamId={teamId}
         leagueId={team.leagueId}
       />
+
+      {/* Remove Bowler Confirmation Dialog */}
+      <Dialog open={showRemoveDialog !== null} onOpenChange={(open) => !open && setShowRemoveDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Bowler from Team</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove {showRemoveDialog?.name} from this team? This will completely remove their association with this team.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowRemoveDialog(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRemoveBowler}
+              disabled={removeBowlerMutation.isPending}
+            >
+              {removeBowlerMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Layout>
   );
 }

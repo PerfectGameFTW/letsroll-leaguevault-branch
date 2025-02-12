@@ -85,6 +85,28 @@ router.patch("/:id", async (req, res) => {
   }
 });
 
+router.delete("/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return sendError(res, "Invalid ID provided", 400);
+    }
+
+    console.log(`[BowlerLeagues] Deleting bowler league ${id}`);
+    const deleted = await storage.deleteBowlerLeague(id);
+
+    if (!deleted) {
+      return sendError(res, "Bowler league not found", 404);
+    }
+
+    console.log(`[BowlerLeagues] Successfully deleted bowler league ${id}`);
+    sendSuccess(res, null, 204);
+  } catch (error) {
+    console.error('[BowlerLeagues] Error deleting bowler league:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to delete bowler league');
+  }
+});
+
 router.patch("/:id/order", async (req, res) => {
   try {
     const id = parseInt(req.params.id);

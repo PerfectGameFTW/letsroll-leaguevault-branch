@@ -37,6 +37,7 @@ export interface IStorage {
   createBowlerLeague(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague>;
   updateBowlerLeague(id: number, bowlerLeague: Partial<InsertBowlerLeague>): Promise<BowlerLeague>;
   updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]>;
+  deleteBowlerLeague(id: number): Promise<boolean>;
 
   // Payment methods
   getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date): Promise<Payment[]>;
@@ -225,6 +226,18 @@ export class DatabaseStorage implements IStorage {
 
     const results = await Promise.all(promises);
     return results.map((result) => result[0]);
+  }
+
+  async deleteBowlerLeague(id: number): Promise<boolean> {
+    try {
+      const result = await db.delete(bowlerLeagues)
+        .where(eq(bowlerLeagues.id, id))
+        .returning();
+      return result.length > 0;
+    } catch (error) {
+      console.error('[Storage] Error deleting bowler league:', error);
+      return false;
+    }
   }
 
   // Payment methods
