@@ -1,14 +1,15 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { useSquarePayment } from "@/hooks/use-square-payment";
 import {
   Form,
   FormControl,
@@ -18,19 +19,10 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Loader2, AlertCircle } from "lucide-react";
-import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/schema";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { createPayment } from "@/lib/square";
-import { useSquarePayment } from "@/hooks/use-square-payment";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import type { InsertPayment, Bowler } from "@shared/schema";
+import { insertPaymentSchema } from "@shared/schema";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface PaymentFormProps {
   open: boolean;
@@ -44,6 +36,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [isSquareReady, setIsSquareReady] = useState(false);
   const initializationAttempted = useRef(false);
+  const queryClient = useQueryClient();
 
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
@@ -74,163 +67,175 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     },
   });
 
-  // Update leagueId when it changes
   useEffect(() => {
     if (leagueId) {
-      form.setValue('leagueId', leagueId);
+      form.setValue('leagueId', leagueId, { shouldDirty: false });
     }
-  }, [leagueId, form]);
+  }, [leagueId]);
 
   const paymentType = form.watch("type");
 
-  // Handle Square initialization and cleanup
   useEffect(() => {
-    const shouldInitialize = paymentType === "credit_card" && 
-                           open && 
-                           cardContainerRef.current && 
-                           !isInitialized && 
-                           !initializationAttempted.current;
-
-    if (shouldInitialize) {
-      console.log('[PaymentForm] Starting credit card form initialization');
-      initializationAttempted.current = true;
-
-      initializeCard(cardContainerRef.current)
-        .then(() => {
-          console.log('[PaymentForm] Card form initialized successfully');
-          setIsSquareReady(true);
-        })
-        .catch((error) => {
-          console.error('[PaymentForm] Failed to initialize card form:', error);
-          setIsSquareReady(false);
-          form.setValue("type", "cash");
-          toast({
-            title: "Payment Form Notice",
-            description: "Credit card form unavailable. Please try another payment method.",
-            variant: "default",
-          });
-        });
-    }
-
-    return () => {
-      if (paymentType !== "credit_card" && isInitialized) {
-        console.log('[PaymentForm] Cleaning up card form due to payment type change');
-        cleanupCard();
-        setIsSquareReady(false);
-      }
-    };
-  }, [paymentType, open, isInitialized, initializeCard, cleanupCard, form, toast]);
-
-  // Cleanup on dialog close
-  useEffect(() => {
-    if (!open) {
-      console.log('[PaymentForm] Dialog closing, cleaning up');
-      form.reset();
+    if (!open || paymentType !== "credit_card") {
       if (isInitialized) {
         cleanupCard();
         setIsSquareReady(false);
         initializationAttempted.current = false;
       }
+      return;
     }
-  }, [open, isInitialized, cleanupCard, form]);
 
-  const mutation = useMutation({
-    mutationFn: async (data: InsertPayment) => {
-      console.log('[PaymentForm] Starting payment mutation:', data);
+    if (!cardContainerRef.current || isInitialized || initializationAttempted.current) {
+      return;
+    }
 
-      if (data.type === 'credit_card') {
-        if (!card || !isSquareReady) {
-          console.error('[PaymentForm] Credit card form not ready');
-          throw new Error('Credit card form not ready. Please try again.');
-        }
+    initializationAttempted.current = true;
+    const container = cardContainerRef.current;
 
-        try {
-          console.log('[PaymentForm] Processing Square payment...');
-          const result = await createPayment(data.amount, card);
-          console.log('[PaymentForm] Square payment result:', result);
+    initializeCard(container)
+      .then(() => {
+        console.log('[PaymentForm] Card form initialized successfully');
+        setIsSquareReady(true);
+      })
+      .catch((error) => {
+        console.error('[PaymentForm] Failed to initialize card form:', error);
+        setIsSquareReady(false);
+        form.setValue("type", "cash", { shouldDirty: false });
+        toast({
+          title: "Payment Form Notice",
+          description: "Credit card form unavailable. Please try another payment method.",
+          variant: "default",
+        });
+      });
+  }, [open, paymentType]);
 
-          if (result.status !== 'COMPLETED') {
-            throw new Error('Payment processing failed');
-          }
+  useEffect(() => {
+    if (!open) {
+      form.reset();
+    }
+  }, [open]);
 
-          data.squarePaymentId = result.id;
-        } catch (error) {
-          console.error('[PaymentForm] Square payment error:', error);
-          throw new Error(error instanceof Error ? error.message : 'Payment processing failed');
+  const onSubmit = async (data: InsertPayment) => {
+    try {
+      console.log('[PaymentForm] Submitting payment:', data);
+
+      if (data.type === 'credit_card' && card) {
+        const result = await card.tokenize();
+        if (result.status === 'OK') {
+          data.squarePaymentId = result.token;
+        } else {
+          throw new Error(result.errors?.[0]?.message || 'Failed to process credit card');
         }
       }
 
-      const response = await apiRequest("POST", "/api/payments", {
-        ...data,
-        weekOf: data.weekOf.toISOString(),
+      const response = await fetch('/api/payments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
       });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || 'Failed to record payment');
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Failed to process payment');
       }
 
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({
         title: "Success",
-        description: "Payment has been recorded.",
+        description: "Payment recorded successfully",
       });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       onClose();
-      form.reset();
-    },
-    onError: (error: Error) => {
-      console.error('[PaymentForm] Payment mutation error:', error);
+    } catch (error) {
+      console.error('[PaymentForm] Payment submission error:', error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error instanceof Error ? error.message : "Failed to process payment. Please try again.",
         variant: "destructive",
       });
-    },
-  });
-
-  const handleSubmit = form.handleSubmit((data) => {
-    console.log('[PaymentForm] Form submitted:', data);
-    mutation.mutate(data);
-  });
+    }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Record Payment</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <FormField
               control={form.control}
               name="bowlerId"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Bowler</FormLabel>
-                  <Select
-                    onValueChange={(value) => field.onChange(parseInt(value))}
-                    defaultValue={field.value?.toString()}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a bowler" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
+                  <FormControl>
+                    <select
+                      {...field}
+                      className="w-full p-2 border rounded"
+                      value={field.value || ""}
+                      onChange={(e) => {
+                        const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                        field.onChange(value);
+                      }}
+                    >
+                      <option value="">Select a bowler</option>
                       {bowlers.map((bowler) => (
-                        <SelectItem
-                          key={bowler.id}
-                          value={bowler.id.toString()}
-                        >
+                        <option key={bowler.id} value={bowler.id}>
                           {bowler.name}
-                        </SelectItem>
+                        </option>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </select>
+                  </FormControl>
+                  <FormMessage>
+                    {form.formState.errors.bowlerId?.message || 
+                     (!field.value && "Please select a bowler")}
+                  </FormMessage>
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="amount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Amount ($)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      {...field}
+                      onChange={(e) => {
+                        const dollars = parseFloat(e.target.value);
+                        field.onChange(Math.round(dollars * 100));
+                      }}
+                      value={(field.value / 100).toFixed(2)}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="weekOf"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Week Of</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="date"
+                      {...field}
+                      value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
+                      onChange={(e) => field.onChange(new Date(e.target.value))}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -242,73 +247,30 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Payment Type</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select payment type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="check">Check</SelectItem>
-                      <SelectItem value="credit_card">Credit Card</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Amount</FormLabel>
                   <FormControl>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      {...field}
-                      value={field.value / 100}
-                      onChange={(e) =>
-                        field.onChange(Math.round(parseFloat(e.target.value) * 100))
-                      }
-                    />
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      className="flex flex-col space-y-1"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="cash" id="cash" />
+                        <label htmlFor="cash">Cash</label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="check" id="check" />
+                        <label htmlFor="check">Check</label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="credit_card" id="credit_card" />
+                        <label htmlFor="credit_card">Credit Card</label>
+                      </div>
+                    </RadioGroup>
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-
-            {paymentType === "credit_card" && (
-              <div className="space-y-2">
-                <div
-                  ref={cardContainerRef}
-                  className={`min-h-[100px] border rounded-md p-4 ${
-                    squareError ? 'border-destructive' : ''
-                  }`}
-                />
-                {squareError && (
-                  <div className="flex items-center gap-2 text-sm text-destructive">
-                    <AlertCircle className="h-4 w-4" />
-                    <span>{squareError}</span>
-                  </div>
-                )}
-                {!isSquareReady && (
-                  <div className="flex items-center justify-center p-2">
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    <span className="text-sm text-muted-foreground">
-                      Initializing payment form...
-                    </span>
-                  </div>
-                )}
-              </div>
-            )}
 
             {paymentType === "check" && (
               <FormField
@@ -326,61 +288,30 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               />
             )}
 
-            <FormField
-              control={form.control}
-              name="weekOf"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Week Of</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="date"
-                      {...field}
-                      value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
-                      onChange={(e) =>
-                        field.onChange(new Date(e.target.value))
-                      }
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="leagueId"
-              render={({ field }) => (
-                <FormItem className="hidden">
-                  <FormControl>
-                    <Input {...field} type="number" />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
+            {paymentType === "credit_card" && (
+              <div>
+                <div ref={cardContainerRef} className="mb-4" />
+                {!isSquareReady && (
+                  <p className="text-sm text-muted-foreground">
+                    Loading credit card form...
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="flex justify-end space-x-2">
               <Button
                 type="button"
                 variant="outline"
                 onClick={onClose}
-                disabled={mutation.isPending}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                disabled={mutation.isPending || (paymentType === "credit_card" && !isSquareReady)}
-                className="min-w-[120px]"
+                disabled={paymentType === "credit_card" && !isSquareReady}
               >
-                {mutation.isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  'Record Payment'
-                )}
+                Submit Payment
               </Button>
             </div>
           </form>

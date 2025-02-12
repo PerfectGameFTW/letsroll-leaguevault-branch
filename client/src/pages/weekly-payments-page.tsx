@@ -11,6 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon, Trash2 } from "lucide-react";
 import { format, differenceInWeeks, startOfToday, subDays } from "date-fns";
 import type { League, Team, Payment, Bowler, BowlerLeague } from "@shared/schema";
@@ -53,6 +54,7 @@ export default function WeeklyPaymentsPage() {
   const params = useParams();
   const { toast } = useToast();
   const leagueId = parseInt(params.leagueId!);
+  const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTeam, setSelectedTeam] = useState<string>();
   const [paymentEntries, setPaymentEntries] = useState<{ [key: number]: PaymentEntry }>({});
@@ -558,7 +560,7 @@ export default function WeeklyPaymentsPage() {
                           <TableHead>Bowler</TableHead>
                           <TableHead>Payment Type</TableHead>
                           <TableHead className="text-right">Amount</TableHead>
-                          <TableHead className="w-[100px]"></TableHead>
+                          <TableHead className="w-[100px]">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -589,13 +591,24 @@ export default function WeeklyPaymentsPage() {
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    onClick={() => handleStartEdit(payment)} //Start edit instead of delete
+                                    onClick={() => handleStartEdit(payment)}
                                   >
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4 text-primary">
                                       <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
                                     </svg>
                                   </Button>
-
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => setPaymentToDelete(payment.id)}
+                                    disabled={deletePaymentMutation.isPending}
+                                  >
+                                    {deletePaymentMutation.isPending ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <Trash2 className="h-4 w-4 text-destructive" />
+                                    )}
+                                  </Button>
                                 </TableCell>
                               </TableRow>
                             );
@@ -610,6 +623,48 @@ export default function WeeklyPaymentsPage() {
           </Card>
         )}
 
+        {/* Payment Edit Dialog */}
+        <Dialog open={editingPayment !== null} onOpenChange={(open) => !open && setEditingPayment(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Payment Amount</DialogTitle>
+              <DialogDescription>
+                Update the payment amount below.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="amount">Amount ($)</Label>
+                <Input
+                  id="amount"
+                  value={editingPayment?.amount || ""}
+                  onChange={(e) => setEditingPayment(prev =>
+                    prev ? { ...prev, amount: e.target.value } : null
+                  )}
+                  placeholder="0.00"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setEditingPayment(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => editingPayment && handleSaveEdit(editingPayment.id)}
+                disabled={updatePaymentMutation.isPending}
+              >
+                {updatePaymentMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
         <Dialog open={paymentToDelete !== null} onOpenChange={() => setPaymentToDelete(null)}>
           <DialogContent>
             <DialogHeader>
@@ -632,9 +687,7 @@ export default function WeeklyPaymentsPage() {
               >
                 {deletePaymentMutation.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "Delete"
-                )}
+                ) : "Delete"}
               </Button>
             </DialogFooter>
           </DialogContent>
