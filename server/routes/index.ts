@@ -10,11 +10,18 @@ import { sendSuccess, sendError } from '../utils/api';
 import { storage } from '../storage';
 
 export function registerRoutes(app: Express): Server {
+  console.log('[Routes] Registering API routes...');
+  
   // Register route modules
   app.use('/api/leagues', leaguesRouter);
   app.use('/api/teams', teamsRouter);
   app.use('/api/bowlers', bowlersRouter);
-  app.use('/api/payments', paymentsRouter);
+  app.use('/api/payments', (req, res, next) => {
+    console.log('[Routes] Payments route hit:', req.method, req.path);
+    paymentsRouter(req, res, next);
+  });
+
+  console.log('[Routes] API routes registered');
 
   // Square customer management endpoints
   app.post("/api/square/customers", async (req, res) => {
