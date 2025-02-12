@@ -438,8 +438,10 @@ export class DatabaseStorage implements IStorage {
     try {
       console.log('[Storage] deletePayment called with ID:', id, typeof id);
       await db.transaction(async (tx) => {
-        await tx.delete(payments)
-          .where(eq(payments.id, id));
+        const result = await tx.delete(payments)
+          .where(eq(payments.id, id))
+          .returning();
+        console.log('[Storage] Delete result:', result);
           
         // Verify deletion
         const [verifyDeleted] = await tx.select()
