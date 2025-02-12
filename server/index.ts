@@ -35,17 +35,20 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Health check endpoint with more detailed status
+// Health check endpoint with port readiness indicator
 app.get('/api/health', async (req, res) => {
   try {
     await testConnection();
+    // Add a ready flag to indicate the server is fully initialized
+    const ready = true;
     res.json({
       success: true,
       status: 'healthy',
       database: 'connected',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      port: PORT
+      port: PORT,
+      ready
     });
   } catch (error) {
     console.error('[Health Check] Database connection failed:', error);
@@ -54,7 +57,8 @@ app.get('/api/health', async (req, res) => {
       status: 'unhealthy',
       database: 'disconnected',
       error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      ready: false
     });
   }
 });
@@ -95,10 +99,11 @@ async function initializeServer() {
       serveStatic(app);
     }
 
-    // Start server with explicit port binding and logging
+    // Start server with explicit ready signal and port binding
     return new Promise<void>((resolve, reject) => {
       const serverInstance = server.listen(PORT, "0.0.0.0", () => {
         console.log(`[Server] Ready and listening on port ${PORT}`);
+        console.log('[Server] Application fully initialized and ready for testing');
         resolve();
       });
 
