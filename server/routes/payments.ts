@@ -36,10 +36,10 @@ router.get("/", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  console.log('[API] DELETE route handler entered for payment:', req.params.id);
+  console.log('[API] DELETE route handler entered for payment:', req.params.id, typeof req.params.id);
   try {
     const id = parseInt(req.params.id);
-    console.log('[API] Parsed ID:', id);
+    console.log('[API] Parsed ID:', id, typeof id);
     
     if (isNaN(id)) {
       console.error('[API] Invalid payment ID:', req.params.id);
@@ -48,14 +48,19 @@ router.delete("/:id", async (req, res) => {
     
     console.log('[API] Attempting to delete payment:', id);
     const result = await storage.deletePayment(id);
-    console.log('[API] Delete operation result:', result);
+    console.log('[API] Delete operation detailed result:', {
+      success: result,
+      resultType: typeof result,
+      id: id,
+      idType: typeof id
+    });
     
     if (!result) {
       return sendError(res, "Payment not found", 404);
     }
     
     console.log('[API] Payment deleted successfully');
-    return sendSuccess(res, { message: 'Payment deleted' });
+    return sendSuccess(res, { success: true, id });
   } catch (error) {
     console.error('[API] Error in DELETE handler:', error);
     return sendError(res, error instanceof Error ? error.message : 'Failed to delete payment');
