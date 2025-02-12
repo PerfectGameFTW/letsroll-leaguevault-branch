@@ -20,12 +20,6 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/bowlers', bowlersRouter);
   
   console.log('[Routes] Registering payments router...');
-  // Debug middleware before router
-  app.use('/api/payments', (req, res, next) => {
-    console.log('[Debug] Before payments router:', req.method, req.path);
-    next();
-  });
-  
   app.use('/api/payments', paymentsRouter);
   console.log('[Routes] Payments router registered');
 
