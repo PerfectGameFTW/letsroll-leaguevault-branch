@@ -4,6 +4,7 @@ import leaguesRouter from './leagues';
 import teamsRouter from './teams';
 import bowlersRouter from './bowlers';
 import paymentsRouter from './payments';
+import bowlerLeaguesRouter from './bowler-leagues';
 import { enrollInLoyalty, getLoyaltyPoints, createOrUpdateCustomer, addCustomerToLeagueGroup } from '../services/square';
 
 console.log('[Routes] All routes loaded, including payments router');
@@ -19,8 +20,9 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/leagues', leaguesRouter);
   app.use('/api/teams', teamsRouter);
   app.use('/api/bowlers', bowlersRouter);
+  app.use('/api/bowler-leagues', bowlerLeaguesRouter);
   app.use('/api/payments', paymentsRouter);
-  
+
   console.log('[Routes] API routes registered');
 
   // Catch-all middleware for unhandled routes should be last
