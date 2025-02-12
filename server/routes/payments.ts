@@ -98,4 +98,10 @@ router.patch("/:id/status", async (req, res) => {
   }
 });
 
+// Log any request hitting this router
+router.use((req, res, next) => {
+  console.log('[Payments Router] Hit payments router:', req.method, req.path);
+  next();
+});
+
 export default router;
