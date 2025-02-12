@@ -4,6 +4,8 @@ import { insertPaymentSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
 import { processPayment } from '../services/square';
+import { db } from '../db';
+import { sql } from 'drizzle-orm';
 
 const router = Router();
 
