@@ -10,6 +10,16 @@ import { sql, eq } from 'drizzle-orm';
 const router = Router();
 console.log('[Payments Router] Initializing routes');
 
+// Add debug middleware at the router level
+router.use((req, res, next) => {
+  console.log('[Payments Router] Incoming request:', {
+    method: req.method,
+    path: req.path,
+    params: req.params
+  });
+  next();
+});
+
 router.get("/", async (req, res) => {
   try {
     const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
