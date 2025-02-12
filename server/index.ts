@@ -3,6 +3,13 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+// Early request logging middleware
+app.use((req, res, next) => {
+  console.log(`[EARLY-MIDDLEWARE] Incoming ${req.method} request to ${req.originalUrl}`);
+  next();
+});
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
