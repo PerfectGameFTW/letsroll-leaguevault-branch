@@ -25,11 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { createPayment, initializeSquare, cleanupCard } from "@/lib/square";
+import { createPayment, cleanupCard } from "@/lib/square";
+import { useSquarePayment } from "@/hooks/use-square-payment";
 
 interface PaymentFormProps {
   open: boolean;
@@ -41,7 +42,19 @@ interface PaymentFormProps {
 export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormProps) {
   const { toast } = useToast();
   const cardContainerRef = useRef<HTMLDivElement>(null);
-  const squareInitializedRef = useRef(false);
+
+  const {
+    card,
+    isInitialized,
+    error: squareError,
+    initializeCard,
+    cleanupCard,
+  } = useSquarePayment({
+    onError: (error) => {
+      // Switch to cash payment on error
+      form.setValue("type", "cash");
+    },
+  });
 
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
@@ -61,60 +74,29 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [leagueId, form]);
 
-  // Initialize Square when credit card is selected
+  // Handle Square initialization when credit card is selected
   useEffect(() => {
     const paymentType = form.watch("type");
-    let timeoutId: NodeJS.Timeout;
 
-    async function setupSquare() {
-      if (paymentType === "credit_card" && !squareInitializedRef.current && open) {
-        console.log('[PaymentForm] Setting up Square for credit card payment');
-
-        try {
-          console.log('[PaymentForm] Checking card container ref:', !!cardContainerRef.current);
-          if (!cardContainerRef.current) {
-            console.error('[PaymentForm] Card container ref not found');
-            throw new Error('Card container not found');
-          }
-
-          console.log('[PaymentForm] Attempting to initialize Square...');
-          await initializeSquare();
-          squareInitializedRef.current = true;
-          console.log('[PaymentForm] Square payment form initialized successfully');
-        } catch (error) {
-          console.error('[PaymentForm] Failed to initialize Square:', error);
-          toast({
-            title: "Error",
-            description: "Failed to initialize payment form. Please try again or choose a different payment method.",
-            variant: "destructive",
-          });
-          form.setValue("type", "cash");
-        }
-      }
+    if (paymentType === "credit_card" && open && cardContainerRef.current) {
+      initializeCard(cardContainerRef.current);
     }
 
-    if (open) {
-      setupSquare();
-    }
-
+    // Cleanup when payment type changes or dialog closes
     return () => {
-      if (!open || paymentType !== "credit_card") {
-        console.log('[PaymentForm] Cleaning up Square on payment type change or dialog close');
+      if (paymentType !== "credit_card" || !open) {
         cleanupCard();
-        squareInitializedRef.current = false;
       }
     };
-  }, [form.watch("type"), open, toast, form]);
+  }, [form.watch("type"), open, initializeCard, cleanupCard]);
 
-  // Cleanup when dialog closes
+  // Cleanup on dialog close
   useEffect(() => {
     if (!open) {
-      console.log('[PaymentForm] Cleaning up Square on dialog close');
       cleanupCard();
-      squareInitializedRef.current = false;
       form.reset();
     }
-  }, [open, form]);
+  }, [open, cleanupCard, form]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
@@ -122,9 +104,13 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
       // Handle credit card payment through Square
       if (data.type === 'credit_card') {
+        if (!card) {
+          throw new Error('Credit card form not initialized');
+        }
+
         try {
           console.log('[PaymentForm] Processing credit card payment...');
-          const result = await createPayment(data.amount);
+          const result = await createPayment(data.amount, card);
           console.log('[PaymentForm] Square payment result:', result);
           if (result.status !== 'COMPLETED') {
             throw new Error('Payment processing failed');
@@ -182,25 +168,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     },
   });
 
-  const onSubmit = async (data: InsertPayment) => {
-    console.log('[PaymentForm] Form submission started:', data);
-    if (!data.leagueId) {
-      console.error('[PaymentForm] Missing leagueId in form submission');
-      toast({
-        title: "Error",
-        description: "League ID is required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      await mutation.mutateAsync(data);
-    } catch (error) {
-      console.error('[PaymentForm] Form submission error:', error);
-    }
-  };
-
   return (
     <Dialog open={open} onOpenChange={(open) => {
       if (!open) {
@@ -213,7 +180,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
             <FormField
               control={form.control}
               name="bowlerId"
@@ -256,7 +223,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                       field.onChange(value);
                       if (value !== 'credit_card') {
                         cleanupCard();
-                        squareInitializedRef.current = false;
                       }
                     }}
                     defaultValue={field.value}
@@ -301,12 +267,21 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
             />
 
             {form.watch("type") === "credit_card" && open && (
-              <div
-                id="card-container"
-                ref={cardContainerRef}
-                className="min-h-[100px] border rounded-md p-4 mt-4"
-                key={`square-card-container-${open}`}
-              />
+              <>
+                <div
+                  id="card-container"
+                  ref={cardContainerRef}
+                  className={`min-h-[100px] border rounded-md p-4 mt-4 ${
+                    squareError ? 'border-destructive' : ''
+                  }`}
+                />
+                {squareError && (
+                  <div className="flex items-center gap-2 text-sm text-destructive mt-2">
+                    <AlertCircle className="h-4 w-4" />
+                    <span>{squareError}</span>
+                  </div>
+                )}
+              </>
             )}
 
             {form.watch("type") === "check" && (

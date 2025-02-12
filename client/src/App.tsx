@@ -15,7 +15,7 @@ import WeeklyPaymentsPage from "@/pages/weekly-payments-page";
 import ReportsPage from "@/pages/reports-page";
 import LeaguePastDuePage from "@/pages/league-past-due-page";
 import PastDuePage from "@/pages/past-due-page";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
 
@@ -41,16 +41,53 @@ function Router() {
 
 function App() {
   const { toast } = useToast();
+  const initializationAttempts = useRef(0);
+  const maxAttempts = 3;
+  const initialized = useRef(false);
 
   useEffect(() => {
-    initializeSquare().catch((error) => {
-      toast({
-        title: "Square Integration Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    });
-  }, []);
+    async function initSquare() {
+      // Skip if already initialized or max attempts reached
+      if (initialized.current || initializationAttempts.current >= maxAttempts) {
+        return;
+      }
+
+      try {
+        await initializeSquare();
+        initialized.current = true;
+        initializationAttempts.current = 0;
+        console.log('[App] Square initialized successfully');
+      } catch (error) {
+        console.error('[App] Square initialization attempt failed:', error);
+        initializationAttempts.current++;
+
+        if (initializationAttempts.current < maxAttempts) {
+          // Retry with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, initializationAttempts.current), 5000);
+          console.log(`[App] Retrying Square initialization in ${delay}ms (attempt ${initializationAttempts.current}/${maxAttempts})`);
+          setTimeout(initSquare, delay);
+        } else {
+          // Only show error toast if all retries fail
+          console.error('[App] Square initialization failed after all attempts');
+          toast({
+            title: "Square Integration Notice",
+            description: "Payment system initialization delayed. Credit card payments may be temporarily unavailable.",
+            variant: "default",
+          });
+          // Reset for potential future attempts
+          initializationAttempts.current = 0;
+        }
+      }
+    }
+
+    initSquare();
+
+    // Cleanup function
+    return () => {
+      initialized.current = false;
+      initializationAttempts.current = 0;
+    };
+  }, [toast]);
 
   return (
     <QueryClientProvider client={queryClient}>
