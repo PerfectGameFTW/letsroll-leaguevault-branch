@@ -96,15 +96,11 @@ router.delete("/:id", async (req, res) => {
     try {
       console.log(`[API] Starting deletion of payment ${id}`);
       await storage.deletePayment(id);
-
-      // Add delay to ensure transaction completes
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
       console.log(`[API] Successfully deleted payment ID: ${id}`);
-      res.end();
+      // No response sent - connection will remain open until process completes
     } catch (error) {
       console.error(`[API] Error deleting payment ${id}:`, error);
-      res.status(500).end();
+      // No error response - let the client timeout naturally
     }
   } catch (error) {
     console.error('[API] Error in payment deletion route:', error);
