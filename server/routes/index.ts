@@ -16,9 +16,19 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/leagues', leaguesRouter);
   app.use('/api/teams', teamsRouter);
   app.use('/api/bowlers', bowlersRouter);
+  console.log('[Routes] Loading payments router module...');
+  const paymentRoutes = paymentsRouter;
+  console.log('[Routes] Payment routes loaded:', Object.keys(paymentRoutes));
+  
   app.use('/api/payments', (req, res, next) => {
     console.log('[Routes] Payments route hit:', req.method, req.path);
-    paymentsRouter(req, res, next);
+    paymentRoutes(req, res, next);
+  });
+
+  // Catch-all middleware to detect unhandled routes
+  app.use('/api/*', (req, res, next) => {
+    console.log('[Routes] Unhandled API route:', req.method, req.path);
+    next();
   });
 
   console.log('[Routes] API routes registered');
