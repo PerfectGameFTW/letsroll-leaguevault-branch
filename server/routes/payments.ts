@@ -33,17 +33,29 @@ router.delete("/:id", async (req, res) => {
     }
 
     console.log('[API] Attempting to delete payment:', id);
+    console.log('[API] Calling storage.deletePayment...');
     const result = await storage.deletePayment(id);
-    console.log('[API] Delete operation result:', result);
+    console.log('[API] Delete operation detailed result:', {
+      success: result,
+      resultType: typeof result,
+      id: id,
+      idType: typeof id
+    });
 
     if (!result) {
+      console.log('[API] Payment not found, sending 404');
       return sendError(res, "Payment not found", 404);
     }
 
-    console.log('[API] Payment deleted successfully');
+    console.log('[API] Payment deleted successfully, sending response');
     return sendSuccess(res, { success: true, id });
   } catch (error) {
     console.error('[API] Error in DELETE handler:', error);
+    console.error('[API] Error details:', {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack
+    });
     return sendError(res, error instanceof Error ? error.message : 'Failed to delete payment');
   }
 });
