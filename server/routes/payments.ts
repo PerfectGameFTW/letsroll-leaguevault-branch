@@ -95,16 +95,25 @@ router.delete("/:id", async (req, res) => {
 
     try {
       console.log(`[API] Starting deletion of payment ${id}`);
+      
+      // First attempt deletion
       await storage.deletePayment(id);
       
-      // Verify the deletion
-      const verifyPayments = await storage.getPayments(undefined, undefined, [id]);
-      if (verifyPayments.length > 0) {
-        throw new Error('Payment still exists after deletion attempt');
+      // Wait for deletion to propagate (500ms)
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Verify the deletion multiple times
+      for (let i = 0; i < 3; i++) {
+        const verifyPayments = await storage.getPayments(undefined, undefined, [id]);
+        if (verifyPayments.length === 0) {
+          console.log(`[API] Successfully verified deletion of payment ${id}`);
+          return res.status(200).end();
+        }
+        // Wait between verification attempts
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
       
-      console.log(`[API] Successfully verified deletion of payment ${id}`);
-      res.status(200).end();
+      throw new Error('Payment still exists after multiple deletion verification attempts');
     } catch (error) {
       console.error(`[API] Error deleting payment ${id}:`, error);
       res.status(500).end();
