@@ -24,8 +24,7 @@ export const db = drizzle(pool, {
   schema,
   logger: {
     logQuery: (query, params) => {
-      console.log('[Database] Query type:', query.split(' ')[0]);
-      console.log('[Database] Full query:', query);
+      console.log('[Database] Query:', query);
       console.log('[Database] Parameters:', params);
     }
   }
