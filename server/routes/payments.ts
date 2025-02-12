@@ -29,18 +29,19 @@ router.get("/", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
-  console.log('[Payments Router] DELETE request received:', req.params);
+  const id = parseInt(req.params.id);
+  console.log('[Payments Router] Attempting to delete payment:', id);
+  
   try {
-    const id = parseInt(req.params.id);
     if (isNaN(id)) {
+      console.error('[Payments Router] Invalid ID:', req.params.id);
       return sendError(res, "Invalid payment ID", 400);
     }
 
-    const result = await storage.deletePayment(id);
-    if (!result) {
-      return sendError(res, "Payment not found", 404);
-    }
-
+    console.log('[Payments Router] Calling storage.deletePayment with ID:', id);
+    await storage.deletePayment(id);
+    console.log('[Payments Router] Payment deleted successfully');
+    
     return sendSuccess(res, { success: true, id });
   } catch (error) {
     console.error('[Payments Router] Delete error:', error);
