@@ -1,0 +1,59 @@
+Looking at your `deletePayment` implementation, one likely culprit is a type mismatch between the ID used in your query and the ID stored in the database. In your DELETE endpoint you see:
+
+```typescript
+await db.delete(payments).where(eq(payments.id, id)).execute();
+```
+
+and in your storage layer:
+
+```typescript
+async deletePayment(id: number): Promise<void> {
+  console.log('[Storage] Starting delete for payment:', id);
+  try {
+    const result = await db.transaction(async (tx) => {
+      const deleteResult = await tx.delete(payments)
+        .where(eq(payments.id, id))
+        .returning();
+      
+      console.log('[Storage] Delete result:', deleteResult);
+      
+      if (!deleteResult.length) {
+        throw new Error(`Payment ${id} not found or already deleted`);
+      }
+      
+      return deleteResult;
+    });
+    
+    console.log(`[Storage] Successfully deleted payment ${id}`, result);
+  } catch (error) {
+    console.error('[Storage] Error in deletePayment:', error);
+    throw error;
+  }
+}
+```
+
+Your logs don’t show the initial log from `deletePayment` (e.g. `[Storage] Starting delete for payment: 5`), which suggests that either:
+
+1. The function isn’t being called as expected, or  
+2. The query inside isn’t matching any rows—most likely because of a type mismatch.
+
+Since your GET logs show a payment with an ID of **5** and your DELETE endpoint is `/api/payments/5`, it’s possible that the `id` coming from the request is a string (e.g., `"5"`), whereas your database’s `payments.id` field is a number. The equality check using `eq(payments.id, id)` will then fail to match the record if the types don’t align.
+
+### How to Fix
+
+Make sure you convert the incoming ID to a number before passing it to the storage layer. For example, in your route handler you might do:
+
+```typescript
+const id = parseInt(req.params.id, 10);
+await storage.deletePayment(id);
+```
+
+This ensures that `id` is a number, matching the type of `payments.id` in the database. Once the types match, the `eq` condition should correctly identify and delete the payment record.
+
+### Next Steps
+
+- **Confirm the Type:** Double-check how the `id` is being parsed in your route handler.  
+- **Log the Value:** Add a log in the route to see the type and value of `id` before calling `storage.deletePayment`.  
+- **Test Again:** Once you ensure the ID is a number, test the DELETE operation again to see if the payment is actually removed.
+
+Let me know if this helps or if you see any new behavior in your logs!
