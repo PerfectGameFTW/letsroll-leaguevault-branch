@@ -447,10 +447,12 @@ export class DatabaseStorage implements IStorage {
       // Execute delete directly without transaction first to debug
       console.log('[Storage] Attempting to delete payment:', id);
       
-      const deleted = await db.delete(payments)
+      const query = db.delete(payments)
         .where(eq(payments.id, id))
         .returning();
       
+      console.log('[Storage] DELETE query:', query.toSQL());
+      const deleted = await query;
       console.log('[Storage] Delete result:', deleted);
       
       if (!deleted.length) {
