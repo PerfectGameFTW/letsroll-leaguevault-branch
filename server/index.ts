@@ -6,24 +6,16 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-app.use(async (req, res, next) => {
+app.use((req, res, next) => {
   const start = Date.now();
   console.log(`[express] Incoming ${req.method} request to ${req.originalUrl}`);
   
-  try {
-    await new Promise((resolve) => {
-      res.on('finish', () => {
-        const duration = Date.now() - start;
-        console.log(`[express] ${req.method} ${req.originalUrl} ${res.statusCode} in ${duration}ms`);
-        resolve(undefined);
-      });
-    });
-    
-    next();
-  } catch (error) {
-    console.error(`[express] Error processing ${req.method} ${req.originalUrl}:`, error);
-    next(error);
-  }
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[express] ${req.method} ${req.originalUrl} ${res.statusCode} in ${duration}ms`);
+  });
+  
+  next();
 });
 
 (async () => {
