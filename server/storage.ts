@@ -44,7 +44,7 @@ export interface IStorage {
   getPayments(bowlerId?: number, leagueId?: number, ids?: number[]): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePaymentStatus(id: number, status: string, squarePaymentId?: string): Promise<Payment>;
-  deletePayment(id: number): Promise<void>;
+  deletePayment(id: number): Promise<boolean>;
   updatePayment(id: number, payment: Partial<InsertPayment>): Promise<Payment>;
 }
 
