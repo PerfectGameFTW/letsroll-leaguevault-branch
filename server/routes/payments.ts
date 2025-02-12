@@ -38,9 +38,16 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "Invalid payment ID", 400);
     }
 
-    console.log('[Payments Router] Before storage.deletePayment call');
+    console.log('[Payments Router] About to delete payment with ID:', id);
     const result = await storage.deletePayment(id);
-    console.log('[Payments Router] After storage.deletePayment call');
+    console.log('[Payments Router] Delete operation result:', result);
+    
+    if (!result) {
+      console.error('[Payments Router] Payment deletion failed');
+      return sendError(res, "Failed to delete payment", 400);
+    }
+    
+    console.log('[Payments Router] Payment deleted successfully');
     return sendSuccess(res, { success: true, id });
   } catch (error) {
     console.error('[Payments Router] Delete error:', error);
