@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
@@ -38,6 +37,7 @@ interface PaymentFormProps {
 
 export function PaymentForm({ open, onClose, bowlers }: PaymentFormProps) {
   const { toast } = useToast();
+
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {

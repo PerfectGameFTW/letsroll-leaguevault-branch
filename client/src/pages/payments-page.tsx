@@ -159,9 +159,9 @@ export default function PaymentsPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {payment.squarePaymentId === 'cash' ? 'Cash' :
-                         payment.squarePaymentId === 'check' ? 'Check' :
-                         payment.squarePaymentId === 'square' ? 'Square' : 'Other'}
+                        {payment.type === 'cash' ? 'Cash' : 
+                         payment.type === 'check' ? `Check #${payment.checkNumber}` : 
+                         'Unknown'}
                       </Badge>
                     </TableCell>
                     <TableCell>

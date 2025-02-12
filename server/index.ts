@@ -49,7 +49,7 @@ app.use('/api', (req, res, next) => {
   }
 
   // Start server
-  const PORT = 5000;
+  const PORT = process.env.PORT || 5000;
   server.listen(PORT, "0.0.0.0", () => {
     log(`Server running on port ${PORT}`);
   });

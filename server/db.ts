@@ -35,3 +35,15 @@ pool.on('error', (err) => {
   console.error('Unexpected error on idle database client', err);
   process.exit(-1);
 });
+
+// Export a function to test the database connection
+export async function testConnection() {
+  try {
+    await pool.query('SELECT 1');
+    console.log('Database connection successful');
+    return true;
+  } catch (error) {
+    console.error('Database connection failed:', error);
+    throw error;
+  }
+}

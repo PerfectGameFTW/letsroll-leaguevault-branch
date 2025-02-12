@@ -11,17 +11,17 @@ export const leagues = pgTable("leagues", {
   active: boolean("active").notNull().default(true),
   seasonStart: timestamp("season_start").notNull(),
   seasonEnd: timestamp("season_end").notNull(),
-  weekDay: text("week_day"),
-  practiceStartTime: text("practice_start_time"),
-  competitionStartTime: text("competition_start_time"),
+  weekDay: text("week_day").notNull(),
   weeklyFee: integer("weekly_fee").notNull().default(2000), // Store in cents
 });
 
 export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  number: integer("number"),
-  leagueId: integer("league_id").notNull().references(() => leagues.id, { onDelete: 'cascade' }),
+  number: integer("number").notNull(),
+  leagueId: integer("league_id")
+    .notNull()
+    .references(() => leagues.id, { onDelete: 'cascade' }),
   active: boolean("active").notNull().default(true),
 });
 
@@ -30,15 +30,20 @@ export const bowlers = pgTable("bowlers", {
   name: text("name").notNull(),
   email: text("email").notNull(),
   active: boolean("active").notNull().default(true),
-  squareCustomerId: text("square_customer_id"),
   order: integer("order").notNull().default(0),
 });
 
 export const bowlerLeagues = pgTable("bowler_leagues", {
   id: serial("id").primaryKey(),
-  bowlerId: integer("bowler_id").notNull().references(() => bowlers.id, { onDelete: 'cascade' }),
-  leagueId: integer("league_id").notNull().references(() => leagues.id, { onDelete: 'cascade' }),
-  teamId: integer("team_id").notNull().references(() => teams.id, { onDelete: 'cascade' }),
+  bowlerId: integer("bowler_id")
+    .notNull()
+    .references(() => bowlers.id, { onDelete: 'cascade' }),
+  leagueId: integer("league_id")
+    .notNull()
+    .references(() => leagues.id, { onDelete: 'cascade' }),
+  teamId: integer("team_id")
+    .notNull()
+    .references(() => teams.id, { onDelete: 'cascade' }),
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
   joinedAt: timestamp("joined_at").notNull().defaultNow(),
@@ -51,14 +56,17 @@ export const bowlerLeagues = pgTable("bowler_leagues", {
 
 export const payments = pgTable("payments", {
   id: serial("id").primaryKey(),
-  bowlerId: integer("bowler_id").notNull().references(() => bowlers.id, { onDelete: 'cascade' }),
-  leagueId: integer("league_id").notNull().references(() => leagues.id, { onDelete: 'cascade' }),
+  bowlerId: integer("bowler_id")
+    .notNull()
+    .references(() => bowlers.id, { onDelete: 'cascade' }),
+  leagueId: integer("league_id")
+    .notNull()
+    .references(() => leagues.id, { onDelete: 'cascade' }),
   amount: integer("amount").notNull(), // Store in cents
   weekOf: timestamp("week_of").notNull(),
-  status: text("status").notNull().default("paid"), // paid, pending, failed
-  type: text("type").notNull(), // cash, check, square
+  status: text("status", { enum: ['paid', 'pending', 'failed'] }).notNull().default('paid'),
+  type: text("type", { enum: ['cash', 'check'] }).notNull(),
   checkNumber: text("check_number"),
-  squarePaymentId: text("square_payment_id"),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -103,7 +111,6 @@ const baseBowlerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Invalid email address"),
   active: z.boolean().default(true),
-  squareCustomerId: z.string().nullable().optional(),
   order: z.number().min(0).default(0),
 });
 
@@ -113,7 +120,7 @@ const baseLeagueSchema = z.object({
   active: z.boolean().default(true),
   seasonStart: z.coerce.date(),
   seasonEnd: z.coerce.date(),
-  weekDay: z.string().optional(),
+  weekDay: z.string(),
   practiceStartTime: z.string().optional(),
   competitionStartTime: z.string().optional(),
   weeklyFee: z.number().min(0).default(2000),
@@ -140,9 +147,8 @@ const basePaymentSchema = z.object({
   amount: z.number().positive(),
   weekOf: z.coerce.date(),
   status: z.enum(["paid", "pending", "failed"]).default("paid"),
-  type: z.enum(["cash", "check", "square"]),
+  type: z.enum(["cash", "check"]),
   checkNumber: z.string().optional(),
-  squarePaymentId: z.string().optional(),
   notes: z.string().optional(),
 });
 

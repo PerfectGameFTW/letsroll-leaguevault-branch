@@ -1,4 +1,4 @@
-import { eq, and, inArray, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments,
@@ -24,22 +24,22 @@ export interface IStorage {
   updateTeam(id: number, team: Partial<InsertTeam>): Promise<Team>;
   deleteTeam(id: number): Promise<void>;
 
-  // Bowlers
+  // Bowler methods
   getBowlers(teamId?: number): Promise<Bowler[]>;
   getBowler(id: number): Promise<Bowler | undefined>;
   createBowler(bowler: InsertBowler): Promise<Bowler>;
   updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler>;
   deleteBowler(id: number): Promise<void>;
 
-  // BowlerLeagues
+  // BowlerLeague methods
   getBowlerLeagues(filters?: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]>;
   getBowlerLeague(id: number): Promise<BowlerLeague | undefined>;
   createBowlerLeague(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague>;
   updateBowlerLeague(id: number, bowlerLeague: Partial<InsertBowlerLeague>): Promise<BowlerLeague>;
   updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]>;
 
-  // Payments
-  getPayments(bowlerId?: number, leagueId?: number): Promise<Payment[]>;
+  // Payment methods
+  getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date): Promise<Payment[]>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePayment(id: number, payment: Partial<InsertPayment>): Promise<Payment>;
   deletePayment(id: number): Promise<void>;
@@ -48,8 +48,7 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   // League methods
   async getLeagues(): Promise<League[]> {
-    const results = await db.select().from(leagues).orderBy(leagues.id);
-    return results;
+    return db.select().from(leagues).orderBy(leagues.id);
   }
 
   async getLeague(id: number): Promise<League | undefined> {
@@ -75,7 +74,7 @@ export class DatabaseStorage implements IStorage {
   async getTeams(leagueId?: number): Promise<Team[]> {
     const query = db.select().from(teams);
     if (leagueId !== undefined) {
-      return query.where(eq(teams.leagueId, leagueId));
+      return query.where(eq(teams.leagueId, leagueId)).orderBy(teams.number);
     }
     return query.orderBy(teams.number);
   }
@@ -99,10 +98,10 @@ export class DatabaseStorage implements IStorage {
     await db.delete(teams).where(eq(teams.id, id));
   }
 
-  // Bowlers
+  // Bowler methods
   async getBowlers(teamId?: number): Promise<Bowler[]> {
     if (teamId !== undefined) {
-      const results = await db
+      return db
         .select({
           id: bowlers.id,
           name: bowlers.name,
@@ -114,8 +113,7 @@ export class DatabaseStorage implements IStorage {
         .from(bowlers)
         .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
         .where(eq(bowlerLeagues.teamId, teamId))
-        .orderBy(bowlerLeagues.order);
-      return results;
+        .orderBy(bowlers.order);
     }
     return db.select().from(bowlers).orderBy(bowlers.order);
   }
@@ -139,7 +137,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(bowlers).where(eq(bowlers.id, id));
   }
 
-  // BowlerLeagues
+  // BowlerLeague methods
   async getBowlerLeagues(filters?: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]> {
     const query = db.select().from(bowlerLeagues);
 
@@ -229,7 +227,7 @@ export class DatabaseStorage implements IStorage {
     return results.map((result) => result[0]);
   }
 
-  // Payments
+  // Payment methods
   async getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date): Promise<Payment[]> {
     const query = db.select().from(payments);
     const conditions = [];
@@ -240,7 +238,6 @@ export class DatabaseStorage implements IStorage {
     if (leagueId !== undefined) {
       conditions.push(eq(payments.leagueId, leagueId));
     }
-    // Add weekOf filter if provided
     if (weekOf !== undefined) {
       const startDate = new Date(weekOf);
       startDate.setHours(0, 0, 0, 0);
