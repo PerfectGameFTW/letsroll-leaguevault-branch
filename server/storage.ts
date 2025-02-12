@@ -443,7 +443,10 @@ export class DatabaseStorage implements IStorage {
         .where(eq(payments.id, id))
         .returning();
       
-      console.log('[Storage] Delete query built:', query.toSQL());
+      const { sql, params } = query.toSQL();
+      console.log('[Storage] Delete query SQL:', sql);
+      console.log('[Storage] Delete query params:', params);
+      
       const result = await query;
       console.log('[Storage] Delete operation complete. Result:', result);
       
