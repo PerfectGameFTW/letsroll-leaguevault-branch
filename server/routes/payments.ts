@@ -1,4 +1,3 @@
-
 import { Router } from 'express';
 import { storage } from '../storage';
 import { insertPaymentSchema, payments } from "@shared/schema";
@@ -10,30 +9,14 @@ import { sql, eq } from 'drizzle-orm';
 
 const router = Router();
 console.log('[Payments Router] Initializing routes');
-console.log('[Payments Router] Routes:', {
-  delete: router.stack.filter(r => r.route?.methods?.delete).map(r => r.route?.path)
-});
 
 router.get("/", async (req, res) => {
   try {
     const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
     const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
-    const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
-    console.log('GET /api/payments - Fetching with filters:', { bowlerId, leagueId, teamId });
-
     const payments = await storage.getPayments(bowlerId, leagueId);
-    console.log(`GET /api/payments - Found ${payments.length} payments:`, 
-      payments.map(p => ({
-        id: p.id,
-        bowlerId: p.bowlerId,
-        amount: p.amount,
-        weekOf: p.weekOf,
-        status: p.status
-      }))
-    );
     sendSuccess(res, payments);
   } catch (error) {
-    console.error('GET /api/payments - Error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch payments');
   }
 });
@@ -43,25 +26,20 @@ router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     console.log('[API] Parsed ID:', id, typeof id);
-    
+
     if (isNaN(id)) {
       console.error('[API] Invalid payment ID:', req.params.id);
       return sendError(res, "Invalid payment ID", 400);
     }
-    
+
     console.log('[API] Attempting to delete payment:', id);
     const result = await storage.deletePayment(id);
-    console.log('[API] Delete operation detailed result:', {
-      success: result,
-      resultType: typeof result,
-      id: id,
-      idType: typeof id
-    });
-    
+    console.log('[API] Delete operation result:', result);
+
     if (!result) {
       return sendError(res, "Payment not found", 404);
     }
-    
+
     console.log('[API] Payment deleted successfully');
     return sendSuccess(res, { success: true, id });
   } catch (error) {
@@ -81,17 +59,6 @@ router.post("/", async (req, res) => {
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to create payment');
     }
-  }
-});
-
-router.post("/process", async (req, res) => {
-  try {
-    const { sourceId, amount, locationId } = req.body;
-    const result = await processPayment(sourceId, amount, locationId);
-    sendSuccess(res, result);
-  } catch (error) {
-    console.error('Payment processing error:', error);
-    sendError(res, error instanceof Error ? error.message : "Payment processing failed", 500);
   }
 });
 
