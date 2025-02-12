@@ -435,22 +435,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deletePayment(id: number): Promise<void> {
-    console.log('[Storage] deletePayment function entered');
-    console.log('[Storage] Payment ID to delete:', id, 'Type:', typeof id);
-    
     try {
-      const deleteQuery = db.delete(payments)
-        .where(eq(payments.id, id))
-        .returning();
-      
-      console.log('[Storage] Generated SQL:', deleteQuery.toSQL());
-      
-      const result = await deleteQuery;
-      console.log('[Storage] Delete operation result:', result);
-      
-      if (!result || result.length === 0) {
-        throw new Error(`Payment ${id} not found or failed to delete`);
-      }
+      await db.transaction(async (tx) => {
+        await tx.delete(payments)
+          .where(eq(payments.id, id));
+          
+        // Verify deletion
+        const [verifyDeleted] = await tx.select()
+          .from(payments)
+          .where(eq(payments.id, id));
+          
+        if (verifyDeleted) {
+          throw new Error(`Payment ${id} still exists after deletion`);
+        }
+      });
     } catch (error) {
       console.error('[Storage] Error in deletePayment:', error);
       throw error;
