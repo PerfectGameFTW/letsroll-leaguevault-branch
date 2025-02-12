@@ -38,8 +38,8 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/bowlers', bowlersRouter);
   app.use('/api/payments', paymentsRouter);
 
-  const httpServer = createServer(app);
-  return httpServer;
+  // Create and return the server instance without starting it
+  return createServer(app);
 }
 
 async function updateBowler(id: number, update: {
@@ -48,6 +48,7 @@ async function updateBowler(id: number, update: {
   active?: boolean;
   squareCustomerId?: string | null;
   order?: number;
+  teamId?: number | null;
 }): Promise<Bowler> {
   const bowler = await storage.getBowler(id);
   if (!bowler) {

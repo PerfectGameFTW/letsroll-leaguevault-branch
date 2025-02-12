@@ -21,7 +21,9 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
   const { toast } = useToast();
   const initializationAttempts = useRef(0);
   const maxAttempts = 5;
+  const mountedRef = useRef(true);
 
+  // Cleanup function
   const cleanupCard = () => {
     if (card) {
       try {
@@ -37,9 +39,10 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
     }
   };
 
+  // Initialize card function
   const initializeCard = async (container: HTMLDivElement) => {
-    if (!container) {
-      console.error('[useSquarePayment] Container element is required');
+    if (!container || !mountedRef.current) {
+      console.error('[useSquarePayment] Container element is required or component unmounted');
       return;
     }
 
@@ -47,47 +50,62 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
       // Clean up existing card instance if any
       cleanupCard();
 
-      // Initialize Square payments
+      console.log('[useSquarePayment] Initializing Square payments...');
       const payments = await initializeSquare();
+
       console.log('[useSquarePayment] Creating new card form...');
       const newCard = await payments.card();
-      
+
       console.log('[useSquarePayment] Attaching card to container...');
       await newCard.attach(container);
-      
-      setCard(newCard);
-      setIsInitialized(true);
-      setError(null);
-      initializationAttempts.current = 0;
-      console.log('[useSquarePayment] Card form initialized successfully');
+
+      if (mountedRef.current) {
+        setCard(newCard);
+        setIsInitialized(true);
+        setError(null);
+        initializationAttempts.current = 0;
+        console.log('[useSquarePayment] Card form initialized successfully');
+      } else {
+        console.log('[useSquarePayment] Component unmounted during initialization, cleaning up');
+        newCard.destroy();
+      }
     } catch (error) {
       console.error('[useSquarePayment] Card initialization error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to initialize payment form';
-      setError(errorMessage);
-      
-      if (initializationAttempts.current < maxAttempts) {
-        initializationAttempts.current++;
-        console.log(`[useSquarePayment] Retrying initialization (${initializationAttempts.current}/${maxAttempts})`);
-        
-        // Retry with exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, initializationAttempts.current), 5000);
-        setTimeout(() => initializeCard(container), delay);
-      } else {
-        // Reset attempts and notify of failure
-        initializationAttempts.current = 0;
-        onError?.(errorMessage);
-        toast({
-          title: "Payment Form Notice",
-          description: "Credit card payment form unavailable. Please try again or choose a different payment method.",
-          variant: "default",
-        });
+
+      if (mountedRef.current) {
+        setError(errorMessage);
+
+        if (initializationAttempts.current < maxAttempts) {
+          initializationAttempts.current++;
+          console.log(`[useSquarePayment] Retrying initialization (${initializationAttempts.current}/${maxAttempts})`);
+
+          // Retry with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, initializationAttempts.current), 5000);
+          setTimeout(() => {
+            if (mountedRef.current) {
+              initializeCard(container);
+            }
+          }, delay);
+        } else {
+          // Reset attempts and notify of failure
+          initializationAttempts.current = 0;
+          onError?.(errorMessage);
+          toast({
+            title: "Payment Form Notice",
+            description: "Credit card payment form unavailable. Please try again or choose a different payment method.",
+            variant: "default",
+          });
+        }
       }
     }
   };
 
   // Cleanup on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       cleanupCard();
     };
   }, []);

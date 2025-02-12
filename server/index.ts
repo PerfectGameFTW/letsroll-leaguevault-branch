@@ -4,7 +4,6 @@ import { setupVite, serveStatic } from "./vite";
 import { testConnection } from "./db";
 
 const app = express();
-const PORT = process.env.PORT ? parseInt(process.env.PORT) : 5000;
 
 // Basic middleware
 app.use(express.json());
@@ -55,7 +54,6 @@ app.get('/api/health', async (req, res) => {
       database: 'connected',
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
-      port: PORT,
       ready
     });
   } catch (error) {
@@ -107,24 +105,38 @@ async function initializeServer() {
       serveStatic(app);
     }
 
-    // Start server with explicit ready signal and port binding
-    return new Promise<void>((resolve, reject) => {
-      const serverInstance = server.listen(PORT, "0.0.0.0", () => {
-        console.log(`[Server] Ready and listening on port ${PORT}`);
-        console.log('[Server] Application fully initialized and ready for testing');
-        resolve();
-      });
+    // Start server with port handling
+    const startServer = async (initialPort: number = 5000): Promise<void> => {
+      for (let port = initialPort; port < initialPort + 10; port++) {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const onError = (err: Error) => {
+              server.removeListener('listening', onListening);
+              reject(err);
+            };
+            const onListening = () => {
+              server.removeListener('error', onError);
+              console.log(`[Server] Ready and listening on port ${port}`);
+              resolve();
+            };
+            server.once('error', onError);
+            server.once('listening', onListening);
+            server.listen(port, '0.0.0.0');
+          });
+          return;
+        } catch (err: any) {
+          if (err.code === 'EADDRINUSE') {
+            console.log(`[Server] Port ${port} in use, trying next port...`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      throw new Error('Unable to find an available port after multiple attempts');
+    };
 
-      serverInstance.on('error', (error: any) => {
-        console.error('[Server] Failed to start server:', error);
-        reject(error);
-      });
-
-      // Add timeout for startup
-      setTimeout(() => {
-        reject(new Error('Server startup timeout after 30 seconds'));
-      }, 30000);
-    });
+    await startServer();
+    console.log('[Server] Application fully initialized and ready for testing');
   } catch (error) {
     console.error('[Server] Fatal error during initialization:', error);
     process.exit(1);

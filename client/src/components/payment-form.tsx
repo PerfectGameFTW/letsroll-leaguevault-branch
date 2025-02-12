@@ -29,7 +29,7 @@ import { Loader2, AlertCircle } from "lucide-react";
 import { insertPaymentSchema, type InsertPayment, type Bowler } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { createPayment, cleanupCard } from "@/lib/square";
+import { createPayment } from "@/lib/square";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 
 interface PaymentFormProps {
@@ -42,6 +42,10 @@ interface PaymentFormProps {
 export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormProps) {
   const { toast } = useToast();
   const cardContainerRef = useRef<HTMLDivElement>(null);
+  const [paymentType, setPaymentType] = useState<string>("cash");
+  const [cardInitialized, setCardInitialized] = useState(false);
+  const [isSquareReady, setIsSquareReady] = useState(false);
+  const initializationAttempted = useRef(false);
 
   const {
     card,
@@ -51,15 +55,21 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     cleanupCard,
   } = useSquarePayment({
     onError: (error) => {
-      // Switch to cash payment on error
+      console.log('[PaymentForm] Square payment error, reverting to cash:', error);
+      setPaymentType("cash");
       form.setValue("type", "cash");
+      toast({
+        title: "Payment Form Notice",
+        description: "Credit card form unavailable. Please try another payment method.",
+        variant: "default",
+      });
     },
   });
 
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
-      amount: 2000, // $20.00
+      amount: 2000,
       weekOf: new Date(),
       status: "paid",
       type: "cash",
@@ -74,47 +84,82 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [leagueId, form]);
 
-  // Handle Square initialization when credit card is selected
+  // Handle payment type changes
   useEffect(() => {
-    const paymentType = form.watch("type");
+    const type = form.watch("type");
+    console.log('[PaymentForm] Payment type changed:', type);
+    setPaymentType(type);
 
-    if (paymentType === "credit_card" && open && cardContainerRef.current) {
-      initializeCard(cardContainerRef.current);
-    }
-
-    // Cleanup when payment type changes or dialog closes
-    return () => {
-      if (paymentType !== "credit_card" || !open) {
-        cleanupCard();
-      }
-    };
-  }, [form.watch("type"), open, initializeCard, cleanupCard]);
-
-  // Cleanup on dialog close
-  useEffect(() => {
-    if (!open) {
-      cleanupCard();
-      form.reset();
-    }
-  }, [open, cleanupCard, form]);
-
-  const mutation = useMutation({
-    mutationFn: async (data: InsertPayment) => {
-      console.log('[PaymentForm] Payment mutation started:', data);
-
-      // Handle credit card payment through Square
-      if (data.type === 'credit_card') {
-        if (!card) {
-          throw new Error('Credit card form not initialized');
+    // Initialize card form if needed
+    if (type === "credit_card" && open && !cardInitialized && !initializationAttempted.current) {
+      initializationAttempted.current = true;
+      const initCard = async () => {
+        if (!cardContainerRef.current) {
+          console.error('[PaymentForm] Card container not found');
+          return;
         }
 
         try {
-          console.log('[PaymentForm] Processing credit card payment...');
+          console.log('[PaymentForm] Initializing card form...');
+          await initializeCard(cardContainerRef.current);
+          setCardInitialized(true);
+          setIsSquareReady(true);
+          console.log('[PaymentForm] Card form initialized successfully');
+        } catch (error) {
+          console.error('[PaymentForm] Failed to initialize card form:', error);
+          setIsSquareReady(false);
+          form.setValue("type", "cash");
+          setPaymentType("cash");
+          toast({
+            title: "Payment Form Notice",
+            description: "Credit card form unavailable. Please try another payment method.",
+            variant: "default",
+          });
+        }
+      };
+
+      initCard();
+    }
+  }, [form.watch("type"), open, cardInitialized, initializeCard]);
+
+  // Cleanup on dialog close or payment type change
+  useEffect(() => {
+    const cleanup = () => {
+      if (cardInitialized) {
+        console.log('[PaymentForm] Cleaning up card form');
+        cleanupCard();
+        setCardInitialized(false);
+        setIsSquareReady(false);
+        initializationAttempted.current = false;
+      }
+    };
+
+    if (!open || paymentType !== "credit_card") {
+      cleanup();
+    }
+
+    return cleanup;
+  }, [open, paymentType, cardInitialized, cleanupCard]);
+
+  const mutation = useMutation({
+    mutationFn: async (data: InsertPayment) => {
+      console.log('[PaymentForm] Starting payment mutation:', data);
+
+      if (data.type === 'credit_card') {
+        if (!card || !isSquareReady) {
+          console.error('[PaymentForm] Credit card form not ready');
+          throw new Error('Credit card form not ready. Please try again.');
+        }
+
+        try {
+          console.log('[PaymentForm] Processing Square payment...');
           const result = await createPayment(data.amount, card);
           console.log('[PaymentForm] Square payment result:', result);
+
           if (result.status !== 'COMPLETED') {
             throw new Error('Payment processing failed');
           }
+
           data.squarePaymentId = result.id;
         } catch (error) {
           console.error('[PaymentForm] Square payment error:', error);
@@ -122,34 +167,20 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         }
       }
 
-      // Record the payment in our system
-      try {
-        console.log('[PaymentForm] Sending payment to API:', {
-          ...data,
-          weekOf: data.weekOf.toISOString(),
-        });
+      // Record payment in our system
+      const response = await apiRequest("POST", "/api/payments", {
+        ...data,
+        weekOf: data.weekOf.toISOString(),
+      });
 
-        const response = await apiRequest("POST", "/api/payments", {
-          ...data,
-          weekOf: data.weekOf.toISOString(),
-        });
-
-        if (!response.ok) {
-          const error = await response.text();
-          console.error('[PaymentForm] Payment API error:', error);
-          throw new Error(error || 'Failed to record payment');
-        }
-
-        const result = await response.json();
-        console.log('[PaymentForm] Payment API response:', result);
-        return result;
-      } catch (error) {
-        console.error('[PaymentForm] Payment submission error:', error);
-        throw error;
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(error || 'Failed to record payment');
       }
+
+      return response.json();
     },
     onSuccess: () => {
-      console.log('[PaymentForm] Payment mutation succeeded');
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       toast({
         title: "Success",
@@ -168,6 +199,11 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     },
   });
 
+  const handleSubmit = form.handleSubmit((data) => {
+    console.log('[PaymentForm] Form submitted:', data);
+    mutation.mutate(data);
+  });
+
   return (
     <Dialog open={open} onOpenChange={(open) => {
       if (!open) {
@@ -180,7 +216,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <FormField
               control={form.control}
               name="bowlerId"
@@ -219,12 +255,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 <FormItem>
                   <FormLabel>Payment Type</FormLabel>
                   <Select
-                    onValueChange={(value) => {
-                      field.onChange(value);
-                      if (value !== 'credit_card') {
-                        cleanupCard();
-                      }
-                    }}
+                    onValueChange={(value) => field.onChange(value)}
                     defaultValue={field.value}
                   >
                     <FormControl>
@@ -266,25 +297,32 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               )}
             />
 
-            {form.watch("type") === "credit_card" && open && (
-              <>
+            {paymentType === "credit_card" && (
+              <div className="space-y-2">
                 <div
-                  id="card-container"
                   ref={cardContainerRef}
-                  className={`min-h-[100px] border rounded-md p-4 mt-4 ${
+                  className={`min-h-[100px] border rounded-md p-4 ${
                     squareError ? 'border-destructive' : ''
                   }`}
                 />
                 {squareError && (
-                  <div className="flex items-center gap-2 text-sm text-destructive mt-2">
+                  <div className="flex items-center gap-2 text-sm text-destructive">
                     <AlertCircle className="h-4 w-4" />
                     <span>{squareError}</span>
                   </div>
                 )}
-              </>
+                {!isSquareReady && (
+                  <div className="flex items-center justify-center p-2">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <span className="text-sm text-muted-foreground">
+                      Initializing payment form...
+                    </span>
+                  </div>
+                )}
+              </div>
             )}
 
-            {form.watch("type") === "check" && (
+            {paymentType === "check" && (
               <FormField
                 control={form.control}
                 name="checkNumber"
@@ -344,7 +382,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               </Button>
               <Button
                 type="submit"
-                disabled={mutation.isPending}
+                disabled={mutation.isPending || (paymentType === "credit_card" && !isSquareReady)}
                 className="min-w-[120px]"
               >
                 {mutation.isPending ? (
