@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertPaymentSchema } from "@shared/schema";
+import { insertPaymentSchema, payments } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
 import { processPayment } from '../services/square';
 import { db } from '../db';
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 
 const router = Router();
 
@@ -88,10 +88,9 @@ router.delete("/:id", async (req, res) => {
     }
     
     console.log('[API] Attempting to delete payment:', id);
-    const result = await db.execute({
-      text: 'DELETE FROM payments WHERE id = $1 RETURNING *',
-      values: [id]
-    });
+    const result = await db.delete(payments)
+      .where(eq(payments.id, id))
+      .returning();
     console.log('[API] Delete query executed, result:', result);
     
     if (!result || result.length === 0) {
