@@ -22,7 +22,13 @@ export const pool = new Pool({
 // Configure Drizzle with our schema
 export const db = drizzle(pool, { 
   schema,
-  logger: true
+  logger: {
+    logQuery: (query, params) => {
+      console.log('[Database] Query type:', query.split(' ')[0]);
+      console.log('[Database] Full query:', query);
+      console.log('[Database] Parameters:', params);
+    }
+  }
 });
 
 // Add error handling for the pool
