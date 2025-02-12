@@ -8,13 +8,13 @@ app.use(express.urlencoded({ extended: false }));
 
 app.use((req, res, next) => {
   const start = Date.now();
-  console.log(`[express] Incoming ${req.method} request to ${req.path}`);
+  console.log(`[express] Incoming ${req.method} request to ${req.originalUrl}`);
   
   next();
 
   res.on('finish', () => {
     const duration = Date.now() - start;
-    console.log(`[express] ${req.method} ${req.path} ${res.statusCode} in ${duration}ms`);
+    console.log(`[express] ${req.method} ${req.originalUrl} ${res.statusCode} in ${duration}ms`);
   });
 });
 
