@@ -95,28 +95,19 @@ router.delete("/:id", async (req, res) => {
 
     try {
       console.log(`[API] Starting deletion of payment ${id}`);
+      const result = await storage.deletePayment(id);
       
-      // First attempt deletion
-      await storage.deletePayment(id);
-      
-      // Wait for deletion to propagate (500ms)
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Verify the deletion multiple times
-      for (let i = 0; i < 3; i++) {
-        const verifyPayments = await storage.getPayments(undefined, undefined, [id]);
-        if (verifyPayments.length === 0) {
-          console.log(`[API] Successfully verified deletion of payment ${id}`);
-          return res.status(200).end();
-        }
-        // Wait between verification attempts
-        await new Promise(resolve => setTimeout(resolve, 500));
+      // Verify deletion immediately
+      const verifyPayments = await storage.getPayments(undefined, undefined, [id]);
+      if (verifyPayments.length > 0) {
+        throw new Error(`Payment ${id} still exists after deletion`);
       }
       
-      throw new Error('Payment still exists after multiple deletion verification attempts');
+      console.log(`[API] Successfully deleted payment ${id}`);
+      return res.status(200).json({ success: true, message: 'Payment deleted' });
     } catch (error) {
       console.error(`[API] Error deleting payment ${id}:`, error);
-      res.status(500).end();
+      return sendError(res, `Failed to delete payment: ${error.message}`, 500);
     }
   } catch (error) {
     console.error('[API] Error in payment deletion route:', error);
