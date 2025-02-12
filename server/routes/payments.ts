@@ -78,18 +78,17 @@ router.patch("/:id/status", async (req, res) => {
 // Delete payment endpoint
 router.delete("/:id", async (req, res) => {
   try {
+    console.log('[API] DELETE route handler entered');
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
+      console.error('[API] Invalid payment ID:', req.params.id);
       return sendError(res, "Invalid payment ID", 400);
     }
-
-    const payments = await storage.getPayments(undefined, undefined, [id]);
-    if (payments.length === 0) {
-      return sendError(res, `Payment ${id} not found`, 404);
-    }
-
+    
+    console.log('[API] Attempting to delete payment:', id);
     await storage.deletePayment(id);
-    return sendSuccess(res, null, 204);
+    console.log('[API] Payment deleted successfully');
+    return sendSuccess(res, { message: 'Payment deleted' }, 200);
   } catch (error) {
     console.error('[API] Error in payment deletion route:', error);
     return sendError(res, 
