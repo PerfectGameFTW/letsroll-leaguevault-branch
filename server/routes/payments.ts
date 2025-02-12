@@ -30,7 +30,7 @@ router.get("/", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
-  console.log('[Payments Router] DELETE route hit with ID:', id);
+  console.log('[Payments Router] DELETE route hit with ID:', id, typeof id);
   
   try {
     if (isNaN(id)) {
@@ -40,7 +40,7 @@ router.delete("/:id", async (req, res) => {
 
     console.log('[Payments Router] Before storage.deletePayment call');
     const result = await storage.deletePayment(id);
-    console.log('[Payments Router] After storage.deletePayment call. Result:', result);
+    console.log('[Payments Router] After storage.deletePayment call. Result:', result, typeof result);
     
     if (!result) {
       console.log('[Payments Router] Payment not found');
