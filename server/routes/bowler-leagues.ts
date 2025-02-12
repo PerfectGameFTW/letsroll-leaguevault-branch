@@ -28,7 +28,7 @@ router.get("/", async (req, res) => {
     console.log(`[BowlerLeagues Router] Found ${bowlerLeagues.length} bowler leagues`);
     sendSuccess(res, bowlerLeagues);
   } catch (error) {
-    console.error('Error fetching bowler leagues:', error);
+    console.error('[BowlerLeagues Router] Error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler leagues');
   }
 });

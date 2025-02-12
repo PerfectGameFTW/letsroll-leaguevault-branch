@@ -126,8 +126,8 @@ export default function TeamViewPage() {
       return response.json();
     },
     enabled: sortedBowlerLeagues.length > 0,
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
+    staleTime: 30000, // Cache results for 30 seconds
+    refetchOnWindowFocus: false,
   });
 
   const bowlers = bowlersResponse?.data ?? [];
