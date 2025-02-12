@@ -56,82 +56,45 @@ export default function WeeklyPaymentsPage() {
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTeam, setSelectedTeam] = useState<string>();
   const [paymentEntries, setPaymentEntries] = useState<{ [key: number]: PaymentEntry }>({});
-  const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
   const [editingPayment, setEditingPayment] = useState<{id: number, amount: string} | null>(null);
 
-  // Fetch league details
+  // Fetch league details with longer stale time
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 
   // Fetch teams for this league
   const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams", leagueId],
-    queryFn: async () => {
-      const response = await fetch(`/api/teams?leagueId=${leagueId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch teams');
-      }
-      return response.json();
-    }
+    staleTime: 1000 * 60 * 15, // 15 minutes
   });
 
   // Update the payments query to include all relevant parameters
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments", { teamId: selectedTeam, weekOf: selectedDate?.toISOString(), leagueId }],
-    queryFn: async () => {
-      if (!selectedTeam || !selectedDate) {
-        return { data: [] };
-      }
-      const response = await fetch(
-        `/api/payments?teamId=${selectedTeam}&weekOf=${selectedDate.toISOString()}&leagueId=${leagueId}`
-      );
-      if (!response.ok) {
-        throw new Error('Failed to fetch payments');
-      }
-      return response.json();
-    },
     enabled: !!selectedTeam && !!selectedDate,
+    staleTime: 1000 * 60, // 1 minute
   });
 
-  // Fetch bowlers for the selected team
+  // Fetch bowlers for the selected team - only if we have teams and a selected team
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", selectedTeam, leagueId],
-    queryFn: async () => {
-      if (!selectedTeam) {
-        return { data: [] };
-      }
-      const response = await fetch(`/api/bowler-leagues?teamId=${selectedTeam}&leagueId=${leagueId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowler leagues');
-      }
-      return response.json();
-    },
     enabled: !!selectedTeam,
+    staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
-
-  // Fetch bowler details
+  // Only fetch bowler details if we have bowler leagues
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
-    queryKey: ["/api/bowlers", bowlerLeagues],
-    queryFn: async () => {
-      if (!bowlerLeagues.length) {
-        return { data: [] };
-      }
-      const bowlerIds = bowlerLeagues.map(bl => bl.bowlerId);
-      const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowlers');
-      }
-      return response.json();
-    },
-    enabled: bowlerLeagues.length > 0,
+    queryKey: ["/api/bowlers", bowlerLeaguesResponse?.data],
+    enabled: !!bowlerLeaguesResponse?.data?.length,
+    staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
   const league = leagueResponse?.data;
   const teams = teamsResponse?.data || [];
   const payments = paymentsResponse?.data || [];
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
   const bowlers = bowlersResponse?.data || [];
 
   // Handle payment input changes
@@ -414,7 +377,8 @@ export default function WeeklyPaymentsPage() {
   };
 
 
-  if (loadingLeague || loadingTeams) {
+  // Show loading state only for initial league and team data
+  if ((loadingLeague || loadingTeams) && !league) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -631,7 +595,7 @@ export default function WeeklyPaymentsPage() {
                                       <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
                                     </svg>
                                   </Button>
-                                  
+
                                 </TableCell>
                               </TableRow>
                             );

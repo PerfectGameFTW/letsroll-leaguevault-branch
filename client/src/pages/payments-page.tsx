@@ -31,45 +31,22 @@ export default function PaymentsPage() {
   const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // Query to get all leagues
+  // Query to get all leagues - with longer staleTime to reduce refetches
   const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
+    staleTime: 1000 * 60 * 30, // 30 minutes
   });
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments"],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/payments');
-        if (!response.ok) {
-          const error = await response.text();
-          console.error('Failed to fetch payments:', error);
-          throw new Error('Failed to fetch payments');
-        }
-        return response.json();
-      } catch (error) {
-        console.error('Error fetching payments:', error);
-        throw error;
-      }
-    },
+    staleTime: 1000 * 60, // 1 minute
   });
 
+  // Only fetch bowlers if we have payments
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
-    queryFn: async () => {
-      try {
-        const response = await fetch('/api/bowlers');
-        if (!response.ok) {
-          const error = await response.text();
-          console.error('Failed to fetch bowlers:', error);
-          throw new Error('Failed to fetch bowlers');
-        }
-        return response.json();
-      } catch (error) {
-        console.error('Error fetching bowlers:', error);
-        throw error;
-      }
-    },
+    enabled: !!paymentsResponse?.data?.length,
+    staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
   const deletePaymentMutation = useMutation({
@@ -112,7 +89,13 @@ export default function PaymentsPage() {
     }
   };
 
-  if (loadingPayments || loadingBowlers) {
+  const payments = paymentsResponse?.data || [];
+  const bowlers = bowlersResponse?.data || [];
+  const leagues = leaguesResponse?.data || [];
+  const defaultLeagueId = leagues.length > 0 ? leagues[0].id : undefined;
+
+  // Show loading state only when initial data is loading
+  if ((loadingPayments || loadingBowlers) && !payments.length) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -121,11 +104,6 @@ export default function PaymentsPage() {
       </Layout>
     );
   }
-
-  const payments = paymentsResponse?.data || [];
-  const bowlers = bowlersResponse?.data || [];
-  const leagues = leaguesResponse?.data || [];
-  const defaultLeagueId = leagues.length > 0 ? leagues[0].id : undefined;
 
   return (
     <Layout>
