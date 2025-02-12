@@ -79,6 +79,7 @@ router.patch("/:id/status", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     console.log('[API] DELETE route handler entered');
+    console.log('DELETE endpoint hit for payment id:', req.params.id);
     const id = parseInt(req.params.id);
     console.log(`[API] DELETE /api/payments/${id} - Parsed ID:`, id, typeof id);
 
