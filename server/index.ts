@@ -8,18 +8,14 @@ app.use(express.urlencoded({ extended: false }));
 
 app.use((req, res, next) => {
   const start = Date.now();
-  
-  // Only capture response after the route handler completes
-  const originalEnd = res.end;
-  res.end = function(...args) {
-    const duration = Date.now() - start;
-    if (req.path.startsWith("/api")) {
-      log(`${req.method} ${req.path} ${res.statusCode} in ${duration}ms`);
-    }
-    return originalEnd.apply(res, args);
-  };
+  console.log(`[express] Incoming ${req.method} request to ${req.path}`);
   
   next();
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[express] ${req.method} ${req.path} ${res.statusCode} in ${duration}ms`);
+  });
 });
 
 (async () => {
