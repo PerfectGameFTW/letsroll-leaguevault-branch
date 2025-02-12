@@ -1,48 +1,53 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
 import type { Bowler, League } from "@shared/schema";
 
+function LoadingState() {
+  return (
+    <Layout>
+      <div className="flex items-center justify-center h-[50vh]">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    </Layout>
+  );
+}
+
+function ErrorState({ error }: { error: Error }) {
+  return (
+    <Layout>
+      <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
+        <AlertCircle className="h-5 w-5" />
+        <p>Error loading data: {error.message}</p>
+      </div>
+    </Layout>
+  );
+}
+
 export default function HomePage() {
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
-    queryFn: async () => {
-      const response = await fetch("/api/bowlers");
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowlers');
-      }
-      const json = await response.json();
-      return json;
-    }
   });
 
-  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
-    queryFn: async () => {
-      const response = await fetch("/api/leagues");
-      if (!response.ok) {
-        throw new Error('Failed to fetch leagues');
-      }
-      return response.json();
-    }
   });
+
+  if (loadingBowlers || loadingLeagues) {
+    return <LoadingState />;
+  }
+
+  const error = bowlersError || leaguesError;
+  if (error) {
+    return <ErrorState error={error as Error} />;
+  }
 
   const bowlers = bowlersResponse?.data || [];
   const leagues = leaguesResponse?.data || [];
   const activeBowlers = bowlers.filter(b => b.active).length;
   const totalLeagues = leagues.length;
-
-  if (loadingBowlers || loadingLeagues) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
-      </Layout>
-    );
-  }
 
   return (
     <Layout>

@@ -30,54 +30,22 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   const { toast } = useToast();
   const [selectedBowlerId, setSelectedBowlerId] = useState<string>("");
 
-  // Query to get all bowlers with proper error handling and caching
+  // Query to get all bowlers
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
-    queryFn: async () => {
-      try {
-        const response = await fetch("/api/bowlers");
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(`Failed to fetch bowlers: ${text}`);
-        }
-        const data = await response.json();
-        console.log("[AssignBowler] Bowlers fetched:", data);
-        return data;
-      } catch (error) {
-        console.error("[AssignBowler] Error fetching bowlers:", error);
-        throw error;
-      }
-    },
-    staleTime: 30000, // Cache for 30 seconds
     retry: false,
   });
 
-  // Query to get existing associations with proper error handling
+  // Query to get bowler leagues to filter out already assigned bowlers
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
-    queryKey: ["/api/bowler-leagues", { leagueId, teamId }],
-    queryFn: async () => {
-      try {
-        const response = await fetch(`/api/bowler-leagues?leagueId=${leagueId}&teamId=${teamId}`);
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(`Failed to fetch bowler leagues: ${text}`);
-        }
-        const data = await response.json();
-        console.log("[AssignBowler] Bowler leagues fetched:", data);
-        return data;
-      } catch (error) {
-        console.error("[AssignBowler] Error fetching bowler leagues:", error);
-        throw error;
-      }
-    },
-    staleTime: 30000, // Cache for 30 seconds
+    queryKey: ["/api/bowler-leagues", leagueId],
     retry: false,
   });
 
   const bowlers = bowlersResponse?.data || [];
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  // Filter out bowlers already in this specific league/team combination
+  // Filter out bowlers already in this team/league
   const availableBowlers = bowlers.filter(bowler => {
     const alreadyInTeam = bowlerLeagues.some(bl => 
       bl.bowlerId === bowler.id && 
@@ -87,35 +55,26 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
     return !alreadyInTeam && bowler.active;
   });
 
+  // Mutation for assigning bowler to team
   const mutation = useMutation({
     mutationFn: async (bowlerId: number) => {
+      const payload = {
+        bowlerId,
+        leagueId,
+        teamId,
+      };
+      console.log("[AssignBowler] Assigning bowler with payload:", payload);
       try {
-        console.log("[AssignBowler] Assigning bowler:", { bowlerId, leagueId, teamId });
-        const response = await apiRequest("POST", "/api/bowler-leagues", {
-          bowlerId,
-          leagueId,
-          teamId,
-        });
-
-        if (!response.ok) {
-          const text = await response.text();
-          console.error("[AssignBowler] Error response:", text);
-          throw new Error(text);
-        }
-
+        const response = await apiRequest("POST", "/api/bowler-leagues", payload);
         const data = await response.json();
         console.log("[AssignBowler] Assignment successful:", data);
         return data;
       } catch (error) {
-        console.error("[AssignBowler] Assignment error:", error);
-        if (error instanceof Error) {
-          throw new Error(`Failed to assign bowler: ${error.message}`);
-        }
+        console.error("[AssignBowler] Assignment failed:", error);
         throw error;
       }
     },
     onSuccess: () => {
-      // Invalidate relevant queries to ensure data is fresh
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}`] });
@@ -128,7 +87,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
       setSelectedBowlerId("");
     },
     onError: (error: Error) => {
-      console.error("[AssignBowler] Mutation error:", error);
+      console.error("[AssignBowler] Error:", error);
       toast({
         title: "Error assigning bowler",
         description: error.message,
@@ -138,12 +97,10 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   });
 
   const handleSubmit = () => {
-    if (selectedBowlerId) {
-      mutation.mutate(parseInt(selectedBowlerId));
-    }
+    if (!selectedBowlerId) return;
+    mutation.mutate(parseInt(selectedBowlerId));
   };
 
-  // Show loading state while fetching data
   const isLoading = loadingBowlers || loadingBowlerLeagues;
 
   return (
@@ -198,7 +155,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
             </Button>
             <Button 
               onClick={handleSubmit}
-              disabled={!selectedBowlerId || mutation.isPending || isLoading}
+              disabled={!selectedBowlerId || mutation.isPending}
             >
               {mutation.isPending && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

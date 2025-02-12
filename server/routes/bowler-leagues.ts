@@ -6,6 +6,12 @@ import { sendSuccess, sendError } from '../utils/api';
 
 const router = Router();
 
+// Middleware to ensure JSON responses
+router.use((req, res, next) => {
+  res.setHeader('Content-Type', 'application/json');
+  next();
+});
+
 router.get("/", async (req, res) => {
   try {
     const { bowlerId, leagueId, teamId } = req.query;
@@ -36,18 +42,22 @@ router.get("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return sendError(res, "Invalid ID provided", 400);
+    }
+
     const update = partialBowlerLeagueSchema.parse(req.body);
 
     // Handle order updates separately from other updates
     if (typeof update.order === 'number') {
-      console.log(`Updating bowler league ${id} order to ${update.order}`);
+      console.log(`[BowlerLeagues Router] Updating bowler league ${id} order to ${update.order}`);
       const bowlerLeague = await storage.getBowlerLeague(id);
       if (!bowlerLeague) {
-        return sendError(res, "Bowler league not found", 404, 'NOT_FOUND');
+        return sendError(res, "Bowler league not found", 404);
       }
 
       const updatedBowlerLeagues = await storage.updateBowlerLeagueOrder(id, update.order);
-      console.log('Updated bowler league orders:', JSON.stringify(updatedBowlerLeagues, null, 2));
+      console.log('[BowlerLeagues Router] Updated bowler league orders:', updatedBowlerLeagues);
       return sendSuccess(res, updatedBowlerLeagues);
     }
 
@@ -55,7 +65,7 @@ router.patch("/:id", async (req, res) => {
     const updated = await storage.updateBowlerLeague(id, update);
     sendSuccess(res, updated);
   } catch (error) {
-    console.error('Error updating bowler league:', error);
+    console.error('[BowlerLeagues Router] Error updating bowler league:', error);
     if (error instanceof z.ZodError) {
       sendError(res, error, 400);
     } else {
@@ -66,10 +76,13 @@ router.patch("/:id", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
+    console.log('[BowlerLeagues Router] Creating new bowler league with body:', req.body);
     const association = insertBowlerLeagueSchema.parse(req.body);
     const created = await storage.createBowlerLeague(association);
+    console.log('[BowlerLeagues Router] Created bowler league:', created);
     sendSuccess(res, created, 201);
   } catch (error) {
+    console.error('[BowlerLeagues Router] Error creating bowler league:', error);
     if (error instanceof z.ZodError) {
       sendError(res, error, 400);
     } else {

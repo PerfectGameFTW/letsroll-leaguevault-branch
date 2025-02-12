@@ -29,22 +29,32 @@ export async function apiRequest(
     console.log(`[API] ${method} request to ${url}`, data ? { data } : '');
     const res = await fetch(url, {
       method,
-      headers: data ? { 
+      headers: {
         "Content-Type": "application/json",
-        "Accept": "application/json"
-      } : {
         "Accept": "application/json"
       },
       body: data ? JSON.stringify(data) : undefined,
       credentials: "include",
     });
 
-    await throwIfResNotOk(res);
+    // Log response details for debugging
+    const contentType = res.headers.get("content-type");
+    console.log(`[API] Response from ${url}:`, {
+      status: res.status,
+      contentType,
+      ok: res.ok
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`[API] Error response from ${url}:`, errorText);
+      throw new Error(`${res.status}: ${errorText}`);
+    }
 
     // Verify JSON response
-    const contentType = res.headers.get("content-type");
     if (!contentType || !contentType.includes("application/json")) {
-      throw new Error("Expected JSON response but received different content type");
+      console.error(`[API] Expected JSON but got ${contentType} from ${url}`);
+      throw new Error(`Expected JSON response but got ${contentType || 'no content type'}`);
     }
 
     console.log(`[API] ${method} request to ${url} successful`);
@@ -76,6 +86,13 @@ export const getQueryFn: <T>(options: {
         }
 
         await throwIfResNotOk(res);
+
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          console.error(`[Query] Expected JSON but got ${contentType} from ${queryKey[0]}`);
+          throw new Error(`Expected JSON response but got ${contentType || 'no content type'}`);
+        }
+
         const data = await res.json();
         console.log(`[Query] Successfully fetched ${queryKey[0]}`, data);
         return data;
@@ -89,16 +106,12 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       queryFn: getQueryFn({ on401: "throw" }),
-      // Optimize caching strategy
       staleTime: 1000 * 60 * 5, // Data remains fresh for 5 minutes
       gcTime: 1000 * 60 * 30, // Cache garbage collection after 30 minutes
-      // Enable background refetching
       refetchOnWindowFocus: true,
       refetchOnMount: true,
       refetchOnReconnect: true,
-      // Add retry configuration
       retry: (failureCount, error) => {
-        // Don't retry on specific error conditions
         if (error instanceof Error) {
           // Don't retry on 404 or 401
           if (error.message.startsWith('404')) return false;
