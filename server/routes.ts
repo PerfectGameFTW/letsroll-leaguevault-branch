@@ -56,6 +56,10 @@ async function updateBowler(id: number, update: {
   }
 
   const updated = await storage.updateBowler(id, update);
+  if (!updated) {
+    throw new Error("Failed to update bowler");
+  }
+
   return updated;
 }
 

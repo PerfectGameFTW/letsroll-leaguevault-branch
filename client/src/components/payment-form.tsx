@@ -42,29 +42,8 @@ interface PaymentFormProps {
 export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormProps) {
   const { toast } = useToast();
   const cardContainerRef = useRef<HTMLDivElement>(null);
-  const [paymentType, setPaymentType] = useState<string>("cash");
-  const [cardInitialized, setCardInitialized] = useState(false);
   const [isSquareReady, setIsSquareReady] = useState(false);
   const initializationAttempted = useRef(false);
-
-  const {
-    card,
-    isInitialized,
-    error: squareError,
-    initializeCard,
-    cleanupCard,
-  } = useSquarePayment({
-    onError: (error) => {
-      console.log('[PaymentForm] Square payment error, reverting to cash:', error);
-      setPaymentType("cash");
-      form.setValue("type", "cash");
-      toast({
-        title: "Payment Form Notice",
-        description: "Credit card form unavailable. Please try another payment method.",
-        variant: "default",
-      });
-    },
-  });
 
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
@@ -77,6 +56,24 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     },
   });
 
+  const {
+    card,
+    isInitialized,
+    error: squareError,
+    initializeCard,
+    cleanupCard,
+  } = useSquarePayment({
+    onError: (error) => {
+      console.error('[PaymentForm] Square payment error:', error);
+      form.setValue("type", "cash");
+      toast({
+        title: "Payment Form Notice",
+        description: "Credit card form unavailable. Please try another payment method.",
+        variant: "default",
+      });
+    },
+  });
+
   // Update leagueId when it changes
   useEffect(() => {
     if (leagueId) {
@@ -84,62 +81,58 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [leagueId, form]);
 
-  // Handle payment type changes
+  const paymentType = form.watch("type");
+
+  // Handle Square initialization and cleanup
   useEffect(() => {
-    const type = form.watch("type");
-    console.log('[PaymentForm] Payment type changed:', type);
-    setPaymentType(type);
+    const shouldInitialize = paymentType === "credit_card" && 
+                           open && 
+                           cardContainerRef.current && 
+                           !isInitialized && 
+                           !initializationAttempted.current;
 
-    // Initialize card form if needed
-    if (type === "credit_card" && open && !cardInitialized && !initializationAttempted.current) {
+    if (shouldInitialize) {
+      console.log('[PaymentForm] Starting credit card form initialization');
       initializationAttempted.current = true;
-      const initCard = async () => {
-        if (!cardContainerRef.current) {
-          console.error('[PaymentForm] Card container not found');
-          return;
-        }
 
-        try {
-          console.log('[PaymentForm] Initializing card form...');
-          await initializeCard(cardContainerRef.current);
-          setCardInitialized(true);
-          setIsSquareReady(true);
+      initializeCard(cardContainerRef.current)
+        .then(() => {
           console.log('[PaymentForm] Card form initialized successfully');
-        } catch (error) {
+          setIsSquareReady(true);
+        })
+        .catch((error) => {
           console.error('[PaymentForm] Failed to initialize card form:', error);
           setIsSquareReady(false);
           form.setValue("type", "cash");
-          setPaymentType("cash");
           toast({
             title: "Payment Form Notice",
             description: "Credit card form unavailable. Please try another payment method.",
             variant: "default",
           });
-        }
-      };
-
-      initCard();
+        });
     }
-  }, [form.watch("type"), open, cardInitialized, initializeCard]);
 
-  // Cleanup on dialog close or payment type change
-  useEffect(() => {
-    const cleanup = () => {
-      if (cardInitialized) {
-        console.log('[PaymentForm] Cleaning up card form');
+    return () => {
+      if (paymentType !== "credit_card" && isInitialized) {
+        console.log('[PaymentForm] Cleaning up card form due to payment type change');
         cleanupCard();
-        setCardInitialized(false);
+        setIsSquareReady(false);
+      }
+    };
+  }, [paymentType, open, isInitialized, initializeCard, cleanupCard, form, toast]);
+
+  // Cleanup on dialog close
+  useEffect(() => {
+    if (!open) {
+      console.log('[PaymentForm] Dialog closing, cleaning up');
+      form.reset();
+      if (isInitialized) {
+        cleanupCard();
         setIsSquareReady(false);
         initializationAttempted.current = false;
       }
-    };
-
-    if (!open || paymentType !== "credit_card") {
-      cleanup();
     }
-
-    return cleanup;
-  }, [open, paymentType, cardInitialized, cleanupCard]);
+  }, [open, isInitialized, cleanupCard, form]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertPayment) => {
@@ -167,7 +160,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         }
       }
 
-      // Record payment in our system
       const response = await apiRequest("POST", "/api/payments", {
         ...data,
         weekOf: data.weekOf.toISOString(),
@@ -205,11 +197,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   });
 
   return (
-    <Dialog open={open} onOpenChange={(open) => {
-      if (!open) {
-        onClose();
-      }
-    }}>
+    <Dialog open={open} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Record Payment</DialogTitle>
@@ -255,7 +243,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 <FormItem>
                   <FormLabel>Payment Type</FormLabel>
                   <Select
-                    onValueChange={(value) => field.onChange(value)}
+                    onValueChange={field.onChange}
                     defaultValue={field.value}
                   >
                     <FormControl>
@@ -365,7 +353,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               render={({ field }) => (
                 <FormItem className="hidden">
                   <FormControl>
-                    <Input {...field} type="number"/>
+                    <Input {...field} type="number" />
                   </FormControl>
                 </FormItem>
               )}

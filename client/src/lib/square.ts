@@ -7,29 +7,41 @@ declare global {
 }
 
 let payments: any = null;
+let initializationPromise: Promise<any> | null = null;
 
 export async function initializeSquare() {
   try {
-    if (!payments) {
-      console.log('[Square] Loading Square SDK...');
-      await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
-
-      if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
-        console.error('[Square] Missing Square credentials');
-        throw new Error("Square credentials are not configured");
-      }
-
-      console.log('[Square] Initializing Square payments...');
-      payments = await window.Square.payments(
-        import.meta.env.VITE_SQUARE_APP_ID,
-        import.meta.env.VITE_SQUARE_LOCATION_ID
-      );
-      console.log('[Square] Square payments initialized successfully');
+    // Return existing initialization promise if it exists
+    if (initializationPromise) {
+      return initializationPromise;
     }
 
-    return payments;
+    // Create new initialization promise
+    initializationPromise = (async () => {
+      if (!payments) {
+        console.log('[Square] Loading Square SDK...');
+        await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
+
+        if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
+          console.error('[Square] Missing Square credentials');
+          throw new Error("Square credentials are not configured");
+        }
+
+        console.log('[Square] Initializing Square payments...');
+        payments = await window.Square.payments(
+          import.meta.env.VITE_SQUARE_APP_ID,
+          import.meta.env.VITE_SQUARE_LOCATION_ID
+        );
+        console.log('[Square] Square payments initialized successfully');
+      }
+
+      return payments;
+    })();
+
+    return initializationPromise;
   } catch (error) {
     console.error('[Square] Error initializing Square:', error);
+    initializationPromise = null;
     throw error;
   }
 }

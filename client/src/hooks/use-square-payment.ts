@@ -19,9 +19,9 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const initializationAttempts = useRef(0);
-  const maxAttempts = 5;
   const mountedRef = useRef(true);
+  const initializationAttempts = useRef(0);
+  const maxAttempts = 3;
 
   // Cleanup function
   const cleanupCard = () => {
@@ -39,7 +39,7 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
     }
   };
 
-  // Initialize card function
+  // Initialize card function with retry logic
   const initializeCard = async (container: HTMLDivElement) => {
     if (!container || !mountedRef.current) {
       console.error('[useSquarePayment] Container element is required or component unmounted');
@@ -52,6 +52,11 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
 
       console.log('[useSquarePayment] Initializing Square payments...');
       const payments = await initializeSquare();
+
+      if (!mountedRef.current) {
+        console.log('[useSquarePayment] Component unmounted during initialization');
+        return;
+      }
 
       console.log('[useSquarePayment] Creating new card form...');
       const newCard = await payments.card();
@@ -75,13 +80,14 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
 
       if (mountedRef.current) {
         setError(errorMessage);
+        setIsInitialized(false);
 
         if (initializationAttempts.current < maxAttempts) {
           initializationAttempts.current++;
-          console.log(`[useSquarePayment] Retrying initialization (${initializationAttempts.current}/${maxAttempts})`);
-
-          // Retry with exponential backoff
           const delay = Math.min(1000 * Math.pow(2, initializationAttempts.current), 5000);
+          console.log(`[useSquarePayment] Retrying initialization in ${delay}ms (attempt ${initializationAttempts.current}/${maxAttempts})`);
+
+          // Schedule retry
           setTimeout(() => {
             if (mountedRef.current) {
               initializeCard(container);
