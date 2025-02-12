@@ -454,7 +454,6 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error('[Storage] Error in deletePayment:', error);
       throw error;
-      throw error;
     }
   }
 
