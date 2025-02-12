@@ -9,7 +9,7 @@ const router = Router();
 router.get("/", async (req, res) => {
   try {
     const { bowlerId, leagueId, teamId } = req.query;
-    console.log('Fetching bowler leagues with params:', { bowlerId, leagueId, teamId });
+    console.log('[BowlerLeagues Router] Fetching with params:', { bowlerId, leagueId, teamId });
 
     const filters = {
       bowlerId: bowlerId ? parseInt(bowlerId as string) : undefined,
@@ -17,8 +17,15 @@ router.get("/", async (req, res) => {
       teamId: teamId ? parseInt(teamId as string) : undefined
     };
 
+    // Validate that we have valid numbers when params are provided
+    if ((bowlerId && isNaN(filters.bowlerId!)) || 
+        (leagueId && isNaN(filters.leagueId!)) || 
+        (teamId && isNaN(filters.teamId!))) {
+      return sendError(res, "Invalid ID parameters provided", 400);
+    }
+
     const bowlerLeagues = await storage.getBowlerLeagues(filters);
-    console.log(`Found ${bowlerLeagues.length} bowler leagues:`, bowlerLeagues);
+    console.log(`[BowlerLeagues Router] Found ${bowlerLeagues.length} bowler leagues`);
     sendSuccess(res, bowlerLeagues);
   } catch (error) {
     console.error('Error fetching bowler leagues:', error);

@@ -251,6 +251,8 @@ export class DatabaseStorage implements IStorage {
   // BowlerLeagues
   async getBowlerLeagues(filters?: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]> {
     try {
+      console.log('[Storage] Getting bowler leagues with filters:', filters);
+
       const conditions = [];
       if (filters?.bowlerId !== undefined) {
         conditions.push(eq(bowlerLeagues.bowlerId, filters.bowlerId));
@@ -262,12 +264,13 @@ export class DatabaseStorage implements IStorage {
         conditions.push(eq(bowlerLeagues.teamId, filters.teamId));
       }
 
-      let query = db.select().from(bowlerLeagues).orderBy(bowlerLeagues.order);
-      if (conditions.length > 0) {
-        query = query.where(and(...conditions));
-      }
+      let query = db.select().from(bowlerLeagues)
+        .where(and(...conditions))
+        .orderBy(bowlerLeagues.order);
 
-      return await query;
+      const results = await query;
+      console.log(`[Storage] Found ${results.length} bowler leagues matching filters`);
+      return results;
     } catch (error) {
       console.error('Error getting bowler leagues:', error);
       throw error;
