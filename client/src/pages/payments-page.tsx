@@ -49,9 +49,13 @@ export default function PaymentsPage() {
       console.log('[Frontend] Deleting payment:', id);
       const response = await apiRequest("DELETE", `/api/payments/${id}`);
       if (!response.ok) {
-        const error = await response.text();
-        console.error('[Frontend] Payment deletion failed:', error);
-        throw new Error(error);
+        const errorText = await response.text();
+        console.error('[Frontend] Payment deletion failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText
+        });
+        throw new Error(`Failed to delete payment: ${errorText}`);
       }
       return id;
     },
@@ -61,9 +65,6 @@ export default function PaymentsPage() {
       });
 
       const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
-
-      // Delay the optimistic update by 1 second
-      await new Promise(resolve => setTimeout(resolve, 1000));
 
       if (previousPayments?.data) {
         queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
