@@ -29,6 +29,7 @@ router.get("/", async (req, res) => {
 });
 
 router.delete("/:id", async (req, res) => {
+  console.log('[Payments Router] TESTING ROUTE ACCESS');
   const id = parseInt(req.params.id);
   console.log('[Payments Router] DELETE route hit with ID:', id, typeof id);
   console.log('[Payments Router] storage object available:', !!storage);
