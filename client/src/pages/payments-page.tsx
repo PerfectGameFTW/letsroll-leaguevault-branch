@@ -62,6 +62,9 @@ export default function PaymentsPage() {
 
       const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
 
+      // Delay the optimistic update by 1 second
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       if (previousPayments?.data) {
         queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
           data: previousPayments.data.filter(payment => payment.id !== deletedId)
