@@ -86,10 +86,14 @@ router.delete("/:id", async (req, res) => {
     }
     
     console.log('[API] Attempting to delete payment:', id);
-    const result = await db.execute('DELETE FROM payments WHERE id = $1', [id]);
+    const result = await db.execute(sql`DELETE FROM payments WHERE id = ${id} RETURNING *`);
     console.log('[API] Delete result:', result);
     
-    return sendSuccess(res, { message: 'Payment deleted' }, 200);
+    if (!result.length) {
+      return sendError(res, `Payment ${id} not found`, 404);
+    }
+    
+    return sendSuccess(res, { message: 'Payment deleted', deletedPayment: result[0] }, 200);
   } catch (error) {
     console.error('[API] Error in payment deletion route:', error);
     return sendError(res, 
