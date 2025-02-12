@@ -442,6 +442,9 @@ export class DatabaseStorage implements IStorage {
         const result = await tx.delete(payments).where(eq(payments.id, id));
         console.log('[Storage] Delete query result:', result);
         
+        // Add 2 second delay to ensure transaction completes
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
         console.log('[Storage] Verifying deletion');
         const [verifyDeleted] = await tx.select().from(payments).where(eq(payments.id, id));
         if (verifyDeleted) {
