@@ -107,7 +107,6 @@ export class DatabaseStorage implements IStorage {
           name: bowlers.name,
           email: bowlers.email,
           active: bowlers.active,
-          squareCustomerId: bowlers.squareCustomerId,
           order: bowlers.order,
         })
         .from(bowlers)
