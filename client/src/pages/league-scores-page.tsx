@@ -207,41 +207,28 @@ export default function LeagueScoresPage() {
 
       // Get historical scores for this team
       const teamHistoricalScores = historicalScores[team.id] || [];
-      console.log(`[Team ${team.name}] Total historical scores:`, teamHistoricalScores.length);
 
-      // Filter valid historical scores (not absent/vacant and has valid score)
+      // Filter out invalid scores
       const validHistoricalScores = teamHistoricalScores.filter(s =>
         !s.isAbsent &&
         !s.isVacant &&
         typeof s.score === 'number' &&
         s.score > 0
       );
-      console.log(`[Team ${team.name}] Valid historical scores:`, validHistoricalScores.length);
 
-      // Calculate total pins from valid scores
-      const totalHistoricalPins = validHistoricalScores.reduce((sum, score) => {
-        const pins = score.score;
-        console.log(`[Team ${team.name}] Processing score:`, {
-          score: pins,
-          isValid: typeof pins === 'number' && pins > 0
-        });
-        return sum + (typeof pins === 'number' ? pins : 0);
-      }, 0);
-      console.log(`[Team ${team.name}] Total historical pins:`, totalHistoricalPins);
+      // Calculate total pins from valid scores only
+      const totalHistoricalPins = validHistoricalScores.reduce((sum, score) =>
+        sum + score.score, 0
+      );
 
       // Each valid score represents one game played
       const totalGamesPlayed = validHistoricalScores.length;
-      console.log(`[Team ${team.name}] Total games played:`, totalGamesPlayed);
 
-      // Calculate average only from valid games
+      // Calculate average using the same logic as the bowler scores page
       const averageScore = totalGamesPlayed > 0
         ? Math.round(totalHistoricalPins / totalGamesPlayed)
         : 0;
-      console.log(`[Team ${team.name}] Final average calculation:`, {
-        totalPins: totalHistoricalPins,
-        gamesPlayed: totalGamesPlayed,
-        average: averageScore
-      });
+
 
       return {
         team,
@@ -342,7 +329,7 @@ export default function LeagueScoresPage() {
                             scores.find(s => s.gameId === game.id && s.position === score.position)
                           );
 
-                          // Calculate series total only from valid scores
+                          // Calculate series total only from valid scores in the current week's games
                           const validGameScores = gameScores.filter((s): s is Score => !!s && !s.isAbsent && !s.isVacant && s.score !== null);
                           const series = validGameScores.reduce((sum, s) => sum + (s.score || 0), 0);
 
