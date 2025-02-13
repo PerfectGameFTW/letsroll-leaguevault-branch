@@ -1,5 +1,5 @@
-import { parseQubicaScoreFile } from '../utils/qubica-parser';
-import { storage } from '../storage';
+import { parseQubicaScoreFile } from '../utils/qubica-parser.js';
+import { storage } from '../storage.js';
 import type {
   QubicaScoreImport,
   InsertGame,
@@ -8,7 +8,7 @@ import type {
   Score,
   Bowler,
   Team
-} from '@shared/schema';
+} from '@shared/schema.js';
 
 export class ScoreImportError extends Error {
   constructor(message: string, public code: string) {

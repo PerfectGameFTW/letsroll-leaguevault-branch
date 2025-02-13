@@ -1,5 +1,5 @@
 import { eq, and, desc, sql } from "drizzle-orm";
-import { db } from "./db";
+import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
   type League, type InsertLeague,
@@ -9,7 +9,7 @@ import {
   type Payment, type InsertPayment,
   type Game, type InsertGame,
   type Score, type InsertScore,
-} from "@shared/schema";
+} from "@shared/schema.js";
 
 export interface IStorage {
   // League methods
@@ -374,7 +374,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBowlerScores(bowlerId: number): Promise<Score[]> {
-    return db
+    console.log('[Storage] Fetching scores for bowler:', bowlerId);
+
+    const results = await db
       .select({
         id: scores.id,
         gameId: scores.gameId,
@@ -415,6 +417,13 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(leagues, eq(leagues.id, teams.leagueId))
       .where(eq(scores.bowlerId, bowlerId))
       .orderBy(desc(games.date), games.gameNumber);
+
+    console.log('[Storage] Found scores:', results.length);
+    if (results.length > 0) {
+      console.log('[Storage] Sample score:', results[0]);
+    }
+
+    return results;
   }
 
   async createScore(score: InsertScore): Promise<Score> {

@@ -1,5 +1,5 @@
 import { readFileSync } from 'fs';
-import { parseQubicaScoreFile } from './qubica-parser';
+import { parseQubicaScoreFile } from './qubica-parser.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 

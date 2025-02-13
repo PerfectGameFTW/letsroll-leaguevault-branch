@@ -7,14 +7,16 @@ const router = Router();
 
 // Input validation schema
 const getScoresQuerySchema = z.object({
+  bowlerId: z.string()
+    .transform(val => Number(val))
+    .optional(),
   gameIds: z.union([
     z.string().transform(val => [Number(val)]),
     z.array(z.string()).transform(val => val.map(Number))
   ]).optional(),
-  bowlerId: z.string().transform(Number).optional(),
 }).transform(data => ({
-  gameIds: data.gameIds?.filter(id => !isNaN(id)) ?? [],
-  bowlerId: isNaN(data.bowlerId) ? undefined : data.bowlerId
+  bowlerId: isNaN(data.bowlerId!) ? undefined : data.bowlerId,
+  gameIds: data.gameIds?.filter(id => !isNaN(id)) ?? []
 }));
 
 // Get scores
@@ -29,30 +31,30 @@ router.get('/', async (req, res) => {
       return sendError(res, 'Invalid query parameters', 400);
     }
 
-    const { gameIds, bowlerId } = validationResult.data;
-    console.log('[Scores] Parsed query parameters:', { gameIds, bowlerId });
+    const { bowlerId, gameIds } = validationResult.data;
+    console.log('[Scores] Parsed query parameters:', { bowlerId, gameIds });
 
     // If bowlerId is provided, fetch scores for that bowler
     if (bowlerId !== undefined) {
       console.log('[Scores] Fetching scores for bowler:', bowlerId);
       const scores = await storage.getBowlerScores(bowlerId);
       console.log('[Scores] Retrieved bowler scores:', scores.length);
-      console.log('[Scores] Sample score:', scores[0]);
       return sendSuccess(res, scores);
     }
 
     // Otherwise, fetch scores for specific games
     if (gameIds.length > 0) {
       console.log('[Scores] Fetching scores for games:', gameIds);
-      const scores = (await Promise.all(gameIds.map(id => storage.getScores(id)))).flat();
-      console.log('[Scores] Retrieved game scores:', scores.length);
-      return sendSuccess(res, scores);
+      const scores = await Promise.all(gameIds.map(id => storage.getGameScores(id)));
+      const flattenedScores = scores.flat();
+      console.log('[Scores] Retrieved game scores:', flattenedScores.length);
+      return sendSuccess(res, flattenedScores);
     }
 
-    return sendError(res, 'No valid query parameters provided', 400);
+    return sendError(res, 'Either bowlerId or gameIds must be provided', 400);
   } catch (error) {
     console.error('[Scores] Error fetching scores:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
+    return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
   }
 });
 

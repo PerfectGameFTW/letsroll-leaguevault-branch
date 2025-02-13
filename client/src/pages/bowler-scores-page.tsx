@@ -16,7 +16,6 @@ import type { Score, Bowler } from "@shared/schema.js";
 import { format } from "date-fns";
 import { Link, useParams } from "wouter";
 
-// Updated to match the API response structure
 interface ExtendedScore extends Score {
   game: {
     id: number;
@@ -43,11 +42,15 @@ interface ExtendedScore extends Score {
 interface ApiResponse<T> {
   success: boolean;
   data: T;
+  error?: {
+    message: string;
+    code?: string;
+  };
 }
 
 export default function BowlerScoresPage() {
-  const params = useParams<{ bowlerId: string }>();
-  const bowlerId = params.bowlerId ? parseInt(params.bowlerId) : undefined;
+  const { bowlerId } = useParams<{ bowlerId: string }>();
+  const parsedBowlerId = bowlerId ? parseInt(bowlerId) : undefined;
 
   // Fetch bowler details
   const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<ApiResponse<Bowler>>({
@@ -56,19 +59,36 @@ export default function BowlerScoresPage() {
   });
 
   // Fetch all scores for this bowler
-  const { data: scoresResponse, isLoading: loadingScores } = useQuery<ApiResponse<ExtendedScore[]>>({
-    queryKey: ["/api/scores", { bowlerId }],
-    enabled: !!bowlerId,
+  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<ApiResponse<ExtendedScore[]>>({
+    queryKey: ["/api/scores", parsedBowlerId],
+    queryFn: async () => {
+      if (!parsedBowlerId) throw new Error("Bowler ID is required");
+      console.log('[BowlerScores] Fetching scores for bowler:', parsedBowlerId);
+
+      const response = await fetch(`/api/scores?bowlerId=${parsedBowlerId}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('[BowlerScores] API error:', errorData);
+        throw new Error(errorData.error?.message || 'Failed to fetch scores');
+      }
+
+      const data = await response.json();
+      console.log('[BowlerScores] Received scores data:', data);
+      return data;
+    },
+    enabled: !!parsedBowlerId,
   });
 
-  console.log('[BowlerScores] Responses:', {
-    bowler: bowlerResponse,
-    scores: scoresResponse
+  console.log('[BowlerScores] Component state:', {
+    bowler: bowlerResponse?.data,
+    scores: scoresResponse?.data,
+    loadingBowler,
+    loadingScores,
+    error: scoresError
   });
 
   const bowler = bowlerResponse?.data;
   const scores = scoresResponse?.data || [];
-
   const isLoading = loadingBowler || loadingScores;
 
   if (isLoading) {
@@ -135,34 +155,44 @@ export default function BowlerScoresPage() {
           <TabsContent value="recent">
             <Card>
               <CardContent className="pt-6">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>League</TableHead>
-                      <TableHead>Team</TableHead>
-                      <TableHead className="text-right">Score</TableHead>
-                      <TableHead className="text-right">Handicap</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {scores.map((score, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          {format(new Date(score.game.date), "MMM d, yyyy")}
-                        </TableCell>
-                        <TableCell>{score.league.name}</TableCell>
-                        <TableCell>{score.team.name}</TableCell>
-                        <TableCell className="text-right">{score.score}</TableCell>
-                        <TableCell className="text-right">{score.handicap}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          {score.score + score.handicap}
-                        </TableCell>
+                {scoresError ? (
+                  <div className="text-center text-destructive py-8">
+                    Error loading scores: {scoresError.message}
+                  </div>
+                ) : scores.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>League</TableHead>
+                        <TableHead>Team</TableHead>
+                        <TableHead className="text-right">Score</TableHead>
+                        <TableHead className="text-right">Handicap</TableHead>
+                        <TableHead className="text-right">Total</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {scores.map((score) => (
+                        <TableRow key={score.id}>
+                          <TableCell>
+                            {format(new Date(score.game.date), "MMM d, yyyy")}
+                          </TableCell>
+                          <TableCell>{score.league.name}</TableCell>
+                          <TableCell>{score.team.name}</TableCell>
+                          <TableCell className="text-right">{score.score}</TableCell>
+                          <TableCell className="text-right">{score.handicap}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            {score.score + score.handicap}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center text-muted-foreground py-8">
+                    No scores recorded yet
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
