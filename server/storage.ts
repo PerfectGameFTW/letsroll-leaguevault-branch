@@ -1,12 +1,14 @@
 import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "./db";
 import {
-  leagues, teams, bowlers, bowlerLeagues, payments,
+  leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
   type BowlerLeague, type InsertBowlerLeague,
-  type Payment, type InsertPayment
+  type Payment, type InsertPayment,
+  type Game, type InsertGame,
+  type Score, type InsertScore,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -44,6 +46,25 @@ export interface IStorage {
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePayment(id: number, payment: Partial<InsertPayment>): Promise<Payment>;
   deletePayment(id: number): Promise<void>;
+
+  // Game methods
+  getGames(leagueId: number, weekNumber?: number): Promise<Game[]>;
+  getGame(id: number): Promise<Game | undefined>;
+  createGame(game: InsertGame): Promise<Game>;
+  updateGame(id: number, game: Partial<InsertGame>): Promise<Game>;
+  deleteGame(id: number): Promise<void>;
+
+  // Score methods
+  getScores(gameId: number, teamId?: number): Promise<Score[]>;
+  getScore(id: number): Promise<Score | undefined>;
+  getBowlerScores(bowlerId: number): Promise<Score[]>;
+  createScore(score: InsertScore): Promise<Score>;
+  updateScore(id: number, score: Partial<InsertScore>): Promise<Score>;
+  deleteScore(id: number): Promise<void>;
+
+  // Add new method to interface
+  getBowlerByQubicaId(qubicaId: string): Promise<Bowler | undefined>;
+  createBatchScores(scores: InsertScore[]): Promise<Score[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -110,6 +131,7 @@ export class DatabaseStorage implements IStorage {
           active: bowlers.active,
           order: bowlers.order,
           squareCustomerId: bowlers.squareCustomerId,
+          qubicaId: bowlers.qubicaId,
         })
         .from(bowlers)
         .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
@@ -282,6 +304,109 @@ export class DatabaseStorage implements IStorage {
 
   async deletePayment(id: number): Promise<void> {
     await db.delete(payments).where(eq(payments.id, id));
+  }
+
+  // Game methods
+  async getGames(leagueId: number, weekNumber?: number): Promise<Game[]> {
+    if (weekNumber !== undefined) {
+      return db
+        .select()
+        .from(games)
+        .where(and(
+          eq(games.leagueId, leagueId),
+          eq(games.weekNumber, weekNumber)
+        ))
+        .orderBy(games.gameNumber);
+    }
+    return db
+      .select()
+      .from(games)
+      .where(eq(games.leagueId, leagueId))
+      .orderBy(desc(games.date), games.gameNumber);
+  }
+
+  async getGame(id: number): Promise<Game | undefined> {
+    const [result] = await db.select().from(games).where(eq(games.id, id));
+    return result;
+  }
+
+  async createGame(game: InsertGame): Promise<Game> {
+    const [result] = await db.insert(games).values(game).returning();
+    return result;
+  }
+
+  async updateGame(id: number, game: Partial<InsertGame>): Promise<Game> {
+    const [result] = await db.update(games).set(game).where(eq(games.id, id)).returning();
+    return result;
+  }
+
+  async deleteGame(id: number): Promise<void> {
+    await db.delete(games).where(eq(games.id, id));
+  }
+
+  // Score methods
+  async getScores(gameId: number, teamId?: number): Promise<Score[]> {
+    if (teamId !== undefined) {
+      return db
+        .select()
+        .from(scores)
+        .where(and(
+          eq(scores.gameId, gameId),
+          eq(scores.teamId, teamId)
+        ))
+        .orderBy(scores.position);
+    }
+    return db
+      .select()
+      .from(scores)
+      .where(eq(scores.gameId, gameId))
+      .orderBy(scores.teamId, scores.position);
+  }
+
+  async getScore(id: number): Promise<Score | undefined> {
+    const [result] = await db.select().from(scores).where(eq(scores.id, id));
+    return result;
+  }
+
+  async getBowlerScores(bowlerId: number): Promise<Score[]> {
+    return db
+      .select()
+      .from(scores)
+      .where(eq(scores.bowlerId, bowlerId))
+      .orderBy(desc(games.date), games.gameNumber);
+  }
+
+  async createScore(score: InsertScore): Promise<Score> {
+    const [result] = await db.insert(scores).values(score).returning();
+    return result;
+  }
+
+  async updateScore(id: number, score: Partial<InsertScore>): Promise<Score> {
+    const [result] = await db.update(scores).set(score).where(eq(scores.id, id)).returning();
+    return result;
+  }
+
+  async deleteScore(id: number): Promise<void> {
+    await db.delete(scores).where(eq(scores.id, id));
+  }
+
+  // Add new method implementation
+  async getBowlerByQubicaId(qubicaId: string): Promise<Bowler | undefined> {
+    const [result] = await db
+      .select()
+      .from(bowlers)
+      .where(eq(bowlers.qubicaId, qubicaId));
+    return result;
+  }
+  async createBatchScores(scores: InsertScore[]): Promise<Score[]> {
+    if (scores.length === 0) return [];
+
+    const results = await db
+      .insert(scores)
+      .values(scores)
+      .returning();
+
+    return results;
   }
 }
 

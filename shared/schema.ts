@@ -34,6 +34,7 @@ export const bowlers = pgTable("bowlers", {
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
   squareCustomerId: text("square_customer_id"),
+  qubicaId: text("qubica_id"), // Add this field to store the Qubica bowler ID
 });
 
 export const bowlerLeagues = pgTable("bowler_leagues", {
@@ -75,6 +76,43 @@ export const payments = pgTable("payments", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Add new tables after the existing ones
+export const games = pgTable("games", {
+  id: serial("id").primaryKey(),
+  leagueId: integer("league_id")
+    .notNull()
+    .references(() => leagues.id, { onDelete: 'cascade' }),
+  weekNumber: integer("week_number").notNull(),
+  gameNumber: integer("game_number").notNull(), // 1, 2, or 3
+  date: timestamp("date").notNull(),
+}, (table) => ({
+  leagueGameIdx: index("league_game_idx").on(table.leagueId, table.weekNumber, table.gameNumber),
+}));
+
+export const scores = pgTable("scores", {
+  id: serial("id").primaryKey(),
+  gameId: integer("game_id")
+    .notNull()
+    .references(() => games.id, { onDelete: 'cascade' }),
+  bowlerId: integer("bowler_id")
+    .notNull()
+    .references(() => bowlers.id, { onDelete: 'cascade' }),
+  teamId: integer("team_id")
+    .notNull()
+    .references(() => teams.id, { onDelete: 'cascade' }),
+  score: integer("score").notNull(),
+  handicap: integer("handicap").notNull(),
+  average: integer("average").notNull(),
+  position: integer("position").notNull(), // Position in the team (1-4)
+  isVacant: boolean("is_vacant").notNull().default(false),
+  isAbsent: boolean("is_absent").notNull().default(false),
+  isSub: boolean("is_sub").notNull().default(false),
+  laneNumber: integer("lane_number").notNull(),
+}, (table) => ({
+  gameScoreIdx: index("game_score_idx").on(table.gameId, table.teamId, table.position),
+  bowlerScoreIdx: index("bowler_score_idx").on(table.bowlerId),
+}));
+
 // Relations
 export const leagueRelations = relations(leagues, ({ many }) => ({
   teams: many(teams),
@@ -110,6 +148,31 @@ export const bowlerLeagueRelations = relations(bowlerLeagues, ({ one }) => ({
   }),
 }));
 
+// Add relations for the new tables
+export const gameRelations = relations(games, ({ one, many }) => ({
+  league: one(leagues, {
+    fields: [games.leagueId],
+    references: [leagues.id],
+  }),
+  scores: many(scores),
+}));
+
+export const scoreRelations = relations(scores, ({ one }) => ({
+  game: one(games, {
+    fields: [scores.gameId],
+    references: [games.id],
+  }),
+  bowler: one(bowlers, {
+    fields: [scores.bowlerId],
+    references: [bowlers.id],
+  }),
+  team: one(teams, {
+    fields: [scores.teamId],
+    references: [teams.id],
+  }),
+}));
+
+
 // Validation schemas
 const baseBowlerSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -117,6 +180,7 @@ const baseBowlerSchema = z.object({
   active: z.boolean().default(true),
   order: z.number().min(0).default(0),
   squareCustomerId: z.string().nullable().optional(),
+  qubicaId: z.string().nullable().optional(), // Add validation for qubicaId
 });
 
 const baseLeagueSchema = z.object({
@@ -158,12 +222,36 @@ const basePaymentSchema = z.object({
   notes: z.string().optional(),
 });
 
+// Add validation schemas for the new tables
+const baseGameSchema = z.object({
+  leagueId: z.number().positive(),
+  weekNumber: z.number().positive(),
+  gameNumber: z.number().min(1).max(3),
+  date: z.coerce.date(),
+});
+
+const baseScoreSchema = z.object({
+  gameId: z.number().positive(),
+  bowlerId: z.number().positive(),
+  teamId: z.number().positive(),
+  score: z.number().min(0).max(300),
+  handicap: z.number().min(0),
+  average: z.number().min(0),
+  position: z.number().min(1).max(4),
+  isVacant: z.boolean().default(false),
+  isAbsent: z.boolean().default(false),
+  isSub: z.boolean().default(false),
+  laneNumber: z.number().positive(),
+});
+
 // Export schemas for validation
 export const insertBowlerSchema = baseBowlerSchema;
 export const insertLeagueSchema = baseLeagueSchema;
 export const insertTeamSchema = baseTeamSchema;
 export const insertBowlerLeagueSchema = baseBowlerLeagueSchema;
 export const insertPaymentSchema = basePaymentSchema;
+export const insertGameSchema = baseGameSchema;
+export const insertScoreSchema = baseScoreSchema;
 
 // Export partial schemas for updates
 export const partialBowlerSchema = baseBowlerSchema.partial();
@@ -171,6 +259,8 @@ export const partialLeagueSchema = baseLeagueSchema.partial();
 export const partialTeamSchema = baseTeamSchema.partial();
 export const partialBowlerLeagueSchema = baseBowlerLeagueSchema.partial();
 export const partialPaymentSchema = basePaymentSchema.partial();
+export const partialGameSchema = baseGameSchema.partial();
+export const partialScoreSchema = baseScoreSchema.partial();
 
 // Type exports
 export type League = typeof leagues.$inferSelect;
@@ -187,6 +277,13 @@ export type InsertBowlerLeague = z.infer<typeof insertBowlerLeagueSchema>;
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+
+// Type exports for the new tables
+export type Game = typeof games.$inferSelect;
+export type InsertGame = z.infer<typeof insertGameSchema>;
+
+export type Score = typeof scores.$inferSelect;
+export type InsertScore = z.infer<typeof insertScoreSchema>;
 
 // API response types
 export interface ApiResponse<T> {
