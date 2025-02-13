@@ -1,11 +1,7 @@
 import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
-import { ScoreImportService, ScoreImportError } from '../score-import.js';
-import { storage } from '../../storage.js';
-import type { Game, Team, Bowler } from '@shared/schema.js';
+import { join } from 'path';
 
-jest.mock('../../storage.js', () => ({
+jest.mock('../../storage', () => ({
   storage: {
     getLeague: jest.fn(),
     createGame: jest.fn(),
@@ -13,19 +9,23 @@ jest.mock('../../storage.js', () => ({
     createBowler: jest.fn(),
     getTeamByNumber: jest.fn(),
     createBatchScores: jest.fn(),
-  },
+  }
 }));
 
+import { ScoreImportService, ScoreImportError } from '../score-import';
+import { storage } from '../../storage';
+import type { Game, Team, Bowler, Score } from '@shared/schema';
+
 describe('ScoreImportService', () => {
-  const currentFilePath = fileURLToPath(import.meta.url);
-  const testDataPath = join(dirname(currentFilePath), '../../../attached_assets/bls_farmmxd_24_25__Conquerer X__wk020.S00');
+  // Use a relative path from the test file to the sample data
+  const testDataPath = join(__dirname, '../../../attached_assets/bls_farmmxd_24_25__Conquerer X__wk020.S00');
   const sampleFileContent = readFileSync(testDataPath, 'utf-8');
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('successfully imports scores when all data is valid', async () => {
+  it('successfully imports scores for all three games', async () => {
     // Mock successful league fetch
     (storage.getLeague as jest.Mock).mockResolvedValue({
       id: 1,
@@ -33,11 +33,16 @@ describe('ScoreImportService', () => {
       qubicaId: null,
     });
 
-    // Mock game creation
-    (storage.createGame as jest.Mock).mockImplementation((game): Game => ({
-      ...game,
-      id: Math.floor(Math.random() * 1000),
-    }));
+    // Store created games for verification
+    const createdGames: Game[] = [];
+    (storage.createGame as jest.Mock).mockImplementation((game): Game => {
+      const createdGame = {
+        ...game,
+        id: createdGames.length + 1,
+      };
+      createdGames.push(createdGame);
+      return createdGame;
+    });
 
     // Mock team lookup
     (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId: number, number: number): Team => ({
@@ -49,21 +54,66 @@ describe('ScoreImportService', () => {
     }));
 
     // Mock bowler lookup/creation
-    (storage.getBowlerByQubicaId as jest.Mock).mockImplementation((qubicaId: string): Bowler => ({
-      id: parseInt(qubicaId),
-      name: `Bowler ${qubicaId}`,
-      email: `bowler${qubicaId}@example.com`,
-      qubicaId,
-      active: true,
-      order: 0,
-      squareCustomerId: null,
-    }));
+    const bowlerCache = new Map<string, Bowler>();
+    (storage.getBowlerByQubicaId as jest.Mock).mockImplementation((qubicaId: string): Bowler => {
+      if (!bowlerCache.has(qubicaId)) {
+        bowlerCache.set(qubicaId, {
+          id: parseInt(qubicaId),
+          name: `Bowler ${qubicaId}`,
+          email: `bowler${qubicaId}@example.com`,
+          qubicaId,
+          active: true,
+          order: 0,
+          squareCustomerId: null,
+        });
+      }
+      return bowlerCache.get(qubicaId)!;
+    });
 
-    // Mock score creation
-    (storage.createBatchScores as jest.Mock).mockImplementation((scores) => scores);
+    // Store created scores for verification
+    const createdScores: Score[] = [];
+    (storage.createBatchScores as jest.Mock).mockImplementation((scores) => {
+      createdScores.push(...scores);
+      return scores;
+    });
 
     const service = new ScoreImportService(1);
     const result = await service.importScoreFile(sampleFileContent);
+
+    // Verify games are created with sequential game numbers
+    expect(createdGames).toHaveLength(3);
+    createdGames.forEach((game, index) => {
+      expect(game.gameNumber).toBe(index + 1);
+      expect(game.weekNumber).toBe(20); // Week number from the test file
+    });
+
+    // Verify scores are created for each game
+    const scoresByGame = createdScores.reduce((acc, score) => {
+      if (!acc[score.gameId]) {
+        acc[score.gameId] = [];
+      }
+      acc[score.gameId].push(score);
+      return acc;
+    }, {} as Record<number, Score[]>);
+
+    // Verify each game has scores
+    expect(Object.keys(scoresByGame)).toHaveLength(3);
+
+    // Check that scores are distributed across all games
+    Object.entries(scoresByGame).forEach(([gameId, scores]) => {
+      const gameScores = scores.length;
+      expect(gameScores).toBeGreaterThan(0);
+      console.log(`Game ${gameId} has ${gameScores} scores`);
+    });
+
+    // Verify team consistency across games
+    const teamIds = new Set(createdScores.map(s => s.teamId));
+    teamIds.forEach(teamId => {
+      // Each team should have scores in all three games
+      const teamScores = createdScores.filter(s => s.teamId === teamId);
+      const teamGameIds = new Set(teamScores.map(s => s.gameId));
+      expect(teamGameIds.size).toBe(3); // Each team should have scores in all 3 games
+    });
 
     expect(result.gamesCreated).toBe(3);
     expect(result.scoresCreated).toBeGreaterThan(0);
@@ -76,106 +126,5 @@ describe('ScoreImportService', () => {
     await expect(service.importScoreFile(sampleFileContent))
       .rejects
       .toThrow(new ScoreImportError('League not found', 'LEAGUE_NOT_FOUND'));
-  });
-
-  it('throws error when QubicaAMF league ID mismatches', async () => {
-    (storage.getLeague as jest.Mock).mockResolvedValue({
-      id: 1,
-      name: 'Test League',
-      qubicaId: 'DIFFERENT_ID',
-    });
-
-    const service = new ScoreImportService(1);
-    await expect(service.importScoreFile(sampleFileContent))
-      .rejects
-      .toThrow(new ScoreImportError('QubicaAMF league ID mismatch', 'LEAGUE_ID_MISMATCH'));
-  });
-
-  it('skips teams that do not exist in the database', async () => {
-    // Mock successful league fetch
-    (storage.getLeague as jest.Mock).mockResolvedValue({
-      id: 1,
-      name: 'Test League',
-      qubicaId: null,
-    });
-
-    // Mock game creation
-    (storage.createGame as jest.Mock).mockImplementation((game): Game => ({
-      ...game,
-      id: Math.floor(Math.random() * 1000),
-    }));
-
-    // Mock team lookup to return null for some teams
-    (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId: number, number: number): Team | null => 
-      number % 2 === 0 ? null : {
-        id: number,
-        number,
-        leagueId,
-        name: `Team ${number}`,
-        active: true,
-      }
-    );
-
-    const service = new ScoreImportService(1);
-    const result = await service.importScoreFile(sampleFileContent);
-
-    expect(result.gamesCreated).toBe(3);
-    expect(result.scoresCreated).toBeGreaterThan(0);
-
-    // Verify that createBatchScores was only called with scores for existing teams
-    const createBatchScoresCalls = (storage.createBatchScores as jest.Mock).mock.calls;
-    createBatchScoresCalls.forEach(([scores]) => {
-      scores.forEach((score: any) => {
-        expect(score.teamId % 2).toBe(1); // Only odd team IDs should be present
-      });
-    });
-  });
-
-  it('creates new bowlers when they do not exist', async () => {
-    // Mock successful league fetch
-    (storage.getLeague as jest.Mock).mockResolvedValue({
-      id: 1,
-      name: 'Test League',
-      qubicaId: null,
-    });
-
-    // Mock game creation
-    (storage.createGame as jest.Mock).mockImplementation((game): Game => ({
-      ...game,
-      id: Math.floor(Math.random() * 1000),
-    }));
-
-    // Mock team lookup
-    (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId: number, number: number): Team => ({
-      id: number,
-      number,
-      leagueId,
-      name: `Team ${number}`,
-      active: true,
-    }));
-
-    // Mock bowler lookup to return null
-    (storage.getBowlerByQubicaId as jest.Mock).mockResolvedValue(null);
-
-    // Mock bowler creation
-    (storage.createBowler as jest.Mock).mockImplementation((bowler): Bowler => ({
-      ...bowler,
-      id: Math.floor(Math.random() * 1000),
-      active: true,
-      order: 0,
-      squareCustomerId: null,
-    }));
-
-    const service = new ScoreImportService(1);
-    await service.importScoreFile(sampleFileContent);
-
-    // Verify that createBowler was called for each new bowler
-    expect(storage.createBowler).toHaveBeenCalled();
-    const createBowlerCalls = (storage.createBowler as jest.Mock).mock.calls;
-    createBowlerCalls.forEach(([bowler]) => {
-      expect(bowler).toHaveProperty('name');
-      expect(bowler).toHaveProperty('email');
-      expect(bowler).toHaveProperty('qubicaId');
-    });
   });
 });

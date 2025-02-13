@@ -1,5 +1,5 @@
-import { parseQubicaScoreFile } from '../utils/qubica-parser.js';
-import { storage } from '../storage.js';
+import { parseQubicaScoreFile } from '../utils/qubica-parser';
+import { storage } from '../storage';
 import type {
   QubicaScoreImport,
   InsertGame,
@@ -8,7 +8,7 @@ import type {
   Score,
   Bowler,
   Team
-} from '@shared/schema.js';
+} from '@shared/schema';
 
 export class ScoreImportError extends Error {
   constructor(message: string, public code: string) {
@@ -60,37 +60,38 @@ export class ScoreImportService {
     // Process all scores
     const scores: InsertScore[] = [];
     const teamCache = new Map<string, Team>();
+    const bowlerCache = new Map<string, Bowler>();
 
-    // Group teams by game number
-    const gameTeams = parsedData.games.reduce((acc, game) => {
-      if (!acc[game.gameNumber]) {
-        acc[game.gameNumber] = [];
+    // Process each game from the parsed data
+    for (const teamGame of parsedData.games) {
+      // Get game by game number (1, 2, or 3)
+      const gameNumber = teamGame.gameNumber;
+      const game = createdGames[gameNumber - 1];
+
+      if (!game) {
+        console.error(`[ScoreImport] No game found for game number ${gameNumber}`);
+        continue;
       }
-      acc[game.gameNumber].push(game);
-      return acc;
-    }, {} as Record<number, typeof parsedData.games>);
 
-    // Process each game
-    for (const game of createdGames) {
-      console.log(`[ScoreImport] Processing scores for game ${game.gameNumber}`);
-      const teamsForGame = gameTeams[game.gameNumber] || [];
-
-      for (const teamGame of teamsForGame) {
-        // Get or cache team
-        let team = teamCache.get(teamGame.teamNumber);
+      // Get or cache team
+      let team = teamCache.get(teamGame.teamNumber);
+      if (!team) {
+        team = await storage.getTeamByNumber(this.leagueId, parseInt(teamGame.teamNumber));
         if (!team) {
-          team = await storage.getTeamByNumber(this.leagueId, parseInt(teamGame.teamNumber));
-          if (!team) {
-            console.warn(`[ScoreImport] Team number ${teamGame.teamNumber} not found in league ${this.leagueId}`);
-            continue;
-          }
-          teamCache.set(teamGame.teamNumber, team);
+          console.warn(`[ScoreImport] Team number ${teamGame.teamNumber} not found in league ${this.leagueId}`);
+          continue;
         }
+        teamCache.set(teamGame.teamNumber, team);
+      }
 
-        // Process bowlers for this team
-        for (const bowlerScore of teamGame.bowlers) {
-          // Get or create bowler
-          let bowler = await storage.getBowlerByQubicaId(bowlerScore.bowlerId);
+      // Process bowlers for this team and game
+      console.log(`[ScoreImport] Processing ${teamGame.bowlers.length} bowlers for team ${team.name} game ${gameNumber}`);
+
+      for (const bowlerScore of teamGame.bowlers) {
+        // Get or cache bowler
+        let bowler = bowlerCache.get(bowlerScore.bowlerId);
+        if (!bowler) {
+          bowler = await storage.getBowlerByQubicaId(bowlerScore.bowlerId);
           if (!bowler) {
             console.log(`[ScoreImport] Creating new bowler: ${bowlerScore.bowlerName} (${bowlerScore.bowlerId})`);
             bowler = await storage.createBowler({
@@ -101,29 +102,39 @@ export class ScoreImportService {
               order: 0,
             });
           }
-
-          // Create score record
-          const insertScore: InsertScore = {
-            gameId: game.id,
-            bowlerId: bowler.id,
-            teamId: team.id,
-            score: bowlerScore.score,
-            handicap: bowlerScore.handicap,
-            average: bowlerScore.average,
-            position: bowlerScore.position,
-            isVacant: bowlerScore.status.isVacant,
-            isAbsent: bowlerScore.status.isAbsent,
-            isSub: bowlerScore.status.isSub,
-            laneNumber: bowlerScore.laneNumber,
-          };
-
-          scores.push(insertScore);
+          bowlerCache.set(bowlerScore.bowlerId, bowler);
         }
+
+        // Create score record
+        const insertScore: InsertScore = {
+          gameId: game.id,
+          bowlerId: bowler.id,
+          teamId: team.id,
+          score: bowlerScore.score,
+          handicap: bowlerScore.handicap,
+          average: bowlerScore.average,
+          position: bowlerScore.position,
+          isVacant: bowlerScore.status.isVacant,
+          isAbsent: bowlerScore.status.isAbsent,
+          isSub: bowlerScore.status.isSub,
+          laneNumber: bowlerScore.laneNumber,
+        };
+
+        scores.push(insertScore);
       }
     }
 
     // Batch create all scores
-    console.log(`[ScoreImport] Creating ${scores.length} scores`);
+    console.log(`[ScoreImport] Creating ${scores.length} scores across ${createdGames.length} games`);
+
+    // Log distribution of scores across games
+    const scoresByGame = scores.reduce((acc, score) => {
+      acc[score.gameId] = (acc[score.gameId] || 0) + 1;
+      return acc;
+    }, {} as Record<number, number>);
+
+    console.log('[ScoreImport] Score distribution by game:', scoresByGame);
+
     await storage.createBatchScores(scores);
 
     return {
