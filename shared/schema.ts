@@ -1,4 +1,5 @@
-import { pgTable, text, serial, integer, boolean, timestamp, index, eq } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -15,11 +16,8 @@ export const leagues = pgTable("leagues", {
   weeklyFee: integer("weekly_fee").notNull().default(2000), // Store in cents
   practiceStartTime: text("practice_start_time"),
   competitionStartTime: text("competition_start_time"),
-  qubicaId: text("qubica_id"), // QubicaAMF league ID
-}, (table) => ({
-  // Add unique constraint on qubicaId (when present)
-  qubicaIdIdx: index("qubica_id_idx").on(table.qubicaId).unique(),
-}));
+  qubicaId: text("qubica_id").unique(), // QubicaAMF league ID
+});
 
 export const teams = pgTable("teams", {
   id: serial("id").primaryKey(),
@@ -30,8 +28,8 @@ export const teams = pgTable("teams", {
     .references(() => leagues.id, { onDelete: 'cascade' }),
   active: boolean("active").notNull().default(true),
 }, (table) => ({
-  // Add unique constraint on league_id and number combination
-  teamNumberIdx: index("team_number_idx").on(table.leagueId, table.number).unique(),
+  // Unique index for league_id + number combination
+  leagueNumberIdx: index("teams_league_number_idx").on(table.leagueId, table.number),
 }));
 
 export const bowlers = pgTable("bowlers", {
@@ -41,11 +39,8 @@ export const bowlers = pgTable("bowlers", {
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
   squareCustomerId: text("square_customer_id"),
-  qubicaId: text("qubica_id"), // QubicaAMF bowler ID
-}, (table) => ({
-  // Add unique constraint on qubicaId (when present)
-  qubicaIdIdx: index("qubica_id_idx").on(table.qubicaId).unique(),
-}));
+  qubicaId: text("qubica_id").unique(), // QubicaAMF bowler ID
+});
 
 export const bowlerLeagues = pgTable("bowler_leagues", {
   id: serial("id").primaryKey(),
@@ -62,15 +57,17 @@ export const bowlerLeagues = pgTable("bowler_leagues", {
   order: integer("order").notNull().default(0),
   joinedAt: timestamp("joined_at").notNull().defaultNow(),
 }, (table) => ({
-  bowlerIdx: index("bowler_leagues_bowler_idx").on(table.bowlerId),
-  leagueIdx: index("bowler_leagues_league_idx").on(table.leagueId),
-  teamIdx: index("bowler_leagues_team_idx").on(table.teamId),
-  orderIdx: index("bowler_leagues_order_idx").on(table.teamId, table.leagueId, table.order),
-  // Add unique constraint for active bowler-league-team combinations
-  uniqueActiveIdx: index("bowler_leagues_unique_active_idx")
-    .on(table.bowlerId, table.leagueId, table.teamId)
-    .where(eq(table.active, true))
-    .unique(),
+  bowlerIdx: index().on(table.bowlerId),
+  leagueIdx: index().on(table.leagueId),
+  teamIdx: index().on(table.teamId),
+  orderIdx: index().on(table.teamId, table.leagueId, table.order),
+  // Unique composite index for active bowler-league-team combinations
+  activeBowlerIdx: index("bowler_leagues_active_unique_idx").on(
+    table.bowlerId, 
+    table.leagueId,
+    table.teamId,
+    table.active
+  ),
 }));
 
 export const payments = pgTable("payments", {

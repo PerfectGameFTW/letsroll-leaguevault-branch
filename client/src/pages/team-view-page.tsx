@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
@@ -17,8 +17,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { Loader2, Plus, ArrowLeft, ExternalLink, Pencil, Trash2 } from "lucide-react";
-import type { Team, Bowler, League, BowlerLeague } from "@shared/schema";
+import { Loader2, Plus, ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import type { Team, Bowler, League, BowlerLeague, ApiResponse } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -51,7 +51,7 @@ export default function TeamViewPage() {
   const [showRemoveDialog, setShowRemoveDialog] = useState<{ bowlerId: number; name: string } | null>(null);
   const { toast } = useToast();
   const params = useParams();
-  const teamId = parseInt(params.teamId!);
+  const teamId = params.teamId ? parseInt(params.teamId) : undefined;
 
   // Form for editing team name
   const editForm = useForm({
@@ -62,101 +62,80 @@ export default function TeamViewPage() {
   });
 
   // Query for team data with proper error handling
-  const { data: teamResponse, isLoading: loadingTeam, error: teamError } = useQuery({
+  const { data: teamResponse, isLoading: loadingTeam, error: teamError } = useQuery<ApiResponse<Team>>({
     queryKey: [`/api/teams/${teamId}`],
-    queryFn: async () => {
-      console.log("[TeamView] Fetching team data for ID:", teamId);
-      const response = await fetch(`/api/teams/${teamId}`);
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Failed to fetch team: ${text}`);
-      }
-      const data = await response.json();
-      console.log("[TeamView] Team data received:", data);
-      return data as { data: Team };
-    },
+    enabled: !!teamId,
+    retry: false,
   });
 
   const team = teamResponse?.data;
 
   // Get league info with proper error handling
-  const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery({
+  const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery<ApiResponse<League>>({
     queryKey: [`/api/leagues/${team?.leagueId}`],
-    queryFn: async () => {
-      console.log("[TeamView] Fetching league data for ID:", team?.leagueId);
-      if (!team?.leagueId) throw new Error('No league ID found');
-      const response = await fetch(`/api/leagues/${team.leagueId}`);
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Failed to fetch league: ${text}`);
-      }
-      const data = await response.json();
-      console.log("[TeamView] League data received:", data);
-      return data as { data: League };
-    },
     enabled: !!team?.leagueId,
+    retry: false,
   });
 
   const league = leagueResponse?.data;
 
   // Get bowler leagues for this team with proper error handling
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery({
-    queryKey: ["/api/bowler-leagues", teamId, team?.leagueId],
-    queryFn: async () => {
-      console.log("[TeamView] Fetching bowler leagues for team:", teamId, "league:", team?.leagueId);
-      if (!team?.leagueId) throw new Error('No league ID found');
-      const response = await fetch(`/api/bowler-leagues?teamId=${teamId}&leagueId=${team.leagueId}`);
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Failed to fetch bowler leagues: ${text}`);
-      }
-      const data = await response.json();
-      console.log("[TeamView] Bowler leagues received:", data);
-      return data as { data: BowlerLeague[] };
-    },
-    enabled: !!team?.leagueId,
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<ApiResponse<BowlerLeague[]>>({
+    queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
+    enabled: !!team?.leagueId && !!teamId,
     retry: false,
   });
 
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
   // Get bowlers data with proper error handling
-  const bowlerIds = bowlerLeagues.map(bl => bl.bowlerId);
-  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery({
+  const bowlerIds = useMemo(() =>
+    bowlerLeagues.map((bl: BowlerLeague) => bl.bowlerId),
+    [bowlerLeagues]
+  );
+
+  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<ApiResponse<Bowler[]>>({
     queryKey: ["/api/bowlers", bowlerIds],
-    queryFn: async () => {
-      console.log("[TeamView] Fetching bowlers for IDs:", bowlerIds);
-      if (!bowlerIds.length) return { data: [] };
-      const response = await fetch(`/api/bowlers?ids=${bowlerIds.join(",")}`);
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Failed to fetch bowlers: ${text}`);
-      }
-      const data = await response.json();
-      console.log("[TeamView] Bowlers data received:", data);
-      return data as { data: Bowler[] };
-    },
     enabled: bowlerIds.length > 0,
     retry: false,
   });
 
   const bowlers = bowlersResponse?.data || [];
 
-  // Create team bowlers array with proper ordering
-  const teamBowlers = bowlerLeagues
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map(bl => ({
-      bowler: bowlers.find(b => b.id === bl.bowlerId),
-      bowlerLeague: bl,
-    }))
-    .filter((item): item is { bowler: Bowler; bowlerLeague: BowlerLeague } => {
-      return !!item.bowler;
-    });
+  // Create team bowlers array with proper ordering and duplicate filtering
+  const teamBowlers = useMemo(() => {
+    if (!bowlerLeagues.length || !bowlers.length) return [];
 
-  console.log("[TeamView] Final team bowlers array:", teamBowlers);
+    // Get only the most recent active association for each bowler
+    const uniqueBowlerAssociations = bowlerLeagues
+      .filter((bl: BowlerLeague) => bl.active && bl.teamId === teamId)
+      .sort((a: BowlerLeague, b: BowlerLeague) => {
+        // Sort by joinedAt in descending order to get most recent first
+        return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime();
+      })
+      .reduce((acc: BowlerLeague[], bl: BowlerLeague) => {
+        // Only keep the first (most recent) association for each bowler
+        if (!acc.find(existing => existing.bowlerId === bl.bowlerId)) {
+          acc.push(bl);
+        }
+        return acc;
+      }, [])
+      // Sort by order field for display
+      .sort((a: BowlerLeague, b: BowlerLeague) => (a.order ?? 0) - (b.order ?? 0));
+
+    return uniqueBowlerAssociations
+      .map((bl: BowlerLeague) => ({
+        bowler: bowlers.find((b: Bowler) => b.id === bl.bowlerId),
+        bowlerLeague: bl,
+      }))
+      .filter((item): item is { bowler: Bowler; bowlerLeague: BowlerLeague } => {
+        return !!item.bowler;
+      });
+  }, [bowlerLeagues, bowlers, teamId]);
 
   const updateTeamMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editTeamSchema>) => {
+      if (!teamId) throw new Error("No team ID provided");
       const response = await apiRequest("PATCH", `/api/teams/${teamId}`, values);
       if (!response.ok) {
         const text = await response.text();
@@ -183,10 +162,11 @@ export default function TeamViewPage() {
 
   const removeBowlerMutation = useMutation({
     mutationFn: async ({ bowlerId }: { bowlerId: number }) => {
-      const bowlerLeague = bowlerLeagues.find(bl =>
+      const bowlerLeague = bowlerLeagues.find((bl: BowlerLeague) =>
         bl.bowlerId === bowlerId &&
         bl.teamId === teamId &&
-        bl.leagueId === team?.leagueId
+        bl.leagueId === team?.leagueId &&
+        bl.active
       );
 
       if (!bowlerLeague) {
@@ -198,17 +178,14 @@ export default function TeamViewPage() {
         `/api/bowler-leagues/${bowlerLeague.id}`
       );
 
-      // First check if response is ok
       if (!response.ok) {
         const text = await response.text();
         throw new Error(text);
       }
 
-      // Try to parse as JSON, if it fails, return a default success response
       try {
         return await response.json();
       } catch (e) {
-        // If parsing fails, return a default success response
         return { success: true, message: "Bowler removed successfully" };
       }
     },
@@ -229,7 +206,6 @@ export default function TeamViewPage() {
     },
   });
 
-
   const handleEditClick = () => {
     if (team) {
       editForm.reset({ name: team.name });
@@ -246,16 +222,20 @@ export default function TeamViewPage() {
     await removeBowlerMutation.mutate({ bowlerId: showRemoveDialog.bowlerId });
   };
 
-  // Handle errors
-  if (teamError) return <Layout><ErrorMessage error={teamError} /></Layout>;
-
-  // Handle loading states
-  const isLoading = loadingTeam || loadingBowlers || loadingBowlerLeagues || loadingLeague;
-  if (isLoading) {
+  if (!teamId) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
+        <div className="text-center text-destructive">Invalid team ID</div>
+      </Layout>
+    );
+  }
+
+  // Handle loading states with proper error display
+  if (teamError) {
+    return (
+      <Layout>
+        <div className="p-4 rounded-md bg-destructive/10 text-destructive">
+          <p className="font-medium">Error loading team: {teamError.message}</p>
         </div>
       </Layout>
     );
@@ -265,6 +245,18 @@ export default function TeamViewPage() {
     return (
       <Layout>
         <div className="text-center text-destructive">Team not found</div>
+      </Layout>
+    );
+  }
+
+  // Show loading state
+  const isLoading = loadingTeam || loadingBowlers || loadingBowlerLeagues || loadingLeague;
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center h-[50vh]">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
       </Layout>
     );
   }
@@ -428,7 +420,7 @@ export default function TeamViewPage() {
         open={showAssignForm}
         onClose={() => setShowAssignForm(false)}
         teamId={teamId}
-        leagueId={team.leagueId}
+        leagueId={team?.leagueId}
       />
 
       <ReorderBowlersDialog
@@ -437,7 +429,7 @@ export default function TeamViewPage() {
         bowlers={bowlers}
         bowlerLeagues={bowlerLeagues}
         teamId={teamId}
-        leagueId={team.leagueId}
+        leagueId={team?.leagueId}
       />
 
       {/* Remove Bowler Confirmation Dialog */}
