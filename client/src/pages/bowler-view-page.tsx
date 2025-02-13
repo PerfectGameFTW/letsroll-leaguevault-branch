@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";  
+import { useState, useEffect, useMemo } from "react";  
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
@@ -54,14 +54,34 @@ export default function BowlerViewPage() {
 
   // Query to get bowler's league associations with proper typing and caching
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
-    queryKey: ["/api/bowler-leagues", bowlerId],
+    queryKey: ["/api/bowler-leagues", { bowlerId }],
     enabled: !!bowlerId,
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     retry: false,
   });
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  // Get all leagues with longer cache time since they change less frequently
+  // Filter and deduplicate bowler leagues
+  const bowlerLeagues = useMemo(() => {
+    const allLeagues = bowlerLeaguesResponse?.data || [];
+    console.log('[BowlerView] All bowler leagues:', allLeagues);
+    // First, filter active associations
+    const activeLeagues = allLeagues.filter(bl => 
+      bl.active && bl.bowlerId === bowlerId
+    );
+    console.log('[BowlerView] Active leagues:', activeLeagues);
+    // Then, ensure unique leagues by taking the most recently ordered association
+    return activeLeagues.reduce((unique: BowlerLeague[], current) => {
+      const existingIndex = unique.findIndex(bl => bl.leagueId === current.leagueId);
+      if (existingIndex === -1) {
+        unique.push(current);
+      } else if ((current.order ?? 0) > (unique[existingIndex].order ?? 0)) {
+        unique[existingIndex] = current;
+      }
+      return unique;
+    }, []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  }, [bowlerLeaguesResponse?.data, bowlerId]);
+
+  // Get all leagues
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
     enabled: !!bowlerLeagues.length,
@@ -70,8 +90,16 @@ export default function BowlerViewPage() {
   });
   const leagues = leaguesResponse?.data || [];
 
-  // Get the selected league's team
-  const selectedAssociation = bowlerLeagues.find(bl => bl.leagueId === selectedLeagueId);
+  // Get selected league's active team association
+  const selectedAssociation = useMemo(() => {
+    const association = bowlerLeagues.find(bl => 
+      bl.leagueId === selectedLeagueId && 
+      bl.active && 
+      bl.bowlerId === bowlerId
+    );
+    console.log('[BowlerView] Selected association:', association);
+    return association;
+  }, [bowlerLeagues, selectedLeagueId, bowlerId]);
 
   const { data: teamResponse, isLoading: loadingTeam } = useQuery<{ data: Team }>({
     queryKey: [`/api/teams/${selectedAssociation?.teamId}`],
@@ -79,6 +107,7 @@ export default function BowlerViewPage() {
     staleTime: 1000 * 60 * 15, // Cache for 15 minutes
     retry: false,
   });
+  console.log('[BowlerView] Team response:', teamResponse);
   const team = teamResponse?.data;
 
   const { data: league, isLoading: loadingLeague } = useQuery<{ data: League }>({
@@ -108,8 +137,8 @@ export default function BowlerViewPage() {
   // Update initialization logic for selectedLeagueId
   useEffect(() => {
     if (bowlerLeagues?.length && !selectedLeagueId) {
-      const sortedLeagues = [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-      setSelectedLeagueId(sortedLeagues[0].leagueId);
+      console.log('[BowlerView] Setting initial league:', bowlerLeagues[0]);
+      setSelectedLeagueId(bowlerLeagues[0].leagueId);
     }
   }, [bowlerLeagues, selectedLeagueId]);
 
@@ -188,12 +217,6 @@ export default function BowlerViewPage() {
 
   const remainingBalance = fullSeasonAmount - totalPaidAmount;
 
-  // Update bowlerLeaguesFiltered to maintain order
-  const bowlerLeaguesFiltered = bowlerLeagues?.sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .filter(bl => {
-      const leagueInfo = leagues?.find(l => l.id === bl.leagueId);
-      return leagueInfo;
-    });
 
   return (
     <Layout>

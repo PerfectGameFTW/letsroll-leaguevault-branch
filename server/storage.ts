@@ -176,11 +176,14 @@ export class DatabaseStorage implements IStorage {
         conditions.push(eq(bowlerLeagues.teamId, filters.teamId));
       }
       if (conditions.length > 0) {
+        // Add active filter by default when fetching with filters
+        conditions.push(eq(bowlerLeagues.active, true));
         return query.where(and(...conditions)).orderBy(bowlerLeagues.order);
       }
     }
 
-    return query.orderBy(bowlerLeagues.order);
+    // If no filters, still only return active by default
+    return query.where(eq(bowlerLeagues.active, true)).orderBy(bowlerLeagues.order);
   }
 
   async getBowlerLeague(id: number): Promise<BowlerLeague | undefined> {
