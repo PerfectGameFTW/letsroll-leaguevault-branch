@@ -5,7 +5,6 @@ import teamsRouter from './routes/teams';
 import bowlersRouter from './routes/bowlers';
 import bowlerLeaguesRouter from './routes/bowler-leagues';
 import paymentsRouter from './routes/payments';
-import importRouter from './routes/import';
 import { storage } from "./storage";
 import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema, insertBowlerLeagueSchema } from "@shared/schema";
 import { z } from "zod";
@@ -37,9 +36,8 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/leagues', leaguesRouter);
   app.use('/api/teams', teamsRouter);
   app.use('/api/bowlers', bowlersRouter);
-  app.use('/api/bowler-leagues', bowlerLeaguesRouter);
+  app.use('/api/bowler-leagues', bowlerLeaguesRouter); // Ensure this route is registered
   app.use('/api/payments', paymentsRouter);
-  app.use('/api/import', importRouter); // Add the import routes
 
   // Create and return the server instance without starting it
   return createServer(app);

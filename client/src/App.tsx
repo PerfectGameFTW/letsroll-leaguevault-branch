@@ -15,7 +15,6 @@ import WeeklyPaymentsPage from "@/pages/weekly-payments-page";
 import ReportsPage from "@/pages/reports-page";
 import LeaguePastDuePage from "@/pages/league-past-due-page";
 import PastDuePage from "@/pages/past-due-page";
-import LeagueImportPage from "@/pages/league-import-page"; // Added import
 import { useEffect, useRef } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -28,7 +27,6 @@ function Router() {
       <Route path="/leagues/:leagueId" component={LeagueViewPage} />
       <Route path="/leagues/:leagueId/teams" component={TeamsPage} />
       <Route path="/leagues/:leagueId/weekly-payments" component={WeeklyPaymentsPage} />
-      <Route path="/leagues/:leagueId/import" component={LeagueImportPage} /> {/* Added route */}
       <Route path="/teams/:teamId" component={TeamViewPage} />
       <Route path="/bowlers" component={BowlersPage} />
       <Route path="/bowlers/:bowlerId" component={BowlerViewPage} />

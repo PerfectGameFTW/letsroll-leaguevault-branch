@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Loader2, Users, DollarSign, Upload } from "lucide-react";
+import { Loader2, Users, DollarSign } from "lucide-react";
 import type { League } from "@shared/schema";
 import { useParams, Link } from "wouter";
 
@@ -14,8 +14,6 @@ export default function LeagueViewPage() {
   });
 
   const league = leagueResponse?.data;
-
-  console.log('[LeagueViewPage] Rendering with:', { leagueId, league });
 
   if (isLoading) {
     return (
@@ -40,7 +38,7 @@ export default function LeagueViewPage() {
       <div className="space-y-6">
         <h1 className="text-2xl font-bold">{league.name}</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Link href={`/leagues/${leagueId}/teams`} className="block">
             <Card className="hover:bg-accent transition-colors">
               <CardHeader>
@@ -74,25 +72,6 @@ export default function LeagueViewPage() {
               <CardContent>
                 <p className="text-sm text-muted-foreground">
                   Record manual payments by team and week, view payment history
-                </p>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href={`/leagues/${leagueId}/import`} className="block">
-            <Card className="hover:bg-accent transition-colors">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Upload className="h-5 w-5 mr-2" />
-                  Import Scores
-                </CardTitle>
-                <CardDescription>
-                  Import scores from QubicaAMF
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Upload .S00 files from the QubicaAMF scoring system to import weekly scores
                 </p>
               </CardContent>
             </Card>
