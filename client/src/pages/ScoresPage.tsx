@@ -78,28 +78,39 @@ export default function ScoresPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {scoresResponse.data.map((bowler) => (
-              <TableRow key={`${bowler.bowlerId}-${bowler.teamId}`}>
-                <TableCell>{format(new Date(bowler.date), "MMM d, yyyy")}</TableCell>
-                <TableCell>{bowler.weekNumber}</TableCell>
-                <TableCell>
-                  {bowler.bowlerName}
-                  {bowler.games.some(g => g.isSub) && " (Sub)"}
-                </TableCell>
-                <TableCell>{bowler.teamName}</TableCell>
-                {bowler.games.map((game, index) => (
-                  <TableCell key={index} className="text-right">
-                    {game.isVacant ? "VACANT" :
-                     game.isAbsent ? "ABSENT" :
-                     game.score === null ? "—" :
-                     game.score}
+            {scoresResponse.data.map((bowler) => {
+              // Calculate series total only from valid scores in the current week's games
+              const validScores = bowler.games
+                .map(g => g.score)
+                .filter((score): score is number => score !== null);
+
+              const seriesTotal = validScores.length > 0 
+                ? validScores.reduce((sum, score) => sum + score, 0)
+                : null;
+
+              return (
+                <TableRow key={`${bowler.bowlerId}-${bowler.teamId}`}>
+                  <TableCell>{format(new Date(bowler.date), "MMM d, yyyy")}</TableCell>
+                  <TableCell>{bowler.weekNumber}</TableCell>
+                  <TableCell>
+                    {bowler.bowlerName}
+                    {bowler.games.some(g => g.isSub) && " (Sub)"}
                   </TableCell>
-                ))}
-                <TableCell className="text-right font-medium">
-                  {bowler.seriesTotal || "—"}
-                </TableCell>
-              </TableRow>
-            ))}
+                  <TableCell>{bowler.teamName}</TableCell>
+                  {bowler.games.map((game, index) => (
+                    <TableCell key={index} className="text-right">
+                      {game.isVacant ? "VACANT" :
+                       game.isAbsent ? "ABSENT" :
+                       game.score === null ? "—" :
+                       game.score}
+                    </TableCell>
+                  ))}
+                  <TableCell className="text-right font-medium">
+                    {seriesTotal === null ? "—" : seriesTotal}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </Card>

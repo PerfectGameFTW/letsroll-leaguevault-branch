@@ -184,7 +184,8 @@ export default function LeagueScoresPage() {
 
       // Calculate team statistics
       const totalPins = teamScores.reduce((sum, score) => sum + (score.score || 0), 0);
-      const averageScore = teamScores.length > 0 ? Math.round(totalPins / teamScores.length) : 0;
+      // Use number of actual games (3) per team for average
+      const averageScore = teamScores.length > 0 ? Math.round(totalPins / 3) : 0;
 
       return {
         team,
@@ -194,7 +195,6 @@ export default function LeagueScoresPage() {
         averageScore,
       };
     })
-    // Sort teams by total pins (highest first)
     .sort((a, b) => b.totalPins - a.totalPins);
 
   return (
@@ -280,9 +280,12 @@ export default function LeagueScoresPage() {
                         </TableRow>
                       ) : (
                         scores.map((score) => {
+                          // Get all scores for this bowler's position in current week's games
                           const gameScores = games.map(game =>
                             scores.find(s => s.gameId === game.id && s.position === score.position)
                           );
+
+                          // Calculate series total only from the current week's games
                           const series = gameScores.reduce((sum, s) => sum + (s?.score || 0), 0);
 
                           return (
@@ -340,7 +343,7 @@ export default function LeagueScoresPage() {
                               >
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <span>{series}</span>
+                                    <span>{series || "—"}</span>
                                   </TooltipTrigger>
                                   {series >= 600 && (
                                     <TooltipContent>

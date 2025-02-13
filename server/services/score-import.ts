@@ -1,5 +1,5 @@
-import { parseQubicaScoreFile } from '../utils/qubica-parser';
-import { storage } from '../storage';
+import { parseQubicaScoreFile } from '../utils/qubica-parser.js';
+import { storage } from '../storage.js';
 import type {
   QubicaScoreImport,
   InsertGame,
@@ -28,6 +28,13 @@ export class ScoreImportService {
     const parsedData = parseQubicaScoreFile(fileContent);
     console.log('[ScoreImport] Parsed data header:', parsedData.header);
 
+    // Log game distribution in parsed data
+    const gameDistribution = parsedData.games.reduce((acc, game) => {
+      acc[game.gameNumber] = (acc[game.gameNumber] || 0) + 1;
+      return acc;
+    }, {} as Record<number, number>);
+    console.log('[ScoreImport] Game distribution in parsed data:', gameDistribution);
+
     // Validate league exists
     const league = await storage.getLeague(this.leagueId);
     if (!league) {
@@ -54,6 +61,7 @@ export class ScoreImportService {
       };
 
       const game = await storage.createGame(insertGame);
+      console.log(`[ScoreImport] Created game ${game.id} with gameNumber ${game.gameNumber}`);
       createdGames.push(game);
     }
 
@@ -66,7 +74,11 @@ export class ScoreImportService {
     for (const teamGame of parsedData.games) {
       // Get game by game number (1, 2, or 3)
       const gameNumber = teamGame.gameNumber;
-      const game = createdGames[gameNumber - 1];
+      console.log(`[ScoreImport] Processing team game with number ${gameNumber} for team ${teamGame.teamName}`);
+
+      // Find the corresponding game from our created games
+      const game = createdGames.find(g => g.gameNumber === gameNumber);
+      console.log(`[ScoreImport] Mapped to game:`, game ? `id=${game.id}, gameNumber=${game.gameNumber}` : 'not found');
 
       if (!game) {
         console.error(`[ScoreImport] No game found for game number ${gameNumber}`);

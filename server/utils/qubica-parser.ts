@@ -49,20 +49,46 @@ export class QubicaScoreParser {
     };
   }
 
-  private parseBowlerScore(line: string): QubicaBowlerScore | null {
+  private isTeamHeaderLine(line: string): boolean {
+    const parts = line.split('\t');
+    // Team headers have position "0" in the third column
+    return parts.length >= 10 && parts[2] === '0';
+  }
+
+  private parseLine(line: string): [string, number, string, string, number] | null {
     const parts = line.split('\t');
     if (parts.length < 10) return null;
 
+    const teamNumber = parts[0];
+    const gameNumber = parseInt(parts[1]);
+    const position = parts[2];
+    const recordNumber = parts[3];
+    const laneNumber = parseInt(parts[8]);
+
+    if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > 3) {
+      return null;
+    }
+
+    return [teamNumber, gameNumber, position, recordNumber, laneNumber];
+  }
+
+  private parseBowlerScore(line: string): QubicaBowlerScore | null {
+    const lineInfo = this.parseLine(line);
+    if (!lineInfo) return null;
+
+    const [teamNumber, gameNumber, position, recordNumber, laneNumber] = lineInfo;
+    const parts = line.split('\t');
+
     const [
-      teamNumber,
-      gameNumber,
-      position,
-      recordNumber,
+      _teamNumber,
+      _gameNumber,
+      _position,
+      _recordNumber,
       bowlerId,
       status1,
       status2,
       score,
-      laneNumber,
+      _laneNumber,
       bowlerName,
       scoreSheet,
       handicap,
@@ -72,7 +98,7 @@ export class QubicaScoreParser {
 
     return {
       teamNumber,
-      gameNumber: parseInt(gameNumber),
+      gameNumber,
       position: parseInt(position),
       recordNumber: parseInt(recordNumber),
       bowlerId,
@@ -82,7 +108,7 @@ export class QubicaScoreParser {
         isSub: status1 === 'S'
       },
       score: parseInt(score),
-      laneNumber: parseInt(laneNumber),
+      laneNumber,
       bowlerName,
       scoreSheet,
       handicap: parseInt(handicap),
@@ -91,38 +117,52 @@ export class QubicaScoreParser {
     };
   }
 
-  private parseTeamGame(startLine: string): QubicaTeamGame {
+  private parseTeam(startLine: string): QubicaTeamGame[] {
+    const lineInfo = this.parseLine(startLine);
+    if (!lineInfo) return [];
+
+    const [teamNumber, gameNumber, _position, _recordNumber, laneNumber] = lineInfo;
     const parts = startLine.split('\t');
-    const teamNumber = parts[0];
-    const gameNumber = parseInt(parts[1]);
-    const laneNumber = parseInt(parts[8]);
     const teamName = parts[9];
-    const bowlers: QubicaBowlerScore[] = [];
 
-    // Skip the team header line
+    // Will hold all games for this team
+    const teamGames: QubicaTeamGame[] = [];
+    const gameScores: Map<number, QubicaBowlerScore[]> = new Map();
+
+    // Parse all lines until we hit another team header or end of file
     this.currentIndex++;
-
-    // Parse up to 4 bowlers
-    for (let i = 0; i < 4; i++) {
-      if (this.currentIndex >= this.lines.length) break;
-
+    while (this.currentIndex < this.lines.length) {
       const line = this.lines[this.currentIndex];
-      const bowlerScore = this.parseBowlerScore(line);
 
-      if (bowlerScore && bowlerScore.teamNumber === teamNumber && 
-          bowlerScore.gameNumber === gameNumber) {
-        bowlers.push(bowlerScore);
-        this.currentIndex++;
+      // Stop if we hit another team header or empty line
+      if (!line || this.isTeamHeaderLine(line)) {
+        break;
+      }
+
+      const bowlerScore = this.parseBowlerScore(line);
+      if (bowlerScore && bowlerScore.teamNumber === teamNumber) {
+        const scores = gameScores.get(bowlerScore.gameNumber) || [];
+        scores.push(bowlerScore);
+        gameScores.set(bowlerScore.gameNumber, scores);
+      }
+
+      this.currentIndex++;
+    }
+
+    // Create team games for each game number
+    for (const [gameNum, bowlers] of gameScores) {
+      if (bowlers.length > 0) {
+        teamGames.push({
+          teamNumber,
+          gameNumber: gameNum,
+          teamName,
+          laneNumber,
+          bowlers
+        });
       }
     }
 
-    return {
-      teamNumber,
-      gameNumber,
-      teamName,
-      laneNumber,
-      bowlers
-    };
+    return teamGames;
   }
 
   public parse(): QubicaScoreImport {
@@ -132,6 +172,7 @@ export class QubicaScoreParser {
     // Skip header and separator lines
     this.currentIndex = 2;
 
+    // Parse all teams
     while (this.currentIndex < this.lines.length) {
       const line = this.lines[this.currentIndex];
 
@@ -141,14 +182,21 @@ export class QubicaScoreParser {
         continue;
       }
 
-      // Check if this is a team header line
-      if (line.includes('*\t*')) {
-        const teamGame = this.parseTeamGame(line);
-        games.push(teamGame);
+      // Parse team if we hit a team header
+      if (this.isTeamHeaderLine(line)) {
+        const teamGames = this.parseTeam(line);
+        games.push(...teamGames);
       } else {
         this.currentIndex++;
       }
     }
+
+    // Log game distribution for verification
+    const gameDistribution = games.reduce((acc, game) => {
+      acc[game.gameNumber] = (acc[game.gameNumber] || 0) + 1;
+      return acc;
+    }, {} as Record<number, number>);
+    console.log('[QubicaParser] Game distribution:', gameDistribution);
 
     return { header, games };
   }
