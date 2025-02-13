@@ -1,16 +1,16 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import leaguesRouter from './routes/leagues';
-import teamsRouter from './routes/teams';
-import bowlersRouter from './routes/bowlers';
-import bowlerLeaguesRouter from './routes/bowler-leagues';
-import paymentsRouter from './routes/payments';
-import scoresRouter from './routes/scores';
-import gamesRouter from './routes/games';
-import { storage } from "./storage";
+import leaguesRouter from './routes/leagues.js';
+import teamsRouter from './routes/teams.js';
+import bowlersRouter from './routes/bowlers.js';
+import bowlerLeaguesRouter from './routes/bowler-leagues.js';
+import paymentsRouter from './routes/payments.js';
+import scoresRouter from './routes/scores.js';
+import gamesRouter from './routes/games.js';
+import { storage } from "./storage.js";
 import { ApiError, Client, Environment } from 'square';
-import { sendSuccess, sendError } from './utils/api';
-import { testConnection } from './db';
+import { sendSuccess, sendError } from './utils/api.js';
+import { testConnection } from './db.js';
 
 let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {

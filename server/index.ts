@@ -1,7 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { setupVite, serveStatic } from "./vite";
-import { testConnection } from "./db";
+import { registerRoutes } from "./routes.js";
+import { setupVite, serveStatic } from "./vite.js";
+import { testConnection } from "./db.js";
+import { createServer } from 'http';
 
 const app = express();
 
@@ -102,6 +103,31 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 let serverInstance: ReturnType<typeof server.listen> | null = null;
 
+// Find an available port in the range
+const findAvailablePort = async (startPort: number = 3000): Promise<number> => {
+  for (let port = startPort; port < startPort + 10; port++) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const testServer = createServer();
+        testServer.once('error', reject);
+        testServer.once('listening', () => {
+          testServer.close(() => resolve());
+        });
+        testServer.listen(port, '0.0.0.0');
+      });
+      // Add explicit port logging for workflow detection
+      console.log(`[Workflow] Port ${port} is available`);
+      console.log(`[Server] Selected port ${port} for web application`);
+      return port;
+    } catch (err: any) {
+      if (err.code !== 'EADDRINUSE') throw err;
+      // Port in use, try next one
+      continue;
+    }
+  }
+  throw new Error('Unable to find an available port');
+};
+
 // Initialize server
 async function initializeServer() {
   try {
@@ -112,49 +138,33 @@ async function initializeServer() {
     await testConnection();
     console.log('[Server] Database connection successful');
 
-    // Start server with port handling
-    const startServer = async (initialPort: number = 5000): Promise<void> => {
-      if (serverInstance) {
-        console.log('[Server] Cleaning up previous server instance...');
-        await new Promise<void>((resolve) => {
-          serverInstance?.close(() => resolve());
-        });
-        serverInstance = null;
-      }
+    // Find available port
+    const port = await findAvailablePort();
+    console.log(`[Server] Selected port ${port}`);
 
-      for (let port = initialPort; port < initialPort + 10; port++) {
-        try {
-          await new Promise<void>((resolve, reject) => {
-            const onError = (err: Error) => {
-              server.removeListener('listening', onListening);
-              reject(err);
-            };
-            const onListening = () => {
-              server.removeListener('error', onError);
-              console.log(`[Server] Ready and listening on port ${port}`);
-              if (process.send) {
-                process.send('ready');
-              }
-              resolve();
-            };
-
-            server.once('error', onError);
-            server.once('listening', onListening);
-            serverInstance = server.listen(port, '0.0.0.0');
-          });
-          return;
-        } catch (err: any) {
-          if (err.code === 'EADDRINUSE') {
-            console.log(`[Server] Port ${port} in use, trying next port...`);
-            continue;
-          }
-          throw err;
+    // Start server
+    await new Promise<void>((resolve, reject) => {
+      const onError = (err: Error) => {
+        server.removeListener('listening', onListening);
+        reject(err);
+      };
+      const onListening = () => {
+        server.removeListener('error', onError);
+        // Add explicit port logging for workflow detection
+        console.log(`[Workflow] Server listening on port ${port}`);
+        console.log(`[Server] Server ready and listening on port ${port}`);
+        // Signal to workflow that server is ready
+        if (process.send) {
+          process.send('ready');
         }
-      }
-      throw new Error('Unable to find an available port after multiple attempts');
-    };
+        resolve();
+      };
 
-    await startServer();
+      server.once('error', onError);
+      server.once('listening', onListening);
+      serverInstance = server.listen(port, '0.0.0.0');
+    });
+
     console.log('[Server] Application fully initialized and ready for requests');
   } catch (error) {
     console.error('[Server] Fatal error during initialization:', error);
