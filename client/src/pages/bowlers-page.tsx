@@ -204,28 +204,6 @@ export default function BowlersPage() {
                           >
                             {bowler.name}
                           </Link>
-                          {isLoadingRelatedData ? (
-                            <div className="flex items-center text-sm text-muted-foreground">
-                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                              Loading team...
-                            </div>
-                          ) : (
-                            <>
-                              {getBowlerTeam(bowler) && (
-                                <div className="space-y-0.5">
-                                  <p className="text-sm text-muted-foreground">
-                                    {getBowlerTeam(bowler)?.name}
-                                  </p>
-                                  <Link 
-                                    href={`/bowlers/${bowler.id}/scores`}
-                                    className="text-xs text-muted-foreground hover:text-foreground"
-                                  >
-                                    View Scores →
-                                  </Link>
-                                </div>
-                              )}
-                            </>
-                          )}
                         </div>
                       </TableCell>
                       <TableCell>{bowler.email}</TableCell>
