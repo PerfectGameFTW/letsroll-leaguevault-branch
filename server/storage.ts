@@ -401,15 +401,25 @@ export class DatabaseStorage implements IStorage {
       .where(eq(bowlers.qubicaId, qubicaId));
     return result;
   }
-  async createBatchScores(scores: InsertScore[]): Promise<Score[]> {
-    if (scores.length === 0) return [];
+  async createBatchScores(batchScores: InsertScore[]): Promise<Score[]> {
+    if (batchScores.length === 0) return [];
 
     const results = await db
       .insert(scores)
-      .values(scores)
+      .values(batchScores)
       .returning();
 
     return results;
+  }
+  async getTeamByNumber(leagueId: number, teamNumber: number): Promise<Team | undefined> {
+    const [result] = await db
+      .select()
+      .from(teams)
+      .where(and(
+        eq(teams.leagueId, leagueId),
+        eq(teams.number, teamNumber)
+      ));
+    return result;
   }
 }
 
