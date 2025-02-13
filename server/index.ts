@@ -9,34 +9,73 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Request logging with more detailed information
+// Enhanced request logging for debugging
 app.use((req, res, next) => {
   const start = Date.now();
   const requestId = Math.random().toString(36).substring(7);
-  console.log(`[${requestId}][${req.method}] ${req.originalUrl}`);
 
-  if (req.method === 'POST' && req.path.startsWith('/api/payments')) {
-    console.log(`[${requestId}] Payment request body:`, JSON.stringify(req.body, null, 2));
+  console.log(`[${requestId}] ${req.method} ${req.originalUrl}`);
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log(`[${requestId}] Request body:`, JSON.stringify(req.body, null, 2));
   }
 
   // Add response logging
   const oldJson = res.json;
   res.json = function(body) {
-    if (req.path.startsWith('/api/payments')) {
-      console.log(`[${requestId}] Payment response body:`, JSON.stringify(body));
-    } else if (process.env.NODE_ENV === 'development') {
-      console.log(`[${requestId}] Response body:`, JSON.stringify(body));
-    }
+    console.log(`[${requestId}] Response body:`, JSON.stringify(body));
     return oldJson.call(this, body);
   };
 
   res.on('finish', () => {
-    console.log(`[${requestId}][${req.method}] ${req.originalUrl} ${res.statusCode} (${Date.now() - start}ms)`);
+    console.log(`[${requestId}] ${req.method} ${req.originalUrl} ${res.statusCode} (${Date.now() - start}ms)`);
   });
   next();
 });
 
-// Global error handler middleware
+// API-specific middleware
+app.use('/api', (req, res, next) => {
+  console.log('[API] Handling request:', req.method, req.path);
+  res.setHeader('Content-Type', 'application/json');
+  next();
+});
+
+// Register API routes first
+console.log('[Server] Registering API routes...');
+const server = registerRoutes(app);
+
+// API catch-all middleware (before Vite)
+app.use('/api/*', (req, res) => {
+  console.log('[API] Unhandled API route:', req.method, req.path);
+  res.status(404).json({
+    success: false,
+    error: {
+      message: 'API endpoint not found',
+      path: req.path
+    }
+  });
+});
+
+// Frontend handling after API routes
+if (app.get("env") === "development") {
+  console.log('[Server] Setting up Vite middleware for development...');
+  app.use(async (req, res, next) => {
+    // Skip Vite for API routes
+    if (req.path.startsWith('/api/')) {
+      return next();
+    }
+    try {
+      await setupVite(app, server);
+      next();
+    } catch (e) {
+      next(e);
+    }
+  });
+} else {
+  console.log('[Server] Setting up static file serving for production...');
+  serveStatic(app);
+}
+
+// Global error handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[Error]', err);
   if (!res.headersSent) {
@@ -52,62 +91,17 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
-// Health check endpoint with port readiness indicator
-app.get('/api/health', async (req, res) => {
-  try {
-    await testConnection();
-    // Add a ready flag to indicate the server is fully initialized
-    const ready = true;
-    res.json({
-      success: true,
-      status: 'healthy',
-      database: 'connected',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      ready
-    });
-  } catch (error) {
-    console.error('[Health Check] Database connection failed:', error);
-    res.status(503).json({
-      success: false,
-      status: 'unhealthy',
-      database: 'disconnected',
-      error: error instanceof Error ? error.message : 'Unknown error',
-      timestamp: new Date().toISOString(),
-      ready: false
-    });
-  }
-});
-
-
-// API-specific middleware
-app.use('/api', (req, res, next) => {
-  res.setHeader('Content-Type', 'application/json');
-  next();
-});
-
-// Initialize server with proper startup sequence
+// Initialize server
 async function initializeServer() {
   try {
     console.log('[Server] Starting initialization...');
 
-    // Test database connection first
+    // Test database connection
     console.log('[Server] Testing database connection...');
     await testConnection();
     console.log('[Server] Database connection successful');
 
-    // Register API routes
-    console.log('[Server] Registering API routes...');
-    const server = registerRoutes(app);
-
-    // Frontend handling
-    if (app.get("env") === "development") {
-      await setupVite(app, server);
-    } else {
-      serveStatic(app);
-    }
-
-    // Start server with port handling and readiness check
+    // Start server with port handling
     const startServer = async (initialPort: number = 5000): Promise<void> => {
       for (let port = initialPort; port < initialPort + 10; port++) {
         try {
@@ -119,7 +113,6 @@ async function initializeServer() {
             const onListening = () => {
               server.removeListener('error', onError);
               console.log(`[Server] Ready and listening on port ${port}`);
-              // Signal that the server is ready
               if (process.send) {
                 process.send('ready');
               }
@@ -149,7 +142,7 @@ async function initializeServer() {
   }
 }
 
-// Start the server with error handling
+// Start the server
 initializeServer().catch((error) => {
   console.error('[Server] Unhandled error during startup:', error);
   process.exit(1);

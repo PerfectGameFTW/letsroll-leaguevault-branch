@@ -5,11 +5,16 @@ import teamsRouter from './teams';
 import bowlersRouter from './bowlers';
 import paymentsRouter from './payments';
 import bowlerLeaguesRouter from './bowler-leagues';
+import scoresRouter from './scores';
+import gamesRouter from './games';
 import { testConnection } from '../db';
 import { sendSuccess, sendError } from '../utils/api';
 
 export function registerRoutes(app: Express): Server {
   console.log('[Routes] Registering API routes...');
+
+  // Create HTTP server first
+  const server = createServer(app);
 
   // Add health check endpoint
   app.get('/api/health', async (req, res) => {
@@ -27,15 +32,10 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/bowlers', bowlersRouter);
   app.use('/api/bowler-leagues', bowlerLeaguesRouter);
   app.use('/api/payments', paymentsRouter);
+  app.use('/api/scores', scoresRouter);
+  app.use('/api/games', gamesRouter);
 
   console.log('[Routes] API routes registered');
 
-  // Catch-all middleware for unhandled routes
-  app.use('/api/*', (req, res) => {
-    console.log('[Routes] Unhandled API route:', req.method, req.path);
-    sendError(res, 'Endpoint not found', 404);
-  });
-
-  const httpServer = createServer(app);
-  return httpServer;
+  return server;
 }
