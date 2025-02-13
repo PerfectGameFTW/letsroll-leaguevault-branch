@@ -42,9 +42,24 @@ router.post('/upload', upload.single('scoreFile'), async (req, res) => {
       return sendError(res, 'Invalid league ID', 400);
     }
 
+    // Log file details and content preview
+    console.log('[ScoreImport] File details:', {
+      originalname: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    });
+    console.log('[ScoreImport] File content preview:', req.file.buffer.toString().substring(0, 500));
+
     // Parse the score file
     const parser = new ConquerorScoreParser();
-    const scoreData = await parser.parse(req.file.buffer);
+    let scoreData;
+    try {
+      scoreData = await parser.parse(req.file.buffer);
+      console.log('[ScoreImport] Parsed score data:', JSON.stringify(scoreData, null, 2));
+    } catch (error) {
+      console.error('[ScoreImport] Parser error:', error);
+      return sendError(res, 'Failed to parse score file: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
 
     // Validate the league exists
     const league = await storage.getLeague(leagueId);
@@ -52,58 +67,84 @@ router.post('/upload', upload.single('scoreFile'), async (req, res) => {
       return sendError(res, 'League not found', 404);
     }
 
-    // Create a game record for this set of scores
+    if (!scoreData.scores || scoreData.scores.length === 0) {
+      return sendError(res, 'No valid scores found in file');
+    }
+
+    // Create a game record for this set of scores with defensive checks
+    const defaultGameNumber = 1; // Default to game 1 if not specified
     const gameData = {
       leagueId,
       weekNumber: scoreData.weekNumber,
-      gameNumber: scoreData.scores[0].gameNumber, // All scores in a file are for the same game
+      gameNumber: scoreData.scores[0]?.gameNumber || defaultGameNumber,
       date: scoreData.date,
     };
 
-    const game = await storage.createGame(gameData);
+    console.log('[ScoreImport] Creating game with data:', gameData);
+
+    let game;
+    try {
+      game = await storage.createGame(gameData);
+      console.log('[ScoreImport] Created game:', game);
+    } catch (error) {
+      console.error('[ScoreImport] Error creating game:', error);
+      return sendError(res, 'Failed to create game record');
+    }
 
     // Process each score entry
     const scores = [];
     for (const entry of scoreData.scores) {
-      // Find the bowler by QubicaId
-      const bowler = await storage.getBowlerByQubicaId(entry.qubicaId);
-      if (!bowler) {
-        console.warn(`[ScoreImport] Bowler not found for QubicaId: ${entry.qubicaId}`);
+      try {
+        // Find the bowler by QubicaId
+        const bowler = await storage.getBowlerByQubicaId(entry.qubicaId);
+        if (!bowler) {
+          console.warn(`[ScoreImport] Bowler not found for QubicaId: ${entry.qubicaId}`);
+          continue;
+        }
+
+        // Find the team for this bowler in the league
+        const bowlerLeagues = await storage.getBowlerLeagues({
+          bowlerId: bowler.id,
+          leagueId: leagueId,
+        });
+
+        if (bowlerLeagues.length === 0) {
+          console.warn(`[ScoreImport] Bowler ${bowler.id} not found in league ${leagueId}`);
+          continue;
+        }
+
+        const score = {
+          gameId: game.id,
+          bowlerId: bowler.id,
+          teamId: bowlerLeagues[0].teamId,
+          score: entry.score,
+          handicap: entry.handicap || 0,
+          average: entry.average || 0,
+          position: entry.position,
+          isVacant: entry.isVacant || false,
+          isAbsent: entry.isAbsent || false,
+          isSub: entry.isSub || false,
+          laneNumber: entry.laneNumber,
+        };
+
+        scores.push(score);
+        console.log('[ScoreImport] Processed score entry:', score);
+      } catch (error) {
+        console.error('[ScoreImport] Error processing score entry:', error);
         continue;
       }
-
-      // Find the team for this bowler in the league
-      const bowlerLeagues = await storage.getBowlerLeagues({
-        bowlerId: bowler.id,
-        leagueId: leagueId,
-      });
-
-      if (bowlerLeagues.length === 0) {
-        console.warn(`[ScoreImport] Bowler ${bowler.id} not found in league ${leagueId}`);
-        continue;
-      }
-
-      const score = {
-        gameId: game.id,
-        bowlerId: bowler.id,
-        teamId: bowlerLeagues[0].teamId,
-        score: entry.score,
-        handicap: entry.handicap,
-        average: entry.average,
-        position: entry.position,
-        isVacant: false,
-        isAbsent: false,
-        isSub: entry.isSub,
-        laneNumber: entry.laneNumber,
-      };
-
-      scores.push(score);
     }
 
     // Batch create all scores
-    const createdScores = await storage.createBatchScores(scores);
+    let createdScores = [];
+    try {
+      createdScores = await storage.createBatchScores(scores);
+      console.log(`[ScoreImport] Successfully imported ${createdScores.length} scores`);
+    } catch (error) {
+      console.error('[ScoreImport] Error creating scores:', error);
+      return sendError(res, 'Failed to create scores');
+    }
 
-    console.log(`[ScoreImport] Successfully imported ${createdScores.length} scores`);
     sendSuccess(res, {
       game,
       scoresImported: createdScores.length,
