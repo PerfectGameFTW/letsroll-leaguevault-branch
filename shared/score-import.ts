@@ -37,6 +37,7 @@ export class ConquerorScoreParser {
       throw new Error('Invalid file format: File is empty');
     }
 
+    // Parse header
     const headerLine = lines[0];
     console.log('[ScoreParser] Header line:', headerLine);
 
@@ -54,10 +55,8 @@ export class ConquerorScoreParser {
     console.log('[ScoreParser] Parsed header:', { date, weekNumber });
 
     const scores: ScoreImport['scores'] = [];
-    let currentTeam: { number: number; name: string } | null = null;
-    let currentGame = 1;
 
-    // Parse score lines
+    // Parse each line (skipping header and empty lines)
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
@@ -65,59 +64,62 @@ export class ConquerorScoreParser {
       const fields = line.split('\t');
       console.log(`[ScoreParser] Line ${i} fields:`, fields);
 
-      // Team header line
-      if (fields[3] === '*') {
-        try {
-          currentTeam = {
-            number: parseInt(fields[0], 10),
-            name: fields[8] || `Team ${fields[0]}`
-          };
-          console.log('[ScoreParser] Found team:', currentTeam);
-          continue;
-        } catch (error) {
-          console.error('[ScoreParser] Error parsing team header:', error);
-          continue;
-        }
-      }
+      // Skip lines that don't have enough fields for a score record
+      if (fields.length < 12) continue;
 
-      // Score line
-      if (currentTeam && fields.length >= 11) {
-        try {
-          // Parse game number from field 1, default to current if invalid
-          const gameNum = parseInt(fields[1], 10);
-          if (!isNaN(gameNum) && gameNum >= 1 && gameNum <= 3) {
-            currentGame = gameNum;
-          }
+      try {
+        // All required fields should be present on each score line
+        const teamNumber = parseInt(fields[0], 10);
+        const gameNumber = parseInt(fields[1], 10);
+        const position = parseInt(fields[2], 10);
+        const qubicaId = fields[4];
+        const score = parseInt(fields[6], 10);
+        const laneNumber = parseInt(fields[7], 10);
+        const bowlerName = fields[8];
+        const handicap = parseInt(fields[10], 10);
+        const average = parseInt(fields[11], 10);
 
-          // Create score object with default values for optional fields
-          const score = {
-            teamNumber: currentTeam.number,
-            teamName: currentTeam.name,
-            gameNumber: currentGame,
-            position: parseInt(fields[2], 10) || 1,
-            qubicaId: fields[4] || '',
-            score: parseInt(fields[6] || '0', 10),
-            laneNumber: parseInt(fields[7], 10) || 1,
-            bowlerName: fields[8] || 'Unknown',
-            handicap: parseInt(fields[10] || '0', 10),
-            average: parseInt(fields[11] || '0', 10),
-            isVacant: fields[5]?.includes('V') || false,
-            isAbsent: fields[5]?.includes('A') || false,
-            isSub: fields[5]?.includes('S') || false,
-          };
-
-          // Validate required numeric fields
-          if (isNaN(score.position) || isNaN(score.score) || isNaN(score.laneNumber)) {
-            console.warn('[ScoreParser] Invalid numeric fields in score line:', fields);
-            continue;
-          }
-
-          scores.push(score);
-          console.log('[ScoreParser] Added score:', score);
-        } catch (error) {
-          console.error('[ScoreParser] Error processing score line:', error);
+        // Skip lines where numeric fields can't be parsed or are out of range
+        if (isNaN(teamNumber) || isNaN(gameNumber) || isNaN(position) || isNaN(score) || isNaN(laneNumber)) {
+          console.warn('[ScoreParser] Invalid numeric fields on line:', i + 1);
           continue;
         }
+
+        // Skip lines where game number is out of range
+        if (gameNumber < 1 || gameNumber > 3) {
+          console.warn('[ScoreParser] Invalid game number on line:', i + 1);
+          continue;
+        }
+
+        // Parse flags from field 5 (status field)
+        const statusField = fields[5] || '';
+        const isVacant = statusField.includes('V');
+        const isAbsent = statusField.includes('A');
+        const isSub = statusField.includes('S');
+
+        // Create score record
+        const scoreRecord = {
+          teamNumber,
+          teamName: fields[8] || `Team ${teamNumber}`,
+          gameNumber,
+          position,
+          qubicaId,
+          score,
+          laneNumber,
+          bowlerName,
+          handicap: isNaN(handicap) ? 0 : handicap,
+          average: isNaN(average) ? 0 : average,
+          isVacant,
+          isAbsent,
+          isSub
+        };
+
+        scores.push(scoreRecord);
+        console.log('[ScoreParser] Added score:', scoreRecord);
+
+      } catch (error) {
+        console.error('[ScoreParser] Error processing line:', i + 1, error);
+        continue;
       }
     }
 
@@ -125,21 +127,13 @@ export class ConquerorScoreParser {
       throw new Error('No valid scores found in file');
     }
 
-    const result = {
+    console.log('[ScoreParser] Parsed scores:', scores.length);
+
+    return {
       leagueId: 1, // This will be overridden by the route handler
       weekNumber,
       date,
       scores
     };
-
-    console.log('[ScoreParser] Final result:', {
-      weekNumber,
-      date,
-      scoreCount: scores.length,
-      firstScore: scores[0],
-      lastScore: scores[scores.length - 1]
-    });
-
-    return result;
   }
 }
