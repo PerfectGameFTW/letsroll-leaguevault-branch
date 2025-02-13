@@ -71,11 +71,12 @@ export default function BowlerScoresPage() {
     enabled: !!bowlerId,
   });
 
+  // Use historical scores endpoint for complete history
   const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<ApiResponse<ExtendedScore[]>>({
-    queryKey: ["/api/scores", parsedBowlerId],
+    queryKey: ["/api/scores/history", parsedBowlerId],
     queryFn: async () => {
       if (!parsedBowlerId) throw new Error("Bowler ID is required");
-      const response = await fetch(`/api/scores?bowlerId=${parsedBowlerId}`);
+      const response = await fetch(`/api/scores/history?bowlerId=${parsedBowlerId}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error?.message || 'Failed to fetch scores');
@@ -117,7 +118,9 @@ export default function BowlerScoresPage() {
     } else {
       // Update existing week
       weeks[weekIndex].games[score.game.gameNumber - 1] = score;
-      weeks[weekIndex].seriesTotal += score.score || 0;
+      if (!score.isAbsent && !score.isVacant && score.score !== null) {
+        weeks[weekIndex].seriesTotal += score.score;
+      }
     }
 
     return weeks;
@@ -141,10 +144,22 @@ export default function BowlerScoresPage() {
     );
   }
 
-  // Calculate current average
-  const totalPinfall = scores.reduce((sum, score) => sum + (score.score || 0), 0);
-  const gamesPlayed = scores.length;
+  // Calculate current average from all historical games
+  console.log('[BowlerScores] Total scores:', scores.length);
+  const validScores = scores.filter(s => !s.isAbsent && !s.isVacant && s.score !== null);
+  console.log('[BowlerScores] Valid scores:', validScores.length);
+
+  const totalPinfall = validScores.reduce((sum, score) => {
+    console.log('[BowlerScores] Adding score:', score.score);
+    return sum + (score.score || 0);
+  }, 0);
+  console.log('[BowlerScores] Total pinfall:', totalPinfall);
+
+  const gamesPlayed = validScores.length;
+  console.log('[BowlerScores] Games played:', gamesPlayed);
+
   const currentAverage = gamesPlayed > 0 ? Math.round(totalPinfall / gamesPlayed) : 0;
+  console.log('[BowlerScores] Calculated average:', currentAverage);
 
   return (
     <Layout>
