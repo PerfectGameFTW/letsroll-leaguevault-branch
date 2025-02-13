@@ -65,6 +65,8 @@ export interface IStorage {
   // Add new method to interface
   getBowlerByQubicaId(qubicaId: string): Promise<Bowler | undefined>;
   createBatchScores(scores: InsertScore[]): Promise<Score[]>;
+  getGameScores(gameId: number): Promise<Score[]>;
+  getTeamByNumber(leagueId: number, teamNumber: number): Promise<Team | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -373,8 +375,44 @@ export class DatabaseStorage implements IStorage {
 
   async getBowlerScores(bowlerId: number): Promise<Score[]> {
     return db
-      .select()
+      .select({
+        id: scores.id,
+        gameId: scores.gameId,
+        bowlerId: scores.bowlerId,
+        teamId: scores.teamId,
+        score: scores.score,
+        handicap: scores.handicap,
+        average: scores.average,
+        position: scores.position,
+        isVacant: scores.isVacant,
+        isAbsent: scores.isAbsent,
+        isSub: scores.isSub,
+        laneNumber: scores.laneNumber,
+        game: {
+          id: games.id,
+          leagueId: games.leagueId,
+          weekNumber: games.weekNumber,
+          gameNumber: games.gameNumber,
+          date: games.date,
+        },
+        team: {
+          id: teams.id,
+          name: teams.name,
+          number: teams.number,
+          leagueId: teams.leagueId,
+          active: teams.active,
+        },
+        league: {
+          id: leagues.id,
+          name: leagues.name,
+          description: leagues.description,
+          active: leagues.active,
+        }
+      })
       .from(scores)
+      .innerJoin(games, eq(games.id, scores.gameId))
+      .innerJoin(teams, eq(teams.id, scores.teamId))
+      .innerJoin(leagues, eq(leagues.id, teams.leagueId))
       .where(eq(scores.bowlerId, bowlerId))
       .orderBy(desc(games.date), games.gameNumber);
   }
@@ -410,6 +448,13 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     return results;
+  }
+  async getGameScores(gameId: number): Promise<Score[]> {
+    return db
+      .select()
+      .from(scores)
+      .where(eq(scores.gameId, gameId))
+      .orderBy(scores.teamId, scores.position);
   }
   async getTeamByNumber(leagueId: number, teamNumber: number): Promise<Team | undefined> {
     const [result] = await db

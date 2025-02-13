@@ -1,6 +1,5 @@
-import type { JestConfigWithTsJest } from 'ts-jest';
-
-const config: JestConfigWithTsJest = {
+/** @type {import('ts-jest').JestConfigWithTsJest} */
+module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   moduleNameMapper: {
@@ -16,5 +15,3 @@ const config: JestConfigWithTsJest = {
     '**/server/**/__tests__/**/*.test.ts',
   ],
 };
-
-module.exports = config;

@@ -1,12 +1,11 @@
-import { parseQubicaScoreFile } from '../../utils/qubica-parser';
-import { ScoreImportService, ScoreImportError } from '../score-import';
-import { storage } from '../../storage';
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { ScoreImportService, ScoreImportError } from '../score-import.js';
+import { storage } from '../../storage.js';
+import type { Game, Team, Bowler } from '@shared/schema.js';
 
-// Mock storage methods
-jest.mock('../../storage', () => ({
+jest.mock('../../storage.js', () => ({
   storage: {
     getLeague: jest.fn(),
     createGame: jest.fn(),
@@ -21,7 +20,7 @@ describe('ScoreImportService', () => {
   const currentFilePath = fileURLToPath(import.meta.url);
   const testDataPath = join(dirname(currentFilePath), '../../../attached_assets/bls_farmmxd_24_25__Conquerer X__wk020.S00');
   const sampleFileContent = readFileSync(testDataPath, 'utf-8');
-  
+
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -35,24 +34,29 @@ describe('ScoreImportService', () => {
     });
 
     // Mock game creation
-    (storage.createGame as jest.Mock).mockImplementation((game) => ({
+    (storage.createGame as jest.Mock).mockImplementation((game): Game => ({
       ...game,
       id: Math.floor(Math.random() * 1000),
     }));
 
     // Mock team lookup
-    (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId, number) => ({
+    (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId: number, number: number): Team => ({
       id: number,
       number,
       leagueId,
       name: `Team ${number}`,
+      active: true,
     }));
 
     // Mock bowler lookup/creation
-    (storage.getBowlerByQubicaId as jest.Mock).mockImplementation((qubicaId) => ({
+    (storage.getBowlerByQubicaId as jest.Mock).mockImplementation((qubicaId: string): Bowler => ({
       id: parseInt(qubicaId),
       name: `Bowler ${qubicaId}`,
+      email: `bowler${qubicaId}@example.com`,
       qubicaId,
+      active: true,
+      order: 0,
+      squareCustomerId: null,
     }));
 
     // Mock score creation
@@ -96,18 +100,19 @@ describe('ScoreImportService', () => {
     });
 
     // Mock game creation
-    (storage.createGame as jest.Mock).mockImplementation((game) => ({
+    (storage.createGame as jest.Mock).mockImplementation((game): Game => ({
       ...game,
       id: Math.floor(Math.random() * 1000),
     }));
 
     // Mock team lookup to return null for some teams
-    (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId, number) => 
+    (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId: number, number: number): Team | null => 
       number % 2 === 0 ? null : {
         id: number,
         number,
         leagueId,
         name: `Team ${number}`,
+        active: true,
       }
     );
 
@@ -116,7 +121,7 @@ describe('ScoreImportService', () => {
 
     expect(result.gamesCreated).toBe(3);
     expect(result.scoresCreated).toBeGreaterThan(0);
-    
+
     // Verify that createBatchScores was only called with scores for existing teams
     const createBatchScoresCalls = (storage.createBatchScores as jest.Mock).mock.calls;
     createBatchScoresCalls.forEach(([scores]) => {
@@ -135,26 +140,30 @@ describe('ScoreImportService', () => {
     });
 
     // Mock game creation
-    (storage.createGame as jest.Mock).mockImplementation((game) => ({
+    (storage.createGame as jest.Mock).mockImplementation((game): Game => ({
       ...game,
       id: Math.floor(Math.random() * 1000),
     }));
 
     // Mock team lookup
-    (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId, number) => ({
+    (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId: number, number: number): Team => ({
       id: number,
       number,
       leagueId,
       name: `Team ${number}`,
+      active: true,
     }));
 
     // Mock bowler lookup to return null
     (storage.getBowlerByQubicaId as jest.Mock).mockResolvedValue(null);
 
     // Mock bowler creation
-    (storage.createBowler as jest.Mock).mockImplementation((bowler) => ({
+    (storage.createBowler as jest.Mock).mockImplementation((bowler): Bowler => ({
       ...bowler,
       id: Math.floor(Math.random() * 1000),
+      active: true,
+      order: 0,
+      squareCustomerId: null,
     }));
 
     const service = new ScoreImportService(1);

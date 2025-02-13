@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Layout } from "@/components/layout";
+import { Layout } from "@/components/layout.js";
 import {
   Table,
   TableBody,
@@ -8,57 +8,68 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+} from "@/components/ui/table.js";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
 import { Loader2, ArrowLeft } from "lucide-react";
-import type { Score, Bowler, Game, League, Team } from "@shared/schema";
+import type { Score, Bowler } from "@shared/schema.js";
 import { format } from "date-fns";
 import { Link, useParams } from "wouter";
 
+// Updated to match the API response structure
 interface ExtendedScore extends Score {
-  game?: Game;
-  league?: League;
-  team?: Team;
+  game: {
+    id: number;
+    leagueId: number;
+    weekNumber: number;
+    gameNumber: number;
+    date: string;
+  };
+  team: {
+    id: number;
+    name: string;
+    number: number;
+    leagueId: number;
+    active: boolean;
+  };
+  league: {
+    id: number;
+    name: string;
+    description: string | null;
+    active: boolean;
+  };
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
 }
 
 export default function BowlerScoresPage() {
-  const params = useParams();
+  const params = useParams<{ bowlerId: string }>();
   const bowlerId = params.bowlerId ? parseInt(params.bowlerId) : undefined;
 
   // Fetch bowler details
-  const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<{ data: Bowler }>({
+  const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<ApiResponse<Bowler>>({
     queryKey: [`/api/bowlers/${bowlerId}`],
     enabled: !!bowlerId,
   });
 
   // Fetch all scores for this bowler
-  const { data: scoresResponse, isLoading: loadingScores } = useQuery<{ data: Score[] }>({
+  const { data: scoresResponse, isLoading: loadingScores } = useQuery<ApiResponse<ExtendedScore[]>>({
     queryKey: ["/api/scores", { bowlerId }],
     enabled: !!bowlerId,
   });
 
-  // Fetch games to get dates and week numbers
-  const { data: gamesResponse, isLoading: loadingGames } = useQuery<{ data: Game[] }>({
-    queryKey: ["/api/games"],
-  });
-
-  // Fetch leagues and teams for context
-  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
-    queryKey: ["/api/leagues"],
-  });
-
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
-    queryKey: ["/api/teams"],
+  console.log('[BowlerScores] Responses:', {
+    bowler: bowlerResponse,
+    scores: scoresResponse
   });
 
   const bowler = bowlerResponse?.data;
   const scores = scoresResponse?.data || [];
-  const games = gamesResponse?.data || [];
-  const leagues = leaguesResponse?.data || [];
-  const teams = teamsResponse?.data || [];
 
-  const isLoading = loadingBowler || loadingScores || loadingGames || loadingLeagues || loadingTeams;
+  const isLoading = loadingBowler || loadingScores;
 
   if (isLoading) {
     return (
@@ -77,24 +88,6 @@ export default function BowlerScoresPage() {
       </Layout>
     );
   }
-
-  // Calculate statistics
-  const recentScores: ExtendedScore[] = scores
-    .map(score => {
-      const game = games.find(g => g.id === score.gameId);
-      const league = game ? leagues.find(l => l.id === game.leagueId) : undefined;
-      const team = teams.find(t => t.id === score.teamId);
-      return {
-        ...score,
-        game,
-        league,
-        team,
-      };
-    })
-    .sort((a, b) => {
-      if (!a.game?.date || !b.game?.date) return 0;
-      return new Date(b.game.date).getTime() - new Date(a.game.date).getTime();
-    });
 
   // Calculate current average
   const totalPinfall = scores.reduce((sum, score) => sum + score.score, 0);
@@ -154,17 +147,13 @@ export default function BowlerScoresPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {recentScores.map((score) => (
-                      <TableRow key={score.id}>
+                    {scores.map((score, index) => (
+                      <TableRow key={index}>
                         <TableCell>
-                          {score.game?.date ? (
-                            format(new Date(score.game.date), "MMM d, yyyy")
-                          ) : (
-                            "Unknown"
-                          )}
+                          {format(new Date(score.game.date), "MMM d, yyyy")}
                         </TableCell>
-                        <TableCell>{score.league?.name || "Unknown League"}</TableCell>
-                        <TableCell>{score.team?.name || "Unknown Team"}</TableCell>
+                        <TableCell>{score.league.name}</TableCell>
+                        <TableCell>{score.team.name}</TableCell>
                         <TableCell className="text-right">{score.score}</TableCell>
                         <TableCell className="text-right">{score.handicap}</TableCell>
                         <TableCell className="text-right font-medium">

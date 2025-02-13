@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { storage } from '../storage';
-import { sendSuccess, sendError } from '../utils/api';
+import { storage } from '../storage.js';
+import { sendSuccess, sendError } from '../utils/api.js';
 import { z } from 'zod';
 
 const router = Router();
@@ -10,12 +10,14 @@ const getScoresQuerySchema = z.object({
   gameIds: z.union([
     z.string().transform(val => [Number(val)]),
     z.array(z.string()).transform(val => val.map(Number))
-  ])
+  ]).optional(),
+  bowlerId: z.string().transform(Number).optional(),
 }).transform(data => ({
-  gameIds: data.gameIds.filter(id => !isNaN(id))
+  gameIds: data.gameIds?.filter(id => !isNaN(id)) ?? [],
+  bowlerId: isNaN(data.bowlerId) ? undefined : data.bowlerId
 }));
 
-// Get scores for specific games
+// Get scores
 router.get('/', async (req, res) => {
   try {
     console.log('[Scores] Processing request with query:', req.query);
@@ -24,19 +26,30 @@ router.get('/', async (req, res) => {
     const validationResult = getScoresQuerySchema.safeParse(req.query);
     if (!validationResult.success) {
       console.error('[Scores] Validation error:', validationResult.error);
-      return sendError(res, 'Invalid game IDs provided', 400);
+      return sendError(res, 'Invalid query parameters', 400);
     }
 
-    const { gameIds } = validationResult.data;
-    if (gameIds.length === 0) {
-      return sendError(res, 'No valid game IDs provided', 400);
+    const { gameIds, bowlerId } = validationResult.data;
+    console.log('[Scores] Parsed query parameters:', { gameIds, bowlerId });
+
+    // If bowlerId is provided, fetch scores for that bowler
+    if (bowlerId !== undefined) {
+      console.log('[Scores] Fetching scores for bowler:', bowlerId);
+      const scores = await storage.getBowlerScores(bowlerId);
+      console.log('[Scores] Retrieved bowler scores:', scores.length);
+      console.log('[Scores] Sample score:', scores[0]);
+      return sendSuccess(res, scores);
     }
 
-    console.log('[Scores] Fetching scores for games:', gameIds);
-    const scores = (await Promise.all(gameIds.map(id => storage.getScores(id)))).flat();
-    console.log('[Scores] Retrieved scores:', scores.length);
+    // Otherwise, fetch scores for specific games
+    if (gameIds.length > 0) {
+      console.log('[Scores] Fetching scores for games:', gameIds);
+      const scores = (await Promise.all(gameIds.map(id => storage.getScores(id)))).flat();
+      console.log('[Scores] Retrieved game scores:', scores.length);
+      return sendSuccess(res, scores);
+    }
 
-    sendSuccess(res, scores);
+    return sendError(res, 'No valid query parameters provided', 400);
   } catch (error) {
     console.error('[Scores] Error fetching scores:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
