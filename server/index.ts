@@ -24,7 +24,7 @@ app.use((req, res, next) => {
   res.json = function(body) {
     if (req.path.startsWith('/api/payments')) {
       console.log(`[${requestId}] Payment response body:`, JSON.stringify(body));
-    } else {
+    } else if (process.env.NODE_ENV === 'development') {
       console.log(`[${requestId}] Response body:`, JSON.stringify(body));
     }
     return oldJson.call(this, body);
@@ -36,10 +36,20 @@ app.use((req, res, next) => {
   next();
 });
 
-// API-specific middleware
-app.use('/api', (req, res, next) => {
-  res.setHeader('Content-Type', 'application/json');
-  next();
+// Global error handler middleware
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('[Error]', err);
+  if (!res.headersSent) {
+    res.status(err.status || 500).json({
+      success: false,
+      error: {
+        message: err.message || "Internal Server Error",
+        code: err.code,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+  next(err);
 });
 
 // Health check endpoint with port readiness indicator
@@ -69,6 +79,13 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+
+// API-specific middleware
+app.use('/api', (req, res, next) => {
+  res.setHeader('Content-Type', 'application/json');
+  next();
+});
+
 // Initialize server with proper startup sequence
 async function initializeServer() {
   try {
@@ -83,21 +100,6 @@ async function initializeServer() {
     console.log('[Server] Registering API routes...');
     const server = registerRoutes(app);
 
-    // Global API error handler
-    app.use('/api', (err: any, req: Request, res: Response, next: NextFunction) => {
-      console.error('[API Error]', err);
-      if (!res.headersSent) {
-        res.status(err.status || 500).json({
-          success: false,
-          error: {
-            message: err.message || "Internal Server Error",
-            code: err.code,
-            timestamp: new Date().toISOString()
-          }
-        });
-      }
-    });
-
     // Frontend handling
     if (app.get("env") === "development") {
       await setupVite(app, server);
@@ -105,7 +107,7 @@ async function initializeServer() {
       serveStatic(app);
     }
 
-    // Start server with port handling
+    // Start server with port handling and readiness check
     const startServer = async (initialPort: number = 5000): Promise<void> => {
       for (let port = initialPort; port < initialPort + 10; port++) {
         try {
@@ -117,6 +119,10 @@ async function initializeServer() {
             const onListening = () => {
               server.removeListener('error', onError);
               console.log(`[Server] Ready and listening on port ${port}`);
+              // Signal that the server is ready
+              if (process.send) {
+                process.send('ready');
+              }
               resolve();
             };
             server.once('error', onError);
@@ -136,7 +142,7 @@ async function initializeServer() {
     };
 
     await startServer();
-    console.log('[Server] Application fully initialized and ready for testing');
+    console.log('[Server] Application fully initialized and ready for requests');
   } catch (error) {
     console.error('[Server] Fatal error during initialization:', error);
     process.exit(1);

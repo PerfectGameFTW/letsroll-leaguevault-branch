@@ -17,15 +17,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Loader2, ArrowLeft, AlertCircle } from "lucide-react";
 import type { Game, Score, Team, Bowler, League } from "@shared/schema";
 import { format } from "date-fns";
 import { Link, useParams } from "wouter";
+import { cn } from "@/lib/utils";
 
 interface TeamScores {
   team: Team;
   scores: (Score & { bowler?: Bowler })[];
   games: Game[];
+  totalPins: number;
+  averageScore: number;
 }
 
 export default function LeagueScoresPage() {
@@ -33,13 +37,25 @@ export default function LeagueScoresPage() {
   const leagueId = params.leagueId ? parseInt(params.leagueId) : undefined;
   const [selectedWeek, setSelectedWeek] = useState<number>();
 
-  // Fetch league details
+  // Validate league ID early
+  if (!leagueId) {
+    return (
+      <Layout>
+        <div className="flex items-center gap-2 p-4 rounded-md bg-destructive/10 text-destructive">
+          <AlertCircle className="h-5 w-5" />
+          <p>Invalid league ID provided</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Query for league details with proper error handling
   const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
     enabled: !!leagueId,
   });
 
-  // Fetch games for the league
+  // Query for games with proper error handling
   const { data: gamesResponse, isLoading: loadingGames, error: gamesError } = useQuery<{ data: Game[] }>({
     queryKey: ["/api/games", { leagueId }],
     enabled: !!leagueId,
@@ -48,7 +64,7 @@ export default function LeagueScoresPage() {
   const league = leagueResponse?.data;
   const games = gamesResponse?.data || [];
 
-  // Get unique weeks from games
+  // Get unique weeks from games, sorted in descending order
   const weeks = Array.from(new Set(games.map(g => g.weekNumber))).sort((a, b) => b - a);
 
   // If no week is selected, default to the most recent
@@ -59,19 +75,19 @@ export default function LeagueScoresPage() {
   // Get games for the selected week
   const weekGames = games.filter(g => g.weekNumber === selectedWeek);
 
-  // Fetch scores for the selected week's games
+  // Query for scores with proper error handling
   const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<{ data: Score[] }>({
     queryKey: ["/api/scores", { gameIds: weekGames.map(g => g.id) }],
     enabled: weekGames.length > 0,
   });
 
-  // Fetch teams
+  // Query for teams with proper error handling
   const { data: teamsResponse, isLoading: loadingTeams, error: teamsError } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams", { leagueId }],
     enabled: !!leagueId,
   });
 
-  // Fetch bowlers
+  // Query for bowlers with proper error handling
   const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
   });
@@ -80,12 +96,24 @@ export default function LeagueScoresPage() {
   const teams = teamsResponse?.data || [];
   const bowlers = bowlersResponse?.data || [];
 
-  // Show loading state
+  // Show loading state with back navigation
   if (loadingLeague || loadingGames || loadingScores || loadingTeams || loadingBowlers) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
+        <div className="space-y-4">
+          <Link
+            href={`/leagues/${leagueId}`}
+            className="text-muted-foreground hover:text-foreground flex items-center"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to League
+          </Link>
+          <div className="flex items-center justify-center h-[50vh]">
+            <div className="flex items-center gap-2">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="text-muted-foreground">Loading scores...</span>
+            </div>
+          </div>
         </div>
       </Layout>
     );
@@ -104,8 +132,16 @@ export default function LeagueScoresPage() {
     return (
       <Layout>
         <div className="space-y-4">
+          <Link
+            href={`/leagues/${leagueId}`}
+            className="text-muted-foreground hover:text-foreground flex items-center mb-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to League
+          </Link>
           {errors.map(({ type, error }) => (
-            <div key={type} className="p-4 rounded-md bg-destructive/10 text-destructive">
+            <div key={type} className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 flex-shrink-0" />
               <p className="font-medium">Error loading {type}: {error instanceof Error ? error.message : 'Unknown error'}</p>
             </div>
           ))}
@@ -117,12 +153,24 @@ export default function LeagueScoresPage() {
   if (!league) {
     return (
       <Layout>
-        <div className="text-center text-destructive">League not found</div>
+        <div className="space-y-4">
+          <Link
+            href="/leagues"
+            className="text-muted-foreground hover:text-foreground flex items-center mb-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Leagues
+          </Link>
+          <div className="flex items-center gap-2 p-4 rounded-md bg-destructive/10 text-destructive">
+            <AlertCircle className="h-5 w-5" />
+            <p>League not found</p>
+          </div>
+        </div>
       </Layout>
     );
   }
 
-  // Group scores by team and add bowler information
+  // Calculate team scores and statistics
   const teamScores: TeamScores[] = teams
     .filter(team => team.leagueId === leagueId)
     .map(team => {
@@ -134,12 +182,20 @@ export default function LeagueScoresPage() {
         }))
         .sort((a, b) => a.position - b.position);
 
+      // Calculate team statistics
+      const totalPins = teamScores.reduce((sum, score) => sum + (score.score || 0), 0);
+      const averageScore = teamScores.length > 0 ? Math.round(totalPins / teamScores.length) : 0;
+
       return {
         team,
         scores: teamScores,
         games: weekGames,
+        totalPins,
+        averageScore,
       };
-    });
+    })
+    // Sort teams by total pins (highest first)
+    .sort((a, b) => b.totalPins - a.totalPins);
 
   return (
     <Layout>
@@ -154,12 +210,12 @@ export default function LeagueScoresPage() {
 
         <div>
           <h1 className="text-2xl font-bold mb-2">{league.name} Scores</h1>
-          <p className="text-muted-foreground">
-            View weekly scores and statistics
+          <p className="text-muted-foreground mb-6">
+            View weekly scores and statistics for all teams
           </p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 mb-6">
           <Select
             value={selectedWeek?.toString()}
             onValueChange={(value) => setSelectedWeek(parseInt(value))}
@@ -183,21 +239,27 @@ export default function LeagueScoresPage() {
         </div>
 
         {weeks.length === 0 ? (
-          <div className="text-center text-muted-foreground py-8">
-            No games recorded for this league yet
+          <div className="text-center p-8 border rounded-lg bg-background">
+            <p className="text-lg text-muted-foreground">No games have been recorded for this league yet</p>
+            <p className="text-sm text-muted-foreground mt-2">Scores will appear here once games are imported</p>
           </div>
         ) : (
           <div className="grid gap-6">
-            {teamScores.map(({ team, scores, games }) => (
-              <Card key={team.id}>
-                <CardHeader>
-                  <CardTitle>{team.name}</CardTitle>
+            {teamScores.map(({ team, scores, games, totalPins, averageScore }) => (
+              <Card key={team.id} className="hover:border-primary/50 transition-colors">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between">
+                    <CardTitle>{team.name}</CardTitle>
+                    <div className="text-sm text-muted-foreground">
+                      Average: {averageScore} | Total Pins: {totalPins}
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Bowler</TableHead>
+                        <TableHead className="w-[200px]">Bowler</TableHead>
                         {games.map((game, index) => (
                           <TableHead key={game.id} className="text-right">
                             Game {index + 1}
@@ -207,9 +269,18 @@ export default function LeagueScoresPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {scores.length > 0 ? (
+                      {scores.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={games.length + 2}
+                            className="text-center text-muted-foreground py-8"
+                          >
+                            No scores recorded for this team in Week {selectedWeek}
+                          </TableCell>
+                        </TableRow>
+                      ) : (
                         scores.map((score) => {
-                          const gameScores = games.map(game => 
+                          const gameScores = games.map(game =>
                             scores.find(s => s.gameId === game.id && s.position === score.position)
                           );
                           const series = gameScores.reduce((sum, s) => sum + (s?.score || 0), 0);
@@ -218,45 +289,69 @@ export default function LeagueScoresPage() {
                             <TableRow key={`${score.bowlerId}-${score.position}`}>
                               <TableCell>
                                 {score.isVacant ? (
-                                  <span className="text-muted-foreground">Vacant</span>
+                                  <span className="text-muted-foreground italic">Vacant</span>
                                 ) : score.isAbsent ? (
-                                  <span className="text-muted-foreground">Absent</span>
+                                  <span className="text-muted-foreground italic">Absent</span>
                                 ) : score.bowler ? (
-                                  <Link
-                                    href={`/bowlers/${score.bowler.id}`}
-                                    className="hover:underline"
-                                  >
-                                    {score.bowler.name}
+                                  <div className="flex items-center gap-2">
+                                    <Link
+                                      href={`/bowlers/${score.bowler.id}`}
+                                      className="hover:underline"
+                                    >
+                                      {score.bowler.name}
+                                    </Link>
                                     {score.isSub && (
-                                      <span className="ml-2 text-xs text-muted-foreground">
-                                        (Sub)
+                                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                        Sub
                                       </span>
                                     )}
-                                  </Link>
+                                  </div>
                                 ) : (
-                                  "Unknown Bowler"
+                                  <span className="text-muted-foreground">Unknown Bowler</span>
                                 )}
                               </TableCell>
                               {gameScores.map((gameScore, i) => (
-                                <TableCell key={i} className="text-right">
-                                  {gameScore?.score || "-"}
+                                <TableCell
+                                  key={i}
+                                  className={cn(
+                                    "text-right font-medium",
+                                    gameScore?.score && gameScore.score >= 250 && "text-green-600",
+                                    gameScore?.score && gameScore.score >= 200 && gameScore.score < 250 && "text-primary",
+                                  )}
+                                >
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>{gameScore?.score || "-"}</span>
+                                    </TooltipTrigger>
+                                    {gameScore?.score && gameScore.score >= 200 && (
+                                      <TooltipContent>
+                                        {gameScore.score >= 250 ? "Perfect game approaching!" : "Great game!"}
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
                                 </TableCell>
                               ))}
-                              <TableCell className="text-right font-medium">
-                                {series}
+                              <TableCell
+                                className={cn(
+                                  "text-right font-medium",
+                                  series >= 700 && "text-green-600",
+                                  series >= 600 && series < 700 && "text-primary"
+                                )}
+                              >
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span>{series}</span>
+                                  </TooltipTrigger>
+                                  {series >= 600 && (
+                                    <TooltipContent>
+                                      {series >= 700 ? "Outstanding series!" : "Great series!"}
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
                               </TableCell>
                             </TableRow>
                           );
                         })
-                      ) : (
-                        <TableRow>
-                          <TableCell
-                            colSpan={games.length + 2}
-                            className="text-center text-muted-foreground"
-                          >
-                            No scores recorded for this team
-                          </TableCell>
-                        </TableRow>
                       )}
                     </TableBody>
                   </Table>
