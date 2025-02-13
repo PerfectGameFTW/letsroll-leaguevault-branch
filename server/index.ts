@@ -5,6 +5,8 @@ import { testConnection } from "./db.js";
 import { createServer } from 'http';
 
 const app = express();
+const PORT = process.env.PORT || 5000;
+let serverInstance: ReturnType<typeof server.listen> | null = null;
 
 // Basic middleware
 app.use(express.json());
@@ -22,7 +24,7 @@ app.use((req, res, next) => {
 
   // Add response logging
   const oldJson = res.json;
-  res.json = function(body) {
+  res.json = function (body) {
     console.log(`[${requestId}] Response body:`, JSON.stringify(body));
     return oldJson.call(this, body);
   };
@@ -80,6 +82,14 @@ if (app.get("env") === "development") {
       next(e);
     }
   });
+  
+  // Add CORS headers for development
+  app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    next();
+  });
 } else {
   console.log('[Server] Setting up static file serving for production...');
   serveStatic(app);
@@ -101,35 +111,50 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
-let serverInstance: ReturnType<typeof server.listen> | null = null;
-
-const PORT = 5000;
-
 // Initialize server
 async function initializeServer() {
   try {
-    console.log('[Server] Starting initialization...');
+    console.log('[Server] Starting initialization on port', PORT);
 
     // Test database connection
     console.log('[Server] Testing database connection...');
     await testConnection();
     console.log('[Server] Database connection successful');
 
-    // Start server
+    // Start server with explicit host binding and port recovery
     await new Promise<void>((resolve, reject) => {
-      const onError = (err: Error) => {
-        server.removeListener('listening', onListening);
-        reject(err);
-      };
-      const onListening = () => {
-        server.removeListener('error', onError);
-        console.log(`[Server] Ready and listening on port ${PORT}`);
-        resolve();
+      const startServer = () => {
+        const onError = (err: Error & { code?: string }) => {
+          server.removeListener('listening', onListening);
+          if (err.code === 'EADDRINUSE') {
+            console.log('[Server] Port in use, retrying in 3 seconds...');
+            setTimeout(() => {
+              if (serverInstance) {
+                serverInstance.close();
+              }
+              serverInstance = server.listen(PORT);
+              serverInstance.once('error', onError);
+              serverInstance.once('listening', onListening);
+            }, 3000);
+          } else {
+            console.error('[Server] Failed to start:', err);
+            reject(err);
+          }
+        };
+
+        const onListening = () => {
+          server.removeListener('error', onError);
+          const addr = server.address();
+          console.log(`[Server] Ready and listening on ${typeof addr === 'string' ? addr : `port ${addr?.port}`}`);
+          resolve();
+        };
+
+        server.once('error', onError);
+        server.once('listening', onListening);
+        serverInstance = server.listen(PORT);
       };
 
-      server.once('error', onError);
-      server.once('listening', onListening);
-      serverInstance = server.listen(PORT, '0.0.0.0');
+      startServer();
     });
 
     console.log('[Server] Application fully initialized and ready for requests');
@@ -139,17 +164,31 @@ async function initializeServer() {
   }
 }
 
-// Cleanup on exit
-process.on('SIGTERM', () => {
-  console.log('[Server] Received SIGTERM signal, shutting down...');
+// Enhanced cleanup handlers
+function cleanup() {
+  console.log('[Server] Cleaning up...');
   if (serverInstance) {
     serverInstance.close(() => {
       console.log('[Server] Server closed');
       process.exit(0);
     });
+
+    // Force close after 3 seconds if graceful shutdown fails
+    setTimeout(() => {
+      console.log('[Server] Forcing exit after timeout');
+      process.exit(1);
+    }, 3000);
   } else {
     process.exit(0);
   }
+}
+
+// Register cleanup handlers
+process.on('SIGTERM', cleanup);
+process.on('SIGINT', cleanup);
+process.on('uncaughtException', (err) => {
+  console.error('[Server] Uncaught exception:', err);
+  cleanup();
 });
 
 // Start the server

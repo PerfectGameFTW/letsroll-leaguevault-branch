@@ -6,15 +6,25 @@ export class QubicaScoreParser {
 
   constructor(fileContent: string) {
     this.lines = fileContent.split('\n').map(line => line.trim());
+    console.log('[QubicaParser] Processing file with', this.lines.length, 'lines');
   }
 
   private parseHeader(): QubicaScoreFileHeader {
+    if (this.lines.length === 0) {
+      throw new Error('Empty file provided');
+    }
+
     const headerLine = this.lines[0];
     if (!headerLine.startsWith('*')) {
       throw new Error('Invalid header format: header must start with *');
     }
 
+    console.log('[QubicaParser] Parsing header line:', headerLine);
     const parts = headerLine.split('\t');
+
+    if (parts.length < 5) {
+      throw new Error('Invalid header format: missing required fields');
+    }
 
     // Format example: "* 12/30/1899 12:00 am\tConqueror X (QubicaAMF)\tFarmington Mixed 24/25\tWeek 20\tFebruary 3, 2025  18:30\t365879\tMichael Shearer, Perfect Game"
     const firstPart = parts[0].substring(2); // Remove '* ' prefix
@@ -26,10 +36,11 @@ export class QubicaScoreParser {
     const description = parts[6] || '';
 
     // Parse week number
-    const weekNumber = parseInt(weekStr.replace('Week ', ''));
-    if (isNaN(weekNumber)) {
+    const weekMatch = weekStr.match(/Week\s+(\d+)/i);
+    if (!weekMatch) {
       throw new Error('Invalid week number format');
     }
+    const weekNumber = parseInt(weekMatch[1]);
 
     // Parse date and time
     const [datePart, timePart] = dateTimeStr.trim().split(/\s+(?=\d{2}:\d{2}$)/);
@@ -50,6 +61,7 @@ export class QubicaScoreParser {
   }
 
   private isTeamHeaderLine(line: string): boolean {
+    if (!line) return false;
     const parts = line.split('\t');
     // Team headers have position "0" in the third column
     return parts.length >= 10 && parts[2] === '0';
@@ -57,7 +69,10 @@ export class QubicaScoreParser {
 
   private parseLine(line: string): [string, number, string, string, number] | null {
     const parts = line.split('\t');
-    if (parts.length < 10) return null;
+    if (parts.length < 10) {
+      console.log('[QubicaParser] Invalid line format:', line);
+      return null;
+    }
 
     const teamNumber = parts[0];
     const gameNumber = parseInt(parts[1]);
@@ -66,6 +81,7 @@ export class QubicaScoreParser {
     const laneNumber = parseInt(parts[8]);
 
     if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > 3) {
+      console.log('[QubicaParser] Invalid game number:', gameNumber);
       return null;
     }
 
@@ -96,6 +112,14 @@ export class QubicaScoreParser {
       hasBumpers
     ] = parts;
 
+    const parsedScore = parseInt(score);
+    if (isNaN(parsedScore) || parsedScore < 0) {
+      console.log('[QubicaParser] Invalid score value:', score);
+      return null;
+    }
+
+    console.log(`[QubicaParser] Parsed bowler score: ${bowlerName} (ID: ${bowlerId}) - Score: ${parsedScore}`);
+
     return {
       teamNumber,
       gameNumber,
@@ -107,12 +131,12 @@ export class QubicaScoreParser {
         isAbsent: status2 === 'A',
         isSub: status1 === 'S'
       },
-      score: parseInt(score),
+      score: parsedScore,
       laneNumber,
       bowlerName,
       scoreSheet,
-      handicap: parseInt(handicap),
-      average: parseInt(average),
+      handicap: parseInt(handicap) || 0,
+      average: parseInt(average) || 0,
       hasBumpers: hasBumpers === 'Y'
     };
   }
@@ -124,6 +148,8 @@ export class QubicaScoreParser {
     const [teamNumber, gameNumber, _position, _recordNumber, laneNumber] = lineInfo;
     const parts = startLine.split('\t');
     const teamName = parts[9];
+
+    console.log(`[QubicaParser] Parsing team: ${teamName} (Number: ${teamNumber})`);
 
     // Will hold all games for this team
     const teamGames: QubicaTeamGame[] = [];
@@ -152,6 +178,7 @@ export class QubicaScoreParser {
     // Create team games for each game number
     for (const [gameNum, bowlers] of gameScores) {
       if (bowlers.length > 0) {
+        console.log(`[QubicaParser] Team ${teamName} - Game ${gameNum}: ${bowlers.length} bowlers`);
         teamGames.push({
           teamNumber,
           gameNumber: gameNum,
@@ -166,6 +193,7 @@ export class QubicaScoreParser {
   }
 
   public parse(): QubicaScoreImport {
+    console.log('[QubicaParser] Starting parse process...');
     const header = this.parseHeader();
     const games: QubicaTeamGame[] = [];
 
@@ -197,12 +225,14 @@ export class QubicaScoreParser {
       return acc;
     }, {} as Record<number, number>);
     console.log('[QubicaParser] Game distribution:', gameDistribution);
+    console.log('[QubicaParser] Total games parsed:', games.length);
 
     return { header, games };
   }
 }
 
 export const parseQubicaScoreFile = (fileContent: string): QubicaScoreImport => {
+  console.log('[QubicaParser] Starting score file parse');
   const parser = new QubicaScoreParser(fileContent);
   return parser.parse();
 };
