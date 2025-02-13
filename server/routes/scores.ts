@@ -1,31 +1,41 @@
 import { Router } from 'express';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api';
+import { z } from 'zod';
 
 const router = Router();
+
+// Input validation schema
+const getScoresQuerySchema = z.object({
+  gameIds: z.union([
+    z.string().transform(val => [Number(val)]),
+    z.array(z.string()).transform(val => val.map(Number))
+  ])
+}).transform(data => ({
+  gameIds: data.gameIds.filter(id => !isNaN(id))
+}));
 
 // Get scores for specific games
 router.get('/', async (req, res) => {
   try {
-    const { gameIds } = req.query;
-    if (!gameIds) {
-      return sendError(res, 'Game IDs are required', 400);
-    }
+    console.log('[Scores] Processing request with query:', req.query);
 
-    // Handle both array and single value cases
-    const ids = Array.isArray(gameIds) 
-      ? gameIds.map(id => Number(id))
-      : typeof gameIds === 'string' 
-        ? [Number(gameIds)]
-        : [];
-
-    // Validate that we have valid numbers
-    if (ids.some(isNaN)) {
+    // Validate input
+    const validationResult = getScoresQuerySchema.safeParse(req.query);
+    if (!validationResult.success) {
+      console.error('[Scores] Validation error:', validationResult.error);
       return sendError(res, 'Invalid game IDs provided', 400);
     }
 
-    // Get scores for each game ID and combine results
-    const scores = (await Promise.all(ids.map(id => storage.getScores(id)))).flat();
+    const { gameIds } = validationResult.data;
+    if (gameIds.length === 0) {
+      return sendError(res, 'No valid game IDs provided', 400);
+    }
+
+    console.log('[Scores] Fetching scores for games:', gameIds);
+    const scores = (await Promise.all(gameIds.map(id => storage.getScores(id)))).flat();
+    console.log('[Scores] Retrieved scores:', scores.length);
+
     sendSuccess(res, scores);
   } catch (error) {
     console.error('[Scores] Error fetching scores:', error);

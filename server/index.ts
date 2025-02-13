@@ -43,6 +43,9 @@ app.use('/api', (req, res, next) => {
 console.log('[Server] Registering API routes...');
 const server = registerRoutes(app);
 
+// Set max listeners to avoid warning
+server.setMaxListeners(20);
+
 // API catch-all middleware (before Vite)
 app.use('/api/*', (req, res) => {
   console.log('[API] Unhandled API route:', req.method, req.path);
@@ -58,13 +61,19 @@ app.use('/api/*', (req, res) => {
 // Frontend handling after API routes
 if (app.get("env") === "development") {
   console.log('[Server] Setting up Vite middleware for development...');
+  let viteSetupComplete = false;
+
   app.use(async (req, res, next) => {
     // Skip Vite for API routes
     if (req.path.startsWith('/api/')) {
       return next();
     }
+
     try {
-      await setupVite(app, server);
+      if (!viteSetupComplete) {
+        await setupVite(app, server);
+        viteSetupComplete = true;
+      }
       next();
     } catch (e) {
       next(e);
@@ -91,6 +100,8 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
+let serverInstance: ReturnType<typeof server.listen> | null = null;
+
 // Initialize server
 async function initializeServer() {
   try {
@@ -103,6 +114,14 @@ async function initializeServer() {
 
     // Start server with port handling
     const startServer = async (initialPort: number = 5000): Promise<void> => {
+      if (serverInstance) {
+        console.log('[Server] Cleaning up previous server instance...');
+        await new Promise<void>((resolve) => {
+          serverInstance?.close(() => resolve());
+        });
+        serverInstance = null;
+      }
+
       for (let port = initialPort; port < initialPort + 10; port++) {
         try {
           await new Promise<void>((resolve, reject) => {
@@ -118,9 +137,10 @@ async function initializeServer() {
               }
               resolve();
             };
+
             server.once('error', onError);
             server.once('listening', onListening);
-            server.listen(port, '0.0.0.0');
+            serverInstance = server.listen(port, '0.0.0.0');
           });
           return;
         } catch (err: any) {
@@ -141,6 +161,19 @@ async function initializeServer() {
     process.exit(1);
   }
 }
+
+// Cleanup on exit
+process.on('SIGTERM', () => {
+  console.log('[Server] Received SIGTERM signal, shutting down...');
+  if (serverInstance) {
+    serverInstance.close(() => {
+      console.log('[Server] Server closed');
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+});
 
 // Start the server
 initializeServer().catch((error) => {

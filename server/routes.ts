@@ -5,21 +5,12 @@ import teamsRouter from './routes/teams';
 import bowlersRouter from './routes/bowlers';
 import bowlerLeaguesRouter from './routes/bowler-leagues';
 import paymentsRouter from './routes/payments';
+import scoresRouter from './routes/scores';
+import gamesRouter from './routes/games';
 import { storage } from "./storage";
-import { insertBowlerSchema, insertPaymentSchema, insertLeagueSchema, insertTeamSchema, insertBowlerLeagueSchema } from "@shared/schema";
-import { z } from "zod";
-import { ApiResponse, ApiListResponse } from "@shared/schema";
 import { ApiError, Client, Environment } from 'square';
 import { sendSuccess, sendError } from './utils/api';
-
-interface Bowler {
-  id: number;
-  name: string;
-  email: string;
-  active: boolean;
-  squareCustomerId: string | null;
-  order: number;
-}
+import { testConnection } from './db';
 
 let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
@@ -32,74 +23,85 @@ if (process.env.SQUARE_ACCESS_TOKEN) {
 export function registerRoutes(app: Express): Server {
   console.log('[Routes] Registering API routes...');
 
+  // Add health check endpoint
+  app.get('/api/health', async (req, res) => {
+    try {
+      await testConnection();
+      sendSuccess(res, { status: 'healthy', database: 'connected' });
+    } catch (error) {
+      sendError(res, 'Database connection failed', 500);
+    }
+  });
+
   // Register route modules
   app.use('/api/leagues', leaguesRouter);
   app.use('/api/teams', teamsRouter);
   app.use('/api/bowlers', bowlersRouter);
-  app.use('/api/bowler-leagues', bowlerLeaguesRouter); // Ensure this route is registered
+  app.use('/api/bowler-leagues', bowlerLeaguesRouter);
   app.use('/api/payments', paymentsRouter);
+  app.use('/api/scores', scoresRouter);
+  app.use('/api/games', gamesRouter);
 
-  // Create and return the server instance without starting it
+  console.log('[Routes] API routes registered');
+
+  // Create and return the server instance
   return createServer(app);
 }
 
-async function updateBowler(id: number, update: {
-  name?: string;
-  email?: string;
-  active?: boolean;
-  squareCustomerId?: string | null;
-  order?: number;
-}): Promise<Bowler> {
-  const bowler = await storage.getBowler(id);
-  if (!bowler) {
-    throw new Error("Bowler not found");
-  }
-
-  const updated = await storage.updateBowler(id, update);
-  if (!updated) {
-    throw new Error("Failed to update bowler");
-  }
-
-  return updated;
-}
-
-async function handleSquareCustomer(bowler: Bowler): Promise<string | null> {
+async function handleSquareCustomer(bowler: {
+  id: number;
+  name: string;
+  email: string;
+  active: boolean;
+  squareCustomerId: string | null;
+}): Promise<string | null> {
   if (!squareClient) return null;
 
-  const searchResponse = await squareClient.customersApi.searchCustomers({
-    query: {
-      filter: {
-        emailAddress: {
-          exact: bowler.email.toLowerCase()
+  try {
+    console.log('[Square] Searching for customer:', bowler.email);
+    const searchResponse = await squareClient.customersApi.searchCustomers({
+      query: {
+        filter: {
+          emailAddress: {
+            exact: bowler.email.toLowerCase()
+          }
         }
       }
-    }
-  });
-
-  let customerId: string;
-
-  if (searchResponse.result.customers?.[0]?.id) {
-    customerId = searchResponse.result.customers[0].id;
-
-    await squareClient.customersApi.updateCustomer(customerId, {
-      givenName: bowler.name.split(' ')[0],
-      familyName: bowler.name.split(' ').slice(1).join(' ') || '',
-      emailAddress: bowler.email.toLowerCase(),
-    });
-  } else {
-    const customerResponse = await squareClient.customersApi.createCustomer({
-      idempotencyKey: `${Date.now()}-${Math.random()}`,
-      givenName: bowler.name.split(' ')[0],
-      familyName: bowler.name.split(' ').slice(1).join(' ') || '',
-      emailAddress: bowler.email.toLowerCase(),
     });
 
-    if (!customerResponse.result?.customer?.id) {
-      throw new Error('Failed to create Square customer');
+    let customerId: string;
+
+    if (searchResponse.result.customers?.[0]?.id) {
+      customerId = searchResponse.result.customers[0].id;
+      console.log('[Square] Updating existing customer:', customerId);
+
+      await squareClient.customersApi.updateCustomer(customerId, {
+        givenName: bowler.name.split(' ')[0],
+        familyName: bowler.name.split(' ').slice(1).join(' ') || '',
+        emailAddress: bowler.email.toLowerCase(),
+      });
+    } else {
+      console.log('[Square] Creating new customer');
+      const customerResponse = await squareClient.customersApi.createCustomer({
+        idempotencyKey: `${Date.now()}-${Math.random()}`,
+        givenName: bowler.name.split(' ')[0],
+        familyName: bowler.name.split(' ').slice(1).join(' ') || '',
+        emailAddress: bowler.email.toLowerCase(),
+      });
+
+      if (!customerResponse.result?.customer?.id) {
+        throw new Error('Failed to create Square customer');
+      }
+
+      customerId = customerResponse.result.customer.id;
+      console.log('[Square] Created new customer:', customerId);
     }
 
-    customerId = customerResponse.result.customer.id;
+    return customerId;
+  } catch (error) {
+    console.error('[Square] Error handling customer:', error);
+    throw error;
   }
-
-  return customerId;
 }
+
+export { handleSquareCustomer };
