@@ -4,7 +4,6 @@ import { setupVite, serveStatic } from "./vite";
 import { testConnection } from "./db";
 
 const app = express();
-const PORT = 3000;
 
 // Basic middleware
 app.use(express.json());
@@ -62,9 +61,23 @@ app.use('/api/*', (req, res) => {
 // Frontend handling after API routes
 if (app.get("env") === "development") {
   console.log('[Server] Setting up Vite middleware for development...');
-  setupVite(app, server).catch(error => {
-    console.error('[Server] Failed to setup Vite middleware:', error);
-    process.exit(1);
+  let viteSetupComplete = false;
+
+  app.use(async (req, res, next) => {
+    // Skip Vite for API routes
+    if (req.path.startsWith('/api/')) {
+      return next();
+    }
+
+    try {
+      if (!viteSetupComplete) {
+        await setupVite(app, server);
+        viteSetupComplete = true;
+      }
+      next();
+    } catch (e) {
+      next(e);
+    }
   });
 } else {
   console.log('[Server] Setting up static file serving for production...');
@@ -87,6 +100,8 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
+let serverInstance: ReturnType<typeof server.listen> | null = null;
+
 // Initialize server
 async function initializeServer() {
   try {
@@ -97,13 +112,50 @@ async function initializeServer() {
     await testConnection();
     console.log('[Server] Database connection successful');
 
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`[Server] Ready and listening on port ${PORT}`);
-      if (process.send) {
-        process.send('ready');
+    // Start server with port handling
+    const startServer = async (initialPort: number = 5000): Promise<void> => {
+      if (serverInstance) {
+        console.log('[Server] Cleaning up previous server instance...');
+        await new Promise<void>((resolve) => {
+          serverInstance?.close(() => resolve());
+        });
+        serverInstance = null;
       }
-    });
 
+      for (let port = initialPort; port < initialPort + 10; port++) {
+        try {
+          await new Promise<void>((resolve, reject) => {
+            const onError = (err: Error) => {
+              server.removeListener('listening', onListening);
+              reject(err);
+            };
+            const onListening = () => {
+              server.removeListener('error', onError);
+              console.log(`[Server] Ready and listening on port ${port}`);
+              if (process.send) {
+                process.send('ready');
+              }
+              resolve();
+            };
+
+            server.once('error', onError);
+            server.once('listening', onListening);
+            serverInstance = server.listen(port, '0.0.0.0');
+          });
+          return;
+        } catch (err: any) {
+          if (err.code === 'EADDRINUSE') {
+            console.log(`[Server] Port ${port} in use, trying next port...`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      throw new Error('Unable to find an available port after multiple attempts');
+    };
+
+    await startServer();
+    console.log('[Server] Application fully initialized and ready for requests');
   } catch (error) {
     console.error('[Server] Fatal error during initialization:', error);
     process.exit(1);
@@ -113,10 +165,14 @@ async function initializeServer() {
 // Cleanup on exit
 process.on('SIGTERM', () => {
   console.log('[Server] Received SIGTERM signal, shutting down...');
-  server.close(() => {
-    console.log('[Server] Server closed');
+  if (serverInstance) {
+    serverInstance.close(() => {
+      console.log('[Server] Server closed');
+      process.exit(0);
+    });
+  } else {
     process.exit(0);
-  });
+  }
 });
 
 // Start the server

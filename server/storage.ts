@@ -401,12 +401,12 @@ export class DatabaseStorage implements IStorage {
       .where(eq(bowlers.qubicaId, qubicaId));
     return result;
   }
-  async createBatchScores(scoreData: InsertScore[]): Promise<Score[]> {
-    if (scoreData.length === 0) return [];
+  async createBatchScores(scores: InsertScore[]): Promise<Score[]> {
+    if (scores.length === 0) return [];
 
     const results = await db
       .insert(scores)
-      .values(scoreData)
+      .values(scores)
       .returning();
 
     return results;

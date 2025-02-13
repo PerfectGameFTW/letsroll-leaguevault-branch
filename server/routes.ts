@@ -7,7 +7,6 @@ import bowlerLeaguesRouter from './routes/bowler-leagues';
 import paymentsRouter from './routes/payments';
 import scoresRouter from './routes/scores';
 import gamesRouter from './routes/games';
-import scoreImportRouter from './routes/score-import';
 import { storage } from "./storage";
 import { ApiError, Client, Environment } from 'square';
 import { sendSuccess, sendError } from './utils/api';
@@ -24,8 +23,7 @@ if (process.env.SQUARE_ACCESS_TOKEN) {
 export function registerRoutes(app: Express): Server {
   console.log('[Routes] Registering API routes...');
 
-  const server = createServer(app); // Create server here
-
+  // Add health check endpoint
   app.get('/api/health', async (req, res) => {
     try {
       await testConnection();
@@ -35,6 +33,7 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
+  // Register route modules
   app.use('/api/leagues', leaguesRouter);
   app.use('/api/teams', teamsRouter);
   app.use('/api/bowlers', bowlersRouter);
@@ -42,11 +41,11 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/payments', paymentsRouter);
   app.use('/api/scores', scoresRouter);
   app.use('/api/games', gamesRouter);
-  app.use('/api/score-import', scoreImportRouter);
 
   console.log('[Routes] API routes registered');
 
-  return server;
+  // Create and return the server instance
+  return createServer(app);
 }
 
 async function handleSquareCustomer(bowler: {
