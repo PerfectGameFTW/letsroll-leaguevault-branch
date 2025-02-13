@@ -10,7 +10,6 @@ import {
   TableRow,
 } from "@/components/ui/table.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs.js";
 import { Loader2, ArrowLeft } from "lucide-react";
 import type { Score, Bowler } from "@shared/schema.js";
 import { format } from "date-fns";
@@ -126,9 +125,9 @@ export default function BowlerScoresPage() {
         </Link>
 
         <div>
-          <h1 className="text-2xl font-bold mb-2">{bowler.name}'s Scores</h1>
+          <h1 className="text-2xl font-bold mb-2">{bowler.name}'s Recent Scores</h1>
           <p className="text-muted-foreground">
-            View scores and statistics
+            View recent scores and statistics
           </p>
         </div>
 
@@ -146,67 +145,48 @@ export default function BowlerScoresPage() {
           </Card>
         </div>
 
-        <Tabs defaultValue="recent">
-          <TabsList>
-            <TabsTrigger value="recent">Recent Games</TabsTrigger>
-            <TabsTrigger value="history">Score History</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="recent">
-            <Card>
-              <CardContent className="pt-6">
-                {scoresError ? (
-                  <div className="text-center text-destructive py-8">
-                    Error loading scores: {scoresError.message}
-                  </div>
-                ) : scores.length > 0 ? (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>League</TableHead>
-                        <TableHead>Team</TableHead>
-                        <TableHead className="text-right">Score</TableHead>
-                        <TableHead className="text-right">Handicap</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {scores.map((score) => (
-                        <TableRow key={score.id}>
-                          <TableCell>
-                            {format(new Date(score.game.date), "MMM d, yyyy")}
-                          </TableCell>
-                          <TableCell>{score.league.name}</TableCell>
-                          <TableCell>{score.team.name}</TableCell>
-                          <TableCell className="text-right">{score.score}</TableCell>
-                          <TableCell className="text-right">{score.handicap}</TableCell>
-                          <TableCell className="text-right font-medium">
-                            {score.score + score.handicap}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                ) : (
-                  <div className="text-center text-muted-foreground py-8">
-                    No scores recorded yet
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="history">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-center text-muted-foreground">
-                  Score history visualization will be implemented here
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+        <Card>
+          <CardContent className="pt-6">
+            {scoresError ? (
+              <div className="text-center text-destructive py-8">
+                Error loading scores: {scoresError.message}
+              </div>
+            ) : scores.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>League</TableHead>
+                    <TableHead>Team</TableHead>
+                    <TableHead className="text-right">Score</TableHead>
+                    <TableHead className="text-right">Handicap</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {scores.map((score) => (
+                    <TableRow key={score.id}>
+                      <TableCell>
+                        {format(new Date(score.game.date), "MMM d, yyyy")}
+                      </TableCell>
+                      <TableCell>{score.league.name}</TableCell>
+                      <TableCell>{score.team.name}</TableCell>
+                      <TableCell className="text-right">{score.score}</TableCell>
+                      <TableCell className="text-right">{score.handicap}</TableCell>
+                      <TableCell className="text-right font-medium">
+                        {score.score + score.handicap}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="text-center text-muted-foreground py-8">
+                No scores recorded yet
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </Layout>
   );
