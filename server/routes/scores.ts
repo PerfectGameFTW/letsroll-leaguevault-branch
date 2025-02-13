@@ -10,13 +10,16 @@ const getScoresQuerySchema = z.object({
   bowlerId: z.string()
     .transform(val => Number(val))
     .optional(),
-  gameIds: z.union([
-    z.string().transform(val => [Number(val)]),
-    z.array(z.string()).transform(val => val.map(Number))
-  ]).optional(),
+  leagueId: z.string()
+    .transform(val => Number(val))
+    .optional(),
+  weekNumber: z.string()
+    .transform(val => Number(val))
+    .optional(),
 }).transform(data => ({
   bowlerId: isNaN(data.bowlerId!) ? undefined : data.bowlerId,
-  gameIds: data.gameIds?.filter(id => !isNaN(id)) ?? []
+  leagueId: isNaN(data.leagueId!) ? undefined : data.leagueId,
+  weekNumber: isNaN(data.weekNumber!) ? undefined : data.weekNumber,
 }));
 
 // Get scores
@@ -31,8 +34,8 @@ router.get('/', async (req, res) => {
       return sendError(res, 'Invalid query parameters', 400);
     }
 
-    const { bowlerId, gameIds } = validationResult.data;
-    console.log('[Scores] Parsed query parameters:', { bowlerId, gameIds });
+    const { bowlerId, leagueId, weekNumber } = validationResult.data;
+    console.log('[Scores] Parsed query parameters:', { bowlerId, leagueId, weekNumber });
 
     // If bowlerId is provided, fetch scores for that bowler
     if (bowlerId !== undefined) {
@@ -42,16 +45,84 @@ router.get('/', async (req, res) => {
       return sendSuccess(res, scores);
     }
 
-    // Otherwise, fetch scores for specific games
-    if (gameIds.length > 0) {
-      console.log('[Scores] Fetching scores for games:', gameIds);
-      const scores = await Promise.all(gameIds.map(id => storage.getGameScores(id)));
-      const flattenedScores = scores.flat();
-      console.log('[Scores] Retrieved game scores:', flattenedScores.length);
-      return sendSuccess(res, flattenedScores);
+    // If leagueId and weekNumber are provided, fetch all scores for that week
+    if (leagueId !== undefined && weekNumber !== undefined) {
+      console.log('[Scores] Fetching weekly scores for league:', leagueId, 'week:', weekNumber);
+
+      // First get all games for this week
+      const games = await storage.getGames(leagueId, weekNumber);
+      console.log('[Scores] Found games:', games.length);
+
+      // Get all scores and bowler details
+      const allScores = [];
+      const bowlerScores = new Map(); // Map to group scores by bowler
+
+      for (const game of games) {
+        const gameScores = await storage.getGameScores(game.id);
+
+        for (const score of gameScores) {
+          const bowler = await storage.getBowler(score.bowlerId);
+          const team = await storage.getTeam(score.teamId);
+
+          if (!bowler || !team) continue;
+
+          const bowlerKey = `${score.bowlerId}-${team.id}`;
+          if (!bowlerScores.has(bowlerKey)) {
+            bowlerScores.set(bowlerKey, {
+              bowlerId: score.bowlerId,
+              bowlerName: bowler.name,
+              teamId: team.id,
+              teamName: team.name,
+              date: game.date,
+              weekNumber: game.weekNumber,
+              games: new Map(),
+              seriesTotal: 0
+            });
+          }
+
+          const bowlerData = bowlerScores.get(bowlerKey);
+          bowlerData.games.set(game.gameNumber, {
+            score: score.score,
+            handicap: score.handicap,
+            total: score.score + score.handicap,
+            isVacant: score.isVacant,
+            isAbsent: score.isAbsent,
+            isSub: score.isSub
+          });
+          bowlerData.seriesTotal += score.score;
+        }
+      }
+
+      // Convert Map to array and format the response
+      for (const [_, bowlerData] of bowlerScores) {
+        const gamesArray = Array.from({ length: 3 }, (_, i) => {
+          const gameData = bowlerData.games.get(i + 1);
+          return gameData || { score: null, handicap: null, total: null, isVacant: false, isAbsent: false, isSub: false };
+        });
+
+        allScores.push({
+          bowlerId: bowlerData.bowlerId,
+          bowlerName: bowlerData.bowlerName,
+          teamId: bowlerData.teamId,
+          teamName: bowlerData.teamName,
+          date: bowlerData.date,
+          weekNumber: bowlerData.weekNumber,
+          games: gamesArray,
+          seriesTotal: bowlerData.seriesTotal
+        });
+      }
+
+      // Sort by team name, then bowler name
+      allScores.sort((a, b) => {
+        const teamCompare = a.teamName.localeCompare(b.teamName);
+        if (teamCompare !== 0) return teamCompare;
+        return a.bowlerName.localeCompare(b.bowlerName);
+      });
+
+      return sendSuccess(res, allScores);
     }
 
-    return sendError(res, 'Either bowlerId or gameIds must be provided', 400);
+    return sendError(res, 'Either bowlerId or (leagueId and weekNumber) must be provided', 400);
   } catch (error) {
     console.error('[Scores] Error fetching scores:', error);
     return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);

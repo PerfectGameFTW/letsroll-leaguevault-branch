@@ -26,6 +26,7 @@ export class ScoreImportService {
   }> {
     // Parse the score file
     const parsedData = parseQubicaScoreFile(fileContent);
+    console.log('[ScoreImport] Parsed data header:', parsedData.header);
 
     // Validate league exists
     const league = await storage.getLeague(this.leagueId);
@@ -41,9 +42,10 @@ export class ScoreImportService {
       );
     }
 
-    // Create games first
-    const games: Game[] = [];
+    // Create three games for this week
+    const createdGames: Game[] = [];
     for (let gameNumber = 1; gameNumber <= 3; gameNumber++) {
+      console.log(`[ScoreImport] Creating game ${gameNumber} for week ${parsedData.header.weekNumber}`);
       const insertGame: InsertGame = {
         leagueId: this.leagueId,
         weekNumber: parsedData.header.weekNumber,
@@ -52,66 +54,80 @@ export class ScoreImportService {
       };
 
       const game = await storage.createGame(insertGame);
-      games.push(game);
+      createdGames.push(game);
     }
 
     // Process all scores
     const scores: InsertScore[] = [];
     const teamCache = new Map<string, Team>();
 
-    for (const teamGame of parsedData.games) {
-      // Get or cache team
-      let team = teamCache.get(teamGame.teamNumber);
-      if (!team) {
-        team = await storage.getTeamByNumber(this.leagueId, parseInt(teamGame.teamNumber));
-        if (!team) {
-          console.warn(`Team number ${teamGame.teamNumber} not found in league ${this.leagueId}`);
-          continue;
-        }
-        teamCache.set(teamGame.teamNumber, team);
+    // Group teams by game number
+    const gameTeams = parsedData.games.reduce((acc, game) => {
+      if (!acc[game.gameNumber]) {
+        acc[game.gameNumber] = [];
       }
+      acc[game.gameNumber].push(game);
+      return acc;
+    }, {} as Record<number, typeof parsedData.games>);
 
-      // Find or create bowlers by QubicaAMF ID
-      for (const bowlerScore of teamGame.bowlers) {
-        const game = games.find(g => g.gameNumber === teamGame.gameNumber);
-        if (!game) continue;
+    // Process each game
+    for (const game of createdGames) {
+      console.log(`[ScoreImport] Processing scores for game ${game.gameNumber}`);
+      const teamsForGame = gameTeams[game.gameNumber] || [];
 
-        // Get or create bowler
-        let bowler = await storage.getBowlerByQubicaId(bowlerScore.bowlerId);
-        if (!bowler) {
-          bowler = await storage.createBowler({
-            name: bowlerScore.bowlerName,
-            email: `${bowlerScore.bowlerId}@placeholder.com`,
-            qubicaId: bowlerScore.bowlerId,
-            active: true,
-            order: 0,
-          });
+      for (const teamGame of teamsForGame) {
+        // Get or cache team
+        let team = teamCache.get(teamGame.teamNumber);
+        if (!team) {
+          team = await storage.getTeamByNumber(this.leagueId, parseInt(teamGame.teamNumber));
+          if (!team) {
+            console.warn(`[ScoreImport] Team number ${teamGame.teamNumber} not found in league ${this.leagueId}`);
+            continue;
+          }
+          teamCache.set(teamGame.teamNumber, team);
         }
 
-        // Create score record
-        const insertScore: InsertScore = {
-          gameId: game.id,
-          bowlerId: bowler.id,
-          teamId: team.id, // Use the actual team ID from database
-          score: bowlerScore.score,
-          handicap: bowlerScore.handicap,
-          average: bowlerScore.average,
-          position: bowlerScore.position,
-          isVacant: bowlerScore.status.isVacant,
-          isAbsent: bowlerScore.status.isAbsent,
-          isSub: bowlerScore.status.isSub,
-          laneNumber: bowlerScore.laneNumber,
-        };
+        // Process bowlers for this team
+        for (const bowlerScore of teamGame.bowlers) {
+          // Get or create bowler
+          let bowler = await storage.getBowlerByQubicaId(bowlerScore.bowlerId);
+          if (!bowler) {
+            console.log(`[ScoreImport] Creating new bowler: ${bowlerScore.bowlerName} (${bowlerScore.bowlerId})`);
+            bowler = await storage.createBowler({
+              name: bowlerScore.bowlerName,
+              email: `${bowlerScore.bowlerId}@placeholder.com`,
+              qubicaId: bowlerScore.bowlerId,
+              active: true,
+              order: 0,
+            });
+          }
 
-        scores.push(insertScore);
+          // Create score record
+          const insertScore: InsertScore = {
+            gameId: game.id,
+            bowlerId: bowler.id,
+            teamId: team.id,
+            score: bowlerScore.score,
+            handicap: bowlerScore.handicap,
+            average: bowlerScore.average,
+            position: bowlerScore.position,
+            isVacant: bowlerScore.status.isVacant,
+            isAbsent: bowlerScore.status.isAbsent,
+            isSub: bowlerScore.status.isSub,
+            laneNumber: bowlerScore.laneNumber,
+          };
+
+          scores.push(insertScore);
+        }
       }
     }
 
     // Batch create all scores
+    console.log(`[ScoreImport] Creating ${scores.length} scores`);
     await storage.createBatchScores(scores);
 
     return {
-      gamesCreated: games.length,
+      gamesCreated: createdGames.length,
       scoresCreated: scores.length,
     };
   }

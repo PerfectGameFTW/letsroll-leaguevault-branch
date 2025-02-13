@@ -414,7 +414,7 @@ export class DatabaseStorage implements IStorage {
       .from(scores)
       .innerJoin(games, eq(games.id, scores.gameId))
       .innerJoin(teams, eq(teams.id, scores.teamId))
-      .innerJoin(leagues, eq(leagues.id, teams.leagueId))
+      .innerJoin(leagues, eq(leagues.id, games.leagueId))
       .where(eq(scores.bowlerId, bowlerId))
       .orderBy(desc(games.date), games.gameNumber);
 
