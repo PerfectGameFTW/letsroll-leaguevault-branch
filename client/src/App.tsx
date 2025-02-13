@@ -10,6 +10,8 @@ import TeamsPage from "@/pages/teams-page";
 import TeamViewPage from "@/pages/team-view-page";
 import BowlersPage from "@/pages/bowlers-page";
 import BowlerViewPage from "@/pages/bowler-view-page";
+import BowlerScoresPage from "@/pages/bowler-scores-page";
+import LeagueScoresPage from "@/pages/league-scores-page";
 import PaymentsPage from "@/pages/payments-page";
 import WeeklyPaymentsPage from "@/pages/weekly-payments-page";
 import ReportsPage from "@/pages/reports-page";
@@ -26,10 +28,12 @@ function Router() {
       <Route path="/leagues" component={LeaguesPage} />
       <Route path="/leagues/:leagueId" component={LeagueViewPage} />
       <Route path="/leagues/:leagueId/teams" component={TeamsPage} />
+      <Route path="/leagues/:leagueId/scores" component={LeagueScoresPage} />
       <Route path="/leagues/:leagueId/weekly-payments" component={WeeklyPaymentsPage} />
       <Route path="/teams/:teamId" component={TeamViewPage} />
       <Route path="/bowlers" component={BowlersPage} />
       <Route path="/bowlers/:bowlerId" component={BowlerViewPage} />
+      <Route path="/bowlers/:bowlerId/scores" component={BowlerScoresPage} />
       <Route path="/payments" component={PaymentsPage} />
       <Route path="/reports" component={ReportsPage} />
       <Route path="/reports/leagues/:leagueId/past-due" component={LeaguePastDuePage} />

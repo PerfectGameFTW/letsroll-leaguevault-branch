@@ -215,6 +215,12 @@ export default function BowlerViewPage() {
                 {bowler?.active ? "Active" : "Inactive"}
               </Badge>
             </div>
+            <Link 
+              href={`/bowlers/${bowler?.id}/scores`}
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              View Scores →
+            </Link>
           </div>
           <div className="flex flex-col gap-1">
             <Select

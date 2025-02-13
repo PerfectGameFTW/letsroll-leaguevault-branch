@@ -22,19 +22,25 @@ import type { Game, Score, Team, Bowler, League } from "@shared/schema";
 import { format } from "date-fns";
 import { Link, useParams } from "wouter";
 
+interface TeamScores {
+  team: Team;
+  scores: (Score & { bowler?: Bowler })[];
+  games: Game[];
+}
+
 export default function LeagueScoresPage() {
   const params = useParams();
   const leagueId = params.leagueId ? parseInt(params.leagueId) : undefined;
   const [selectedWeek, setSelectedWeek] = useState<number>();
 
   // Fetch league details
-  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
+  const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
     enabled: !!leagueId,
   });
 
   // Fetch games for the league
-  const { data: gamesResponse, isLoading: loadingGames } = useQuery<{ data: Game[] }>({
+  const { data: gamesResponse, isLoading: loadingGames, error: gamesError } = useQuery<{ data: Game[] }>({
     queryKey: ["/api/games", { leagueId }],
     enabled: !!leagueId,
   });
@@ -43,27 +49,30 @@ export default function LeagueScoresPage() {
   const games = gamesResponse?.data || [];
 
   // Get unique weeks from games
-  const weeks = [...new Set(games.map(g => g.weekNumber))].sort((a, b) => b - a);
+  const weeks = Array.from(new Set(games.map(g => g.weekNumber))).sort((a, b) => b - a);
 
   // If no week is selected, default to the most recent
   if (!selectedWeek && weeks.length > 0) {
     setSelectedWeek(weeks[0]);
   }
 
-  // Fetch scores for the selected week
-  const { data: scoresResponse, isLoading: loadingScores } = useQuery<{ data: Score[] }>({
-    queryKey: ["/api/scores", { weekNumber: selectedWeek }],
-    enabled: !!selectedWeek,
+  // Get games for the selected week
+  const weekGames = games.filter(g => g.weekNumber === selectedWeek);
+
+  // Fetch scores for the selected week's games
+  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<{ data: Score[] }>({
+    queryKey: ["/api/scores", { gameIds: weekGames.map(g => g.id) }],
+    enabled: weekGames.length > 0,
   });
 
   // Fetch teams
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams, error: teamsError } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams", { leagueId }],
     enabled: !!leagueId,
   });
 
   // Fetch bowlers
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
   });
 
@@ -71,13 +80,35 @@ export default function LeagueScoresPage() {
   const teams = teamsResponse?.data || [];
   const bowlers = bowlersResponse?.data || [];
 
-  const isLoading = loadingLeague || loadingGames || loadingScores || loadingTeams || loadingBowlers;
-
-  if (isLoading) {
+  // Show loading state
+  if (loadingLeague || loadingGames || loadingScores || loadingTeams || loadingBowlers) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
           <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </Layout>
+    );
+  }
+
+  // Show errors if any
+  const errors = [
+    { type: 'league', error: leagueError },
+    { type: 'games', error: gamesError },
+    { type: 'scores', error: scoresError },
+    { type: 'teams', error: teamsError },
+    { type: 'bowlers', error: bowlersError },
+  ].filter(e => e.error);
+
+  if (errors.length > 0) {
+    return (
+      <Layout>
+        <div className="space-y-4">
+          {errors.map(({ type, error }) => (
+            <div key={type} className="p-4 rounded-md bg-destructive/10 text-destructive">
+              <p className="font-medium">Error loading {type}: {error instanceof Error ? error.message : 'Unknown error'}</p>
+            </div>
+          ))}
         </div>
       </Layout>
     );
@@ -91,17 +122,24 @@ export default function LeagueScoresPage() {
     );
   }
 
-  // Group scores by team
-  const scoresByTeam = teams.reduce((acc, team) => {
-    const teamScores = scores.filter(s => s.teamId === team.id);
-    if (teamScores.length > 0) {
-      acc[team.id] = {
+  // Group scores by team and add bowler information
+  const teamScores: TeamScores[] = teams
+    .filter(team => team.leagueId === leagueId)
+    .map(team => {
+      const teamScores = scores
+        .filter(s => s.teamId === team.id)
+        .map(score => ({
+          ...score,
+          bowler: bowlers.find(b => b.id === score.bowlerId),
+        }))
+        .sort((a, b) => a.position - b.position);
+
+      return {
         team,
-        scores: teamScores.sort((a, b) => a.position - b.position),
+        scores: teamScores,
+        games: weekGames,
       };
-    }
-    return acc;
-  }, {} as Record<number, { team: Team; scores: Score[] }>);
+    });
 
   return (
     <Layout>
@@ -137,66 +175,96 @@ export default function LeagueScoresPage() {
               ))}
             </SelectContent>
           </Select>
+          {selectedWeek && (
+            <p className="text-sm text-muted-foreground">
+              Showing scores for Week {selectedWeek}
+            </p>
+          )}
         </div>
 
-        <div className="grid gap-6">
-          {Object.values(scoresByTeam).map(({ team, scores }) => (
-            <Card key={team.id}>
-              <CardHeader>
-                <CardTitle>{team.name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Bowler</TableHead>
-                      <TableHead className="text-right">Game 1</TableHead>
-                      <TableHead className="text-right">Game 2</TableHead>
-                      <TableHead className="text-right">Game 3</TableHead>
-                      <TableHead className="text-right">Series</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {scores.map((score) => {
-                      const bowler = bowlers.find(b => b.id === score.bowlerId);
-                      return (
-                        <TableRow key={score.id}>
-                          <TableCell>
-                            {score.isVacant ? (
-                              <span className="text-muted-foreground">Vacant</span>
-                            ) : score.isAbsent ? (
-                              <span className="text-muted-foreground">Absent</span>
-                            ) : bowler ? (
-                              <Link
-                                href={`/bowlers/${bowler.id}`}
-                                className="hover:underline"
-                              >
-                                {bowler.name}
-                                {score.isSub && (
-                                  <span className="ml-2 text-xs text-muted-foreground">
-                                    (Sub)
-                                  </span>
+        {weeks.length === 0 ? (
+          <div className="text-center text-muted-foreground py-8">
+            No games recorded for this league yet
+          </div>
+        ) : (
+          <div className="grid gap-6">
+            {teamScores.map(({ team, scores, games }) => (
+              <Card key={team.id}>
+                <CardHeader>
+                  <CardTitle>{team.name}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Bowler</TableHead>
+                        {games.map((game, index) => (
+                          <TableHead key={game.id} className="text-right">
+                            Game {index + 1}
+                          </TableHead>
+                        ))}
+                        <TableHead className="text-right">Series</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {scores.length > 0 ? (
+                        scores.map((score) => {
+                          const gameScores = games.map(game => 
+                            scores.find(s => s.gameId === game.id && s.position === score.position)
+                          );
+                          const series = gameScores.reduce((sum, s) => sum + (s?.score || 0), 0);
+
+                          return (
+                            <TableRow key={`${score.bowlerId}-${score.position}`}>
+                              <TableCell>
+                                {score.isVacant ? (
+                                  <span className="text-muted-foreground">Vacant</span>
+                                ) : score.isAbsent ? (
+                                  <span className="text-muted-foreground">Absent</span>
+                                ) : score.bowler ? (
+                                  <Link
+                                    href={`/bowlers/${score.bowler.id}`}
+                                    className="hover:underline"
+                                  >
+                                    {score.bowler.name}
+                                    {score.isSub && (
+                                      <span className="ml-2 text-xs text-muted-foreground">
+                                        (Sub)
+                                      </span>
+                                    )}
+                                  </Link>
+                                ) : (
+                                  "Unknown Bowler"
                                 )}
-                              </Link>
-                            ) : (
-                              "Unknown Bowler"
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">{score.score}</TableCell>
-                          <TableCell className="text-right">{score.handicap}</TableCell>
-                          <TableCell className="text-right">{score.average}</TableCell>
-                          <TableCell className="text-right font-medium">
-                            {score.score + score.handicap}
+                              </TableCell>
+                              {gameScores.map((gameScore, i) => (
+                                <TableCell key={i} className="text-right">
+                                  {gameScore?.score || "-"}
+                                </TableCell>
+                              ))}
+                              <TableCell className="text-right font-medium">
+                                {series}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      ) : (
+                        <TableRow>
+                          <TableCell
+                            colSpan={games.length + 2}
+                            className="text-center text-muted-foreground"
+                          >
+                            No scores recorded for this team
                           </TableCell>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     </Layout>
   );

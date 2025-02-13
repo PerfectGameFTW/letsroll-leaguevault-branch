@@ -16,6 +16,12 @@ import type { Score, Bowler, Game, League, Team } from "@shared/schema";
 import { format } from "date-fns";
 import { Link, useParams } from "wouter";
 
+interface ExtendedScore extends Score {
+  game?: Game;
+  league?: League;
+  team?: Team;
+}
+
 export default function BowlerScoresPage() {
   const params = useParams();
   const bowlerId = params.bowlerId ? parseInt(params.bowlerId) : undefined;
@@ -73,7 +79,7 @@ export default function BowlerScoresPage() {
   }
 
   // Calculate statistics
-  const recentScores = scores
+  const recentScores: ExtendedScore[] = scores
     .map(score => {
       const game = games.find(g => g.id === score.gameId);
       const league = game ? leagues.find(l => l.id === game.leagueId) : undefined;
@@ -132,7 +138,7 @@ export default function BowlerScoresPage() {
             <TabsTrigger value="recent">Recent Games</TabsTrigger>
             <TabsTrigger value="history">Score History</TabsTrigger>
           </TabsList>
-          
+
           <TabsContent value="recent">
             <Card>
               <CardContent className="pt-6">
