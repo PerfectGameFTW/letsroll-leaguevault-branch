@@ -38,6 +38,21 @@ interface ExtendedScore extends Score {
   };
 }
 
+interface WeeklyScores {
+  date: string;
+  weekNumber: number;
+  games: (ExtendedScore | null)[];
+  seriesTotal: number;
+  league: {
+    id: number;
+    name: string;
+  };
+  team: {
+    id: number;
+    name: string;
+  };
+}
+
 interface ApiResponse<T> {
   success: boolean;
   data: T;
@@ -51,44 +66,62 @@ export default function BowlerScoresPage() {
   const { bowlerId } = useParams<{ bowlerId: string }>();
   const parsedBowlerId = bowlerId ? parseInt(bowlerId) : undefined;
 
-  // Fetch bowler details
   const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<ApiResponse<Bowler>>({
     queryKey: [`/api/bowlers/${bowlerId}`],
     enabled: !!bowlerId,
   });
 
-  // Fetch all scores for this bowler
   const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<ApiResponse<ExtendedScore[]>>({
     queryKey: ["/api/scores", parsedBowlerId],
     queryFn: async () => {
       if (!parsedBowlerId) throw new Error("Bowler ID is required");
-      console.log('[BowlerScores] Fetching scores for bowler:', parsedBowlerId);
-
       const response = await fetch(`/api/scores?bowlerId=${parsedBowlerId}`);
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('[BowlerScores] API error:', errorData);
         throw new Error(errorData.error?.message || 'Failed to fetch scores');
       }
-
-      const data = await response.json();
-      console.log('[BowlerScores] Received scores data:', data);
-      return data;
+      return response.json();
     },
     enabled: !!parsedBowlerId,
-  });
-
-  console.log('[BowlerScores] Component state:', {
-    bowler: bowlerResponse?.data,
-    scores: scoresResponse?.data,
-    loadingBowler,
-    loadingScores,
-    error: scoresError
   });
 
   const bowler = bowlerResponse?.data;
   const scores = scoresResponse?.data || [];
   const isLoading = loadingBowler || loadingScores;
+
+  // Group scores by week and calculate series totals
+  const weeklyScores: WeeklyScores[] = scores.reduce((weeks: WeeklyScores[], score) => {
+    const weekIndex = weeks.findIndex(w => 
+      w.weekNumber === score.game.weekNumber && 
+      w.date === score.game.date
+    );
+
+    if (weekIndex === -1) {
+      // Create new week entry
+      const newWeek: WeeklyScores = {
+        date: score.game.date,
+        weekNumber: score.game.weekNumber,
+        games: Array(3).fill(null),
+        seriesTotal: score.score || 0,
+        league: {
+          id: score.league.id,
+          name: score.league.name,
+        },
+        team: {
+          id: score.team.id,
+          name: score.team.name,
+        }
+      };
+      newWeek.games[score.game.gameNumber - 1] = score;
+      weeks.push(newWeek);
+    } else {
+      // Update existing week
+      weeks[weekIndex].games[score.game.gameNumber - 1] = score;
+      weeks[weekIndex].seriesTotal += score.score || 0;
+    }
+
+    return weeks;
+  }, []);
 
   if (isLoading) {
     return (
@@ -109,7 +142,7 @@ export default function BowlerScoresPage() {
   }
 
   // Calculate current average
-  const totalPinfall = scores.reduce((sum, score) => sum + score.score, 0);
+  const totalPinfall = scores.reduce((sum, score) => sum + (score.score || 0), 0);
   const gamesPlayed = scores.length;
   const currentAverage = gamesPlayed > 0 ? Math.round(totalPinfall / gamesPlayed) : 0;
 
@@ -151,30 +184,32 @@ export default function BowlerScoresPage() {
               <div className="text-center text-destructive py-8">
                 Error loading scores: {scoresError.message}
               </div>
-            ) : scores.length > 0 ? (
+            ) : weeklyScores.length > 0 ? (
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Date</TableHead>
-                    <TableHead>League</TableHead>
-                    <TableHead>Team</TableHead>
-                    <TableHead className="text-right">Score</TableHead>
-                    <TableHead className="text-right">Handicap</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead>Week</TableHead>
+                    <TableHead className="text-right">Game 1</TableHead>
+                    <TableHead className="text-right">Game 2</TableHead>
+                    <TableHead className="text-right">Game 3</TableHead>
+                    <TableHead className="text-right">Series</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {scores.map((score) => (
-                    <TableRow key={score.id}>
-                      <TableCell>
-                        {format(new Date(score.game.date), "MMM d, yyyy")}
-                      </TableCell>
-                      <TableCell>{score.league.name}</TableCell>
-                      <TableCell>{score.team.name}</TableCell>
-                      <TableCell className="text-right">{score.score}</TableCell>
-                      <TableCell className="text-right">{score.handicap}</TableCell>
+                  {weeklyScores.map((week) => (
+                    <TableRow key={`${week.date}-${week.weekNumber}`}>
+                      <TableCell>{format(new Date(week.date), "MMM d, yyyy")}</TableCell>
+                      <TableCell>{week.weekNumber}</TableCell>
+                      {week.games.map((game, index) => (
+                        <TableCell key={index} className="text-right">
+                          {game?.isVacant ? "VACANT" :
+                           game?.isAbsent ? "ABSENT" :
+                           game?.score || "—"}
+                        </TableCell>
+                      ))}
                       <TableCell className="text-right font-medium">
-                        {score.score + score.handicap}
+                        {week.seriesTotal || "—"}
                       </TableCell>
                     </TableRow>
                   ))}
