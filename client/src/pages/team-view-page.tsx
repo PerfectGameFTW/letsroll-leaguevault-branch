@@ -197,11 +197,20 @@ export default function TeamViewPage() {
         "DELETE",
         `/api/bowler-leagues/${bowlerLeague.id}`
       );
+
+      // First check if response is ok
       if (!response.ok) {
         const text = await response.text();
         throw new Error(text);
       }
-      return response.json();
+
+      // Try to parse as JSON, if it fails, return a default success response
+      try {
+        return await response.json();
+      } catch (e) {
+        // If parsing fails, return a default success response
+        return { success: true, message: "Bowler removed successfully" };
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });

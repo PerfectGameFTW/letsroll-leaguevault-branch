@@ -100,7 +100,7 @@ router.delete("/:id", async (req, res) => {
     }
 
     console.log(`[BowlerLeagues] Successfully deleted bowler league ${id}`);
-    sendSuccess(res, null, 204);
+    sendSuccess(res, { message: "Bowler league deleted successfully" }, 200);
   } catch (error) {
     console.error('[BowlerLeagues] Error deleting bowler league:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to delete bowler league');
