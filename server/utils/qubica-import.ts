@@ -98,8 +98,46 @@ const getBowlerLeagueId = async (bowlerId: number, teamId: number, leagueId: num
   return newRecord[0].id;
 };
 
+const getOrCreateTeam = async (teamNumber: string, teamName: string, leagueId: number) => {
+  console.log(`[QubicaImport] Checking for existing team: ${teamName} (number: ${teamNumber})`);
+
+  // Check for existing team
+  const existingTeams = await db.select()
+    .from(teams)
+    .where(
+      and(
+        eq(teams.leagueId, leagueId),
+        eq(teams.number, parseInt(teamNumber))
+      )
+    )
+    .execute();
+
+  if (existingTeams.length > 0) {
+    console.log(`[QubicaImport] Found existing team: ${existingTeams[0].name} (id: ${existingTeams[0].id})`);
+    return existingTeams[0];
+  }
+
+  // Create new team if none exists
+  console.log(`[QubicaImport] Creating new team: ${teamName}`);
+  const teamData = insertTeamSchema.parse({
+    leagueId,
+    number: parseInt(teamNumber),
+    name: teamName,
+    active: true,
+  });
+
+  const [newTeam] = await db.insert(teams)
+    .values(teamData)
+    .returning()
+    .execute();
+
+  console.log(`[QubicaImport] Created new team with id: ${newTeam.id}`);
+  return newTeam;
+};
+
 export const importQubicaFile = async (fileContent: string, leagueId: number) => {
   try {
+    console.log('[QubicaImport] Starting import process...');
     const lines = fileContent.split('\n');
     const header = parseQubicaHeader(lines[0]);
 
@@ -115,41 +153,29 @@ export const importQubicaFile = async (fileContent: string, leagueId: number) =>
     const seriesId = newSeries[0].id;
 
     // Track teams and bowlers we've seen
-    const processedTeams = new Map<string, { id: number, name: string }>();
+    const processedTeams = new Map<string, number>();
     const processedBowlers = new Map<string, number>();
 
-    // First pass: Process teams
+    // First pass: Process team records only
+    console.log('[QubicaImport] Processing team records...');
     for (const line of lines.slice(1)) {
       const game = parseQubicaLine(line);
-      if (!game || !game.teamName) continue;
+      if (!game || game.position !== 0 || !game.teamName) continue;
 
-      if (!processedTeams.has(game.teamNumber)) {
-        const teamData = insertTeamSchema.parse({
-          leagueId,
-          number: parseInt(game.teamNumber),
-          name: game.teamName,
-          active: true,
-        });
-
-        const team = await db.insert(teams)
-          .values(teamData)
-          .returning()
-          .execute();
-
-        processedTeams.set(game.teamNumber, { 
-          id: team[0].id,
-          name: game.teamName
-        });
-      }
+      console.log(`[QubicaImport] Processing team record: ${game.teamName} (number: ${game.teamNumber})`);
+      const team = await getOrCreateTeam(game.teamNumber, game.teamName, leagueId);
+      processedTeams.set(game.teamNumber, team.id);
     }
+
+    console.log(`[QubicaImport] Processed ${processedTeams.size} teams`);
 
     // Second pass: Process games and stats
     for (const line of lines.slice(1)) {
       const game = parseQubicaLine(line);
       if (!game || game.position === 0) continue; // Skip team records
 
-      const team = processedTeams.get(game.teamNumber);
-      if (!team) {
+      const teamId = processedTeams.get(game.teamNumber);
+      if (!teamId) {
         console.error(`Team ${game.teamNumber} not found for bowler ${game.bowlerName}`);
         continue;
       }
@@ -173,7 +199,7 @@ export const importQubicaFile = async (fileContent: string, leagueId: number) =>
       }
 
       // Get or create bowlerLeague record
-      const bowlerLeagueId = await getBowlerLeagueId(bowlerId, team.id, leagueId);
+      const bowlerLeagueId = await getBowlerLeagueId(bowlerId, teamId, leagueId);
 
       // Record game
       const gameData = insertGameSchema.parse({
