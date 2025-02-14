@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { storage } from '../storage';
-import { insertTeamSchema, partialTeamSchema } from "@shared/schema"; //Added import for partialTeamSchema
+import { storage } from '../storage.js';
+import { insertTeamSchema, partialTeamSchema } from "@shared/schema.js";
 import { z } from "zod";
-import { sendSuccess, sendError } from '../utils/api';
+import { sendSuccess, sendError } from '../utils/api.js';
 
 const router = Router();
 

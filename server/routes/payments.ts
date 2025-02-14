@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { storage } from '../storage';
-import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema";
+import { storage } from '../storage.js';
+import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema.js";
 import { z } from "zod";
-import { sendSuccess, sendError } from '../utils/api';
+import { sendSuccess, sendError } from '../utils/api.js';
 
 const router = Router();
 

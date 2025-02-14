@@ -2,8 +2,7 @@ import { Router } from 'express';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { z } from 'zod';
-
-const router = Router();
+import { ScoreSchedulerService } from '../services/score-scheduler.js';
 
 // Input validation schemas
 const getScoresQuerySchema = z.object({
@@ -27,6 +26,7 @@ const getScoresQuerySchema = z.object({
 }));
 
 // Get historical scores for a team or bowler
+const router = Router();
 router.get('/history', async (req, res) => {
   try {
     console.log('[Scores/History] Processing request with query:', req.query);
@@ -199,6 +199,42 @@ router.get('/', async (req, res) => {
   } catch (error) {
     console.error('[Scores] Error fetching scores:', error);
     return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
+  }
+});
+
+// Add manual import trigger endpoint
+router.post('/import', async (req, res) => {
+  try {
+    const leagueId = parseInt(req.query.leagueId as string);
+    console.log('[Scores/Import] Processing manual import request for league:', leagueId);
+
+    if (isNaN(leagueId)) {
+      console.error('[Scores/Import] Invalid league ID provided:', req.query.leagueId);
+      return sendError(res, 'Invalid league ID', 400);
+    }
+
+    // Initialize score scheduler service
+    console.log('[Scores/Import] Initializing ScoreSchedulerService...');
+    const scheduler = new ScoreSchedulerService(leagueId);
+
+    // Process scores using the configured folder IDs
+    console.log('[Scores/Import] Starting score processing...');
+    await scheduler.processNewScores(
+      process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID!,
+      process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID!
+    );
+    console.log('[Scores/Import] Score processing completed successfully');
+
+    sendSuccess(res, { 
+      message: 'Score import process completed successfully',
+      leagueId: leagueId
+    });
+  } catch (error) {
+    console.error('[Scores/Import] Error processing scores:', error);
+    return sendError(res, 
+      error instanceof Error ? error.message : 'Failed to import scores',
+      500
+    );
   }
 });
 

@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { storage } from '../storage';
-import { insertBowlerSchema, partialBowlerSchema } from "@shared/schema";
+import { storage } from '../storage.js';
+import { insertBowlerSchema, partialBowlerSchema } from "@shared/schema.js";
 import { z } from "zod";
-import { sendSuccess, sendError } from '../utils/api';
-import { createOrUpdateCustomer } from '../services/square';
+import { sendSuccess, sendError } from '../utils/api.js';
+import { createOrUpdateCustomer } from '../services/square.js';
 
 const router = Router();
 
