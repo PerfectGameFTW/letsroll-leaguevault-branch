@@ -3,6 +3,8 @@ import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { z } from 'zod';
 import { ScoreSchedulerService } from '../services/score-scheduler.js';
+import { GoogleDriveService } from '../services/google-drive.js'; // Assuming this import is needed
+
 
 // Input validation schemas
 const getScoresQuerySchema = z.object({
@@ -223,6 +225,39 @@ router.post('/import', async (req, res) => {
     console.error('[Scores/Import] Error processing scores:', error);
     return sendError(res,
       error instanceof Error ? error.message : 'Failed to import scores',
+      500
+    );
+  }
+});
+
+// Add manual listing endpoint for debugging
+router.get('/list-source', async (req, res) => {
+  try {
+    console.log('[Scores/ListSource] Starting file listing test...');
+
+    const sourceFolderId = process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID;
+    if (!sourceFolderId) {
+      return sendError(res, 'Source folder ID not configured', 500);
+    }
+
+    // Initialize Google Drive service
+    console.log('[Scores/ListSource] Initializing GoogleDriveService...');
+    const googleDrive = new GoogleDriveService();
+
+    // List files
+    console.log('[Scores/ListSource] Attempting to list files...');
+    const files = await googleDrive.listNewFiles(sourceFolderId);
+
+    sendSuccess(res, {
+      message: 'Successfully listed source folder contents',
+      sourceFolder: sourceFolderId,
+      fileCount: files.length,
+      files: files
+    });
+  } catch (error) {
+    console.error('[Scores/ListSource] Error listing files:', error);
+    return sendError(res,
+      error instanceof Error ? error.message : 'Failed to list files',
       500
     );
   }
