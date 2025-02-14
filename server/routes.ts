@@ -42,6 +42,12 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/scores', scoresRouter);
   app.use('/api/games', gamesRouter);
 
+  // Add Google Drive score import route (Implementation needed)
+  // app.post('/api/scores/import/google-drive', async (req, res) => {
+  //   // Implement error handling and Google Drive integration here
+  // });
+
+
   console.log('[Routes] API routes registered');
 
   // Create and return the server instance

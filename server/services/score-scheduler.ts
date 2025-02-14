@@ -9,12 +9,23 @@ export class ScoreSchedulerService {
   private jobs: schedule.Job[] = [];
 
   constructor(leagueId: number) {
-    this.googleDrive = new GoogleDriveService();
-    this.scoreImporter = new ScoreImportService(leagueId);
+    try {
+      this.googleDrive = new GoogleDriveService();
+      this.scoreImporter = new ScoreImportService(leagueId);
+    } catch (error) {
+      console.error('[ScoreScheduler] Failed to initialize with error:', error);
+      // Don't throw here - allow the service to be created but mark it as non-functional
+      this.googleDrive = null!;
+      this.scoreImporter = new ScoreImportService(leagueId);
+    }
   }
 
   async processNewScores(sourceFolderId: string, archiveFolderId: string) {
     try {
+      if (!this.googleDrive) {
+        throw new Error('Google Drive service not initialized');
+      }
+
       console.log('[ScoreScheduler] Starting score processing...');
 
       // List new files
@@ -49,10 +60,17 @@ export class ScoreSchedulerService {
       console.log('[ScoreScheduler] Completed score processing');
     } catch (error) {
       console.error('[ScoreScheduler] Error in score processing:', error);
+      throw error;
     }
   }
 
   scheduleJob(cronExpression: string, sourceFolderId: string, archiveFolderId: string) {
+    // Only schedule if Google Drive service is available
+    if (!this.googleDrive) {
+      console.warn('[ScoreScheduler] Skipping job scheduling - Google Drive service not available');
+      return null;
+    }
+
     const job = schedule.scheduleJob(cronExpression, () => {
       this.processNewScores(sourceFolderId, archiveFolderId).catch(error => {
         console.error('[ScoreScheduler] Error in scheduled job:', error);

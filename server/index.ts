@@ -4,6 +4,7 @@ import { setupVite, serveStatic } from "./vite.js";
 import { testConnection } from "./db.js";
 import { createServer } from 'http';
 import { ScoreSchedulerService } from './services/score-scheduler.js';
+import { storage } from './storage.js';
 
 const app = express();
 
@@ -118,11 +119,12 @@ async function initializeServer() {
 
     // Initialize schedulers for active leagues
     try {
-      // Fetch active leagues from the database
-      const leaguesResponse = await fetch('/api/leagues');
-      const leagues = await leaguesResponse.json();
+      // Fetch active leagues directly from storage instead of HTTP request
+      console.log('[Server] Fetching leagues for scheduler initialization...');
+      const leagues = await storage.getLeagues();
+      console.log(`[Server] Found ${leagues.length} leagues`);
 
-      for (const league of leagues.data) {
+      for (const league of leagues) {
         if (league.active) {
           console.log(`[Server] Setting up score scheduler for league: ${league.name}`);
           const scheduler = new ScoreSchedulerService(league.id);
