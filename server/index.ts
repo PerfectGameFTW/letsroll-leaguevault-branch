@@ -6,9 +6,12 @@ import { createServer } from 'http';
 import { AddressInfo } from 'net';
 
 const app = express();
-const PORT = parseInt(process.env.PORT || "5000", 10);
+const BASE_PORT = parseInt(process.env.PORT || "5000", 10);
+const PORT_RANGE = 10; // Try ports 5000-5009
 let serverInstance: ReturnType<typeof createServer.prototype.listen> | null = null;
 let isShuttingDown = false;
+let viteSetupComplete = false;
+let viteSetupPromise: Promise<void> | null = null;
 
 // Basic middleware
 app.use(express.json());
@@ -56,15 +59,39 @@ const server = registerRoutes(app);
 // Set max listeners to avoid warning
 server.setMaxListeners(20);
 
-// Track active connections
+// Track active connections with enhanced logging
 const connections = new Set<any>();
 server.on('connection', (conn) => {
   console.log('[Server] New connection established');
   connections.add(conn);
+
+  conn.on('error', (err) => {
+    console.warn('[Server] Connection error:', err);
+  });
+
   conn.on('close', () => {
     console.log('[Server] Connection closed');
     connections.delete(conn);
   });
+});
+
+// Enhanced WebSocket upgrade handling
+const wsConnections = new Set<any>();
+server.on('upgrade', (req, socket, head) => {
+  const requestId = Math.random().toString(36).substring(7);
+  console.log(`[WebSocket ${requestId}] Upgrade request received`);
+
+  socket.on('error', (err) => {
+    console.warn(`[WebSocket ${requestId}] Socket error:`, err);
+    socket.destroy();
+  });
+
+  socket.on('close', () => {
+    console.log(`[WebSocket ${requestId}] Socket closed`);
+    wsConnections.delete(socket);
+  });
+
+  wsConnections.add(socket);
 });
 
 // API catch-all middleware (before Vite)
@@ -82,22 +109,38 @@ app.use('/api/*', (req, res) => {
 // Frontend handling after API routes
 if (app.get("env") === "development") {
   console.log('[Server] Setting up Vite middleware for development...');
-  let viteSetupComplete = false;
 
+  // Synchronize Vite setup with a Promise
+  const setupViteOnce = async () => {
+    if (!viteSetupPromise) {
+      viteSetupPromise = (async () => {
+        try {
+          await setupVite(app, server);
+          viteSetupComplete = true;
+          console.log('[Server] Vite middleware setup completed');
+        } catch (error) {
+          console.error('[Server] Vite setup failed:', error);
+          viteSetupPromise = null; // Allow retry on failure
+          throw error;
+        }
+      })();
+    }
+    return viteSetupPromise;
+  };
+
+  // Middleware to ensure Vite is setup before handling requests
   app.use(async (req, res, next) => {
-    // Skip Vite for API routes
     if (req.path.startsWith('/api/')) {
       return next();
     }
 
     try {
       if (!viteSetupComplete) {
-        await setupVite(app, server);
-        viteSetupComplete = true;
+        await setupViteOnce();
       }
       next();
     } catch (e) {
-      console.error('[Server] Error setting up Vite:', e);
+      console.error('[Server] Error in Vite middleware:', e);
       next(e);
     }
   });
@@ -122,44 +165,30 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
-// Initialize server with retries and port checking
+// Initialize server with port range support
 async function initializeServer() {
   try {
-    console.log('[Server] Starting initialization on port', PORT);
+    console.log('[Server] Starting initialization');
 
     // Test database connection
     console.log('[Server] Testing database connection...');
     await testConnection();
     console.log('[Server] Database connection successful');
 
-    // Start server with explicit host binding and port recovery
-    await new Promise<void>((resolve, reject) => {
-      const maxRetries = 5;
-      let retryCount = 0;
+    // Try ports in range until one works
+    for (let portOffset = 0; portOffset < PORT_RANGE; portOffset++) {
+      const currentPort = BASE_PORT + portOffset;
+      try {
+        await new Promise<void>((resolve, reject) => {
+          console.log(`[Server] Attempting to bind to port ${currentPort}...`);
 
-      const startServer = () => {
-        try {
           const onError = (err: Error & { code?: string }) => {
             server.removeListener('listening', onListening);
-
             if (err.code === 'EADDRINUSE') {
-              if (retryCount < maxRetries) {
-                retryCount++;
-                console.log(`[Server] Port ${PORT} in use, retry attempt ${retryCount}/${maxRetries} in 3 seconds...`);
-                setTimeout(() => {
-                  if (serverInstance) {
-                    serverInstance.close();
-                  }
-                  serverInstance = server.listen(PORT, '0.0.0.0');
-                  serverInstance.once('error', onError);
-                  serverInstance.once('listening', onListening);
-                }, 3000);
-              } else {
-                console.error(`[Server] Failed to bind to port ${PORT} after ${maxRetries} attempts`);
-                reject(new Error(`Could not bind to port ${PORT} after ${maxRetries} attempts`));
-              }
+              console.log(`[Server] Port ${currentPort} is in use, trying next port...`);
+              resolve(); // Continue to next port
             } else {
-              console.error('[Server] Fatal error during startup:', err);
+              console.error(`[Server] Error binding to port ${currentPort}:`, err);
               reject(err);
             }
           };
@@ -168,23 +197,25 @@ async function initializeServer() {
             server.removeListener('error', onError);
             const addr = server.address() as AddressInfo;
             console.log(`[Server] Successfully bound to 0.0.0.0:${addr.port}`);
-            console.log('[Server] Active connections:', connections.size);
+            process.env.PORT = addr.port.toString(); // Update PORT for other parts of the application
             resolve();
           };
 
           server.once('error', onError);
           server.once('listening', onListening);
-          serverInstance = server.listen(PORT, '0.0.0.0');
-        } catch (error) {
-          console.error('[Server] Error in startServer:', error);
-          reject(error);
+          serverInstance = server.listen(currentPort, '0.0.0.0');
+        });
+
+        if (serverInstance?.listening) {
+          console.log('[Server] Application fully initialized and ready for requests');
+          return; // Successfully bound to a port
         }
-      };
-
-      startServer();
-    });
-
-    console.log('[Server] Application fully initialized and ready for requests');
+      } catch (error) {
+        if (portOffset === PORT_RANGE - 1) {
+          throw new Error(`Failed to bind to any port in range ${BASE_PORT}-${BASE_PORT + PORT_RANGE - 1}`);
+        }
+      }
+    }
   } catch (error) {
     console.error('[Server] Fatal error during initialization:', error);
     process.exit(1);
@@ -198,16 +229,52 @@ async function cleanup() {
 
   console.log('[Server] Starting graceful shutdown...');
 
-  // Close all existing connections
-  connections.forEach((conn) => {
-    conn.end();
-    connections.delete(conn);
+  // Close all WebSocket connections first
+  const wsClosePromises = Array.from(wsConnections).map((socket) => {
+    return new Promise<void>((resolve) => {
+      socket.destroy();
+      wsConnections.delete(socket);
+      resolve();
+    });
   });
+
+  await Promise.all(wsClosePromises);
+
+  // Close all existing connections with timeout
+  const closePromises = Array.from(connections).map((conn) => {
+    return new Promise<void>((resolve) => {
+      conn.end();
+      conn.once('close', () => {
+        connections.delete(conn);
+        resolve();
+      });
+
+      // Force close after timeout
+      setTimeout(() => {
+        if (connections.has(conn)) {
+          console.warn('[Server] Force closing connection after timeout');
+          conn.destroy();
+          connections.delete(conn);
+          resolve();
+        }
+      }, 2000);
+    });
+  });
+
+  try {
+    // Wait for all connections to close with a timeout
+    await Promise.race([
+      Promise.all(closePromises),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Connection cleanup timeout')), 5000))
+    ]);
+  } catch (error) {
+    console.warn('[Server] Connection cleanup timed out:', error);
+  }
 
   if (serverInstance) {
     try {
       await new Promise((resolve, reject) => {
-        serverInstance!.close((err) => {
+        serverInstance!.close((err?: Error) => {
           if (err) {
             console.error('[Server] Error during shutdown:', err);
             reject(err);
