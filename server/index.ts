@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes.js";
 import { setupVite, serveStatic } from "./vite.js";
 import { testConnection } from "./db.js";
 import { createServer } from 'http';
+import { ScoreSchedulerService } from './services/score-scheduler.js';
 
 const app = express();
 
@@ -105,7 +106,7 @@ let serverInstance: ReturnType<typeof server.listen> | null = null;
 
 const PORT = 5000;
 
-// Initialize server
+// Initialize server and score schedulers
 async function initializeServer() {
   try {
     console.log('[Server] Starting initialization...');
@@ -114,6 +115,42 @@ async function initializeServer() {
     console.log('[Server] Testing database connection...');
     await testConnection();
     console.log('[Server] Database connection successful');
+
+    // Initialize schedulers for active leagues
+    try {
+      // Fetch active leagues from the database
+      const leaguesResponse = await fetch('/api/leagues');
+      const leagues = await leaguesResponse.json();
+
+      for (const league of leagues.data) {
+        if (league.active) {
+          console.log(`[Server] Setting up score scheduler for league: ${league.name}`);
+          const scheduler = new ScoreSchedulerService(league.id);
+
+          // Schedule score imports based on league's bowling day
+          // Format: minute hour * * dayOfWeek
+          // Example: '0 22 * * 1' for Monday at 10 PM
+          const dayMap: { [key: string]: number } = {
+            'monday': 1, 'tuesday': 2, 'wednesday': 3,
+            'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0
+          };
+
+          const dayNumber = dayMap[league.weekDay.toLowerCase()];
+          const cronExpression = `0 22 * * ${dayNumber}`; // Schedule for 10 PM on league day
+
+          scheduler.scheduleJob(
+            cronExpression,
+            process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID!,
+            process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID!
+          );
+
+          console.log(`[Server] Scheduled score import for league ${league.name}: ${cronExpression}`);
+        }
+      }
+    } catch (error) {
+      console.error('[Server] Error setting up score schedulers:', error);
+      // Continue server initialization even if scheduler setup fails
+    }
 
     // Start server
     await new Promise<void>((resolve, reject) => {
