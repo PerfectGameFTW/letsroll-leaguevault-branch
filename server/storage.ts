@@ -473,6 +473,7 @@ export class DatabaseStorage implements IStorage {
         eq(teams.leagueId, leagueId),
         eq(teams.number, teamNumber)
       ));
+    console.log('[Storage] Team lookup result:', { leagueId, teamNumber, result });
     return result;
   }
 }

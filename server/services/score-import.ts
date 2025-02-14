@@ -32,6 +32,10 @@ export class ScoreImportService {
       console.log('[ScoreImport] Successfully parsed file header:', parsedData.header);
       console.log('[ScoreImport] Total games found:', parsedData.games.length);
 
+      // Print parsed team numbers for debugging
+      const teamNumbers = [...new Set(parsedData.games.map(g => g.teamNumber))];
+      console.log('[ScoreImport] Team numbers found in file:', teamNumbers);
+
       // Validate league exists
       const league = await storage.getLeague(this.leagueId);
       if (!league) {
@@ -84,7 +88,7 @@ export class ScoreImportService {
         try {
           // Get game by game number (1, 2, or 3)
           const gameNumber = teamGame.gameNumber;
-          console.log(`[ScoreImport] Processing team game ${gameNumber} for team ${teamGame.teamName}`);
+          console.log(`[ScoreImport] Processing team game ${gameNumber} for team ${teamGame.teamName} (${teamGame.teamNumber})`);
 
           // Find the corresponding game from our created games
           const game = createdGames.find(g => g.gameNumber === gameNumber);
@@ -97,6 +101,8 @@ export class ScoreImportService {
           let team = teamCache.get(teamGame.teamNumber);
           if (!team) {
             team = await storage.getTeamByNumber(this.leagueId, parseInt(teamGame.teamNumber));
+            console.log(`[ScoreImport] Team lookup result for number ${teamGame.teamNumber}:`, team);
+
             if (!team) {
               console.warn(`[ScoreImport] Team number ${teamGame.teamNumber} not found in league ${this.leagueId}`);
               continue;
@@ -140,6 +146,7 @@ export class ScoreImportService {
               };
 
               scores.push(insertScore);
+              console.log(`[ScoreImport] Added score for bowler ${bowler.name}:`, insertScore);
             } catch (error) {
               console.error(`[ScoreImport] Error processing bowler score:`, error);
               // Continue with other bowlers even if one fails

@@ -8,6 +8,7 @@ import { AddressInfo } from 'net';
 const app = express();
 const PORT = parseInt(process.env.PORT || "5000", 10);
 let serverInstance: ReturnType<typeof createServer.prototype.listen> | null = null;
+let isShuttingDown = false;
 
 // Basic middleware
 app.use(express.json());
@@ -15,6 +16,11 @@ app.use(express.urlencoded({ extended: false }));
 
 // Enhanced request logging for debugging
 app.use((req, res, next) => {
+  if (isShuttingDown) {
+    res.status(503).json({ error: 'Server is shutting down' });
+    return;
+  }
+
   const start = Date.now();
   const requestId = Math.random().toString(36).substring(7);
 
@@ -50,6 +56,17 @@ const server = registerRoutes(app);
 // Set max listeners to avoid warning
 server.setMaxListeners(20);
 
+// Track active connections
+const connections = new Set<any>();
+server.on('connection', (conn) => {
+  console.log('[Server] New connection established');
+  connections.add(conn);
+  conn.on('close', () => {
+    console.log('[Server] Connection closed');
+    connections.delete(conn);
+  });
+});
+
 // API catch-all middleware (before Vite)
 app.use('/api/*', (req, res) => {
   console.log('[API] Unhandled API route:', req.method, req.path);
@@ -80,6 +97,7 @@ if (app.get("env") === "development") {
       }
       next();
     } catch (e) {
+      console.error('[Server] Error setting up Vite:', e);
       next(e);
     }
   });
@@ -150,6 +168,7 @@ async function initializeServer() {
             server.removeListener('error', onError);
             const addr = server.address() as AddressInfo;
             console.log(`[Server] Successfully bound to 0.0.0.0:${addr.port}`);
+            console.log('[Server] Active connections:', connections.size);
             resolve();
           };
 
@@ -173,29 +192,47 @@ async function initializeServer() {
 }
 
 // Enhanced cleanup handlers
-function cleanup() {
+async function cleanup() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
   console.log('[Server] Starting graceful shutdown...');
+
+  // Close all existing connections
+  connections.forEach((conn) => {
+    conn.end();
+    connections.delete(conn);
+  });
+
   if (serverInstance) {
-    serverInstance.close((err) => {
-      if (err) {
-        console.error('[Server] Error during shutdown:', err);
-        process.exit(1);
-      }
-      console.log('[Server] HTTP server closed successfully');
-      process.exit(0);
-    });
+    try {
+      await new Promise((resolve, reject) => {
+        serverInstance!.close((err) => {
+          if (err) {
+            console.error('[Server] Error during shutdown:', err);
+            reject(err);
+          } else {
+            console.log('[Server] HTTP server closed successfully');
+            resolve(true);
+          }
+        });
 
-    // Set a timeout for forceful shutdown
-    setTimeout(() => {
-      console.error('[Server] Graceful shutdown timed out after 5s, forcing exit');
+        // Set a timeout for forceful shutdown
+        setTimeout(() => {
+          console.error('[Server] Graceful shutdown timed out after 5s, forcing exit');
+          process.exit(1);
+        }, 5000);
+
+        // Stop accepting new connections
+        serverInstance!.unref();
+      });
+    } catch (error) {
+      console.error('[Server] Error during cleanup:', error);
       process.exit(1);
-    }, 5000);
-
-    // Stop accepting new connections
-    serverInstance.unref();
-  } else {
-    process.exit(0);
+    }
   }
+
+  process.exit(0);
 }
 
 // Register cleanup handlers
