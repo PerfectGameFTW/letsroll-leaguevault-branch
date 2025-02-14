@@ -27,17 +27,34 @@ export default function LeagueViewPage() {
     if (!file.name.toLowerCase().endsWith('.s00')) {
       toast({
         title: "Invalid file type",
-        description: "Please select a .S00 file",
+        description: "Please select a .S00 file from QubicaAMF scoring system",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "File too large",
+        description: "Please select a file smaller than 5MB",
         variant: "destructive",
       });
       return;
     }
 
     try {
+      toast({
+        title: "Uploading scores",
+        description: "Please wait while we process your file...",
+      });
+
       const reader = new FileReader();
       reader.onload = async (e) => {
         const content = e.target?.result;
-        if (typeof content !== 'string') return;
+        if (typeof content !== 'string') {
+          throw new Error('Failed to read file content');
+        }
 
         const response = await fetch(`/api/leagues/${leagueId}/import-scores`, {
           method: 'POST',
@@ -49,15 +66,23 @@ export default function LeagueViewPage() {
 
         const data = await response.json();
 
-        if (data.success) {
+        if (response.ok && data.success) {
           toast({
             title: "Scores imported successfully",
             description: `Created ${data.data.gamesCreated} games with ${data.data.scoresCreated} scores`,
           });
+
+          // Clear the file input
+          event.target.value = '';
         } else {
-          throw new Error(data.error.message);
+          throw new Error(data.error?.message || 'Failed to import scores');
         }
       };
+
+      reader.onerror = () => {
+        throw new Error('Failed to read file');
+      };
+
       reader.readAsText(file);
     } catch (error) {
       toast({
@@ -65,6 +90,9 @@ export default function LeagueViewPage() {
         description: error instanceof Error ? error.message : "An unknown error occurred",
         variant: "destructive",
       });
+
+      // Clear the file input on error
+      event.target.value = '';
     }
   };
 
@@ -138,17 +166,17 @@ export default function LeagueViewPage() {
                 Import Scores
               </CardTitle>
               <CardDescription>
-                Upload scores from .S00 files
+                Upload scores from QubicaAMF .S00 files
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Import bowling scores from QubicaAMF .S00 files
+                Import bowling scores directly from your QubicaAMF scoring system export files
               </p>
               <div className="flex items-center gap-2">
                 <Input
                   type="file"
-                  accept=".S00"
+                  accept=".S00,.s00"
                   onChange={handleFileUpload}
                   className="cursor-pointer"
                 />

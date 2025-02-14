@@ -3,10 +3,11 @@ import { registerRoutes } from "./routes.js";
 import { setupVite, serveStatic } from "./vite.js";
 import { testConnection } from "./db.js";
 import { createServer } from 'http';
+import { AddressInfo } from 'net';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-let serverInstance: ReturnType<typeof server.listen> | null = null;
+const PORT = parseInt(process.env.PORT || "5000", 10);
+let serverInstance: ReturnType<typeof createServer.prototype.listen> | null = null;
 
 // Basic middleware
 app.use(express.json());
@@ -82,14 +83,6 @@ if (app.get("env") === "development") {
       next(e);
     }
   });
-  
-  // Add CORS headers for development
-  app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-    next();
-  });
 } else {
   console.log('[Server] Setting up static file serving for production...');
   serveStatic(app);
@@ -111,7 +104,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
-// Initialize server
+// Initialize server with retries and port checking
 async function initializeServer() {
   try {
     console.log('[Server] Starting initialization on port', PORT);
@@ -123,35 +116,50 @@ async function initializeServer() {
 
     // Start server with explicit host binding and port recovery
     await new Promise<void>((resolve, reject) => {
+      const maxRetries = 5;
+      let retryCount = 0;
+
       const startServer = () => {
-        const onError = (err: Error & { code?: string }) => {
-          server.removeListener('listening', onListening);
-          if (err.code === 'EADDRINUSE') {
-            console.log('[Server] Port in use, retrying in 3 seconds...');
-            setTimeout(() => {
-              if (serverInstance) {
-                serverInstance.close();
+        try {
+          const onError = (err: Error & { code?: string }) => {
+            server.removeListener('listening', onListening);
+
+            if (err.code === 'EADDRINUSE') {
+              if (retryCount < maxRetries) {
+                retryCount++;
+                console.log(`[Server] Port ${PORT} in use, retry attempt ${retryCount}/${maxRetries} in 3 seconds...`);
+                setTimeout(() => {
+                  if (serverInstance) {
+                    serverInstance.close();
+                  }
+                  serverInstance = server.listen(PORT, '0.0.0.0');
+                  serverInstance.once('error', onError);
+                  serverInstance.once('listening', onListening);
+                }, 3000);
+              } else {
+                console.error(`[Server] Failed to bind to port ${PORT} after ${maxRetries} attempts`);
+                reject(new Error(`Could not bind to port ${PORT} after ${maxRetries} attempts`));
               }
-              serverInstance = server.listen(PORT);
-              serverInstance.once('error', onError);
-              serverInstance.once('listening', onListening);
-            }, 3000);
-          } else {
-            console.error('[Server] Failed to start:', err);
-            reject(err);
-          }
-        };
+            } else {
+              console.error('[Server] Fatal error during startup:', err);
+              reject(err);
+            }
+          };
 
-        const onListening = () => {
-          server.removeListener('error', onError);
-          const addr = server.address();
-          console.log(`[Server] Ready and listening on ${typeof addr === 'string' ? addr : `port ${addr?.port}`}`);
-          resolve();
-        };
+          const onListening = () => {
+            server.removeListener('error', onError);
+            const addr = server.address() as AddressInfo;
+            console.log(`[Server] Successfully bound to 0.0.0.0:${addr.port}`);
+            resolve();
+          };
 
-        server.once('error', onError);
-        server.once('listening', onListening);
-        serverInstance = server.listen(PORT);
+          server.once('error', onError);
+          server.once('listening', onListening);
+          serverInstance = server.listen(PORT, '0.0.0.0');
+        } catch (error) {
+          console.error('[Server] Error in startServer:', error);
+          reject(error);
+        }
       };
 
       startServer();
@@ -166,28 +174,48 @@ async function initializeServer() {
 
 // Enhanced cleanup handlers
 function cleanup() {
-  console.log('[Server] Cleaning up...');
+  console.log('[Server] Starting graceful shutdown...');
   if (serverInstance) {
-    serverInstance.close(() => {
-      console.log('[Server] Server closed');
+    serverInstance.close((err) => {
+      if (err) {
+        console.error('[Server] Error during shutdown:', err);
+        process.exit(1);
+      }
+      console.log('[Server] HTTP server closed successfully');
       process.exit(0);
     });
 
-    // Force close after 3 seconds if graceful shutdown fails
+    // Set a timeout for forceful shutdown
     setTimeout(() => {
-      console.log('[Server] Forcing exit after timeout');
+      console.error('[Server] Graceful shutdown timed out after 5s, forcing exit');
       process.exit(1);
-    }, 3000);
+    }, 5000);
+
+    // Stop accepting new connections
+    serverInstance.unref();
   } else {
     process.exit(0);
   }
 }
 
 // Register cleanup handlers
-process.on('SIGTERM', cleanup);
-process.on('SIGINT', cleanup);
+process.on('SIGTERM', () => {
+  console.log('[Server] Received SIGTERM signal');
+  cleanup();
+});
+
+process.on('SIGINT', () => {
+  console.log('[Server] Received SIGINT signal');
+  cleanup();
+});
+
 process.on('uncaughtException', (err) => {
   console.error('[Server] Uncaught exception:', err);
+  cleanup();
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server] Unhandled Rejection at:', promise, 'reason:', reason);
   cleanup();
 });
 
