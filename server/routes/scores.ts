@@ -7,26 +7,34 @@ import { ScoreSchedulerService } from '../services/score-scheduler.js';
 // Input validation schemas
 const getScoresQuerySchema = z.object({
   bowlerId: z.string()
-    .transform(val => Number(val))
+    .transform(val => {
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
     .optional(),
   leagueId: z.string()
-    .transform(val => Number(val))
+    .transform(val => {
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
     .optional(),
   weekNumber: z.string()
-    .transform(val => Number(val))
+    .transform(val => {
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
     .optional(),
   teamId: z.string()
-    .transform(val => Number(val))
+    .transform(val => {
+      const num = Number(val);
+      return isNaN(num) ? undefined : num;
+    })
     .optional(),
-}).transform(data => ({
-  bowlerId: isNaN(data.bowlerId!) ? undefined : data.bowlerId,
-  leagueId: isNaN(data.leagueId!) ? undefined : data.leagueId,
-  weekNumber: isNaN(data.weekNumber!) ? undefined : data.weekNumber,
-  teamId: isNaN(data.teamId!) ? undefined : data.teamId,
-}));
+});
+
+const router = Router();
 
 // Get historical scores for a team or bowler
-const router = Router();
 router.get('/history', async (req, res) => {
   try {
     console.log('[Scores/History] Processing request with query:', req.query);
@@ -37,75 +45,56 @@ router.get('/history', async (req, res) => {
       return sendError(res, 'Invalid query parameters', 400);
     }
 
-    const { bowlerId, leagueId, teamId } = validationResult.data;
+    const { bowlerId, leagueId, weekNumber, teamId } = validationResult.data;
+    console.log('[Scores/History] Parsed parameters:', { bowlerId, leagueId, weekNumber, teamId });
 
+    // Case 1: Get scores by bowler ID
     if (bowlerId) {
-      console.log('[Scores/History] Fetching historical scores for bowler:', bowlerId);
+      console.log('[Scores/History] Fetching scores for bowler:', bowlerId);
       const scores = await storage.getBowlerScores(bowlerId);
-      console.log('[Scores/History] Total scores found:', scores.length);
-
-      // Filter and validate scores
-      const validScores = scores.filter(s =>
-        !s.isAbsent &&
-        !s.isVacant &&
-        typeof s.score === 'number' &&
-        s.score > 0
-      );
-      console.log('[Scores/History] Valid scores count:', validScores.length);
-
-      // Calculate total pinfall from valid scores
-      const totalPinfall = validScores.reduce((sum, s) => {
-        console.log('[Scores/History] Processing score:', {
-          score: s.score,
-          isValid: typeof s.score === 'number' && s.score > 0
-        });
-        return sum + (typeof s.score === 'number' ? s.score : 0);
-      }, 0);
-      console.log('[Scores/History] Total pinfall:', totalPinfall);
-
-      // Calculate average from valid games only
-      const average = validScores.length > 0 ? Math.round(totalPinfall / validScores.length) : 0;
-      console.log('[Scores/History] Final calculation:', {
-        totalPins: totalPinfall,
-        gamesPlayed: validScores.length,
-        average: average
-      });
-
+      console.log('[Scores/History] Found bowler scores:', scores.length);
       return sendSuccess(res, scores);
-    } else if (teamId && leagueId) {
-      console.log('[Scores/History] Fetching historical scores for team:', teamId, 'in league:', leagueId);
+    }
 
-      // Get all games for this league
+    // Case 2: Get scores by league ID and week number
+    if (leagueId && weekNumber) {
+      console.log('[Scores/History] Fetching scores for league:', leagueId, 'week:', weekNumber);
+      const games = await storage.getGames(leagueId, weekNumber);
+      console.log('[Scores/History] Found games:', games.length);
+
+      const allScores = [];
+      for (const game of games) {
+        const gameScores = await storage.getGameScores(game.id);
+        allScores.push(...gameScores);
+      }
+
+      console.log('[Scores/History] Total scores found:', allScores.length);
+      return sendSuccess(res, allScores);
+    }
+
+    // Case 3: Get scores by league ID and team ID
+    if (leagueId && teamId) {
+      console.log('[Scores/History] Fetching scores for team:', teamId, 'in league:', leagueId);
       const games = await storage.getGames(leagueId);
       console.log('[Scores/History] Found games:', games.length);
 
       const allScores = [];
       for (const game of games) {
-        const gameScores = await storage.getScores(game.id, teamId);
-        allScores.push(...gameScores);
+        const teamScores = await storage.getGameScores(game.id, teamId);
+        allScores.push(...teamScores);
       }
 
-      // Filter and validate team scores
-      const validTeamScores = allScores.filter(s =>
-        !s.isAbsent &&
-        !s.isVacant &&
-        typeof s.score === 'number' &&
-        s.score > 0
-      );
-
-      console.log('[Scores/History] Team scores statistics:', {
-        totalScores: allScores.length,
-        validScores: validTeamScores.length,
-        totalPinfall: validTeamScores.reduce((sum, s) => sum + (s.score || 0), 0)
-      });
-
+      console.log('[Scores/History] Total team scores found:', allScores.length);
       return sendSuccess(res, allScores);
     }
 
-    return sendError(res, 'Either bowlerId or (teamId and leagueId) must be provided', 400);
+    const errorMessage = 'Invalid query parameters: Either bowlerId, or (leagueId and weekNumber), or (leagueId and teamId) must be provided';
+    console.error('[Scores/History] Invalid parameter combination:', { bowlerId, leagueId, weekNumber, teamId });
+    return sendError(res, errorMessage, 400);
+
   } catch (error) {
-    console.error('[Scores/History] Error fetching historical scores:', error);
-    return sendError(res, error instanceof Error ? error.message : 'Failed to fetch historical scores', 500);
+    console.error('[Scores/History] Error fetching scores:', error);
+    return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
   }
 });
 
@@ -225,13 +214,14 @@ router.post('/import', async (req, res) => {
     );
     console.log('[Scores/Import] Score processing completed successfully');
 
-    sendSuccess(res, { 
+    sendSuccess(res, {
       message: 'Score import process completed successfully',
-      leagueId: leagueId
+      leagueId: leagueId,
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error('[Scores/Import] Error processing scores:', error);
-    return sendError(res, 
+    return sendError(res,
       error instanceof Error ? error.message : 'Failed to import scores',
       500
     );

@@ -10,54 +10,68 @@ export class ScoreSchedulerService {
 
   constructor(leagueId: number) {
     try {
+      console.log('[ScoreScheduler] Initializing service for league:', leagueId);
       this.googleDrive = new GoogleDriveService();
       this.scoreImporter = new ScoreImportService(leagueId);
+      console.log('[ScoreScheduler] Service initialized successfully');
     } catch (error) {
       console.error('[ScoreScheduler] Failed to initialize with error:', error);
-      // Don't throw here - allow the service to be created but mark it as non-functional
-      this.googleDrive = null!;
-      this.scoreImporter = new ScoreImportService(leagueId);
+      throw new Error('Failed to initialize ScoreSchedulerService: ' + 
+        (error instanceof Error ? error.message : String(error)));
     }
   }
 
   async processNewScores(sourceFolderId: string, archiveFolderId: string) {
+    console.log('[ScoreScheduler] Starting score processing...');
+    console.log('[ScoreScheduler] Source folder:', sourceFolderId);
+    console.log('[ScoreScheduler] Archive folder:', archiveFolderId);
+
     try {
       if (!this.googleDrive) {
         throw new Error('Google Drive service not initialized');
       }
 
-      console.log('[ScoreScheduler] Starting score processing...');
-
       // List new files
       const files = await this.googleDrive.listNewFiles(sourceFolderId);
       console.log(`[ScoreScheduler] Found ${files.length} new files to process`);
 
+      const results = [];
       for (const file of files) {
         try {
+          console.log(`[ScoreScheduler] Processing file: ${file.name} (${file.id})`);
+
           // Download file
           const filePath = await this.googleDrive.downloadFile(file.id, file.name);
-          console.log(`[ScoreScheduler] Downloaded file: ${file.name}`);
+          console.log(`[ScoreScheduler] Downloaded file to: ${filePath}`);
 
           // Read file content
           const fileContent = await readFile(filePath, 'utf-8');
+          console.log(`[ScoreScheduler] Read file content, size: ${fileContent.length} bytes`);
 
           // Import scores
           const result = await this.scoreImporter.importScoreFile(fileContent);
-          console.log(`[ScoreScheduler] Imported scores from ${file.name}:`, result);
+          console.log(`[ScoreScheduler] Import result for ${file.name}:`, result);
+          results.push({ file: file.name, result });
 
           // Move to archive
           await this.googleDrive.moveToArchive(file.id, archiveFolderId);
-          console.log(`[ScoreScheduler] Archived file: ${file.name}`);
+          console.log(`[ScoreScheduler] Moved file to archive: ${file.name}`);
 
           // Clean up temp file
           await unlink(filePath);
+          console.log(`[ScoreScheduler] Cleaned up temp file: ${filePath}`);
         } catch (error) {
           console.error(`[ScoreScheduler] Error processing file ${file.name}:`, error);
+          results.push({ 
+            file: file.name, 
+            error: error instanceof Error ? error.message : String(error)
+          });
           // Continue with next file even if one fails
         }
       }
 
       console.log('[ScoreScheduler] Completed score processing');
+      return results;
     } catch (error) {
       console.error('[ScoreScheduler] Error in score processing:', error);
       throw error;
@@ -65,11 +79,9 @@ export class ScoreSchedulerService {
   }
 
   scheduleJob(cronExpression: string, sourceFolderId: string, archiveFolderId: string) {
-    // Only schedule if Google Drive service is available
-    if (!this.googleDrive) {
-      console.warn('[ScoreScheduler] Skipping job scheduling - Google Drive service not available');
-      return null;
-    }
+    console.log(`[ScoreScheduler] Scheduling new job with cron: ${cronExpression}`);
+    console.log(`[ScoreScheduler] Source folder: ${sourceFolderId}`);
+    console.log(`[ScoreScheduler] Archive folder: ${archiveFolderId}`);
 
     const job = schedule.scheduleJob(cronExpression, () => {
       this.processNewScores(sourceFolderId, archiveFolderId).catch(error => {
@@ -78,13 +90,14 @@ export class ScoreSchedulerService {
     });
 
     this.jobs.push(job);
-    console.log(`[ScoreScheduler] Scheduled new job with cron: ${cronExpression}`);
+    console.log('[ScoreScheduler] Job scheduled successfully');
     return job;
   }
 
   cancelAllJobs() {
+    console.log(`[ScoreScheduler] Cancelling ${this.jobs.length} scheduled jobs`);
     this.jobs.forEach(job => job.cancel());
     this.jobs = [];
-    console.log('[ScoreScheduler] Cancelled all scheduled jobs');
+    console.log('[ScoreScheduler] All jobs cancelled');
   }
 }
