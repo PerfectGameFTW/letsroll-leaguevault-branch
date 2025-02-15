@@ -337,20 +337,33 @@ export class DatabaseStorage implements IStorage {
 
   async createGame(game: InsertGame): Promise<Game> {
     try {
+      // Always work with Date objects
+      const gameDate = game.date instanceof Date ? game.date : new Date(game.date);
+
+      // Verify the date is valid
+      if (isNaN(gameDate.getTime())) {
+        throw new Error('Invalid date provided to createGame');
+      }
+
       console.log('[Storage] Creating game with data:', {
         ...game,
-        date: game.date.toISOString(),
-        dateType: typeof game.date,
-        dateInstance: game.date instanceof Date,
-        timestamp: game.date.getTime()
+        date: {
+          original: game.date,
+          parsed: gameDate,
+          timestamp: gameDate.getTime(),
+          validation: {
+            isDate: gameDate instanceof Date,
+            isValid: !isNaN(gameDate.getTime())
+          }
+        }
       });
 
+      // Pass the Date object directly to Drizzle ORM
       const [result] = await db
         .insert(games)
         .values({
           ...game,
-          // Ensure date is properly formatted for PostgreSQL
-          date: game.date.toISOString(),
+          date: gameDate, // Pass the Date object directly
         })
         .returning();
 
@@ -373,7 +386,7 @@ export class DatabaseStorage implements IStorage {
           leagueId: game.leagueId,
           weekNumber: game.weekNumber,
           gameNumber: game.gameNumber,
-          date: game.date.toISOString()
+          date: String(game.date)
         }
       });
       throw error;

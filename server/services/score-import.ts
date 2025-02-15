@@ -45,8 +45,8 @@ export class ScoreImportService {
         throw new ScoreImportError('Invalid date in score file', 'INVALID_DATE');
       }
 
-      // Use the parsed date directly without normalization
-      const gameDate = parsedData.header.date;
+      // Create a new Date object and format it properly for PostgreSQL
+      const gameDate = new Date(parsedData.header.date.getTime());
 
       console.log('[ScoreImport] Using game date:', {
         original: parsedData.header.date.toISOString(),
@@ -108,7 +108,7 @@ export class ScoreImportService {
               leagueId: this.leagueId,
               weekNumber: parsedData.header.weekNumber,
               gameNumber,
-              date: gameDate
+              date: gameDate instanceof Date ? gameDate.toISOString() : String(gameDate)
             }
           });
           throw error;
@@ -128,8 +128,18 @@ export class ScoreImportService {
           gameNumber,
           teamNumber: teamGame.teamNumber,
           teamName: teamGame.teamName,
+          laneNumber: teamGame.laneNumber,
           bowlerCount: teamGame.bowlers.length
         });
+
+        // Log individual bowler scores
+        console.log(`[ScoreImport] Lane ${teamGame.laneNumber} bowlers:`,
+          teamGame.bowlers.map(b => ({
+            name: b.bowlerName,
+            score: b.score,
+            position: b.position
+          }))
+        );
 
         // Find the corresponding game from our created games
         const game = createdGames.find(g => g.gameNumber === gameNumber);
