@@ -5,18 +5,14 @@ import { z } from 'zod';
 
 // Input validation schemas
 const getScoresQuerySchema = z.object({
-  leagueId: z.string()
-    .transform(val => {
-      const num = Number(val);
-      return isNaN(num) ? undefined : num;
-    })
-    .optional(),
-  weekNumber: z.string()
-    .transform(val => {
-      const num = Number(val);
-      return isNaN(num) ? undefined : num;
-    })
-    .optional(),
+  leagueId: z.coerce.number({
+    required_error: "League ID is required",
+    invalid_type_error: "League ID must be a number"
+  }),
+  weekNumber: z.coerce.number({
+    required_error: "Week number is required",
+    invalid_type_error: "Week number must be a number"
+  })
 });
 
 const router = Router();
@@ -29,15 +25,11 @@ router.get('/', async (req, res) => {
     const validationResult = getScoresQuerySchema.safeParse(req.query);
     if (!validationResult.success) {
       console.error('[Scores] Validation error:', validationResult.error);
-      return sendError(res, 'Invalid query parameters', 400);
+      return sendError(res, 'League ID and week number are required', 400);
     }
 
     const { leagueId, weekNumber } = validationResult.data;
     console.log('[Scores] Parsed query parameters:', { leagueId, weekNumber });
-
-    if (!leagueId || !weekNumber) {
-      return sendError(res, 'League ID and week number are required', 400);
-    }
 
     // Get scores for the specified league and week
     const scores = await storage.getScoresByLeagueAndWeek(leagueId, weekNumber);
