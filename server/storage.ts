@@ -67,6 +67,7 @@ export interface IStorage {
   createBatchScores(scores: InsertScore[]): Promise<Score[]>;
   getGameScores(gameId: number): Promise<Score[]>;
   getTeamByNumber(leagueId: number, teamNumber: number): Promise<Team | undefined>;
+  getScoresByLeagueAndWeek(leagueId: number, weekNumber: number): Promise<Score[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -537,6 +538,54 @@ export class DatabaseStorage implements IStorage {
         eq(teams.number, teamNumber)
       ));
     return result;
+  }
+  async getScoresByLeagueAndWeek(leagueId: number, weekNumber: number): Promise<Score[]> {
+    console.log('[Storage] Fetching scores for league:', leagueId, 'week:', weekNumber);
+
+    const scoresWithDetails = await db
+      .select({
+        id: scores.id,
+        gameId: scores.gameId,
+        bowlerId: scores.bowlerId,
+        teamId: scores.teamId,
+        score: scores.score,
+        handicap: scores.handicap,
+        average: scores.average,
+        position: scores.position,
+        isVacant: scores.isVacant,
+        isAbsent: scores.isAbsent,
+        isSub: scores.isSub,
+        laneNumber: scores.laneNumber,
+        bowler: {
+          id: bowlers.id,
+          name: bowlers.name,
+        },
+        team: {
+          id: teams.id,
+          name: teams.name,
+          number: teams.number,
+        },
+        game: {
+          id: games.id,
+          weekNumber: games.weekNumber,
+          gameNumber: games.gameNumber,
+          date: games.date,
+        },
+      })
+      .from(scores)
+      .innerJoin(games, eq(games.id, scores.gameId))
+      .innerJoin(bowlers, eq(bowlers.id, scores.bowlerId))
+      .innerJoin(teams, eq(teams.id, scores.teamId))
+      .where(
+        and(
+          eq(games.leagueId, leagueId),
+          eq(games.weekNumber, weekNumber)
+        )
+      )
+      .orderBy(games.gameNumber, teams.number, scores.position);
+
+    console.log('[Storage] Found scores:', scoresWithDetails.length);
+    return scoresWithDetails;
   }
 }
 

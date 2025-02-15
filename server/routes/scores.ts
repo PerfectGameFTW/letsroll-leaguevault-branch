@@ -2,25 +2,9 @@ import { Router } from 'express';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { z } from 'zod';
-import { ScoreSchedulerService } from '../services/score-scheduler.js';
-import { GoogleDriveService } from '../services/google-drive.js';
-import { ScoreImportService, ScoreImportError } from '../services/score-import.js';
-import { readFileSync } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// Get the directory name using import.meta.url
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Input validation schemas
 const getScoresQuerySchema = z.object({
-  bowlerId: z.string()
-    .transform(val => {
-      const num = Number(val);
-      return isNaN(num) ? undefined : num;
-    })
-    .optional(),
   leagueId: z.string()
     .transform(val => {
       const num = Number(val);
@@ -33,15 +17,90 @@ const getScoresQuerySchema = z.object({
       return isNaN(num) ? undefined : num;
     })
     .optional(),
-  teamId: z.string()
-    .transform(val => {
-      const num = Number(val);
-      return isNaN(num) ? undefined : num;
-    })
-    .optional(),
 });
 
 const router = Router();
+
+// Get scores for a specific league and week
+router.get('/', async (req, res) => {
+  try {
+    console.log('[Scores] Processing request with query:', req.query);
+
+    const validationResult = getScoresQuerySchema.safeParse(req.query);
+    if (!validationResult.success) {
+      console.error('[Scores] Validation error:', validationResult.error);
+      return sendError(res, 'Invalid query parameters', 400);
+    }
+
+    const { leagueId, weekNumber } = validationResult.data;
+    console.log('[Scores] Parsed query parameters:', { leagueId, weekNumber });
+
+    if (!leagueId || !weekNumber) {
+      return sendError(res, 'League ID and week number are required', 400);
+    }
+
+    // Get scores for the specified league and week
+    const scores = await storage.getScoresByLeagueAndWeek(leagueId, weekNumber);
+    console.log('[Scores] Found scores:', scores.length);
+
+    // Group scores by game, then by team
+    const groupedScores = scores.reduce((acc, score) => {
+      const gameNumber = score.game.gameNumber;
+      const teamNumber = score.team.number;
+
+      if (!acc[gameNumber]) {
+        acc[gameNumber] = {};
+      }
+      if (!acc[gameNumber][teamNumber]) {
+        acc[gameNumber][teamNumber] = {
+          teamId: score.team.id,
+          teamName: score.team.name,
+          teamNumber: score.team.number,
+          laneNumber: score.laneNumber,
+          bowlers: []
+        };
+      }
+
+      acc[gameNumber][teamNumber].bowlers.push({
+        bowlerId: score.bowlerId,
+        bowlerName: score.bowler.name,
+        score: score.score,
+        handicap: score.handicap,
+        isVacant: score.isVacant,
+        isAbsent: score.isAbsent,
+        isSub: score.isSub,
+        position: score.position
+      });
+
+      return acc;
+    }, {});
+
+    // Convert to array format and sort teams
+    const formattedGames = Object.entries(groupedScores).map(([gameNumber, teams]) => {
+      const teamPairs = Object.values(teams);
+      // Sort teams by lane number
+      teamPairs.sort((a, b) => a.laneNumber - b.laneNumber);
+
+      // Sort bowlers by position within each team
+      teamPairs.forEach(team => {
+        team.bowlers.sort((a, b) => a.position - b.position);
+      });
+
+      return {
+        gameNumber: parseInt(gameNumber),
+        teams: teamPairs
+      };
+    });
+
+    // Sort games by game number
+    formattedGames.sort((a, b) => a.gameNumber - b.gameNumber);
+
+    return sendSuccess(res, formattedGames);
+  } catch (error) {
+    console.error('[Scores] Error fetching scores:', error);
+    return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
+  }
+});
 
 // Get historical scores for a team or bowler
 router.get('/history', async (req, res) => {
@@ -54,18 +113,10 @@ router.get('/history', async (req, res) => {
       return sendError(res, 'Invalid query parameters', 400);
     }
 
-    const { bowlerId, leagueId, weekNumber, teamId } = validationResult.data;
-    console.log('[Scores/History] Parsed parameters:', { bowlerId, leagueId, weekNumber, teamId });
+    const { leagueId, weekNumber } = validationResult.data;
+    console.log('[Scores/History] Parsed parameters:', { leagueId, weekNumber });
 
-    // Case 1: Get scores by bowler ID
-    if (bowlerId) {
-      console.log('[Scores/History] Fetching scores for bowler:', bowlerId);
-      const scores = await storage.getBowlerScores(bowlerId);
-      console.log('[Scores/History] Found bowler scores:', scores.length);
-      return sendSuccess(res, scores);
-    }
 
-    // Case 2: Get scores by league ID and week number
     if (leagueId && weekNumber) {
       console.log('[Scores/History] Fetching scores for league:', leagueId, 'week:', weekNumber);
       const games = await storage.getGames(leagueId, weekNumber);
@@ -81,95 +132,13 @@ router.get('/history', async (req, res) => {
       return sendSuccess(res, allScores);
     }
 
-    // Case 3: Get scores by league ID and team ID
-    if (leagueId && teamId) {
-      console.log('[Scores/History] Fetching scores for team:', teamId, 'in league:', leagueId);
-      const games = await storage.getGames(leagueId);
-      console.log('[Scores/History] Found games:', games.length);
 
-      const allScores = [];
-      for (const game of games) {
-        const gameScores = await storage.getGameScores(game.id);
-        // Filter scores for the specific team
-        const teamScores = gameScores.filter(score => score.teamId === teamId);
-        allScores.push(...teamScores);
-      }
-
-      console.log('[Scores/History] Total team scores found:', allScores.length);
-      return sendSuccess(res, allScores);
-    }
-
-    const errorMessage = 'Invalid query parameters: Either bowlerId, or (leagueId and weekNumber), or (leagueId and teamId) must be provided';
-    console.error('[Scores/History] Invalid parameter combination:', { bowlerId, leagueId, weekNumber, teamId });
+    const errorMessage = 'Invalid query parameters: leagueId and weekNumber must be provided';
+    console.error('[Scores/History] Invalid parameter combination:', { leagueId, weekNumber });
     return sendError(res, errorMessage, 400);
 
   } catch (error) {
     console.error('[Scores/History] Error fetching scores:', error);
-    return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
-  }
-});
-
-// Get scores for current week
-router.get('/', async (req, res) => {
-  try {
-    console.log('[Scores] Processing request with query:', req.query);
-
-    const validationResult = getScoresQuerySchema.safeParse(req.query);
-    if (!validationResult.success) {
-      console.error('[Scores] Validation error:', validationResult.error);
-      return sendError(res, 'Invalid query parameters', 400);
-    }
-
-    const { bowlerId, leagueId, weekNumber } = validationResult.data;
-    console.log('[Scores] Parsed query parameters:', { bowlerId, leagueId, weekNumber });
-
-    if (leagueId !== undefined && weekNumber !== undefined) {
-      console.log('[Scores] Fetching weekly scores for league:', leagueId, 'week:', weekNumber);
-
-      // Get all games for the specified league and week
-      const games = await storage.getGames(leagueId, weekNumber);
-      console.log('[Scores] Found games:', games.length);
-
-      if (games.length === 0) {
-        console.log('[Scores] No games found for league:', leagueId, 'week:', weekNumber);
-        return sendSuccess(res, []);
-      }
-
-      // Get all scores for these games
-      const allScores = [];
-      for (const game of games) {
-        const gameScores = await storage.getGameScores(game.id);
-        if (gameScores.length > 0) {
-          console.log('[Scores] Found scores for game:', game.id, 'count:', gameScores.length);
-          allScores.push(...gameScores.map(score => ({
-            ...score,
-            gameNumber: game.gameNumber,
-            weekNumber: game.weekNumber,
-            date: game.date
-          })));
-        }
-      }
-
-      console.log('[Scores] Total scores found:', allScores.length);
-      return sendSuccess(res, allScores);
-    }
-
-    if (bowlerId !== undefined) {
-      console.log('[Scores] Fetching scores for bowler:', bowlerId);
-      const scores = await storage.getBowlerScores(bowlerId);
-
-      // Log bowler's score statistics
-      const validScores = scores.filter(s => !s.isAbsent && !s.isVacant && s.score !== null);
-      console.log('[Scores] Total bowler scores:', scores.length);
-      console.log('[Scores] Valid bowler scores:', validScores.length);
-      console.log('[Scores] Bowler total pinfall:', validScores.reduce((sum, s) => sum + (s.score || 0), 0));
-
-      return sendSuccess(res, scores);
-    }
-
-    return sendError(res, 'Either bowlerId or (leagueId and weekNumber) must be provided', 400);
-  } catch (error) {
-    console.error('[Scores] Error fetching scores:', error);
     return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
   }
 });

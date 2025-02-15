@@ -5,11 +5,13 @@ import { z } from 'zod';
 
 const router = Router();
 
-// Input validation schema
+// Input validation schema - make leagueId required and ensure it's properly transformed
 const getGamesQuerySchema = z.object({
-  leagueId: z.string().transform(val => Number(val))
-}).refine(data => !isNaN(data.leagueId), {
-  message: "League ID must be a valid number"
+  leagueId: z.coerce.number({
+    required_error: "League ID is required",
+    invalid_type_error: "League ID must be a number"
+  }),
+  weekNumber: z.coerce.number().optional()
 });
 
 // Get games for a league
@@ -21,13 +23,13 @@ router.get('/', async (req, res) => {
     const validationResult = getGamesQuerySchema.safeParse(req.query);
     if (!validationResult.success) {
       console.log('[Games] Validation error:', validationResult.error);
-      return sendError(res, 'Invalid league ID provided', 400);
+      return sendError(res, 'Invalid or missing parameters', 400);
     }
 
-    const { leagueId } = validationResult.data;
-    console.log('[Games] Fetching games for league:', leagueId);
+    const { leagueId, weekNumber } = validationResult.data;
+    console.log('[Games] Fetching games for league:', leagueId, 'week:', weekNumber);
 
-    const games = await storage.getGames(leagueId);
+    const games = await storage.getGames(leagueId, weekNumber);
     console.log('[Games] Retrieved games:', games.length);
 
     sendSuccess(res, games);

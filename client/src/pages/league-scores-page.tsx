@@ -81,39 +81,14 @@ export default function LeagueScoresPage() {
     setSelectedWeek(weeks[0]);
   }
 
-  // Get games for the selected week
-  const weekGames = games.filter(g => g.weekNumber === selectedWeek);
-
   // Query for scores with proper error handling
-  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<{ data: Score[] }>({
-    queryKey: ["/api/scores", { gameIds: weekGames.map(g => g.id) }],
-    enabled: weekGames.length > 0,
+  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery({
+    queryKey: ["/api/scores", { leagueId, weekNumber: selectedWeek }],
+    enabled: !!leagueId && !!selectedWeek,
   });
-
-  // Query for teams with proper error handling
-  const { data: teamsResponse, isLoading: loadingTeams, error: teamsError } = useQuery<{ data: Team[] }>({
-    queryKey: ["/api/teams", { leagueId }],
-    enabled: !!leagueId,
-  });
-
-  // Query for bowlers with proper error handling
-  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<{ data: Bowler[] }>({
-    queryKey: ["/api/bowlers"],
-  });
-
-  // Query for historical scores
-  const { data: historicalScoresResponse, isLoading: loadingHistorical } = useQuery<{ data: { [key: string]: Score[] } }>({
-    queryKey: ["/api/scores/history", { leagueId }],
-    enabled: !!teamsResponse?.data && !!leagueId,
-  });
-
-  const scores = scoresResponse?.data || [];
-  const teams = teamsResponse?.data || [];
-  const bowlers = bowlersResponse?.data || [];
-  const historicalScores = historicalScoresResponse?.data || {};
 
   // Show loading state with back navigation
-  if (loadingLeague || loadingGames || loadingScores || loadingTeams || loadingBowlers || loadingHistorical) {
+  if (loadingLeague || loadingGames || loadingScores) {
     return (
       <Layout>
         <div className="space-y-4">
@@ -140,8 +115,6 @@ export default function LeagueScoresPage() {
     { type: 'league', error: leagueError },
     { type: 'games', error: gamesError },
     { type: 'scores', error: scoresError },
-    { type: 'teams', error: teamsError },
-    { type: 'bowlers', error: bowlersError },
   ].filter(e => e.error);
 
   if (errors.length > 0) {
@@ -186,59 +159,7 @@ export default function LeagueScoresPage() {
     );
   }
 
-  // Calculate team scores and statistics
-  const teamScores: TeamScores[] = teams
-    .filter(team => team.leagueId === leagueId)
-    .map((team, index) => {
-      // Get current week's scores for display
-      const teamScores = scores
-        .filter(s => s.teamId === team.id)
-        .map(score => ({
-          ...score,
-          bowler: bowlers.find(b => b.id === score.bowlerId),
-        }))
-        .sort((a, b) => a.position - b.position);
-
-      // Get historical scores for this team
-      const teamHistoricalScores = historicalScores[team.id] || [];
-
-      // Calculate total pins from valid scores only
-      const validHistoricalScores = teamHistoricalScores.filter(s =>
-        !s.isAbsent && !s.isVacant && typeof s.score === 'number' && s.score > 0
-      );
-
-      const totalHistoricalPins = validHistoricalScores.reduce((sum, score) =>
-        sum + score.score, 0
-      );
-
-      const totalGamesPlayed = validHistoricalScores.length;
-      const averageScore = totalGamesPlayed > 0
-        ? Math.round(totalHistoricalPins / totalGamesPlayed)
-        : 0;
-
-      return {
-        team,
-        scores: teamScores,
-        games: weekGames,
-        laneNumber: Math.floor(index / 2) * 2 + 1, // Calculate lane numbers based on position
-        totalPins: totalHistoricalPins,
-        averageScore,
-        gamesPlayed: totalGamesPlayed,
-        position: index + 1,
-      };
-    })
-    .sort((a, b) => a.position - b.position);
-
-  // Pair teams into matchups
-  const matchups: MatchupPair[] = [];
-  for (let i = 0; i < teamScores.length; i += 2) {
-    if (i + 1 < teamScores.length) {
-      const homeTeam = teamScores[i];
-      const awayTeam = teamScores[i + 1];
-      const lanes = `${homeTeam.laneNumber}-${homeTeam.laneNumber + 1}`;
-      matchups.push({ homeTeam, awayTeam, lanes });
-    }
-  }
+  const formattedGames = scoresResponse?.data || [];
 
   return (
     <Layout>
@@ -288,20 +209,19 @@ export default function LeagueScoresPage() {
           </div>
         ) : (
           <div className="grid gap-6">
-            {matchups.map(({ homeTeam, awayTeam, lanes }, index) => (
-              <div key={index} className="space-y-2">
+            {formattedGames.map((game, gameIndex) => (
+              <div key={gameIndex} className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold">Matchup {index + 1}</h3>
-                  <span className="text-sm text-muted-foreground">Lanes {lanes}</span>
+                  <h3 className="text-lg font-semibold">Game {game.gameNumber}</h3>
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
-                  {[homeTeam, awayTeam].map((teamScore) => (
-                    <Card key={teamScore.team.id} className="hover:border-primary/50 transition-colors">
+                  {game.teams.map((teamScore, teamIndex) => (
+                    <Card key={teamIndex} className="hover:border-primary/50 transition-colors">
                       <CardHeader className="pb-2">
                         <div className="flex items-center justify-between">
-                          <CardTitle>{teamScore.team.name}</CardTitle>
+                          <CardTitle>{teamScore.teamName}</CardTitle>
                           <div className="text-sm text-muted-foreground">
-                            Average: {teamScore.averageScore}
+                            Lane {teamScore.laneNumber}
                           </div>
                         </div>
                       </CardHeader>
@@ -310,103 +230,57 @@ export default function LeagueScoresPage() {
                           <TableHeader>
                             <TableRow>
                               <TableHead className="w-[200px]">Bowler</TableHead>
-                              {teamScore.games.map((game, index) => (
-                                <TableHead key={game.id} className="text-right">
-                                  Game {index + 1}
-                                </TableHead>
-                              ))}
-                              <TableHead className="text-right">Series</TableHead>
+                              <TableHead className="text-right">Score</TableHead>
+                              <TableHead className="text-right">Handicap</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {teamScore.scores.length === 0 ? (
-                              <TableRow>
+                            {teamScore.bowlers.map((bowler, index) => (
+                              <TableRow key={index}>
+                                <TableCell>
+                                  {bowler.isVacant ? (
+                                    <span className="text-muted-foreground italic">Vacant</span>
+                                  ) : bowler.isAbsent ? (
+                                    <span className="text-muted-foreground italic">Absent</span>
+                                  ) : (
+                                    <div className="flex items-center gap-2">
+                                      <Link
+                                        href={`/bowlers/${bowler.bowlerId}`}
+                                        className="hover:underline"
+                                      >
+                                        {bowler.bowlerName}
+                                      </Link>
+                                      {bowler.isSub && (
+                                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                          Sub
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </TableCell>
                                 <TableCell
-                                  colSpan={teamScore.games.length + 2}
-                                  className="text-center text-muted-foreground py-8"
+                                  className={cn(
+                                    "text-right font-medium",
+                                    bowler.score >= 250 && "text-green-600",
+                                    bowler.score >= 200 && bowler.score < 250 && "text-primary"
+                                  )}
                                 >
-                                  No scores recorded for this team in Week {selectedWeek}
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>{bowler.score || "—"}</span>
+                                    </TooltipTrigger>
+                                    {bowler.score >= 200 && (
+                                      <TooltipContent>
+                                        {bowler.score >= 250 ? "Perfect game approaching!" : "Great game!"}
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                </TableCell>
+                                <TableCell className="text-right text-muted-foreground">
+                                  {bowler.handicap}
                                 </TableCell>
                               </TableRow>
-                            ) : (
-                              teamScore.scores.map((score) => {
-                                const gameScores = teamScore.games.map(game =>
-                                  teamScore.scores.find(s => s.gameId === game.id && s.position === score.position)
-                                );
-
-                                const validGameScores = gameScores.filter((s): s is Score =>
-                                  !!s && !s.isAbsent && !s.isVacant && s.score !== null
-                                );
-                                const series = validGameScores.reduce((sum, s) => sum + (s.score || 0), 0);
-
-                                return (
-                                  <TableRow key={`${score.bowlerId}-${score.position}`}>
-                                    <TableCell>
-                                      {score.isVacant ? (
-                                        <span className="text-muted-foreground italic">Vacant</span>
-                                      ) : score.isAbsent ? (
-                                        <span className="text-muted-foreground italic">Absent</span>
-                                      ) : score.bowler ? (
-                                        <div className="flex items-center gap-2">
-                                          <Link
-                                            href={`/bowlers/${score.bowler.id}`}
-                                            className="hover:underline"
-                                          >
-                                            {score.bowler.name}
-                                          </Link>
-                                          {score.isSub && (
-                                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-                                              Sub
-                                            </span>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <span className="text-muted-foreground">Unknown Bowler</span>
-                                      )}
-                                    </TableCell>
-                                    {gameScores.map((gameScore, i) => (
-                                      <TableCell
-                                        key={i}
-                                        className={cn(
-                                          "text-right font-medium",
-                                          gameScore?.score && gameScore.score >= 250 && "text-green-600",
-                                          gameScore?.score && gameScore.score >= 200 && gameScore.score < 250 && "text-primary",
-                                        )}
-                                      >
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <span>{gameScore?.score || "—"}</span>
-                                          </TooltipTrigger>
-                                          {gameScore?.score && gameScore.score >= 200 && (
-                                            <TooltipContent>
-                                              {gameScore.score >= 250 ? "Perfect game approaching!" : "Great game!"}
-                                            </TooltipContent>
-                                          )}
-                                        </Tooltip>
-                                      </TableCell>
-                                    ))}
-                                    <TableCell
-                                      className={cn(
-                                        "text-right font-medium",
-                                        series >= 700 && "text-green-600",
-                                        series >= 600 && series < 700 && "text-primary"
-                                      )}
-                                    >
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <span>{series || "—"}</span>
-                                        </TooltipTrigger>
-                                        {series >= 600 && (
-                                          <TooltipContent>
-                                            {series >= 700 ? "Outstanding series!" : "Great series!"}
-                                          </TooltipContent>
-                                        )}
-                                      </Tooltip>
-                                    </TableCell>
-                                  </TableRow>
-                                );
-                              })
-                            )}
+                            ))}
                           </TableBody>
                         </Table>
                       </CardContent>
