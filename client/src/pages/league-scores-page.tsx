@@ -59,49 +59,89 @@ interface LanePair {
 }
 
 function groupTeamsByLanes(teams: TeamScores[]): LanePair[] {
-  // Sort teams by lane number first
-  const sortedTeams = [...teams].sort((a, b) => a.laneNumber - b.laneNumber);
+  // Create a map of lane numbers to teams
+  const laneMap = new Map<number, TeamScores>();
+
+  // Log available teams and their lanes
+  console.log('[LanePairs] Available teams:', teams.map(t => `Team ${t.teamId} on lane ${t.laneNumber}`));
+
+  teams.forEach(team => {
+    laneMap.set(team.laneNumber, team);
+  });
+
+  console.log('[LanePairs] Lane map entries:', Array.from(laneMap.entries()).map(([lane, team]) => `Lane ${lane}: Team ${team.teamId}`));
+
   const pairs: LanePair[] = [];
+  // Get all lane numbers and sort them
+  const laneNumbers = Array.from(laneMap.keys()).sort((a, b) => a - b);
 
-  // Process all teams
-  for (let i = 0; i < sortedTeams.length; i++) {
-    const currentTeam = sortedTeams[i];
+  console.log('[LanePairs] Sorted lane numbers:', laneNumbers);
 
-    // Find the matching team on the adjacent lane
-    const matchingTeam = sortedTeams.find(
-      team => team.laneNumber === currentTeam.laneNumber + 1 || 
-              team.laneNumber === currentTeam.laneNumber - 1
+  // Process lanes in pairs
+  for (let i = 0; i < laneNumbers.length; i++) {
+    const currentLane = laneNumbers[i];
+    const currentTeam = laneMap.get(currentLane)!;
+
+    console.log(`[LanePairs] Processing lane ${currentLane}`);
+
+    // Check if this lane has already been processed
+    const alreadyProcessed = pairs.some(p =>
+      p.homeTeam.laneNumber === currentLane ||
+      (p.awayTeam && p.awayTeam.laneNumber === currentLane)
     );
 
-    // If this team hasn't been processed yet
-    if (!pairs.some(pair => 
-      pair.homeTeam.teamId === currentTeam.teamId || 
-      (pair.awayTeam && pair.awayTeam.teamId === currentTeam.teamId)
-    )) {
-      if (matchingTeam) {
-        // Create a new pair with both teams
-        pairs.push({
-          lanes: `Lanes ${Math.min(currentTeam.laneNumber, matchingTeam.laneNumber)} & ${Math.max(currentTeam.laneNumber, matchingTeam.laneNumber)}`,
-          homeTeam: currentTeam.laneNumber < matchingTeam.laneNumber ? currentTeam : matchingTeam,
-          awayTeam: currentTeam.laneNumber < matchingTeam.laneNumber ? matchingTeam : currentTeam
-        });
-      } else {
-        // Handle single lane case
-        pairs.push({
-          lanes: `Lane ${currentTeam.laneNumber}`,
-          homeTeam: currentTeam,
-          awayTeam: undefined
-        });
-      }
+    if (alreadyProcessed) {
+      console.log(`[LanePairs] Lane ${currentLane} already processed, skipping`);
+      continue;
+    }
+
+    // Find the paired lane (could be previous or next)
+    let pairedLane: number;
+    if (currentLane % 2 === 0) {
+      pairedLane = currentLane - 1; // Even lane, look for previous odd lane
+    } else {
+      pairedLane = currentLane + 1; // Odd lane, look for next even lane
+    }
+
+    const pairedTeam = laneMap.get(pairedLane);
+    console.log(`[LanePairs] Looking for paired lane ${pairedLane} for lane ${currentLane}`, pairedTeam ? 'found' : 'not found');
+
+    if (pairedTeam) {
+      // Create lane pair with proper ordering (lower number first)
+      const [lowerLane, higherLane] = currentLane < pairedLane
+        ? [currentLane, pairedLane]
+        : [pairedLane, currentLane];
+
+      const [homeTeam, awayTeam] = currentLane < pairedLane
+        ? [currentTeam, pairedTeam]
+        : [pairedTeam, currentTeam];
+
+      pairs.push({
+        lanes: `Lanes ${lowerLane} & ${higherLane}`,
+        homeTeam,
+        awayTeam
+      });
+      console.log(`[LanePairs] Created pair for lanes ${lowerLane} & ${higherLane}`);
+    } else {
+      // Handle single lane case
+      pairs.push({
+        lanes: `Lane ${currentLane}`,
+        homeTeam: currentTeam,
+        awayTeam: undefined
+      });
+      console.log(`[LanePairs] Created single lane entry for lane ${currentLane}`);
     }
   }
 
-  // Sort pairs by lane number
-  return pairs.sort((a, b) => {
+  // Sort pairs by the lowest lane number in each pair
+  const sortedPairs = pairs.sort((a, b) => {
     const aLane = a.homeTeam.laneNumber;
     const bLane = b.homeTeam.laneNumber;
     return aLane - bLane;
   });
+
+  console.log('[LanePairs] Final pairs:', sortedPairs.map(p => p.lanes));
+  return sortedPairs;
 }
 
 function organizeBowlerScores(scoresData: any[]): WeeklyScores {

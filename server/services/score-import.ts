@@ -33,13 +33,15 @@ export class ScoreImportService {
       // Parse file content
       console.log('[ScoreImport] Parsing score file...');
       const parsedData = parseQubicaScoreFile(fileContent);
-      console.log('[ScoreImport] Parsed header:', {
-        date: parsedData.header.date?.toISOString(),
-        weekNumber: parsedData.header.weekNumber,
-        leagueName: parsedData.header.leagueName,
-        dateType: Object.prototype.toString.call(parsedData.header.date),
-        dateValidation: parsedData.header.date instanceof Date
-      });
+
+      // Log all team games and their lane assignments
+      console.log('[ScoreImport] Team games found:', parsedData.games.map(game => ({
+        gameNumber: game.gameNumber,
+        teamNumber: game.teamNumber,
+        teamName: game.teamName,
+        laneNumber: game.laneNumber,
+        bowlerCount: game.bowlers.length
+      })));
 
       // Verify the parsed date
       if (!parsedData.header.date || isNaN(parsedData.header.date.getTime())) {
@@ -49,23 +51,6 @@ export class ScoreImportService {
 
       // Create a new Date object and format it properly for PostgreSQL
       const gameDate = new Date(parsedData.header.date);
-
-      console.log('[ScoreImport] Using game date:', {
-        original: parsedData.header.date.toISOString(),
-        gameDate: gameDate.toISOString(),
-        dateValidation: {
-          isDate: gameDate instanceof Date,
-          timestamp: gameDate.getTime(),
-          dateType: Object.prototype.toString.call(gameDate),
-          components: {
-            year: gameDate.getUTCFullYear(),
-            month: gameDate.getUTCMonth() + 1,
-            day: gameDate.getUTCDate(),
-            hours: gameDate.getUTCHours(),
-            minutes: gameDate.getUTCMinutes()
-          }
-        }
-      });
 
       // Validate league exists
       const league = await storage.getLeague(this.leagueId);
@@ -77,13 +62,6 @@ export class ScoreImportService {
       const createdGames: Game[] = [];
       for (let gameNumber = 1; gameNumber <= 3; gameNumber++) {
         try {
-          console.log(`[ScoreImport] Creating game ${gameNumber}:`, {
-            leagueId: this.leagueId,
-            weekNumber: parsedData.header.weekNumber,
-            gameNumber,
-            date: gameDate,
-          });
-
           const insertGame: InsertGame = {
             leagueId: this.leagueId,
             weekNumber: parsedData.header.weekNumber,
@@ -101,19 +79,7 @@ export class ScoreImportService {
 
           createdGames.push(game);
         } catch (error) {
-          console.error(`[ScoreImport] Error creating game ${gameNumber}:`, {
-            error: error instanceof Error ? {
-              name: error.name,
-              message: error.message,
-              stack: error.stack
-            } : error,
-            gameData: {
-              leagueId: this.leagueId,
-              weekNumber: parsedData.header.weekNumber,
-              gameNumber,
-              date: gameDate instanceof Date ? gameDate.toISOString() : String(gameDate)
-            }
-          });
+          console.error(`[ScoreImport] Error creating game ${gameNumber}:`, error);
           throw error;
         }
       }
@@ -123,10 +89,18 @@ export class ScoreImportService {
       const teamCache = new Map<string, Team>();
       const bowlerCache = new Map<string, Bowler>();
 
+      // Group teams by lane numbers for verification
+      const laneAssignments = new Map<number, { teamNumber: string, teamName: string }>();
+
       // Process each game from the parsed data
       console.log(`[ScoreImport] Processing ${parsedData.games.length} team games...`);
       for (const teamGame of parsedData.games) {
         const gameNumber = teamGame.gameNumber;
+        laneAssignments.set(teamGame.laneNumber, {
+          teamNumber: teamGame.teamNumber,
+          teamName: teamGame.teamName
+        });
+
         console.log(`[ScoreImport] Processing team game:`, {
           gameNumber,
           teamNumber: teamGame.teamNumber,
@@ -134,15 +108,6 @@ export class ScoreImportService {
           laneNumber: teamGame.laneNumber,
           bowlerCount: teamGame.bowlers.length
         });
-
-        // Log individual bowler scores
-        console.log(`[ScoreImport] Lane ${teamGame.laneNumber} bowlers:`,
-          teamGame.bowlers.map(b => ({
-            name: b.bowlerName,
-            score: b.score,
-            position: b.position
-          }))
-        );
 
         // Find the corresponding game from our created games
         const game = createdGames.find(g => g.gameNumber === gameNumber);
@@ -154,7 +119,7 @@ export class ScoreImportService {
         // Get or cache team
         let team = teamCache.get(teamGame.teamNumber);
         if (!team) {
-          console.log(`[ScoreImport] Looking up team number ${teamGame.teamNumber}`);
+          console.log(`[ScoreImport] Looking up team number ${teamGame.teamNumber} for lane ${teamGame.laneNumber}`);
           team = await storage.getTeamByNumber(this.leagueId, parseInt(teamGame.teamNumber));
           if (!team) {
             console.warn(`[ScoreImport] Team number ${teamGame.teamNumber} not found in league ${this.leagueId}`);
@@ -164,7 +129,7 @@ export class ScoreImportService {
         }
 
         // Process bowlers for this team and game
-        console.log(`[ScoreImport] Processing ${teamGame.bowlers.length} bowlers for team ${team.name} game ${gameNumber}`);
+        console.log(`[ScoreImport] Processing ${teamGame.bowlers.length} bowlers for team ${team.name} on lane ${teamGame.laneNumber} game ${gameNumber}`);
 
         for (const bowlerScore of teamGame.bowlers) {
           try {
@@ -185,7 +150,6 @@ export class ScoreImportService {
                 };
 
                 bowler = await storage.createBowler(insertBowler);
-                console.log('[ScoreImport] Created new bowler:', bowler);
               }
 
               bowlerCache.set(bowlerScore.bowlerId, bowler);
@@ -203,7 +167,7 @@ export class ScoreImportService {
               isVacant: bowlerScore.status.isVacant,
               isAbsent: bowlerScore.status.isAbsent,
               isSub: bowlerScore.status.isSub,
-              laneNumber: bowlerScore.laneNumber,
+              laneNumber: teamGame.laneNumber,
             };
 
             scores.push(insertScore);
@@ -212,6 +176,7 @@ export class ScoreImportService {
               bowlerId: bowler.id,
               teamId: team.id,
               score: bowlerScore.score,
+              laneNumber: teamGame.laneNumber,
               status: bowlerScore.status
             });
           } catch (error) {
@@ -221,11 +186,26 @@ export class ScoreImportService {
         }
       }
 
+      // Log lane assignments for verification
+      console.log('[ScoreImport] Final lane assignments:', 
+        Array.from(laneAssignments.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([lane, team]) => `Lane ${lane}: Team ${team.teamNumber} (${team.teamName})`)
+      );
+
       // Create all scores in a batch
       console.log(`[ScoreImport] Creating ${scores.length} scores in batch`);
       try {
         const createdScores = await storage.createBatchScores(scores);
-        console.log('[ScoreImport] Successfully created all scores:', createdScores.length);
+        console.log('[ScoreImport] Successfully created all scores:', 
+          createdScores.map(score => ({
+            id: score.id,
+            gameId: score.gameId,
+            laneNumber: score.laneNumber,
+            score: score.score
+          }))
+        );
+
         return {
           gamesCreated: createdGames.length,
           scoresCreated: createdScores.length,
@@ -235,13 +215,7 @@ export class ScoreImportService {
         throw error;
       }
     } catch (error) {
-      console.error('[ScoreImport] Fatal error during score import:', {
-        error: error instanceof Error ? {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        } : error
-      });
+      console.error('[ScoreImport] Fatal error during score import:', error);
       throw error;
     }
   }

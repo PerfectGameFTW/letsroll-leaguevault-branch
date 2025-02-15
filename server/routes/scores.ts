@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { z } from 'zod';
+import { ScoreImportService, ScoreImportError } from '../services/score-import.js';
+import { GoogleDriveService } from '../services/google-drive.js';
 
 // Input validation schemas
 const getScoresQuerySchema = z.object({
@@ -135,11 +137,11 @@ router.get('/history', async (req, res) => {
   }
 });
 
-// Add enhanced import route
+// Enhanced import route to use Google Drive
 router.post('/import', async (req, res) => {
   try {
     const leagueId = parseInt(req.query.leagueId as string);
-    console.log('[Scores/Import] Processing manual import request for league:', leagueId);
+    console.log('[Scores/Import] Processing import request for league:', leagueId);
 
     if (isNaN(leagueId)) {
       console.error('[Scores/Import] Invalid league ID provided:', req.query.leagueId);
@@ -153,18 +155,31 @@ router.post('/import', async (req, res) => {
       return sendError(res, 'League not found', 404);
     }
 
-    // Build the file path using import.meta.url derived __dirname
-    const sampleFilePath = path.resolve(__dirname, '../..', 'attached_assets/bls_farmmxd_24_25__Conquerer X__wk020.S00');
-    console.log('[Scores/Import] Attempting to read file:', sampleFilePath);
+    // Initialize Google Drive service
+    console.log('[Scores/Import] Initializing GoogleDriveService...');
+    const googleDrive = new GoogleDriveService();
+    const sourceFolderId = process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID;
 
-    let fileContent: string;
-    try {
-      fileContent = readFileSync(sampleFilePath, 'utf-8');
-      console.log('[Scores/Import] Successfully read sample file, length:', fileContent.length);
-    } catch (error) {
-      console.error('[Scores/Import] Error reading sample file:', error);
-      return sendError(res, `Failed to read sample file: ${error.message}`, 500);
+    if (!sourceFolderId) {
+      console.error('[Scores/Import] Source folder ID not configured');
+      return sendError(res, 'Source folder ID not configured', 500);
     }
+
+    // List and get the latest file
+    console.log('[Scores/Import] Fetching files from Google Drive folder:', sourceFolderId);
+    const files = await googleDrive.listNewFiles(sourceFolderId);
+
+    if (files.length === 0) {
+      console.error('[Scores/Import] No files found in source folder');
+      return sendError(res, 'No score files found to import', 404);
+    }
+
+    // Get the most recent file's content
+    const latestFile = files[0];
+    console.log('[Scores/Import] Found latest file:', latestFile.name);
+
+    const fileContent = await googleDrive.getFileContent(latestFile.id);
+    console.log('[Scores/Import] Successfully read file content, length:', fileContent.length);
 
     // Initialize score import service and process the file
     console.log('[Scores/Import] Initializing score import service...');
@@ -175,8 +190,13 @@ router.post('/import', async (req, res) => {
       const result = await importService.importScoreFile(fileContent);
       console.log('[Scores/Import] Import completed successfully:', result);
 
+      // Mark file as processed
+      await googleDrive.markFileAsProcessed(latestFile.id);
+      console.log('[Scores/Import] Marked file as processed:', latestFile.id);
+
       return sendSuccess(res, {
         message: 'Score import process completed successfully',
+        fileName: latestFile.name,
         leagueId: leagueId,
         result,
         timestamp: new Date().toISOString()
@@ -208,7 +228,7 @@ router.post('/import', async (req, res) => {
 // Add manual listing endpoint for debugging
 router.get('/list-source', async (req, res) => {
   try {
-    console.log('[Scores/ListSource] Starting file listing test...');
+    console.log('[Scores/ListSource] Starting file listing...');
 
     const sourceFolderId = process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID;
     if (!sourceFolderId) {
