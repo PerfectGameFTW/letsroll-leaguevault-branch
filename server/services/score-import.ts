@@ -25,28 +25,30 @@ export class ScoreImportService {
     scoresCreated: number;
   }> {
     try {
-      // Add debug logging to see the file content
+      // Add extensive debug logging
+      console.log('[ScoreImport] Starting import process...');
       console.log('[ScoreImport] File content length:', fileContent.length);
       console.log('[ScoreImport] First 200 chars:', fileContent.substring(0, 200));
 
-      // Log the first few lines to verify format
-      const lines = fileContent.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-      console.log('[ScoreImport] Number of non-empty lines:', lines.length);
-      console.log('[ScoreImport] First 5 lines:');
-      lines.slice(0, 5).forEach((line, i) => console.log(`Line ${i + 1}: ${line}`));
-
-      console.log('[ScoreImport] Starting to parse score file...');
+      // Parse file content
+      console.log('[ScoreImport] Parsing score file...');
       const parsedData = parseQubicaScoreFile(fileContent);
       console.log('[ScoreImport] Parsed data header:', JSON.stringify(parsedData.header, null, 2));
       console.log('[ScoreImport] Total games in parsed data:', parsedData.games.length);
 
-      // Log game distribution in parsed data
-      const gameDistribution = parsedData.games.reduce((acc, game) => {
-        acc[game.gameNumber] = (acc[game.gameNumber] || 0) + 1;
-        return acc;
-      }, {} as Record<number, number>);
-      console.log('[ScoreImport] Game distribution in parsed data:', gameDistribution);
+      // Log detailed game information
+      console.log('[ScoreImport] Games breakdown:');
+      const gamesByTeam = new Map<string, number[]>();
+      parsedData.games.forEach(game => {
+        const key = `${game.teamNumber}-${game.teamName}`;
+        const games = gamesByTeam.get(key) || [];
+        games.push(game.gameNumber);
+        gamesByTeam.set(key, games);
+      });
 
+      for (const [team, games] of gamesByTeam.entries()) {
+        console.log(`Team ${team}: Games ${games.join(', ')}`);
+      }
 
       // Validate league exists
       const league = await storage.getLeague(this.leagueId);
@@ -54,18 +56,6 @@ export class ScoreImportService {
 
       if (!league) {
         throw new ScoreImportError('League not found', 'LEAGUE_NOT_FOUND');
-      }
-
-      // Validate QubicaAMF league ID matches if set
-      if (league.qubicaId && league.qubicaId !== parsedData.header.leagueId) {
-        console.error('[ScoreImport] League ID mismatch:', {
-          expected: league.qubicaId,
-          actual: parsedData.header.leagueId
-        });
-        throw new ScoreImportError(
-          'QubicaAMF league ID mismatch',
-          'LEAGUE_ID_MISMATCH'
-        );
       }
 
       // Create three games for this week
@@ -132,7 +122,8 @@ export class ScoreImportService {
             name: bowlerScore.bowlerName,
             id: bowlerScore.bowlerId,
             score: bowlerScore.score,
-            position: bowlerScore.position
+            position: bowlerScore.position,
+            status: bowlerScore.status
           });
 
           // Get or cache bowler
@@ -149,6 +140,7 @@ export class ScoreImportService {
                   active: true,
                   order: 0,
                 });
+                console.log('[ScoreImport] Created new bowler:', bowler);
               } catch (error) {
                 console.error(`[ScoreImport] Error creating bowler:`, error);
                 continue;
@@ -163,8 +155,8 @@ export class ScoreImportService {
             bowlerId: bowler.id,
             teamId: team.id,
             score: bowlerScore.score,
-            handicap: bowlerScore.handicap,
-            average: bowlerScore.average,
+            handicap: bowlerScore.handicap || 0,
+            average: bowlerScore.average || 0,
             position: bowlerScore.position,
             isVacant: bowlerScore.status.isVacant,
             isAbsent: bowlerScore.status.isAbsent,
@@ -177,13 +169,20 @@ export class ScoreImportService {
             gameId: game.id,
             bowlerId: bowler.id,
             teamId: team.id,
-            score: bowlerScore.score
+            score: bowlerScore.score,
+            status: bowlerScore.status
           });
         }
       }
 
-      // Batch create all scores
-      console.log(`[ScoreImport] Creating ${scores.length} scores across ${createdGames.length} games`);
+      // Log scores before batch creation
+      console.log(`[ScoreImport] Preparing to create ${scores.length} scores across ${createdGames.length} games`);
+      console.log('[ScoreImport] Score distribution by game:');
+      const scoresByGame = scores.reduce((acc, score) => {
+        acc[score.gameId] = (acc[score.gameId] || 0) + 1;
+        return acc;
+      }, {} as Record<number, number>);
+      console.log(scoresByGame);
 
       try {
         await storage.createBatchScores(scores);

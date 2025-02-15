@@ -1,5 +1,5 @@
+import type { QubicaScoreImport } from '@shared/schema';
 import { QubicaScoreParser, parseQubicaScoreFile } from '../../utils/qubica-parser.js';
-import type { QubicaScoreImport } from '../../../shared/schema.js';
 
 describe('QubicaScoreParser', () => {
   const sampleTeamHeader = '014\t1\t0\t2\t14\t*\t*\t0\t9\tSlow Rollers';

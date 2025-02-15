@@ -39,9 +39,9 @@ export class QubicaScoreParser {
     // 1. First part is 3 digits (team number)
     // 2. Second part is game number (1-3)
     // 3. Third part is "0" (position)
-    const isHeader = 
+    const isHeader =
       /^\d{3}$/.test(parts[0]) &&
-      /^[1-3]$/.test(parts[1]) && 
+      /^[1-3]$/.test(parts[1]) &&
       parts[2] === '0';
 
     if (isHeader) {
@@ -78,6 +78,12 @@ export class QubicaScoreParser {
     const recordNumber = parts[3];
     const laneNumber = parseInt(parts[8]);
 
+    // Additional validation checks
+    if (!teamNumber || !gameNumber || !position || !recordNumber || !laneNumber) {
+      console.log('[QubicaParser] Invalid line format:', line);
+      return null;
+    }
+
     if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > 3) {
       console.log('[QubicaParser] Invalid game number:', gameNumber);
       return null;
@@ -90,7 +96,10 @@ export class QubicaScoreParser {
     console.log('[QubicaParser] Parsing bowler score line:', line);
 
     const lineInfo = this.parseLine(line);
-    if (!lineInfo) return null;
+    if (!lineInfo) {
+      console.log('[QubicaParser] Failed to parse line info');
+      return null;
+    }
 
     const [teamNumber, gameNumber, position, recordNumber, laneNumber] = lineInfo;
 
@@ -103,10 +112,8 @@ export class QubicaScoreParser {
 
     parts = parts.map(p => p.trim());
 
-    if (parts.length < 13) {
-      console.log('[QubicaParser] Score line has insufficient columns:', parts.length);
-      return null;
-    }
+    // Log parts for debugging
+    console.log('[QubicaParser] Parts:', parts);
 
     const bowlerId = parts[4];
     const status1 = parts[5];
@@ -116,6 +123,12 @@ export class QubicaScoreParser {
     const scoreSheet = parts[10] || '';
     const handicap = parseInt(parts[11] || '0');
     const average = parseInt(parts[12] || '0');
+
+    // Additional validation
+    if (!bowlerId || isNaN(score)) {
+      console.log('[QubicaParser] Missing required fields:', { bowlerId, score });
+      return null;
+    }
 
     if (isNaN(score) || score < 0 || score > 300) {
       console.log('[QubicaParser] Invalid score value:', score);
@@ -142,13 +155,7 @@ export class QubicaScoreParser {
       hasBumpers: false
     };
 
-    console.log('[QubicaParser] Parsed bowler score:', {
-      bowlerName: bowlerScore.bowlerName,
-      score: bowlerScore.score,
-      gameNumber: bowlerScore.gameNumber,
-      position: bowlerScore.position
-    });
-
+    console.log('[QubicaParser] Successfully parsed bowler score:', bowlerScore);
     return bowlerScore;
   }
 
@@ -196,7 +203,7 @@ export class QubicaScoreParser {
         const scores = gameScores.get(bowlerScore.gameNumber) || [];
         scores.push(bowlerScore);
         gameScores.set(bowlerScore.gameNumber, scores);
-        console.log('[QubicaParser] Added score for', bowlerScore.bowlerName, 
+        console.log('[QubicaParser] Added score for', bowlerScore.bowlerName,
           'game', bowlerScore.gameNumber, 'score', bowlerScore.score);
       }
 
@@ -213,7 +220,7 @@ export class QubicaScoreParser {
           laneNumber,
           bowlers: bowlers.sort((a, b) => a.position - b.position)
         });
-        console.log('[QubicaParser] Created game', gameNum, 'for team', teamName, 
+        console.log('[QubicaParser] Created game', gameNum, 'for team', teamName,
           'with', bowlers.length, 'bowlers');
       }
     }
@@ -232,11 +239,27 @@ export class QubicaScoreParser {
     const parts = headerLine.split('\t');
 
     // Format example: "* 12/30/1899 12:00 am\tConqueror X (QubicaAMF)\tTest League\tWeek 1\t18:30\t123\tTest"
-    const firstPart = parts[0].substring(2); // Remove '* ' prefix
+    let firstPart = parts[0].substring(2); // Remove '* ' prefix
+    console.log('[QubicaParser] First part:', firstPart);
+
+    // Handle both date formats: with and without time
+    let dateStr = firstPart.split('  ')[0];
+    if (dateStr.includes('12:00 am')) {
+      dateStr = dateStr.replace(' 12:00 am', '');
+    }
+
+    // Parse date in MM/DD/YYYY format
+    const [month, day, year] = dateStr.split('/').map(num => parseInt(num));
+    const date = new Date(year, month - 1, day);
+    if (isNaN(date.getTime())) {
+      console.log('[QubicaParser] Failed to parse date:', dateStr);
+      throw new Error('Invalid date format');
+    }
+
     const centerName = parts[1].replace(' (QubicaAMF)', '');
     const leagueName = parts[2];
     const weekStr = parts[3];
-    const dateTimeStr = parts[4];
+    const sessionTime = parts[4];
     const leagueId = parts[5];
     const description = parts[6] || '';
 
@@ -246,18 +269,12 @@ export class QubicaScoreParser {
       throw new Error('Invalid week number format');
     }
 
-    // Parse date
-    const date = new Date(dateTimeStr.split('  ')[0]);
-    if (isNaN(date.getTime())) {
-      throw new Error('Invalid date format');
-    }
-
     const header = {
       date,
       centerName,
       leagueName,
       weekNumber,
-      sessionTime: '18:30', // Default time if not provided
+      sessionTime,
       leagueId,
       description
     };

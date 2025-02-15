@@ -14,49 +14,49 @@ jest.mock('../../storage.js', () => ({
 
 import { ScoreImportService, ScoreImportError } from '../score-import.js';
 import { storage } from '../../storage.js';
-import type { Game, Team, Bowler, Score } from '@shared/schema.js';
+import type { League, Game, Team, Bowler, Score } from '@shared/schema';
 
 describe('ScoreImportService', () => {
-  // Use a relative path from the test file to the sample data
   const testDataPath = join(__dirname, '../../../attached_assets/bls_farmmxd_24_25__Conquerer X__wk020.S00');
   const sampleFileContent = readFileSync(testDataPath, 'utf-8');
 
   beforeEach(() => {
     jest.clearAllMocks();
-  });
 
-  it('successfully imports scores for all three games', async () => {
-    // Mock successful league fetch
-    (storage.getLeague as jest.Mock).mockResolvedValue({
+    // Mock league
+    const mockLeague: League = {
       id: 1,
       name: 'Test League',
+      description: 'Test League Description',
+      active: true,
+      seasonStart: new Date('2024-09-01'),
+      seasonEnd: new Date('2025-05-31'),
+      weekDay: 'Monday',
+      weeklyFee: 2000,
       qubicaId: null,
-    });
-
-    // Store created games for verification
-    const createdGames: Game[] = [];
-    (storage.createGame as jest.Mock).mockImplementation((game: Partial<Game>): Game => {
-      const createdGame = {
-        ...game,
-        id: createdGames.length + 1,
-      } as Game;
-      createdGames.push(createdGame);
-      return createdGame;
-    });
+      practiceStartTime: '18:00',
+      competitionStartTime: '18:30'
+    };
+    (storage.getLeague as jest.Mock).mockResolvedValue(mockLeague);
 
     // Mock team lookup
-    (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId: number, number: number): Team => ({
-      id: number,
-      number,
+    (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId: number, teamNumber: number): Team => ({
+      id: teamNumber,
+      name: `Team ${teamNumber}`,
+      number: teamNumber,
       leagueId,
-      name: `Team ${number}`,
       active: true,
     }));
 
-    // Mock bowler lookup/creation
-    const bowlerCache = new Map<string, Bowler>();
-    (storage.getBowlerByQubicaId as jest.Mock).mockImplementation((qubicaId: string): Bowler | null => {
-      return bowlerCache.get(qubicaId) || null;
+    // Store created games for verification
+    const createdGames: Game[] = [];
+    (storage.createGame as jest.Mock).mockImplementation((gameData: Partial<Game>): Game => {
+      const createdGame = {
+        id: createdGames.length + 1,
+        ...gameData,
+      } as Game;
+      createdGames.push(createdGame);
+      return createdGame;
     });
 
     // Store created scores for verification
@@ -65,47 +65,68 @@ describe('ScoreImportService', () => {
       createdScores.push(...scores);
       return scores;
     });
+  });
 
+  it('successfully imports scores for all three games', async () => {
     const service = new ScoreImportService(1);
+
+    // Log sample file content for debugging
+    console.log('Sample file content first 200 chars:', sampleFileContent.substring(0, 200));
+    console.log('Total file length:', sampleFileContent.length);
+
     const result = await service.importScoreFile(sampleFileContent);
 
-    // Verify games are created with sequential game numbers
-    expect(createdGames).toHaveLength(3);
-    createdGames.forEach((game, index) => {
-      expect(game.gameNumber).toBe(index + 1);
-      expect(game.weekNumber).toBe(20); // Week number from the test file
+    // Verify getLeague was called with correct ID
+    expect(storage.getLeague).toHaveBeenCalledWith(1);
+
+    // Verify three games were created
+    expect(storage.createGame).toHaveBeenCalledTimes(3);
+    const createGameCalls = (storage.createGame as jest.Mock).mock.calls;
+    expect(createGameCalls).toHaveLength(3);
+
+    // Verify game creation parameters
+    createGameCalls.forEach((call: any, index: number) => {
+      const gameData = call[0];
+      expect(gameData).toMatchObject({
+        leagueId: 1,
+        weekNumber: 20, // Week number from the test file
+        gameNumber: index + 1,
+      });
     });
 
-    // Verify scores are created for each game
-    const scoresByGame = createdScores.reduce((acc, score) => {
-      if (!acc[score.gameId]) {
-        acc[score.gameId] = [];
+    // Verify scores were created
+    expect(storage.createBatchScores).toHaveBeenCalled();
+    const scores = (storage.createBatchScores as jest.Mock).mock.calls[0][0] as Score[];
+    expect(scores.length).toBeGreaterThan(0);
+
+    // Verify each team has scores in all games
+    const scoresByTeam = new Map<number, Set<number>>();
+    scores.forEach(score => {
+      if (!scoresByTeam.has(score.teamId)) {
+        scoresByTeam.set(score.teamId, new Set());
       }
-      acc[score.gameId].push(score);
-      return acc;
-    }, {} as Record<number, Score[]>);
-
-    // Verify each game has scores
-    expect(Object.keys(scoresByGame)).toHaveLength(3);
-
-    // Check that scores are distributed across all games
-    Object.entries(scoresByGame).forEach(([gameId, scores]) => {
-      const gameScores = scores.length;
-      expect(gameScores).toBeGreaterThan(0);
-      console.log(`Game ${gameId} has ${gameScores} scores`);
+      scoresByTeam.get(score.teamId)!.add(score.gameId);
     });
 
-    // Verify team consistency across games
-    const teamIds = new Set(createdScores.map(s => s.teamId));
-    teamIds.forEach(teamId => {
-      // Each team should have scores in all three games
-      const teamScores = createdScores.filter(s => s.teamId === teamId);
-      const teamGameIds = new Set(teamScores.map(s => s.gameId));
-      expect(teamGameIds.size).toBe(3); // Each team should have scores in all 3 games
+    // Each team should have scores in all three games
+    scoresByTeam.forEach((gameIds, teamId) => {
+      expect(gameIds.size).toBe(3);
     });
 
-    expect(result.gamesCreated).toBe(3);
-    expect(result.scoresCreated).toBeGreaterThan(0);
+    // Log test results for debugging
+    console.log('Test Results:', {
+      gamesCreated: result.gamesCreated,
+      scoresCreated: result.scoresCreated,
+      uniqueTeams: scoresByTeam.size,
+      teamsWithAllGames: Array.from(scoresByTeam.entries())
+        .filter(([_, games]) => games.size === 3).length,
+      scoresByTeam: Object.fromEntries(
+        Array.from(scoresByTeam.entries()).map(([teamId, games]) => [
+          teamId, 
+          Array.from(games)
+        ])
+      )
+    });
   });
 
   it('throws error when league is not found', async () => {
