@@ -3,8 +3,15 @@ import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { z } from 'zod';
 import { ScoreSchedulerService } from '../services/score-scheduler.js';
-import { GoogleDriveService } from '../services/google-drive.js'; // Assuming this import is needed
+import { GoogleDriveService } from '../services/google-drive.js';
+import { ScoreImportService, ScoreImportError } from '../services/score-import.js';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
+// Get the directory name using import.meta.url
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Input validation schemas
 const getScoresQuerySchema = z.object({
@@ -195,7 +202,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Add manual import trigger endpoint
+// Add enhanced import route
 router.post('/import', async (req, res) => {
   try {
     const leagueId = parseInt(req.query.leagueId as string);
@@ -206,28 +213,45 @@ router.post('/import', async (req, res) => {
       return sendError(res, 'Invalid league ID', 400);
     }
 
-    // Initialize score scheduler service
-    console.log('[Scores/Import] Initializing ScoreSchedulerService...');
-    const scheduler = new ScoreSchedulerService(leagueId);
+    // Check if league exists
+    const league = await storage.getLeague(leagueId);
+    if (!league) {
+      console.error('[Scores/Import] League not found:', leagueId);
+      return sendError(res, 'League not found', 404);
+    }
 
-    // Process scores using the configured folder IDs
-    console.log('[Scores/Import] Starting score processing...');
-    await scheduler.processNewScores(
-      process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID!,
-      process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID!
-    );
-    console.log('[Scores/Import] Score processing completed successfully');
+    // Build the file path using import.meta.url derived __dirname
+    const sampleFilePath = path.resolve(__dirname, '../..', 'attached_assets/bls_farmmxd_24_25__Conquerer X__wk020.S00');
+    console.log('[Scores/Import] Attempting to read file:', sampleFilePath);
 
-    sendSuccess(res, {
+    let fileContent: string;
+    try {
+      fileContent = readFileSync(sampleFilePath, 'utf-8');
+      console.log('[Scores/Import] Successfully read sample file, length:', fileContent.length);
+    } catch (error) {
+      console.error('[Scores/Import] Error reading sample file:', error);
+      return sendError(res, `Failed to read sample file: ${error.message}`, 500);
+    }
+
+    // Initialize score import service and process the file
+    console.log('[Scores/Import] Initializing score import service...');
+    const importService = new ScoreImportService(leagueId);
+
+    console.log('[Scores/Import] Starting score import process...');
+    const result = await importService.importScoreFile(fileContent);
+    console.log('[Scores/Import] Import completed successfully:', result);
+
+    return sendSuccess(res, {
       message: 'Score import process completed successfully',
       leagueId: leagueId,
+      result,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
     console.error('[Scores/Import] Error processing scores:', error);
     return sendError(res,
-      error instanceof Error ? error.message : 'Failed to import scores',
-      500
+      error instanceof ScoreImportError ? error.message : 'Failed to import scores',
+      error instanceof ScoreImportError ? 400 : 500
     );
   }
 });

@@ -39,6 +39,20 @@ describe('ScoreImportService', () => {
     };
     (storage.getLeague as jest.Mock).mockResolvedValue(mockLeague);
 
+    // Mock bowler creation/lookup
+    const createdBowlers = new Map<string, Bowler>();
+    (storage.getBowlerByQubicaId as jest.Mock).mockImplementation(async (qubicaId: string) => {
+      return createdBowlers.get(qubicaId);
+    });
+    (storage.createBowler as jest.Mock).mockImplementation(async (bowlerData: any): Promise<Bowler> => {
+      const bowler = {
+        id: createdBowlers.size + 1,
+        ...bowlerData,
+      };
+      createdBowlers.set(bowlerData.qubicaId, bowler);
+      return bowler;
+    });
+
     // Mock team lookup
     (storage.getTeamByNumber as jest.Mock).mockImplementation((leagueId: number, teamNumber: number): Team => ({
       id: teamNumber,

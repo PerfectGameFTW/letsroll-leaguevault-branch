@@ -7,8 +7,9 @@ import type {
   Game,
   Score,
   Bowler,
-  Team
-} from '@shared/schema.js';
+  Team,
+  InsertBowler
+} from '@shared/schema';
 
 export class ScoreImportError extends Error {
   constructor(message: string, public code: string) {
@@ -18,7 +19,9 @@ export class ScoreImportError extends Error {
 }
 
 export class ScoreImportService {
-  constructor(private leagueId: number) {}
+  constructor(private leagueId: number) {
+    console.log('[ScoreImportService] Initialized with leagueId:', leagueId);
+  }
 
   async importScoreFile(fileContent: string): Promise<{
     gamesCreated: number;
@@ -126,52 +129,67 @@ export class ScoreImportService {
             status: bowlerScore.status
           });
 
-          // Get or cache bowler
-          let bowler = bowlerCache.get(bowlerScore.bowlerId);
-          if (!bowler) {
-            bowler = await storage.getBowlerByQubicaId(bowlerScore.bowlerId);
+          try {
+            // Get or cache bowler with retry logic
+            let bowler = bowlerCache.get(bowlerScore.bowlerId);
             if (!bowler) {
-              console.log(`[ScoreImport] Creating new bowler: ${bowlerScore.bowlerName} (${bowlerScore.bowlerId})`);
-              try {
-                bowler = await storage.createBowler({
+              console.log(`[ScoreImport] Looking up bowler by QubicaId: ${bowlerScore.bowlerId}`);
+              bowler = await storage.getBowlerByQubicaId(bowlerScore.bowlerId);
+
+              if (!bowler) {
+                console.log(`[ScoreImport] Creating new bowler: ${bowlerScore.bowlerName} (${bowlerScore.bowlerId})`);
+                const insertBowler: InsertBowler = {
                   name: bowlerScore.bowlerName,
                   email: `${bowlerScore.bowlerId}@placeholder.com`,
                   qubicaId: bowlerScore.bowlerId,
                   active: true,
                   order: 0,
-                });
+                };
+
+                bowler = await storage.createBowler(insertBowler);
                 console.log('[ScoreImport] Created new bowler:', bowler);
-              } catch (error) {
-                console.error(`[ScoreImport] Error creating bowler:`, error);
-                continue;
+
+                // Verify bowler was created successfully
+                if (!bowler || !bowler.id) {
+                  throw new Error(`Failed to create bowler: ${bowlerScore.bowlerName}`);
+                }
               }
+
+              bowlerCache.set(bowlerScore.bowlerId, bowler);
             }
-            bowlerCache.set(bowlerScore.bowlerId, bowler);
+
+            // Verify we have valid bowler before proceeding
+            if (!bowler || !bowler.id) {
+              throw new Error(`Invalid bowler object for ID: ${bowlerScore.bowlerId}`);
+            }
+
+            // Create score record
+            const insertScore: InsertScore = {
+              gameId: game.id,
+              bowlerId: bowler.id,
+              teamId: team.id,
+              score: bowlerScore.score,
+              handicap: bowlerScore.handicap || 0,
+              average: bowlerScore.average || 0,
+              position: bowlerScore.position,
+              isVacant: bowlerScore.status.isVacant,
+              isAbsent: bowlerScore.status.isAbsent,
+              isSub: bowlerScore.status.isSub,
+              laneNumber: bowlerScore.laneNumber,
+            };
+
+            scores.push(insertScore);
+            console.log(`[ScoreImport] Added score:`, {
+              gameId: game.id,
+              bowlerId: bowler.id,
+              teamId: team.id,
+              score: bowlerScore.score,
+              status: bowlerScore.status
+            });
+          } catch (error) {
+            console.error(`[ScoreImport] Error processing bowler ${bowlerScore.bowlerName}:`, error);
+            throw error;
           }
-
-          // Create score record
-          const insertScore: InsertScore = {
-            gameId: game.id,
-            bowlerId: bowler.id,
-            teamId: team.id,
-            score: bowlerScore.score,
-            handicap: bowlerScore.handicap || 0,
-            average: bowlerScore.average || 0,
-            position: bowlerScore.position,
-            isVacant: bowlerScore.status.isVacant,
-            isAbsent: bowlerScore.status.isAbsent,
-            isSub: bowlerScore.status.isSub,
-            laneNumber: bowlerScore.laneNumber,
-          };
-
-          scores.push(insertScore);
-          console.log(`[ScoreImport] Added score:`, {
-            gameId: game.id,
-            bowlerId: bowler.id,
-            teamId: team.id,
-            score: bowlerScore.score,
-            status: bowlerScore.status
-          });
         }
       }
 
@@ -185,17 +203,16 @@ export class ScoreImportService {
       console.log(scoresByGame);
 
       try {
-        await storage.createBatchScores(scores);
-        console.log('[ScoreImport] Successfully created all scores');
+        const createdScores = await storage.createBatchScores(scores);
+        console.log('[ScoreImport] Successfully created all scores:', createdScores.length);
+        return {
+          gamesCreated: createdGames.length,
+          scoresCreated: createdScores.length,
+        };
       } catch (error) {
         console.error('[ScoreImport] Error creating batch scores:', error);
         throw error;
       }
-
-      return {
-        gamesCreated: createdGames.length,
-        scoresCreated: scores.length,
-      };
     } catch (error) {
       console.error('[ScoreImport] Fatal error during score import:', error);
       throw error;
