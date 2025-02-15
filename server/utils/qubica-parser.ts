@@ -6,57 +6,82 @@ export class QubicaScoreParser {
   private currentIndex: number = 0;
 
   constructor(fileContent: string) {
-    // Split on both \n and \r\n and filter out empty lines
     this.lines = fileContent.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
     console.log(`[QubicaParser] Initialized with ${this.lines.length} non-empty lines`);
-
-    // Debug first few lines to verify format
-    this.lines.slice(0, 5).forEach((line, i) => {
-      console.log(`[QubicaParser] Line ${i + 1}: ${line}`);
-    });
   }
 
   private parseHeaderDate(headerLine: string): Date {
-    console.log('[QubicaParser] Parsing header line for date:', headerLine);
+    console.log('[QubicaParser] Raw header line:', headerLine);
 
     try {
-      // Look for the date after "Week {number}"
-      const weekPattern = /Week \d+/;
-      const weekMatch = headerLine.match(weekPattern);
-      if (!weekMatch) {
-        throw new Error('Could not find week number in header');
+      // Match "Week XX" followed by a date, allowing for variable whitespace
+      // and capturing the time portion optionally
+      const dateTimePattern = /Week\s*\d+\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})(?:\s*(\d{1,2}:\d{2}))?/;
+      const match = headerLine.match(dateTimePattern);
+
+      if (!match) {
+        console.error('[QubicaParser] No date/time pattern found in header line');
+        console.log('[QubicaParser] Header line details:', {
+          raw: headerLine,
+          length: headerLine.length,
+          pattern: dateTimePattern.toString()
+        });
+        throw new Error('Could not find date pattern in header');
       }
 
-      // Extract the text after "Week XX" up to the next tab or end
-      const afterWeek = headerLine.split(weekMatch[0])[1].trim();
-      const dateStr = afterWeek.split('\t')[0].trim();
-      console.log('[QubicaParser] Extracted date string:', dateStr);
+      const [fullMatch, dateStr, timeStr] = match;
+      console.log('[QubicaParser] Pattern matches:', {
+        fullMatch,
+        dateStr,
+        timeStr,
+        index: match.index
+      });
 
-      // Parse using date-fns with explicit format
-      const parsedDate = parse(dateStr, 'MMMM d, yyyy', new Date());
+      // Parse the date portion
+      const parsedDate = parse(dateStr.trim(), 'MMMM d, yyyy', new Date());
 
-      // Validate parsed date
       if (isNaN(parsedDate.getTime())) {
+        console.error('[QubicaParser] Failed to parse date:', {
+          input: dateStr,
+          output: parsedDate
+        });
         throw new Error(`Invalid date value: ${dateStr}`);
       }
 
-      // Ensure the date is set to midnight
-      const normalizedDate = new Date(parsedDate.getFullYear(), parsedDate.getMonth(), parsedDate.getDate());
+      // If we have a time portion, set it
+      if (timeStr) {
+        const [hours, minutes] = timeStr.split(':').map(Number);
+        parsedDate.setHours(hours, minutes);
+      }
+
+      // Set seconds and milliseconds to 0 for consistency
+      parsedDate.setSeconds(0);
+      parsedDate.setMilliseconds(0);
 
       console.log('[QubicaParser] Successfully parsed date:', {
-        original: dateStr,
-        parsed: parsedDate.toISOString(),
-        normalized: normalizedDate.toISOString(),
-        year: normalizedDate.getFullYear(),
-        month: normalizedDate.getMonth() + 1,
-        day: normalizedDate.getDate()
+        input: dateStr,
+        time: timeStr,
+        parsedDate: parsedDate.toISOString(),
+        components: {
+          year: parsedDate.getFullYear(),
+          month: parsedDate.getMonth() + 1,
+          day: parsedDate.getDate(),
+          hours: parsedDate.getHours(),
+          minutes: parsedDate.getMinutes()
+        }
       });
 
-      return normalizedDate;
+      return parsedDate;
     } catch (error) {
-      console.error('[QubicaParser] Error parsing date:', error);
-      console.error('[QubicaParser] Header line:', headerLine);
-      throw new Error(`Failed to parse date: ${error.message}`);
+      console.error('[QubicaParser] Error parsing header date:', {
+        error: error instanceof Error ? {
+          type: error.constructor.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        headerLine
+      });
+      throw error;
     }
   }
 
@@ -289,7 +314,7 @@ export class QubicaScoreParser {
     console.log('[QubicaParser] Successfully parsed header. Date:', header.date.toISOString());
 
     const games: QubicaTeamGame[] = [];
-    this.currentIndex = 2;
+    this.currentIndex = 1; //Corrected index to start from the second line after header
 
     while (this.currentIndex < this.lines.length) {
       const line = this.lines[this.currentIndex];

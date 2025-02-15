@@ -28,7 +28,6 @@ export class ScoreImportService {
     scoresCreated: number;
   }> {
     try {
-      // Add extensive debug logging
       console.log('[ScoreImport] Starting import process...');
 
       // Parse file content
@@ -46,13 +45,22 @@ export class ScoreImportService {
         throw new ScoreImportError('Invalid date in score file', 'INVALID_DATE');
       }
 
-      // Create a new Date object from the parsed date to ensure proper date handling
-      const gameDate = new Date(parsedData.header.date.getTime());
-      gameDate.setHours(0, 0, 0, 0); // Normalize time to start of day
+      // Normalize the date to midnight UTC
+      const gameDate = new Date(parsedData.header.date);
+      gameDate.setUTCHours(0, 0, 0, 0);
 
-      console.log('[ScoreImport] Using game date:', {
+      console.log('[ScoreImport] Using normalized game date:', {
         original: parsedData.header.date.toISOString(),
-        normalized: gameDate.toISOString()
+        normalized: gameDate.toISOString(),
+        dateValidation: {
+          isDate: gameDate instanceof Date,
+          timestamp: gameDate.getTime(),
+          components: {
+            year: gameDate.getUTCFullYear(),
+            month: gameDate.getUTCMonth() + 1,
+            day: gameDate.getUTCDate()
+          }
+        }
       });
 
       // Validate league exists
@@ -69,7 +77,12 @@ export class ScoreImportService {
             leagueId: this.leagueId,
             weekNumber: parsedData.header.weekNumber,
             gameNumber,
-            date: gameDate.toISOString()
+            date: gameDate.toISOString(),
+            dateValidation: {
+              isDate: gameDate instanceof Date,
+              jsType: typeof gameDate,
+              hasToISOString: typeof gameDate.toISOString === 'function'
+            }
           });
 
           const insertGame: InsertGame = {
@@ -146,7 +159,7 @@ export class ScoreImportService {
 
         for (const bowlerScore of teamGame.bowlers) {
           try {
-            // Get or cache bowler with retry logic
+            // Get or cache bowler
             let bowler = bowlerCache.get(bowlerScore.bowlerId);
             if (!bowler) {
               console.log(`[ScoreImport] Looking up bowler by QubicaId: ${bowlerScore.bowlerId}`);
