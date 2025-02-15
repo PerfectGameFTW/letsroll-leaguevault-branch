@@ -2,6 +2,7 @@ import { google } from 'googleapis';
 import { createWriteStream } from 'fs';
 import { join } from 'path';
 import { mkdir } from 'fs/promises';
+import type { GaxiosError } from 'googleapis-common';
 
 // Directory for temporary storage of downloaded files
 const TEMP_DIR = join(process.cwd(), 'temp');
@@ -158,11 +159,12 @@ export class GoogleDriveService {
       });
     } catch (error) {
       console.error('[GoogleDrive] Failed to download file:', error);
-      if (error.response) {
+      const apiError = error as GaxiosError;
+      if (apiError.response) {
         console.error('[GoogleDrive] Download API Error:', {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data
+          status: apiError.response.status,
+          statusText: apiError.response.statusText,
+          data: apiError.response.data
         });
       }
       throw new Error('Failed to download file from Google Drive: ' + 
@@ -192,11 +194,12 @@ export class GoogleDriveService {
       console.log(`[GoogleDrive] File ${fileId} moved to archive successfully`);
     } catch (error) {
       console.error('[GoogleDrive] Failed to move file to archive:', error);
-      if (error.response) {
+      const apiError = error as GaxiosError;
+      if (apiError.response) {
         console.error('[GoogleDrive] Move API Error:', {
-          status: error.response.status,
-          statusText: error.response.statusText,
-          data: error.response.data
+          status: apiError.response.status,
+          statusText: apiError.response.statusText,
+          data: apiError.response.data
         });
       }
       throw new Error('Failed to move file to archive in Google Drive: ' + 

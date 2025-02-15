@@ -1,7 +1,7 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-jest.mock('../../storage', () => ({
+jest.mock('../../storage.js', () => ({
   storage: {
     getLeague: jest.fn(),
     createGame: jest.fn(),
@@ -12,9 +12,9 @@ jest.mock('../../storage', () => ({
   }
 }));
 
-import { ScoreImportService, ScoreImportError } from '../score-import';
-import { storage } from '../../storage';
-import type { Game, Team, Bowler, Score } from '@shared/schema';
+import { ScoreImportService, ScoreImportError } from '../score-import.js';
+import { storage } from '../../storage.js';
+import type { Game, Team, Bowler, Score } from '@shared/schema.js';
 
 describe('ScoreImportService', () => {
   // Use a relative path from the test file to the sample data
@@ -35,11 +35,11 @@ describe('ScoreImportService', () => {
 
     // Store created games for verification
     const createdGames: Game[] = [];
-    (storage.createGame as jest.Mock).mockImplementation((game): Game => {
+    (storage.createGame as jest.Mock).mockImplementation((game: Partial<Game>): Game => {
       const createdGame = {
         ...game,
         id: createdGames.length + 1,
-      };
+      } as Game;
       createdGames.push(createdGame);
       return createdGame;
     });
@@ -55,24 +55,13 @@ describe('ScoreImportService', () => {
 
     // Mock bowler lookup/creation
     const bowlerCache = new Map<string, Bowler>();
-    (storage.getBowlerByQubicaId as jest.Mock).mockImplementation((qubicaId: string): Bowler => {
-      if (!bowlerCache.has(qubicaId)) {
-        bowlerCache.set(qubicaId, {
-          id: parseInt(qubicaId),
-          name: `Bowler ${qubicaId}`,
-          email: `bowler${qubicaId}@example.com`,
-          qubicaId,
-          active: true,
-          order: 0,
-          squareCustomerId: null,
-        });
-      }
-      return bowlerCache.get(qubicaId)!;
+    (storage.getBowlerByQubicaId as jest.Mock).mockImplementation((qubicaId: string): Bowler | null => {
+      return bowlerCache.get(qubicaId) || null;
     });
 
     // Store created scores for verification
     const createdScores: Score[] = [];
-    (storage.createBatchScores as jest.Mock).mockImplementation((scores) => {
+    (storage.createBatchScores as jest.Mock).mockImplementation((scores: Score[]) => {
       createdScores.push(...scores);
       return scores;
     });

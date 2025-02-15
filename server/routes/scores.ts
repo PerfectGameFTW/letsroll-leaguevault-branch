@@ -82,7 +82,9 @@ router.get('/history', async (req, res) => {
 
       const allScores = [];
       for (const game of games) {
-        const teamScores = await storage.getGameScores(game.id, teamId);
+        const gameScores = await storage.getGameScores(game.id);
+        // Filter scores for the specific team
+        const teamScores = gameScores.filter(score => score.teamId === teamId);
         allScores.push(...teamScores);
       }
 

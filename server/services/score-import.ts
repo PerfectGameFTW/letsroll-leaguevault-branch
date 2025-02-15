@@ -8,7 +8,7 @@ import type {
   Score,
   Bowler,
   Team
-} from '@shared/schema';
+} from '@shared/schema.js';
 
 export class ScoreImportError extends Error {
   constructor(message: string, public code: string) {
