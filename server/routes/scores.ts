@@ -237,22 +237,38 @@ router.post('/import', async (req, res) => {
     console.log('[Scores/Import] Initializing score import service...');
     const importService = new ScoreImportService(leagueId);
 
-    console.log('[Scores/Import] Starting score import process...');
-    const result = await importService.importScoreFile(fileContent);
-    console.log('[Scores/Import] Import completed successfully:', result);
+    try {
+      console.log('[Scores/Import] Starting score import process...');
+      const result = await importService.importScoreFile(fileContent);
+      console.log('[Scores/Import] Import completed successfully:', result);
 
-    return sendSuccess(res, {
-      message: 'Score import process completed successfully',
-      leagueId: leagueId,
-      result,
-      timestamp: new Date().toISOString()
-    });
+      return sendSuccess(res, {
+        message: 'Score import process completed successfully',
+        leagueId: leagueId,
+        result,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('[Scores/Import] Error during import:', error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      } : error);
+
+      if (error instanceof ScoreImportError) {
+        return sendError(res, error.message, 400);
+      } else {
+        return sendError(res, 'Failed to import scores', 500);
+      }
+    }
   } catch (error) {
-    console.error('[Scores/Import] Error processing scores:', error);
-    return sendError(res,
-      error instanceof ScoreImportError ? error.message : 'Failed to import scores',
-      error instanceof ScoreImportError ? 400 : 500
-    );
+    console.error('[Scores/Import] Fatal error:', error instanceof Error ? {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    } : error);
+
+    return sendError(res, 'Failed to import scores', 500);
   }
 });
 

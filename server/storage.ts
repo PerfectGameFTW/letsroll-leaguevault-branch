@@ -336,8 +336,48 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createGame(game: InsertGame): Promise<Game> {
-    const [result] = await db.insert(games).values(game).returning();
-    return result;
+    try {
+      console.log('[Storage] Creating game with data:', {
+        ...game,
+        date: game.date.toISOString(),
+        dateType: typeof game.date,
+        dateInstance: game.date instanceof Date,
+        timestamp: game.date.getTime()
+      });
+
+      const [result] = await db
+        .insert(games)
+        .values({
+          ...game,
+          // Ensure date is properly formatted for PostgreSQL
+          date: game.date.toISOString(),
+        })
+        .returning();
+
+      console.log('[Storage] Successfully created game:', {
+        id: result.id,
+        date: result.date,
+        weekNumber: result.weekNumber,
+        gameNumber: result.gameNumber
+      });
+
+      return result;
+    } catch (error) {
+      console.error('[Storage] Error creating game:', {
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        gameData: {
+          leagueId: game.leagueId,
+          weekNumber: game.weekNumber,
+          gameNumber: game.gameNumber,
+          date: game.date.toISOString()
+        }
+      });
+      throw error;
+    }
   }
 
   async updateGame(id: number, game: Partial<InsertGame>): Promise<Game> {
