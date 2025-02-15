@@ -90,15 +90,15 @@ export const payments = pgTable("payments", {
 
 // Add new tables after the existing ones
 export const games = pgTable("games", {
- id: serial("id").primaryKey(),
- leagueId: integer("league_id")
-   .notNull()
-   .references(() => leagues.id, { onDelete: 'cascade' }),
- weekNumber: integer("week_number").notNull(),
- gameNumber: integer("game_number").notNull(), // 1, 2, or 3
- date: timestamp("date").notNull(),
+  id: serial("id").primaryKey(),
+  leagueId: integer("league_id")
+    .notNull()
+    .references(() => leagues.id, { onDelete: 'cascade' }),
+  weekNumber: integer("week_number").notNull(),
+  gameNumber: integer("game_number").notNull(), // 1, 2, or 3
+  date: timestamp("date", { mode: 'string' }).notNull(),
 }, (table) => ({
- leagueGameIdx: index("league_game_idx").on(table.leagueId, table.weekNumber, table.gameNumber),
+  leagueGameIdx: index("league_game_idx").on(table.leagueId, table.weekNumber, table.gameNumber),
 }));
 
 export const scores = pgTable("scores", {
@@ -236,10 +236,10 @@ const basePaymentSchema = z.object({
 
 // Add validation schemas for the new tables
 const baseGameSchema = z.object({
- leagueId: z.number().positive(),
- weekNumber: z.number().positive(),
- gameNumber: z.number().min(1).max(3),
- date: z.coerce.date(),
+  leagueId: z.number().positive(),
+  weekNumber: z.number().positive(),
+  gameNumber: z.number().min(1).max(3),
+  date: z.coerce.date(),
 });
 
 const baseScoreSchema = z.object({

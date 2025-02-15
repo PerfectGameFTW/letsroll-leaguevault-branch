@@ -337,33 +337,45 @@ export class DatabaseStorage implements IStorage {
 
   async createGame(game: InsertGame): Promise<Game> {
     try {
-      // Always work with Date objects
-      const gameDate = game.date instanceof Date ? game.date : new Date(game.date);
+      console.log('[Storage] Creating game with input:', {
+        ...game,
+        date: game.date instanceof Date ? {
+          isoString: game.date.toISOString(),
+          type: 'Date',
+          timestamp: game.date.getTime()
+        } : {
+          value: String(game.date),
+          type: typeof game.date
+        }
+      });
 
-      // Verify the date is valid
+      // Ensure we have a valid Date object
+      let gameDate: Date;
+      if (game.date instanceof Date) {
+        gameDate = game.date;
+      } else {
+        gameDate = new Date(game.date);
+      }
+
+      // Validate the date
       if (isNaN(gameDate.getTime())) {
         throw new Error('Invalid date provided to createGame');
       }
 
-      console.log('[Storage] Creating game with data:', {
-        ...game,
-        date: {
-          original: game.date,
-          parsed: gameDate,
-          timestamp: gameDate.getTime(),
-          validation: {
-            isDate: gameDate instanceof Date,
-            isValid: !isNaN(gameDate.getTime())
-          }
-        }
+      console.log('[Storage] Validated game date:', {
+        isoString: gameDate.toISOString(),
+        utcString: gameDate.toUTCString(),
+        timestamp: gameDate.getTime()
       });
 
-      // Pass the Date object directly to Drizzle ORM
+      // Insert into database with validated date
       const [result] = await db
         .insert(games)
         .values({
-          ...game,
-          date: gameDate, // Pass the Date object directly
+          leagueId: game.leagueId,
+          weekNumber: game.weekNumber,
+          gameNumber: game.gameNumber,
+          date: gameDate.toISOString() // Convert to ISO string for consistent storage
         })
         .returning();
 
@@ -382,11 +394,9 @@ export class DatabaseStorage implements IStorage {
           message: error.message,
           stack: error.stack
         } : error,
-        gameData: {
-          leagueId: game.leagueId,
-          weekNumber: game.weekNumber,
-          gameNumber: game.gameNumber,
-          date: String(game.date)
+        input: {
+          ...game,
+          date: game.date instanceof Date ? game.date.toISOString() : String(game.date)
         }
       });
       throw error;

@@ -36,7 +36,9 @@ export class ScoreImportService {
       console.log('[ScoreImport] Parsed header:', {
         date: parsedData.header.date?.toISOString(),
         weekNumber: parsedData.header.weekNumber,
-        leagueName: parsedData.header.leagueName
+        leagueName: parsedData.header.leagueName,
+        dateType: Object.prototype.toString.call(parsedData.header.date),
+        dateValidation: parsedData.header.date instanceof Date
       });
 
       // Verify the parsed date
@@ -46,7 +48,7 @@ export class ScoreImportService {
       }
 
       // Create a new Date object and format it properly for PostgreSQL
-      const gameDate = new Date(parsedData.header.date.getTime());
+      const gameDate = new Date(parsedData.header.date);
 
       console.log('[ScoreImport] Using game date:', {
         original: parsedData.header.date.toISOString(),
@@ -54,6 +56,7 @@ export class ScoreImportService {
         dateValidation: {
           isDate: gameDate instanceof Date,
           timestamp: gameDate.getTime(),
+          dateType: Object.prototype.toString.call(gameDate),
           components: {
             year: gameDate.getUTCFullYear(),
             month: gameDate.getUTCMonth() + 1,
