@@ -1,26 +1,61 @@
 import { readFileSync } from 'fs';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
 import { ScoreImportService } from './score-import.js';
-
-// Get the current file's directory path
-const currentFilePath = fileURLToPath(import.meta.url);
-const currentDir = dirname(currentFilePath);
+import { GoogleDriveService } from './google-drive.js';
+import { parseQubicaScoreFile } from '../utils/qubica-parser.js';
 
 async function testScoreImport() {
   try {
-    const filePath = join(currentDir, '../../attached_assets/bls_farmmxd_24_25__Conquerer X__wk020.S00');
-    const fileContent = readFileSync(filePath, 'utf-8');
+    // Initialize Google Drive service
+    console.log('Initializing Google Drive service...');
+    const googleDrive = new GoogleDriveService();
+    const sourceFolderId = process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID;
 
-    // Create import service for league ID 1
-    const importService = new ScoreImportService(1);
+    if (!sourceFolderId) {
+      throw new Error('Source folder ID not configured');
+    }
 
-    // Import the scores
-    const result = await importService.importScoreFile(fileContent);
+    // List and get the latest file
+    console.log('Fetching files from Google Drive folder:', sourceFolderId);
+    const files = await googleDrive.listNewFiles(sourceFolderId);
 
-    console.log('Score import completed successfully:');
-    console.log(`Games created: ${result.gamesCreated}`);
-    console.log(`Scores created: ${result.scoresCreated}`);
+    if (files.length === 0) {
+      throw new Error('No score files found to import');
+    }
+
+    // Find the specific file we want
+    const targetFile = files.find(file => file.name === 'bls_farmmxd_24_25.s00');
+    if (!targetFile) {
+      throw new Error('Target score file not found');
+    }
+
+    console.log('Found target file:', targetFile.name);
+    const fileContent = await googleDrive.getFileContent(targetFile.id);
+    console.log('Successfully read file content, length:', fileContent.length);
+
+    // Parse the file content directly to get the information
+    const parsedData = parseQubicaScoreFile(fileContent);
+
+    console.log('\n=== Requested Information ===');
+    console.log('Date Bowled:', parsedData.header.date.toLocaleDateString());
+
+    // Find teams on lanes 9 and 10
+    const lane9Team = parsedData.games.find(game => game.laneNumber === 9);
+    const lane10Team = parsedData.games.find(game => game.laneNumber === 10);
+
+    console.log('\nLane 9 Team:', lane9Team ? `${lane9Team.teamName} (Team ${lane9Team.teamNumber})` : 'Not found');
+    console.log('Lane 10 Team:', lane10Team ? `${lane10Team.teamName} (Team ${lane10Team.teamNumber})` : 'Not found');
+
+    // Get first bowler's scores from lane 10
+    if (lane10Team && lane10Team.bowlers.length > 0) {
+      const firstBowler = lane10Team.bowlers[0];
+      console.log(`\nFirst bowler on Lane 10: ${firstBowler.bowlerName}`);
+      console.log('Scores:', {
+        game1: firstBowler.score,
+        handicap: firstBowler.handicap,
+        average: firstBowler.average
+      });
+    }
+
   } catch (error) {
     console.error('Error importing scores:', error);
   }

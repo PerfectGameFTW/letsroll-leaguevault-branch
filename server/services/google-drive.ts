@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { createWriteStream } from 'fs';
 import { join } from 'path';
-import { mkdir } from 'fs/promises';
+import { mkdir, readFile } from 'fs/promises';
 import type { GaxiosError } from 'googleapis-common';
 
 // Directory for temporary storage of downloaded files
@@ -112,6 +112,37 @@ export class GoogleDriveService {
         });
       }
       throw new Error('Failed to list Google Drive files: ' + 
+        (error instanceof Error ? error.message : String(error)));
+    }
+  }
+
+  async getFileContent(fileId: string): Promise<string> {
+    try {
+      console.log(`[GoogleDrive] Starting to get content for file: ${fileId}`);
+
+      // Get file content using media download
+      const response = await this.drive.files.get(
+        { fileId, alt: 'media' },
+        { responseType: 'text' }
+      );
+
+      if (!response.data) {
+        throw new Error('No content received from Google Drive');
+      }
+
+      console.log(`[GoogleDrive] Successfully retrieved file content, length: ${response.data.length}`);
+      return response.data;
+    } catch (error) {
+      console.error('[GoogleDrive] Failed to get file content:', error);
+      const apiError = error as GaxiosError;
+      if (apiError.response) {
+        console.error('[GoogleDrive] Get Content API Error:', {
+          status: apiError.response.status,
+          statusText: apiError.response.statusText,
+          data: apiError.response.data
+        });
+      }
+      throw new Error('Failed to get file content from Google Drive: ' + 
         (error instanceof Error ? error.message : String(error)));
     }
   }
