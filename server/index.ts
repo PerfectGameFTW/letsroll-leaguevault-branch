@@ -103,9 +103,9 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
+const HOST = '0.0.0.0';
+const PORT = process.env.PORT || 5000;
 let serverInstance: ReturnType<typeof server.listen> | null = null;
-
-const PORT = 5000;
 
 // Initialize server and score schedulers
 async function initializeServer() {
@@ -117,9 +117,36 @@ async function initializeServer() {
     await testConnection();
     console.log('[Server] Database connection successful');
 
+    // Start server
+    await new Promise<void>((resolve, reject) => {
+      console.log(`[Server] Attempting to start server on ${HOST}:${PORT}...`);
+
+      const onError = (err: Error) => {
+        console.error('[Server] Failed to start server:', err);
+        server.removeListener('listening', onListening);
+        reject(err);
+      };
+
+      const onListening = () => {
+        console.log(`[Server] Server is running at http://${HOST}:${PORT}`);
+        server.removeListener('error', onError);
+        resolve();
+      };
+
+      server.once('error', onError);
+      server.once('listening', onListening);
+
+      try {
+        serverInstance = server.listen(PORT, HOST);
+        console.log('[Server] Server instance created');
+      } catch (error) {
+        console.error('[Server] Error creating server instance:', error);
+        reject(error);
+      }
+    });
+
     // Initialize schedulers for active leagues
     try {
-      // Fetch active leagues directly from storage instead of HTTP request
       console.log('[Server] Fetching leagues for scheduler initialization...');
       const leagues = await storage.getLeagues();
       console.log(`[Server] Found ${leagues.length} leagues`);
@@ -130,8 +157,6 @@ async function initializeServer() {
           const scheduler = new ScoreSchedulerService(league.id);
 
           // Schedule score imports based on league's bowling day
-          // Format: minute hour * * dayOfWeek
-          // Example: '0 22 * * 1' for Monday at 10 PM
           const dayMap: { [key: string]: number } = {
             'monday': 1, 'tuesday': 2, 'wednesday': 3,
             'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0
@@ -153,23 +178,6 @@ async function initializeServer() {
       console.error('[Server] Error setting up score schedulers:', error);
       // Continue server initialization even if scheduler setup fails
     }
-
-    // Start server
-    await new Promise<void>((resolve, reject) => {
-      const onError = (err: Error) => {
-        server.removeListener('listening', onListening);
-        reject(err);
-      };
-      const onListening = () => {
-        server.removeListener('error', onError);
-        console.log(`[Server] Ready and listening on port ${PORT}`);
-        resolve();
-      };
-
-      server.once('error', onError);
-      server.once('listening', onListening);
-      serverInstance = server.listen(PORT, '0.0.0.0');
-    });
 
     console.log('[Server] Application fully initialized and ready for requests');
   } catch (error) {

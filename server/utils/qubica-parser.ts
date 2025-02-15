@@ -10,10 +10,17 @@ export class QubicaScoreParser {
 
   private parseHeader(): QubicaScoreFileHeader {
     const headerLine = this.lines[0];
-    if (!headerLine.startsWith('*')) {
-      throw new Error('Invalid header format: header must start with *');
-    }
+    console.log('[QubicaParser] Parsing header line:', headerLine);
 
+    // Support both legacy and new QubicaAMF formats
+    if (headerLine.startsWith('*')) {
+      return this.parseLegacyHeader(headerLine);
+    } else {
+      return this.parseModernHeader(headerLine);
+    }
+  }
+
+  private parseLegacyHeader(headerLine: string): QubicaScoreFileHeader {
     const parts = headerLine.split('\t');
 
     // Format example: "* 12/30/1899 12:00 am\tConqueror X (QubicaAMF)\tFarmington Mixed 24/25\tWeek 20\tFebruary 3, 2025  18:30\t365879\tMichael Shearer, Perfect Game"
@@ -28,14 +35,14 @@ export class QubicaScoreParser {
     // Parse week number
     const weekNumber = parseInt(weekStr.replace('Week ', ''));
     if (isNaN(weekNumber)) {
-      throw new Error('Invalid week number format');
+      throw new Error('Invalid week number format in legacy header');
     }
 
     // Parse date and time
     const [datePart, timePart] = dateTimeStr.trim().split(/\s+(?=\d{2}:\d{2}$)/);
     const date = new Date(datePart);
     if (isNaN(date.getTime())) {
-      throw new Error('Invalid date format');
+      throw new Error('Invalid date format in legacy header');
     }
 
     return {
@@ -49,9 +56,57 @@ export class QubicaScoreParser {
     };
   }
 
+  private parseModernHeader(headerLine: string): QubicaScoreFileHeader {
+    console.log('[QubicaParser] Parsing modern format header');
+
+    // Modern format parsing (format documented in header comments)
+    // Example: "110004LBLS-2025JB_Webb_Jervis B. Webb 24/25"
+    try {
+      // Extract league name from the header line
+      const leagueNameMatch = headerLine.match(/LBLS-\d{4}(.+?)(?:\s+\d{2}\/\d{2}|$)/);
+      const leagueName = leagueNameMatch ? leagueNameMatch[1].trim() : 'Unknown League';
+
+      // Extract or determine other required fields
+      const date = new Date(); // Current date as fallback
+      const centerName = "Bowling Center"; // Default center name
+
+      // Try to extract week number from filename or content
+      let weekNumber = 1;
+      for (let i = 0; i < this.lines.length && i < 10; i++) {
+        const weekMatch = this.lines[i].match(/Week\s+(\d+)/i);
+        if (weekMatch) {
+          weekNumber = parseInt(weekMatch[1]);
+          break;
+        }
+      }
+
+      // Extract league ID if present in the format
+      const leagueIdMatch = headerLine.match(/^(\d{6})/);
+      const leagueId = leagueIdMatch ? leagueIdMatch[1] : '';
+
+      console.log('[QubicaParser] Parsed modern header:', {
+        leagueName,
+        weekNumber,
+        leagueId
+      });
+
+      return {
+        date,
+        centerName,
+        leagueName,
+        weekNumber,
+        sessionTime: '18:30',
+        leagueId,
+        description: ''
+      };
+    } catch (error) {
+      console.error('[QubicaParser] Error parsing modern header:', error);
+      throw new Error(`Failed to parse modern format header: ${error.message}`);
+    }
+  }
+
   private isTeamHeaderLine(line: string): boolean {
     const parts = line.split('\t');
-    // Team headers have position "0" in the third column
     return parts.length >= 10 && parts[2] === '0';
   }
 
@@ -125,16 +180,13 @@ export class QubicaScoreParser {
     const parts = startLine.split('\t');
     const teamName = parts[9];
 
-    // Will hold all games for this team
     const teamGames: QubicaTeamGame[] = [];
     const gameScores: Map<number, QubicaBowlerScore[]> = new Map();
 
-    // Parse all lines until we hit another team header or end of file
     this.currentIndex++;
     while (this.currentIndex < this.lines.length) {
       const line = this.lines[this.currentIndex];
 
-      // Stop if we hit another team header or empty line
       if (!line || this.isTeamHeaderLine(line)) {
         break;
       }
@@ -149,7 +201,6 @@ export class QubicaScoreParser {
       this.currentIndex++;
     }
 
-    // Create team games for each game number
     for (const [gameNum, bowlers] of gameScores) {
       if (bowlers.length > 0) {
         teamGames.push({
@@ -166,11 +217,14 @@ export class QubicaScoreParser {
   }
 
   public parse(): QubicaScoreImport {
+    console.log('[QubicaParser] Starting to parse score file');
     const header = this.parseHeader();
+    console.log('[QubicaParser] Successfully parsed header:', header);
+
     const games: QubicaTeamGame[] = [];
 
     // Skip header and separator lines
-    this.currentIndex = 2;
+    this.currentIndex = 1;
 
     // Parse all teams
     while (this.currentIndex < this.lines.length) {
