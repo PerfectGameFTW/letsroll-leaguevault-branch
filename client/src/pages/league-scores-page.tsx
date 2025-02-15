@@ -24,71 +24,140 @@ import { format } from "date-fns";
 import { Link, useParams } from "wouter";
 import { cn } from "@/lib/utils";
 
+interface BowlerScores {
+  bowlerId: number;
+  bowlerName: string;
+  position: number;
+  isVacant: boolean;
+  isAbsent: boolean;
+  isSub: boolean;
+  handicap: number | null;
+  games: {
+    gameNumber: number;
+    score: number | null;
+  }[];
+}
+
 interface TeamScores {
   teamId: number;
   teamName: string;
   teamNumber: number;
   laneNumber: number;
-  bowlers: {
-    bowlerId: number;
-    bowlerName: string;
-    score: number | null;
-    handicap: number | null;
-    isVacant: boolean;
-    isAbsent: boolean;
-    isSub: boolean;
-    position: number;
-  }[];
+  bowlers: BowlerScores[];
 }
 
-interface GameWithTeams {
-  gameNumber: number;
+interface WeeklyScores {
+  weekNumber: number;
+  date: string;
   teams: TeamScores[];
 }
 
 interface LanePair {
   lanes: string;
-  homeTeam: TeamScores | undefined;
+  homeTeam: TeamScores;
   awayTeam: TeamScores | undefined;
 }
 
 function groupTeamsByLanes(teams: TeamScores[]): LanePair[] {
-  // Create a map of lane number to team for easier lookup
-  const teamsByLane = new Map(teams.map(team => [team.laneNumber, team]));
+  // Sort teams by lane number first
+  const sortedTeams = [...teams].sort((a, b) => a.laneNumber - b.laneNumber);
   const pairs: LanePair[] = [];
-  const processedLanes = new Set();
 
-  // Sort all lane numbers
-  const allLanes = Array.from(teamsByLane.keys()).sort((a, b) => a - b);
+  // Process all teams
+  for (let i = 0; i < sortedTeams.length; i++) {
+    const currentTeam = sortedTeams[i];
 
-  for (const lane of allLanes) {
-    // Skip if this lane has already been processed
-    if (processedLanes.has(lane)) continue;
+    // Find the matching team on the adjacent lane
+    const matchingTeam = sortedTeams.find(
+      team => team.laneNumber === currentTeam.laneNumber + 1 || 
+              team.laneNumber === currentTeam.laneNumber - 1
+    );
 
-    const currentTeam = teamsByLane.get(lane);
-    const nextTeam = teamsByLane.get(lane + 1);
-
-    if (currentTeam && nextTeam) {
-      // Create a pair for adjacent lanes
-      pairs.push({
-        lanes: `Lanes ${lane} & ${lane + 1}`,
-        homeTeam: currentTeam,
-        awayTeam: nextTeam
-      });
-      processedLanes.add(lane);
-      processedLanes.add(lane + 1);
-    } else if (currentTeam) {
-      // Handle single lanes
-      pairs.push({
-        lanes: `Lane ${lane}`,
-        homeTeam: currentTeam,
-        awayTeam: undefined
-      });
-      processedLanes.add(lane);
+    // If this team hasn't been processed yet
+    if (!pairs.some(pair => 
+      pair.homeTeam.teamId === currentTeam.teamId || 
+      (pair.awayTeam && pair.awayTeam.teamId === currentTeam.teamId)
+    )) {
+      if (matchingTeam) {
+        // Create a new pair with both teams
+        pairs.push({
+          lanes: `Lanes ${Math.min(currentTeam.laneNumber, matchingTeam.laneNumber)} & ${Math.max(currentTeam.laneNumber, matchingTeam.laneNumber)}`,
+          homeTeam: currentTeam.laneNumber < matchingTeam.laneNumber ? currentTeam : matchingTeam,
+          awayTeam: currentTeam.laneNumber < matchingTeam.laneNumber ? matchingTeam : currentTeam
+        });
+      } else {
+        // Handle single lane case
+        pairs.push({
+          lanes: `Lane ${currentTeam.laneNumber}`,
+          homeTeam: currentTeam,
+          awayTeam: undefined
+        });
+      }
     }
   }
 
-  return pairs;
+  // Sort pairs by lane number
+  return pairs.sort((a, b) => {
+    const aLane = a.homeTeam.laneNumber;
+    const bLane = b.homeTeam.laneNumber;
+    return aLane - bLane;
+  });
+}
+
+function organizeBowlerScores(scoresData: any[]): WeeklyScores {
+  const teams = new Map<number, TeamScores>();
+
+  scoresData.forEach(game => {
+    game.teams.forEach((team: any) => {
+      if (!teams.has(team.teamId)) {
+        teams.set(team.teamId, {
+          teamId: team.teamId,
+          teamName: team.teamName,
+          teamNumber: team.teamNumber,
+          laneNumber: team.laneNumber,
+          bowlers: new Map()
+        });
+      }
+
+      team.bowlers.forEach((bowler: any) => {
+        const currentTeam = teams.get(team.teamId)!;
+        if (!currentTeam.bowlers.has(bowler.bowlerId)) {
+          currentTeam.bowlers.set(bowler.bowlerId, {
+            bowlerId: bowler.bowlerId,
+            bowlerName: bowler.bowlerName,
+            position: bowler.position,
+            isVacant: bowler.isVacant,
+            isAbsent: bowler.isAbsent,
+            isSub: bowler.isSub,
+            handicap: bowler.handicap,
+            games: []
+          });
+        }
+
+        const bowlerData = currentTeam.bowlers.get(bowler.bowlerId)!;
+        bowlerData.games.push({
+          gameNumber: game.gameNumber,
+          score: bowler.score
+        });
+      });
+    });
+  });
+
+  const organizedTeams = Array.from(teams.values()).map(team => ({
+    ...team,
+    bowlers: Array.from(team.bowlers.values())
+      .sort((a, b) => a.position - b.position)
+      .map(bowler => ({
+        ...bowler,
+        games: bowler.games.sort((a, b) => a.gameNumber - b.gameNumber)
+      }))
+  }));
+
+  return {
+    weekNumber: scoresData[0]?.weekNumber || 0,
+    date: scoresData[0]?.date || "",
+    teams: organizedTeams.sort((a, b) => a.laneNumber - b.laneNumber)
+  };
 }
 
 export default function LeagueScoresPage() {
@@ -96,7 +165,6 @@ export default function LeagueScoresPage() {
   const leagueId = params.leagueId ? parseInt(params.leagueId) : undefined;
   const [selectedWeek, setSelectedWeek] = useState<number>();
 
-  // Validate league ID early
   if (!leagueId) {
     return (
       <Layout>
@@ -108,7 +176,6 @@ export default function LeagueScoresPage() {
     );
   }
 
-  // Query for games with proper error handling
   const { data: gamesResponse, isLoading: loadingGames, error: gamesError } = useQuery<{ data: Game[] }>({
     queryKey: ["/api/games", { leagueId }],
     queryFn: async () => {
@@ -123,15 +190,12 @@ export default function LeagueScoresPage() {
 
   const games = gamesResponse?.data || [];
 
-  // Get unique weeks from games, sorted in descending order
   const weeks = Array.from(new Set(games.map(g => g.weekNumber))).sort((a, b) => b - a);
 
-  // If no week is selected and we have weeks data, default to the latest week
   if (!selectedWeek && weeks.length > 0) {
     setSelectedWeek(weeks[0]);
   }
 
-  // Query for scores with proper error handling
   const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery({
     queryKey: ["/api/scores", { leagueId, weekNumber: selectedWeek }],
     queryFn: async () => {
@@ -145,7 +209,6 @@ export default function LeagueScoresPage() {
     enabled: !!leagueId && !!selectedWeek,
   });
 
-  // Query for league details with proper error handling
   const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
     enabled: !!leagueId,
@@ -154,7 +217,6 @@ export default function LeagueScoresPage() {
   const league = leagueResponse?.data;
   const formattedGames = scoresResponse?.data || [];
 
-  // Show loading state with back navigation
   if (loadingLeague || loadingGames || loadingScores) {
     return (
       <Layout>
@@ -177,7 +239,6 @@ export default function LeagueScoresPage() {
     );
   }
 
-  // Show errors if any
   const errors = [
     { type: 'league', error: leagueError },
     { type: 'games', error: gamesError },
@@ -226,6 +287,7 @@ export default function LeagueScoresPage() {
     );
   }
 
+  const weeklyScores = formattedGames.length > 0 ? organizeBowlerScores(formattedGames) : null;
 
   return (
     <Layout>
@@ -269,104 +331,106 @@ export default function LeagueScoresPage() {
             )}
           </div>
 
-          {weeks.length === 0 ? (
+          {weeklyScores ? (
+            <div className="grid gap-6">
+              {groupTeamsByLanes(weeklyScores.teams).map((pair, pairIndex) => (
+                <Card key={pairIndex} className="hover:border-primary/50 transition-colors">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg font-semibold text-primary">
+                      {pair.lanes}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-8">
+                      {[pair.homeTeam, pair.awayTeam].map((team, teamIndex) => (
+                        team && (
+                          <div key={team.teamId} className="space-y-2">
+                            <h4 className="font-medium">{team.teamName}</h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead className="w-[200px]">Bowler</TableHead>
+                                  <TableHead className="text-right">Handicap</TableHead>
+                                  <TableHead className="text-right">Game 1</TableHead>
+                                  <TableHead className="text-right">Game 2</TableHead>
+                                  <TableHead className="text-right">Game 3</TableHead>
+                                  <TableHead className="text-right">Series</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {team.bowlers.map((bowler) => {
+                                  const seriesTotal = bowler.games
+                                    .map(g => g.score)
+                                    .filter((score): score is number => score !== null)
+                                    .reduce((sum, score) => sum + score, 0);
+
+                                  return (
+                                    <TableRow key={bowler.bowlerId}>
+                                      <TableCell>
+                                        {bowler.isVacant ? (
+                                          <span className="text-muted-foreground italic">Vacant</span>
+                                        ) : bowler.isAbsent ? (
+                                          <span className="text-muted-foreground italic">Absent</span>
+                                        ) : (
+                                          <div className="flex items-center gap-2">
+                                            <Link
+                                              href={`/bowlers/${bowler.bowlerId}`}
+                                              className="hover:underline"
+                                            >
+                                              {bowler.bowlerName}
+                                            </Link>
+                                            {bowler.isSub && (
+                                              <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                                Sub
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-right text-muted-foreground">
+                                        {bowler.handicap || "—"}
+                                      </TableCell>
+                                      {bowler.games.map((game) => (
+                                        <TableCell
+                                          key={game.gameNumber}
+                                          className={cn(
+                                            "text-right font-medium",
+                                            game.score >= 250 && "text-green-600",
+                                            game.score >= 200 && game.score < 250 && "text-primary"
+                                          )}
+                                        >
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <span>{game.score || "—"}</span>
+                                            </TooltipTrigger>
+                                            {game.score >= 200 && (
+                                              <TooltipContent>
+                                                {game.score >= 250 ? "Perfect game approaching!" : "Great game!"}
+                                              </TooltipContent>
+                                            )}
+                                          </Tooltip>
+                                        </TableCell>
+                                      ))}
+                                      <TableCell className="text-right font-medium">
+                                        {seriesTotal || "—"}
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
             <div className="text-center p-8 border rounded-lg bg-background">
               <p className="text-lg text-muted-foreground">No games have been recorded for this league yet</p>
               <p className="text-sm text-muted-foreground mt-2">Scores will appear here once games are imported</p>
-            </div>
-          ) : (
-            <div className="grid gap-6">
-              {formattedGames.map((game, gameIndex) => (
-                <div key={gameIndex} className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-semibold">Game {game.gameNumber}</h3>
-                  </div>
-                  <div className="grid gap-6">
-                    {groupTeamsByLanes(game.teams).map((pair, pairIndex) => (
-                      <div key={pairIndex} className="space-y-2 p-4 rounded-lg bg-muted/5">
-                        <h4 className="text-lg font-semibold text-primary mb-4">
-                          {pair.lanes}
-                        </h4>
-                        <div className="grid md:grid-cols-2 gap-4">
-                          {[pair.homeTeam, pair.awayTeam].map((team, index) => (
-                            team && (
-                              <Card key={index} className="hover:border-primary/50 transition-colors">
-                                <CardHeader className="pb-2">
-                                  <div className="flex items-center justify-between">
-                                    <CardTitle>{team.teamName}</CardTitle>
-                                    <div className="text-sm text-muted-foreground">
-                                      Lane {team.laneNumber}
-                                    </div>
-                                  </div>
-                                </CardHeader>
-                                <CardContent>
-                                  <Table>
-                                    <TableHeader>
-                                      <TableRow>
-                                        <TableHead className="w-[200px]">Bowler</TableHead>
-                                        <TableHead className="text-right">Score</TableHead>
-                                        <TableHead className="text-right">Handicap</TableHead>
-                                      </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                      {team.bowlers.map((bowler, index) => (
-                                        <TableRow key={index}>
-                                          <TableCell>
-                                            {bowler.isVacant ? (
-                                              <span className="text-muted-foreground italic">Vacant</span>
-                                            ) : bowler.isAbsent ? (
-                                              <span className="text-muted-foreground italic">Absent</span>
-                                            ) : (
-                                              <div className="flex items-center gap-2">
-                                                <Link
-                                                  href={`/bowlers/${bowler.bowlerId}`}
-                                                  className="hover:underline"
-                                                >
-                                                  {bowler.bowlerName}
-                                                </Link>
-                                                {bowler.isSub && (
-                                                  <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-                                                    Sub
-                                                  </span>
-                                                )}
-                                              </div>
-                                            )}
-                                          </TableCell>
-                                          <TableCell
-                                            className={cn(
-                                              "text-right font-medium",
-                                              bowler.score >= 250 && "text-green-600",
-                                              bowler.score >= 200 && bowler.score < 250 && "text-primary"
-                                            )}
-                                          >
-                                            <Tooltip>
-                                              <TooltipTrigger asChild>
-                                                <span>{bowler.score || "—"}</span>
-                                              </TooltipTrigger>
-                                              {bowler.score >= 200 && (
-                                                <TooltipContent>
-                                                  {bowler.score >= 250 ? "Perfect game approaching!" : "Great game!"}
-                                                </TooltipContent>
-                                              )}
-                                            </Tooltip>
-                                          </TableCell>
-                                          <TableCell className="text-right text-muted-foreground">
-                                            {bowler.handicap}
-                                          </TableCell>
-                                        </TableRow>
-                                      ))}
-                                    </TableBody>
-                                  </Table>
-                                </CardContent>
-                              </Card>
-                            )
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
             </div>
           )}
         </div>
