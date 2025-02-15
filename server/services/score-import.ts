@@ -25,7 +25,16 @@ export class ScoreImportService {
     scoresCreated: number;
   }> {
     try {
-      // Parse the score file
+      // Add debug logging to see the file content
+      console.log('[ScoreImport] File content length:', fileContent.length);
+      console.log('[ScoreImport] First 200 chars:', fileContent.substring(0, 200));
+
+      // Log the first few lines to verify format
+      const lines = fileContent.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      console.log('[ScoreImport] Number of non-empty lines:', lines.length);
+      console.log('[ScoreImport] First 5 lines:');
+      lines.slice(0, 5).forEach((line, i) => console.log(`Line ${i + 1}: ${line}`));
+
       console.log('[ScoreImport] Starting to parse score file...');
       const parsedData = parseQubicaScoreFile(fileContent);
       console.log('[ScoreImport] Parsed data header:', JSON.stringify(parsedData.header, null, 2));
@@ -37,6 +46,7 @@ export class ScoreImportService {
         return acc;
       }, {} as Record<number, number>);
       console.log('[ScoreImport] Game distribution in parsed data:', gameDistribution);
+
 
       // Validate league exists
       const league = await storage.getLeague(this.leagueId);

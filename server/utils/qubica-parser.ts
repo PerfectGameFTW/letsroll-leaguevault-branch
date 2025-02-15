@@ -5,25 +5,233 @@ export class QubicaScoreParser {
   private currentIndex: number = 0;
 
   constructor(fileContent: string) {
-    this.lines = fileContent.split('\n').map(line => line.trim());
+    // Split on both \n and \r\n and filter out empty lines
+    this.lines = fileContent.split(/\r?\n/).map(line => line.trim()).filter(line => line.length > 0);
+    console.log(`[QubicaParser] Initialized with ${this.lines.length} non-empty lines`);
+
+    // Debug first few lines to verify format
+    this.lines.slice(0, 5).forEach((line, i) => {
+      console.log(`[QubicaParser] Line ${i + 1}: ${line}`);
+    });
+  }
+
+  private isTeamHeaderLine(line: string): boolean {
+    if (!line) return false;
+
+    // First try splitting by tab
+    let parts = line.split('\t');
+    if (parts.length === 1) {
+      // If no tabs found, try splitting by multiple spaces
+      parts = line.split(/\s+/);
+    }
+
+    parts = parts.map(p => p.trim());
+
+    console.log('[QubicaParser] Checking team header line:', {
+      line,
+      partsLength: parts.length,
+      firstPart: parts[0],
+      secondPart: parts[1],
+      thirdPart: parts[2]
+    });
+
+    // Team headers should have:
+    // 1. First part is 3 digits (team number)
+    // 2. Second part is game number (1-3)
+    // 3. Third part is "0" (position)
+    const isHeader = 
+      /^\d{3}$/.test(parts[0]) &&
+      /^[1-3]$/.test(parts[1]) && 
+      parts[2] === '0';
+
+    if (isHeader) {
+      console.log('[QubicaParser] Found team header:', {
+        teamNumber: parts[0],
+        gameNumber: parts[1],
+        position: parts[2]
+      });
+    }
+
+    return isHeader;
+  }
+
+  private parseLine(line: string): [string, number, string, string, number] | null {
+    if (!line) return null;
+
+    // First try splitting by tab
+    let parts = line.split('\t');
+    if (parts.length === 1) {
+      // If no tabs found, try splitting by multiple spaces
+      parts = line.split(/\s+/);
+    }
+
+    parts = parts.map(p => p.trim());
+
+    if (parts.length < 10) {
+      console.log('[QubicaParser] Skipping line with insufficient columns:', line);
+      return null;
+    }
+
+    const teamNumber = parts[0];
+    const gameNumber = parseInt(parts[1]);
+    const position = parts[2];
+    const recordNumber = parts[3];
+    const laneNumber = parseInt(parts[8]);
+
+    if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > 3) {
+      console.log('[QubicaParser] Invalid game number:', gameNumber);
+      return null;
+    }
+
+    return [teamNumber, gameNumber, position, recordNumber, laneNumber];
+  }
+
+  private parseBowlerScore(line: string): QubicaBowlerScore | null {
+    console.log('[QubicaParser] Parsing bowler score line:', line);
+
+    const lineInfo = this.parseLine(line);
+    if (!lineInfo) return null;
+
+    const [teamNumber, gameNumber, position, recordNumber, laneNumber] = lineInfo;
+
+    // First try splitting by tab
+    let parts = line.split('\t');
+    if (parts.length === 1) {
+      // If no tabs found, try splitting by multiple spaces
+      parts = line.split(/\s+/);
+    }
+
+    parts = parts.map(p => p.trim());
+
+    if (parts.length < 13) {
+      console.log('[QubicaParser] Score line has insufficient columns:', parts.length);
+      return null;
+    }
+
+    const bowlerId = parts[4];
+    const status1 = parts[5];
+    const status2 = parts[6];
+    const score = parseInt(parts[7]);
+    const bowlerName = parts[9];
+    const scoreSheet = parts[10] || '';
+    const handicap = parseInt(parts[11] || '0');
+    const average = parseInt(parts[12] || '0');
+
+    if (isNaN(score) || score < 0 || score > 300) {
+      console.log('[QubicaParser] Invalid score value:', score);
+      return null;
+    }
+
+    const bowlerScore = {
+      teamNumber,
+      gameNumber,
+      position: parseInt(position),
+      recordNumber: parseInt(recordNumber),
+      bowlerId,
+      status: {
+        isVacant: status2 === 'V',
+        isAbsent: status2 === 'A',
+        isSub: status1 === 'S'
+      },
+      score,
+      laneNumber,
+      bowlerName,
+      scoreSheet,
+      handicap: isNaN(handicap) ? 0 : handicap,
+      average: isNaN(average) ? 0 : average,
+      hasBumpers: false
+    };
+
+    console.log('[QubicaParser] Parsed bowler score:', {
+      bowlerName: bowlerScore.bowlerName,
+      score: bowlerScore.score,
+      gameNumber: bowlerScore.gameNumber,
+      position: bowlerScore.position
+    });
+
+    return bowlerScore;
+  }
+
+  private parseTeam(startLine: string): QubicaTeamGame[] {
+    console.log('[QubicaParser] Starting team parse with line:', startLine);
+
+    const lineInfo = this.parseLine(startLine);
+    if (!lineInfo) return [];
+
+    const [teamNumber, gameNumber, _position, _recordNumber, laneNumber] = lineInfo;
+
+    // First try splitting by tab
+    let parts = startLine.split('\t');
+    if (parts.length === 1) {
+      // If no tabs found, try splitting by multiple spaces
+      parts = startLine.split(/\s+/);
+    }
+    parts = parts.map(p => p.trim());
+
+    const teamName = parts[9];
+
+    console.log('[QubicaParser] Parsing team:', {
+      teamNumber,
+      teamName,
+      gameNumber,
+      laneNumber
+    });
+
+    const teamGames: QubicaTeamGame[] = [];
+    const gameScores: Map<number, QubicaBowlerScore[]> = new Map();
+
+    // Start from the next line
+    this.currentIndex++;
+
+    while (this.currentIndex < this.lines.length) {
+      const line = this.lines[this.currentIndex];
+
+      if (!line || this.isTeamHeaderLine(line)) {
+        console.log('[QubicaParser] End of team section or new team header found');
+        break;
+      }
+
+      const bowlerScore = this.parseBowlerScore(line);
+      if (bowlerScore) {
+        const scores = gameScores.get(bowlerScore.gameNumber) || [];
+        scores.push(bowlerScore);
+        gameScores.set(bowlerScore.gameNumber, scores);
+        console.log('[QubicaParser] Added score for', bowlerScore.bowlerName, 
+          'game', bowlerScore.gameNumber, 'score', bowlerScore.score);
+      }
+
+      this.currentIndex++;
+    }
+
+    // Create team games for each game number with scores
+    for (const [gameNum, bowlers] of gameScores) {
+      if (bowlers.length > 0) {
+        teamGames.push({
+          teamNumber,
+          gameNumber: gameNum,
+          teamName,
+          laneNumber,
+          bowlers: bowlers.sort((a, b) => a.position - b.position)
+        });
+        console.log('[QubicaParser] Created game', gameNum, 'for team', teamName, 
+          'with', bowlers.length, 'bowlers');
+      }
+    }
+
+    return teamGames;
   }
 
   private parseHeader(): QubicaScoreFileHeader {
     const headerLine = this.lines[0];
     console.log('[QubicaParser] Parsing header line:', headerLine);
 
-    // Support both legacy and new QubicaAMF formats
-    if (headerLine.startsWith('*')) {
-      return this.parseLegacyHeader(headerLine);
-    } else {
-      return this.parseModernHeader(headerLine);
+    if (!headerLine.startsWith('*')) {
+      throw new Error('Invalid file format: Missing header line');
     }
-  }
 
-  private parseLegacyHeader(headerLine: string): QubicaScoreFileHeader {
     const parts = headerLine.split('\t');
 
-    // Format example: "* 12/30/1899 12:00 am\tConqueror X (QubicaAMF)\tFarmington Mixed 24/25\tWeek 20\tFebruary 3, 2025  18:30\t365879\tMichael Shearer, Perfect Game"
+    // Format example: "* 12/30/1899 12:00 am\tConqueror X (QubicaAMF)\tTest League\tWeek 1\t18:30\t123\tTest"
     const firstPart = parts[0].substring(2); // Remove '* ' prefix
     const centerName = parts[1].replace(' (QubicaAMF)', '');
     const leagueName = parts[2];
@@ -35,185 +243,27 @@ export class QubicaScoreParser {
     // Parse week number
     const weekNumber = parseInt(weekStr.replace('Week ', ''));
     if (isNaN(weekNumber)) {
-      throw new Error('Invalid week number format in legacy header');
+      throw new Error('Invalid week number format');
     }
 
-    // Parse date and time
-    const [datePart, timePart] = dateTimeStr.trim().split(/\s+(?=\d{2}:\d{2}$)/);
-    const date = new Date(datePart);
+    // Parse date
+    const date = new Date(dateTimeStr.split('  ')[0]);
     if (isNaN(date.getTime())) {
-      throw new Error('Invalid date format in legacy header');
+      throw new Error('Invalid date format');
     }
 
-    return {
+    const header = {
       date,
       centerName,
       leagueName,
       weekNumber,
-      sessionTime: timePart || '18:30',
+      sessionTime: '18:30', // Default time if not provided
       leagueId,
       description
     };
-  }
 
-  private parseModernHeader(headerLine: string): QubicaScoreFileHeader {
-    console.log('[QubicaParser] Parsing modern format header');
-
-    // Modern format parsing (format documented in header comments)
-    // Example: "110004LBLS-2025JB_Webb_Jervis B. Webb 24/25"
-    try {
-      // Extract league name from the header line
-      const leagueNameMatch = headerLine.match(/LBLS-\d{4}(.+?)(?:\s+\d{2}\/\d{2}|$)/);
-      const leagueName = leagueNameMatch ? leagueNameMatch[1].trim() : 'Unknown League';
-
-      // Extract or determine other required fields
-      const date = new Date(); // Current date as fallback
-      const centerName = "Bowling Center"; // Default center name
-
-      // Try to extract week number from filename or content
-      let weekNumber = 1;
-      for (let i = 0; i < this.lines.length && i < 10; i++) {
-        const weekMatch = this.lines[i].match(/Week\s+(\d+)/i);
-        if (weekMatch) {
-          weekNumber = parseInt(weekMatch[1]);
-          break;
-        }
-      }
-
-      // Extract league ID if present in the format
-      const leagueIdMatch = headerLine.match(/^(\d{6})/);
-      const leagueId = leagueIdMatch ? leagueIdMatch[1] : '';
-
-      console.log('[QubicaParser] Parsed modern header:', {
-        leagueName,
-        weekNumber,
-        leagueId
-      });
-
-      return {
-        date,
-        centerName,
-        leagueName,
-        weekNumber,
-        sessionTime: '18:30',
-        leagueId,
-        description: ''
-      };
-    } catch (error) {
-      console.error('[QubicaParser] Error parsing modern header:', error);
-      throw new Error(`Failed to parse modern format header: ${error.message}`);
-    }
-  }
-
-  private isTeamHeaderLine(line: string): boolean {
-    const parts = line.split('\t');
-    return parts.length >= 10 && parts[2] === '0';
-  }
-
-  private parseLine(line: string): [string, number, string, string, number] | null {
-    const parts = line.split('\t');
-    if (parts.length < 10) return null;
-
-    const teamNumber = parts[0];
-    const gameNumber = parseInt(parts[1]);
-    const position = parts[2];
-    const recordNumber = parts[3];
-    const laneNumber = parseInt(parts[8]);
-
-    if (isNaN(gameNumber) || gameNumber < 1 || gameNumber > 3) {
-      return null;
-    }
-
-    return [teamNumber, gameNumber, position, recordNumber, laneNumber];
-  }
-
-  private parseBowlerScore(line: string): QubicaBowlerScore | null {
-    const lineInfo = this.parseLine(line);
-    if (!lineInfo) return null;
-
-    const [teamNumber, gameNumber, position, recordNumber, laneNumber] = lineInfo;
-    const parts = line.split('\t');
-
-    const [
-      _teamNumber,
-      _gameNumber,
-      _position,
-      _recordNumber,
-      bowlerId,
-      status1,
-      status2,
-      score,
-      _laneNumber,
-      bowlerName,
-      scoreSheet,
-      handicap,
-      average,
-      hasBumpers
-    ] = parts;
-
-    return {
-      teamNumber,
-      gameNumber,
-      position: parseInt(position),
-      recordNumber: parseInt(recordNumber),
-      bowlerId,
-      status: {
-        isVacant: status2 === 'V',
-        isAbsent: status2 === 'A',
-        isSub: status1 === 'S'
-      },
-      score: parseInt(score),
-      laneNumber,
-      bowlerName,
-      scoreSheet,
-      handicap: parseInt(handicap),
-      average: parseInt(average),
-      hasBumpers: hasBumpers === 'Y'
-    };
-  }
-
-  private parseTeam(startLine: string): QubicaTeamGame[] {
-    const lineInfo = this.parseLine(startLine);
-    if (!lineInfo) return [];
-
-    const [teamNumber, gameNumber, _position, _recordNumber, laneNumber] = lineInfo;
-    const parts = startLine.split('\t');
-    const teamName = parts[9];
-
-    const teamGames: QubicaTeamGame[] = [];
-    const gameScores: Map<number, QubicaBowlerScore[]> = new Map();
-
-    this.currentIndex++;
-    while (this.currentIndex < this.lines.length) {
-      const line = this.lines[this.currentIndex];
-
-      if (!line || this.isTeamHeaderLine(line)) {
-        break;
-      }
-
-      const bowlerScore = this.parseBowlerScore(line);
-      if (bowlerScore && bowlerScore.teamNumber === teamNumber) {
-        const scores = gameScores.get(bowlerScore.gameNumber) || [];
-        scores.push(bowlerScore);
-        gameScores.set(bowlerScore.gameNumber, scores);
-      }
-
-      this.currentIndex++;
-    }
-
-    for (const [gameNum, bowlers] of gameScores) {
-      if (bowlers.length > 0) {
-        teamGames.push({
-          teamNumber,
-          gameNumber: gameNum,
-          teamName,
-          laneNumber,
-          bowlers
-        });
-      }
-    }
-
-    return teamGames;
+    console.log('[QubicaParser] Successfully parsed header:', header);
+    return header;
   }
 
   public parse(): QubicaScoreImport {
@@ -223,8 +273,8 @@ export class QubicaScoreParser {
 
     const games: QubicaTeamGame[] = [];
 
-    // Skip header and separator lines
-    this.currentIndex = 1;
+    // Skip header lines and any separator lines
+    this.currentIndex = 2;
 
     // Parse all teams
     while (this.currentIndex < this.lines.length) {
@@ -238,11 +288,12 @@ export class QubicaScoreParser {
 
       // Parse team if we hit a team header
       if (this.isTeamHeaderLine(line)) {
+        console.log('[QubicaParser] Found team header at line', this.currentIndex);
         const teamGames = this.parseTeam(line);
         games.push(...teamGames);
-      } else {
-        this.currentIndex++;
       }
+
+      this.currentIndex++;
     }
 
     // Log game distribution for verification
