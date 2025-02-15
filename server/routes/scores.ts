@@ -123,6 +123,37 @@ router.get('/', async (req, res) => {
     const { bowlerId, leagueId, weekNumber } = validationResult.data;
     console.log('[Scores] Parsed query parameters:', { bowlerId, leagueId, weekNumber });
 
+    if (leagueId !== undefined && weekNumber !== undefined) {
+      console.log('[Scores] Fetching weekly scores for league:', leagueId, 'week:', weekNumber);
+
+      // Get all games for the specified league and week
+      const games = await storage.getGames(leagueId, weekNumber);
+      console.log('[Scores] Found games:', games.length);
+
+      if (games.length === 0) {
+        console.log('[Scores] No games found for league:', leagueId, 'week:', weekNumber);
+        return sendSuccess(res, []);
+      }
+
+      // Get all scores for these games
+      const allScores = [];
+      for (const game of games) {
+        const gameScores = await storage.getGameScores(game.id);
+        if (gameScores.length > 0) {
+          console.log('[Scores] Found scores for game:', game.id, 'count:', gameScores.length);
+          allScores.push(...gameScores.map(score => ({
+            ...score,
+            gameNumber: game.gameNumber,
+            weekNumber: game.weekNumber,
+            date: game.date
+          })));
+        }
+      }
+
+      console.log('[Scores] Total scores found:', allScores.length);
+      return sendSuccess(res, allScores);
+    }
+
     if (bowlerId !== undefined) {
       console.log('[Scores] Fetching scores for bowler:', bowlerId);
       const scores = await storage.getBowlerScores(bowlerId);
@@ -134,65 +165,6 @@ router.get('/', async (req, res) => {
       console.log('[Scores] Bowler total pinfall:', validScores.reduce((sum, s) => sum + (s.score || 0), 0));
 
       return sendSuccess(res, scores);
-    }
-
-    if (leagueId !== undefined && weekNumber !== undefined) {
-      console.log('[Scores] Fetching weekly scores for league:', leagueId, 'week:', weekNumber);
-      const games = await storage.getGames(leagueId, weekNumber);
-      console.log('[Scores] Found games:', games.length);
-
-      const allScores = [];
-      const bowlerScores = new Map();
-
-      for (const game of games) {
-        const gameScores = await storage.getGameScores(game.id);
-
-        for (const score of gameScores) {
-          const bowler = await storage.getBowler(score.bowlerId);
-          const team = await storage.getTeam(score.teamId);
-
-          if (!bowler || !team) continue;
-
-          const bowlerKey = `${score.bowlerId}-${team.id}`;
-          if (!bowlerScores.has(bowlerKey)) {
-            bowlerScores.set(bowlerKey, {
-              bowlerId: score.bowlerId,
-              bowlerName: bowler.name,
-              teamId: team.id,
-              teamName: team.name,
-              date: game.date,
-              weekNumber: game.weekNumber,
-              games: new Map(),
-              seriesTotal: 0
-            });
-          }
-
-          const bowlerData = bowlerScores.get(bowlerKey);
-          if (!score.isAbsent && !score.isVacant && score.score !== null) {
-            bowlerData.games.set(game.gameNumber, {
-              score: score.score,
-              handicap: score.handicap,
-              total: score.score + (score.handicap || 0),
-              isVacant: score.isVacant,
-              isAbsent: score.isAbsent,
-              isSub: score.isSub
-            });
-            bowlerData.seriesTotal += score.score;
-          }
-        }
-      }
-
-      const formattedScores = Array.from(bowlerScores.values()).map(bowlerData => ({
-        ...bowlerData,
-        games: Array.from({ length: 3 }, (_, i) => {
-          const gameData = bowlerData.games.get(i + 1);
-          return gameData || { score: null, handicap: null, total: null, isVacant: false, isAbsent: false, isSub: false };
-        })
-      }));
-
-      console.log('[Scores] Processed scores for', formattedScores.length, 'bowlers');
-
-      return sendSuccess(res, formattedScores);
     }
 
     return sendError(res, 'Either bowlerId or (leagueId and weekNumber) must be provided', 400);

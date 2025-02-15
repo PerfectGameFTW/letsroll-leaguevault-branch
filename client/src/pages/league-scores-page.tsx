@@ -28,9 +28,17 @@ interface TeamScores {
   team: Team;
   scores: (Score & { bowler?: Bowler })[];
   games: Game[];
+  laneNumber?: number;
   totalPins: number;
   averageScore: number;
   gamesPlayed: number;
+  position: number; // Added for matchup pairing
+}
+
+interface MatchupPair {
+  homeTeam: TeamScores;
+  awayTeam: TeamScores;
+  lanes: string; // e.g. "1-2" for lanes 1 and 2
 }
 
 export default function LeagueScoresPage() {
@@ -68,7 +76,7 @@ export default function LeagueScoresPage() {
   // Get unique weeks from games, sorted in descending order
   const weeks = Array.from(new Set(games.map(g => g.weekNumber))).sort((a, b) => b - a);
 
-  // If no week is selected, default to the most recent
+  // If no week is selected and we have weeks data, default to the latest week
   if (!selectedWeek && weeks.length > 0) {
     setSelectedWeek(weeks[0]);
   }
@@ -96,20 +104,6 @@ export default function LeagueScoresPage() {
   // Query for historical scores
   const { data: historicalScoresResponse, isLoading: loadingHistorical } = useQuery<{ data: { [key: string]: Score[] } }>({
     queryKey: ["/api/scores/history", { leagueId }],
-    queryFn: async () => {
-      const teams = teamsResponse?.data || [];
-      const historicalScores: { [key: string]: Score[] } = {};
-
-      for (const team of teams) {
-        const response = await fetch(`/api/scores/history?teamId=${team.id}&leagueId=${leagueId}`);
-        if (response.ok) {
-          const data = await response.json();
-          historicalScores[team.id] = data.data;
-        }
-      }
-
-      return { data: historicalScores };
-    },
     enabled: !!teamsResponse?.data && !!leagueId,
   });
 
@@ -195,7 +189,7 @@ export default function LeagueScoresPage() {
   // Calculate team scores and statistics
   const teamScores: TeamScores[] = teams
     .filter(team => team.leagueId === leagueId)
-    .map(team => {
+    .map((team, index) => {
       // Get current week's scores for display
       const teamScores = scores
         .filter(s => s.teamId === team.id)
@@ -208,38 +202,43 @@ export default function LeagueScoresPage() {
       // Get historical scores for this team
       const teamHistoricalScores = historicalScores[team.id] || [];
 
-      // Filter out invalid scores
+      // Calculate total pins from valid scores only
       const validHistoricalScores = teamHistoricalScores.filter(s =>
-        !s.isAbsent &&
-        !s.isVacant &&
-        typeof s.score === 'number' &&
-        s.score > 0
+        !s.isAbsent && !s.isVacant && typeof s.score === 'number' && s.score > 0
       );
 
-      // Calculate total pins from valid scores only
       const totalHistoricalPins = validHistoricalScores.reduce((sum, score) =>
         sum + score.score, 0
       );
 
-      // Each valid score represents one game played
       const totalGamesPlayed = validHistoricalScores.length;
-
-      // Calculate average using the same logic as the bowler scores page
       const averageScore = totalGamesPlayed > 0
         ? Math.round(totalHistoricalPins / totalGamesPlayed)
         : 0;
-
 
       return {
         team,
         scores: teamScores,
         games: weekGames,
+        laneNumber: Math.floor(index / 2) * 2 + 1, // Calculate lane numbers based on position
         totalPins: totalHistoricalPins,
         averageScore,
         gamesPlayed: totalGamesPlayed,
+        position: index + 1,
       };
     })
-    .sort((a, b) => b.averageScore - a.averageScore);
+    .sort((a, b) => a.position - b.position);
+
+  // Pair teams into matchups
+  const matchups: MatchupPair[] = [];
+  for (let i = 0; i < teamScores.length; i += 2) {
+    if (i + 1 < teamScores.length) {
+      const homeTeam = teamScores[i];
+      const awayTeam = teamScores[i + 1];
+      const lanes = `${homeTeam.laneNumber}-${homeTeam.laneNumber + 1}`;
+      matchups.push({ homeTeam, awayTeam, lanes });
+    }
+  }
 
   return (
     <Layout>
@@ -255,7 +254,7 @@ export default function LeagueScoresPage() {
         <div>
           <h1 className="text-2xl font-bold mb-2">{league.name} Scores</h1>
           <p className="text-muted-foreground mb-6">
-            View weekly scores and statistics for all teams
+            View weekly scores and matchups for all teams
           </p>
         </div>
 
@@ -289,122 +288,132 @@ export default function LeagueScoresPage() {
           </div>
         ) : (
           <div className="grid gap-6">
-            {teamScores.map(({ team, scores, games, totalPins, averageScore, gamesPlayed }) => (
-              <Card key={team.id} className="hover:border-primary/50 transition-colors">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle>{team.name}</CardTitle>
-                    <div className="text-sm text-muted-foreground">
-                      Average: {averageScore} (from {gamesPlayed} games) | Total Pins: {totalPins}
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[200px]">Bowler</TableHead>
-                        {games.map((game, index) => (
-                          <TableHead key={game.id} className="text-right">
-                            Game {index + 1}
-                          </TableHead>
-                        ))}
-                        <TableHead className="text-right">Series</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {scores.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={games.length + 2}
-                            className="text-center text-muted-foreground py-8"
-                          >
-                            No scores recorded for this team in Week {selectedWeek}
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        scores.map((score) => {
-                          // Get all scores for this bowler's position in current week's games
-                          const gameScores = games.map(game =>
-                            scores.find(s => s.gameId === game.id && s.position === score.position)
-                          );
-
-                          // Calculate series total only from valid scores in the current week's games
-                          const validGameScores = gameScores.filter((s): s is Score => !!s && !s.isAbsent && !s.isVacant && s.score !== null);
-                          const series = validGameScores.reduce((sum, s) => sum + (s.score || 0), 0);
-
-                          return (
-                            <TableRow key={`${score.bowlerId}-${score.position}`}>
-                              <TableCell>
-                                {score.isVacant ? (
-                                  <span className="text-muted-foreground italic">Vacant</span>
-                                ) : score.isAbsent ? (
-                                  <span className="text-muted-foreground italic">Absent</span>
-                                ) : score.bowler ? (
-                                  <div className="flex items-center gap-2">
-                                    <Link
-                                      href={`/bowlers/${score.bowler.id}`}
-                                      className="hover:underline"
-                                    >
-                                      {score.bowler.name}
-                                    </Link>
-                                    {score.isSub && (
-                                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-                                        Sub
-                                      </span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="text-muted-foreground">Unknown Bowler</span>
-                                )}
-                              </TableCell>
-                              {gameScores.map((gameScore, i) => (
-                                <TableCell
-                                  key={i}
-                                  className={cn(
-                                    "text-right font-medium",
-                                    gameScore?.score && gameScore.score >= 250 && "text-green-600",
-                                    gameScore?.score && gameScore.score >= 200 && gameScore.score < 250 && "text-primary",
-                                  )}
-                                >
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span>{gameScore?.score || "—"}</span>
-                                    </TooltipTrigger>
-                                    {gameScore?.score && gameScore.score >= 200 && (
-                                      <TooltipContent>
-                                        {gameScore.score >= 250 ? "Perfect game approaching!" : "Great game!"}
-                                      </TooltipContent>
-                                    )}
-                                  </Tooltip>
-                                </TableCell>
+            {matchups.map(({ homeTeam, awayTeam, lanes }, index) => (
+              <div key={index} className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold">Matchup {index + 1}</h3>
+                  <span className="text-sm text-muted-foreground">Lanes {lanes}</span>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  {[homeTeam, awayTeam].map((teamScore) => (
+                    <Card key={teamScore.team.id} className="hover:border-primary/50 transition-colors">
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between">
+                          <CardTitle>{teamScore.team.name}</CardTitle>
+                          <div className="text-sm text-muted-foreground">
+                            Average: {teamScore.averageScore}
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[200px]">Bowler</TableHead>
+                              {teamScore.games.map((game, index) => (
+                                <TableHead key={game.id} className="text-right">
+                                  Game {index + 1}
+                                </TableHead>
                               ))}
-                              <TableCell
-                                className={cn(
-                                  "text-right font-medium",
-                                  series >= 700 && "text-green-600",
-                                  series >= 600 && series < 700 && "text-primary"
-                                )}
-                              >
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span>{series || "—"}</span>
-                                  </TooltipTrigger>
-                                  {series >= 600 && (
-                                    <TooltipContent>
-                                      {series >= 700 ? "Outstanding series!" : "Great series!"}
-                                    </TooltipContent>
-                                  )}
-                                </Tooltip>
-                              </TableCell>
+                              <TableHead className="text-right">Series</TableHead>
                             </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+                          </TableHeader>
+                          <TableBody>
+                            {teamScore.scores.length === 0 ? (
+                              <TableRow>
+                                <TableCell
+                                  colSpan={teamScore.games.length + 2}
+                                  className="text-center text-muted-foreground py-8"
+                                >
+                                  No scores recorded for this team in Week {selectedWeek}
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              teamScore.scores.map((score) => {
+                                const gameScores = teamScore.games.map(game =>
+                                  teamScore.scores.find(s => s.gameId === game.id && s.position === score.position)
+                                );
+
+                                const validGameScores = gameScores.filter((s): s is Score =>
+                                  !!s && !s.isAbsent && !s.isVacant && s.score !== null
+                                );
+                                const series = validGameScores.reduce((sum, s) => sum + (s.score || 0), 0);
+
+                                return (
+                                  <TableRow key={`${score.bowlerId}-${score.position}`}>
+                                    <TableCell>
+                                      {score.isVacant ? (
+                                        <span className="text-muted-foreground italic">Vacant</span>
+                                      ) : score.isAbsent ? (
+                                        <span className="text-muted-foreground italic">Absent</span>
+                                      ) : score.bowler ? (
+                                        <div className="flex items-center gap-2">
+                                          <Link
+                                            href={`/bowlers/${score.bowler.id}`}
+                                            className="hover:underline"
+                                          >
+                                            {score.bowler.name}
+                                          </Link>
+                                          {score.isSub && (
+                                            <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                              Sub
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="text-muted-foreground">Unknown Bowler</span>
+                                      )}
+                                    </TableCell>
+                                    {gameScores.map((gameScore, i) => (
+                                      <TableCell
+                                        key={i}
+                                        className={cn(
+                                          "text-right font-medium",
+                                          gameScore?.score && gameScore.score >= 250 && "text-green-600",
+                                          gameScore?.score && gameScore.score >= 200 && gameScore.score < 250 && "text-primary",
+                                        )}
+                                      >
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <span>{gameScore?.score || "—"}</span>
+                                          </TooltipTrigger>
+                                          {gameScore?.score && gameScore.score >= 200 && (
+                                            <TooltipContent>
+                                              {gameScore.score >= 250 ? "Perfect game approaching!" : "Great game!"}
+                                            </TooltipContent>
+                                          )}
+                                        </Tooltip>
+                                      </TableCell>
+                                    ))}
+                                    <TableCell
+                                      className={cn(
+                                        "text-right font-medium",
+                                        series >= 700 && "text-green-600",
+                                        series >= 600 && series < 700 && "text-primary"
+                                      )}
+                                    >
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span>{series || "—"}</span>
+                                        </TooltipTrigger>
+                                        {series >= 600 && (
+                                          <TooltipContent>
+                                            {series >= 700 ? "Outstanding series!" : "Great series!"}
+                                          </TooltipContent>
+                                        )}
+                                      </Tooltip>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })
+                            )}
+                          </TableBody>
+                        </Table>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
         )}
