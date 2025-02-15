@@ -45,20 +45,21 @@ export class ScoreImportService {
         throw new ScoreImportError('Invalid date in score file', 'INVALID_DATE');
       }
 
-      // Normalize the date to midnight UTC
-      const gameDate = new Date(parsedData.header.date);
-      gameDate.setUTCHours(0, 0, 0, 0);
+      // Use the parsed date directly without normalization
+      const gameDate = parsedData.header.date;
 
-      console.log('[ScoreImport] Using normalized game date:', {
+      console.log('[ScoreImport] Using game date:', {
         original: parsedData.header.date.toISOString(),
-        normalized: gameDate.toISOString(),
+        gameDate: gameDate.toISOString(),
         dateValidation: {
           isDate: gameDate instanceof Date,
           timestamp: gameDate.getTime(),
           components: {
             year: gameDate.getUTCFullYear(),
             month: gameDate.getUTCMonth() + 1,
-            day: gameDate.getUTCDate()
+            day: gameDate.getUTCDate(),
+            hours: gameDate.getUTCHours(),
+            minutes: gameDate.getUTCMinutes()
           }
         }
       });
@@ -77,12 +78,7 @@ export class ScoreImportService {
             leagueId: this.leagueId,
             weekNumber: parsedData.header.weekNumber,
             gameNumber,
-            date: gameDate.toISOString(),
-            dateValidation: {
-              isDate: gameDate instanceof Date,
-              jsType: typeof gameDate,
-              hasToISOString: typeof gameDate.toISOString === 'function'
-            }
+            date: gameDate,
           });
 
           const insertGame: InsertGame = {
@@ -112,7 +108,7 @@ export class ScoreImportService {
               leagueId: this.leagueId,
               weekNumber: parsedData.header.weekNumber,
               gameNumber,
-              date: gameDate.toISOString()
+              date: gameDate
             }
           });
           throw error;

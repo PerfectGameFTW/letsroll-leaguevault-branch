@@ -14,9 +14,8 @@ export class QubicaScoreParser {
     console.log('[QubicaParser] Raw header line:', headerLine);
 
     try {
-      // Match "Week XX" followed by a date, allowing for variable whitespace
-      // and capturing the time portion optionally
-      const dateTimePattern = /Week\s*\d+\s*([A-Za-z]+\s+\d{1,2},\s*\d{4})(?:\s*(\d{1,2}:\d{2}))?/;
+      // Match "Week XX" followed by "MonthName DD, YYYY HH:mm" pattern
+      const dateTimePattern = /Week\s*\d+.*?([A-Za-z]+\s+\d{1,2},\s*\d{4})\s*(\d{1,2}:\d{2})/;
       const match = headerLine.match(dateTimePattern);
 
       if (!match) {
@@ -29,15 +28,13 @@ export class QubicaScoreParser {
         throw new Error('Could not find date pattern in header');
       }
 
-      const [fullMatch, dateStr, timeStr] = match;
-      console.log('[QubicaParser] Pattern matches:', {
-        fullMatch,
+      const [_, dateStr, timeStr] = match;
+      console.log('[QubicaParser] Matched components:', {
         dateStr,
-        timeStr,
-        index: match.index
+        timeStr
       });
 
-      // Parse the date portion
+      // Parse the date portion using date-fns
       const parsedDate = parse(dateStr.trim(), 'MMMM d, yyyy', new Date());
 
       if (isNaN(parsedDate.getTime())) {
@@ -48,20 +45,15 @@ export class QubicaScoreParser {
         throw new Error(`Invalid date value: ${dateStr}`);
       }
 
-      // If we have a time portion, set it
+      // Add the time portion
       if (timeStr) {
         const [hours, minutes] = timeStr.split(':').map(Number);
-        parsedDate.setHours(hours, minutes);
+        parsedDate.setHours(hours, minutes, 0, 0);
       }
 
-      // Set seconds and milliseconds to 0 for consistency
-      parsedDate.setSeconds(0);
-      parsedDate.setMilliseconds(0);
-
       console.log('[QubicaParser] Successfully parsed date:', {
-        input: dateStr,
-        time: timeStr,
-        parsedDate: parsedDate.toISOString(),
+        input: `${dateStr} ${timeStr}`,
+        output: parsedDate.toISOString(),
         components: {
           year: parsedDate.getFullYear(),
           month: parsedDate.getMonth() + 1,
@@ -93,22 +85,55 @@ export class QubicaScoreParser {
       throw new Error('Invalid file format: Missing header line');
     }
 
-    const parts = headerLine.split('\t');
-    console.log('[QubicaParser] Header parts:', parts);
+    // First try splitting by tab
+    const allParts = headerLine.split('\t');
+    const firstPart = allParts[0];
+
+    if (!firstPart) {
+      throw new Error('Invalid header format: Empty first part');
+    }
+
+    console.log('[QubicaParser] Header parts:', allParts);
 
     // Parse the date from the full header line
     const date = this.parseHeaderDate(headerLine);
 
-    const centerName = parts[1].replace(' (QubicaAMF)', '');
-    const leagueName = parts[2];
-    const weekStr = parts[3];
-    const sessionTime = parts[4];
-    const leagueId = parts[5];
-    const description = parts[6] || '';
+    // Extract center name and other fields from the header parts
+    let centerName = '';
+    let leagueName = '';
+    let weekStr = '';
+    let sessionTime = '';
+    let leagueId = '';
+    let description = '';
+
+    if (allParts.length >= 2) {
+      // Format with tabs
+      centerName = allParts[1].replace(' (QubicaAMF)', '');
+      leagueName = allParts[2] || '';
+      weekStr = allParts[3] || '';
+      sessionTime = allParts[4] || '';
+      leagueId = allParts[5] || '';
+      description = allParts[6] || '';
+    } else {
+      // Fallback to space-based parsing if no tabs found
+      const spaceParts = firstPart.split(' (QubicaAMF)');
+      if (spaceParts.length >= 2) {
+        centerName = spaceParts[0].replace('* ', '');
+        const remainingParts = spaceParts[1].trim().split(/\s+/);
+        leagueName = remainingParts[0] || '';
+        weekStr = remainingParts.find(p => p.startsWith('Week')) || '';
+        sessionTime = remainingParts.find(p => p.includes(':')) || '';
+        leagueId = remainingParts[remainingParts.length - 2] || '';
+        description = remainingParts[remainingParts.length - 1] || '';
+      }
+    }
 
     // Parse week number
-    const weekNumber = parseInt(weekStr.replace('Week ', ''));
+    const weekMatch = weekStr.match(/Week\s*(\d+)/);
+    const weekNumber = weekMatch ? parseInt(weekMatch[1]) : 0;
+
     if (isNaN(weekNumber)) {
+      console.error('[QubicaParser] Invalid week number format:', weekStr);
       throw new Error('Invalid week number format');
     }
 
@@ -125,7 +150,8 @@ export class QubicaScoreParser {
     console.log('[QubicaParser] Successfully parsed header:', {
       date: header.date.toISOString(),
       weekNumber: header.weekNumber,
-      leagueName: header.leagueName
+      leagueName: header.leagueName,
+      centerName: header.centerName
     });
 
     return header;

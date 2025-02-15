@@ -81,7 +81,7 @@ describe('ScoreImportService', () => {
     });
   });
 
-  it('successfully imports scores for all three games', async () => {
+  it('successfully imports scores with correct game dates', async () => {
     const service = new ScoreImportService(1);
 
     // Log sample file content for debugging
@@ -97,6 +97,12 @@ describe('ScoreImportService', () => {
     expect(storage.createGame).toHaveBeenCalledTimes(3);
     const createGameCalls = (storage.createGame as jest.Mock).mock.calls;
     expect(createGameCalls).toHaveLength(3);
+
+    // Verify game dates are set correctly
+    createGameCalls.forEach((call: any) => {
+      const gameData = call[0];
+      expect(gameData.date.toISOString()).toBe('2025-02-03T18:30:00.000Z');
+    });
 
     // Verify game creation parameters
     createGameCalls.forEach((call: any, index: number) => {
