@@ -4,32 +4,45 @@ import { sendSuccess, sendError, type ApiError } from '../utils/api.js';
 import { z } from 'zod';
 import { ScoreImportService, ScoreImportError } from '../services/score-import.js';
 import { GoogleDriveService } from '../services/google-drive.js';
+import { type Request, type Response, type NextFunction } from 'express';
 
 const router = Router();
 
-// Enhanced validation schema with preprocessing and detailed error messages
-const getScoresQuerySchema = z.object({
-  leagueId: z.preprocess(
-    (val) => Number(val),
-    z.number({
-      invalid_type_error: "League ID must be a number"
-    }).refine(val => !isNaN(val), {
-      message: "League ID must be a valid number"
-    }).refine(val => val > 0, {
-      message: "League ID must be greater than 0"
-    })
-  ),
-  weekNumber: z.preprocess(
-    (val) => Number(val),
-    z.number({
-      invalid_type_error: "Week number must be a number"
-    }).refine(val => !isNaN(val), {
-      message: "Week number must be a valid number"
-    }).refine(val => val > 0, {
-      message: "Week number must be greater than 0"
-    })
-  )
-});
+// Validation middleware
+const validateScoreParams = (req: Request, res: Response, next: NextFunction) => {
+  const { leagueId, weekNumber } = req.params;
+  const errors = [];
+
+  // Validate leagueId
+  const parsedLeagueId = parseInt(leagueId);
+  if (isNaN(parsedLeagueId)) {
+    errors.push({ field: 'leagueId', message: 'League ID must be a valid number' });
+  } else if (parsedLeagueId <= 0) {
+    errors.push({ field: 'leagueId', message: 'League ID must be greater than 0' });
+  }
+
+  // Validate weekNumber
+  const parsedWeekNumber = parseInt(weekNumber);
+  if (isNaN(parsedWeekNumber)) {
+    errors.push({ field: 'weekNumber', message: 'Week number must be a valid number' });
+  } else if (parsedWeekNumber <= 0) {
+    errors.push({ field: 'weekNumber', message: 'Week number must be greater than 0' });
+  }
+
+  if (errors.length > 0) {
+    const error: ApiError = {
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid request parameters',
+      details: errors
+    };
+    return sendError(res, error, 400);
+  }
+
+  // Add validated parameters to request
+  req.params.leagueId = parsedLeagueId.toString();
+  req.params.weekNumber = parsedWeekNumber.toString();
+  next();
+};
 
 // Add debug endpoint for testing validation
 router.get('/debug-query', (req, res) => {
@@ -41,33 +54,12 @@ router.get('/debug-query', (req, res) => {
 });
 
 // Route handler for getting league scores by week
-router.get('/league/:leagueId/week/:weekNumber', async (req, res) => {
+router.get('/league/:leagueId/week/:weekNumber', validateScoreParams, async (req, res) => {
   try {
     console.log('[Scores] Processing request with params:', req.params);
 
-    // Validate input parameters
-    const validationResult = getScoresQuerySchema.safeParse({
-      leagueId: req.params.leagueId,
-      weekNumber: req.params.weekNumber
-    });
-
-    if (!validationResult.success) {
-      console.log('[Scores] Validation errors:', validationResult.error.format());
-
-      const error: ApiError = {
-        code: 'VALIDATION_ERROR',
-        message: 'Invalid request parameters',
-        details: validationResult.error.errors.map(err => ({
-          field: err.path.join('.'),
-          message: err.message
-        }))
-      };
-
-      return sendError(res, error, 400);
-    }
-
-    const { leagueId, weekNumber } = validationResult.data;
-    console.log('[Scores] Validated parameters:', { leagueId, weekNumber });
+    const leagueId = parseInt(req.params.leagueId);
+    const weekNumber = parseInt(req.params.weekNumber);
 
     // Get scores for the specified league and week
     const scores = await storage.getScoresByLeagueAndWeek(leagueId, weekNumber);
@@ -88,47 +80,42 @@ router.get('/history', async (req, res) => {
   try {
     console.log('[Scores/History] Processing request with query:', req.query);
 
-    const validationResult = getScoresQuerySchema.safeParse(req.query);
-    if (!validationResult.success) {
-      console.log('[Scores/History] Validation errors:', validationResult.error.format());
-      const error: ApiError = {
-        code: 'VALIDATION_ERROR',
-        message: 'Invalid query parameters',
-        details: validationResult.error.errors.map(err => ({
-          field: err.path.join('.'),
-          message: err.message
-        }))
-      };      
-      return sendError(res, error, 400);
-    }
+    const { leagueId, weekNumber } = req.query;
+    const parsedLeagueId = leagueId ? parseInt(leagueId as string) : undefined;
+    const parsedWeekNumber = weekNumber ? parseInt(weekNumber as string) : undefined;
 
-    const { leagueId, weekNumber } = validationResult.data;
-    console.log('[Scores/History] Parsed parameters:', { leagueId, weekNumber });
+    if (parsedLeagueId && parsedWeekNumber) {
+      if (isNaN(parsedLeagueId) || parsedLeagueId <= 0) {
+        return sendError(res, {
+          code: 'VALIDATION_ERROR',
+          message: 'League ID must be a positive number',
+          details: [{ field: 'leagueId', message: 'Must be a positive number' }]
+        }, 400);
+      }
 
+      if (isNaN(parsedWeekNumber) || parsedWeekNumber <= 0) {
+        return sendError(res, {
+          code: 'VALIDATION_ERROR',
+          message: 'Week number must be a positive number',
+          details: [{ field: 'weekNumber', message: 'Must be a positive number' }]
+        }, 400);
+      }
 
-    if (leagueId && weekNumber) {
-      console.log('[Scores/History] Fetching scores for league:', leagueId, 'week:', weekNumber);
-      const games = await storage.getGames(leagueId, weekNumber);
-      console.log('[Scores/History] Found games:', games.length);
-
+      const games = await storage.getGames(parsedLeagueId, parsedWeekNumber);
       const allScores = [];
       for (const game of games) {
         const gameScores = await storage.getGameScores(game.id);
         allScores.push(...gameScores);
       }
 
-      console.log('[Scores/History] Total scores found:', allScores.length);
       return sendSuccess(res, allScores);
     }
 
-
-    const error: ApiError = {
+    return sendError(res, {
       code: 'VALIDATION_ERROR',
       message: 'Invalid query parameters: leagueId and weekNumber must be provided',
       details: []
-    };
-    console.error('[Scores/History] Invalid parameter combination:', { leagueId, weekNumber });
-    return sendError(res, error, 400);
+    }, 400);
 
   } catch (error) {
     console.error('[Scores/History] Error fetching scores:', error);
@@ -147,14 +134,22 @@ router.post('/import', async (req, res) => {
 
     if (isNaN(leagueId)) {
       console.error('[Scores/Import] Invalid league ID provided:', req.query.leagueId);
-      return sendError(res, 'Invalid league ID', 400);
+      return sendError(res, {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid league ID',
+        details: [{ field: 'leagueId', message: 'Must be a valid number' }]
+      }, 400);
     }
 
     // Check if league exists
     const league = await storage.getLeague(leagueId);
     if (!league) {
       console.error('[Scores/Import] League not found:', leagueId);
-      return sendError(res, 'League not found', 404);
+      return sendError(res, {
+        code: 'NOT_FOUND',
+        message: 'League not found',
+        details: [{ field: 'leagueId', message: 'No league found with this ID' }]
+      }, 404);
     }
 
     // Initialize Google Drive service
@@ -165,7 +160,10 @@ router.post('/import', async (req, res) => {
 
     if (!sourceFolderId || !archiveFolderId) {
       console.error('[Scores/Import] Source or archive folder ID not configured');
-      return sendError(res, 'Source or archive folder ID not configured', 500);
+      return sendError(res, {
+        code: 'CONFIG_ERROR',
+        message: 'Source or archive folder ID not configured'
+      }, 500);
     }
 
     // List and get the latest file
@@ -174,7 +172,10 @@ router.post('/import', async (req, res) => {
 
     if (files.length === 0) {
       console.error('[Scores/Import] No files found in source folder');
-      return sendError(res, 'No score files found to import', 404);
+      return sendError(res, {
+        code: 'NOT_FOUND',
+        message: 'No score files found to import'
+      }, 404);
     }
 
     // Get the most recent file's content
@@ -210,16 +211,13 @@ router.post('/import', async (req, res) => {
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('[Scores/Import] Error during import:', error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error);
-
       if (error instanceof ScoreImportError) {
-        return sendError(res, error.message, 400);
+        return sendError(res, {
+          code: 'IMPORT_ERROR',
+          message: error.message
+        }, 400);
       } else {
-        return sendError(res, 'Failed to import scores', 500);
+        throw error;
       }
     }
   } catch (error) {
@@ -229,40 +227,10 @@ router.post('/import', async (req, res) => {
       stack: error.stack
     } : error);
 
-    return sendError(res, 'Failed to import scores', 500);
-  }
-});
-
-// Add manual listing endpoint for debugging
-router.get('/list-source', async (req, res) => {
-  try {
-    console.log('[Scores/ListSource] Starting file listing...');
-
-    const sourceFolderId = process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID;
-    if (!sourceFolderId) {
-      return sendError(res, 'Source folder ID not configured', 500);
-    }
-
-    // Initialize Google Drive service
-    console.log('[Scores/ListSource] Initializing GoogleDriveService...');
-    const googleDrive = new GoogleDriveService();
-
-    // List files
-    console.log('[Scores/ListSource] Attempting to list files...');
-    const files = await googleDrive.listNewFiles(sourceFolderId);
-
-    sendSuccess(res, {
-      message: 'Successfully listed source folder contents',
-      sourceFolder: sourceFolderId,
-      fileCount: files.length,
-      files: files
-    });
-  } catch (error) {
-    console.error('[Scores/ListSource] Error listing files:', error);
-    return sendError(res,
-      error instanceof Error ? error.message : 'Failed to list files',
-      500
-    );
+    return sendError(res, {
+      code: 'SERVER_ERROR',
+      message: error instanceof Error ? error.message : 'Failed to import scores'
+    }, 500);
   }
 });
 
