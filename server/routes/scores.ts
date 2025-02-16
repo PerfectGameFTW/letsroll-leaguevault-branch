@@ -1,124 +1,84 @@
 import { Router } from 'express';
 import { storage } from '../storage.js';
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, type ApiError } from '../utils/api.js';
 import { z } from 'zod';
 import { ScoreImportService, ScoreImportError } from '../services/score-import.js';
 import { GoogleDriveService } from '../services/google-drive.js';
 
-// Enhanced validation schema with better error messages
-const getScoresQuerySchema = z.object({
-  leagueId: z.string().transform((val, ctx) => {
-    const parsed = parseInt(val);
-    if (isNaN(parsed)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "League ID must be a number"
-      });
-      return z.NEVER;
-    }
-    if (parsed < 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "League ID must be greater than 0"
-      });
-      return z.NEVER;
-    }
-    return parsed;
-  }),
-  weekNumber: z.string().transform((val, ctx) => {
-    const parsed = parseInt(val);
-    if (isNaN(parsed)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Week number must be a number"
-      });
-      return z.NEVER;
-    }
-    if (parsed < 1) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Week number must be greater than 0"
-      });
-      return z.NEVER;
-    }
-    return parsed;
-  })
-});
-
 const router = Router();
 
-// Add debug endpoint
-router.get('/debug-query', (req, res) => {
-  console.log('[Scores/Debug] Raw query:', {
-    raw: req.query,
-    stringified: JSON.stringify(req.query),
-    types: {
-      leagueId: typeof req.query.leagueId,
-      weekNumber: typeof req.query.weekNumber
-    },
-    values: {
-      leagueId: req.query.leagueId,
-      weekNumber: req.query.weekNumber
-    }
-  });
+// Enhanced validation schema with preprocessing and detailed error messages
+const getScoresQuerySchema = z.object({
+  leagueId: z.preprocess(
+    (val) => Number(val),
+    z.number({
+      invalid_type_error: "League ID must be a number"
+    }).refine(val => !isNaN(val), {
+      message: "League ID must be a valid number"
+    }).refine(val => val > 0, {
+      message: "League ID must be greater than 0"
+    })
+  ),
+  weekNumber: z.preprocess(
+    (val) => Number(val),
+    z.number({
+      invalid_type_error: "Week number must be a number"
+    }).refine(val => !isNaN(val), {
+      message: "Week number must be a valid number"
+    }).refine(val => val > 0, {
+      message: "Week number must be greater than 0"
+    })
+  )
+});
 
+// Add debug endpoint for testing validation
+router.get('/debug-query', (req, res) => {
+  console.log('[Scores/Debug] Raw query:', req.query);
   return sendSuccess(res, {
     query: req.query,
-    stringified: JSON.stringify(req.query),
     url: req.url
   });
 });
 
-// Get scores for a specific league and week
+// Route handler for getting league scores by week
 router.get('/league/:leagueId/week/:weekNumber', async (req, res) => {
   try {
     console.log('[Scores] Processing request with params:', req.params);
 
-    try {
-      const result = getScoresQuerySchema.safeParse({
-        leagueId: req.params.leagueId,
-        weekNumber: req.params.weekNumber
-      });
+    // Validate input parameters
+    const validationResult = getScoresQuerySchema.safeParse({
+      leagueId: req.params.leagueId,
+      weekNumber: req.params.weekNumber
+    });
 
-      if (!result.success) {
-        console.log('[Scores] Validation errors:', result.error.flatten());
-        const errors = result.error.errors.map(error => ({
-          field: error.path[0],
-          message: error.message
-        }));
-        return sendError(res, {
-          message: 'Invalid parameters',
-          details: errors
-        }, 400);
-      }
+    if (!validationResult.success) {
+      console.log('[Scores] Validation errors:', validationResult.error.format());
 
-      const { leagueId, weekNumber } = result.data;
-      console.log('[Scores] Validated parameters:', { leagueId, weekNumber });
+      const error: ApiError = {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request parameters',
+        details: validationResult.error.errors.map(err => ({
+          field: err.path.join('.'),
+          message: err.message
+        }))
+      };
 
-      // Get scores for the specified league and week
-      const scores = await storage.getScoresByLeagueAndWeek(leagueId, weekNumber);
-      console.log('[Scores] Found scores:', scores.length);
-
-      return sendSuccess(res, scores);
-    } catch (validationError) {
-      console.error('[Scores] Validation error:', validationError);
-      if (validationError instanceof z.ZodError) {
-        const errors = validationError.errors.map(error => ({
-          field: error.path[0],
-          message: error.message
-        }));
-        return sendError(res, {
-          message: 'Invalid request parameters',
-          details: errors
-        }, 400);
-      }
-      throw validationError;
+      return sendError(res, error, 400);
     }
+
+    const { leagueId, weekNumber } = validationResult.data;
+    console.log('[Scores] Validated parameters:', { leagueId, weekNumber });
+
+    // Get scores for the specified league and week
+    const scores = await storage.getScoresByLeagueAndWeek(leagueId, weekNumber);
+    console.log('[Scores] Found scores:', scores.length);
+
+    return sendSuccess(res, scores);
   } catch (error) {
     console.error('[Scores] Error fetching scores:', error);
     return sendError(res, {
-      message: 'Failed to fetch scores',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      code: 'SERVER_ERROR',
+      message: error instanceof Error ? error.message : 'Failed to fetch scores'
     }, 500);
   }
 });
@@ -130,8 +90,16 @@ router.get('/history', async (req, res) => {
 
     const validationResult = getScoresQuerySchema.safeParse(req.query);
     if (!validationResult.success) {
-      console.error('[Scores/History] Validation error:', validationResult.error);
-      return sendError(res, 'Invalid query parameters', 400);
+      console.log('[Scores/History] Validation errors:', validationResult.error.format());
+      const error: ApiError = {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid query parameters',
+        details: validationResult.error.errors.map(err => ({
+          field: err.path.join('.'),
+          message: err.message
+        }))
+      };      
+      return sendError(res, error, 400);
     }
 
     const { leagueId, weekNumber } = validationResult.data;
@@ -154,13 +122,20 @@ router.get('/history', async (req, res) => {
     }
 
 
-    const errorMessage = 'Invalid query parameters: leagueId and weekNumber must be provided';
+    const error: ApiError = {
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid query parameters: leagueId and weekNumber must be provided',
+      details: []
+    };
     console.error('[Scores/History] Invalid parameter combination:', { leagueId, weekNumber });
-    return sendError(res, errorMessage, 400);
+    return sendError(res, error, 400);
 
   } catch (error) {
     console.error('[Scores/History] Error fetching scores:', error);
-    return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
+    return sendError(res, {
+      code: 'SERVER_ERROR',
+      message: error instanceof Error ? error.message : 'Failed to fetch scores'
+    }, 500);
   }
 });
 
