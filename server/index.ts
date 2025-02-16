@@ -10,34 +10,18 @@ const app = express();
 const server = createServer(app);
 let viteSetupComplete = false;
 
-// Basic middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-
-// Enhanced request logging for debugging
-app.use((req, res, next) => {
-  const start = Date.now();
-  const requestId = Math.random().toString(36).substring(7);
-  console.log(`[${requestId}] ${req.method} ${req.originalUrl}`);
-  if (req.body && Object.keys(req.body).length > 0) {
-    console.log(`[${requestId}] Request body:`, JSON.stringify(req.body, null, 2));
-  }
-
-  // Add response logging
-  const oldJson = res.json;
-  res.json = function(body) {
-    console.log(`[${requestId}] Response body:`, JSON.stringify(body));
-    return oldJson.call(this, body);
-  };
-
-  res.on('finish', () => {
-    console.log(`[${requestId}] ${req.method} ${req.originalUrl} ${res.statusCode} (${Date.now() - start}ms)`);
-  });
-  next();
-});
-
 // Set max listeners to avoid warning
 server.setMaxListeners(20);
+
+// WebSocket connection logging with path filtering
+server.on('upgrade', (req, socket, head) => {
+  // Ignore Vite HMR WebSocket connections (they typically use /@vite/client)
+  if (req.url?.includes('/@vite') || req.url?.includes('vite-hmr')) {
+    console.log(`[WebSocket] Skipping Vite HMR upgrade request for: ${req.url}`);
+    return;
+  }
+  console.log(`[WebSocket] Processing application upgrade request for path: ${req.url}`);
+});
 
 // Setup Vite first in development mode
 if (app.get("env") === "development" && !viteSetupComplete) {
@@ -46,7 +30,6 @@ if (app.get("env") === "development" && !viteSetupComplete) {
     .then(() => {
       console.log('[Server] Vite middleware setup complete');
       viteSetupComplete = true;
-      // Continue with the rest of the server setup
       setupRestOfServer();
     })
     .catch((error) => {
@@ -54,11 +37,40 @@ if (app.get("env") === "development" && !viteSetupComplete) {
       process.exit(1);
     });
 } else {
-  // In production, just continue with the normal setup
   setupRestOfServer();
 }
 
 function setupRestOfServer() {
+  // Basic middleware
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
+
+  // Enhanced request logging
+  app.use((req, res, next) => {
+    // Skip logging for Vite HMR requests
+    if (req.path.includes('/@vite') || req.path.includes('vite-hmr')) {
+      return next();
+    }
+
+    const start = Date.now();
+    const requestId = Math.random().toString(36).substring(7);
+    console.log(`[${requestId}] ${req.method} ${req.originalUrl}`);
+    if (req.body && Object.keys(req.body).length > 0) {
+      console.log(`[${requestId}] Request body:`, JSON.stringify(req.body, null, 2));
+    }
+
+    const oldJson = res.json;
+    res.json = function(body) {
+      console.log(`[${requestId}] Response body:`, JSON.stringify(body));
+      return oldJson.call(this, body);
+    };
+
+    res.on('finish', () => {
+      console.log(`[${requestId}] ${req.method} ${req.originalUrl} ${res.statusCode} (${Date.now() - start}ms)`);
+    });
+    next();
+  });
+
   // API-specific middleware
   app.use('/api', (req, res, next) => {
     console.log('[API] Handling request:', req.method, req.path);
@@ -107,6 +119,21 @@ function setupRestOfServer() {
   const HOST = '0.0.0.0';
   const PORT = process.env.PORT || 5000;
 
+  // Function to handle graceful shutdown
+  function shutdown() {
+    console.log('[Server] Initiating graceful shutdown...');
+    server.close(() => {
+      console.log('[Server] Server closed');
+      process.exit(0);
+    });
+
+    // Force close after 10 seconds
+    setTimeout(() => {
+      console.error('[Server] Could not close connections in time, forcefully shutting down');
+      process.exit(1);
+    }, 10000);
+  }
+
   // Initialize server and score schedulers
   async function initializeServer() {
     try {
@@ -121,8 +148,12 @@ function setupRestOfServer() {
       await new Promise<void>((resolve, reject) => {
         console.log(`[Server] Attempting to start server on ${HOST}:${PORT}...`);
 
-        const onError = (err: Error) => {
-          console.error('[Server] Failed to start server:', err);
+        const onError = (err: any) => {
+          if (err.code === 'EADDRINUSE') {
+            console.error(`[Server] Port ${PORT} is already in use. Please ensure no other instance is running.`);
+          } else {
+            console.error('[Server] Failed to start server:', err);
+          }
           server.removeListener('listening', onListening);
           reject(err);
         };
@@ -187,17 +218,8 @@ function setupRestOfServer() {
     console.error('[Server] Unhandled error during startup:', error);
     process.exit(1);
   });
-}
 
-// Cleanup on exit
-process.on('SIGTERM', () => {
-  console.log('[Server] Received SIGTERM signal, shutting down...');
-  if (server) {
-    server.close(() => {
-      console.log('[Server] Server closed');
-      process.exit(0);
-    });
-  } else {
-    process.exit(0);
-  }
-});
+  // Setup signal handlers for graceful shutdown
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
