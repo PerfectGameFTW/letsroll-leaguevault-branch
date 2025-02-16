@@ -1,0 +1,12 @@
+{
+  "port": 5000,
+  "ready": true,
+  "timestamp": "2025-02-16T22:49:16.233Z",
+  "pid": 1121,
+  "mode": "development",
+  "health": {
+    "database": true,
+    "vite": true,
+    "server": true
+  }
+}

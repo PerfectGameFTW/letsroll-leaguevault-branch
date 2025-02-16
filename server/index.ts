@@ -31,12 +31,58 @@ let isServerReady = false;
 // Create a status file to communicate with the workflow
 const PORT_STATUS_FILE = '.port-status';
 
-// Add new constant for port status cleanup
+// Add constant for port status cleanup
 const STALE_PORT_TIMEOUT = 60000; // 60 seconds
 
 // Basic middleware setup
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Track active requests for graceful shutdown
+let activeRequests = 0;
+const requestTracker = (req: Request, res: Response, next: NextFunction) => {
+  activeRequests++;
+  res.on('finish', () => {
+    activeRequests--;
+  });
+  next();
+};
+
+app.use(requestTracker);
+
+// Port status monitoring middleware
+app.use(async (req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+
+  // Update port status on request start
+  if (serverPort) {
+    await writePortStatus(serverPort, isServerReady, {
+      database: true,
+      vite: viteSetupComplete,
+      server: true
+    });
+  }
+
+  // After response monitoring
+  res.on('finish', async () => {
+    const duration = Date.now() - start;
+    if (duration > 1000) { // Only log slow requests
+      console.log(`[Server] Slow request: ${req.method} ${req.path} took ${duration}ms`);
+    }
+
+    // Update port status after request completion
+    if (serverPort) {
+      await writePortStatus(serverPort, isServerReady, {
+        database: true,
+        vite: viteSetupComplete,
+        server: true
+      });
+    }
+  });
+
+  next();
+});
+
 
 // Enhanced request logging with port information
 app.use((req, res, next) => {
@@ -88,7 +134,7 @@ async function writePortStatus(port: number, ready: boolean = false, health: Par
 }
 
 // Enhanced port management functions
-async function cleanupStalePortStatus() {
+const cleanupStalePortStatus = async () => {
   try {
     const status = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8')
       .then(content => JSON.parse(content) as { pid: number; timestamp: string })
@@ -111,7 +157,39 @@ async function cleanupStalePortStatus() {
   } catch (error) {
     console.error('[Server] Error cleaning up stale port status:', error);
   }
-}
+};
+
+const cleanupPortStatus = async () => {
+  try {
+    // Attempt to read existing port status
+    const existingStatus = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8')
+      .then(content => JSON.parse(content) as PortStatus)
+      .catch(() => null);
+
+    if (existingStatus) {
+      // Check if the process is still running
+      try {
+        process.kill(existingStatus.pid, 0);
+        console.log(`[Server] Found existing server process (PID: ${existingStatus.pid})`);
+
+        // If process exists and port status is recent (within last minute)
+        const isRecent = Date.now() - new Date(existingStatus.timestamp).getTime() < 60000;
+        if (isRecent) {
+          throw new Error('Another server instance is already running');
+        }
+      } catch (e) {
+        // Process doesn't exist, safe to cleanup
+        console.log('[Server] Cleaning up stale port status file');
+      }
+    }
+
+    // Remove the status file
+    await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
+  } catch (error) {
+    console.error('[Server] Error during port status cleanup:', error);
+    throw error;
+  }
+};
 
 // Enhanced port availability check
 async function isPortAvailable(port: number): Promise<boolean> {
@@ -193,20 +271,22 @@ function waitForServerReady(port: number): Promise<void> {
   });
 }
 
-// Update the startServer function to be more robust
+// Update the startServer function to include startup phases
 async function startServer() {
   try {
-    // Remove any existing port status file
-    try {
-      await fs.promises.unlink(PORT_STATUS_FILE);
-    } catch (error) {
-      // Ignore error if file doesn't exist
-    }
+    console.log('[Server] Starting server initialization...');
 
-    console.log('[Server] Testing database connection...');
+    // Phase 1: Cleanup
+    console.log('[Server] Phase 1: Cleaning up stale port status...');
+    await cleanupPortStatus();
+
+    // Phase 2: Database
+    console.log('[Server] Phase 2: Testing database connection...');
     await testConnection();
     console.log('[Server] Database connection successful');
 
+    // Phase 3: Port allocation
+    console.log('[Server] Phase 3: Allocating port...');
     const preferredPort = parseInt(process.env.PORT || '5000');
     const port = await findAvailablePort(preferredPort);
     serverPort = port;
@@ -214,13 +294,21 @@ async function startServer() {
     // Initial port status - only database is ready
     await writePortStatus(port, false, { database: true });
 
+    // Phase 4: Server startup
+    console.log('[Server] Phase 4: Starting HTTP server...');
     const HOST = '0.0.0.0';
 
     await new Promise<void>((resolve, reject) => {
-      server.listen(port, HOST, () => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Server startup timeout'));
+      }, 30000);
+
+      server.listen(port, HOST, async () => {
+        clearTimeout(timeout);
         console.log(`[Server] Server is running at http://${HOST}:${port}`);
+
         // Update status - server is now ready
-        writePortStatus(port, false, { database: true, server: true });
+        await writePortStatus(port, false, { database: true, server: true });
 
         if (process.env.NODE_ENV !== "production") {
           console.log('[Server] Running in development mode with Vite middleware');
@@ -231,14 +319,15 @@ async function startServer() {
       });
 
       server.once('error', (err) => {
+        clearTimeout(timeout);
         console.error('[Server] Failed to start server:', err);
         reject(err);
       });
     });
 
-    // Wait for Vite setup if in development
+    // Phase 5: Vite setup (development only)
     if (process.env.NODE_ENV !== "production") {
-      console.log('[Server] Waiting for Vite setup...');
+      console.log('[Server] Phase 5: Setting up Vite...');
       await new Promise<void>((resolve) => {
         const checkVite = setInterval(() => {
           if (viteSetupComplete) {
@@ -250,7 +339,8 @@ async function startServer() {
       });
     }
 
-    // Final status update - everything is ready
+    // Phase 6: Final initialization
+    console.log('[Server] Phase 6: Completing initialization...');
     await writePortStatus(port, true, { database: true, server: true, vite: true });
     isServerReady = true;
     console.log(`[Server] Server is fully initialized and ready on port ${port}`);
@@ -283,19 +373,102 @@ async function startServer() {
     }
   } catch (error) {
     console.error('[Server] Fatal error during startup:', error);
+    // Cleanup port status file on error
+    if (serverPort) {
+      await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
+    }
     process.exit(1);
   }
 }
 
-// Add enhanced cleanup handler
-async function cleanup() {
+// Enhance shutdown function with active request tracking
+async function shutdown() {
+  console.log('[Server] Initiating graceful shutdown...');
+
+  let shutdownTimeout: NodeJS.Timeout;
+
   try {
-    await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
+    // Set a maximum wait time for active requests
+    const forceShutdown = new Promise((_, reject) => {
+      shutdownTimeout = setTimeout(() => {
+        reject(new Error('Shutdown timeout waiting for active requests'));
+      }, 10000); // 10 second timeout
+    });
+
+    // Wait for active requests to complete
+    const gracefulShutdown = new Promise<void>(async (resolve) => {
+      console.log(`[Server] Waiting for ${activeRequests} active requests to complete...`);
+
+      while (activeRequests > 0) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      resolve();
+    });
+
+    // Wait for either graceful shutdown or timeout
+    await Promise.race([gracefulShutdown, forceShutdown]);
+    clearTimeout(shutdownTimeout);
+
+    // Remove port status file
+    try {
+      await fs.promises.unlink(PORT_STATUS_FILE);
+      console.log('[Server] Removed port status file');
+    } catch (error) {
+      // Ignore error if file doesn't exist
+      console.log('[Server] Port status file already removed');
+    }
+
+    // Cleanup database connections
     await dbCleanup();
+    console.log('[Server] Database connections cleaned up');
+
+    // Close the server with a timeout
+    await new Promise<void>((resolve, reject) => {
+      const serverTimeout = setTimeout(() => {
+        reject(new Error('Server close timeout'));
+      }, 5000);
+
+      server.close((err) => {
+        clearTimeout(serverTimeout);
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    console.log('[Server] Server closed successfully');
+    process.exit(0);
   } catch (error) {
-    console.error('[Server] Cleanup error:', error);
+    console.error('[Server] Error during shutdown:', error);
+    process.exit(1);
   }
 }
+
+// Add cleanup handler with timeout
+const SHUTDOWN_TIMEOUT = 30000; // 30 seconds
+
+process.on('SIGTERM', () => {
+  console.log('[Server] Received SIGTERM signal');
+  const forceShutdown = setTimeout(() => {
+    console.error('[Server] Forced shutdown due to timeout');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+
+  shutdown().finally(() => clearTimeout(forceShutdown));
+});
+
+process.on('SIGINT', () => {
+  console.log('[Server] Received SIGINT signal');
+  const forceShutdown = setTimeout(() => {
+    console.error('[Server] Forced shutdown due to timeout');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+
+  shutdown().finally(() => clearTimeout(forceShutdown));
+});
 
 // Enhanced health check endpoint
 app.get('/api/health', async (req, res) => {
@@ -380,48 +553,6 @@ if (process.env.NODE_ENV !== "production") {
   });
   startServer();
 }
-
-// Enhance shutdown process
-async function shutdown() {
-  console.log('[Server] Initiating graceful shutdown...');
-
-  try {
-    // Remove port status file
-    try {
-      await fs.promises.unlink(PORT_STATUS_FILE);
-    } catch (error) {
-      // Ignore error if file doesn't exist
-    }
-
-    // Cleanup database connections first
-    await dbCleanup();
-    console.log('[Server] Database connections cleaned up');
-
-    // Close the server
-    await new Promise<void>((resolve, reject) => {
-      server.close((err) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve();
-        }
-      });
-    });
-
-    console.log('[Server] Server closed successfully');
-    process.exit(0);
-  } catch (error) {
-    console.error('[Server] Error during shutdown:', error);
-    process.exit(1);
-  }
-}
-
-// Use longer timeout for graceful shutdown
-const SHUTDOWN_TIMEOUT = 30000; // 30 seconds
-
-// Add shutdown handler
-process.on('SIGTERM', cleanup);
-process.on('SIGINT', cleanup);
 
 // Global error handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
