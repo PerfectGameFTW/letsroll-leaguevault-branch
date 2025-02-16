@@ -26,7 +26,10 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
           throw new Error(errorData.message || `Failed to fetch games (${response.status})`);
         }
         const data = await response.json() as ApiResponse<Game[]>;
-        console.log('[useLeagueScores] Received games:', data.data?.length || 0);
+        console.log('[useLeagueScores] Received games:', {
+          count: data.data?.length || 0,
+          weeks: Array.from(new Set(data.data?.map(g => g.weekNumber) || [])).sort()
+        });
         return data;
       } catch (error) {
         console.error('[useLeagueScores] Error fetching games:', error);
@@ -43,24 +46,38 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
     queryKey: ["/api/scores/league", leagueId, weekNumber] as const,
     queryFn: async () => {
       if (!weekNumber) {
+        console.log('[useLeagueScores] No week selected');
         return { data: null, success: true, message: 'No week selected' };
       }
+
       console.log('[useLeagueScores] Fetching scores:', { leagueId, weekNumber });
       try {
         const response = await fetch(`/api/scores/league/${leagueId}/week/${weekNumber}`);
+
+        // Log the raw response for debugging
+        const responseText = await response.text();
+        console.log('[useLeagueScores] Raw API response:', responseText);
+
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+          const errorData = JSON.parse(responseText);
           console.error('[useLeagueScores] API error:', {
             status: response.status,
             error: errorData
           });
           throw new Error(errorData.message || `Failed to fetch scores (${response.status})`);
         }
-        const data = await response.json() as ApiResponse<WeeklyScores>;
-        console.log('[useLeagueScores] Received scores:', {
+
+        const data = JSON.parse(responseText) as ApiResponse<WeeklyScores>;
+        console.log('[useLeagueScores] Processed scores:', {
           success: data.success,
-          teamCount: data.data?.teams?.length || 0
+          weekNumber: weekNumber,
+          teamsCount: data.data?.teams?.length || 0,
+          firstTeam: data.data?.teams?.[0] ? {
+            name: data.data.teams[0].teamName,
+            bowlersCount: data.data.teams[0].bowlers?.length || 0
+          } : null
         });
+
         return data;
       } catch (error) {
         console.error('[useLeagueScores] Error fetching scores:', error);
@@ -84,7 +101,10 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
           throw new Error(errorData.message || `Failed to fetch league (${response.status})`);
         }
         const data = await response.json() as ApiResponse<League>;
-        console.log('[useLeagueScores] Received league:', data.data?.name);
+        console.log('[useLeagueScores] Received league:', {
+          name: data.data?.name,
+          id: data.data?.id
+        });
         return data;
       } catch (error) {
         console.error('[useLeagueScores] Error fetching league:', error);
@@ -99,7 +119,7 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
   // Extract unique week numbers and sort them in descending order
   const weeks = useMemo(() => {
     const weekNumbers = Array.from(new Set(
-      (gamesResponse?.data ?? []).map((g: Game) => g.weekNumber)
+      (gamesResponse?.data ?? []).map(g => g.weekNumber)
     )).sort((a, b) => b - a);
     console.log('[useLeagueScores] Available weeks:', weekNumbers);
     return weekNumbers;

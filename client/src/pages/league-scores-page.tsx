@@ -20,12 +20,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader2, ArrowLeft, AlertCircle } from "lucide-react";
 import type { Game, League, ApiResponse } from "@shared/schema";
-import type { WeeklyScores, BowlerScores, TeamScores } from "@/lib/types/scores";
+import type { WeeklyScores } from "@/lib/types/scores";
 import { cn } from "@/lib/utils";
-import { groupTeamsByLanes } from "@/lib/utils/lane-pairing";
-import { organizeBowlerScores, calculateSeriesTotal } from "@/lib/utils/score-organization";
-import { useQuery } from "@tanstack/react-query";
-import { LEAGUE_CACHE_TIME } from "@/lib/constants";
+import { useLeagueScores } from "@/hooks/use-league-scores";
 
 // Enhance the loading skeleton component with more realistic loading states
 function LoadingSkeleton() {
@@ -97,89 +94,16 @@ export default function LeagueScoresPage() {
     );
   }
 
-  // Fetch league details
-  const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery({
-    queryKey: ['/api/leagues', leagueId] as const,
-    queryFn: async () => {
-      console.log('[LeagueScoresPage] Fetching league details:', leagueId);
-      try {
-        const response = await fetch(`/api/leagues/${leagueId}`);
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-          throw new Error(errorData.message || `Failed to fetch league (${response.status})`);
-        }
-        return response.json() as Promise<ApiResponse<League>>;
-      } catch (error) {
-        console.error('[LeagueScoresPage] Error fetching league:', error);
-        throw error;
-      }
-    },
-    enabled: !!leagueId,
-    gcTime: LEAGUE_CACHE_TIME * 2,
-    staleTime: LEAGUE_CACHE_TIME,
+  const {
+    league,
+    weeks,
+    scores: weeklyScores,
+    isLoading,
+    errors,
+  } = useLeagueScores({
+    leagueId,
+    weekNumber: selectedWeek,
   });
-
-  // Fetch scores for the selected week using the correct endpoint
-  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery({
-    queryKey: ['/api/scores/league', leagueId, selectedWeek] as const,
-    queryFn: async () => {
-      if (!selectedWeek) {
-        throw new Error('No week selected');
-      }
-
-      try {
-        console.log('[LeagueScoresPage] Fetching scores:', {
-          leagueId,
-          weekNumber: selectedWeek
-        });
-
-        const response = await fetch(`/api/scores/league/${leagueId}/week/${selectedWeek}`);
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-          console.error('[LeagueScoresPage] API error:', {
-            status: response.status,
-            error: errorData
-          });
-          throw new Error(errorData.message || `Failed to fetch scores (${response.status})`);
-        }
-        const data = await response.json() as ApiResponse<WeeklyScores>;
-        console.log('[LeagueScoresPage] Received scores:', {
-          success: data.success,
-          teamCount: data.data?.teams?.length || 0
-        });
-        return data;
-      } catch (error) {
-        console.error('[LeagueScoresPage] Error fetching scores:', error);
-        throw error;
-      }
-    },
-    enabled: !!leagueId && !!selectedWeek
-  });
-
-  const league = leagueResponse?.data;
-  const weeklyScores = scoresResponse?.data;
-
-  // Get available weeks from the games table
-  const { data: gamesResponse, isLoading: loadingGames } = useQuery({
-    queryKey: ['/api/games/league', leagueId],
-    queryFn: async () => {
-      const response = await fetch(`/api/games/league/${leagueId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch games');
-      }
-      return response.json() as Promise<ApiResponse<Game[]>>;
-    },
-    enabled: !!leagueId,
-  });
-
-  // Extract unique week numbers
-  const weeks = useMemo(() => {
-    const weekNumbers = Array.from(new Set(
-      (gamesResponse?.data ?? []).map(game => game.weekNumber)
-    )).sort((a, b) => b - a);
-    console.log('[LeagueScoresPage] Available weeks:', weekNumbers);
-    return weekNumbers;
-  }, [gamesResponse?.data]);
 
   // Set initial week when data loads
   useMemo(() => {
@@ -208,30 +132,41 @@ export default function LeagueScoresPage() {
     </Select>
   );
 
-  // Process scores and organize them
+  // Process scores and organize them by lanes
   const lanePairs = useMemo(() => {
-    if (weeklyScores?.teams) {
-      console.log('[LeagueScoresPage] Grouping teams by lanes:', {
-        teamCount: weeklyScores.teams.length,
-        weekNumber: weeklyScores.weekNumber
-      });
-      return groupTeamsByLanes(weeklyScores.teams);
+    if (!weeklyScores?.teams) {
+      console.log('[LeagueScoresPage] No teams data available');
+      return [];
     }
-    console.log('[LeagueScoresPage] No teams to group into lanes');
-    return [];
+
+    const pairs: Array<{
+      lanes: string;
+      homeTeam: typeof weeklyScores.teams[0];
+      awayTeam: typeof weeklyScores.teams[0] | null;
+    }> = [];
+
+    for (let i = 0; i < weeklyScores.teams.length; i += 2) {
+      const homeTeam = weeklyScores.teams[i];
+      const awayTeam = i + 1 < weeklyScores.teams.length ? weeklyScores.teams[i + 1] : null;
+
+      if (homeTeam) {
+        const lanes = awayTeam 
+          ? `Lanes ${homeTeam.laneNumber}-${awayTeam.laneNumber}` 
+          : `Lane ${homeTeam.laneNumber}`;
+
+        pairs.push({
+          lanes,
+          homeTeam,
+          awayTeam,
+        });
+      }
+    }
+
+    console.log('[LeagueScoresPage] Processed lane pairs:', pairs.length);
+    return pairs;
   }, [weeklyScores]);
 
-  // Debug logging
-  console.log('[LeagueScoresPage] Page state:', {
-    leagueId,
-    selectedWeek,
-    weeksAvailable: weeks.length,
-    scoresCount: weeklyScores ? weeklyScores.teams.length : 0,
-    lanePairsCount: lanePairs.length,
-    isLoading: loadingLeague || loadingScores || loadingGames
-  });
-
-  if (loadingLeague || loadingScores || loadingGames) {
+  if (isLoading) {
     return (
       <Layout>
         <div className="space-y-4">
@@ -248,7 +183,7 @@ export default function LeagueScoresPage() {
     );
   }
 
-  if (leagueError || scoresError) {
+  if (errors.length > 0) {
     return (
       <Layout>
         <div className="space-y-4">
@@ -261,11 +196,16 @@ export default function LeagueScoresPage() {
           </Link>
           <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
             <AlertCircle className="h-5 w-5 flex-shrink-0" />
-            <p>
-              {leagueError instanceof Error ? leagueError.message : 'Error loading league data'}
-              {scoresError instanceof Error && <br />}
-              {scoresError instanceof Error && scoresError.message}
-            </p>
+            <div>
+              {errors.map((error, index) => (
+                <p key={index}>
+                  {error.type === 'league' && 'Error loading league data: '}
+                  {error.type === 'games' && 'Error loading games: '}
+                  {error.type === 'scores' && 'Error loading scores: '}
+                  {error.error instanceof Error ? error.error.message : 'Unknown error'}
+                </p>
+              ))}
+            </div>
           </div>
         </div>
       </Layout>
@@ -347,11 +287,10 @@ export default function LeagueScoresPage() {
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {team.bowlers.map((bowler: BowlerScores) => {
-                                  const seriesTotal = useMemo(() =>
-                                    calculateSeriesTotal(bowler.games),
-                                    [bowler.games]
-                                  );
+                                {team.bowlers.sort((a, b) => a.position - b.position).map((bowler) => {
+                                  const seriesTotal = bowler.games
+                                    .filter(game => game && game.score !== null)
+                                    .reduce((sum, game) => sum + (game.score || 0), 0);
 
                                   return (
                                     <TableRow key={bowler.bowlerId}>
@@ -377,14 +316,14 @@ export default function LeagueScoresPage() {
                                         )}
                                       </TableCell>
                                       <TableCell className="text-right text-muted-foreground">
-                                        {bowler.handicap ?? "—"}
+                                        {bowler.handicap}
                                       </TableCell>
-                                      {bowler.games.map((game: { gameNumber: number; score: number | null }) => (
+                                      {bowler.games.map((game, gameIndex) => (
                                         <TableCell
-                                          key={game.gameNumber}
+                                          key={gameIndex}
                                           className={cn(
-                                            "text-right font-medium",
-                                            game.score !== null && [
+                                            "text-right",
+                                            game?.score !== null && [
                                               game.score >= 250 && "text-green-600",
                                               game.score >= 200 && game.score < 250 && "text-primary"
                                             ]
@@ -392,9 +331,9 @@ export default function LeagueScoresPage() {
                                         >
                                           <Tooltip>
                                             <TooltipTrigger asChild>
-                                              <span>{game.score ?? "—"}</span>
+                                              <span>{game?.score ?? "—"}</span>
                                             </TooltipTrigger>
-                                            {game.score !== null && game.score >= 200 && (
+                                            {game?.score !== null && game.score >= 200 && (
                                               <TooltipContent>
                                                 {game.score >= 250 ? "Perfect game approaching!" : "Great game!"}
                                               </TooltipContent>
@@ -421,10 +360,10 @@ export default function LeagueScoresPage() {
           ) : (
             <div className="text-center p-8 border rounded-lg bg-background">
               <p className="text-lg text-muted-foreground">
-                {loadingScores ? 'Loading scores...' : 'No scores found for this week'}
+                No scores found for this week
               </p>
               <p className="text-sm text-muted-foreground mt-2">
-                {loadingScores ? 'Please wait while we fetch the data' : 'Try selecting a different week'}
+                Try selecting a different week
               </p>
             </div>
           )}
