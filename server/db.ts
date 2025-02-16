@@ -1,17 +1,16 @@
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from 'ws';
-import * as schema from '@shared/schema';
+import ws from "ws";
+import * as schema from "@shared/schema";
 
-// Configure WebSocket for Neon database
 neonConfig.webSocketConstructor = ws;
 
-// Validate database URL is present
 if (!process.env.DATABASE_URL) {
-  throw new Error('DATABASE_URL environment variable is required but not set');
+  throw new Error(
+    "DATABASE_URL must be set. Did you forget to provision a database?",
+  );
 }
 
-// Create connection pool with enhanced configuration and error handling
 export const pool = new Pool({ 
   connectionString: process.env.DATABASE_URL,
   max: 20, // Maximum number of clients in the pool
@@ -21,8 +20,6 @@ export const pool = new Pool({
   keepAlive: true, // Enable keep-alive
   keepAliveInitialDelayMillis: 10000, // Initial delay for keep-alive
 });
-
-// Configure Drizzle with our schema and enhanced logging
 export const db = drizzle(pool, { 
   schema,
   logger: {
@@ -37,7 +34,6 @@ export const db = drizzle(pool, {
   }
 });
 
-// Add enhanced error handling for the pool
 pool.on('error', (err, client) => {
   console.error('[Database] Unexpected error on idle client', err);
   if (client) {
@@ -52,7 +48,6 @@ pool.on('connect', (client) => {
   });
 });
 
-// Export an enhanced connection test function with retry logic
 export async function testConnection(retries = 3, delay = 1000): Promise<boolean> {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
@@ -75,7 +70,6 @@ export async function testConnection(retries = 3, delay = 1000): Promise<boolean
   return false;
 }
 
-// Cleanup function to be called on application shutdown
 export async function cleanup(): Promise<void> {
   try {
     console.log('[Database] Starting pool cleanup...');
