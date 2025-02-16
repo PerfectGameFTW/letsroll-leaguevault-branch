@@ -29,7 +29,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import type { Bowler, Payment, Team, League, BowlerLeague } from "@shared/schema";
-import { format, differenceInWeeks, startOfToday, isValid } from "date-fns";
+import { format, differenceInWeeks, startOfToday, isValid, parseISO } from "date-fns";
 import { enrollInLoyalty } from "@/lib/square";
 
 interface LoyaltyInfo {
@@ -47,6 +47,14 @@ interface ApiResponse<T> {
   };
 }
 
+function isValidISODate(date: string): date is string {
+  try {
+    return isValid(parseISO(date));
+  } catch {
+    return false;
+  }
+}
+
 export default function BowlerViewPage() {
   const params = useParams();
   const { toast } = useToast();
@@ -56,11 +64,22 @@ export default function BowlerViewPage() {
   // Query for bowler with proper typing and caching
   const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<ApiResponse<Bowler>>({
     queryKey: [`/api/bowlers/${bowlerId}`],
+    queryFn: async () => {
+      const response = await fetch(`/api/bowlers/${bowlerId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowler');
+      }
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error?.message || 'Failed to fetch bowler');
+      }
+      return data;
+    },
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     retry: false,
     enabled: !isNaN(bowlerId), // Only run if bowlerId is valid
   });
-  const bowler = bowlerResponse?.data?.data;
+  const bowler = bowlerResponse?.data;
 
   // Query to get bowler's league associations with proper typing and caching
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<ApiResponse<BowlerLeague[]>>({
@@ -72,7 +91,7 @@ export default function BowlerViewPage() {
 
   // Filter and deduplicate bowler leagues
   const bowlerLeagues = useMemo(() => {
-    const allLeagues = bowlerLeaguesResponse?.data?.data || [];
+    const allLeagues = bowlerLeaguesResponse?.data || [];
     // First, filter active associations
     const activeLeagues = allLeagues.filter(bl => 
       bl.active && bl.bowlerId === bowlerId
@@ -96,7 +115,7 @@ export default function BowlerViewPage() {
     staleTime: 1000 * 60 * 30, // Cache for 30 minutes
     retry: false,
   });
-  const leagues = leaguesResponse?.data?.data || [];
+  const leagues = leaguesResponse?.data || [];
 
   // Get selected league's active team association
   const selectedAssociation = useMemo(() => {
@@ -113,7 +132,7 @@ export default function BowlerViewPage() {
     staleTime: 1000 * 60 * 15, // Cache for 15 minutes
     retry: false,
   });
-  const team = teamResponse?.data?.data;
+  const team = teamResponse?.data;
 
   const { data: leagueResponse } = useQuery<ApiResponse<League>>({
     queryKey: [`/api/leagues/${selectedLeagueId}`],
@@ -130,7 +149,7 @@ export default function BowlerViewPage() {
     retry: false,
   });
 
-  const payments = paymentsResponse?.data?.data || [];
+  const payments = paymentsResponse?.data || [];
 
   // Add loyalty points query with proper caching
   const { data: loyaltyInfo } = useQuery<LoyaltyInfo>({
@@ -202,12 +221,12 @@ export default function BowlerViewPage() {
   let amountPastDue = 0;
 
   if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
-    const seasonStart = new Date(league.seasonStart);
+    // Validate and parse dates
+    const seasonStart = isValidISODate(league.seasonStart) ? parseISO(league.seasonStart) : null;
+    const seasonEnd = isValidISODate(league.seasonEnd) ? parseISO(league.seasonEnd) : null;
     const today = startOfToday();
-    const seasonEnd = new Date(league.seasonEnd);
 
-    // Validate dates before calculations
-    if (isValid(seasonStart) && isValid(seasonEnd) && isValid(today)) {
+    if (seasonStart && seasonEnd && isValid(today)) {
       if (today < seasonStart) {
         weeksDue = 0;
       } else if (today > seasonEnd) {
@@ -220,6 +239,11 @@ export default function BowlerViewPage() {
       totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
       fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
       amountPastDue = totalSeasonDues - totalPaidAmount;
+    } else {
+      console.error('Invalid date format in league data:', {
+        seasonStart: league.seasonStart,
+        seasonEnd: league.seasonEnd
+      });
     }
   }
 
@@ -283,7 +307,7 @@ export default function BowlerViewPage() {
         </div>
 
         {/* Loyalty Program Section */}
-        {bowler.squareCustomerId && (
+        {bowler?.squareCustomerId && (
           <div className="mb-6">
             <h2 className="text-lg font-semibold mb-4">Loyalty Program</h2>
             {loadingBowler ? (

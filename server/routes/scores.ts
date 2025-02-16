@@ -5,16 +5,18 @@ import { z } from 'zod';
 import { ScoreImportService, ScoreImportError } from '../services/score-import.js';
 import { GoogleDriveService } from '../services/google-drive.js';
 
-// Input validation schemas
+// Update validation schema at the top of the file
 const getScoresQuerySchema = z.object({
-  leagueId: z.coerce.number({
-    required_error: "League ID is required",
-    invalid_type_error: "League ID must be a number"
-  }),
-  weekNumber: z.coerce.number({
-    required_error: "Week number is required",
-    invalid_type_error: "Week number must be a number"
-  })
+  leagueId: z.string().transform((val) => parseInt(val, 10)).pipe(
+    z.number().int().positive({
+      message: "League ID must be a positive number"
+    })
+  ),
+  weekNumber: z.string().transform((val) => parseInt(val, 10)).pipe(
+    z.number().int().positive({
+      message: "Week number must be a positive number"
+    })
+  )
 });
 
 const router = Router();
@@ -26,8 +28,8 @@ router.get('/', async (req, res) => {
 
     const validationResult = getScoresQuerySchema.safeParse(req.query);
     if (!validationResult.success) {
-      console.error('[Scores] Validation error:', validationResult.error);
-      return sendError(res, 'League ID and week number are required', 400);
+      console.error('[Scores] Validation error:', validationResult.error.format());
+      return sendError(res, 'Invalid query parameters: ' + validationResult.error.errors.map(e => e.message).join(', '), 400);
     }
 
     const { leagueId, weekNumber } = validationResult.data;
