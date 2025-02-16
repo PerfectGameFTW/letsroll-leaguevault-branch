@@ -19,7 +19,6 @@ async function throwIfResNotOk(res: Response) {
   return res;
 }
 
-// Updated to ensure API prefix is always included
 function ensureApiPrefix(url: string): string {
   if (!url.startsWith('/api/')) {
     return `/api${url}`;
@@ -86,12 +85,12 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       queryFn: getQueryFn,
-      retry: false,
+      retry: 1, // Allow one retry
       refetchOnWindowFocus: false,
       refetchOnMount: true,
       refetchOnReconnect: false,
-      staleTime: 30000,
-      gcTime: 1000 * 60 * 5, // Cache for 5 minutes
+      staleTime: 5000, // Consider data stale after 5 seconds
+      gcTime: 1000 * 60 * 5, // Keep unused data in cache for 5 minutes
       suspense: false,
     },
     mutations: {
@@ -100,25 +99,36 @@ export const queryClient = new QueryClient({
   },
 });
 
+// Reset the entire query cache
 export const resetQueryCache = () => {
   queryClient.clear();
 };
 
+// Reset specific queries by their keys
 export const resetQueries = async (queryKeys: string[]) => {
   await Promise.all(
     queryKeys.map(key => queryClient.resetQueries({ queryKey: [key] }))
   );
 };
 
+// Prefetch initial data
 export const prefetchQueries = async () => {
-  await Promise.all([
-    queryClient.prefetchQuery({ queryKey: ['/api/leagues'] }),
-    queryClient.prefetchQuery({ queryKey: ['/api/teams'] }),
-    queryClient.prefetchQuery({ queryKey: ['/api/bowlers'] }),
-  ]);
+  try {
+    console.log('[Query] Prefetching initial data...');
+    await Promise.all([
+      queryClient.prefetchQuery({ queryKey: ['/api/leagues'] }),
+      queryClient.prefetchQuery({ queryKey: ['/api/teams'] }),
+      queryClient.prefetchQuery({ queryKey: ['/api/bowlers'] }),
+    ]);
+    console.log('[Query] Initial data prefetch complete');
+  } catch (error) {
+    console.error('[Query] Error prefetching initial data:', error);
+  }
 };
 
+// Invalidate multiple queries at once
 export const invalidateQueries = async (keys: string[]) => {
+  console.log('[Query] Invalidating queries:', keys);
   await Promise.all(
     keys.map(key => queryClient.invalidateQueries({ queryKey: [key] }))
   );

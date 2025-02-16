@@ -5,6 +5,7 @@ import { testConnection } from "./db.js";
 import { createServer } from 'http';
 import { ScoreSchedulerService } from './services/score-scheduler.js';
 import { storage } from './storage.js';
+import path from 'path';
 
 const app = express();
 const server = createServer(app);
@@ -40,14 +41,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint - add this before API routes
-app.get('/health', async (_req, res) => {
+// Add health check endpoint
+app.get('/api/health', async (req, res) => {
   try {
     await testConnection();
-    res.json({ status: 'healthy', message: 'Server is ready' });
+    sendSuccess(res, { status: 'healthy', database: 'connected' });
   } catch (error) {
-    console.error('[Health Check] Database connection failed:', error);
-    res.status(500).json({ status: 'unhealthy', message: 'Database connection failed' });
+    sendError(res, 'Database connection failed', 500);
   }
 });
 
@@ -68,10 +68,10 @@ app.use('/api', (req, res, next) => {
 console.log('[Server] Registering API routes...');
 registerRoutes(app);
 
-// Setup Vite in development mode
-if (process.env.NODE_ENV === "development" && !viteSetupComplete) {
+// Development mode setup
+if (process.env.NODE_ENV !== "production") {
   console.log('[Server] Setting up Vite middleware for development...');
-  setupVite(app)
+  setupVite(app, server)
     .then(() => {
       console.log('[Server] Vite middleware setup complete');
       viteSetupComplete = true;
@@ -82,24 +82,36 @@ if (process.env.NODE_ENV === "development" && !viteSetupComplete) {
       process.exit(1);
     });
 } else {
+  // Production mode setup
+  app.use(express.static(path.join(process.cwd(), 'dist/public')));
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'API endpoint not found' });
+    }
+    res.sendFile(path.join(process.cwd(), 'dist/public/index.html'));
+  });
   startServer();
 }
 
 async function startServer() {
   try {
-    // Test database connection
     console.log('[Server] Testing database connection...');
     await testConnection();
     console.log('[Server] Database connection successful');
 
     const PORT = process.env.PORT || 5000;
+    const HOST = '0.0.0.0';
 
-    // Check if port is in use and start server
-    server.listen(PORT, '0.0.0.0', () => {
-      console.log(`[Server] Server is running at http://0.0.0.0:${PORT}`);
+    server.listen(PORT, HOST, () => {
+      console.log(`[Server] Server is running at http://${HOST}:${PORT}`);
+      if (process.env.NODE_ENV !== "production") {
+        console.log('[Server] Running in development mode with Vite middleware');
+      } else {
+        console.log('[Server] Running in production mode');
+      }
     }).on('error', (error: any) => {
       if (error.code === 'EADDRINUSE') {
-        console.error(`[Server] Port ${PORT} is already in use. Please ensure no other instance is running.`);
+        console.error(`[Server] Port ${PORT} is already in use`);
         process.exit(1);
       } else {
         console.error('[Server] Server startup error:', error);
@@ -107,9 +119,8 @@ async function startServer() {
       }
     });
 
-    // Initialize schedulers for active leagues
+    // Initialize league schedulers
     try {
-      console.log('[Server] Fetching leagues for scheduler initialization...');
       const leagues = await storage.getLeagues();
       console.log(`[Server] Found ${leagues.length} leagues`);
 
@@ -123,7 +134,7 @@ async function startServer() {
           };
 
           const dayNumber = dayMap[league.weekDay.toLowerCase()];
-          const cronExpression = `0 22 * * ${dayNumber}`; // Schedule for 10 PM on league day
+          const cronExpression = `0 22 * * ${dayNumber}`;
           scheduler.scheduleJob(
             cronExpression,
             process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID!,
@@ -172,3 +183,12 @@ function shutdown() {
 
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
+// Helper functions
+function sendSuccess(res: Response, data: any) {
+  res.status(200).json({ success: true, data });
+}
+
+function sendError(res: Response, message: string, statusCode: number = 500) {
+  res.status(statusCode).json({ success: false, error: message });
+}
