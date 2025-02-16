@@ -6,7 +6,7 @@ import { Link } from "wouter";
 import type { Bowler, League, ApiResponse } from "@shared/schema";
 
 // Cache time constants
-const CACHE_TIME = 1000 * 60 * 5; // 5 minutes
+const CACHE_TIME = 1000 * 30; // 30 seconds
 
 function LoadingState() {
   return (
@@ -33,15 +33,13 @@ export default function HomePage() {
   const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<ApiResponse<Bowler[]>>({
     queryKey: ["/api/bowlers"],
     staleTime: CACHE_TIME,
-    gcTime: CACHE_TIME * 2,
-    retry: 1,
+    retry: false,
   });
 
   const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
     staleTime: CACHE_TIME,
-    gcTime: CACHE_TIME * 2,
-    retry: 1,
+    retry: false,
   });
 
   // Show loading state only when initial data is loading
@@ -49,8 +47,10 @@ export default function HomePage() {
     return <LoadingState />;
   }
 
+  // Handle errors
   const error = bowlersError || leaguesError;
   if (error) {
+    console.error('Home page error:', error);
     return <ErrorState error={error as Error} />;
   }
 

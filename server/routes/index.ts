@@ -1,14 +1,14 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import leaguesRouter from './leagues';
-import teamsRouter from './teams';
-import bowlersRouter from './bowlers';
-import paymentsRouter from './payments';
-import bowlerLeaguesRouter from './bowler-leagues';
-import scoresRouter from './scores';
-import gamesRouter from './games';
-import { testConnection } from '../db';
-import { sendSuccess, sendError } from '../utils/api';
+import leaguesRouter from './leagues.js';
+import teamsRouter from './teams.js';
+import bowlersRouter from './bowlers.js';
+import paymentsRouter from './payments.js';
+import bowlerLeaguesRouter from './bowler-leagues.js';
+import scoresRouter from './scores.js';
+import gamesRouter from './games.js';
+import { testConnection } from '../db.js';
+import { sendSuccess, sendError } from '../utils/api.js';
 
 export function registerRoutes(app: Express): Server {
   console.log('[Routes] Registering API routes...');
@@ -36,6 +36,5 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/games', gamesRouter);
 
   console.log('[Routes] API routes registered');
-
   return server;
 }

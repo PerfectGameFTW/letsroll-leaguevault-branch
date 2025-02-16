@@ -1,27 +1,26 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense, memo } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
 import type { League } from "@shared/schema";
+import { ErrorBoundary } from "react-error-boundary";
 
-// Safe localStorage access function
-const safeGetLocalStorage = (key: string, defaultValue: any) => {
+// Safe localStorage access function with memoization
+const getStoredValue = (key: string, defaultValue: any) => {
   try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const saved = localStorage.getItem(key);
-      return saved ? JSON.parse(saved) : defaultValue;
-    }
-  } catch (error) {
-    console.warn('localStorage access error:', error);
+    if (typeof window === 'undefined') return defaultValue;
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : defaultValue;
+  } catch {
+    return defaultValue;
   }
-  return defaultValue;
 };
 
-const safeSetLocalStorage = (key: string, value: any) => {
+const setStoredValue = (key: string, value: any) => {
   try {
-    if (typeof window !== 'undefined' && window.localStorage) {
+    if (typeof window !== 'undefined') {
       localStorage.setItem(key, JSON.stringify(value));
     }
   } catch (error) {
@@ -36,29 +35,172 @@ const baseNavigation = [
   { name: "Reports", href: "/reports", icon: FileText },
 ];
 
+// Memoized navigation items to prevent unnecessary re-renders
+const NavigationItem = memo(({ item, isActive, isCollapsed }: { 
+  item: typeof baseNavigation[0], 
+  isActive: boolean, 
+  isCollapsed: boolean 
+}) => {
+  const Icon = item.icon;
+  return (
+    <Link href={item.href}>
+      <span
+        className={cn(
+          "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+          isActive
+            ? "bg-primary text-primary-foreground"
+            : "text-gray-600 hover:bg-gray-50"
+        )}
+        title={isCollapsed ? item.name : undefined}
+      >
+        <Icon
+          className={cn(
+            "h-5 w-5 flex-shrink-0",
+            isActive
+              ? "text-primary-foreground"
+              : "text-gray-400",
+            isCollapsed ? "mx-auto" : "mr-3"
+          )}
+        />
+        {!isCollapsed && item.name}
+      </span>
+    </Link>
+  );
+});
+
+// Memoized leagues section to prevent unnecessary re-renders
+const LeaguesSection = memo(({ 
+  isCollapsed, 
+  leagues, 
+  isInLeaguesSection, 
+  location 
+}: {
+  isCollapsed: boolean,
+  leagues: League[],
+  isInLeaguesSection: boolean,
+  location: string
+}) => {
+  const [isLeaguesExpanded, setIsLeaguesExpanded] = useState(false);
+
+  if (isCollapsed) {
+    return (
+      <Link href="/leagues">
+        <span
+          className={cn(
+            "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+            isInLeaguesSection
+              ? "bg-primary text-primary-foreground"
+              : "text-gray-600 hover:bg-gray-50"
+          )}
+          title="Leagues"
+        >
+          <Trophy
+            className={cn(
+              "h-5 w-5 flex-shrink-0",
+              isInLeaguesSection
+                ? "text-primary-foreground"
+                : "text-gray-400",
+              "mx-auto"
+            )}
+          />
+        </span>
+      </Link>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        className={cn(
+          "w-full flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+          isInLeaguesSection
+            ? "bg-primary text-primary-foreground"
+            : "text-gray-600 hover:bg-gray-50"
+        )}
+        onClick={() => setIsLeaguesExpanded(!isLeaguesExpanded)}
+      >
+        <div className="flex items-center">
+          <Trophy className={cn(
+            "h-5 w-5 flex-shrink-0 mr-3",
+            isInLeaguesSection
+              ? "text-primary-foreground"
+              : "text-gray-400"
+          )} />
+          Leagues
+        </div>
+        {isLeaguesExpanded ? (
+          <ChevronUp className="h-4 w-4" />
+        ) : (
+          <ChevronDown className="h-4 w-4" />
+        )}
+      </button>
+      {isLeaguesExpanded && (
+        <div className="ml-9 mt-1 space-y-1">
+          <Link href="/leagues">
+            <span className={cn(
+              "block px-2 py-1.5 text-sm rounded-md cursor-pointer",
+              location === "/leagues"
+                ? "bg-primary/10 text-primary font-medium"
+                : "text-gray-600 hover:bg-gray-50"
+            )}>
+              All Leagues
+            </span>
+          </Link>
+          {leagues.map((league) => (
+            <Link
+              key={league.id}
+              href={`/leagues/${league.id}`}
+            >
+              <span className={cn(
+                "block px-2 py-1.5 text-sm rounded-md cursor-pointer",
+                location === `/leagues/${league.id}`
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-gray-600 hover:bg-gray-50"
+              )}>
+                {league.name}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+const ErrorFallback = ({ error }: { error: Error }) => {
+  return (
+    <div className="p-4 text-sm text-red-500">
+      Error loading content: {error.message}
+    </div>
+  );
+};
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(() =>
-    safeGetLocalStorage("sidebarCollapsed", false)
+    getStoredValue("sidebarCollapsed", false)
   );
-  const [isLeaguesExpanded, setIsLeaguesExpanded] = useState(false);
 
-  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse, error: leaguesError } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
+    staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
   const leagues = leaguesResponse?.data || [];
 
   useEffect(() => {
-    safeSetLocalStorage("sidebarCollapsed", isCollapsed);
+    setStoredValue("sidebarCollapsed", isCollapsed);
   }, [isCollapsed]);
 
   const isInLeaguesSection = location.startsWith('/leagues') ||
-    (Array.isArray(leagues) && leagues.some(league => location.startsWith(`/leagues/${league.id}`)));
+    leagues.some(league => location.startsWith(`/leagues/${league.id}`));
+
+  if (leaguesError) {
+    console.error('Error loading leagues:', leaguesError);
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Fixed sidebar */}
       <div
         className={cn(
           "fixed top-0 bottom-0 left-0 z-50 bg-white border-r transition-all duration-300",
@@ -89,148 +231,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 )}
               </Button>
             </div>
-            <nav className="mt-8 flex-1 space-y-1 px-2">
-              {/* Dashboard */}
-              <Link href="/">
-                <span
-                  className={cn(
-                    "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-                    location === "/"
-                      ? "bg-primary text-primary-foreground"
-                      : "text-gray-600 hover:bg-gray-50"
-                  )}
-                  title={isCollapsed ? "Dashboard" : undefined}
-                >
-                  <Home
-                    className={cn(
-                      "h-5 w-5 flex-shrink-0",
-                      location === "/"
-                        ? "text-primary-foreground"
-                        : "text-gray-400",
-                      isCollapsed ? "mx-auto" : "mr-3"
-                    )}
+            <ErrorBoundary FallbackComponent={ErrorFallback}>
+              <Suspense fallback={<div className="p-4">Loading...</div>}>
+                <nav className="mt-8 flex-1 space-y-1 px-2">
+                  <NavigationItem
+                    item={baseNavigation[0]}
+                    isActive={location === "/"}
+                    isCollapsed={isCollapsed}
                   />
-                  {!isCollapsed && "Dashboard"}
-                </span>
-              </Link>
 
-              {/* Leagues Section */}
-              {!isCollapsed ? (
-                <div>
-                  <button
-                    className={cn(
-                      "w-full flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-                      isInLeaguesSection
-                        ? "bg-primary text-primary-foreground"
-                        : "text-gray-600 hover:bg-gray-50"
-                    )}
-                    onClick={() => setIsLeaguesExpanded(!isLeaguesExpanded)}
-                  >
-                    <div className="flex items-center">
-                      <Trophy className={cn(
-                        "h-5 w-5 flex-shrink-0 mr-3",
-                        isInLeaguesSection
-                          ? "text-primary-foreground"
-                          : "text-gray-400"
-                      )} />
-                      Leagues
-                    </div>
-                    {isLeaguesExpanded ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </button>
-                  {isLeaguesExpanded && (
-                    <div className="ml-9 mt-1 space-y-1">
-                      <Link href="/leagues">
-                        <span className={cn(
-                          "block px-2 py-1.5 text-sm rounded-md cursor-pointer",
-                          location === "/leagues"
-                            ? "bg-primary/10 text-primary font-medium"
-                            : "text-gray-600 hover:bg-gray-50"
-                        )}>
-                          All Leagues
-                        </span>
-                      </Link>
-                      {Array.isArray(leagues) && leagues.map((league) => (
-                        <Link
-                          key={league.id}
-                          href={`/leagues/${league.id}`}
-                        >
-                          <span className={cn(
-                            "block px-2 py-1.5 text-sm rounded-md cursor-pointer",
-                            location === `/leagues/${league.id}`
-                              ? "bg-primary/10 text-primary font-medium"
-                              : "text-gray-600 hover:bg-gray-50"
-                          )}>
-                            {league.name}
-                          </span>
-                        </Link>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <Link href="/leagues">
-                  <span
-                    className={cn(
-                      "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-                      isInLeaguesSection
-                        ? "bg-primary text-primary-foreground"
-                        : "text-gray-600 hover:bg-gray-50"
-                    )}
-                    title="Leagues"
-                  >
-                    <Trophy
-                      className={cn(
-                        "h-5 w-5 flex-shrink-0",
-                        isInLeaguesSection
-                          ? "text-primary-foreground"
-                          : "text-gray-400",
-                        "mx-auto"
-                      )}
+                  <LeaguesSection
+                    isCollapsed={isCollapsed}
+                    leagues={leagues}
+                    isInLeaguesSection={isInLeaguesSection}
+                    location={location}
+                  />
+
+                  {baseNavigation.slice(1).map((item) => (
+                    <NavigationItem
+                      key={item.name}
+                      item={item}
+                      isActive={location === item.href}
+                      isCollapsed={isCollapsed}
                     />
-                  </span>
-                </Link>
-              )}
-
-              {/* Rest of the navigation items */}
-              {baseNavigation.slice(1).map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link key={item.name} href={item.href}>
-                    <span
-                      className={cn(
-                        "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-                        location === item.href
-                          ? "bg-primary text-primary-foreground"
-                          : "text-gray-600 hover:bg-gray-50"
-                      )}
-                      title={isCollapsed ? item.name : undefined}
-                    >
-                      <Icon
-                        className={cn(
-                          "h-5 w-5 flex-shrink-0",
-                          location === item.href
-                            ? "text-primary-foreground"
-                            : "text-gray-400",
-                          isCollapsed ? "mx-auto" : "mr-3"
-                        )}
-                      />
-                      {!isCollapsed && item.name}
-                    </span>
-                  </Link>
-                );
-              })}
-            </nav>
+                  ))}
+                </nav>
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="pl-16">
-        {/* Add semi-transparent backdrop when sidebar is expanded */}
+      <div className={cn("transition-all duration-300", isCollapsed ? "pl-16" : "pl-64")}>
         {!isCollapsed && (
           <div
             className="fixed inset-0 bg-black/20 z-40"
@@ -238,7 +270,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           />
         )}
         <main className="py-6 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
-          {children}
+          <ErrorBoundary FallbackComponent={ErrorFallback}>
+            <Suspense fallback={<div>Loading...</div>}>
+              {children}
+            </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
     </div>
