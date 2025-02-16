@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Game, League, ApiResponse } from "@shared/schema";
-import type { WeeklyScores } from "@/lib/types/scores";
+import type { ScoreWithRelations } from "@/lib/types/scores";
 
 interface UseLeagueScoresProps {
   leagueId: number;
@@ -16,20 +16,17 @@ const SCORES_CACHE_TIME = 1000 * 60 * 5;  // 5 minutes
 export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) {
   // Fetch all games for the league to get available weeks
   const { data: gamesResponse, isLoading: loadingGames, error: gamesError } = useQuery({
-    queryKey: ["/api/games/league", leagueId] as const,
+    queryKey: ["/api/games", { leagueId }] as const,
     queryFn: async () => {
       console.log('[useLeagueScores] Fetching games for league:', leagueId);
       try {
-        const response = await fetch(`/api/games/league/${leagueId}`);
+        const response = await fetch(`/api/games?leagueId=${leagueId}`);
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
           throw new Error(errorData.message || `Failed to fetch games (${response.status})`);
         }
         const data = await response.json() as ApiResponse<Game[]>;
-        console.log('[useLeagueScores] Received games:', {
-          count: data.data?.length || 0,
-          weeks: Array.from(new Set(data.data?.map(g => g.weekNumber) || [])).sort()
-        });
+        console.log('[useLeagueScores] Received games:', data.data?.length || 0);
         return data;
       } catch (error) {
         console.error('[useLeagueScores] Error fetching games:', error);
@@ -43,45 +40,30 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
 
   // Fetch scores for the selected week
   const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery({
-    queryKey: ["/api/scores/league", leagueId, weekNumber] as const,
+    queryKey: ["/api/scores", { leagueId, weekNumber }] as const,
     queryFn: async () => {
-      if (!weekNumber) {
-        console.log('[useLeagueScores] No week selected');
-        return { data: null, success: true, message: 'No week selected' };
-      }
-
-      console.log('[useLeagueScores] Fetching scores:', { leagueId, weekNumber });
+      if (!weekNumber) throw new Error('No week selected');
+      console.log('[useLeagueScores] Fetching scores for league:', leagueId, 'week:', weekNumber);
       try {
         const response = await fetch(`/api/scores/league/${leagueId}/week/${weekNumber}`);
-
-        // Log the raw response for debugging
-        const responseText = await response.text();
-        console.log('[useLeagueScores] Raw API response:', responseText);
-
         if (!response.ok) {
-          const errorData = JSON.parse(responseText);
+          const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
           console.error('[useLeagueScores] API error:', {
             status: response.status,
             error: errorData
           });
           throw new Error(errorData.message || `Failed to fetch scores (${response.status})`);
         }
-
-        const data = JSON.parse(responseText) as ApiResponse<WeeklyScores>;
-        console.log('[useLeagueScores] Processed scores:', {
+        const data = await response.json() as ApiResponse<ScoreWithRelations[]>;
+        console.log('[useLeagueScores] Received scores:', {
+          count: data.data?.length || 0,
           success: data.success,
-          weekNumber: weekNumber,
-          teamsCount: data.data?.teams?.length || 0,
-          firstTeam: data.data?.teams?.[0] ? {
-            name: data.data.teams[0].teamName,
-            bowlersCount: data.data.teams[0].bowlers?.length || 0
-          } : null
+          sample: data.data?.[0]
         });
-
         return data;
       } catch (error) {
         console.error('[useLeagueScores] Error fetching scores:', error);
-        throw new Error(`Failed to fetch scores for league ${leagueId}, week ${weekNumber}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw error;
       }
     },
     enabled: !!leagueId && !!weekNumber,
@@ -101,10 +83,7 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
           throw new Error(errorData.message || `Failed to fetch league (${response.status})`);
         }
         const data = await response.json() as ApiResponse<League>;
-        console.log('[useLeagueScores] Received league:', {
-          name: data.data?.name,
-          id: data.data?.id
-        });
+        console.log('[useLeagueScores] Received league:', data.data?.name);
         return data;
       } catch (error) {
         console.error('[useLeagueScores] Error fetching league:', error);
@@ -119,7 +98,7 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
   // Extract unique week numbers and sort them in descending order
   const weeks = useMemo(() => {
     const weekNumbers = Array.from(new Set(
-      (gamesResponse?.data ?? []).map(g => g.weekNumber)
+      (gamesResponse?.data ?? []).map((g: Game) => g.weekNumber)
     )).sort((a, b) => b - a);
     console.log('[useLeagueScores] Available weeks:', weekNumbers);
     return weekNumbers;
@@ -127,7 +106,7 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
 
   return {
     games: gamesResponse?.data ?? [],
-    scores: scoresResponse?.data,
+    scores: scoresResponse?.data ?? [],
     league: leagueResponse?.data,
     weeks,
     isLoading: loadingGames || loadingScores || loadingLeague,
@@ -135,8 +114,6 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
       { type: 'league', error: leagueError },
       { type: 'games', error: gamesError },
       { type: 'scores', error: scoresError },
-    ].filter(e => e.error),
-    loadingMessage: loadingScores ? "Loading scores..." : "",
-    errorMessage: scoresError ? `Error loading scores: ${scoresError instanceof Error ? scoresError.message : 'Unknown error'}` : ""
+    ].filter(e => e.error)
   };
 }
