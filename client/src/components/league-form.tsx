@@ -45,13 +45,13 @@ import {
 
 // Add a new array for weekday options
 const weekDayOptions = [
-  { value: "monday", label: "Monday" },
-  { value: "tuesday", label: "Tuesday" },
-  { value: "wednesday", label: "Wednesday" },
-  { value: "thursday", label: "Thursday" },
-  { value: "friday", label: "Friday" },
-  { value: "saturday", label: "Saturday" },
-  { value: "sunday", label: "Sunday" },
+  { value: "Monday", label: "Monday" },
+  { value: "Tuesday", label: "Tuesday" },
+  { value: "Wednesday", label: "Wednesday" },
+  { value: "Thursday", label: "Thursday" },
+  { value: "Friday", label: "Friday" },
+  { value: "Saturday", label: "Saturday" },
+  { value: "Sunday", label: "Sunday" },
 ];
 
 interface LeagueFormProps {
@@ -80,7 +80,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       active: true,
       seasonStart: today,
       seasonEnd: nextYear,
-      weekDay: "monday",
+      weekDay: "Monday",
       practiceStartTime: "",
       competitionStartTime: "",
       weeklyFee: 2000, // Default to $20.00
@@ -116,7 +116,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         active: league.active,
         seasonStart: startDate,
         seasonEnd: endDate,
-        weekDay: league.weekDay || "monday",
+        weekDay: league.weekDay || "Monday",
         practiceStartTime: league.practiceStartTime || "",
         competitionStartTime: league.competitionStartTime || "",
         weeklyFee: league.weeklyFee || 2000,
@@ -128,7 +128,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         active: true,
         seasonStart: today,
         seasonEnd: nextYear,
-        weekDay: "monday",
+        weekDay: "Monday",
         practiceStartTime: "",
         competitionStartTime: "",
         weeklyFee: 2000,

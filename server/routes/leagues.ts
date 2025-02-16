@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertLeagueSchema, partialLeagueSchema } from "@shared/schema"; // Added import for partialLeagueSchema
+import { insertLeagueSchema, partialLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
 
@@ -30,7 +30,11 @@ router.get("/:id", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    const league = insertLeagueSchema.parse(req.body);
+    const league = insertLeagueSchema.parse({
+      ...req.body,
+      seasonStart: new Date(req.body.seasonStart),
+      seasonEnd: new Date(req.body.seasonEnd)
+    });
     const created = await storage.createLeague(league);
     sendSuccess(res, created, 201);
   } catch (error) {
@@ -45,7 +49,12 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const update = partialLeagueSchema.parse(req.body);
+    // Parse dates from ISO strings before validation
+    const update = partialLeagueSchema.parse({
+      ...req.body,
+      seasonStart: req.body.seasonStart ? new Date(req.body.seasonStart) : undefined,
+      seasonEnd: req.body.seasonEnd ? new Date(req.body.seasonEnd) : undefined
+    });
     const updated = await storage.updateLeague(id, update);
     sendSuccess(res, updated);
   } catch (error) {

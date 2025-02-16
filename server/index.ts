@@ -1,7 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes.js";
 import { setupVite } from "./vite.js";
-import { testConnection } from "./db.js";
+import { testConnection, cleanup as dbCleanup } from "./db.js";
 import { createServer } from 'http';
 import { ScoreSchedulerService } from './services/score-scheduler.js';
 import { storage } from './storage.js';
@@ -99,27 +99,47 @@ async function startServer() {
     await testConnection();
     console.log('[Server] Database connection successful');
 
-    const PORT = process.env.PORT || 5000;
+    // Try different ports if the default is in use
+    const tryPort = async (startPort: number, maxAttempts: number = 5): Promise<number> => {
+      for (let port = startPort; port < startPort + maxAttempts; port++) {
+        try {
+          await new Promise((resolve, reject) => {
+            const tempServer = createServer();
+            tempServer.listen(port)
+              .once('listening', () => {
+                tempServer.close(() => resolve(port));
+              })
+              .once('error', (err: any) => {
+                if (err.code === 'EADDRINUSE') {
+                  console.log(`[Server] Port ${port} is in use, trying next port...`);
+                  resolve(0);
+                } else {
+                  reject(err);
+                }
+              });
+          });
+          return port;
+        } catch (err) {
+          console.error(`[Server] Error trying port ${port}:`, err);
+        }
+      }
+      throw new Error('No available ports found');
+    };
+
+    const preferredPort = parseInt(process.env.PORT || '5000');
+    const port = await tryPort(preferredPort);
     const HOST = '0.0.0.0';
 
-    server.listen(PORT, HOST, () => {
-      console.log(`[Server] Server is running at http://${HOST}:${PORT}`);
+    server.listen(port, HOST, () => {
+      console.log(`[Server] Server is running at http://${HOST}:${port}`);
       if (process.env.NODE_ENV !== "production") {
         console.log('[Server] Running in development mode with Vite middleware');
       } else {
         console.log('[Server] Running in production mode');
       }
-    }).on('error', (error: any) => {
-      if (error.code === 'EADDRINUSE') {
-        console.error(`[Server] Port ${PORT} is already in use`);
-        process.exit(1);
-      } else {
-        console.error('[Server] Server startup error:', error);
-        process.exit(1);
-      }
     });
 
-    // Initialize league schedulers
+    // Initialize league schedulers after server starts
     try {
       const leagues = await storage.getLeagues();
       console.log(`[Server] Found ${leagues.length} leagues`);
@@ -168,21 +188,55 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 // Handle graceful shutdown
-function shutdown() {
+async function shutdown() {
   console.log('[Server] Initiating graceful shutdown...');
-  server.close(() => {
-    console.log('[Server] Server closed');
-    process.exit(0);
-  });
 
-  setTimeout(() => {
-    console.error('[Server] Could not close connections in time, forcefully shutting down');
+  try {
+    // Cleanup database connections first
+    await dbCleanup();
+    console.log('[Server] Database connections cleaned up');
+
+    // Close the server
+    await new Promise((resolve, reject) => {
+      server.close((err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(true);
+        }
+      });
+    });
+
+    console.log('[Server] Server closed successfully');
+    process.exit(0);
+  } catch (error) {
+    console.error('[Server] Error during shutdown:', error);
     process.exit(1);
-  }, 10000);
+  }
 }
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+// Use longer timeout for graceful shutdown
+const SHUTDOWN_TIMEOUT = 30000; // 30 seconds
+
+process.on('SIGTERM', () => {
+  console.log('[Server] Received SIGTERM signal');
+  const forceShutdown = setTimeout(() => {
+    console.error('[Server] Forced shutdown due to timeout');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+
+  shutdown().finally(() => clearTimeout(forceShutdown));
+});
+
+process.on('SIGINT', () => {
+  console.log('[Server] Received SIGINT signal');
+  const forceShutdown = setTimeout(() => {
+    console.error('[Server] Forced shutdown due to timeout');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+
+  shutdown().finally(() => clearTimeout(forceShutdown));
+});
 
 // Helper functions
 function sendSuccess(res: Response, data: any) {
