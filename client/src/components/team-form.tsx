@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -18,11 +18,12 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { insertTeamSchema, type InsertTeam, type Team } from "@shared/schema";
+import { insertTeamSchema, type InsertTeam } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { useEffect } from "react";
+import { useTeams } from "@/hooks/use-teams";
+import React from "react";
 
 interface TeamFormProps {
   open: boolean;
@@ -33,23 +34,11 @@ interface TeamFormProps {
 export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
   const { toast } = useToast();
 
-  // Query existing teams to determine next available number
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true; data: Team[] }>({
-    queryKey: ["/api/teams", leagueId],
-    queryFn: async () => {
-      const response = await fetch(`/api/teams?leagueId=${leagueId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch teams');
-      }
-      return response.json();
-    }
+  // Use the custom hook for team data
+  const { nextTeamNumber, isLoading: loadingTeams } = useTeams({ 
+    leagueId,
+    enabled: open // Only fetch when dialog is open
   });
-
-  const teams = teamsResponse?.data || [];
-  // Calculate next team number, ensuring we handle undefined/null values
-  const nextTeamNumber = teams.length > 0
-    ? Math.max(...teams.map(t => t.number || 0)) + 1
-    : 1;
 
   const form = useForm<InsertTeam>({
     resolver: zodResolver(insertTeamSchema),
@@ -62,7 +51,7 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
   });
 
   // Update form value when teams data loads
-  useEffect(() => {
+  React.useEffect(() => {
     if (!loadingTeams) {
       form.setValue('number', nextTeamNumber);
     }
@@ -78,7 +67,10 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
       return await response.json();
     },
     onSuccess: () => {
+      // Invalidate both the teams list and the specific league's teams
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams", leagueId] });
+
       toast({
         title: "Success",
         description: "Team has been created successfully.",
@@ -95,6 +87,14 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
     },
   });
 
+  const handleSubmit = form.handleSubmit((data) => {
+    // Ensure number is treated as a number
+    mutation.mutate({
+      ...data,
+      number: Number(data.number)
+    });
+  });
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent>
@@ -103,10 +103,7 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
         </DialogHeader>
 
         <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
-            className="space-y-4"
-          >
+          <form onSubmit={handleSubmit} className="space-y-4">
             <FormField
               control={form.control}
               name="name"
@@ -162,11 +159,21 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
             />
 
             <div className="flex justify-end space-x-2">
-              <Button type="button" variant="outline" onClick={onClose}>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => {
+                  onClose();
+                  form.reset();
+                }}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending && (
+              <Button 
+                type="submit" 
+                disabled={mutation.isPending || loadingTeams}
+              >
+                {(mutation.isPending || loadingTeams) && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
                 Add Team

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Game, ApiResponse, League } from "@shared/schema";
+import type { Game, Score, League, ApiResponse } from "@shared/schema";
 
 interface UseLeagueScoresProps {
   leagueId: number;
@@ -20,11 +20,11 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
     enabled: !!leagueId,
   });
 
-  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<ApiResponse<Game[]>>({
+  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<ApiResponse<Score[]>>({
     queryKey: ["/api/scores", { leagueId, weekNumber }],
     queryFn: async () => {
       if (!weekNumber) throw new Error('No week selected');
-      const response = await fetch(`/api/scores?leagueId=${leagueId}&weekNumber=${weekNumber}`);
+      const response = await fetch(`/api/scores/league/${leagueId}/week/${weekNumber}`);
       if (!response.ok) {
         throw new Error('Failed to fetch scores');
       }
@@ -35,6 +35,13 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
 
   const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery<ApiResponse<League>>({
     queryKey: [`/api/leagues/${leagueId}`],
+    queryFn: async () => {
+      const response = await fetch(`/api/leagues/${leagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch league');
+      }
+      return response.json();
+    },
     enabled: !!leagueId,
   });
 

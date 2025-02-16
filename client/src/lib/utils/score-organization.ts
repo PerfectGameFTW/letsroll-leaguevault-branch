@@ -1,7 +1,15 @@
-import type { Game } from "@shared/schema";
-import type { WeeklyScores, BowlerScores } from "../types/scores";
+import type { Game, Score } from "@shared/schema";
+import type { WeeklyScores, BowlerScores, TeamScores } from "../types/scores";
 
-export function organizeBowlerScores(scoresData: Game[]): WeeklyScores {
+interface TeamScoreMap {
+  teamId: number;
+  teamName: string;
+  teamNumber: number;
+  laneNumber: number;
+  bowlers: Map<number, BowlerScores>;
+}
+
+export function organizeBowlerScores(scoresData: Score[]): WeeklyScores {
   // Early return for empty data
   if (!scoresData.length) {
     return {
@@ -11,47 +19,51 @@ export function organizeBowlerScores(scoresData: Game[]): WeeklyScores {
     };
   }
 
-  const teams = new Map<number, Omit<WeeklyScores['teams'][0], 'bowlers'> & { bowlers: Map<number, BowlerScores> }>();
+  // Pre-allocate the teams map with proper typing
+  const teams = new Map<number, TeamScoreMap>();
 
-  scoresData.forEach(game => {
-    game.teams.forEach(team => {
-      if (!teams.has(team.id)) {
-        teams.set(team.id, {
-          teamId: team.id,
-          teamName: team.name,
-          teamNumber: team.number,
-          laneNumber: team.laneNumber,
-          bowlers: new Map(),
-        });
-      }
+  // Process all scores in a single pass
+  for (const score of scoresData) {
+    // Get or create team entry
+    let teamEntry = teams.get(score.team.id);
+    if (!teamEntry) {
+      teamEntry = {
+        teamId: score.team.id,
+        teamName: score.team.name,
+        teamNumber: score.team.number,
+        laneNumber: score.laneNumber,
+        bowlers: new Map(),
+      };
+      teams.set(score.team.id, teamEntry);
+    }
 
-      const currentTeam = teams.get(team.id)!;
-      team.bowlers.forEach(bowler => {
-        if (!currentTeam.bowlers.has(bowler.id)) {
-          currentTeam.bowlers.set(bowler.id, {
-            bowlerId: bowler.id,
-            bowlerName: bowler.name,
-            position: bowler.position,
-            isVacant: bowler.isVacant,
-            isAbsent: bowler.isAbsent,
-            isSub: bowler.isSub,
-            handicap: bowler.handicap,
-            games: [],
-          });
-        }
+    // Process bowler scores
+    let bowlerEntry = teamEntry.bowlers.get(score.bowlerId);
+    if (!bowlerEntry) {
+      bowlerEntry = {
+        bowlerId: score.bowlerId,
+        bowlerName: score.bowler.name,
+        position: score.position,
+        isVacant: score.isVacant,
+        isAbsent: score.isAbsent,
+        isSub: score.isSub,
+        handicap: score.handicap,
+        games: [],
+      };
+      teamEntry.bowlers.set(score.bowlerId, bowlerEntry);
+    }
 
-        const bowlerData = currentTeam.bowlers.get(bowler.id)!;
-        bowlerData.games.push({
-          gameNumber: game.gameNumber,
-          score: bowler.score,
-        });
-      });
+    // Add game score
+    bowlerEntry.games.push({
+      gameNumber: score.game.gameNumber,
+      score: score.score,
     });
-  });
+  }
 
+  // Convert maps to arrays and sort data
   return {
-    weekNumber: scoresData[0].weekNumber,
-    date: scoresData[0].date,
+    weekNumber: scoresData[0].game.weekNumber,
+    date: scoresData[0].game.date,
     teams: Array.from(teams.values()).map(team => ({
       ...team,
       bowlers: Array.from(team.bowlers.values())
@@ -62,4 +74,12 @@ export function organizeBowlerScores(scoresData: Game[]): WeeklyScores {
         })),
     })),
   };
+}
+
+// Helper function to calculate series total
+export function calculateSeriesTotal(games: Array<{ score: number | null }>): number {
+  return games
+    .map(g => g.score)
+    .filter((score): score is number => score !== null)
+    .reduce((sum, score) => sum + score, 0);
 }

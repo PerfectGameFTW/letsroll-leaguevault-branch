@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect as ReactuseEffect } from "react";
+import { useState, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
 import {
@@ -20,19 +20,60 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader2, ArrowLeft, AlertCircle } from "lucide-react";
 import type { Game, League, ApiResponse } from "@shared/schema";
-import type { WeeklyScores } from "@/lib/types/scores";
+import type { WeeklyScores, BowlerScores, TeamScores } from "@/lib/types/scores";
 import { cn } from "@/lib/utils";
 import { groupTeamsByLanes } from "@/lib/utils/lane-pairing";
-import { organizeBowlerScores } from "@/lib/utils/score-organization";
+import { organizeBowlerScores, calculateSeriesTotal } from "@/lib/utils/score-organization";
 import { useLeagueScores } from "@/hooks/use-league-scores";
 
-// Loading skeleton component
-function LoadingState() {
+// Loading skeleton component with more realistic loading states
+function LoadingSkeleton() {
   return (
-    <div className="flex items-center justify-center h-[50vh]">
-      <div className="flex items-center gap-2">
-        <Loader2 className="h-8 w-8 animate-spin" />
-        <span className="text-muted-foreground">Loading scores...</span>
+    <div className="space-y-6">
+      <div className="h-8 w-32 bg-muted animate-pulse rounded" />
+      <div className="space-y-2">
+        <div className="h-8 w-64 bg-muted animate-pulse rounded" />
+        <div className="h-4 w-96 bg-muted animate-pulse rounded" />
+      </div>
+      <div className="space-y-4">
+        {[...Array(3)].map((_, i) => (
+          <Card key={i} className="animate-pulse">
+            <CardHeader className="pb-2">
+              <div className="h-6 w-32 bg-muted rounded" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-8">
+                {[...Array(2)].map((_, j) => (
+                  <div key={j} className="space-y-4">
+                    <div className="h-6 w-48 bg-muted rounded" />
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          {[...Array(6)].map((_, k) => (
+                            <TableHead key={k}>
+                              <div className="h-4 w-full bg-muted rounded" />
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {[...Array(4)].map((_, l) => (
+                          <TableRow key={l}>
+                            {[...Array(6)].map((_, m) => (
+                              <TableCell key={m}>
+                                <div className="h-4 w-full bg-muted rounded" />
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
     </div>
   );
@@ -56,6 +97,7 @@ export default function LeagueScoresPage() {
   const leagueId = params.leagueId ? parseInt(params.leagueId) : undefined;
   const [selectedWeek, setSelectedWeek] = useState<number>();
 
+  // Early return for invalid league ID
   if (!leagueId) {
     return (
       <Layout>
@@ -72,15 +114,23 @@ export default function LeagueScoresPage() {
     weekNumber: selectedWeek
   });
 
-  ReactuseEffect(() => {
+  // Set initial week when data loads
+  useMemo(() => {
     if (!selectedWeek && weeks.length > 0) {
       setSelectedWeek(weeks[0]);
     }
   }, [weeks, selectedWeek]);
 
+  // Memoize score organization to prevent unnecessary recalculations
   const weeklyScores = useMemo(() => 
     scores.length > 0 ? organizeBowlerScores(scores) : null,
     [scores]
+  );
+
+  // Memoize lane pairs to prevent unnecessary recalculations
+  const lanePairs = useMemo(() => 
+    weeklyScores ? groupTeamsByLanes(weeklyScores.teams) : [],
+    [weeklyScores]
   );
 
   if (isLoading) {
@@ -94,7 +144,7 @@ export default function LeagueScoresPage() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to League
           </Link>
-          <LoadingState />
+          <LoadingSkeleton />
         </div>
       </Layout>
     );
@@ -181,7 +231,7 @@ export default function LeagueScoresPage() {
 
           {weeklyScores ? (
             <div className="grid gap-6">
-              {groupTeamsByLanes(weeklyScores.teams).map((pair, pairIndex) => (
+              {lanePairs.map((pair, pairIndex) => (
                 <Card key={pairIndex} className="hover:border-primary/50 transition-colors">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-lg font-semibold text-primary">
@@ -206,11 +256,11 @@ export default function LeagueScoresPage() {
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {team.bowlers.map((bowler) => {
-                                  const seriesTotal = bowler.games
-                                    .map(g => g.score)
-                                    .filter((score): score is number => score !== null)
-                                    .reduce((sum, score) => sum + score, 0);
+                                {team.bowlers.map((bowler: BowlerScores) => {
+                                  const seriesTotal = useMemo(() => 
+                                    calculateSeriesTotal(bowler.games),
+                                    [bowler.games]
+                                  );
 
                                   return (
                                     <TableRow key={bowler.bowlerId}>
@@ -221,7 +271,7 @@ export default function LeagueScoresPage() {
                                           <span className="text-muted-foreground italic">Absent</span>
                                         ) : (
                                           <div className="flex items-center gap-2">
-                                            <Link
+                                            <Link 
                                               href={`/bowlers/${bowler.bowlerId}`}
                                               className="hover:underline"
                                             >
@@ -238,7 +288,7 @@ export default function LeagueScoresPage() {
                                       <TableCell className="text-right text-muted-foreground">
                                         {bowler.handicap ?? "—"}
                                       </TableCell>
-                                      {bowler.games.map((game) => (
+                                      {bowler.games.map((game: { gameNumber: number; score: number | null }) => (
                                         <TableCell
                                           key={game.gameNumber}
                                           className={cn(
