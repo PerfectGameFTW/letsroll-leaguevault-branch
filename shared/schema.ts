@@ -129,7 +129,7 @@ export const payments = pgTable("payments", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// Add new tables after the existing ones
+// Add new tables after the existing scores table
 export const games = pgTable("games", {
   id: serial("id").primaryKey(),
   leagueId: integer("league_id")
@@ -140,6 +140,7 @@ export const games = pgTable("games", {
   date: timestamp("date", { mode: 'date' }).notNull(),
 }, (table) => ({
   leagueGameIdx: index("league_game_idx").on(table.leagueId, table.weekNumber, table.gameNumber),
+  dateIdx: index("game_date_idx").on(table.date),
 }));
 
 export const scores = pgTable("scores", {
@@ -167,6 +168,35 @@ export const scores = pgTable("scores", {
 }, (table) => ({
   gameScoreIdx: index("game_score_idx").on(table.gameId, table.teamId, table.position),
   bowlerScoreIdx: index("bowler_score_idx").on(table.bowlerId),
+  laneNumberIdx: index("lane_number_idx").on(table.laneNumber),
+}));
+
+export const series = pgTable("series", {
+  id: serial("id").primaryKey(),
+  leagueId: integer("league_id")
+    .notNull()
+    .references(() => leagues.id, { onDelete: 'cascade' }),
+  weekNumber: integer("week_number").notNull(),
+  seriesDate: timestamp("series_date", { mode: "date" }).notNull(),
+  isComplete: boolean("is_complete").notNull().default(false),
+}, (table) => ({
+  leagueSeriesIdx: index("league_series_idx").on(table.leagueId, table.weekNumber),
+}));
+
+export const weeklyStats = pgTable("weekly_stats", {
+  id: serial("id").primaryKey(),
+  seriesId: integer("series_id")
+    .notNull()
+    .references(() => series.id, { onDelete: 'cascade' }),
+  bowlerLeagueId: integer("bowler_league_id")
+    .notNull()
+    .references(() => bowlerLeagues.id, { onDelete: 'cascade' }),
+  average: integer("average").notNull(),
+  handicap: integer("handicap").notNull(),
+  gamesPlayed: integer("games_played").notNull(),
+}, (table) => ({
+  seriesStatsIdx: index("series_stats_idx").on(table.seriesId),
+  bowlerStatsIdx: index("bowler_stats_idx").on(table.bowlerLeagueId),
 }));
 
 // Relations
@@ -228,6 +258,24 @@ export const scoreRelations = relations(scores, ({ one }) => ({
   }),
 }));
 
+export const seriesRelations = relations(series, ({ one, many }) => ({
+  league: one(leagues, {
+    fields: [series.leagueId],
+    references: [leagues.id],
+  }),
+  weeklyStats: many(weeklyStats),
+}));
+
+export const weeklyStatsRelations = relations(weeklyStats, ({ one }) => ({
+  series: one(series, {
+    fields: [weeklyStats.seriesId],
+    references: [series.id],
+  }),
+  bowlerLeague: one(bowlerLeagues, {
+    fields: [weeklyStats.bowlerLeagueId],
+    references: [bowlerLeagues.id],
+  }),
+}));
 
 // Validation schemas
 // Base schemas using drizzle-zod
@@ -238,6 +286,8 @@ const baseBowlerLeagueSchema = createInsertSchema(bowlerLeagues);
 const basePaymentSchema = createInsertSchema(payments);
 const baseGameSchema = createInsertSchema(games);
 const baseScoreSchema = createInsertSchema(scores);
+const baseSeriesSchema = createInsertSchema(series);
+const baseWeeklyStatsSchema = createInsertSchema(weeklyStats);
 
 // Enhanced insert schemas with additional validation
 export const insertBowlerSchema = baseBowlerSchema.extend({
@@ -293,28 +343,62 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   notes: z.string().optional(),
 }).omit({ id: true, createdAt: true });
 
+// Update the insert schemas with stronger validation
 export const insertGameSchema = baseGameSchema.extend({
   leagueId: positiveIntSchema,
   weekNumber: positiveIntSchema,
-  gameNumber: z.number().min(1).max(3),
+  gameNumber: z.number().int().min(1).max(3),
   date: dateSchema,
-}).omit({ id: true });
+}).omit({ id: true })
+  .refine(
+    (data) => {
+      const today = new Date();
+      return data.date <= today;
+    },
+    "Game date cannot be in the future"
+  );
+
+// Frame validation regex for standard bowling notation
+const frameRegex = /^([0-9FX]|[0-9]\/|-)+$/;
 
 export const insertScoreSchema = baseScoreSchema.extend({
   gameId: positiveIntSchema,
   bowlerId: positiveIntSchema,
   teamId: positiveIntSchema,
-  score: z.number().min(0).max(300),
-  handicap: z.number().min(0),
-  average: z.number().min(0),
-  position: z.number().min(1).max(4),
+  score: z.number().int().min(0).max(300),
+  handicap: z.number().int().min(0).max(300),
+  average: z.number().int().min(0).max(300),
+  position: z.number().int().min(1).max(4),
   isVacant: z.boolean().default(false),
   isAbsent: z.boolean().default(false),
   isSub: z.boolean().default(false),
   laneNumber: positiveIntSchema,
-  frames: z.array(z.string()).default([]),
-  splits: z.array(z.string()).default([]),
-  notes: z.array(z.string()).default([]),
+  frames: z.array(z.string().regex(frameRegex, "Invalid frame notation")).default([]),
+  splits: z.array(z.string().regex(/^[0-9-]+$/, "Invalid split notation")).default([]),
+  notes: z.array(z.string().max(500)).default([]),
+}).omit({ id: true });
+
+// Add insert schemas for new tables
+export const insertSeriesSchema = baseSeriesSchema.extend({
+  leagueId: positiveIntSchema,
+  weekNumber: positiveIntSchema,
+  seriesDate: dateSchema,
+  isComplete: z.boolean().default(false),
+}).omit({ id: true })
+  .refine(
+    (data) => {
+      const today = new Date();
+      return data.seriesDate <= today;
+    },
+    "Series date cannot be in the future"
+  );
+
+export const insertWeeklyStatsSchema = baseWeeklyStatsSchema.extend({
+  seriesId: positiveIntSchema,
+  bowlerLeagueId: positiveIntSchema,
+  average: z.number().int().min(0).max(300),
+  handicap: z.number().int().min(0).max(300),
+  gamesPlayed: z.number().int().min(1).max(4),
 }).omit({ id: true });
 
 // Export partial schemas for updates
@@ -344,6 +428,8 @@ export const partialBowlerLeagueSchema = z.object(baseBowlerLeagueSchema.shape).
 export const partialPaymentSchema = z.object(basePaymentSchema.shape).partial();
 export const partialGameSchema = z.object(baseGameSchema.shape).partial();
 export const partialScoreSchema = z.object(baseScoreSchema.shape).partial();
+export const partialSeriesSchema = z.object(baseSeriesSchema.shape).partial();
+export const partialWeeklyStatsSchema = z.object(baseWeeklyStatsSchema.shape).partial();
 
 // Type exports
 export type League = typeof leagues.$inferSelect;
@@ -368,6 +454,12 @@ export type InsertGame = z.infer<typeof insertGameSchema>;
 export type Score = typeof scores.$inferSelect;
 export type InsertScore = z.infer<typeof insertScoreSchema>;
 
+export type Series = typeof series.$inferSelect;
+export type InsertSeries = z.infer<typeof insertSeriesSchema>;
+
+export type WeeklyStat = typeof weeklyStats.$inferSelect;
+export type InsertWeeklyStat = z.infer<typeof insertWeeklyStatsSchema>;
+
 // API response types
 export interface ApiResponse<T> {
   success: boolean;
@@ -381,9 +473,31 @@ export interface ApiResponse<T> {
 export interface ApiListResponse<T> {
   success: boolean;
   data: T[];
+  pagination?: {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    itemsPerPage: number;
+  };
   error?: {
     message: string;
     code?: string;
+  };
+}
+
+export interface SeriesWithStats {
+  id: number;
+  leagueId: number;
+  weekNumber: number;
+  seriesDate: Date;
+  isComplete: boolean;
+  stats: WeeklyStat[];
+}
+
+export interface WeeklyStatWithBowler extends WeeklyStat {
+  bowlerLeague: {
+    bowler: Bowler;
+    team: Team;
   };
 }
 
@@ -431,18 +545,37 @@ export interface QubicaScoreImport {
   games: QubicaTeamGame[];
 }
 
-// Extend existing schemas with QubicaAMF-specific fields
-export const importGameSchema = insertGameSchema.extend({
+// Create base schemas for import validation
+const qubicaImportGameBaseSchema = z.object({
   qubicaWeekNumber: positiveIntSchema,
-  qubicaSessionTime: z.string(),
+  qubicaSessionTime: timeSchema,
 });
 
-export const importScoreSchema = insertScoreSchema.extend({
+const qubicaImportScoreBaseSchema = z.object({
   qubicaBowlerId: z.string(),
   qubicaTeamNumber: z.string(),
   scoreSheet: z.string(),
 });
 
+// Extend existing schemas with QubicaAMF-specific fields
+export const importGameSchema = baseGameSchema.merge(qubicaImportGameBaseSchema);
+export const importScoreSchema = baseScoreSchema.merge(qubicaImportScoreBaseSchema);
+
 // Export additional types for the import process
 export type ImportGame = z.infer<typeof importGameSchema>;
 export type ImportScore = z.infer<typeof importScoreSchema>;
+
+// Add new interface for detailed score information
+export interface DetailedScore extends Score {
+  game: Game;
+  bowler: Bowler;
+  team: Team;
+  frameDetails: {
+    frameNumber: number;
+    rolls: string[];
+    score: number;
+    isSplit: boolean;
+    splitPins?: string;
+    notes?: string[];
+  }[];
+}

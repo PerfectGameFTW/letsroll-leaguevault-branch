@@ -29,13 +29,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import type { Bowler, Payment, Team, League, BowlerLeague } from "@shared/schema";
-import { format, differenceInWeeks, startOfToday } from "date-fns";
-import { enrollInLoyalty, getLoyaltyPoints } from "@/lib/square";
+import { format, differenceInWeeks, startOfToday, isValid } from "date-fns";
+import { enrollInLoyalty } from "@/lib/square";
 
 interface LoyaltyInfo {
   points: number;
   lifetimePoints: number;
   enrolledAt: string;
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: {
+    message: string;
+    code?: string;
+  };
 }
 
 export default function BowlerViewPage() {
@@ -45,30 +54,29 @@ export default function BowlerViewPage() {
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
   // Query for bowler with proper typing and caching
-  const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<{ data: Bowler }>({
+  const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<ApiResponse<Bowler>>({
     queryKey: [`/api/bowlers/${bowlerId}`],
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     retry: false,
+    enabled: !isNaN(bowlerId), // Only run if bowlerId is valid
   });
-  const bowler = bowlerResponse?.data;
+  const bowler = bowlerResponse?.data?.data;
 
   // Query to get bowler's league associations with proper typing and caching
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<ApiResponse<BowlerLeague[]>>({
     queryKey: ["/api/bowler-leagues", { bowlerId }],
-    enabled: !!bowlerId,
+    enabled: !!bowlerId && !isNaN(bowlerId),
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     retry: false,
   });
 
   // Filter and deduplicate bowler leagues
   const bowlerLeagues = useMemo(() => {
-    const allLeagues = bowlerLeaguesResponse?.data || [];
-    console.log('[BowlerView] All bowler leagues:', allLeagues);
+    const allLeagues = bowlerLeaguesResponse?.data?.data || [];
     // First, filter active associations
     const activeLeagues = allLeagues.filter(bl => 
       bl.active && bl.bowlerId === bowlerId
     );
-    console.log('[BowlerView] Active leagues:', activeLeagues);
     // Then, ensure unique leagues by taking the most recently ordered association
     return activeLeagues.reduce((unique: BowlerLeague[], current) => {
       const existingIndex = unique.findIndex(bl => bl.leagueId === current.leagueId);
@@ -82,52 +90,50 @@ export default function BowlerViewPage() {
   }, [bowlerLeaguesResponse?.data, bowlerId]);
 
   // Get all leagues
-  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
     enabled: !!bowlerLeagues.length,
     staleTime: 1000 * 60 * 30, // Cache for 30 minutes
     retry: false,
   });
-  const leagues = leaguesResponse?.data || [];
+  const leagues = leaguesResponse?.data?.data || [];
 
   // Get selected league's active team association
   const selectedAssociation = useMemo(() => {
-    const association = bowlerLeagues.find(bl => 
+    return bowlerLeagues.find(bl => 
       bl.leagueId === selectedLeagueId && 
       bl.active && 
       bl.bowlerId === bowlerId
     );
-    console.log('[BowlerView] Selected association:', association);
-    return association;
   }, [bowlerLeagues, selectedLeagueId, bowlerId]);
 
-  const { data: teamResponse, isLoading: loadingTeam } = useQuery<{ data: Team }>({
+  const { data: teamResponse } = useQuery<ApiResponse<Team>>({
     queryKey: [`/api/teams/${selectedAssociation?.teamId}`],
     enabled: !!selectedAssociation?.teamId,
     staleTime: 1000 * 60 * 15, // Cache for 15 minutes
     retry: false,
   });
-  console.log('[BowlerView] Team response:', teamResponse);
-  const team = teamResponse?.data;
+  const team = teamResponse?.data?.data;
 
-  const { data: league, isLoading: loadingLeague } = useQuery<{ data: League }>({
+  const { data: leagueResponse } = useQuery<ApiResponse<League>>({
     queryKey: [`/api/leagues/${selectedLeagueId}`],
     enabled: !!selectedLeagueId,
     staleTime: 1000 * 60 * 30, // Cache for 30 minutes
     retry: false,
   });
+  const league = leagueResponse?.data;
 
-  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
+  const { data: paymentsResponse } = useQuery<ApiResponse<Payment[]>>({
     queryKey: ["/api/payments", bowlerId, selectedLeagueId],
     enabled: !!selectedLeagueId,
     staleTime: 1000 * 60, // Cache for 1 minute since payments change frequently
     retry: false,
   });
 
-  const payments = paymentsResponse?.data || [];
+  const payments = paymentsResponse?.data?.data || [];
 
   // Add loyalty points query with proper caching
-  const { data: loyaltyInfo, isLoading: loadingLoyalty } = useQuery<LoyaltyInfo>({
+  const { data: loyaltyInfo } = useQuery<LoyaltyInfo>({
     queryKey: ["/api/square/loyalty", bowler?.squareCustomerId],
     enabled: !!bowler?.squareCustomerId,
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
@@ -137,7 +143,6 @@ export default function BowlerViewPage() {
   // Update initialization logic for selectedLeagueId
   useEffect(() => {
     if (bowlerLeagues?.length && !selectedLeagueId) {
-      console.log('[BowlerView] Setting initial league:', bowlerLeagues[0]);
       setSelectedLeagueId(bowlerLeagues[0].leagueId);
     }
   }, [bowlerLeagues, selectedLeagueId]);
@@ -166,7 +171,7 @@ export default function BowlerViewPage() {
   });
 
   // Show initial loading state only when critical data is loading
-  if (loadingBowler) {
+  if (loadingBowler || loadingBowlerLeagues) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -196,23 +201,26 @@ export default function BowlerViewPage() {
   let fullSeasonAmount = 0;
   let amountPastDue = 0;
 
-  if (league?.data?.seasonStart && league.data.seasonEnd && league.data.weeklyFee) {
-    const seasonStart = new Date(league.data.seasonStart);
+  if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
+    const seasonStart = new Date(league.seasonStart);
     const today = startOfToday();
-    const seasonEnd = new Date(league.data.seasonEnd);
+    const seasonEnd = new Date(league.seasonEnd);
 
-    if (today < seasonStart) {
-      weeksDue = 0;
-    } else if (today > seasonEnd) {
-      weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
-    } else {
-      weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
+    // Validate dates before calculations
+    if (isValid(seasonStart) && isValid(seasonEnd) && isValid(today)) {
+      if (today < seasonStart) {
+        weeksDue = 0;
+      } else if (today > seasonEnd) {
+        weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
+      } else {
+        weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
+      }
+
+      totalSeasonDues = league.weeklyFee * weeksDue;
+      totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
+      fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
+      amountPastDue = totalSeasonDues - totalPaidAmount;
     }
-
-    totalSeasonDues = league.data.weeklyFee * weeksDue;
-    totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
-    fullSeasonAmount = league.data.weeklyFee * totalWeeksInSeason;
-    amountPastDue = totalSeasonDues - totalPaidAmount;
   }
 
   const remainingBalance = fullSeasonAmount - totalPaidAmount;
@@ -278,7 +286,7 @@ export default function BowlerViewPage() {
         {bowler.squareCustomerId && (
           <div className="mb-6">
             <h2 className="text-lg font-semibold mb-4">Loyalty Program</h2>
-            {loadingLoyalty ? (
+            {loadingBowler ? (
               <div className="flex items-center gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>Loading loyalty information...</span>
@@ -340,7 +348,7 @@ export default function BowlerViewPage() {
               <CardDescription>Regular payment amount</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">${((league?.data?.weeklyFee || 0) / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">${((league?.weeklyFee || 0) / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
 
@@ -349,7 +357,7 @@ export default function BowlerViewPage() {
               <CardTitle className="text-lg">Amount Due to Date</CardTitle>
               <CardDescription>
                 {weeksDue} week{weeksDue === 1 ? "" : "s"} at ${(
-                  (league?.data?.weeklyFee || 0) / 100
+                  (league?.weeklyFee || 0) / 100
                 ).toFixed(2)}
               </CardDescription>
             </CardHeader>
@@ -383,7 +391,7 @@ export default function BowlerViewPage() {
               <CardTitle className="text-lg">Full Season Lineage Amount Due</CardTitle>
               <CardDescription>
                 {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at ${(
-                  (league?.data?.weeklyFee || 0) / 100
+                  (league?.weeklyFee || 0) / 100
                 ).toFixed(2)}
               </CardDescription>
             </CardHeader>

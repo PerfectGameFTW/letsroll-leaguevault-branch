@@ -3,40 +3,24 @@ import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format } from "date-fns";
+import type { DetailedScore } from "@shared/schema";
+import type { ApiResponse } from "@shared/schema";
 
-interface GameScore {
-  score: number | null;
-  handicap: number | null;
-  total: number | null;
-  isVacant: boolean;
-  isAbsent: boolean;
-  isSub: boolean;
-}
-
-interface BowlerScores {
+interface ScoresByBowler {
   bowlerId: number;
   bowlerName: string;
   teamId: number;
   teamName: string;
   date: string;
   weekNumber: number;
-  games: GameScore[];
-  seriesTotal: number;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error?: {
-    message: string;
-    code?: string;
-  };
+  games: DetailedScore[];
+  seriesTotal: number | null;
 }
 
 export default function ScoresPage() {
   const { leagueId, weekNumber } = useParams<{ leagueId: string; weekNumber: string }>();
 
-  const { data: scoresResponse, isLoading } = useQuery<ApiResponse<BowlerScores[]>>({
+  const { data: scoresResponse, isLoading } = useQuery<ApiResponse<ScoresByBowler[]>>({
     queryKey: ['/api/scores', leagueId, weekNumber],
     queryFn: async () => {
       const response = await fetch(`/api/scores?leagueId=${leagueId}&weekNumber=${weekNumber}`);
