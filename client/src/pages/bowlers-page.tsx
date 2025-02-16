@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Layout } from "@/components/layout";
-import { BowlerForm } from "@/components/bowler-form";
+import { Button } from "@ui/button";
+import { Layout } from "@components/layout";
+import { BowlerForm } from "@components/bowler-form";
 import {
   Table,
   TableBody,
@@ -10,13 +10,13 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+} from "@ui/table";
+import { Badge } from "@ui/badge";
 import { Loader2, Plus, Eye, EyeOff, Search, Pencil } from "lucide-react";
-import type { Bowler, Team, League, BowlerLeague } from "@shared/schema";
-import { useToast } from "@/hooks/use-toast";
-import { Switch } from "@/components/ui/switch";
-import { Input } from "@/components/ui/input";
+import type { Bowler, Team, League, BowlerLeague, ApiResponse } from "@shared/schema";
+import { useToast } from "@hooks/use-toast";
+import { Switch } from "@ui/switch";
+import { Input } from "@ui/input";
 import { Link } from "wouter";
 
 // Loading skeleton component
@@ -65,36 +65,36 @@ export default function BowlersPage() {
   const { toast } = useToast();
 
   // Query for bowlers with proper error handling and longer cache time
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<ApiResponse<Bowler[]>>({
     queryKey: ["/api/bowlers"],
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
   // Only fetch bowler leagues if we have bowlers
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<ApiResponse<BowlerLeague[]>>({
     queryKey: ["/api/bowler-leagues"],
     enabled: !!bowlersResponse?.data?.length,
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
   // Only fetch teams if we have bowler leagues that need team information
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<ApiResponse<Team[]>>({
     queryKey: ["/api/teams"],
     enabled: !!bowlerLeaguesResponse?.data?.length,
     staleTime: 1000 * 60 * 15, // Cache for 15 minutes as team data changes less frequently
   });
 
   // Only fetch leagues if we have teams that need league information
-  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
     enabled: !!teamsResponse?.data?.length,
     staleTime: 1000 * 60 * 30, // Cache for 30 minutes as league data changes very infrequently
   });
 
-  const bowlers = bowlersResponse?.data || [];
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
-  const teams = teamsResponse?.data || [];
-  const leagues = leaguesResponse?.data || [];
+  const bowlers = bowlersResponse?.data ?? [];
+  const bowlerLeagues = bowlerLeaguesResponse?.data ?? [];
+  const teams = teamsResponse?.data ?? [];
+  const leagues = leaguesResponse?.data ?? [];
 
   // Memoize filtered bowlers to avoid unnecessary recalculations
   const filteredBowlers = useMemo(() => {
@@ -122,7 +122,7 @@ export default function BowlersPage() {
     if (!team) return 0;
 
     const league = leagues.find(l => l.id === team.leagueId);
-    return league?.weeklyFee || 0;
+    return league?.weeklyFee ?? 0;
   }, [getBowlerTeam, leagues]);
 
   // Show loading skeleton while initial data is being fetched
@@ -145,7 +145,7 @@ export default function BowlersPage() {
           <Input
             placeholder="Search bowlers..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
             className="pl-8"
           />
         </div>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Layout } from "@/components/layout";
+import { Layout } from "@components/layout";
 import {
   Table,
   TableBody,
@@ -8,21 +8,21 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from "@ui/table";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+} from "@ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@ui/card";
+import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@ui/tooltip";
 import { Loader2, ArrowLeft, AlertCircle } from "lucide-react";
-import type { Game, Score, Team, Bowler, League } from "@shared/schema";
+import type { Game, Score, Team, Bowler, League, ApiResponse } from "@shared/schema";
 import { format } from "date-fns";
 import { Link, useParams } from "wouter";
-import { cn } from "@/lib/utils";
+import { cn } from "@lib/utils";
 
 interface BowlerScores {
   bowlerId: number;
@@ -32,10 +32,10 @@ interface BowlerScores {
   isAbsent: boolean;
   isSub: boolean;
   handicap: number | null;
-  games: {
+  games: Array<{
     gameNumber: number;
     score: number | null;
-  }[];
+  }>;
 }
 
 interface TeamScores {
@@ -59,55 +59,27 @@ interface LanePair {
 }
 
 function groupTeamsByLanes(teams: TeamScores[]): LanePair[] {
-  // Create a map of lane numbers to teams
   const laneMap = new Map<number, TeamScores>();
-
-  // Log available teams and their lanes
-  console.log('[LanePairs] Available teams:', teams.map(t => `Team ${t.teamId} on lane ${t.laneNumber}`));
-
-  teams.forEach(team => {
-    laneMap.set(team.laneNumber, team);
-  });
-
-  console.log('[LanePairs] Lane map entries:', Array.from(laneMap.entries()).map(([lane, team]) => `Lane ${lane}: Team ${team.teamId}`));
+  teams.forEach(team => laneMap.set(team.laneNumber, team));
 
   const pairs: LanePair[] = [];
-  // Get all lane numbers and sort them
   const laneNumbers = Array.from(laneMap.keys()).sort((a, b) => a - b);
 
-  console.log('[LanePairs] Sorted lane numbers:', laneNumbers);
-
-  // Process lanes in pairs
   for (let i = 0; i < laneNumbers.length; i++) {
     const currentLane = laneNumbers[i];
     const currentTeam = laneMap.get(currentLane)!;
 
-    console.log(`[LanePairs] Processing lane ${currentLane}`);
-
-    // Check if this lane has already been processed
     const alreadyProcessed = pairs.some(p =>
       p.homeTeam.laneNumber === currentLane ||
       (p.awayTeam && p.awayTeam.laneNumber === currentLane)
     );
 
-    if (alreadyProcessed) {
-      console.log(`[LanePairs] Lane ${currentLane} already processed, skipping`);
-      continue;
-    }
+    if (alreadyProcessed) continue;
 
-    // Find the paired lane (could be previous or next)
-    let pairedLane: number;
-    if (currentLane % 2 === 0) {
-      pairedLane = currentLane - 1; // Even lane, look for previous odd lane
-    } else {
-      pairedLane = currentLane + 1; // Odd lane, look for next even lane
-    }
-
+    const pairedLane = currentLane % 2 === 0 ? currentLane - 1 : currentLane + 1;
     const pairedTeam = laneMap.get(pairedLane);
-    console.log(`[LanePairs] Looking for paired lane ${pairedLane} for lane ${currentLane}`, pairedTeam ? 'found' : 'not found');
 
     if (pairedTeam) {
-      // Create lane pair with proper ordering (lower number first)
       const [lowerLane, higherLane] = currentLane < pairedLane
         ? [currentLane, pairedLane]
         : [pairedLane, currentLane];
@@ -121,82 +93,69 @@ function groupTeamsByLanes(teams: TeamScores[]): LanePair[] {
         homeTeam,
         awayTeam
       });
-      console.log(`[LanePairs] Created pair for lanes ${lowerLane} & ${higherLane}`);
     } else {
-      // Handle single lane case
       pairs.push({
         lanes: `Lane ${currentLane}`,
         homeTeam: currentTeam,
         awayTeam: undefined
       });
-      console.log(`[LanePairs] Created single lane entry for lane ${currentLane}`);
     }
   }
 
-  // Sort pairs by the lowest lane number in each pair
-  const sortedPairs = pairs.sort((a, b) => {
-    const aLane = a.homeTeam.laneNumber;
-    const bLane = b.homeTeam.laneNumber;
-    return aLane - bLane;
-  });
-
-  console.log('[LanePairs] Final pairs:', sortedPairs.map(p => p.lanes));
-  return sortedPairs;
+  return pairs.sort((a, b) => a.homeTeam.laneNumber - b.homeTeam.laneNumber);
 }
 
-function organizeBowlerScores(scoresData: any[]): WeeklyScores {
-  const teams = new Map<number, TeamScores>();
+function organizeBowlerScores(scoresData: Game[]): WeeklyScores {
+  const teams = new Map<number, Omit<TeamScores, 'bowlers'> & { bowlers: Map<number, BowlerScores> }>();
 
   scoresData.forEach(game => {
-    game.teams.forEach((team: any) => {
-      if (!teams.has(team.teamId)) {
-        teams.set(team.teamId, {
-          teamId: team.teamId,
-          teamName: team.teamName,
-          teamNumber: team.teamNumber,
+    game.teams.forEach((team: Team & { bowlers: Array<Bowler & { score: number | null }> }) => {
+      if (!teams.has(team.id)) {
+        teams.set(team.id, {
+          teamId: team.id,
+          teamName: team.name,
+          teamNumber: team.number,
           laneNumber: team.laneNumber,
-          bowlers: new Map()
+          bowlers: new Map(),
         });
       }
 
-      team.bowlers.forEach((bowler: any) => {
-        const currentTeam = teams.get(team.teamId)!;
-        if (!currentTeam.bowlers.has(bowler.bowlerId)) {
-          currentTeam.bowlers.set(bowler.bowlerId, {
-            bowlerId: bowler.bowlerId,
-            bowlerName: bowler.bowlerName,
+      const currentTeam = teams.get(team.id)!;
+      team.bowlers.forEach(bowler => {
+        if (!currentTeam.bowlers.has(bowler.id)) {
+          currentTeam.bowlers.set(bowler.id, {
+            bowlerId: bowler.id,
+            bowlerName: bowler.name,
             position: bowler.position,
             isVacant: bowler.isVacant,
             isAbsent: bowler.isAbsent,
             isSub: bowler.isSub,
             handicap: bowler.handicap,
-            games: []
+            games: [],
           });
         }
 
-        const bowlerData = currentTeam.bowlers.get(bowler.bowlerId)!;
+        const bowlerData = currentTeam.bowlers.get(bowler.id)!;
         bowlerData.games.push({
           gameNumber: game.gameNumber,
-          score: bowler.score
+          score: bowler.score,
         });
       });
     });
   });
 
-  const organizedTeams = Array.from(teams.values()).map(team => ({
-    ...team,
-    bowlers: Array.from(team.bowlers.values())
-      .sort((a, b) => a.position - b.position)
-      .map(bowler => ({
-        ...bowler,
-        games: bowler.games.sort((a, b) => a.gameNumber - b.gameNumber)
-      }))
-  }));
-
   return {
-    weekNumber: scoresData[0]?.weekNumber || 0,
-    date: scoresData[0]?.date || "",
-    teams: organizedTeams.sort((a, b) => a.laneNumber - b.laneNumber)
+    weekNumber: scoresData[0]?.weekNumber ?? 0,
+    date: scoresData[0]?.date ?? "",
+    teams: Array.from(teams.values()).map(team => ({
+      ...team,
+      bowlers: Array.from(team.bowlers.values())
+        .sort((a, b) => a.position - b.position)
+        .map(bowler => ({
+          ...bowler,
+          games: bowler.games.sort((a, b) => a.gameNumber - b.gameNumber),
+        })),
+    })),
   };
 }
 
@@ -216,7 +175,7 @@ export default function LeagueScoresPage() {
     );
   }
 
-  const { data: gamesResponse, isLoading: loadingGames, error: gamesError } = useQuery<{ data: Game[] }>({
+  const { data: gamesResponse, isLoading: loadingGames, error: gamesError } = useQuery<ApiResponse<Game[]>>({
     queryKey: ["/api/games", { leagueId }],
     queryFn: async () => {
       const response = await fetch(`/api/games?leagueId=${leagueId}`);
@@ -228,15 +187,14 @@ export default function LeagueScoresPage() {
     enabled: !!leagueId,
   });
 
-  const games = gamesResponse?.data || [];
-
+  const games = gamesResponse?.data ?? [];
   const weeks = Array.from(new Set(games.map(g => g.weekNumber))).sort((a, b) => b - a);
 
   if (!selectedWeek && weeks.length > 0) {
     setSelectedWeek(weeks[0]);
   }
 
-  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery({
+  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<ApiResponse<Game[]>>({
     queryKey: ["/api/scores", { leagueId, weekNumber: selectedWeek }],
     queryFn: async () => {
       if (!selectedWeek) throw new Error('No week selected');
@@ -249,13 +207,13 @@ export default function LeagueScoresPage() {
     enabled: !!leagueId && !!selectedWeek,
   });
 
-  const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery<{ data: League }>({
+  const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery<ApiResponse<League>>({
     queryKey: [`/api/leagues/${leagueId}`],
     enabled: !!leagueId,
   });
 
   const league = leagueResponse?.data;
-  const formattedGames = scoresResponse?.data || [];
+  const formattedGames = scoresResponse?.data ?? [];
 
   if (loadingLeague || loadingGames || loadingScores) {
     return (
@@ -351,7 +309,7 @@ export default function LeagueScoresPage() {
           <div className="flex items-center gap-4 mb-6">
             <Select
               value={selectedWeek?.toString()}
-              onValueChange={(value) => setSelectedWeek(parseInt(value))}
+              onValueChange={(value: string) => setSelectedWeek(parseInt(value))}
             >
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Select week" />
@@ -428,22 +386,24 @@ export default function LeagueScoresPage() {
                                         )}
                                       </TableCell>
                                       <TableCell className="text-right text-muted-foreground">
-                                        {bowler.handicap || "—"}
+                                        {bowler.handicap ?? "—"}
                                       </TableCell>
                                       {bowler.games.map((game) => (
                                         <TableCell
                                           key={game.gameNumber}
                                           className={cn(
                                             "text-right font-medium",
-                                            game.score >= 250 && "text-green-600",
-                                            game.score >= 200 && game.score < 250 && "text-primary"
+                                            game.score !== null && [
+                                              game.score >= 250 && "text-green-600",
+                                              game.score >= 200 && game.score < 250 && "text-primary"
+                                            ]
                                           )}
                                         >
                                           <Tooltip>
                                             <TooltipTrigger asChild>
-                                              <span>{game.score || "—"}</span>
+                                              <span>{game.score ?? "—"}</span>
                                             </TooltipTrigger>
-                                            {game.score >= 200 && (
+                                            {game.score !== null && game.score >= 200 && (
                                               <TooltipContent>
                                                 {game.score >= 250 ? "Perfect game approaching!" : "Great game!"}
                                               </TooltipContent>
