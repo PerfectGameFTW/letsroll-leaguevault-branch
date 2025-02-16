@@ -1,3 +1,42 @@
+const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
+const SHUTDOWN_TIMEOUT = 30000; // 30 seconds
+
+// Define phase tracking interfaces
+interface StartupPhases {
+  cleanup: boolean;
+  database: boolean;
+  port: boolean;
+  server: boolean;
+  vite: boolean;
+  final: boolean;
+}
+
+interface ShutdownPhases {
+  initiated: boolean;
+  requests_drained: boolean;
+  port_status_cleaned: boolean;
+  database_cleaned: boolean;
+  server_closed: boolean;
+}
+
+// Initialize phase tracking
+const startupPhases: StartupPhases = {
+  cleanup: false,
+  database: false,
+  port: false,
+  server: false,
+  vite: false,
+  final: false
+};
+
+const shutdownPhases: ShutdownPhases = {
+  initiated: false,
+  requests_drained: false,
+  port_status_cleaned: false,
+  database_cleaned: false,
+  server_closed: false
+};
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes.js";
 import { setupVite } from "./vite.js";
@@ -34,10 +73,6 @@ const PORT_STATUS_FILE = '.port-status';
 // Add constant for port status cleanup
 const STALE_PORT_TIMEOUT = 60000; // 60 seconds
 
-// Basic middleware setup
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-
 // Track active requests for graceful shutdown
 let activeRequests = 0;
 const requestTracker = (req: Request, res: Response, next: NextFunction) => {
@@ -49,6 +84,11 @@ const requestTracker = (req: Request, res: Response, next: NextFunction) => {
 };
 
 app.use(requestTracker);
+
+// Basic middleware setup
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
 
 // Port status monitoring middleware
 app.use(async (req: Request, res: Response, next: NextFunction) => {
@@ -159,7 +199,7 @@ const cleanupStalePortStatus = async () => {
   }
 };
 
-const cleanupPortStatus = async () => {
+async function cleanupPortStatus() {
   try {
     // Attempt to read existing port status
     const existingStatus = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8')
@@ -189,9 +229,8 @@ const cleanupPortStatus = async () => {
     console.error('[Server] Error during port status cleanup:', error);
     throw error;
   }
-};
+}
 
-// Enhanced port availability check
 async function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const tester = net.createServer()
@@ -218,7 +257,6 @@ async function isPortAvailable(port: number): Promise<boolean> {
   });
 }
 
-// Enhanced port finding with better error handling
 async function findAvailablePort(startPort: number, maxAttempts: number = 10): Promise<number> {
   console.log(`[Server] Looking for available port starting from ${startPort}...`);
 
@@ -271,7 +309,48 @@ function waitForServerReady(port: number): Promise<void> {
   });
 }
 
-// Update the startServer function to include startup phases
+// Add retry mechanism for database connection
+async function testDatabaseConnectionWithRetry(maxRetries = 3, backoffMs = 1000): Promise<void> {
+  let attempt = 0;
+
+  while (attempt < maxRetries) {
+    try {
+      await testConnection();
+      console.log('[Server] Database connection successful');
+      return;
+    } catch (error) {
+      attempt++;
+      console.error(`[Server] Database connection attempt ${attempt}/${maxRetries} failed:`, error);
+
+      if (attempt === maxRetries) {
+        throw new Error(`Database connection failed after ${maxRetries} attempts`);
+      }
+
+      // Exponential backoff
+      const delay = backoffMs * Math.pow(2, attempt - 1);
+      console.log(`[Server] Waiting ${delay}ms before next attempt...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
+// Enhanced port status validation
+async function validateStartupPhase(currentPhase: keyof typeof startupPhases, requiredPhases: (keyof typeof startupPhases)[] = []): Promise<void> {
+  // Verify required phases are complete
+  const incompletePhases = requiredPhases.filter(phase => !startupPhases[phase]);
+
+  if (incompletePhases.length > 0) {
+    throw new Error(`Cannot proceed with ${currentPhase}: required phases not complete: ${incompletePhases.join(', ')}`);
+  }
+
+  // Update current phase status
+  startupPhases[currentPhase] = true;
+
+  // Log phase completion
+  console.log(`[Server] Startup phase '${currentPhase}' completed successfully`);
+}
+
+// Update the startServer function to use new safeguards
 async function startServer() {
   try {
     console.log('[Server] Starting server initialization...');
@@ -279,17 +358,19 @@ async function startServer() {
     // Phase 1: Cleanup
     console.log('[Server] Phase 1: Cleaning up stale port status...');
     await cleanupPortStatus();
+    await validateStartupPhase('cleanup');
 
-    // Phase 2: Database
+    // Phase 2: Database with retry
     console.log('[Server] Phase 2: Testing database connection...');
-    await testConnection();
-    console.log('[Server] Database connection successful');
+    await testDatabaseConnectionWithRetry();
+    await validateStartupPhase('database', ['cleanup']);
 
     // Phase 3: Port allocation
     console.log('[Server] Phase 3: Allocating port...');
     const preferredPort = parseInt(process.env.PORT || '5000');
     const port = await findAvailablePort(preferredPort);
     serverPort = port;
+    await validateStartupPhase('port', ['cleanup', 'database']);
 
     // Initial port status - only database is ready
     await writePortStatus(port, false, { database: true });
@@ -301,11 +382,12 @@ async function startServer() {
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Server startup timeout'));
-      }, 30000);
+      }, STARTUP_PHASE_TIMEOUT);
 
       server.listen(port, HOST, async () => {
         clearTimeout(timeout);
         console.log(`[Server] Server is running at http://${HOST}:${port}`);
+        await validateStartupPhase('server', ['cleanup', 'database', 'port']);
 
         // Update status - server is now ready
         await writePortStatus(port, false, { database: true, server: true });
@@ -328,10 +410,16 @@ async function startServer() {
     // Phase 5: Vite setup (development only)
     if (process.env.NODE_ENV !== "production") {
       console.log('[Server] Phase 5: Setting up Vite...');
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Vite setup timeout'));
+        }, STARTUP_PHASE_TIMEOUT);
+
         const checkVite = setInterval(() => {
           if (viteSetupComplete) {
             clearInterval(checkVite);
+            clearTimeout(timeout);
+            validateStartupPhase('vite', ['cleanup', 'database', 'port', 'server']);
             writePortStatus(port, false, { database: true, server: true, vite: true });
             resolve();
           }
@@ -341,35 +429,49 @@ async function startServer() {
 
     // Phase 6: Final initialization
     console.log('[Server] Phase 6: Completing initialization...');
-    await writePortStatus(port, true, { database: true, server: true, vite: true });
+    await validateStartupPhase('final', ['cleanup', 'database', 'port', 'server', 'vite']);
+    await writePortStatus(port, true, { database: true, server: true, vite: viteSetupComplete });
     isServerReady = true;
     console.log(`[Server] Server is fully initialized and ready on port ${port}`);
 
-    // Initialize league schedulers
-    try {
-      const leagues = await storage.getLeagues();
-      console.log(`[Server] Found ${leagues.length} leagues`);
+    // Initialize league schedulers with retry mechanism
+    let retryCount = 0;
+    const maxRetries = 3;
 
-      for (const league of leagues) {
-        if (league.active) {
-          console.log(`[Server] Setting up score scheduler for league: ${league.name}`);
-          const scheduler = new ScoreSchedulerService(league.id);
-          const dayMap: { [key: string]: number } = {
-            'monday': 1, 'tuesday': 2, 'wednesday': 3,
-            'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0
-          };
+    while (retryCount < maxRetries) {
+      try {
+        const leagues = await storage.getLeagues();
+        console.log(`[Server] Found ${leagues.length} leagues`);
 
-          const dayNumber = dayMap[league.weekDay.toLowerCase()];
-          const cronExpression = `0 22 * * ${dayNumber}`;
-          scheduler.scheduleJob(
-            cronExpression,
-            process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID!,
-            process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID!
-          );
+        for (const league of leagues) {
+          if (league.active) {
+            console.log(`[Server] Setting up score scheduler for league: ${league.name}`);
+            const scheduler = new ScoreSchedulerService(league.id);
+            const dayMap: { [key: string]: number } = {
+              'monday': 1, 'tuesday': 2, 'wednesday': 3,
+              'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0
+            };
+
+            const dayNumber = dayMap[league.weekDay.toLowerCase()];
+            const cronExpression = `0 22 * * ${dayNumber}`;
+            scheduler.scheduleJob(
+              cronExpression,
+              process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID!,
+              process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID!
+            );
+          }
+        }
+        break; // Success, exit retry loop
+      } catch (error) {
+        retryCount++;
+        console.error(`[Server] Error setting up score schedulers (attempt ${retryCount}/${maxRetries}):`, error);
+        if (retryCount === maxRetries) {
+          console.error('[Server] Max retries reached for score scheduler setup');
+          // Continue server startup even if scheduler setup fails
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
         }
       }
-    } catch (error) {
-      console.error('[Server] Error setting up score schedulers:', error);
     }
   } catch (error) {
     console.error('[Server] Fatal error during startup:', error);
@@ -381,96 +483,108 @@ async function startServer() {
   }
 }
 
-// Enhance shutdown function with active request tracking
+// Enhanced shutdown function with phase tracking
 async function shutdown() {
   console.log('[Server] Initiating graceful shutdown...');
+  console.log(`[Server] Active requests: ${activeRequests}`);
 
-  let shutdownTimeout: NodeJS.Timeout;
+  const startTime = Date.now();
+  shutdownPhases.initiated = true;
+  let shutdownTimeoutId: NodeJS.Timeout;
 
   try {
     // Set a maximum wait time for active requests
     const forceShutdown = new Promise((_, reject) => {
-      shutdownTimeout = setTimeout(() => {
-        reject(new Error('Shutdown timeout waiting for active requests'));
+      shutdownTimeoutId = setTimeout(() => {
+        const timeElapsed = Date.now() - startTime;
+        reject(new Error(`Shutdown timeout after ${timeElapsed}ms with ${activeRequests} pending requests`));
       }, 10000); // 10 second timeout
     });
 
-    // Wait for active requests to complete
+    // Wait for active requests to complete with progress logging
     const gracefulShutdown = new Promise<void>(async (resolve) => {
       console.log(`[Server] Waiting for ${activeRequests} active requests to complete...`);
 
       while (activeRequests > 0) {
+        const elapsed = Date.now() - startTime;
+        console.log(`[Server] Still waiting on ${activeRequests} requests after ${elapsed}ms`);
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
+      console.log('[Server] All active requests completed');
+      shutdownPhases.requests_drained = true;
       resolve();
     });
 
     // Wait for either graceful shutdown or timeout
     await Promise.race([gracefulShutdown, forceShutdown]);
-    clearTimeout(shutdownTimeout);
 
-    // Remove port status file
-    try {
-      await fs.promises.unlink(PORT_STATUS_FILE);
-      console.log('[Server] Removed port status file');
-    } catch (error) {
-      // Ignore error if file doesn't exist
-      console.log('[Server] Port status file already removed');
+
+    // Remove port status file with retries
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await fs.promises.unlink(PORT_STATUS_FILE);
+        console.log('[Server] Successfully removed port status file');
+        shutdownPhases.port_status_cleaned = true;
+        break;
+      } catch (error) {
+        if (retries === 1) {
+          console.error('[Server] Failed to remove port status file after all retries');
+        } else {
+          console.log(`[Server] Retry ${4 - retries}/3 removing port status file`);
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        retries--;
+      }
     }
 
     // Cleanup database connections
-    await dbCleanup();
-    console.log('[Server] Database connections cleaned up');
+    try {
+      await dbCleanup();
+      console.log('[Server] Database connections cleaned up successfully');
+      shutdownPhases.database_cleaned = true;
+    } catch (error) {
+      console.error('[Server] Error cleaning up database connections:', error);
+      throw error;
+    }
 
-    // Close the server with a timeout
+    // Close the server with a timeout and detailed error handling
     await new Promise<void>((resolve, reject) => {
       const serverTimeout = setTimeout(() => {
-        reject(new Error('Server close timeout'));
+        reject(new Error('Server close operation timed out after 5000ms'));
       }, 5000);
 
       server.close((err) => {
         clearTimeout(serverTimeout);
         if (err) {
+          console.error('[Server] Error while closing server:', err);
           reject(err);
         } else {
+          console.log('[Server] Server closed successfully');
+          shutdownPhases.server_closed = true;
           resolve();
         }
       });
     });
 
-    console.log('[Server] Server closed successfully');
+    const totalTime = Date.now() - startTime;
+    console.log(`[Server] Graceful shutdown completed in ${totalTime}ms`);
+    console.log('[Server] Final shutdown phase status:', shutdownPhases);
     process.exit(0);
   } catch (error) {
-    console.error('[Server] Error during shutdown:', error);
+    const totalTime = Date.now() - startTime;
+    console.error(`[Server] Error during shutdown after ${totalTime}ms:`, error);
+    console.error('[Server] Shutdown phases at error:', shutdownPhases);
     process.exit(1);
+  } finally {
+    if (shutdownTimeoutId) {
+      clearTimeout(shutdownTimeoutId);
+    }
   }
 }
 
-// Add cleanup handler with timeout
-const SHUTDOWN_TIMEOUT = 30000; // 30 seconds
-
-process.on('SIGTERM', () => {
-  console.log('[Server] Received SIGTERM signal');
-  const forceShutdown = setTimeout(() => {
-    console.error('[Server] Forced shutdown due to timeout');
-    process.exit(1);
-  }, SHUTDOWN_TIMEOUT);
-
-  shutdown().finally(() => clearTimeout(forceShutdown));
-});
-
-process.on('SIGINT', () => {
-  console.log('[Server] Received SIGINT signal');
-  const forceShutdown = setTimeout(() => {
-    console.error('[Server] Forced shutdown due to timeout');
-    process.exit(1);
-  }, SHUTDOWN_TIMEOUT);
-
-  shutdown().finally(() => clearTimeout(forceShutdown));
-});
-
-// Enhanced health check endpoint
+// Update health check endpoint to include shutdown status
 app.get('/api/health', async (req, res) => {
   try {
     await testConnection();
@@ -480,6 +594,10 @@ app.get('/api/health', async (req, res) => {
       ready: isServerReady,
       mode: process.env.NODE_ENV,
       timestamp: new Date().toISOString(),
+      phases: {
+        startup: startupPhases,
+        shutdown: shutdownPhases
+      },
       database: {
         connected: true,
         url: process.env.DATABASE_URL ? 'configured' : 'missing'
@@ -500,8 +618,12 @@ app.get('/api/health', async (req, res) => {
   } catch (error) {
     console.error('[Server] Health check error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({
+    res.status(503).json({
       status: 'unhealthy',
+      phases: {
+        startup: startupPhases,
+        shutdown: shutdownPhases
+      },
       error: {
         message: errorMessage,
         code: error instanceof Error ? error.name : 'UnknownError',
@@ -568,4 +690,25 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     });
   }
   next(err);
+});
+
+// Add cleanup handler with timeout
+process.on('SIGTERM', () => {
+  console.log('[Server] Received SIGTERM signal');
+  const forceShutdownTimeout = setTimeout(() => {
+    console.error('[Server] Forced shutdown due to timeout');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+
+  shutdown().finally(() => clearTimeout(forceShutdownTimeout));
+});
+
+process.on('SIGINT', () => {
+  console.log('[Server] Received SIGINT signal');
+  const forceShutdownTimeout = setTimeout(() => {
+    console.error('[Server] Forced shutdown due to timeout');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT);
+
+  shutdown().finally(() => clearTimeout(forceShutdownTimeout));
 });
