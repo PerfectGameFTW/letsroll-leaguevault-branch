@@ -79,7 +79,11 @@ function LoadingSkeleton() {
   );
 }
 
-function ErrorDisplay({ errors }: { errors: Array<{ type: string; error: unknown }> }) {
+interface ErrorDisplayProps {
+  errors: Array<{ type: string; error: unknown }>;
+}
+
+function ErrorDisplay({ errors }: ErrorDisplayProps) {
   return (
     <div className="space-y-4">
       {errors.map(({ type, error }) => (
@@ -97,7 +101,7 @@ function ErrorDisplay({ errors }: { errors: Array<{ type: string; error: unknown
 export default function LeagueScoresPage() {
   const params = useParams();
   const leagueId = params.leagueId ? parseInt(params.leagueId) : undefined;
-  const [selectedWeek, setSelectedWeek] = useState<number>();
+  const [selectedWeek, setSelectedWeek] = useState<number | undefined>();
 
   // Early return for invalid league ID
   if (!leagueId) {
@@ -130,11 +134,30 @@ export default function LeagueScoresPage() {
 
   // Set initial week when data loads
   useMemo(() => {
-    if (!selectedWeek && weeks.length > 0) {
+    if (selectedWeek === undefined && weeks.length > 0) {
       console.log('[LeagueScoresPage] Setting initial week:', weeks[0]);
       setSelectedWeek(weeks[0]);
     }
   }, [weeks, selectedWeek]);
+
+  // Week selection section
+  const weekSelector = (
+    <Select
+      value={selectedWeek?.toString()}
+      onValueChange={(value: string) => setSelectedWeek(parseInt(value))}
+    >
+      <SelectTrigger className="w-[180px]">
+        <SelectValue placeholder="Select week" />
+      </SelectTrigger>
+      <SelectContent>
+        {weeks.map((week: number) => (
+          <SelectItem key={week} value={week.toString()}>
+            Week {week}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
   // Memoize score organization to prevent unnecessary recalculations
   const weeklyScores = useMemo(() => {
@@ -233,21 +256,7 @@ export default function LeagueScoresPage() {
           </div>
 
           <div className="flex items-center gap-4 mb-6">
-            <Select
-              value={selectedWeek?.toString()}
-              onValueChange={(value: string) => setSelectedWeek(parseInt(value))}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select week" />
-              </SelectTrigger>
-              <SelectContent>
-                {weeks.map((week) => (
-                  <SelectItem key={week} value={week.toString()}>
-                    Week {week}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {weekSelector}
             {selectedWeek && (
               <p className="text-sm text-muted-foreground">
                 Showing scores for Week {selectedWeek}

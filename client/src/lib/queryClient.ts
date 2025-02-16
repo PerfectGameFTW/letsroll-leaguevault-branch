@@ -45,11 +45,7 @@ export async function apiRequest(
       ok: res.ok
     });
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      console.error(`[API] Error response from ${url}:`, errorText);
-      throw new Error(`${res.status}: ${errorText}`);
-    }
+    await throwIfResNotOk(res);
 
     // Verify JSON response
     if (!contentType || !contentType.includes("application/json")) {
@@ -66,6 +62,7 @@ export async function apiRequest(
 }
 
 type UnauthorizedBehavior = "returnNull" | "throw";
+
 export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
@@ -108,7 +105,7 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       staleTime: 1000 * 60 * 5, // Data remains fresh for 5 minutes
       gcTime: 1000 * 60 * 30, // Cache garbage collection after 30 minutes
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false, // Disable automatic refetch on window focus
       refetchOnMount: true,
       refetchOnReconnect: true,
       retry: (failureCount, error) => {
@@ -119,9 +116,9 @@ export const queryClient = new QueryClient({
           // Don't retry on content type mismatch
           if (error.message.includes('Expected JSON response')) return false;
         }
-        return failureCount < 3;
+        return failureCount < 2; // Only retry once
       },
-      retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 30000),
+      retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 5000), // Max 5 second delay
     },
     mutations: {
       retry: false,
@@ -132,6 +129,7 @@ export const queryClient = new QueryClient({
   },
 });
 
+// Helper functions for query management
 export const prefetchQueries = async () => {
   await Promise.all([
     queryClient.prefetchQuery({ queryKey: ['/api/leagues'] }),

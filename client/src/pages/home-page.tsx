@@ -3,7 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
-import type { Bowler, League } from "@shared/schema";
+import type { Bowler, League, ApiResponse } from "@shared/schema";
+
+// Cache time constants
+const CACHE_TIME = 1000 * 60 * 5; // 5 minutes
 
 function LoadingState() {
   return (
@@ -27,14 +30,21 @@ function ErrorState({ error }: { error: Error }) {
 }
 
 export default function HomePage() {
-  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<{ data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<ApiResponse<Bowler[]>>({
     queryKey: ["/api/bowlers"],
+    staleTime: CACHE_TIME,
+    gcTime: CACHE_TIME * 2,
+    retry: 1,
   });
 
-  const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
+    staleTime: CACHE_TIME,
+    gcTime: CACHE_TIME * 2,
+    retry: 1,
   });
 
+  // Show loading state only when initial data is loading
   if (loadingBowlers || loadingLeagues) {
     return <LoadingState />;
   }
@@ -46,7 +56,7 @@ export default function HomePage() {
 
   const bowlers = bowlersResponse?.data || [];
   const leagues = leaguesResponse?.data || [];
-  const activeBowlers = bowlers.filter(b => b.active).length;
+  const activeBowlers = bowlers.filter((b: Bowler) => b.active).length;
   const totalLeagues = leagues.length;
 
   return (

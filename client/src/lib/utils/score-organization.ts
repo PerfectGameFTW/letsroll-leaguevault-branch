@@ -63,11 +63,19 @@ export function organizeBowlerScores(scoresData: ScoreWithRelations[]): WeeklySc
       teamEntry.bowlers.set(score.bowler.id, bowlerEntry);
     }
 
-    // Add game score
-    bowlerEntry.games.push({
-      gameNumber: score.game.gameNumber,
-      score: score.score,
-    });
+    // Add game score with pre-sorting by game number
+    const insertIndex = bowlerEntry.games.findIndex(g => g.gameNumber > score.game.gameNumber);
+    if (insertIndex === -1) {
+      bowlerEntry.games.push({
+        gameNumber: score.game.gameNumber,
+        score: score.score,
+      });
+    } else {
+      bowlerEntry.games.splice(insertIndex, 0, {
+        gameNumber: score.game.gameNumber,
+        score: score.score,
+      });
+    }
   }
 
   const result = {
@@ -77,11 +85,8 @@ export function organizeBowlerScores(scoresData: ScoreWithRelations[]): WeeklySc
       ...team,
       bowlers: Array.from(team.bowlers.values())
         .sort((a, b) => a.position - b.position)
-        .map(bowler => ({
-          ...bowler,
-          games: bowler.games.sort((a, b) => a.gameNumber - b.gameNumber),
-        })),
-    })),
+    }))
+    .sort((a, b) => a.teamNumber - b.teamNumber),
   };
 
   console.log('[organizeBowlerScores] Processed data:', {
@@ -97,12 +102,22 @@ export function organizeBowlerScores(scoresData: ScoreWithRelations[]): WeeklySc
   return result;
 }
 
-// Helper function to calculate series total
+// Helper function to calculate series total with memoization support
+const seriesCache = new WeakMap<Array<{ score: number | null }>, number>();
+
 export function calculateSeriesTotal(games: Array<{ score: number | null }>): number {
+  // Check cache first
+  if (seriesCache.has(games)) {
+    return seriesCache.get(games)!;
+  }
+
   const total = games
     .map(g => g.score)
     .filter((score): score is number => score !== null)
     .reduce((sum, score) => sum + score, 0);
+
+  // Cache the result
+  seriesCache.set(games, total);
 
   console.log('[calculateSeriesTotal] Calculated total:', {
     gamesCount: games.length,
