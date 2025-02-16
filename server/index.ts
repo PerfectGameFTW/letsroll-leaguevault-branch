@@ -6,16 +6,23 @@ import { createServer } from 'http';
 import { ScoreSchedulerService } from './services/score-scheduler.js';
 import { storage } from './storage.js';
 import path from 'path';
+import net from 'net';
+import fs from 'fs';
 
 const app = express();
 const server = createServer(app);
 let viteSetupComplete = false;
+let serverPort: number | null = null;
+let isServerReady = false;
+
+// Create a status file to communicate with the workflow
+const PORT_STATUS_FILE = '.port-status';
 
 // Basic middleware setup
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Enhanced request logging
+// Enhanced request logging with port information
 app.use((req, res, next) => {
   if (req.path.includes('/@vite') || req.path.includes('vite-hmr')) {
     return next();
@@ -23,7 +30,7 @@ app.use((req, res, next) => {
 
   const start = Date.now();
   const requestId = Math.random().toString(36).substring(7);
-  console.log(`[${requestId}] ${req.method} ${req.originalUrl}`);
+  console.log(`[${requestId}] ${req.method} ${req.originalUrl} on port ${serverPort}`);
 
   if (req.body && Object.keys(req.body).length > 0) {
     console.log(`[${requestId}] Request body:`, JSON.stringify(req.body, null, 2));
@@ -41,13 +48,96 @@ app.use((req, res, next) => {
   next();
 });
 
-// Add health check endpoint
+// Function to write port status
+async function writePortStatus(port: number, ready: boolean = false) {
+  try {
+    await fs.promises.writeFile(PORT_STATUS_FILE, JSON.stringify({
+      port,
+      ready,
+      timestamp: new Date().toISOString()
+    }));
+  } catch (error) {
+    console.error('[Server] Error writing port status:', error);
+  }
+}
+
+// Function to check if a port is available
+function isPortAvailable(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const tester = net.createServer()
+      .once('error', () => {
+        resolve(false);
+      })
+      .once('listening', () => {
+        tester.once('close', () => resolve(true));
+        tester.close();
+      })
+      .listen(port, '0.0.0.0');
+  });
+}
+
+// Find an available port with retries
+async function findAvailablePort(startPort: number, maxAttempts: number = 10): Promise<number> {
+  console.log(`[Server] Looking for available port starting from ${startPort}...`);
+
+  for (let port = startPort; port < startPort + maxAttempts; port++) {
+    const isAvailable = await isPortAvailable(port);
+    if (isAvailable) {
+      console.log(`[Server] Found available port: ${port}`);
+      await writePortStatus(port); // Write initial port status
+      return port;
+    }
+    console.log(`[Server] Port ${port} is in use, trying next port...`);
+  }
+
+  throw new Error(`No available ports found between ${startPort} and ${startPort + maxAttempts - 1}`);
+}
+
+// Function to wait for the server to be ready
+function waitForServerReady(port: number): Promise<void> {
+  return new Promise((resolve) => {
+    const checkInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`http://localhost:${port}/api/health`);
+        if (response.ok) {
+          clearInterval(checkInterval);
+          isServerReady = true;
+          await writePortStatus(port, true); // Update status when server is ready
+          console.log(`[Server] Server is ready on port ${port}`);
+          resolve();
+        }
+      } catch (error) {
+        // Ignore fetch errors while waiting
+      }
+    }, 100);
+
+    // Timeout after 30 seconds
+    setTimeout(() => {
+      clearInterval(checkInterval);
+      console.log(`[Server] Server readiness check timed out on port ${port}`);
+      resolve();
+    }, 30000);
+  });
+}
+
+// Update the health check endpoint to be more detailed
 app.get('/api/health', async (req, res) => {
   try {
     await testConnection();
-    sendSuccess(res, { status: 'healthy', database: 'connected' });
+    res.json({
+      status: 'healthy',
+      port: serverPort,
+      ready: isServerReady,
+      mode: process.env.NODE_ENV,
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
-    sendError(res, 'Database connection failed', 500);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({
+      status: 'unhealthy',
+      error: errorMessage,
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
@@ -95,49 +185,42 @@ if (process.env.NODE_ENV !== "production") {
 
 async function startServer() {
   try {
+    // Remove any existing port status file
+    try {
+      await fs.promises.unlink(PORT_STATUS_FILE);
+    } catch (error) {
+      // Ignore error if file doesn't exist
+    }
+
     console.log('[Server] Testing database connection...');
     await testConnection();
     console.log('[Server] Database connection successful');
 
-    // Try different ports if the default is in use
-    const tryPort = async (startPort: number, maxAttempts: number = 5): Promise<number> => {
-      for (let port = startPort; port < startPort + maxAttempts; port++) {
-        try {
-          await new Promise((resolve, reject) => {
-            const tempServer = createServer();
-            tempServer.listen(port)
-              .once('listening', () => {
-                tempServer.close(() => resolve(port));
-              })
-              .once('error', (err: any) => {
-                if (err.code === 'EADDRINUSE') {
-                  console.log(`[Server] Port ${port} is in use, trying next port...`);
-                  resolve(0);
-                } else {
-                  reject(err);
-                }
-              });
-          });
-          return port;
-        } catch (err) {
-          console.error(`[Server] Error trying port ${port}:`, err);
-        }
-      }
-      throw new Error('No available ports found');
-    };
-
     const preferredPort = parseInt(process.env.PORT || '5000');
-    const port = await tryPort(preferredPort);
+    const port = await findAvailablePort(preferredPort);
+    serverPort = port;
     const HOST = '0.0.0.0';
 
-    server.listen(port, HOST, () => {
-      console.log(`[Server] Server is running at http://${HOST}:${port}`);
-      if (process.env.NODE_ENV !== "production") {
-        console.log('[Server] Running in development mode with Vite middleware');
-      } else {
-        console.log('[Server] Running in production mode');
-      }
+    await new Promise<void>((resolve, reject) => {
+      server.listen(port, HOST, () => {
+        console.log(`[Server] Server is running at http://${HOST}:${port}`);
+        if (process.env.NODE_ENV !== "production") {
+          console.log('[Server] Running in development mode with Vite middleware');
+        } else {
+          console.log('[Server] Running in production mode');
+        }
+        resolve();
+      });
+
+      server.once('error', (err) => {
+        console.error('[Server] Failed to start server:', err);
+        reject(err);
+      });
     });
+
+    // Wait for the server to be fully ready
+    await waitForServerReady(port);
+    console.log(`[Server] Server is fully initialized and ready on port ${port}`);
 
     // Initialize league schedulers after server starts
     try {
@@ -192,17 +275,24 @@ async function shutdown() {
   console.log('[Server] Initiating graceful shutdown...');
 
   try {
+    // Remove port status file
+    try {
+      await fs.promises.unlink(PORT_STATUS_FILE);
+    } catch (error) {
+      // Ignore error if file doesn't exist
+    }
+
     // Cleanup database connections first
     await dbCleanup();
     console.log('[Server] Database connections cleaned up');
 
     // Close the server
-    await new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       server.close((err) => {
         if (err) {
           reject(err);
         } else {
-          resolve(true);
+          resolve();
         }
       });
     });
@@ -237,12 +327,3 @@ process.on('SIGINT', () => {
 
   shutdown().finally(() => clearTimeout(forceShutdown));
 });
-
-// Helper functions
-function sendSuccess(res: Response, data: any) {
-  res.status(200).json({ success: true, data });
-}
-
-function sendError(res: Response, message: string, statusCode: number = 500) {
-  res.status(statusCode).json({ success: false, error: message });
-}
