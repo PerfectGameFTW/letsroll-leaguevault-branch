@@ -1,55 +1,90 @@
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { format } from "date-fns";
-import { AlertCircle, ArrowLeft } from "lucide-react";
+import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
 import { Link } from "wouter";
-import type { DetailedScore } from "@shared/schema";
 import type { ApiResponse } from "@/lib/types/api";
 
-interface ScoresByBowler {
+interface Game {
+  score: number | null;
+  handicap: number | null;
+}
+
+interface Bowler {
   bowlerId: number;
   bowlerName: string;
+  handicap: number;
+  games: Game[];
+  isVacant: boolean;
+  isAbsent: boolean;
+  isSub: boolean;
+  position: number;
+}
+
+interface Team {
   teamId: number;
   teamName: string;
-  date: string;
-  weekNumber: number;
-  games: DetailedScore[];
-  seriesTotal: number | null;
+  teamNumber: number;
+  bowlers: Bowler[];
+}
+
+interface LanePair {
+  lanes: string;
+  homeTeam: Team;
+  awayTeam: Team | null;
 }
 
 export default function ScoresPage() {
   const { leagueId, weekNumber } = useParams<{ leagueId: string; weekNumber: string }>();
-  const parsedLeagueId = parseInt(leagueId);
-  const parsedWeekNumber = parseInt(weekNumber);
 
-  const { data: scoresResponse, isLoading, error } = useQuery<ApiResponse<ScoresByBowler[]>>({
-    queryKey: ['/api/scores', parsedLeagueId, parsedWeekNumber],
+  // Early validation of parameters
+  if (!leagueId || !weekNumber) {
+    return (
+      <Layout>
+        <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
+          <AlertCircle className="h-5 w-5" />
+          <p>Missing required parameters</p>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Log parameters for debugging
+  console.log('[ScoresPage] Request parameters:', {
+    leagueId,
+    weekNumber,
+    url: `/api/scores?leagueId=${leagueId}&weekNumber=${weekNumber}`
+  });
+
+  const { data: scoresResponse, isLoading, error } = useQuery<ApiResponse<LanePair[]>>({
+    queryKey: ['/api/scores', leagueId, weekNumber],
     queryFn: async () => {
-      if (isNaN(parsedLeagueId) || isNaN(parsedWeekNumber)) {
-        throw new Error('Invalid league ID or week number');
-      }
+      const queryParams = new URLSearchParams({
+        leagueId: leagueId.toString(),
+        weekNumber: weekNumber.toString()
+      });
 
-      const response = await fetch(`/api/scores?leagueId=${parsedLeagueId}&weekNumber=${parsedWeekNumber}`);
+      const url = `/api/scores?${queryParams.toString()}`;
+      console.log('[ScoresPage] Fetching scores from:', url);
+
+      const response = await fetch(url);
       if (!response.ok) {
-        throw new Error('Failed to fetch scores');
+        const errorData = await response.json();
+        console.error('[ScoresPage] API error:', errorData);
+        throw new Error(errorData.error?.message || 'Failed to fetch scores');
       }
-      const data: ApiResponse<ScoresByBowler[]> = await response.json();
-      if (!data.success) {
-        throw new Error(data.error?.message || 'Failed to fetch scores');
-      }
-      return data;
+      return response.json();
     },
-    enabled: !isNaN(parsedLeagueId) && !isNaN(parsedWeekNumber),
+    enabled: !!leagueId && !!weekNumber,
   });
 
   if (isLoading) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
-          <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+          <Loader2 className="h-8 w-8 animate-spin" />
         </div>
       </Layout>
     );
@@ -59,7 +94,10 @@ export default function ScoresPage() {
     return (
       <Layout>
         <div className="space-y-4">
-          <Link href={`/leagues/${leagueId}`} className="text-muted-foreground hover:text-foreground flex items-center mb-4">
+          <Link
+            href={`/leagues/${leagueId}`}
+            className="text-muted-foreground hover:text-foreground flex items-center mb-4"
+          >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to League
           </Link>
@@ -75,7 +113,10 @@ export default function ScoresPage() {
   return (
     <Layout>
       <div className="space-y-6">
-        <Link href={`/leagues/${leagueId}`} className="text-muted-foreground hover:text-foreground flex items-center">
+        <Link
+          href={`/leagues/${leagueId}`}
+          className="text-muted-foreground hover:text-foreground flex items-center"
+        >
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to League
         </Link>
@@ -83,66 +124,93 @@ export default function ScoresPage() {
         <div>
           <h1 className="text-2xl font-bold mb-2">Weekly Scores</h1>
           <p className="text-muted-foreground mb-6">
-            Week {weekNumber} Scores and Statistics
+            Week {weekNumber} Scores
           </p>
         </div>
 
-        <Card className="p-6">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Week</TableHead>
-                <TableHead>Bowler</TableHead>
-                <TableHead>Team</TableHead>
-                <TableHead className="text-right">Game 1</TableHead>
-                <TableHead className="text-right">Game 2</TableHead>
-                <TableHead className="text-right">Game 3</TableHead>
-                <TableHead className="text-right">Series</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {scoresResponse.data.map((bowler) => {
-                const validScores = bowler.games
-                  .map(g => g.score)
-                  .filter((score): score is number => score !== null);
+        <div className="grid gap-6">
+          {scoresResponse.data.map((lanePair, index) => (
+            <Card key={index}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg font-semibold text-primary">
+                  {lanePair.lanes}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-8">
+                  {[lanePair.homeTeam, lanePair.awayTeam].map((team, teamIndex) => (
+                    team && (
+                      <div key={team.teamId} className="space-y-2">
+                        <h4 className="font-medium">
+                          {team.teamName}
+                        </h4>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[200px]">Bowler</TableHead>
+                              <TableHead className="text-right">Handicap</TableHead>
+                              <TableHead className="text-right">Game 1</TableHead>
+                              <TableHead className="text-right">Game 2</TableHead>
+                              <TableHead className="text-right">Game 3</TableHead>
+                              <TableHead className="text-right">Series</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {team.bowlers.sort((a, b) => a.position - b.position).map((bowler) => {
+                              const seriesTotal = bowler.games
+                                .filter(game => game && game.score !== null)
+                                .reduce((sum, game) => sum + (game.score || 0), 0);
 
-                const seriesTotal = validScores.length > 0 
-                  ? validScores.reduce((sum, score) => sum + score, 0)
-                  : null;
-
-                return (
-                  <TableRow key={`${bowler.bowlerId}-${bowler.teamId}`}>
-                    <TableCell>{format(new Date(bowler.date), "MMM d, yyyy")}</TableCell>
-                    <TableCell>{bowler.weekNumber}</TableCell>
-                    <TableCell>
-                      <Link href={`/bowlers/${bowler.bowlerId}`} className="hover:underline">
-                        {bowler.bowlerName}
-                        {bowler.games.some(g => g.isSub) && (
-                          <span className="ml-2 text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-                            Sub
-                          </span>
-                        )}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{bowler.teamName}</TableCell>
-                    {bowler.games.map((game, index) => (
-                      <TableCell key={index} className="text-right">
-                        {game.isVacant ? "VACANT" :
-                         game.isAbsent ? "ABSENT" :
-                         game.score === null ? "—" :
-                         game.score}
-                      </TableCell>
-                    ))}
-                    <TableCell className="text-right font-medium">
-                      {seriesTotal === null ? "—" : seriesTotal}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Card>
+                              return (
+                                <TableRow key={bowler.bowlerId}>
+                                  <TableCell>
+                                    {bowler.isVacant ? (
+                                      <span className="text-muted-foreground italic">Vacant</span>
+                                    ) : bowler.isAbsent ? (
+                                      <span className="text-muted-foreground italic">Absent</span>
+                                    ) : (
+                                      <div className="flex items-center gap-2">
+                                        <Link
+                                          href={`/bowlers/${bowler.bowlerId}`}
+                                          className="hover:underline"
+                                        >
+                                          {bowler.bowlerName}
+                                        </Link>
+                                        {bowler.isSub && (
+                                          <span className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                                            Sub
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right text-muted-foreground">
+                                    {bowler.handicap}
+                                  </TableCell>
+                                  {bowler.games.map((game, gameIndex) => (
+                                    <TableCell
+                                      key={gameIndex}
+                                      className="text-right"
+                                    >
+                                      {game?.score ?? "—"}
+                                    </TableCell>
+                                  ))}
+                                  <TableCell className="text-right font-medium">
+                                    {seriesTotal || "—"}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     </Layout>
   );

@@ -5,18 +5,18 @@ import { z } from 'zod';
 import { ScoreImportService, ScoreImportError } from '../services/score-import.js';
 import { GoogleDriveService } from '../services/google-drive.js';
 
-// Update validation schema at the top of the file
+// Simplified validation schema that accepts any string and converts to number
 const getScoresQuerySchema = z.object({
-  leagueId: z.string().transform((val) => parseInt(val, 10)).pipe(
-    z.number().int().positive({
-      message: "League ID must be a positive number"
-    })
-  ),
-  weekNumber: z.string().transform((val) => parseInt(val, 10)).pipe(
-    z.number().int().positive({
-      message: "Week number must be a positive number"
-    })
-  )
+  leagueId: z.any().transform(val => {
+    const num = Number(val);
+    if (isNaN(num)) throw new Error('League ID must be a number');
+    return num;
+  }),
+  weekNumber: z.any().transform(val => {
+    const num = Number(val);
+    if (isNaN(num)) throw new Error('Week number must be a number');
+    return num;
+  })
 });
 
 const router = Router();
@@ -24,76 +24,108 @@ const router = Router();
 // Get scores for a specific league and week
 router.get('/', async (req, res) => {
   try {
-    console.log('[Scores] Processing request with query:', req.query);
+    // Add detailed logging of incoming request
+    console.log('[Scores] Raw query parameters:', req.query);
+    console.log('[Scores] Query string:', req.url);
+    console.log('[Scores] Parameter details:', {
+      leagueId: {
+        value: req.query.leagueId,
+        type: typeof req.query.leagueId,
+        asNumber: Number(req.query.leagueId)
+      },
+      weekNumber: {
+        value: req.query.weekNumber,
+        type: typeof req.query.weekNumber,
+        asNumber: Number(req.query.weekNumber)
+      }
+    });
 
     const validationResult = getScoresQuerySchema.safeParse(req.query);
     if (!validationResult.success) {
-      console.error('[Scores] Validation error:', validationResult.error.format());
+      console.error('[Scores] Validation error:', {
+        errors: validationResult.error.errors,
+        formattedError: validationResult.error.format(),
+        input: req.query
+      });
       return sendError(res, 'Invalid query parameters: ' + validationResult.error.errors.map(e => e.message).join(', '), 400);
     }
 
     const { leagueId, weekNumber } = validationResult.data;
-    console.log('[Scores] Parsed query parameters:', { leagueId, weekNumber });
+    console.log('[Scores] Parsed and validated parameters:', { leagueId, weekNumber });
 
     // Get scores for the specified league and week
     const scores = await storage.getScoresByLeagueAndWeek(leagueId, weekNumber);
     console.log('[Scores] Found scores:', scores.length);
 
-    // Group scores by game, then by team
-    const groupedScores = scores.reduce((acc, score) => {
-      const gameNumber = score.game.gameNumber;
-      const teamNumber = score.team.number;
-
-      if (!acc[gameNumber]) {
-        acc[gameNumber] = {};
+    // Group scores by lane, then by team
+    const scoresByLane = scores.reduce((acc: { [key: string]: any }, score) => {
+      const laneKey = score.laneNumber;
+      if (!acc[laneKey]) {
+        acc[laneKey] = {
+          laneNumber: laneKey,
+          teams: {}
+        };
       }
-      if (!acc[gameNumber][teamNumber]) {
-        acc[gameNumber][teamNumber] = {
-          teamId: score.team.id,
+
+      const teamKey = score.teamId;
+      if (!acc[laneKey].teams[teamKey]) {
+        acc[laneKey].teams[teamKey] = {
+          teamId: score.teamId,
           teamName: score.team.name,
           teamNumber: score.team.number,
-          laneNumber: score.laneNumber,
           bowlers: []
         };
       }
 
-      acc[gameNumber][teamNumber].bowlers.push({
-        bowlerId: score.bowlerId,
-        bowlerName: score.bowler.name,
+      let bowler = acc[laneKey].teams[teamKey].bowlers.find(
+        (b: any) => b.bowlerId === score.bowlerId
+      );
+
+      if (!bowler) {
+        bowler = {
+          bowlerId: score.bowlerId,
+          bowlerName: score.bowler.name,
+          handicap: score.handicap,
+          games: Array(3).fill(null),
+          isVacant: score.isVacant,
+          isAbsent: score.isAbsent,
+          isSub: score.isSub,
+          position: score.position
+        };
+        acc[laneKey].teams[teamKey].bowlers.push(bowler);
+      }
+
+      bowler.games[score.game.gameNumber - 1] = {
         score: score.score,
-        handicap: score.handicap,
-        isVacant: score.isVacant,
-        isAbsent: score.isAbsent,
-        isSub: score.isSub,
-        position: score.position
-      });
+        handicap: score.handicap
+      };
 
       return acc;
     }, {});
 
-    // Convert to array format and sort teams
-    const formattedGames = Object.entries(groupedScores).map(([gameNumber, teams]) => {
-      const teamPairs = Object.values(teams);
-      // Sort teams by lane number
-      teamPairs.sort((a, b) => a.laneNumber - b.laneNumber);
+    const formattedScores = Object.entries(scoresByLane).map(([lane, data]) => ({
+      laneNumber: parseInt(lane),
+      teams: Object.values(data.teams).sort((a: any, b: any) => a.teamNumber - b.teamNumber)
+    })).sort((a, b) => a.laneNumber - b.laneNumber);
 
-      // Sort bowlers by position within each team
-      teamPairs.forEach(team => {
-        team.bowlers.sort((a, b) => a.position - b.position);
-      });
-
-      return {
-        gameNumber: parseInt(gameNumber),
-        teams: teamPairs
+    const lanePairs = [];
+    for (let i = 0; i < formattedScores.length; i += 2) {
+      const pair = {
+        lanes: `Lanes ${formattedScores[i].laneNumber}${i + 1 < formattedScores.length ? `-${formattedScores[i + 1].laneNumber}` : ''}`,
+        homeTeam: formattedScores[i].teams[0],
+        awayTeam: i + 1 < formattedScores.length ? formattedScores[i + 1].teams[0] : null
       };
-    });
+      lanePairs.push(pair);
+    }
 
-    // Sort games by game number
-    formattedGames.sort((a, b) => a.gameNumber - b.gameNumber);
-
-    return sendSuccess(res, formattedGames);
+    console.log('[Scores] Formatted scores into lane pairs:', lanePairs.length);
+    return sendSuccess(res, lanePairs);
   } catch (error) {
-    console.error('[Scores] Error fetching scores:', error);
+    console.error('[Scores] Error fetching scores:', error instanceof Error ? {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    } : error);
     return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
   }
 });
