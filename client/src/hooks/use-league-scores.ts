@@ -48,10 +48,18 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
         const response = await fetch(`/api/scores/league/${leagueId}/week/${weekNumber}`);
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+          console.error('[useLeagueScores] API error:', {
+            status: response.status,
+            error: errorData
+          });
           throw new Error(errorData.message || `Failed to fetch scores (${response.status})`);
         }
         const data = await response.json() as ApiResponse<ScoreWithRelations[]>;
-        console.log('[useLeagueScores] Received scores:', data.data?.length || 0);
+        console.log('[useLeagueScores] Received scores:', {
+          count: data.data?.length || 0,
+          success: data.success,
+          sample: data.data?.[0]
+        });
         return data;
       } catch (error) {
         console.error('[useLeagueScores] Error fetching scores:', error);
