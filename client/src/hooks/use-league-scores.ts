@@ -65,7 +65,7 @@ export function useLeagueScores({ leagueId, weekNumber }: UseLeagueScoresProps) 
 
   // Fetch league details with longer cache time since they rarely change
   const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery({
-    queryKey: [`/api/leagues/${leagueId}`] as const,
+    queryKey: ["/api/leagues", leagueId] as const,
     queryFn: async () => {
       console.log('[useLeagueScores] Fetching league details:', leagueId);
       try {

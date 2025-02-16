@@ -24,7 +24,9 @@ import type { WeeklyScores, BowlerScores, TeamScores } from "@/lib/types/scores"
 import { cn } from "@/lib/utils";
 import { groupTeamsByLanes } from "@/lib/utils/lane-pairing";
 import { organizeBowlerScores, calculateSeriesTotal } from "@/lib/utils/score-organization";
-import { useLeagueScores } from "@/hooks/use-league-scores";
+import { useQuery } from "@tanstack/react-query";
+import { LEAGUE_CACHE_TIME } from "@/lib/constants";
+
 
 // Enhance the loading skeleton component with more realistic loading states
 function LoadingSkeleton() {
@@ -116,10 +118,50 @@ export default function LeagueScoresPage() {
     );
   }
 
-  const { league, weeks, scores, isLoading, errors } = useLeagueScores({
-    leagueId,
-    weekNumber: selectedWeek
+  // Fetch league details with longer cache time since they rarely change
+  const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery({
+    queryKey: ['/api/leagues', leagueId] as const,
+    queryFn: async () => {
+      console.log('[useLeagueScores] Fetching league details:', leagueId);
+      try {
+        const response = await fetch(`/api/leagues/${leagueId}`);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+          throw new Error(errorData.message || `Failed to fetch league (${response.status})`);
+        }
+        const data = await response.json() as ApiResponse<League>;
+        console.log('[useLeagueScores] Received league:', data.data?.name);
+        return data;
+      } catch (error) {
+        console.error('[useLeagueScores] Error fetching league:', error);
+        throw error;
+      }
+    },
+    enabled: !!leagueId,
+    gcTime: LEAGUE_CACHE_TIME * 2,
+    staleTime: LEAGUE_CACHE_TIME,
   });
+
+  const { data: scoresResponse, isLoading, errors } = useQuery({
+    queryKey: [`/api/scores`, leagueId, selectedWeek] as const,
+    queryFn: async () => {
+      const url = `/api/scores?leagueId=${leagueId}&weekNumber=${selectedWeek}`;
+      console.log('[useLeagueScores] Fetching scores:', url);
+      const response = await fetch(url);
+      if (!response.ok) {
+          throw new Error(`Failed to fetch scores (${response.status})`);
+      }
+      const data = await response.json() as ApiResponse<Game[]>;
+      console.log('[useLeagueScores] Received scores:', data.data?.length);
+      return data.data;
+    },
+    enabled: !!leagueId && !!selectedWeek
+  });
+
+  const league = leagueResponse?.data;
+  const weeks = league?.weeks || [];
+  const scores = scoresResponse || [];
+
 
   // Log data for debugging
   console.log('[LeagueScoresPage] Data state:', {
@@ -129,7 +171,9 @@ export default function LeagueScoresPage() {
     scoresReceived: scores.length,
     isLoading,
     hasErrors: errors.length > 0,
-    errorDetails: errors.length > 0 ? errors : undefined
+    errorDetails: errors.length > 0 ? errors : undefined,
+    loadingLeague,
+    leagueError
   });
 
   // Set initial week when data loads
@@ -182,7 +226,7 @@ export default function LeagueScoresPage() {
     return [];
   }, [weeklyScores]);
 
-  if (isLoading) {
+  if (loadingLeague || isLoading) {
     return (
       <Layout>
         <div className="space-y-4">
@@ -199,7 +243,8 @@ export default function LeagueScoresPage() {
     );
   }
 
-  if (errors.length > 0) {
+  if (leagueError || errors.length > 0) {
+    const allErrors = [...(leagueError ? [ {type: "League", error: leagueError} ] : []), ...errors];
     return (
       <Layout>
         <div className="space-y-4">
@@ -210,7 +255,7 @@ export default function LeagueScoresPage() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to League
           </Link>
-          <ErrorDisplay errors={errors} />
+          <ErrorDisplay errors={allErrors} />
         </div>
       </Layout>
     );
