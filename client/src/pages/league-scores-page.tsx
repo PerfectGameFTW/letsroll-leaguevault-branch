@@ -119,28 +119,21 @@ export default function LeagueScoresPage() {
     staleTime: LEAGUE_CACHE_TIME,
   });
 
-  // Fetch scores for the selected week
+  // Fetch scores for the selected week using the correct endpoint
   const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery({
-    queryKey: ['/api/scores', leagueId, selectedWeek] as const,
+    queryKey: ['/api/scores/league', leagueId, selectedWeek] as const,
     queryFn: async () => {
       if (!selectedWeek) {
         throw new Error('No week selected');
       }
 
       try {
-        const queryParams = new URLSearchParams({
-          leagueId: leagueId.toString(),
-          weekNumber: selectedWeek.toString()
-        });
-
-        const url = `/api/scores?${queryParams.toString()}`;
         console.log('[LeagueScoresPage] Fetching scores:', {
-          url,
           leagueId,
           weekNumber: selectedWeek
         });
 
-        const response = await fetch(url);
+        const response = await fetch(`/api/scores/league/${leagueId}/week/${selectedWeek}`);
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
           console.error('[LeagueScoresPage] API error:', {
@@ -149,7 +142,12 @@ export default function LeagueScoresPage() {
           });
           throw new Error(errorData.message || `Failed to fetch scores (${response.status})`);
         }
-        return response.json() as Promise<ApiResponse<Game[]>>;
+        const data = await response.json() as ApiResponse<WeeklyScores>;
+        console.log('[LeagueScoresPage] Received scores:', {
+          success: data.success,
+          teamCount: data.data?.teams?.length || 0
+        });
+        return data;
       } catch (error) {
         console.error('[LeagueScoresPage] Error fetching scores:', error);
         throw error;
@@ -159,8 +157,29 @@ export default function LeagueScoresPage() {
   });
 
   const league = leagueResponse?.data;
-  const weeks = league?.weeks || [];
-  const scores = scoresResponse?.data || [];
+  const weeklyScores = scoresResponse?.data;
+
+  // Get available weeks from the games table
+  const { data: gamesResponse, isLoading: loadingGames } = useQuery({
+    queryKey: ['/api/games/league', leagueId],
+    queryFn: async () => {
+      const response = await fetch(`/api/games/league/${leagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch games');
+      }
+      return response.json() as Promise<ApiResponse<Game[]>>;
+    },
+    enabled: !!leagueId,
+  });
+
+  // Extract unique week numbers
+  const weeks = useMemo(() => {
+    const weekNumbers = Array.from(new Set(
+      (gamesResponse?.data ?? []).map(game => game.weekNumber)
+    )).sort((a, b) => b - a);
+    console.log('[LeagueScoresPage] Available weeks:', weekNumbers);
+    return weekNumbers;
+  }, [gamesResponse?.data]);
 
   // Set initial week when data loads
   useMemo(() => {
@@ -190,16 +209,6 @@ export default function LeagueScoresPage() {
   );
 
   // Process scores and organize them
-  const weeklyScores = useMemo(() => {
-    if (scores.length > 0) {
-      console.log('[LeagueScoresPage] Organizing scores for week:', selectedWeek);
-      return organizeBowlerScores(scores);
-    }
-    console.log('[LeagueScoresPage] No scores to organize');
-    return null;
-  }, [scores, selectedWeek]);
-
-  // Group teams by lanes
   const lanePairs = useMemo(() => {
     if (weeklyScores?.teams) {
       console.log('[LeagueScoresPage] Grouping teams by lanes:', {
@@ -217,13 +226,12 @@ export default function LeagueScoresPage() {
     leagueId,
     selectedWeek,
     weeksAvailable: weeks.length,
-    scoresCount: scores.length,
-    weeklyScoresPresent: !!weeklyScores,
+    scoresCount: weeklyScores ? weeklyScores.teams.length : 0,
     lanePairsCount: lanePairs.length,
-    isLoading: loadingLeague || loadingScores
+    isLoading: loadingLeague || loadingScores || loadingGames
   });
 
-  if (loadingLeague || loadingScores) {
+  if (loadingLeague || loadingScores || loadingGames) {
     return (
       <Layout>
         <div className="space-y-4">
@@ -412,8 +420,12 @@ export default function LeagueScoresPage() {
             </div>
           ) : (
             <div className="text-center p-8 border rounded-lg bg-background">
-              <p className="text-lg text-muted-foreground">No games have been recorded for this league yet</p>
-              <p className="text-sm text-muted-foreground mt-2">Scores will appear here once games are imported</p>
+              <p className="text-lg text-muted-foreground">
+                {loadingScores ? 'Loading scores...' : 'No scores found for this week'}
+              </p>
+              <p className="text-sm text-muted-foreground mt-2">
+                {loadingScores ? 'Please wait while we fetch the data' : 'Try selecting a different week'}
+              </p>
             </div>
           )}
         </div>
