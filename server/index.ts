@@ -41,6 +41,25 @@ app.use((req, res, next) => {
   next();
 });
 
+// API-specific middleware for all /api routes
+app.use('/api', (req, res, next) => {
+  // Set proper headers for API responses
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
+
+  // Handle preflight requests
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Register API routes first
+console.log('[Server] Registering API routes...');
+registerRoutes(app);
+
 // Add health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
@@ -51,24 +70,7 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// API-specific middleware
-app.use('/api', (req, res, next) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
-// Register API routes
-console.log('[Server] Registering API routes...');
-registerRoutes(app);
-
-// Development mode setup
+// Development mode setup - after API routes
 if (process.env.NODE_ENV !== "production") {
   console.log('[Server] Setting up Vite middleware for development...');
   setupVite(app, server)
@@ -82,7 +84,7 @@ if (process.env.NODE_ENV !== "production") {
       process.exit(1);
     });
 } else {
-  // Production mode setup
+  // Production mode setup - after API routes
   app.use(express.static(path.join(process.cwd(), 'dist/public')));
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
@@ -187,6 +189,19 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
+// Helper functions
+function sendSuccess(res: Response, data: any) {
+  res.status(200).json({ success: true, data });
+}
+
+function sendError(res: Response, error: string | { message: string; details?: any }, statusCode: number = 500) {
+  const errorResponse = {
+    success: false,
+    error: typeof error === 'string' ? { message: error } : error
+  };
+  res.status(statusCode).json(errorResponse);
+}
+
 // Handle graceful shutdown
 async function shutdown() {
   console.log('[Server] Initiating graceful shutdown...');
@@ -237,12 +252,3 @@ process.on('SIGINT', () => {
 
   shutdown().finally(() => clearTimeout(forceShutdown));
 });
-
-// Helper functions
-function sendSuccess(res: Response, data: any) {
-  res.status(200).json({ success: true, data });
-}
-
-function sendError(res: Response, message: string, statusCode: number = 500) {
-  res.status(statusCode).json({ success: false, error: message });
-}

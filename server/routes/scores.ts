@@ -5,20 +5,44 @@ import { z } from 'zod';
 import { ScoreImportService, ScoreImportError } from '../services/score-import.js';
 import { GoogleDriveService } from '../services/google-drive.js';
 
-// Simplified validation schema
+// Enhanced validation schema with better error messages
 const getScoresQuerySchema = z.object({
-  leagueId: z.string()
-    .min(1, "League ID is required")
-    .transform((val) => parseInt(val, 10))
-    .refine((val) => !isNaN(val), {
-      message: "League ID must be a valid number"
-    }),
-  weekNumber: z.string()
-    .min(1, "Week number is required")
-    .transform((val) => parseInt(val, 10))
-    .refine((val) => !isNaN(val), {
-      message: "Week number must be a valid number"
-    })
+  leagueId: z.string().transform((val, ctx) => {
+    const parsed = parseInt(val);
+    if (isNaN(parsed)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "League ID must be a number"
+      });
+      return z.NEVER;
+    }
+    if (parsed < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "League ID must be greater than 0"
+      });
+      return z.NEVER;
+    }
+    return parsed;
+  }),
+  weekNumber: z.string().transform((val, ctx) => {
+    const parsed = parseInt(val);
+    if (isNaN(parsed)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Week number must be a number"
+      });
+      return z.NEVER;
+    }
+    if (parsed < 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Week number must be greater than 0"
+      });
+      return z.NEVER;
+    }
+    return parsed;
+  })
 });
 
 const router = Router();
@@ -46,105 +70,56 @@ router.get('/debug-query', (req, res) => {
 });
 
 // Get scores for a specific league and week
-router.get('/', async (req, res) => {
+router.get('/league/:leagueId/week/:weekNumber', async (req, res) => {
   try {
-    // Log raw request
-    console.log('[Scores] Raw query parameters:', {
-      query: req.query,
-      types: {
-        leagueId: typeof req.query.leagueId,
-        weekNumber: typeof req.query.weekNumber
-      },
-      values: req.query
-    });
+    console.log('[Scores] Processing request with params:', req.params);
 
-    const validationResult = getScoresQuerySchema.safeParse(req.query);
-    if (!validationResult.success) {
-      console.error('[Scores] Validation error:', {
-        errors: validationResult.error.errors,
-        formattedError: validationResult.error.format(),
-        input: req.query
+    try {
+      const result = getScoresQuerySchema.safeParse({
+        leagueId: req.params.leagueId,
+        weekNumber: req.params.weekNumber
       });
-      return sendError(res, validationResult.error.errors.map(e => e.message).join(', '), 400);
+
+      if (!result.success) {
+        console.log('[Scores] Validation errors:', result.error.flatten());
+        const errors = result.error.errors.map(error => ({
+          field: error.path[0],
+          message: error.message
+        }));
+        return sendError(res, {
+          message: 'Invalid parameters',
+          details: errors
+        }, 400);
+      }
+
+      const { leagueId, weekNumber } = result.data;
+      console.log('[Scores] Validated parameters:', { leagueId, weekNumber });
+
+      // Get scores for the specified league and week
+      const scores = await storage.getScoresByLeagueAndWeek(leagueId, weekNumber);
+      console.log('[Scores] Found scores:', scores.length);
+
+      return sendSuccess(res, scores);
+    } catch (validationError) {
+      console.error('[Scores] Validation error:', validationError);
+      if (validationError instanceof z.ZodError) {
+        const errors = validationError.errors.map(error => ({
+          field: error.path[0],
+          message: error.message
+        }));
+        return sendError(res, {
+          message: 'Invalid request parameters',
+          details: errors
+        }, 400);
+      }
+      throw validationError;
     }
-
-    const { leagueId, weekNumber } = validationResult.data;
-    console.log('[Scores] Parsed and validated parameters:', { leagueId, weekNumber });
-
-    // Get scores for the specified league and week
-    const scores = await storage.getScoresByLeagueAndWeek(leagueId, weekNumber);
-    console.log('[Scores] Found scores:', scores.length);
-
-    // Group scores by lane, then by team
-    const scoresByLane = scores.reduce((acc: { [key: string]: any }, score) => {
-      const laneKey = score.laneNumber;
-      if (!acc[laneKey]) {
-        acc[laneKey] = {
-          laneNumber: laneKey,
-          teams: {}
-        };
-      }
-
-      const teamKey = score.teamId;
-      if (!acc[laneKey].teams[teamKey]) {
-        acc[laneKey].teams[teamKey] = {
-          teamId: score.teamId,
-          teamName: score.team.name,
-          teamNumber: score.team.number,
-          bowlers: []
-        };
-      }
-
-      let bowler = acc[laneKey].teams[teamKey].bowlers.find(
-        (b: any) => b.bowlerId === score.bowlerId
-      );
-
-      if (!bowler) {
-        bowler = {
-          bowlerId: score.bowlerId,
-          bowlerName: score.bowler.name,
-          handicap: score.handicap,
-          games: Array(3).fill(null),
-          isVacant: score.isVacant,
-          isAbsent: score.isAbsent,
-          isSub: score.isSub,
-          position: score.position
-        };
-        acc[laneKey].teams[teamKey].bowlers.push(bowler);
-      }
-
-      bowler.games[score.game.gameNumber - 1] = {
-        score: score.score,
-        handicap: score.handicap
-      };
-
-      return acc;
-    }, {});
-
-    const formattedScores = Object.entries(scoresByLane).map(([lane, data]) => ({
-      laneNumber: parseInt(lane),
-      teams: Object.values(data.teams).sort((a: any, b: any) => a.teamNumber - b.teamNumber)
-    })).sort((a, b) => a.laneNumber - b.laneNumber);
-
-    const lanePairs = [];
-    for (let i = 0; i < formattedScores.length; i += 2) {
-      const pair = {
-        lanes: `Lanes ${formattedScores[i].laneNumber}${i + 1 < formattedScores.length ? `-${formattedScores[i + 1].laneNumber}` : ''}`,
-        homeTeam: formattedScores[i].teams[0],
-        awayTeam: i + 1 < formattedScores.length ? formattedScores[i + 1].teams[0] : null
-      };
-      lanePairs.push(pair);
-    }
-
-    console.log('[Scores] Formatted scores into lane pairs:', lanePairs.length);
-    return sendSuccess(res, lanePairs);
   } catch (error) {
-    console.error('[Scores] Error fetching scores:', error instanceof Error ? {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    } : error);
-    return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
+    console.error('[Scores] Error fetching scores:', error);
+    return sendError(res, {
+      message: 'Failed to fetch scores',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
   }
 });
 
@@ -211,10 +186,11 @@ router.post('/import', async (req, res) => {
     console.log('[Scores/Import] Initializing GoogleDriveService...');
     const googleDrive = new GoogleDriveService();
     const sourceFolderId = process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID;
+    const archiveFolderId = process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID;
 
-    if (!sourceFolderId) {
-      console.error('[Scores/Import] Source folder ID not configured');
-      return sendError(res, 'Source folder ID not configured', 500);
+    if (!sourceFolderId || !archiveFolderId) {
+      console.error('[Scores/Import] Source or archive folder ID not configured');
+      return sendError(res, 'Source or archive folder ID not configured', 500);
     }
 
     // List and get the latest file
@@ -242,9 +218,14 @@ router.post('/import', async (req, res) => {
       const result = await importService.importScoreFile(fileContent);
       console.log('[Scores/Import] Import completed successfully:', result);
 
-      // Mark file as processed
-      await googleDrive.markFileAsProcessed(latestFile.id);
-      console.log('[Scores/Import] Marked file as processed:', latestFile.id);
+      // Move file to archive after successful processing
+      try {
+        await googleDrive.moveToArchive(latestFile.id, archiveFolderId);
+        console.log('[Scores/Import] Moved file to archive:', latestFile.id);
+      } catch (archiveError) {
+        console.error('[Scores/Import] Error moving file to archive:', archiveError);
+        // Don't fail the request if archiving fails, just log the error
+      }
 
       return sendSuccess(res, {
         message: 'Score import process completed successfully',

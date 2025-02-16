@@ -354,8 +354,10 @@ export class DatabaseStorage implements IStorage {
       let gameDate: Date;
       if (game.date instanceof Date) {
         gameDate = game.date;
-      } else {
+      } else if (typeof game.date === 'string') {
         gameDate = new Date(game.date);
+      } else {
+        throw new Error('Invalid date format provided to createGame');
       }
 
       // Validate the date
@@ -363,20 +365,12 @@ export class DatabaseStorage implements IStorage {
         throw new Error('Invalid date provided to createGame');
       }
 
-      console.log('[Storage] Validated game date:', {
-        isoString: gameDate.toISOString(),
-        utcString: gameDate.toUTCString(),
-        timestamp: gameDate.getTime()
-      });
-
       // Insert into database with validated date
       const [result] = await db
         .insert(games)
         .values({
-          leagueId: game.leagueId,
-          weekNumber: game.weekNumber,
-          gameNumber: game.gameNumber,
-          date: gameDate.toISOString() // Convert to ISO string for consistent storage
+          ...game,
+          date: gameDate
         })
         .returning();
 
@@ -389,26 +383,16 @@ export class DatabaseStorage implements IStorage {
 
       return result;
     } catch (error) {
-      console.error('[Storage] Error creating game:', {
-        error: error instanceof Error ? {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        } : error,
-        input: {
-          ...game,
-          date: game.date instanceof Date ? game.date.toISOString() : String(game.date)
-        }
-      });
+      console.error('[Storage] Error creating game:', error);
       throw error;
     }
   }
 
   async updateGame(id: number, game: Partial<InsertGame>): Promise<Game> {
-    // Convert date to ISO string if it exists
+    // Convert date to Date object if it exists
     const updateData = {
       ...game,
-      date: game.date ? game.date.toISOString() : undefined
+      date: game.date ? (game.date instanceof Date ? game.date : new Date(game.date)) : undefined
     };
     const [result] = await db.update(games).set(updateData).where(eq(games.id, id)).returning();
     return result;
@@ -459,39 +443,23 @@ export class DatabaseStorage implements IStorage {
         isAbsent: scores.isAbsent,
         isSub: scores.isSub,
         laneNumber: scores.laneNumber,
+        notes: scores.notes,
+        frames: scores.frames,
+        splits: scores.splits,
         game: {
           id: games.id,
           leagueId: games.leagueId,
           weekNumber: games.weekNumber,
           gameNumber: games.gameNumber,
           date: games.date,
-        },
-        team: {
-          id: teams.id,
-          name: teams.name,
-          number: teams.number,
-          leagueId: teams.leagueId,
-          active: teams.active,
-        },
-        league: {
-          id: leagues.id,
-          name: leagues.name,
-          description: leagues.description,
-          active: leagues.active,
         }
       })
       .from(scores)
       .innerJoin(games, eq(games.id, scores.gameId))
-      .innerJoin(teams, eq(teams.id, scores.teamId))
-      .innerJoin(leagues, eq(leagues.id, games.leagueId))
       .where(eq(scores.bowlerId, bowlerId))
       .orderBy(desc(games.date), games.gameNumber);
 
     console.log('[Storage] Found scores:', results.length);
-    if (results.length > 0) {
-      console.log('[Storage] Sample score:', results[0]);
-    }
-
     return results;
   }
 
@@ -561,6 +529,9 @@ export class DatabaseStorage implements IStorage {
         isAbsent: scores.isAbsent,
         isSub: scores.isSub,
         laneNumber: scores.laneNumber,
+        frames: scores.frames,
+        splits: scores.splits,
+        notes: scores.notes,
         bowler: {
           id: bowlers.id,
           name: bowlers.name,
