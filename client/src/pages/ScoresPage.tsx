@@ -37,47 +37,56 @@ interface LanePair {
 }
 
 export default function ScoresPage() {
-  const { leagueId, weekNumber } = useParams<{ leagueId: string; weekNumber: string }>();
+  const { leagueId: rawLeagueId, weekNumber: rawWeekNumber } = useParams<{ leagueId: string; weekNumber: string }>();
+
+  // Convert parameters to numbers immediately
+  const leagueId = rawLeagueId ? parseInt(rawLeagueId, 10) : undefined;
+  const weekNumber = rawWeekNumber ? parseInt(rawWeekNumber, 10) : undefined;
 
   // Early validation of parameters
-  if (!leagueId || !weekNumber) {
+  if (!leagueId || isNaN(leagueId) || !weekNumber || isNaN(weekNumber)) {
     return (
       <Layout>
         <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
           <AlertCircle className="h-5 w-5" />
-          <p>Missing required parameters</p>
+          <p>Invalid league ID or week number provided</p>
         </div>
       </Layout>
     );
   }
 
-  // Log parameters for debugging
+  // Debug logging
   console.log('[ScoresPage] Request parameters:', {
-    leagueId,
-    weekNumber,
+    raw: { leagueId: rawLeagueId, weekNumber: rawWeekNumber },
+    parsed: { leagueId, weekNumber },
     url: `/api/scores?leagueId=${leagueId}&weekNumber=${weekNumber}`
   });
 
   const { data: scoresResponse, isLoading, error } = useQuery<ApiResponse<LanePair[]>>({
     queryKey: ['/api/scores', leagueId, weekNumber],
     queryFn: async () => {
-      const queryParams = new URLSearchParams({
-        leagueId: leagueId.toString(),
-        weekNumber: weekNumber.toString()
-      });
+      try {
+        const queryParams = new URLSearchParams({
+          leagueId: leagueId.toString(),
+          weekNumber: weekNumber.toString()
+        });
 
-      const url = `/api/scores?${queryParams.toString()}`;
-      console.log('[ScoresPage] Fetching scores from:', url);
+        const url = `/api/scores?${queryParams.toString()}`;
+        console.log('[ScoresPage] Fetching scores from:', url);
 
-      const response = await fetch(url);
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('[ScoresPage] API error:', errorData);
-        throw new Error(errorData.error?.message || 'Failed to fetch scores');
+        const response = await fetch(url);
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('[ScoresPage] API error:', errorData);
+          throw new Error(errorData.error?.message || 'Failed to fetch scores');
+        }
+        return response.json();
+      } catch (error) {
+        console.error('[ScoresPage] Error in query:', error);
+        throw error;
       }
-      return response.json();
     },
-    enabled: !!leagueId && !!weekNumber,
+    enabled: true 
   });
 
   if (isLoading) {
@@ -95,7 +104,7 @@ export default function ScoresPage() {
       <Layout>
         <div className="space-y-4">
           <Link
-            href={`/leagues/${leagueId}`}
+            href={`/leagues/${rawLeagueId}`}
             className="text-muted-foreground hover:text-foreground flex items-center mb-4"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -114,7 +123,7 @@ export default function ScoresPage() {
     <Layout>
       <div className="space-y-6">
         <Link
-          href={`/leagues/${leagueId}`}
+          href={`/leagues/${rawLeagueId}`}
           className="text-muted-foreground hover:text-foreground flex items-center"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
@@ -124,7 +133,7 @@ export default function ScoresPage() {
         <div>
           <h1 className="text-2xl font-bold mb-2">Weekly Scores</h1>
           <p className="text-muted-foreground mb-6">
-            Week {weekNumber} Scores
+            Week {rawWeekNumber} Scores
           </p>
         </div>
 

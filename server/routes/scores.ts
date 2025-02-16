@@ -5,39 +5,57 @@ import { z } from 'zod';
 import { ScoreImportService, ScoreImportError } from '../services/score-import.js';
 import { GoogleDriveService } from '../services/google-drive.js';
 
-// Simplified validation schema that accepts any string and converts to number
+// Simplified validation schema
 const getScoresQuerySchema = z.object({
-  leagueId: z.any().transform(val => {
-    const num = Number(val);
-    if (isNaN(num)) throw new Error('League ID must be a number');
-    return num;
-  }),
-  weekNumber: z.any().transform(val => {
-    const num = Number(val);
-    if (isNaN(num)) throw new Error('Week number must be a number');
-    return num;
-  })
+  leagueId: z.string()
+    .min(1, "League ID is required")
+    .transform((val) => parseInt(val, 10))
+    .refine((val) => !isNaN(val), {
+      message: "League ID must be a valid number"
+    }),
+  weekNumber: z.string()
+    .min(1, "Week number is required")
+    .transform((val) => parseInt(val, 10))
+    .refine((val) => !isNaN(val), {
+      message: "Week number must be a valid number"
+    })
 });
 
 const router = Router();
 
+// Add debug endpoint
+router.get('/debug-query', (req, res) => {
+  console.log('[Scores/Debug] Raw query:', {
+    raw: req.query,
+    stringified: JSON.stringify(req.query),
+    types: {
+      leagueId: typeof req.query.leagueId,
+      weekNumber: typeof req.query.weekNumber
+    },
+    values: {
+      leagueId: req.query.leagueId,
+      weekNumber: req.query.weekNumber
+    }
+  });
+
+  return sendSuccess(res, {
+    query: req.query,
+    stringified: JSON.stringify(req.query),
+    url: req.url
+  });
+});
+
 // Get scores for a specific league and week
 router.get('/', async (req, res) => {
   try {
-    // Add detailed logging of incoming request
-    console.log('[Scores] Raw query parameters:', req.query);
-    console.log('[Scores] Query string:', req.url);
-    console.log('[Scores] Parameter details:', {
-      leagueId: {
-        value: req.query.leagueId,
-        type: typeof req.query.leagueId,
-        asNumber: Number(req.query.leagueId)
+    // Log raw request
+    console.log('[Scores] Raw query parameters:', {
+      query: req.query,
+      types: {
+        leagueId: typeof req.query.leagueId,
+        weekNumber: typeof req.query.weekNumber
       },
-      weekNumber: {
-        value: req.query.weekNumber,
-        type: typeof req.query.weekNumber,
-        asNumber: Number(req.query.weekNumber)
-      }
+      values: req.query
     });
 
     const validationResult = getScoresQuerySchema.safeParse(req.query);
@@ -47,7 +65,7 @@ router.get('/', async (req, res) => {
         formattedError: validationResult.error.format(),
         input: req.query
       });
-      return sendError(res, 'Invalid query parameters: ' + validationResult.error.errors.map(e => e.message).join(', '), 400);
+      return sendError(res, validationResult.error.errors.map(e => e.message).join(', '), 400);
     }
 
     const { leagueId, weekNumber } = validationResult.data;
