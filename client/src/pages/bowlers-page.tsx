@@ -1,8 +1,7 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Button } from "@ui/button";
-import { Layout } from "@components/layout";
-import { BowlerForm } from "@components/bowler-form";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Layout } from "@/components/layout";
+import { BowlerForm } from "@/components/bowler-form";
 import {
   Table,
   TableBody,
@@ -10,14 +9,15 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@ui/table";
-import { Badge } from "@ui/badge";
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Eye, EyeOff, Search, Pencil } from "lucide-react";
-import type { Bowler, Team, League, BowlerLeague, ApiResponse } from "@shared/schema";
-import { useToast } from "@hooks/use-toast";
-import { Switch } from "@ui/switch";
-import { Input } from "@ui/input";
+import type { Bowler } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
+import { useBowlers } from "@/hooks/use-bowlers";
 
 // Loading skeleton component
 function BowlerTableSkeleton() {
@@ -64,70 +64,15 @@ export default function BowlersPage() {
   const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
-  // Query for bowlers with proper error handling and longer cache time
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<ApiResponse<Bowler[]>>({
-    queryKey: ["/api/bowlers"],
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  const { 
+    bowlers: filteredBowlers, 
+    getWeeklyFee,
+    isInitialLoading,
+    isLoadingRelatedData 
+  } = useBowlers({
+    showInactive,
+    searchQuery
   });
-
-  // Only fetch bowler leagues if we have bowlers
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<ApiResponse<BowlerLeague[]>>({
-    queryKey: ["/api/bowler-leagues"],
-    enabled: !!bowlersResponse?.data?.length,
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
-  });
-
-  // Only fetch teams if we have bowler leagues that need team information
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<ApiResponse<Team[]>>({
-    queryKey: ["/api/teams"],
-    enabled: !!bowlerLeaguesResponse?.data?.length,
-    staleTime: 1000 * 60 * 15, // Cache for 15 minutes as team data changes less frequently
-  });
-
-  // Only fetch leagues if we have teams that need league information
-  const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<ApiResponse<League[]>>({
-    queryKey: ["/api/leagues"],
-    enabled: !!teamsResponse?.data?.length,
-    staleTime: 1000 * 60 * 30, // Cache for 30 minutes as league data changes very infrequently
-  });
-
-  const bowlers = bowlersResponse?.data ?? [];
-  const bowlerLeagues = bowlerLeaguesResponse?.data ?? [];
-  const teams = teamsResponse?.data ?? [];
-  const leagues = leaguesResponse?.data ?? [];
-
-  // Memoize filtered bowlers to avoid unnecessary recalculations
-  const filteredBowlers = useMemo(() => {
-    return bowlers.filter(bowler => {
-      const matchesSearch = searchQuery === "" || 
-        bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
-      return (showInactive ? true : bowler.active) && matchesSearch;
-    });
-  }, [bowlers, searchQuery, showInactive]);
-
-  // Memoize bowler-team-league relationships to avoid recalculations
-  const getBowlerTeam = useMemo(() => (bowler: Bowler) => {
-    const activeBowlerLeague = bowlerLeagues.find(bl => 
-      bl.bowlerId === bowler.id && 
-      bl.active
-    );
-    if (!activeBowlerLeague) return undefined;
-
-    return teams.find(t => t.id === activeBowlerLeague.teamId);
-  }, [bowlerLeagues, teams]);
-
-  const getWeeklyFee = useMemo(() => (bowler: Bowler) => {
-    const team = getBowlerTeam(bowler);
-    if (!team) return 0;
-
-    const league = leagues.find(l => l.id === team.leagueId);
-    return league?.weeklyFee ?? 0;
-  }, [getBowlerTeam, leagues]);
-
-  // Show loading skeleton while initial data is being fetched
-  const isInitialLoading = loadingBowlers && !bowlers.length;
-  const isLoadingRelatedData = (loadingBowlerLeagues || loadingTeams || loadingLeagues) && bowlers.length > 0;
 
   return (
     <Layout>

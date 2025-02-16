@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Layout } from "@components/layout";
+import { useState, useMemo, useEffect as ReactuseEffect } from "react";
+import { useParams, Link } from "wouter";
+import { Layout } from "@/components/layout";
 import {
   Table,
   TableBody,
@@ -8,155 +8,47 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@ui/table";
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@ui/select";
-import { Card, CardContent, CardHeader, CardTitle } from "@ui/card";
-import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@ui/tooltip";
+} from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader2, ArrowLeft, AlertCircle } from "lucide-react";
-import type { Game, Score, Team, Bowler, League, ApiResponse } from "@shared/schema";
-import { format } from "date-fns";
-import { Link, useParams } from "wouter";
-import { cn } from "@lib/utils";
+import type { Game, League, ApiResponse } from "@shared/schema";
+import type { WeeklyScores } from "@/lib/types/scores";
+import { cn } from "@/lib/utils";
+import { groupTeamsByLanes } from "@/lib/utils/lane-pairing";
+import { organizeBowlerScores } from "@/lib/utils/score-organization";
+import { useLeagueScores } from "@/hooks/use-league-scores";
 
-interface BowlerScores {
-  bowlerId: number;
-  bowlerName: string;
-  position: number;
-  isVacant: boolean;
-  isAbsent: boolean;
-  isSub: boolean;
-  handicap: number | null;
-  games: Array<{
-    gameNumber: number;
-    score: number | null;
-  }>;
+// Loading skeleton component
+function LoadingState() {
+  return (
+    <div className="flex items-center justify-center h-[50vh]">
+      <div className="flex items-center gap-2">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="text-muted-foreground">Loading scores...</span>
+      </div>
+    </div>
+  );
 }
 
-interface TeamScores {
-  teamId: number;
-  teamName: string;
-  teamNumber: number;
-  laneNumber: number;
-  bowlers: BowlerScores[];
-}
-
-interface WeeklyScores {
-  weekNumber: number;
-  date: string;
-  teams: TeamScores[];
-}
-
-interface LanePair {
-  lanes: string;
-  homeTeam: TeamScores;
-  awayTeam: TeamScores | undefined;
-}
-
-function groupTeamsByLanes(teams: TeamScores[]): LanePair[] {
-  const laneMap = new Map<number, TeamScores>();
-  teams.forEach(team => laneMap.set(team.laneNumber, team));
-
-  const pairs: LanePair[] = [];
-  const laneNumbers = Array.from(laneMap.keys()).sort((a, b) => a - b);
-
-  for (let i = 0; i < laneNumbers.length; i++) {
-    const currentLane = laneNumbers[i];
-    const currentTeam = laneMap.get(currentLane)!;
-
-    const alreadyProcessed = pairs.some(p =>
-      p.homeTeam.laneNumber === currentLane ||
-      (p.awayTeam && p.awayTeam.laneNumber === currentLane)
-    );
-
-    if (alreadyProcessed) continue;
-
-    const pairedLane = currentLane % 2 === 0 ? currentLane - 1 : currentLane + 1;
-    const pairedTeam = laneMap.get(pairedLane);
-
-    if (pairedTeam) {
-      const [lowerLane, higherLane] = currentLane < pairedLane
-        ? [currentLane, pairedLane]
-        : [pairedLane, currentLane];
-
-      const [homeTeam, awayTeam] = currentLane < pairedLane
-        ? [currentTeam, pairedTeam]
-        : [pairedTeam, currentTeam];
-
-      pairs.push({
-        lanes: `Lanes ${lowerLane} & ${higherLane}`,
-        homeTeam,
-        awayTeam
-      });
-    } else {
-      pairs.push({
-        lanes: `Lane ${currentLane}`,
-        homeTeam: currentTeam,
-        awayTeam: undefined
-      });
-    }
-  }
-
-  return pairs.sort((a, b) => a.homeTeam.laneNumber - b.homeTeam.laneNumber);
-}
-
-function organizeBowlerScores(scoresData: Game[]): WeeklyScores {
-  const teams = new Map<number, Omit<TeamScores, 'bowlers'> & { bowlers: Map<number, BowlerScores> }>();
-
-  scoresData.forEach(game => {
-    game.teams.forEach((team: Team & { bowlers: Array<Bowler & { score: number | null }> }) => {
-      if (!teams.has(team.id)) {
-        teams.set(team.id, {
-          teamId: team.id,
-          teamName: team.name,
-          teamNumber: team.number,
-          laneNumber: team.laneNumber,
-          bowlers: new Map(),
-        });
-      }
-
-      const currentTeam = teams.get(team.id)!;
-      team.bowlers.forEach(bowler => {
-        if (!currentTeam.bowlers.has(bowler.id)) {
-          currentTeam.bowlers.set(bowler.id, {
-            bowlerId: bowler.id,
-            bowlerName: bowler.name,
-            position: bowler.position,
-            isVacant: bowler.isVacant,
-            isAbsent: bowler.isAbsent,
-            isSub: bowler.isSub,
-            handicap: bowler.handicap,
-            games: [],
-          });
-        }
-
-        const bowlerData = currentTeam.bowlers.get(bowler.id)!;
-        bowlerData.games.push({
-          gameNumber: game.gameNumber,
-          score: bowler.score,
-        });
-      });
-    });
-  });
-
-  return {
-    weekNumber: scoresData[0]?.weekNumber ?? 0,
-    date: scoresData[0]?.date ?? "",
-    teams: Array.from(teams.values()).map(team => ({
-      ...team,
-      bowlers: Array.from(team.bowlers.values())
-        .sort((a, b) => a.position - b.position)
-        .map(bowler => ({
-          ...bowler,
-          games: bowler.games.sort((a, b) => a.gameNumber - b.gameNumber),
-        })),
-    })),
-  };
+function ErrorDisplay({ errors }: { errors: Array<{ type: string; error: unknown }> }) {
+  return (
+    <div className="space-y-4">
+      {errors.map(({ type, error }) => (
+        <div key={type} className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 flex-shrink-0" />
+          <p className="font-medium">Error loading {type}: {error instanceof Error ? error.message : 'Unknown error'}</p>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function LeagueScoresPage() {
@@ -175,47 +67,23 @@ export default function LeagueScoresPage() {
     );
   }
 
-  const { data: gamesResponse, isLoading: loadingGames, error: gamesError } = useQuery<ApiResponse<Game[]>>({
-    queryKey: ["/api/games", { leagueId }],
-    queryFn: async () => {
-      const response = await fetch(`/api/games?leagueId=${leagueId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch games');
-      }
-      return response.json();
-    },
-    enabled: !!leagueId,
+  const { league, weeks, scores, isLoading, errors } = useLeagueScores({
+    leagueId,
+    weekNumber: selectedWeek
   });
 
-  const games = gamesResponse?.data ?? [];
-  const weeks = Array.from(new Set(games.map(g => g.weekNumber))).sort((a, b) => b - a);
+  ReactuseEffect(() => {
+    if (!selectedWeek && weeks.length > 0) {
+      setSelectedWeek(weeks[0]);
+    }
+  }, [weeks, selectedWeek]);
 
-  if (!selectedWeek && weeks.length > 0) {
-    setSelectedWeek(weeks[0]);
-  }
+  const weeklyScores = useMemo(() => 
+    scores.length > 0 ? organizeBowlerScores(scores) : null,
+    [scores]
+  );
 
-  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<ApiResponse<Game[]>>({
-    queryKey: ["/api/scores", { leagueId, weekNumber: selectedWeek }],
-    queryFn: async () => {
-      if (!selectedWeek) throw new Error('No week selected');
-      const response = await fetch(`/api/scores?leagueId=${leagueId}&weekNumber=${selectedWeek}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch scores');
-      }
-      return response.json();
-    },
-    enabled: !!leagueId && !!selectedWeek,
-  });
-
-  const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery<ApiResponse<League>>({
-    queryKey: [`/api/leagues/${leagueId}`],
-    enabled: !!leagueId,
-  });
-
-  const league = leagueResponse?.data;
-  const formattedGames = scoresResponse?.data ?? [];
-
-  if (loadingLeague || loadingGames || loadingScores) {
+  if (isLoading) {
     return (
       <Layout>
         <div className="space-y-4">
@@ -226,22 +94,11 @@ export default function LeagueScoresPage() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to League
           </Link>
-          <div className="flex items-center justify-center h-[50vh]">
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-8 w-8 animate-spin" />
-              <span className="text-muted-foreground">Loading scores...</span>
-            </div>
-          </div>
+          <LoadingState />
         </div>
       </Layout>
     );
   }
-
-  const errors = [
-    { type: 'league', error: leagueError },
-    { type: 'games', error: gamesError },
-    { type: 'scores', error: scoresError },
-  ].filter(e => e.error);
 
   if (errors.length > 0) {
     return (
@@ -254,12 +111,7 @@ export default function LeagueScoresPage() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to League
           </Link>
-          {errors.map(({ type, error }) => (
-            <div key={type} className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 flex-shrink-0" />
-              <p className="font-medium">Error loading {type}: {error instanceof Error ? error.message : 'Unknown error'}</p>
-            </div>
-          ))}
+          <ErrorDisplay errors={errors} />
         </div>
       </Layout>
     );
@@ -284,8 +136,6 @@ export default function LeagueScoresPage() {
       </Layout>
     );
   }
-
-  const weeklyScores = formattedGames.length > 0 ? organizeBowlerScores(formattedGames) : null;
 
   return (
     <Layout>
