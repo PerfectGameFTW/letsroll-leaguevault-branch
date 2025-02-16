@@ -405,7 +405,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateGame(id: number, game: Partial<InsertGame>): Promise<Game> {
-    const [result] = await db.update(games).set(game).where(eq(games.id, id)).returning();
+    // Convert date to ISO string if it exists
+    const updateData = {
+      ...game,
+      date: game.date ? game.date.toISOString() : undefined
+    };
+    const [result] = await db.update(games).set(updateData).where(eq(games.id, id)).returning();
     return result;
   }
 

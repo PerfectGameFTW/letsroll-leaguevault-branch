@@ -26,7 +26,7 @@ import { groupTeamsByLanes } from "@/lib/utils/lane-pairing";
 import { organizeBowlerScores, calculateSeriesTotal } from "@/lib/utils/score-organization";
 import { useLeagueScores } from "@/hooks/use-league-scores";
 
-// Loading skeleton component with more realistic loading states
+// Enhance the loading skeleton component with more realistic loading states
 function LoadingSkeleton() {
   return (
     <div className="space-y-6">
@@ -85,7 +85,9 @@ function ErrorDisplay({ errors }: { errors: Array<{ type: string; error: unknown
       {errors.map(({ type, error }) => (
         <div key={type} className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
-          <p className="font-medium">Error loading {type}: {error instanceof Error ? error.message : 'Unknown error'}</p>
+          <p className="font-medium">
+            Error loading {type}: {error instanceof Error ? error.message : 'Unknown error'}
+          </p>
         </div>
       ))}
     </div>
@@ -99,6 +101,7 @@ export default function LeagueScoresPage() {
 
   // Early return for invalid league ID
   if (!leagueId) {
+    console.error('[LeagueScoresPage] Invalid league ID provided');
     return (
       <Layout>
         <div className="flex items-center gap-2 p-4 rounded-md bg-destructive/10 text-destructive">
@@ -114,24 +117,47 @@ export default function LeagueScoresPage() {
     weekNumber: selectedWeek
   });
 
+  // Log data for debugging
+  console.log('[LeagueScoresPage] Data state:', {
+    leagueId,
+    selectedWeek,
+    weeksAvailable: weeks.length,
+    scoresReceived: scores.length,
+    isLoading,
+    hasErrors: errors.length > 0,
+    errorDetails: errors.length > 0 ? errors : undefined
+  });
+
   // Set initial week when data loads
   useMemo(() => {
     if (!selectedWeek && weeks.length > 0) {
+      console.log('[LeagueScoresPage] Setting initial week:', weeks[0]);
       setSelectedWeek(weeks[0]);
     }
   }, [weeks, selectedWeek]);
 
   // Memoize score organization to prevent unnecessary recalculations
-  const weeklyScores = useMemo(() => 
-    scores.length > 0 ? organizeBowlerScores(scores) : null,
-    [scores]
-  );
+  const weeklyScores = useMemo(() => {
+    if (scores.length > 0) {
+      console.log('[LeagueScoresPage] Organizing scores for week:', selectedWeek);
+      return organizeBowlerScores(scores);
+    }
+    console.log('[LeagueScoresPage] No scores to organize');
+    return null;
+  }, [scores, selectedWeek]);
 
   // Memoize lane pairs to prevent unnecessary recalculations
-  const lanePairs = useMemo(() => 
-    weeklyScores ? groupTeamsByLanes(weeklyScores.teams) : [],
-    [weeklyScores]
-  );
+  const lanePairs = useMemo(() => {
+    if (weeklyScores?.teams) {
+      console.log('[LeagueScoresPage] Grouping teams by lanes:', {
+        teamCount: weeklyScores.teams.length,
+        weekNumber: weeklyScores.weekNumber
+      });
+      return groupTeamsByLanes(weeklyScores.teams);
+    }
+    console.log('[LeagueScoresPage] No teams to group into lanes');
+    return [];
+  }, [weeklyScores]);
 
   if (isLoading) {
     return (
@@ -257,7 +283,7 @@ export default function LeagueScoresPage() {
                               </TableHeader>
                               <TableBody>
                                 {team.bowlers.map((bowler: BowlerScores) => {
-                                  const seriesTotal = useMemo(() => 
+                                  const seriesTotal = useMemo(() =>
                                     calculateSeriesTotal(bowler.games),
                                     [bowler.games]
                                   );
@@ -271,7 +297,7 @@ export default function LeagueScoresPage() {
                                           <span className="text-muted-foreground italic">Absent</span>
                                         ) : (
                                           <div className="flex items-center gap-2">
-                                            <Link 
+                                            <Link
                                               href={`/bowlers/${bowler.bowlerId}`}
                                               className="hover:underline"
                                             >
