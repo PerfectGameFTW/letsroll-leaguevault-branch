@@ -2,7 +2,7 @@ import { FC, ReactNode, useState } from "react";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, LayoutDashboard, History, Trophy, Medal, Book, UserCircle, ChevronRight } from "lucide-react";
+import { Menu, LayoutDashboard, History, Trophy, Medal, UserCircle, ChevronRight, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -33,7 +33,7 @@ const navItems: NavItem[] = [
     href: "/standings"
   },
   {
-    icon: Book,
+    icon: FileText,
     label: "League Rules",
     href: "/rules"
   },
@@ -43,12 +43,6 @@ const navItems: NavItem[] = [
     href: "/profile"
   }
 ];
-
-interface BowlerLayoutProps {
-  children: ReactNode;
-  bowlerName?: string;
-  leagueName?: string;
-}
 
 const SideNav = () => {
   const [location] = useLocation();

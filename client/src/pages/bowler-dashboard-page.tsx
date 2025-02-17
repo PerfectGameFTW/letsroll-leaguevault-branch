@@ -8,13 +8,13 @@ import {
   Loader2,
   Trophy,
   CreditCard,
-  Gift,
   LayoutDashboard,
   Medal,
   History,
   UserCircle,
   ChevronRight,
-  Menu
+  Menu,
+  FileText
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -51,9 +51,9 @@ const navItems: NavItem[] = [
     href: "/standings"
   },
   {
-    icon: Gift,
-    label: "Loyalty Program",
-    href: "/loyalty"
+    icon: FileText,
+    label: "League Rules",
+    href: "/rules"
   },
   {
     icon: UserCircle,
