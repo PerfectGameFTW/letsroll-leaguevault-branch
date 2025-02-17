@@ -21,6 +21,7 @@ import PastDuePage from "@/pages/past-due-page";
 import SignUpPage from "@/pages/sign-up-page";
 import LoginPage from "@/pages/login-page";
 import BowlerDashboardPage from "@/pages/bowler-dashboard-page";
+import RulesPage from "@/pages/rules-page";
 import { useEffect, useRef } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -54,6 +55,7 @@ function Router() {
       <Route path="/reports" component={ReportsPage} />
       <Route path="/reports/leagues/:leagueId/past-due" component={LeaguePastDuePage} />
       <Route path="/reports/past-due" component={PastDuePage} />
+      <Route path="/rules" component={RulesPage} />
       <Route component={NotFound} />
     </Switch>
   );
