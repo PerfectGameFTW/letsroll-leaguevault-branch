@@ -523,6 +523,10 @@ export interface QubicaBowlerScore {
   handicap: number;
   average: number;
   hasBumpers: boolean;
+  // Add the new array fields to match database schema
+  frames: string[];
+  splits: string[];
+  notes: string[];
 }
 
 export interface QubicaTeamGame {

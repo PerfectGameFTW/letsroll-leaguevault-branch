@@ -22,44 +22,66 @@ async function testScoreImport() {
       throw new Error('No score files found to import');
     }
 
-    // Find the specific file we want
-    const targetFile = files.find(file => file.name === 'bls_farmmxd_24_25.s00');
-    if (!targetFile) {
-      throw new Error('Target score file not found');
-    }
+    // Get the first file for testing
+    const testFile = files[0];
+    console.log('Testing with file:', {
+      id: testFile.id,
+      name: testFile.name
+    });
 
-    console.log('Found target file:', targetFile.name);
-    const fileContent = await googleDrive.getFileContent(targetFile.id);
-    console.log('Successfully read file content, length:', fileContent.length);
+    // Get file content
+    const fileContent = await googleDrive.getFileContent(testFile.id);
+    console.log('File content analysis:', {
+      length: fileContent.length,
+      firstLine: fileContent.split('\n')[0],
+      lineCount: fileContent.split('\n').length
+    });
 
-    // Parse the file content directly to get the information
+    // Parse the file content
+    console.log('\n=== Testing Parser ===');
     const parsedData = parseQubicaScoreFile(fileContent);
 
-    console.log('\n=== Requested Information ===');
-    console.log('Date Bowled:', parsedData.header.date.toLocaleDateString());
+    console.log('\n=== Parsed Header ===');
+    console.log({
+      date: parsedData.header.date.toISOString(),
+      leagueName: parsedData.header.leagueName,
+      weekNumber: parsedData.header.weekNumber,
+      description: parsedData.header.description
+    });
 
-    // Find teams on lanes 9 and 10
-    const lane9Team = parsedData.games.find(game => game.laneNumber === 9);
-    const lane10Team = parsedData.games.find(game => game.laneNumber === 10);
+    console.log('\n=== Games Summary ===');
+    console.log({
+      totalGames: parsedData.games.length,
+      gameNumbers: [...new Set(parsedData.games.map(g => g.gameNumber))],
+      laneNumbers: [...new Set(parsedData.games.map(g => g.laneNumber))].sort(),
+      teamNumbers: [...new Set(parsedData.games.map(g => g.teamNumber))].sort()
+    });
 
-    console.log('\nLane 9 Team:', lane9Team ? `${lane9Team.teamName} (Team ${lane9Team.teamNumber})` : 'Not found');
-    console.log('Lane 10 Team:', lane10Team ? `${lane10Team.teamName} (Team ${lane10Team.teamNumber})` : 'Not found');
-
-    // Get first bowler's scores from lane 10
-    if (lane10Team && lane10Team.bowlers.length > 0) {
-      const firstBowler = lane10Team.bowlers[0];
-      console.log(`\nFirst bowler on Lane 10: ${firstBowler.bowlerName}`);
-      console.log('Scores:', {
-        game1: firstBowler.score,
-        handicap: firstBowler.handicap,
-        average: firstBowler.average
-      });
+    // Log detailed game data
+    console.log('\n=== Detailed Game Data ===');
+    for (const game of parsedData.games.slice(0, 2)) { // Show first 2 games only
+      console.log(`\nTeam ${game.teamNumber} on Lane ${game.laneNumber} (Game ${game.gameNumber}):`);
+      for (const bowler of game.bowlers) {
+        console.log(`  ${bowler.bowlerName.padEnd(20)}: Score=${bowler.score}, Handicap=${bowler.handicap}, Position=${bowler.position}, Arrays: frames=${bowler.frames.length}, splits=${bowler.splits.length}, notes=${bowler.notes.length}`);
+      }
     }
 
+    // Test actual import with a known league ID
+    const leagueId = 1; // Use the Farmington Mixed League ID
+    const importService = new ScoreImportService(leagueId);
+
+    console.log('\n=== Testing Score Import ===');
+    const result = await importService.importScoreFile(fileContent);
+    console.log('Import result:', result);
+
   } catch (error) {
-    console.error('Error importing scores:', error);
+    console.error('Error testing score import:', error instanceof Error ? {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    } : error);
   }
 }
 
-// Run the import
+// Run the test
 testScoreImport().catch(console.error);

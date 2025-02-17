@@ -459,6 +459,9 @@ export class DatabaseStorage implements IStorage {
         isAbsent: scores.isAbsent,
         isSub: scores.isSub,
         laneNumber: scores.laneNumber,
+        frames: scores.frames,
+        splits: scores.splits,
+        notes: scores.notes,
         game: {
           id: games.id,
           leagueId: games.leagueId,
@@ -624,6 +627,9 @@ export class DatabaseStorage implements IStorage {
         isAbsent: scores.isAbsent,
         isSub: scores.isSub,
         laneNumber: scores.laneNumber,
+        frames: scores.frames,
+        splits: scores.splits,
+        notes: scores.notes,
         bowler: {
           id: bowlers.id,
           name: bowlers.name,

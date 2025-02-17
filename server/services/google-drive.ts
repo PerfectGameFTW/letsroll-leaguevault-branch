@@ -120,18 +120,40 @@ export class GoogleDriveService {
     try {
       console.log(`[GoogleDrive] Starting to get content for file: ${fileId}`);
 
+      // Get file metadata first
+      const metadata = await this.drive.files.get({
+        fileId,
+        fields: 'name,mimeType,size'
+      });
+
+      console.log('[GoogleDrive] File metadata:', metadata.data);
+
       // Get file content using media download
       const response = await this.drive.files.get(
         { fileId, alt: 'media' },
-        { responseType: 'text' }
+        { responseType: 'arraybuffer' }
       );
 
       if (!response.data) {
         throw new Error('No content received from Google Drive');
       }
 
-      console.log(`[GoogleDrive] Successfully retrieved file content, length: ${response.data.length}`);
-      return response.data;
+      // Convert buffer to string with detailed logging
+      const buffer = Buffer.from(response.data);
+      const content = buffer.toString();
+
+      console.log('[GoogleDrive] File content analysis:', {
+        totalBytes: buffer.length,
+        firstBytes: Array.from(buffer.slice(0, 20)),
+        contentLength: content.length,
+        firstLine: content.split('\n')[0]?.substring(0, 100),
+        lineCount: content.split('\n').length,
+        encoding: 'utf-8',
+        containsNulls: buffer.includes(0),
+        isAscii: /^[\x00-\x7F]*$/.test(content)
+      });
+
+      return content;
     } catch (error) {
       console.error('[GoogleDrive] Failed to get file content:', error);
       const apiError = error as GaxiosError;
@@ -165,6 +187,7 @@ export class GoogleDriveService {
         throw new Error('File not found or not accessible');
       }
 
+      // Download file with progress tracking
       const response = await this.drive.files.get(
         { fileId, alt: 'media' },
         { responseType: 'stream' }

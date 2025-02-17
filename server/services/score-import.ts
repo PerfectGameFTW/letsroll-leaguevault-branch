@@ -70,6 +70,42 @@ export class ScoreImportService {
     }
   }
 
+  private async getTeamByQubicaNumber(leagueId: number, qubicaTeamNumber: string): Promise<Team | null> {
+    try {
+      // Convert Qubica team number to integer by removing leading zeros
+      const teamNumber = parseInt(qubicaTeamNumber);
+
+      if (isNaN(teamNumber)) {
+        console.error('[ScoreImport] Invalid team number format:', {
+          qubicaTeamNumber,
+          parsed: teamNumber
+        });
+        return null;
+      }
+
+      console.log('[ScoreImport] Looking up team:', {
+        leagueId,
+        qubicaTeamNumber,
+        parsedNumber: teamNumber
+      });
+
+      const team = await storage.getTeamByNumber(leagueId, teamNumber);
+
+      if (!team) {
+        console.warn(`[ScoreImport] Team not found:`, {
+          leagueId,
+          qubicaTeamNumber,
+          parsedNumber: teamNumber
+        });
+      }
+
+      return team;
+    } catch (error) {
+      console.error('[ScoreImport] Team lookup error:', error);
+      return null;
+    }
+  }
+
   async importScoreFile(fileContent: string): Promise<{
     gamesCreated: number;
     scoresCreated: number;
@@ -190,15 +226,11 @@ export class ScoreImportService {
           continue;
         }
 
-        // Get or cache team
-        let team = teamCache.get(teamGame.teamNumber);
+        // Get team using the new lookup method
+        const team = await this.getTeamByQubicaNumber(this.leagueId, teamGame.teamNumber);
         if (!team) {
-          team = await storage.getTeamByNumber(this.leagueId, parseInt(teamGame.teamNumber));
-          if (!team) {
-            console.warn(`[ScoreImport] Team ${teamGame.teamNumber} not found`);
-            continue;
-          }
-          teamCache.set(teamGame.teamNumber, team);
+          console.warn(`[ScoreImport] Skipping scores for team ${teamGame.teamNumber} - team not found`);
+          continue;
         }
 
         // Process bowlers
@@ -242,7 +274,7 @@ export class ScoreImportService {
               bowlerCache.set(bowlerScore.bowlerId, bowler);
             }
 
-            // Create score
+            // Create score with properly initialized arrays
             const insertScore: InsertScore = {
               gameId: game.id,
               bowlerId: bowler.id,
@@ -255,10 +287,22 @@ export class ScoreImportService {
               isAbsent: bowlerScore.status.isAbsent,
               isSub: bowlerScore.status.isSub,
               laneNumber: teamGame.laneNumber,
-              frames: [],
-              splits: [],
-              notes: []
+              frames: bowlerScore.frames || [],
+              splits: bowlerScore.splits || [],
+              notes: bowlerScore.notes || []
             };
+
+            // Debug log the score before pushing
+            console.log('[ScoreImport] Preparing score:', {
+              gameId: insertScore.gameId,
+              bowlerId: insertScore.bowlerId,
+              teamId: insertScore.teamId,
+              score: insertScore.score,
+              position: insertScore.position,
+              frames: insertScore.frames.length,
+              splits: insertScore.splits.length,
+              notes: insertScore.notes.length
+            });
 
             scores.push(insertScore);
           } catch (error) {
