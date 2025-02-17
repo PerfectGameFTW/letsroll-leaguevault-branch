@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, BarChart3, LogIn, UserPlus } from "lucide-react";
+import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { useState, useEffect, Suspense, memo } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -28,25 +28,18 @@ const setStoredValue = (key: string, value: any) => {
   }
 };
 
-// Separate navigation arrays
 const baseNavigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
   { name: "Reports", href: "/reports", icon: FileText },
-  { name: "Sign Up", href: "/sign-up", icon: UserPlus },
-  { name: "Login", href: "/login", icon: LogIn },
-];
-
-const bottomNavigation = [
-  { name: "Bowler Dashboard", href: "/bowler-dashboard", icon: BarChart3 },
 ];
 
 // Memoized navigation items to prevent unnecessary re-renders
-const NavigationItem = memo(({ item, isActive, isCollapsed }: {
-  item: typeof baseNavigation[0],
-  isActive: boolean,
-  isCollapsed: boolean
+const NavigationItem = memo(({ item, isActive, isCollapsed }: { 
+  item: typeof baseNavigation[0], 
+  isActive: boolean, 
+  isCollapsed: boolean 
 }) => {
   const Icon = item.icon;
   return (
@@ -75,42 +68,19 @@ const NavigationItem = memo(({ item, isActive, isCollapsed }: {
   );
 });
 
-// Update LeaguesSection component with proper TypeScript types and loading state
-const LeaguesSection = memo(({
-  isCollapsed,
-  leagues = [], // Provide default empty array
-  isInLeaguesSection,
-  location,
-  isLoading
+// Memoized leagues section to prevent unnecessary re-renders
+const LeaguesSection = memo(({ 
+  isCollapsed, 
+  leagues, 
+  isInLeaguesSection, 
+  location 
 }: {
   isCollapsed: boolean,
   leagues: League[],
   isInLeaguesSection: boolean,
-  location: string,
-  isLoading: boolean
+  location: string
 }) => {
-  const [isLeaguesExpanded, setIsLeaguesExpanded] = useState(
-    getStoredValue("leaguesExpanded", false)
-  );
-
-  useEffect(() => {
-    setStoredValue("leaguesExpanded", isLeaguesExpanded);
-  }, [isLeaguesExpanded]);
-
-  // Handle loading state
-  if (isLoading) {
-    return (
-      <div className="animate-pulse">
-        <div className="h-10 bg-gray-200 rounded-md mb-2"></div>
-      </div>
-    );
-  }
-
-  // Safety check for leagues data
-  if (!Array.isArray(leagues)) {
-    console.warn('[Layout] Invalid leagues data:', leagues);
-    return null;
-  }
+  const [isLeaguesExpanded, setIsLeaguesExpanded] = useState(false);
 
   if (isCollapsed) {
     return (
@@ -164,7 +134,7 @@ const LeaguesSection = memo(({
           <ChevronDown className="h-4 w-4" />
         )}
       </button>
-      {isLeaguesExpanded && leagues.length > 0 && (
+      {isLeaguesExpanded && (
         <div className="ml-9 mt-1 space-y-1">
           <Link href="/leagues">
             <span className={cn(
@@ -205,32 +175,18 @@ const ErrorFallback = ({ error }: { error: Error }) => {
   );
 };
 
-interface LeaguesResponse {
-  success: boolean;
-  data: League[];
-}
-
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(() =>
     getStoredValue("sidebarCollapsed", false)
   );
 
-  const { data: leaguesResponse, error: leaguesError, isLoading } = useQuery<LeaguesResponse>({
+  const { data: leaguesResponse, error: leaguesError } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
     staleTime: 1000 * 60 * 5, // 5 minutes
-    retry: 2, // Only retry twice to avoid infinite retries
-    retryDelay: 1000, // Wait 1 second between retries
   });
 
-  // Add debug logging
-  console.log('[Layout] Query state:', { isLoading, error: leaguesError });
-  console.log('[Layout] Leagues response:', leaguesResponse);
-
-  // Ensure leagues is always an array, even when the response is loading or errored
-  const leagues = leaguesResponse?.success && Array.isArray(leaguesResponse?.data)
-    ? leaguesResponse.data
-    : [];
+  const leagues = leaguesResponse?.data || [];
 
   useEffect(() => {
     setStoredValue("sidebarCollapsed", isCollapsed);
@@ -238,6 +194,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const isInLeaguesSection = location.startsWith('/leagues') ||
     leagues.some(league => location.startsWith(`/leagues/${league.id}`));
+
+  if (leaguesError) {
+    console.error('Error loading leagues:', leaguesError);
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -273,37 +233,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <ErrorBoundary FallbackComponent={ErrorFallback}>
               <Suspense fallback={<div className="p-4">Loading...</div>}>
-                <nav className="mt-8 flex-1 space-y-1 px-2 flex flex-col">
-                  <div className="flex-1 space-y-1">
-                    {baseNavigation.map((item) => (
-                      <NavigationItem
-                        key={item.name}
-                        item={item}
-                        isActive={location === item.href}
-                        isCollapsed={isCollapsed}
-                      />
-                    ))}
+                <nav className="mt-8 flex-1 space-y-1 px-2">
+                  <NavigationItem
+                    item={baseNavigation[0]}
+                    isActive={location === "/"}
+                    isCollapsed={isCollapsed}
+                  />
 
-                    {/* Only render LeaguesSection when we have finished loading or have data */}
-                    {(!isLoading || leagues.length > 0) && !leaguesError && (
-                      <LeaguesSection
-                        isCollapsed={isCollapsed}
-                        leagues={leagues}
-                        isInLeaguesSection={isInLeaguesSection}
-                        location={location}
-                        isLoading={isLoading}
-                      />
-                    )}
+                  <LeaguesSection
+                    isCollapsed={isCollapsed}
+                    leagues={leagues}
+                    isInLeaguesSection={isInLeaguesSection}
+                    location={location}
+                  />
 
-                    {bottomNavigation.map((item) => (
-                      <NavigationItem
-                        key={item.name}
-                        item={item}
-                        isActive={location === item.href}
-                        isCollapsed={isCollapsed}
-                      />
-                    ))}
-                  </div>
+                  {baseNavigation.slice(1).map((item) => (
+                    <NavigationItem
+                      key={item.name}
+                      item={item}
+                      isActive={location === item.href}
+                      isCollapsed={isCollapsed}
+                    />
+                  ))}
                 </nav>
               </Suspense>
             </ErrorBoundary>
