@@ -1,8 +1,8 @@
-import { FC, ReactNode, useState } from "react";
+import { FC, ReactNode, useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu, LayoutDashboard, History, Trophy, Medal, Gift, UserCircle, ChevronRight } from "lucide-react";
+import { Menu, LayoutDashboard, History, Trophy, Medal, Gavel, UserCircle, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -20,7 +20,7 @@ const navItems: NavItem[] = [
   {
     icon: History,
     label: "Payment History",
-    href: "/payments"
+    href: "/payment-history"
   },
   {
     icon: Trophy,
@@ -33,9 +33,9 @@ const navItems: NavItem[] = [
     href: "/standings"
   },
   {
-    icon: Gift,
-    label: "Loyalty Program",
-    href: "/loyalty"
+    icon: Gavel,
+    label: "League Rules",
+    href: "/league-rules"
   },
   {
     icon: UserCircle,
@@ -44,14 +44,13 @@ const navItems: NavItem[] = [
   }
 ];
 
-interface BowlerLayoutProps {
-  children: ReactNode;
-  bowlerName?: string;
-  leagueName?: string;
-}
-
 const SideNav = () => {
   const [location] = useLocation();
+
+  // Debug output
+  useEffect(() => {
+    console.log('Navigation Items:', navItems.map(item => item.label));
+  }, []);
 
   return (
     <nav className="space-y-2">
@@ -76,7 +75,13 @@ const SideNav = () => {
   );
 };
 
-export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leagueName }) => {
+interface BowlerLayoutProps {
+  children: ReactNode;
+  bowlerName?: string;
+  leagueName?: string;
+}
+
+const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leagueName }) => {
   const [open, setOpen] = useState(false);
 
   return (
@@ -115,3 +120,4 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
     </div>
   );
 };
+export default BowlerLayout;
