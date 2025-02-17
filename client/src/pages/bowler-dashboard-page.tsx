@@ -1,14 +1,14 @@
 import { FC } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useBowlers } from "@/hooks/use-bowlers";
 import { useQuery } from "@tanstack/react-query";
-import type { User } from "@shared/schema";
+import type { User, League, Payment } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Loader2, 
-  Trophy, 
-  CreditCard, 
-  Gift, 
+import {
+  Loader2,
+  Trophy,
+  CreditCard,
+  Gift,
   LayoutDashboard,
   Medal,
   History,
@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
+import { differenceInWeeks, startOfToday, isValid, parseISO } from "date-fns";
 
 interface NavItem {
   icon: typeof LayoutDashboard;
@@ -37,7 +38,7 @@ const navItems: NavItem[] = [
   {
     icon: History,
     label: "Payment History",
-    href: "/payments"
+    href: "/payment-history"
   },
   {
     icon: Trophy,
@@ -61,12 +62,21 @@ const navItems: NavItem[] = [
   }
 ];
 
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: {
+    message: string;
+    code?: string;
+  };
+}
+
 const BowlerDashboardPage: FC = () => {
   const { toast } = useToast();
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
 
-  const { data: currentUser, error: userError, isLoading: isUserLoading } = useQuery<{ success: true; data: User }>({
+  const { data: currentUser, error: userError, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
     onError: (error) => {
       console.error("[BowlerDashboard] Error fetching user data:", error);
@@ -78,25 +88,34 @@ const BowlerDashboardPage: FC = () => {
     },
   });
 
-  const { 
-    bowlers, 
-    getBowlerTeamName, 
-    getBowlerFirstLeagueName, 
-    isInitialLoading, 
+  const {
+    bowlers,
+    getBowlerTeamName,
+    getBowlerFirstLeagueName,
+    isInitialLoading,
     isLoadingRelatedData,
     error: bowlersError,
     getBowlerLeagueId
   } = useBowlers();
 
-  // Add loyalty points query
-  const { data: loyaltyInfo, isLoading: isLoyaltyLoading } = useQuery({
-    queryKey: ["/api/square/loyalty", currentUser?.data?.bowlerId],
-    enabled: !!currentUser?.data?.bowlerId,
-  });
-
   const bowler = currentUser?.data?.bowlerId ? bowlers.find(b => b.id === currentUser.data.bowlerId) : null;
+  const leagueId = bowler ? getBowlerLeagueId(bowler) : null;
 
-  if (isUserLoading || isInitialLoading || isLoadingRelatedData || isLoyaltyLoading) {
+  // Add league query with proper typing
+  const { data: leagueResponse } = useQuery<ApiResponse<League>>({
+    queryKey: [`/api/leagues/${leagueId}`],
+    enabled: !!leagueId,
+  });
+  const league = leagueResponse?.data;
+
+  // Add payments query with proper typing
+  const { data: paymentsResponse } = useQuery<ApiResponse<Payment[]>>({
+    queryKey: ["/api/payments", bowler?.id, leagueId],
+    enabled: !!bowler?.id && !!leagueId,
+  });
+  const payments = paymentsResponse?.data || [];
+
+  if (isUserLoading || isInitialLoading || isLoadingRelatedData) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -147,6 +166,39 @@ const BowlerDashboardPage: FC = () => {
 
   const teamName = getBowlerTeamName(bowler);
   const leagueName = getBowlerFirstLeagueName(bowler);
+
+  // Financial calculations
+  const totalPaidPayments = payments.filter(p => p.status === 'paid') || [];
+  const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
+
+  let weeksDue = 0;
+  let totalSeasonDues = 0;
+  let totalWeeksInSeason = 0;
+  let fullSeasonAmount = 0;
+  let amountPastDue = 0;
+
+  if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
+    const seasonStart = parseISO(league.seasonStart);
+    const seasonEnd = parseISO(league.seasonEnd);
+    const today = startOfToday();
+
+    if (isValid(seasonStart) && isValid(seasonEnd) && isValid(today)) {
+      if (today < seasonStart) {
+        weeksDue = 0;
+      } else if (today > seasonEnd) {
+        weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
+      } else {
+        weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
+      }
+
+      totalSeasonDues = league.weeklyFee * weeksDue;
+      totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
+      fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
+      amountPastDue = totalSeasonDues - totalPaidAmount;
+    }
+  }
+
+  const remainingBalance = fullSeasonAmount - totalPaidAmount;
 
   const SideNav = () => (
     <nav className="space-y-2">
@@ -206,94 +258,88 @@ const BowlerDashboardPage: FC = () => {
             <CardHeader>
               <CardTitle>{bowler.name}'s Dashboard</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/* League Information Section */}
-              <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-                <div className="md:col-span-3">
-                  <h3 className="text-lg font-semibold mb-4">League Information</h3>
-                  <div className="rounded-lg border p-4 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Current League</p>
-                        <p className="text-lg font-semibold">{leagueName || "Not Assigned"}</p>
-                      </div>
-                      <Trophy className="h-8 w-8 text-primary opacity-50" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Team</p>
-                      <p className="text-lg font-semibold">{teamName || "Not Assigned"}</p>
-                    </div>
+            <CardContent>
+              <div className="rounded-lg border p-4 space-y-4 mt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Current League</p>
+                    <p className="text-lg font-semibold">{leagueName || "Not Assigned"}</p>
                   </div>
+                  <Trophy className="h-8 w-8 text-primary opacity-50" />
                 </div>
-                <div className="md:col-span-3">
-                  <h3 className="text-lg font-semibold mb-4 opacity-0">Actions</h3>
-                  <div className="rounded-lg border">
-                    <Link href={`/bowlers/${bowler.id}/scores`} className="block">
-                      <Card className="cursor-pointer hover:bg-accent transition-colors">
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-base flex items-center gap-2">
-                            <Trophy className="h-5 w-5 text-primary opacity-75" />
-                            View Scores
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-sm text-muted-foreground mb-4">
-                            Track your performance and view historical scores
-                          </p>
-                          <Button variant="secondary" className="w-full">
-                            View Scores
-                          </Button>
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Team</p>
+                  <p className="text-lg font-semibold">{teamName || "Not Assigned"}</p>
                 </div>
               </div>
 
-              {/* Quick Action Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Link href="/payments">
-                  <Card className="cursor-pointer hover:bg-accent transition-colors">
-                    <CardHeader>
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <CreditCard className="h-5 w-5 text-primary opacity-75" />
-                        Payment History
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        View and manage your league payments
-                      </p>
-                      <Button variant="secondary" className="w-full">View Payments</Button>
-                    </CardContent>
-                  </Card>
-                </Link>
-                <Card className="cursor-pointer hover:bg-accent transition-colors">
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Gift className="h-5 w-5 text-primary opacity-75" />
-                      Loyalty Program
-                    </CardTitle>
+              {/* Financial Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Weekly Fee</CardTitle>
+                    <CardDescription>Regular payment amount</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {isLoyaltyLoading ? (
-                      <div className="flex items-center justify-center p-4">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      </div>
-                    ) : loyaltyInfo ? (
-                      <div className="space-y-2 mb-4">
-                        <p className="text-sm text-muted-foreground">Current Points</p>
-                        <p className="text-2xl font-bold">{loyaltyInfo.points}</p>
-                        <p className="text-sm text-muted-foreground">Loyalty Status: {loyaltyInfo.status}</p>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Join our loyalty program to earn rewards
-                      </p>
-                    )}
-                    <Button variant="secondary" className="w-full">
-                      {loyaltyInfo ? "View Rewards" : "Enroll Now"}
-                    </Button>
+                    <p className="text-2xl font-bold">${((league?.weeklyFee || 0) / 100).toFixed(2)}</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Amount Due to Date</CardTitle>
+                    <CardDescription>
+                      {weeksDue} week{weeksDue === 1 ? "" : "s"} at ${(
+                        (league?.weeklyFee || 0) / 100
+                      ).toFixed(2)}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold">${(totalSeasonDues / 100).toFixed(2)}</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Amount Paid to Date</CardTitle>
+                    <CardDescription>All payments received</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold">${(totalPaidAmount / 100).toFixed(2)}</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Amount Past Due to Date</CardTitle>
+                    <CardDescription>Unpaid fees for weeks passed</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Full Season Lineage Amount Due</CardTitle>
+                    <CardDescription>
+                      {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at ${(
+                        (league?.weeklyFee || 0) / 100
+                      ).toFixed(2)}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold">${(fullSeasonAmount / 100).toFixed(2)}</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Full Season Remaining Balance</CardTitle>
+                    <CardDescription>Amount left to pay</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-2xl font-bold">${(remainingBalance / 100).toFixed(2)}</p>
                   </CardContent>
                 </Card>
               </div>
