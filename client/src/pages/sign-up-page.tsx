@@ -18,6 +18,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -30,7 +31,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { FormDescription } from "@/components/ui/form";
+
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 100;
 
 const signUpSchema = z.object({
   name: z
@@ -52,21 +55,66 @@ const signUpSchema = z.object({
     .min(1, "Please select a league"),
   password: z
     .string()
-    .min(8, "Password must be at least 8 characters")
-    .max(100, "Password must be less than 100 characters")
-    .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])/,
-      "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+    .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
+    .max(PASSWORD_MAX_LENGTH, `Password must be less than ${PASSWORD_MAX_LENGTH} characters`)
+    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+    .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+    .regex(/[0-9]/, "Password must contain at least one number")
+    .regex(/[!@#$%^&*]/, "Password must contain at least one special character (!@#$%^&*)")
+    .refine(
+      (password) => {
+        // Additional complexity check - no repetitive characters
+        return !/(.)\1{2,}/.test(password);
+      },
+      "Password cannot contain repetitive characters (e.g., 'aaa')"
+    )
+    .refine(
+      (password) => {
+        // Check for common patterns
+        const commonPatterns = ['123', 'abc', 'qwerty', 'password'];
+        return !commonPatterns.some(pattern => 
+          password.toLowerCase().includes(pattern)
+        );
+      },
+      "Password cannot contain common sequences like '123' or 'abc'"
     ),
 });
 
 type SignUpFormData = z.infer<typeof signUpSchema>;
 
+const PasswordRequirements: FC<{ errors: Record<string, any> }> = ({ errors }) => {
+  const requirements = [
+    { text: `At least ${PASSWORD_MIN_LENGTH} characters long`, regex: new RegExp(`.{${PASSWORD_MIN_LENGTH},}`) },
+    { text: "One uppercase letter", regex: /[A-Z]/ },
+    { text: "One lowercase letter", regex: /[a-z]/ },
+    { text: "One number", regex: /[0-9]/ },
+    { text: "One special character (!@#$%^&*)", regex: /[!@#$%^&*]/ },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">Password requirements:</p>
+      <ul className="text-sm space-y-1">
+        {requirements.map((req, index) => (
+          <li
+            key={index}
+            className={`flex items-center space-x-2 ${
+              errors.password ? "text-destructive" : "text-muted-foreground"
+            }`}
+          >
+            <span>•</span>
+            <span>{req.text}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+};
+
 const SignUpPage: FC = () => {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
-  // Initialize form with schema validation
   const form = useForm<SignUpFormData>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
@@ -76,9 +124,9 @@ const SignUpPage: FC = () => {
       leagueId: "",
       password: "",
     },
+    mode: "onChange", // Enable real-time validation
   });
 
-  // Fetch leagues for dropdown
   const { data: leagues } = useQuery({
     queryKey: ["/api/leagues"],
     queryFn: async () => {
@@ -94,12 +142,10 @@ const SignUpPage: FC = () => {
     },
   });
 
-  // Handle form submission
   const onSubmit = async (data: SignUpFormData) => {
     try {
       console.log("[SignUp] Submitting registration form:", { email: data.email });
 
-      // Check if email exists
       const existingUsersResponse = await fetch(`/api/users/check-email/${encodeURIComponent(data.email)}`);
       if (!existingUsersResponse.ok) {
         throw new Error("Failed to verify email availability");
@@ -115,14 +161,12 @@ const SignUpPage: FC = () => {
         return;
       }
 
-      // Check for existing bowler
       const bowlersResponse = await fetch("/api/bowlers");
       if (!bowlersResponse.ok) {
         throw new Error("Failed to check existing bowlers");
       }
       const bowlersData = await bowlersResponse.json();
 
-      // Look for matching bowler
       const existingBowler = bowlersData.data.find((bowler: any) =>
         bowler.name.toLowerCase() === data.name.toLowerCase() &&
         bowler.email.toLowerCase() === data.email.toLowerCase()
@@ -141,7 +185,6 @@ const SignUpPage: FC = () => {
         });
       }
 
-      // Submit registration
       const response = await fetch("/api/register", {
         method: "POST",
         headers: {
@@ -163,7 +206,6 @@ const SignUpPage: FC = () => {
         description: "Welcome to the bowling league management system.",
       });
 
-      // Redirect to home page
       setLocation("/");
     } catch (error) {
       console.error('[SignUp] Registration error:', error);
@@ -273,16 +315,7 @@ const SignUpPage: FC = () => {
                         {...field}
                       />
                     </FormControl>
-                    <FormDescription className="text-sm text-muted-foreground">
-                      Password must contain:
-                      <ul className="list-disc list-inside">
-                        <li>At least 8 characters</li>
-                        <li>One uppercase letter</li>
-                        <li>One lowercase letter</li>
-                        <li>One number</li>
-                        <li>One special character (!@#$%^&*)</li>
-                      </ul>
-                    </FormDescription>
+                    <PasswordRequirements errors={form.formState.errors} />
                     <FormMessage />
                   </FormItem>
                 )}
