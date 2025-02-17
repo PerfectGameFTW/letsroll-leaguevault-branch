@@ -360,7 +360,7 @@ async function startServer() {
     await cleanupPortStatus();
     await validateStartupPhase('cleanup');
 
-    // Phase 2: Database
+    // Phase 2: Database with retry
     console.log('[Server] Phase 2: Testing database connection...');
     await testDatabaseConnectionWithRetry();
     await validateStartupPhase('database', ['cleanup']);
@@ -380,27 +380,99 @@ async function startServer() {
     const HOST = '0.0.0.0';
 
     await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Server startup timeout'));
+      }, STARTUP_PHASE_TIMEOUT);
+
       server.listen(port, HOST, async () => {
+        clearTimeout(timeout);
         console.log(`[Server] Server is running at http://${HOST}:${port}`);
         await validateStartupPhase('server', ['cleanup', 'database', 'port']);
 
         // Update status - server is now ready
-        await writePortStatus(port, true, { database: true, server: true });
-        isServerReady = true;
+        await writePortStatus(port, false, { database: true, server: true });
+
+        if (process.env.NODE_ENV !== "production") {
+          console.log('[Server] Running in development mode with Vite middleware');
+        } else {
+          console.log('[Server] Running in production mode');
+        }
         resolve();
       });
 
       server.once('error', (err) => {
+        clearTimeout(timeout);
         console.error('[Server] Failed to start server:', err);
         reject(err);
       });
     });
 
-    // Final initialization
-    console.log('[Server] Completing initialization...');
-    await validateStartupPhase('final', ['cleanup', 'database', 'port', 'server']);
+    // Phase 5: Vite setup (development only)
+    if (process.env.NODE_ENV !== "production") {
+      console.log('[Server] Phase 5: Setting up Vite...');
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Vite setup timeout'));
+        }, STARTUP_PHASE_TIMEOUT);
+
+        const checkVite = setInterval(() => {
+          if (viteSetupComplete) {
+            clearInterval(checkVite);
+            clearTimeout(timeout);
+            validateStartupPhase('vite', ['cleanup', 'database', 'port', 'server']);
+            writePortStatus(port, false, { database: true, server: true, vite: true });
+            resolve();
+          }
+        }, 100);
+      });
+    }
+
+    // Phase 6: Final initialization
+    console.log('[Server] Phase 6: Completing initialization...');
+    await validateStartupPhase('final', ['cleanup', 'database', 'port', 'server', 'vite']);
+    await writePortStatus(port, true, { database: true, server: true, vite: viteSetupComplete });
+    isServerReady = true;
     console.log(`[Server] Server is fully initialized and ready on port ${port}`);
 
+    // Initialize league schedulers with retry mechanism
+    let retryCount = 0;
+    const maxRetries = 3;
+
+    while (retryCount < maxRetries) {
+      try {
+        const leagues = await storage.getLeagues();
+        console.log(`[Server] Found ${leagues.length} leagues`);
+
+        for (const league of leagues) {
+          if (league.active) {
+            console.log(`[Server] Setting up score scheduler for league: ${league.name}`);
+            const scheduler = new ScoreSchedulerService(league.id);
+            const dayMap: { [key: string]: number } = {
+              'monday': 1, 'tuesday': 2, 'wednesday': 3,
+              'thursday': 4, 'friday': 5, 'saturday': 6, 'sunday': 0
+            };
+
+            const dayNumber = dayMap[league.weekDay.toLowerCase()];
+            const cronExpression = `0 22 * * ${dayNumber}`;
+            scheduler.scheduleJob(
+              cronExpression,
+              process.env.GOOGLE_DRIVE_SOURCE_FOLDER_ID!,
+              process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID!
+            );
+          }
+        }
+        break; // Success, exit retry loop
+      } catch (error) {
+        retryCount++;
+        console.error(`[Server] Error setting up score schedulers (attempt ${retryCount}/${maxRetries}):`, error);
+        if (retryCount === maxRetries) {
+          console.error('[Server] Max retries reached for score scheduler setup');
+          // Continue server startup even if scheduler setup fails
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
+        }
+      }
+    }
   } catch (error) {
     console.error('[Server] Fatal error during startup:', error);
     // Cleanup port status file on error
@@ -418,7 +490,7 @@ async function shutdown() {
 
   const startTime = Date.now();
   shutdownPhases.initiated = true;
-  let shutdownTimeoutId: NodeJS.Timeout | undefined;
+  let shutdownTimeoutId: NodeJS.Timeout;
 
   try {
     // Set a maximum wait time for active requests
@@ -575,27 +647,23 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Register API routes before Vite middleware
+// Register API routes
 console.log('[Server] Registering API routes...');
 registerRoutes(app);
 
 // Development mode setup
 if (process.env.NODE_ENV !== "production") {
   console.log('[Server] Setting up Vite middleware for development...');
-  app.use(async (req, res, next) => {
-    // Skip Vite for API routes
-    if (req.path.startsWith('/api/')) {
-      return next();
-    }
-
-    try {
-      await setupVite(app, server);
-      next();
-    } catch (error) {
+  setupVite(app, server)
+    .then(() => {
+      console.log('[Server] Vite middleware setup complete');
+      viteSetupComplete = true;
+      startServer();
+    })
+    .catch((error) => {
       console.error('[Server] Error setting up Vite:', error);
-      next(error);
-    }
-  });
+      process.exit(1);
+    });
 } else {
   // Production mode setup
   app.use(express.static(path.join(process.cwd(), 'dist/public')));
@@ -605,6 +673,7 @@ if (process.env.NODE_ENV !== "production") {
     }
     res.sendFile(path.join(process.cwd(), 'dist/public/index.html'));
   });
+  startServer();
 }
 
 // Global error handler
@@ -623,6 +692,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
+// Add cleanup handler with timeout
 process.on('SIGTERM', () => {
   console.log('[Server] Received SIGTERM signal');
   const forceShutdownTimeout = setTimeout(() => {
