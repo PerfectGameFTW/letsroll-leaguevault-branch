@@ -166,41 +166,52 @@ export default function PaymentHistoryPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
+                  <TableHead>Week</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {payments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-4">
+                    <TableCell colSpan={5} className="text-center py-4">
                       No payments recorded
                     </TableCell>
                   </TableRow>
                 ) : (
-                  payments.map((payment) => (
-                    <TableRow key={payment.id}>
-                      <TableCell>
-                        {format(new Date(payment.weekOf), 'MMM d, yyyy')}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">
-                          {payment.type === 'cash' ? 'Cash' :
-                            payment.type === 'check' ? `Check #${payment.checkNumber}` :
-                            payment.type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        ${(payment.amount / 100).toFixed(2)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={payment.status === 'paid' ? 'success' : 'default'}>
-                          {payment.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  payments.map((payment) => {
+                    const weekNumber = league?.seasonStart
+                      ? Math.max(1, differenceInWeeks(new Date(payment.weekOf), new Date(league.seasonStart)) + 1)
+                      : '-';
+
+                    return (
+                      <TableRow key={payment.id}>
+                        <TableCell>
+                          {format(new Date(payment.weekOf), 'MM/dd/yy')}
+                        </TableCell>
+                        <TableCell>
+                          Week {weekNumber}
+                        </TableCell>
+                        <TableCell>
+                          ${(payment.amount / 100).toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {payment.type === 'cash' ? 'Cash' :
+                             payment.type === 'check' ? `Check #${payment.checkNumber}` :
+                             payment.type === 'credit_card' ? 'Credit Card' :
+                             'Other Payment'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={payment.status === 'paid' ? 'success' : 'default'}>
+                            {payment.status}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
