@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, LayoutDashboard } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, LayoutDashboard } from "lucide-react";
 import { useState, useEffect, Suspense, memo } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -69,104 +69,6 @@ const NavigationItem = memo(({ item, isActive, isCollapsed }: {
   );
 });
 
-// Memoized leagues section to prevent unnecessary re-renders
-const LeaguesSection = memo(({
-  isCollapsed,
-  leagues,
-  isInLeaguesSection,
-  location
-}: {
-  isCollapsed: boolean,
-  leagues: League[],
-  isInLeaguesSection: boolean,
-  location: string
-}) => {
-  const [isLeaguesExpanded, setIsLeaguesExpanded] = useState(false);
-
-  if (isCollapsed) {
-    return (
-      <Link href="/leagues">
-        <span
-          className={cn(
-            "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-            isInLeaguesSection
-              ? "bg-primary text-primary-foreground"
-              : "text-gray-600 hover:bg-gray-50"
-          )}
-          title="Leagues"
-        >
-          <Trophy
-            className={cn(
-              "h-5 w-5 flex-shrink-0",
-              isInLeaguesSection
-                ? "text-primary-foreground"
-                : "text-gray-400",
-              "mx-auto"
-            )}
-          />
-        </span>
-      </Link>
-    );
-  }
-
-  return (
-    <div>
-      <button
-        className={cn(
-          "w-full flex items-center justify-between px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-          isInLeaguesSection
-            ? "bg-primary text-primary-foreground"
-            : "text-gray-600 hover:bg-gray-50"
-        )}
-        onClick={() => setIsLeaguesExpanded(!isLeaguesExpanded)}
-      >
-        <div className="flex items-center">
-          <Trophy className={cn(
-            "h-5 w-5 flex-shrink-0 mr-3",
-            isInLeaguesSection
-              ? "text-primary-foreground"
-              : "text-gray-400"
-          )} />
-          Leagues
-        </div>
-        {isLeaguesExpanded ? (
-          <ChevronUp className="h-4 w-4" />
-        ) : (
-          <ChevronDown className="h-4 w-4" />
-        )}
-      </button>
-      {isLeaguesExpanded && (
-        <div className="ml-9 mt-1 space-y-1">
-          <Link href="/leagues">
-            <span className={cn(
-              "block px-2 py-1.5 text-sm rounded-md cursor-pointer",
-              location === "/leagues"
-                ? "bg-primary/10 text-primary font-medium"
-                : "text-gray-600 hover:bg-gray-50"
-            )}>
-              All Leagues
-            </span>
-          </Link>
-          {leagues.map((league) => (
-            <Link
-              key={league.id}
-              href={`/leagues/${league.id}`}
-            >
-              <span className={cn(
-                "block px-2 py-1.5 text-sm rounded-md cursor-pointer",
-                location === `/leagues/${league.id}`
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-gray-600 hover:bg-gray-50"
-              )}>
-                {league.name}
-              </span>
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-});
 
 const ErrorFallback = ({ error }: { error: Error }) => {
   return (
@@ -182,23 +84,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     getStoredValue("sidebarCollapsed", false)
   );
 
-  const { data: leaguesResponse, error: leaguesError } = useQuery<{ data: League[] }>({
-    queryKey: ["/api/leagues"],
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
-
-  const leagues = leaguesResponse?.data || [];
-
   useEffect(() => {
     setStoredValue("sidebarCollapsed", isCollapsed);
   }, [isCollapsed]);
-
-  const isInLeaguesSection = location.startsWith('/leagues') ||
-    leagues.some(league => location.startsWith(`/leagues/${league.id}`));
-
-  if (leaguesError) {
-    console.error('Error loading leagues:', leaguesError);
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -240,14 +128,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     isActive={location === "/"}
                     isCollapsed={isCollapsed}
                   />
-
-                  <LeaguesSection
-                    isCollapsed={isCollapsed}
-                    leagues={leagues}
-                    isInLeaguesSection={isInLeaguesSection}
-                    location={location}
-                  />
-
                   {baseNavigation.slice(1).map((item) => (
                     <NavigationItem
                       key={item.name}

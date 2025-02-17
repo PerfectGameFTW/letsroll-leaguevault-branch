@@ -202,12 +202,14 @@ export const weeklyStats = pgTable("weekly_stats", {
   bowlerStatsIdx: index("bowler_stats_idx").on(table.bowlerLeagueId),
 }));
 
-// Add users table after the existing scores table, before relations
+// Update user schema to include name and phone fields
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   bowlerId: integer("bowler_id").references(() => bowlers.id),
+  name: text("name").notNull(),
+  phone: text("phone"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -297,7 +299,6 @@ export const userRelations = relations(users, ({ one }) => ({
     references: [bowlers.id],
   }),
 }));
-
 
 // Validation schemas
 // Base schemas using drizzle-zod
@@ -422,6 +423,8 @@ export const insertWeeklyStatsSchema = baseWeeklyStatsSchema.extend({
 // Update the insertUserSchema definition
 export const insertUserSchema = baseUserSchema.extend({
   email: emailSchema,
+  name: nameSchema,
+  phone: z.string().optional(),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")

@@ -74,7 +74,7 @@ export function setupAuth(app: Express) {
     new LocalStrategy({
       usernameField: 'email',
       passwordField: 'password'
-    }, async (email, password, done) => {
+    }, async (email: string, password: string, done: (error: any, user?: any, options?: { message: string }) => void) => {
       try {
         console.log(`[Auth] Attempting login for email: ${email}`);
         const user = await storage.getUserByEmail(email);
@@ -147,7 +147,7 @@ export function setupAuth(app: Express) {
         password: req.body.password,
         name: req.body.name,
         phone: req.body.phone,
-        leagueId: parseInt(req.body.leagueId)
+        leagueId: req.body.leagueId ? parseInt(req.body.leagueId) : undefined
       };
 
       console.log('[Auth] Validating full registration data');
