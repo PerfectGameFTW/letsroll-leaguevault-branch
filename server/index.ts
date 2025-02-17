@@ -575,23 +575,27 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Register API routes
+// Register API routes before Vite middleware
 console.log('[Server] Registering API routes...');
 registerRoutes(app);
 
 // Development mode setup
 if (process.env.NODE_ENV !== "production") {
   console.log('[Server] Setting up Vite middleware for development...');
-  setupVite(app, server)
-    .then(() => {
-      console.log('[Server] Vite middleware setup complete');
-      viteSetupComplete = true;
-      startServer();
-    })
-    .catch((error) => {
+  app.use(async (req, res, next) => {
+    // Skip Vite for API routes
+    if (req.path.startsWith('/api/')) {
+      return next();
+    }
+
+    try {
+      await setupVite(app, server);
+      next();
+    } catch (error) {
       console.error('[Server] Error setting up Vite:', error);
-      process.exit(1);
-    });
+      next(error);
+    }
+  });
 } else {
   // Production mode setup
   app.use(express.static(path.join(process.cwd(), 'dist/public')));
@@ -601,7 +605,6 @@ if (process.env.NODE_ENV !== "production") {
     }
     res.sendFile(path.join(process.cwd(), 'dist/public/index.html'));
   });
-  startServer();
 }
 
 // Global error handler
@@ -620,7 +623,6 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
-// Add cleanup handler with timeout
 process.on('SIGTERM', () => {
   console.log('[Server] Received SIGTERM signal');
   const forceShutdownTimeout = setTimeout(() => {
