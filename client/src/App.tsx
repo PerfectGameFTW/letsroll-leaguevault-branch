@@ -17,6 +17,7 @@ import WeeklyPaymentsPage from "@/pages/weekly-payments-page";
 import ReportsPage from "@/pages/reports-page";
 import LeaguePastDuePage from "@/pages/league-past-due-page";
 import PastDuePage from "@/pages/past-due-page";
+import SignUpPage from "@/pages/sign-up-page";
 import { useEffect, useRef } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +30,7 @@ function Router() {
 
   return (
     <Switch>
+      <Route path="/sign-up" component={SignUpPage} />
       <Route path="/" component={HomePage} />
       <Route path="/leagues" component={LeaguesPage} />
       <Route path="/leagues/:leagueId" component={LeagueViewPage} />
