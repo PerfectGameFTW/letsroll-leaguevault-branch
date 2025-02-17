@@ -81,6 +81,57 @@ describe('ScoreImportService', () => {
     });
   });
 
+  describe('bowler name cleaning', () => {
+    it('removes trailing gender and number markers', async () => {
+      const service = new ScoreImportService(1);
+      const testCases = [
+        { input: 'John Smith M  54', expected: 'John Smith' },
+        { input: 'Jane Doe W  32', expected: 'Jane Doe' },
+        { input: '123 Bob Wilson', expected: 'Bob Wilson' },
+        { input: 'Mary  Jones   W  45', expected: 'Mary Jones' },
+      ];
+
+      for (const { input, expected } of testCases) {
+        // Use the service to import a modified version of the sample content
+        const modifiedContent = sampleFileContent.replace(/John Smith/g, input);
+        await service.importScoreFile(modifiedContent);
+
+        // Verify the bowler was created with cleaned name
+        const createBowlerCalls = (storage.createBowler as jest.Mock).mock.calls;
+        const createdBowler = createBowlerCalls.find(call => call[0].name === expected);
+        expect(createdBowler).toBeTruthy();
+      }
+    });
+
+    it('ensures all created bowlers have @placeholder.com emails', async () => {
+      const service = new ScoreImportService(1);
+      await service.importScoreFile(sampleFileContent);
+
+      const createBowlerCalls = (storage.createBowler as jest.Mock).mock.calls;
+      createBowlerCalls.forEach(call => {
+        const bowlerData = call[0];
+        expect(bowlerData.email).toMatch(/@placeholder\.com$/);
+        expect(bowlerData.email).not.toMatch(/@example\.com$/);
+      });
+    });
+
+    it('skips invalid bowler data without throwing errors', async () => {
+      const service = new ScoreImportService(1);
+      const invalidContent = sampleFileContent.replace(/John Smith/g, '   ');
+
+      // Should not throw error for invalid bowler
+      await expect(service.importScoreFile(invalidContent)).resolves.not.toThrow();
+
+      // Verify no bowlers were created with empty names
+      const createBowlerCalls = (storage.createBowler as jest.Mock).mock.calls;
+      createBowlerCalls.forEach(call => {
+        const bowlerData = call[0];
+        expect(bowlerData.name.trim()).not.toBe('');
+        expect(bowlerData.name.length).toBeGreaterThan(1);
+      });
+    });
+  });
+
   it('successfully imports scores with correct game dates', async () => {
     const service = new ScoreImportService(1);
 

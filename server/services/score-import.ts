@@ -24,15 +24,40 @@ export class ScoreImportService {
     console.log('[ScoreImportService] Initialized with leagueId:', leagueId);
   }
 
+  private cleanBowlerName(name: string): string {
+    if (!name) return '';
+
+    // Log original name for debugging
+    console.log('[ScoreImport] Cleaning bowler name:', { original: name });
+
+    // Remove trailing metadata patterns
+    name = name.replace(/\s+M\s+\d+$/, ''); // Remove "M  54" pattern
+    name = name.replace(/\s+W\s+\d+$/, ''); // Remove "W  54" pattern
+    name = name.replace(/^\d+/, ''); // Remove leading numbers
+
+    // Remove multiple spaces and trim
+    name = name.replace(/\s+/g, ' ').trim();
+
+    console.log('[ScoreImport] Cleaned bowler name:', { 
+      original: name,
+      cleaned: name 
+    });
+
+    return name;
+  }
+
   private async createSquareCustomerIfNeeded(bowlerName: string, bowlerId: string): Promise<string | null> {
     try {
-      // Generate a valid email using bowler ID and a real domain
-      const email = `bowler.${bowlerId}@example.com`;
+      // Generate email using placeholder.com domain
+      const email = `${bowlerId}@placeholder.com`;
+
+      // Clean the bowler name before creating Square customer
+      const cleanedName = this.cleanBowlerName(bowlerName);
 
       // Create or update Square customer
-      const squareCustomer = await createOrUpdateCustomer(bowlerName, email);
+      const squareCustomer = await createOrUpdateCustomer(cleanedName, email);
       console.log('[ScoreImport] Created/Updated Square customer:', {
-        name: bowlerName,
+        name: cleanedName,
         email,
         squareCustomerId: squareCustomer?.id
       });
@@ -40,7 +65,6 @@ export class ScoreImportService {
       return squareCustomer?.id || null;
     } catch (error) {
       console.error('[ScoreImport] Failed to create/update Square customer:', error);
-      // Return null instead of throwing error so import can continue
       return null;
     }
   }
@@ -91,16 +115,8 @@ export class ScoreImportService {
       });
 
       const team = await storage.getTeamByNumber(leagueId, teamNumber);
+      return team || null; // Explicitly return null if undefined
 
-      if (!team) {
-        console.warn(`[ScoreImport] Team not found:`, {
-          leagueId,
-          qubicaTeamNumber,
-          parsedNumber: teamNumber
-        });
-      }
-
-      return team;
     } catch (error) {
       console.error('[ScoreImport] Team lookup error:', error);
       return null;
@@ -205,65 +221,65 @@ export class ScoreImportService {
           continue;
         }
 
-        // Process bowlers
+        // Process bowlers with enhanced validation
         for (const bowlerScore of teamGame.bowlers) {
           try {
-            // Get or cache bowler
-            let bowler = bowlerCache.get(bowlerScore.bowlerId);
+            // Log incoming bowler data
+            console.log('[ScoreImport] Processing bowler:', {
+              name: bowlerScore.bowlerName,
+              id: bowlerScore.bowlerId,
+              teamNumber: teamGame.teamNumber
+            });
+
+            let bowler = await storage.getBowlerByQubicaId(bowlerScore.bowlerId);
+
             if (!bowler) {
-              bowler = await storage.getBowlerByQubicaId(bowlerScore.bowlerId);
+              // Validate bowler data before creation
+              const cleanedName = this.cleanBowlerName(bowlerScore.bowlerName);
 
-              if (!bowler) {
-                try {
-                  // Create Square customer (optional)
-                  const squareCustomerId = await this.createSquareCustomerIfNeeded(
-                    bowlerScore.bowlerName,
-                    bowlerScore.bowlerId
-                  );
-
-                  // Create bowler with optional Square integration
-                  const insertBowler: InsertBowler = {
-                    name: bowlerScore.bowlerName.trim(),  // Add trim() to remove whitespace
-                    email: `bowler.${bowlerScore.bowlerId}@example.com`,
-                    qubicaId: bowlerScore.bowlerId,
-                    active: true,
-                    order: 0,
-                    squareCustomerId
-                  };
-
-                  // Validate bowler data before creation
-                  if (!bowlerScore.bowlerName || bowlerScore.bowlerName.trim().length < 2 || /^\d+$/.test(bowlerScore.bowlerName)) {
-                    console.error(`[ScoreImport] Invalid bowler name:`, {
-                      name: bowlerScore.bowlerName,
-                      bowlerId: bowlerScore.bowlerId
-                    });
-                    throw new ScoreImportError('Invalid bowler name', 'INVALID_BOWLER_NAME');
-                  }
-
-                  if (!bowlerScore.bowlerId || !/^\d+$/.test(bowlerScore.bowlerId)) {
-                    console.error(`[ScoreImport] Invalid Qubica ID:`, {
-                      bowlerId: bowlerScore.bowlerId,
-                      name: bowlerScore.bowlerName
-                    });
-                    throw new ScoreImportError('Invalid Qubica ID', 'INVALID_QUBICA_ID');
-                  }
-
-                  bowler = await storage.createBowler(insertBowler);
-                  console.log(`[ScoreImport] Created bowler:`, {
-                    bowlerId: bowler.id,
-                    name: bowler.name,
-                    squareCustomerId: bowler.squareCustomerId
-                  });
-                } catch (error) {
-                  console.error(`[ScoreImport] Error creating bowler:`, error);
-                  throw new ScoreImportError('Failed to create bowler', 'BOWLER_CREATION_ERROR');
-                }
+              if (!cleanedName || cleanedName.length < 2) {
+                console.error(`[ScoreImport] Invalid bowler name:`, {
+                  original: bowlerScore.bowlerName,
+                  cleaned: cleanedName,
+                  bowlerId: bowlerScore.bowlerId
+                });
+                continue; // Skip this bowler instead of throwing error
               }
 
-              bowlerCache.set(bowlerScore.bowlerId, bowler);
+              if (!bowlerScore.bowlerId || !/^\d+$/.test(bowlerScore.bowlerId)) {
+                console.error(`[ScoreImport] Invalid Qubica ID:`, {
+                  bowlerId: bowlerScore.bowlerId,
+                  name: bowlerScore.bowlerName
+                });
+                continue; // Skip this bowler
+              }
+
+              // Create Square customer (optional)
+              const squareCustomerId = await this.createSquareCustomerIfNeeded(
+                cleanedName,
+                bowlerScore.bowlerId
+              );
+
+              // Create bowler with proper email domain
+              const insertBowler: InsertBowler = {
+                name: cleanedName,
+                email: `${bowlerScore.bowlerId}@placeholder.com`,
+                qubicaId: bowlerScore.bowlerId,
+                active: true,
+                order: 0,
+                squareCustomerId
+              };
+
+              bowler = await storage.createBowler(insertBowler);
+              console.log(`[ScoreImport] Created new bowler:`, {
+                id: bowler.id,
+                name: bowler.name,
+                email: bowler.email,
+                qubicaId: bowler.qubicaId
+              });
             }
 
-            // Create score with properly initialized arrays
+            // Create score entry
             const insertScore: InsertScore = {
               gameId: game.id,
               bowlerId: bowler.id,
@@ -281,22 +297,11 @@ export class ScoreImportService {
               notes: bowlerScore.notes || []
             };
 
-            // Debug log the score before pushing
-            console.log('[ScoreImport] Preparing score:', {
-              gameId: insertScore.gameId,
-              bowlerId: insertScore.bowlerId,
-              teamId: insertScore.teamId,
-              score: insertScore.score,
-              position: insertScore.position,
-              frames: insertScore.frames.length,
-              splits: insertScore.splits.length,
-              notes: insertScore.notes.length
-            });
-
             scores.push(insertScore);
           } catch (error) {
             console.error(`[ScoreImport] Error processing bowler ${bowlerScore.bowlerName}:`, error);
-            throw error;
+            // Continue with next bowler instead of throwing
+            continue;
           }
         }
       }
