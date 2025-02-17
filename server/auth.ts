@@ -145,7 +145,9 @@ export function setupAuth(app: Express) {
       const registrationData = {
         email: req.body.email,
         password: req.body.password,
-        bowlerId: req.body.bowlerId || null
+        name: req.body.name,
+        phone: req.body.phone,
+        leagueId: parseInt(req.body.leagueId)
       };
 
       console.log('[Auth] Validating full registration data');
@@ -153,8 +155,6 @@ export function setupAuth(app: Express) {
 
       if (!result.success) {
         console.log('[Auth] Validation errors:', result.error.errors);
-
-        // Extract all validation error messages
         const validationErrors = result.error.errors.map(error => ({
           field: error.path.join('.'),
           message: error.message
@@ -179,13 +179,36 @@ export function setupAuth(app: Express) {
         });
       }
 
+      // Check for existing bowler or create new one
+      console.log('[Auth] Checking for existing bowler');
+      const existingBowler = await storage.getBowlerByEmailAndName(result.data.email, result.data.name);
+
+      let bowlerId: number;
+
+      if (existingBowler) {
+        console.log(`[Auth] Found existing bowler ID: ${existingBowler.id}`);
+        bowlerId = existingBowler.id;
+      } else {
+        console.log('[Auth] Creating new bowler record');
+        const newBowler = await storage.createBowler({
+          name: result.data.name,
+          email: result.data.email,
+          phone: result.data.phone,
+          active: true,
+          order: 0
+        });
+        console.log(`[Auth] Created new bowler ID: ${newBowler.id}`);
+        bowlerId = newBowler.id;
+      }
+
       // Create new user with hashed password
       const hashedPassword = await hashPassword(result.data.password);
       console.log('[Auth] Creating user with validated data');
 
       const user = await storage.createUser({
         ...result.data,
-        password: hashedPassword
+        password: hashedPassword,
+        bowlerId: bowlerId
       });
 
       console.log(`[Auth] User registered successfully, ID: ${user.id}`);
