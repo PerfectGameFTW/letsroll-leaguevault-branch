@@ -26,8 +26,8 @@ export class ScoreImportService {
 
   private async createSquareCustomerIfNeeded(bowlerName: string, bowlerId: string): Promise<string | null> {
     try {
-      // Generate a consistent email using bowler ID
-      const email = `${bowlerId}@placeholder.com`;
+      // Generate a valid email using bowler ID and a real domain
+      const email = `bowler.${bowlerId}@example.com`;
 
       // Create or update Square customer
       const squareCustomer = await createOrUpdateCustomer(bowlerName, email);
@@ -40,7 +40,8 @@ export class ScoreImportService {
       return squareCustomer?.id || null;
     } catch (error) {
       console.error('[ScoreImport] Failed to create/update Square customer:', error);
-      throw new ScoreImportError('Failed to create Square customer', 'SQUARE_CUSTOMER_ERROR');
+      // Return null instead of throwing error so import can continue
+      return null;
     }
   }
 
@@ -116,16 +117,6 @@ export class ScoreImportService {
     try {
       console.log('[ScoreImport] Starting import process...');
 
-      // Debug log the file content
-      console.log('[ScoreImport] File content analysis:', {
-        totalLength: fileContent.length,
-        firstLines: fileContent.split('\n').slice(0, 5).map(line => ({
-          content: line,
-          length: line.length,
-          charCodes: line.split('').map(c => c.charCodeAt(0))
-        }))
-      });
-
       // Parse file content
       let parsedData: QubicaScoreImport;
       try {
@@ -140,23 +131,11 @@ export class ScoreImportService {
           sampleGame: parsedData.games[0] ? {
             teamNumber: parsedData.games[0].teamNumber,
             laneNumber: parsedData.games[0].laneNumber,
-            bowlerCount: parsedData.games[0].bowlers.length,
-            bowlers: parsedData.games[0].bowlers.map(b => ({
-              name: b.bowlerName,
-              score: b.score,
-              position: b.position
-            }))
+            bowlerCount: parsedData.games[0].bowlers.length
           } : 'No games found'
         });
       } catch (error) {
-        console.error('[ScoreImport] File parsing error:', {
-          error: error instanceof Error ? {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-          } : error,
-          fileContentSample: fileContent.substring(0, 200)
-        });
+        console.error('[ScoreImport] File parsing error:', error);
         throw new ScoreImportError('Failed to parse score file', 'PARSE_ERROR');
       }
 
@@ -205,17 +184,10 @@ export class ScoreImportService {
       }
 
       // Process scores
-      const teamCache = new Map<string, Team>();
       const bowlerCache = new Map<string, Bowler>();
 
       console.log('[ScoreImport] Processing games:', {
-        totalGames: parsedData.games.length,
-        sampleGame: parsedData.games[0] ? {
-          teamNumber: parsedData.games[0].teamNumber,
-          laneNumber: parsedData.games[0].laneNumber,
-          bowlerCount: parsedData.games[0].bowlers.length,
-          bowlerNames: parsedData.games[0].bowlers.map(b => b.bowlerName)
-        } : 'No games'
+        totalGames: parsedData.games.length
       });
 
       // Process each team game
@@ -226,7 +198,7 @@ export class ScoreImportService {
           continue;
         }
 
-        // Get team using the new lookup method
+        // Get team using the lookup method
         const team = await this.getTeamByQubicaNumber(this.leagueId, teamGame.teamNumber);
         if (!team) {
           console.warn(`[ScoreImport] Skipping scores for team ${teamGame.teamNumber} - team not found`);
@@ -243,24 +215,41 @@ export class ScoreImportService {
 
               if (!bowler) {
                 try {
-                  // Create Square customer first
+                  // Create Square customer (optional)
                   const squareCustomerId = await this.createSquareCustomerIfNeeded(
                     bowlerScore.bowlerName,
                     bowlerScore.bowlerId
                   );
 
-                  // Create bowler with Square integration
+                  // Create bowler with optional Square integration
                   const insertBowler: InsertBowler = {
-                    name: bowlerScore.bowlerName,
-                    email: `${bowlerScore.bowlerId}@placeholder.com`,
+                    name: bowlerScore.bowlerName.trim(),  // Add trim() to remove whitespace
+                    email: `bowler.${bowlerScore.bowlerId}@example.com`,
                     qubicaId: bowlerScore.bowlerId,
                     active: true,
                     order: 0,
                     squareCustomerId
                   };
 
+                  // Validate bowler data before creation
+                  if (!bowlerScore.bowlerName || bowlerScore.bowlerName.trim().length < 2 || /^\d+$/.test(bowlerScore.bowlerName)) {
+                    console.error(`[ScoreImport] Invalid bowler name:`, {
+                      name: bowlerScore.bowlerName,
+                      bowlerId: bowlerScore.bowlerId
+                    });
+                    throw new ScoreImportError('Invalid bowler name', 'INVALID_BOWLER_NAME');
+                  }
+
+                  if (!bowlerScore.bowlerId || !/^\d+$/.test(bowlerScore.bowlerId)) {
+                    console.error(`[ScoreImport] Invalid Qubica ID:`, {
+                      bowlerId: bowlerScore.bowlerId,
+                      name: bowlerScore.bowlerName
+                    });
+                    throw new ScoreImportError('Invalid Qubica ID', 'INVALID_QUBICA_ID');
+                  }
+
                   bowler = await storage.createBowler(insertBowler);
-                  console.log(`[ScoreImport] Created bowler with Square integration:`, {
+                  console.log(`[ScoreImport] Created bowler:`, {
                     bowlerId: bowler.id,
                     name: bowler.name,
                     squareCustomerId: bowler.squareCustomerId
@@ -341,20 +330,7 @@ export class ScoreImportService {
           scoresCreated: createdScores.length
         };
       } catch (error) {
-        console.error('[ScoreImport] Error creating batch scores:', {
-          error: error instanceof Error ? {
-            name: error.name,
-            message: error.message,
-            stack: error.stack
-          } : error,
-          scoreCount: scores.length,
-          sampleScore: scores[0] ? {
-            gameId: scores[0].gameId,
-            bowlerId: scores[0].bowlerId,
-            teamId: scores[0].teamId,
-            score: scores[0].score
-          } : 'No scores'
-        });
+        console.error('[ScoreImport] Error creating batch scores:', error);
         throw new ScoreImportError('Failed to create scores', 'SCORE_CREATION_ERROR');
       }
     } catch (error) {

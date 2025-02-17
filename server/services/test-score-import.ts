@@ -22,19 +22,58 @@ async function testScoreImport() {
       throw new Error('No score files found to import');
     }
 
-    // Get the first file for testing
-    const testFile = files[0];
+    // Look specifically for the Farmington Mixed League .s00 file
+    const farmingtonFile = files.find(f => f.name.toLowerCase().includes('farmmxd') && f.name.endsWith('.s00'));
+    if (!farmingtonFile) {
+      throw new Error('Farmington Mixed League score file not found');
+    }
+
     console.log('Testing with file:', {
-      id: testFile.id,
-      name: testFile.name
+      id: farmingtonFile.id,
+      name: farmingtonFile.name,
+      size: farmingtonFile.size
     });
 
     // Get file content
-    const fileContent = await googleDrive.getFileContent(testFile.id);
-    console.log('File content analysis:', {
+    const fileContent = await googleDrive.getFileContent(farmingtonFile.id);
+    console.log('\n=== Raw File Content Analysis ===');
+    console.log({
       length: fileContent.length,
       firstLine: fileContent.split('\n')[0],
       lineCount: fileContent.split('\n').length
+    });
+
+    // Log first few lines for debugging
+    console.log('\n=== First 5 Lines (Raw) ===');
+    const firstLines = fileContent.split('\n').slice(0, 5);
+    firstLines.forEach((line, index) => {
+      console.log(`\nLine ${index + 1}:`);
+      console.log('Raw:', line);
+      console.log('Fields:', line.split('\t'));
+
+      // Try to parse team number from line
+      const fields = line.split('\t');
+      if (fields.length >= 1) {
+        console.log('Team Number Field:', {
+          raw: fields[0],
+          trimmed: fields[0].trim(),
+          withoutLeadingZeros: fields[0].replace(/^0+/, ''),
+          asNumber: parseInt(fields[0])
+        });
+
+        // Debug team name if available (usually field 9)
+        if (fields.length >= 10) {
+          console.log('Team/Bowler Name Field:', fields[9]);
+        }
+
+        // Debug position and lane numbers
+        if (fields.length >= 9) {
+          console.log('Additional Fields:', {
+            position: fields[2],
+            laneNumber: fields[8]
+          });
+        }
+      }
     });
 
     // Parse the file content
@@ -52,17 +91,18 @@ async function testScoreImport() {
     console.log('\n=== Games Summary ===');
     console.log({
       totalGames: parsedData.games.length,
-      gameNumbers: [...new Set(parsedData.games.map(g => g.gameNumber))],
+      gameNumbers: [...new Set(parsedData.games.map(g => g.gameNumber))].sort(),
       laneNumbers: [...new Set(parsedData.games.map(g => g.laneNumber))].sort(),
-      teamNumbers: [...new Set(parsedData.games.map(g => g.teamNumber))].sort()
+      teamNumbers: [...new Set(parsedData.games.map(g => g.teamNumber))].sort(),
+      uniqueTeams: [...new Set(parsedData.games.map(g => g.teamName))].sort()
     });
 
     // Log detailed game data
     console.log('\n=== Detailed Game Data ===');
     for (const game of parsedData.games.slice(0, 2)) { // Show first 2 games only
-      console.log(`\nTeam ${game.teamNumber} on Lane ${game.laneNumber} (Game ${game.gameNumber}):`);
+      console.log(`\nTeam ${game.teamNumber} (${game.teamName}) on Lane ${game.laneNumber} (Game ${game.gameNumber}):`);
       for (const bowler of game.bowlers) {
-        console.log(`  ${bowler.bowlerName.padEnd(20)}: Score=${bowler.score}, Handicap=${bowler.handicap}, Position=${bowler.position}, Arrays: frames=${bowler.frames.length}, splits=${bowler.splits.length}, notes=${bowler.notes.length}`);
+        console.log(`  ${bowler.bowlerName.padEnd(20)}: Score=${bowler.score}, Handicap=${bowler.handicap}, Position=${bowler.position}, Status=${JSON.stringify(bowler.status)}, TeamNumber=${bowler.teamNumber}`);
       }
     }
 

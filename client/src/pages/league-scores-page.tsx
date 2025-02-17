@@ -93,7 +93,7 @@ export default function LeagueScoresPage() {
           </p>
         </div>
 
-        {scores?.length > 0 ? (
+        {lanePairs?.length > 0 ? (
           <div className="grid gap-6">
             {lanePairs.map((pair, pairIndex) => (
               <Card key={pairIndex}>
@@ -136,15 +136,15 @@ export default function LeagueScoresPage() {
                                       key={idx}
                                       className={cn(
                                         "text-right",
-                                        game.score >= 200 && "text-primary",
-                                        game.score >= 250 && "text-green-600"
+                                        (game?.score || 0) >= 200 && "text-primary",
+                                        (game?.score || 0) >= 250 && "text-green-600"
                                       )}
                                     >
-                                      {game.score ?? "—"}
+                                      {game?.score ?? "—"}
                                     </TableCell>
                                   ))}
                                   <TableCell className="text-right font-medium">
-                                    {bowler.games.reduce((sum, game) => sum + (game.score || 0), 0)}
+                                    {bowler.games.reduce((sum, game) => sum + (game?.score || 0), 0)}
                                   </TableCell>
                                 </TableRow>
                               ))}
