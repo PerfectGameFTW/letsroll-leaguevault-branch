@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText } from "lucide-react";
+import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, BarChart3, LogIn, UserPlus } from "lucide-react";
 import { useState, useEffect, Suspense, memo } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -28,6 +28,7 @@ const setStoredValue = (key: string, value: any) => {
   }
 };
 
+// Separate navigation arrays
 const baseNavigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Bowlers", href: "/bowlers", icon: Users },
@@ -35,11 +36,20 @@ const baseNavigation = [
   { name: "Reports", href: "/reports", icon: FileText },
 ];
 
+const bottomNavigation = [
+  { name: "Bowler Dashboard", href: "/bowler-dashboard", icon: BarChart3 },
+];
+
+const authNavigation = [
+  { name: "Sign Up", href: "/sign-up", icon: UserPlus },
+  { name: "Login", href: "/login", icon: LogIn },
+];
+
 // Memoized navigation items to prevent unnecessary re-renders
-const NavigationItem = memo(({ item, isActive, isCollapsed }: { 
-  item: typeof baseNavigation[0], 
-  isActive: boolean, 
-  isCollapsed: boolean 
+const NavigationItem = memo(({ item, isActive, isCollapsed }: {
+  item: typeof baseNavigation[0],
+  isActive: boolean,
+  isCollapsed: boolean
 }) => {
   const Icon = item.icon;
   return (
@@ -68,12 +78,12 @@ const NavigationItem = memo(({ item, isActive, isCollapsed }: {
   );
 });
 
-// Memoized leagues section to prevent unnecessary re-renders
-const LeaguesSection = memo(({ 
-  isCollapsed, 
-  leagues, 
-  isInLeaguesSection, 
-  location 
+// Updated LeaguesSection component with proper type checking
+const LeaguesSection = memo(({
+  isCollapsed,
+  leagues = [], // Provide default empty array
+  isInLeaguesSection,
+  location
 }: {
   isCollapsed: boolean,
   leagues: League[],
@@ -186,7 +196,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
-  const leagues = leaguesResponse?.data || [];
+  // Ensure leagues is always an array
+  const leagues = leaguesResponse?.data ?? [];
 
   useEffect(() => {
     setStoredValue("sidebarCollapsed", isCollapsed);
@@ -233,28 +244,45 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
             <ErrorBoundary FallbackComponent={ErrorFallback}>
               <Suspense fallback={<div className="p-4">Loading...</div>}>
-                <nav className="mt-8 flex-1 space-y-1 px-2">
-                  <NavigationItem
-                    item={baseNavigation[0]}
-                    isActive={location === "/"}
-                    isCollapsed={isCollapsed}
-                  />
+                <nav className="mt-8 flex-1 space-y-1 px-2 flex flex-col">
+                  <div className="flex-1 space-y-1">
+                    {baseNavigation.map((item) => (
+                      <NavigationItem
+                        key={item.name}
+                        item={item}
+                        isActive={location === item.href}
+                        isCollapsed={isCollapsed}
+                      />
+                    ))}
 
-                  <LeaguesSection
-                    isCollapsed={isCollapsed}
-                    leagues={leagues}
-                    isInLeaguesSection={isInLeaguesSection}
-                    location={location}
-                  />
-
-                  {baseNavigation.slice(1).map((item) => (
-                    <NavigationItem
-                      key={item.name}
-                      item={item}
-                      isActive={location === item.href}
+                    <LeaguesSection
                       isCollapsed={isCollapsed}
+                      leagues={leagues}
+                      isInLeaguesSection={isInLeaguesSection}
+                      location={location}
                     />
-                  ))}
+
+                    {bottomNavigation.map((item) => (
+                      <NavigationItem
+                        key={item.name}
+                        item={item}
+                        isActive={location === item.href}
+                        isCollapsed={isCollapsed}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Auth navigation at the bottom */}
+                  <div className="pt-2 border-t border-gray-200 mt-auto">
+                    {authNavigation.map((item) => (
+                      <NavigationItem
+                        key={item.name}
+                        item={item}
+                        isActive={location === item.href}
+                        isCollapsed={isCollapsed}
+                      />
+                    ))}
+                  </div>
                 </nav>
               </Suspense>
             </ErrorBoundary>
