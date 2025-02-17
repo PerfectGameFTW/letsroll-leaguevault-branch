@@ -34,7 +34,6 @@ function Router() {
       <Route path="/sign-up" component={BowlerSignupPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/" component={HomePage} />
-      <Route path="/bowler-dashboard" component={HomePage} />
       <Route path="/leagues" component={LeaguesPage} />
       <Route path="/leagues/:leagueId" component={LeagueViewPage} />
       <Route path="/leagues/:leagueId/teams" component={TeamsPage} />

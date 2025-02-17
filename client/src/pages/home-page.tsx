@@ -5,9 +5,6 @@ import { Loader2, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
 import type { Bowler, League, ApiResponse } from "@shared/schema";
 
-// Cache time constants
-const CACHE_TIME = 1000 * 30; // 30 seconds
-
 function LoadingState() {
   return (
     <Layout>
@@ -32,17 +29,17 @@ function ErrorState({ error }: { error: Error }) {
 export default function HomePage() {
   const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<ApiResponse<Bowler[]>>({
     queryKey: ["/api/bowlers"],
-    staleTime: CACHE_TIME,
-    retry: false,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 5000),
   });
 
   const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
-    staleTime: CACHE_TIME,
-    retry: false,
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * Math.pow(2, attemptIndex), 5000),
   });
 
-  // Show loading state only when initial data is loading
+  // Show loading state when initial data is loading
   if (loadingBowlers || loadingLeagues) {
     return <LoadingState />;
   }
@@ -56,32 +53,35 @@ export default function HomePage() {
 
   const bowlers = bowlersResponse?.data || [];
   const leagues = leaguesResponse?.data || [];
-  const activeBowlers = bowlers.filter((b: Bowler) => b.active).length;
-  const totalLeagues = leagues.length;
+  const activeBowlers = bowlers.filter(b => b.active).length;
+  const activeLeagues = leagues.filter(l => l.active).length;
 
   return (
     <Layout>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Link href="/leagues" className="block transition-transform hover:scale-105">
-          <Card className="cursor-pointer hover:border-primary">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Leagues</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalLeagues}</div>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/bowlers" className="block transition-transform hover:scale-105">
-          <Card className="cursor-pointer hover:border-primary">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Bowlers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{activeBowlers}</div>
-            </CardContent>
-          </Card>
-        </Link>
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">League Manager Dashboard</h1>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Link href="/leagues" className="block transition-transform hover:scale-105">
+            <Card className="cursor-pointer hover:border-primary">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Leagues</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{activeLeagues}</div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/bowlers" className="block transition-transform hover:scale-105">
+            <Card className="cursor-pointer hover:border-primary">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Bowlers</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{activeBowlers}</div>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
       </div>
     </Layout>
   );

@@ -21,15 +21,21 @@ router.get("/", async (req, res) => {
     if ((bowlerId && isNaN(filters.bowlerId!)) || 
         (leagueId && isNaN(filters.leagueId!)) || 
         (teamId && isNaN(filters.teamId!))) {
-      return sendError(res, "Invalid ID parameters provided", 400);
+      return res.status(400).json({
+        success: false,
+        error: { message: "Invalid ID parameters provided" }
+      });
     }
 
     const bowlerLeagues = await storage.getBowlerLeagues(filters);
     console.log(`[BowlerLeagues] Found ${bowlerLeagues.length} bowler leagues for filters:`, filters);
-    sendSuccess(res, bowlerLeagues);
+    return res.json({ success: true, data: bowlerLeagues });
   } catch (error) {
     console.error('[BowlerLeagues] Error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler leagues');
+    return res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to fetch bowler leagues' }
+    });
   }
 });
 
@@ -44,18 +50,27 @@ router.post("/", async (req, res) => {
     });
 
     if (existing.length > 0) {
-      return sendError(res, "Bowler is already in this league", 400);
+      return res.status(400).json({
+        success: false,
+        error: { message: "Bowler is already in this league" }
+      });
     }
 
     const created = await storage.createBowlerLeague(data);
     console.log('[BowlerLeagues] Created bowler league:', created);
-    sendSuccess(res, created, 201);
+    return res.status(201).json({ success: true, data: created });
   } catch (error) {
     console.error('[BowlerLeagues] Error:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, "Validation error", 400);
+      return res.status(400).json({
+        success: false,
+        error: { message: "Validation error", details: error.errors }
+      });
     } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to create bowler league');
+      return res.status(500).json({
+        success: false,
+        error: { message: error instanceof Error ? error.message : 'Failed to create bowler league' }
+      });
     }
   }
 });
@@ -64,7 +79,10 @@ router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
-      return sendError(res, "Invalid ID provided");
+      return res.status(400).json({
+        success: false,
+        error: { message: "Invalid ID provided" }
+      });
     }
 
     const update = partialBowlerLeagueSchema.parse(req.body);
@@ -72,15 +90,24 @@ router.patch("/:id", async (req, res) => {
 
     const updated = await storage.updateBowlerLeague(id, update);
     if (!updated) {
-      return sendError(res, "Bowler league not found", 404);
+      return res.status(404).json({
+        success: false,
+        error: { message: "Bowler league not found" }
+      });
     }
-    sendSuccess(res, updated);
+    return res.json({ success: true, data: updated });
   } catch (error) {
     console.error('[BowlerLeagues] Error:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, "Validation error", 400);
+      return res.status(400).json({
+        success: false,
+        error: { message: "Validation error", details: error.errors }
+      });
     } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league');
+      return res.status(500).json({
+        success: false,
+        error: { message: error instanceof Error ? error.message : 'Failed to update bowler league' }
+      });
     }
   }
 });
@@ -89,21 +116,33 @@ router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
-      return sendError(res, "Invalid ID provided", 400);
+      return res.status(400).json({
+        success: false,
+        error: { message: "Invalid ID provided" }
+      });
     }
 
     console.log(`[BowlerLeagues] Deleting bowler league ${id}`);
     const deleted = await storage.deleteBowlerLeague(id);
 
     if (!deleted) {
-      return sendError(res, "Bowler league not found", 404);
+      return res.status(404).json({
+        success: false,
+        error: { message: "Bowler league not found" }
+      });
     }
 
     console.log(`[BowlerLeagues] Successfully deleted bowler league ${id}`);
-    sendSuccess(res, { message: "Bowler league deleted successfully" }, 200);
+    return res.json({
+      success: true,
+      data: { message: "Bowler league deleted successfully" }
+    });
   } catch (error) {
     console.error('[BowlerLeagues] Error deleting bowler league:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to delete bowler league');
+    return res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to delete bowler league' }
+    });
   }
 });
 
@@ -113,18 +152,27 @@ router.patch("/:id/order", async (req, res) => {
     const { newOrder } = req.body;
 
     if (isNaN(id)) {
-      return sendError(res, "Invalid bowler league ID", 400);
+      return res.status(400).json({
+        success: false,
+        error: { message: "Invalid bowler league ID" }
+      });
     }
 
     if (typeof newOrder !== 'number') {
-      return sendError(res, "New order must be a number", 400);
+      return res.status(400).json({
+        success: false,
+        error: { message: "New order must be a number" }
+      });
     }
 
     const updated = await storage.updateBowlerLeagueOrder(id, newOrder);
-    sendSuccess(res, updated);
+    return res.json({ success: true, data: updated });
   } catch (error) {
     console.error('[BowlerLeagues] Error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league order');
+    return res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to update bowler league order' }
+    });
   }
 });
 
