@@ -18,7 +18,6 @@ export default function LeagueViewPage() {
 
   const league = leagueResponse?.data;
 
-
   if (isLoading) {
     return (
       <Layout>

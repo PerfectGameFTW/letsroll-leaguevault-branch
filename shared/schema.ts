@@ -4,27 +4,30 @@ import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Enum definitions
+// Update the enum definitions to use const arrays for Zod
+const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 export const WeekDay = {
-  MONDAY: 'Monday',
-  TUESDAY: 'Tuesday',
-  WEDNESDAY: 'Wednesday',
-  THURSDAY: 'Thursday',
-  FRIDAY: 'Friday',
-  SATURDAY: 'Saturday',
-  SUNDAY: 'Sunday',
+  MONDAY: WEEKDAYS[0],
+  TUESDAY: WEEKDAYS[1],
+  WEDNESDAY: WEEKDAYS[2],
+  THURSDAY: WEEKDAYS[3],
+  FRIDAY: WEEKDAYS[4],
+  SATURDAY: WEEKDAYS[5],
+  SUNDAY: WEEKDAYS[6],
 } as const;
 
+const PAYMENT_STATUSES = ["paid", "pending", "failed"] as const;
 export const PaymentStatus = {
-  PAID: 'paid',
-  PENDING: 'pending',
-  FAILED: 'failed',
+  PAID: PAYMENT_STATUSES[0],
+  PENDING: PAYMENT_STATUSES[1],
+  FAILED: PAYMENT_STATUSES[2],
 } as const;
 
+const PAYMENT_TYPES = ["cash", "check", "credit_card"] as const;
 export const PaymentType = {
-  CASH: 'cash',
-  CHECK: 'check',
-  CREDIT_CARD: 'credit_card',
+  CASH: PAYMENT_TYPES[0],
+  CHECK: PAYMENT_TYPES[1],
+  CREDIT_CARD: PAYMENT_TYPES[2],
 } as const;
 
 // Date validation schemas
@@ -50,7 +53,7 @@ export const leagues = pgTable("leagues", {
   active: boolean("active").notNull().default(true),
   seasonStart: timestamp("season_start", { mode: "date" }).notNull(),
   seasonEnd: timestamp("season_end", { mode: "date" }).notNull(),
-  weekDay: text("week_day", { enum: Object.values(WeekDay) }).notNull(),
+  weekDay: text("week_day", { enum: WEEKDAYS }).notNull(),
   weeklyFee: integer("weekly_fee").notNull().default(2000),
   practiceStartTime: text("practice_start_time"),
   competitionStartTime: text("competition_start_time"),
@@ -121,8 +124,8 @@ export const payments = pgTable("payments", {
     .references(() => leagues.id, { onDelete: 'cascade' }),
   amount: integer("amount").notNull(), // Store in cents
   weekOf: timestamp("week_of").notNull(),
-  status: text("status", { enum: Object.values(PaymentStatus) }).notNull().default('paid'),
-  type: text("type", { enum: Object.values(PaymentType) }).notNull(),
+  status: text("status", { enum: PAYMENT_STATUSES }).notNull().default('paid'),
+  type: text("type", { enum: PAYMENT_TYPES }).notNull(),
   checkNumber: text("check_number"),
   squarePaymentId: text("square_payment_id"),
   notes: text("notes"),
@@ -327,7 +330,7 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   active: z.boolean().default(true),
   seasonStart: dateSchema,
   seasonEnd: dateSchema,
-  weekDay: z.enum(Object.values(WeekDay)),
+  weekDay: z.enum(WEEKDAYS),
   weeklyFee: positiveIntSchema.default(2000),
   practiceStartTime: timeSchema.optional(),
   competitionStartTime: timeSchema.optional(),
@@ -358,8 +361,8 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   leagueId: positiveIntSchema,
   amount: positiveIntSchema,
   weekOf: dateSchema,
-  status: z.enum(Object.values(PaymentStatus)).default("paid"),
-  type: z.enum(Object.values(PaymentType)),
+  status: z.enum(PAYMENT_STATUSES).default("paid"),
+  type: z.enum(PAYMENT_TYPES),
   checkNumber: z.string().optional(),
   squarePaymentId: z.string().optional(),
   notes: z.string().optional(),
@@ -460,7 +463,7 @@ export const partialLeagueSchema = z.object({
   active: z.boolean(),
   seasonStart: dateSchema,
   seasonEnd: dateSchema,
-  weekDay: z.enum(Object.values(WeekDay)),
+  weekDay: z.enum(WEEKDAYS),
   weeklyFee: positiveIntSchema,
   practiceStartTime: timeSchema,
   competitionStartTime: timeSchema,

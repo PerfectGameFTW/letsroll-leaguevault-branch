@@ -70,10 +70,10 @@ const BowlerDashboardPage: FC = () => {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
 
-  const { data: currentUser, error: userError, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
+  const { data: currentUser, error: userError, isLoading: isUserLoading } = useQuery<ApiResponse<User>, Error>({
     queryKey: ["/api/user"],
-    onError: (error) => {
-      console.error("[BowlerDashboard] Error fetching user data:", error);
+    onError: (err: Error) => {
+      console.error("[BowlerDashboard] Error fetching user data:", err);
       toast({
         title: "Error",
         description: "Failed to load user data. Please try again later.",
@@ -172,21 +172,21 @@ const BowlerDashboardPage: FC = () => {
   let amountPastDue = 0;
 
   if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
-    const seasonStart = parseISO(league.seasonStart);
-    const seasonEnd = parseISO(league.seasonEnd);
+    const seasonStartDate = new Date(league.seasonStart);
+    const seasonEndDate = new Date(league.seasonEnd);
     const today = startOfToday();
 
-    if (isValid(seasonStart) && isValid(seasonEnd) && isValid(today)) {
-      if (today < seasonStart) {
+    if (isValid(seasonStartDate) && isValid(seasonEndDate) && isValid(today)) {
+      if (today < seasonStartDate) {
         weeksDue = 0;
-      } else if (today > seasonEnd) {
-        weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
+      } else if (today > seasonEndDate) {
+        weeksDue = Math.max(0, differenceInWeeks(seasonEndDate, seasonStartDate));
       } else {
-        weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
+        weeksDue = Math.max(0, differenceInWeeks(today, seasonStartDate));
       }
 
       totalSeasonDues = league.weeklyFee * weeksDue;
-      totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
+      totalWeeksInSeason = differenceInWeeks(seasonEndDate, seasonStartDate);
       fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
       amountPastDue = totalSeasonDues - totalPaidAmount;
     }

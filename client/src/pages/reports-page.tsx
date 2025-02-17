@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
-import type { League, Team, Bowler, Payment } from "@shared/schema";
+import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema"; // Added BowlerLeague type
 import { format, isAfter, isBefore, startOfToday } from "date-fns";
 import { Link } from "wouter";
 
@@ -72,7 +72,20 @@ export default function ReportsPage() {
   });
   const payments = paymentsResponse?.data || [];
 
-  if (loadingLeagues || loadingTeams || loadingBowlers || loadingPayments) {
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({ // Added query for bowler leagues
+    queryKey: ["/api/bowlerleagues"],
+    queryFn: async () => {
+      const response = await fetch('/api/bowlerleagues');
+      if (!response.ok) {
+        throw new Error('Failed to fetch bowler leagues');
+      }
+      return response.json();
+    }
+  });
+  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
+
+
+  if (loadingLeagues || loadingTeams || loadingBowlers || loadingPayments || loadingBowlerLeagues) { // Added loadingBowlerLeagues
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -82,16 +95,23 @@ export default function ReportsPage() {
     );
   }
 
-  // Calculate league-wise financial summaries
+  // Fix the bowler-team relationship logic
   const leagueFinancials = leagues.map(league => {
-    const leagueTeams = teams.filter(team => team.leagueId === league.id) || [];
+    const leagueTeams = teams.filter(team => team.leagueId === league.id);
+
+    // Use bowlerLeagues to get the correct bowler-team associations
     const leagueBowlers = bowlers.filter(bowler =>
-      leagueTeams.some(team => team.id === bowler.teamId)
-    ) || [];
+      bowlerLeagues.some(bl =>
+        bl.bowlerId === bowler.id &&
+        bl.leagueId === league.id &&
+        leagueTeams.some(team => team.id === bl.teamId)
+      )
+    );
 
     const leaguePayments = payments.filter(payment =>
+      payment.leagueId === league.id &&
       leagueBowlers.some(bowler => bowler.id === payment.bowlerId)
-    ) || [];
+    );
 
     const collected = leaguePayments.reduce((sum, payment) =>
       payment.status === 'paid' ? sum + payment.amount : sum, 0);
@@ -103,17 +123,13 @@ export default function ReportsPage() {
         .filter(p => p.bowlerId === bowler.id && p.status === 'paid')
         .reduce((sum, p) => sum + p.amount, 0);
 
-      // Calculate the number of weeks from season start to today
       const today = startOfToday();
       const seasonStart = new Date(league.seasonStart);
       const weeksPassed = Math.max(0, Math.floor(
         (today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
       ));
 
-      // Calculate amount due to date
       const dueToDate = league.weeklyFee * weeksPassed;
-
-      // Only include in past due if there's an actual balance due
       const pastDue = Math.max(0, dueToDate - bowlerPayments);
       return sum + pastDue;
     }, 0);
