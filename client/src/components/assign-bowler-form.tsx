@@ -176,7 +176,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
                         key={bowler.id}
                         value={bowler.id.toString()}
                       >
-                        {bowler.name} ({bowler.email})
+                        {bowler.name}
                       </SelectItem>
                     ))
                   ) : (

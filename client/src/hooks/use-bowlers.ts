@@ -44,8 +44,7 @@ export function useBowlers({ showInactive = false, searchQuery = "" }: UseBowler
   const filteredBowlers = useMemo(() => {
     return bowlers.filter(bowler => {
       const matchesSearch = searchQuery === "" || 
-        bowler.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        bowler.email.toLowerCase().includes(searchQuery.toLowerCase());
+        bowler.name.toLowerCase().includes(searchQuery.toLowerCase());
       return (showInactive ? true : bowler.active) && matchesSearch;
     });
   }, [bowlers, searchQuery, showInactive]);

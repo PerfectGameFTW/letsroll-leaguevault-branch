@@ -306,7 +306,6 @@ export default function TeamViewPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
               <TableHead>Weekly Fee</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
@@ -321,7 +320,6 @@ export default function TeamViewPage() {
                       {bowler.name}
                     </Link>
                   </TableCell>
-                  <TableCell>{bowler.email}</TableCell>
                   <TableCell>${((league?.weeklyFee || 0) / 100).toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={bowlerLeague.active ? "default" : "secondary"}>
@@ -355,7 +353,7 @@ export default function TeamViewPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className="text-center">
+                <TableCell colSpan={4} className="text-center">
                   No bowlers assigned to this team
                 </TableCell>
               </TableRow>
