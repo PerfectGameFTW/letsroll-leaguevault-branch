@@ -242,7 +242,7 @@ router.post('/import', async (req, res) => {
       const result = await importService.importScoreFile(fileContent);
       console.log('[Scores/Import] Import completed successfully:', result);
 
-      // Mark file as processed
+      // Mark file as processed only if import was successful
       await googleDrive.markFileAsProcessed(latestFile.id);
       console.log('[Scores/Import] Marked file as processed:', latestFile.id);
 
@@ -254,14 +254,16 @@ router.post('/import', async (req, res) => {
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('[Scores/Import] Error during import:', error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error);
+      const logError = {
+        name: error instanceof Error ? error.name : 'Unknown Error',
+        message: error instanceof Error ? error.message : String(error),
+        code: error instanceof ScoreImportError ? error.code : 'UNKNOWN_ERROR',
+        stack: error instanceof Error ? error.stack : undefined
+      };
+      console.error('[Scores/Import] Error during import:', logError);
 
       if (error instanceof ScoreImportError) {
-        return sendError(res, error.message, 400);
+        return sendError(res, error.message, 400, error.code);
       } else {
         return sendError(res, 'Failed to import scores', 500);
       }

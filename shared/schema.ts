@@ -137,7 +137,7 @@ export const games = pgTable("games", {
     .references(() => leagues.id, { onDelete: 'cascade' }),
   weekNumber: integer("week_number").notNull(),
   gameNumber: integer("game_number").notNull(), // 1, 2, or 3
-  date: timestamp("date").notNull(),
+  date: timestamp("date", { mode: "string" }).notNull(),
 }, (table) => ({
   leagueGameIdx: index("league_game_idx").on(table.leagueId, table.weekNumber, table.gameNumber),
   dateIdx: index("game_date_idx").on(table.date),
@@ -348,15 +348,8 @@ export const insertGameSchema = baseGameSchema.extend({
   leagueId: positiveIntSchema,
   weekNumber: positiveIntSchema,
   gameNumber: z.number().int().min(1).max(3),
-  date: z.instanceof(Date).or(z.coerce.date()),
-}).omit({ id: true })
-  .refine(
-    (data) => {
-      const today = new Date();
-      return data.date <= today;
-    },
-    "Game date cannot be in the future"
-  );
+  date: dateSchema,
+}).omit({ id: true });
 
 // Frame validation regex for standard bowling notation
 const frameRegex = /^([0-9FX]|[0-9]\/|-)+$/;

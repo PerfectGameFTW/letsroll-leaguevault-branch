@@ -29,54 +29,72 @@ export class ScoreImportService {
       // Generate a consistent email using bowler ID
       const email = `${bowlerId}@placeholder.com`;
 
-      // Create Square customer
+      // Create or update Square customer
       const squareCustomer = await createOrUpdateCustomer(bowlerName, email);
-      console.log(`[ScoreImport] Created/Updated Square customer for ${bowlerName}:`, squareCustomer?.id);
+      console.log('[ScoreImport] Created/Updated Square customer:', {
+        name: bowlerName,
+        email,
+        squareCustomerId: squareCustomer?.id
+      });
 
       return squareCustomer?.id || null;
     } catch (error) {
-      console.error(`[ScoreImport] Failed to create/update Square customer for ${bowlerName}:`, error);
-      return null;
+      console.error('[ScoreImport] Failed to create/update Square customer:', error);
+      throw new ScoreImportError('Failed to create Square customer', 'SQUARE_CUSTOMER_ERROR');
     }
   }
 
-  private validateAndConvertDate(date: Date): Date {
-    // If the date is too old (like 1899), use today's date
-    const minValidDate = new Date('2020-01-01');
-    if (date < minValidDate) {
-      console.log('[ScoreImport] Converting invalid historical date to current date');
-      return new Date();
+  private validateAndPrepareDate(date: Date): Date {
+    try {
+      // If the date is too old (like 1899), use today's date
+      const minValidDate = new Date('2020-01-01');
+      if (date < minValidDate) {
+        console.log('[ScoreImport] Converting invalid historical date to current date');
+        return new Date();
+      }
+
+      // Convert to UTC midnight
+      const utcDate = new Date(date);
+      utcDate.setUTCHours(0, 0, 0, 0);
+
+      console.log('[ScoreImport] Prepared date:', {
+        original: date.toISOString(),
+        prepared: utcDate.toISOString(),
+        timestamp: utcDate.getTime()
+      });
+
+      return utcDate;
+    } catch (error) {
+      console.error('[ScoreImport] Date validation error:', error);
+      throw new ScoreImportError('Invalid date format', 'DATE_FORMAT_ERROR');
     }
-    // Ensure we return a proper Date object with time set to start of day
-    const validDate = new Date(date);
-    validDate.setUTCHours(0, 0, 0, 0);
-    return validDate;
   }
 
   async importScoreFile(fileContent: string): Promise<{
     gamesCreated: number;
     scoresCreated: number;
   }> {
+    const createdGames: Game[] = [];
+    const scores: InsertScore[] = [];
+
     try {
       console.log('[ScoreImport] Starting import process...');
 
       // Parse file content
-      console.log('[ScoreImport] Parsing score file...');
-      const parsedData = parseQubicaScoreFile(fileContent);
+      let parsedData: QubicaScoreImport;
+      try {
+        parsedData = parseQubicaScoreFile(fileContent);
+        console.log('[ScoreImport] Successfully parsed score file');
+      } catch (error) {
+        console.error('[ScoreImport] File parsing error:', error);
+        throw new ScoreImportError('Failed to parse score file', 'PARSE_ERROR');
+      }
 
-      // Verify date
+      // Validate date
       if (!parsedData.header.date || isNaN(parsedData.header.date.getTime())) {
         console.error('[ScoreImport] Invalid date from parser:', parsedData.header.date);
         throw new ScoreImportError('Invalid date in score file', 'INVALID_DATE');
       }
-
-      // Convert to proper Date object
-      const gameDate = this.validateAndConvertDate(parsedData.header.date);
-      console.log('[ScoreImport] Using game date:', {
-        date: gameDate,
-        isoString: gameDate.toISOString(),
-        isDate: gameDate instanceof Date
-      });
 
       // Validate league exists
       const league = await storage.getLeague(this.leagueId);
@@ -84,45 +102,41 @@ export class ScoreImportService {
         throw new ScoreImportError('League not found', 'LEAGUE_NOT_FOUND');
       }
 
-      // Create three games for this week
-      const createdGames: Game[] = [];
-      for (let gameNumber = 1; gameNumber <= 3; gameNumber++) {
-        try {
+      // Prepare the game date
+      const gameDate = this.validateAndPrepareDate(parsedData.header.date);
+
+      // Create games for the week
+      try {
+        for (let gameNumber = 1; gameNumber <= 3; gameNumber++) {
           const insertGame: InsertGame = {
             leagueId: this.leagueId,
             weekNumber: parsedData.header.weekNumber,
             gameNumber,
-            date: gameDate // Pass the Date object directly
+            date: gameDate
           };
 
           const game = await storage.createGame(insertGame);
           console.log(`[ScoreImport] Created game ${gameNumber}:`, {
             gameId: game.id,
-            gameNumber: game.gameNumber,
             date: game.date,
             weekNumber: game.weekNumber
           });
 
           createdGames.push(game);
-        } catch (error) {
-          console.error(`[ScoreImport] Error creating game ${gameNumber}:`, error);
-          throw error;
         }
+      } catch (error) {
+        console.error('[ScoreImport] Error creating games:', error);
+        throw new ScoreImportError('Failed to create games', 'GAME_CREATION_ERROR');
       }
 
-      // Process all scores
-      const scores: InsertScore[] = [];
+      // Process scores
       const teamCache = new Map<string, Team>();
       const bowlerCache = new Map<string, Bowler>();
 
-      // Process each game from the parsed data
-      console.log(`[ScoreImport] Processing ${parsedData.games.length} team games...`);
       for (const teamGame of parsedData.games) {
-        const gameNumber = teamGame.gameNumber;
-
-        const game = createdGames.find(g => g.gameNumber === gameNumber);
+        const game = createdGames.find(g => g.gameNumber === teamGame.gameNumber);
         if (!game) {
-          console.error(`[ScoreImport] No game found for game number ${gameNumber}`);
+          console.error(`[ScoreImport] No game found for game number ${teamGame.gameNumber}`);
           continue;
         }
 
@@ -131,13 +145,13 @@ export class ScoreImportService {
         if (!team) {
           team = await storage.getTeamByNumber(this.leagueId, parseInt(teamGame.teamNumber));
           if (!team) {
-            console.warn(`[ScoreImport] Team number ${teamGame.teamNumber} not found in league ${this.leagueId}`);
+            console.warn(`[ScoreImport] Team ${teamGame.teamNumber} not found`);
             continue;
           }
           teamCache.set(teamGame.teamNumber, team);
         }
 
-        // Process bowlers for this team and game
+        // Process bowlers
         for (const bowlerScore of teamGame.bowlers) {
           try {
             // Get or cache bowler
@@ -146,29 +160,39 @@ export class ScoreImportService {
               bowler = await storage.getBowlerByQubicaId(bowlerScore.bowlerId);
 
               if (!bowler) {
-                // Create or update Square customer first
-                const squareCustomerId = await this.createSquareCustomerIfNeeded(
-                  bowlerScore.bowlerName,
-                  bowlerScore.bowlerId
-                );
+                try {
+                  // Create Square customer first
+                  const squareCustomerId = await this.createSquareCustomerIfNeeded(
+                    bowlerScore.bowlerName,
+                    bowlerScore.bowlerId
+                  );
 
-                // Create new bowler with Square customer ID if available
-                const insertBowler: InsertBowler = {
-                  name: bowlerScore.bowlerName,
-                  email: `${bowlerScore.bowlerId}@placeholder.com`,
-                  qubicaId: bowlerScore.bowlerId,
-                  active: true,
-                  order: 0,
-                  squareCustomerId
-                };
+                  // Create bowler with Square integration
+                  const insertBowler: InsertBowler = {
+                    name: bowlerScore.bowlerName,
+                    email: `${bowlerScore.bowlerId}@placeholder.com`,
+                    qubicaId: bowlerScore.bowlerId,
+                    active: true,
+                    order: 0,
+                    squareCustomerId
+                  };
 
-                bowler = await storage.createBowler(insertBowler);
+                  bowler = await storage.createBowler(insertBowler);
+                  console.log(`[ScoreImport] Created bowler with Square integration:`, {
+                    bowlerId: bowler.id,
+                    name: bowler.name,
+                    squareCustomerId: bowler.squareCustomerId
+                  });
+                } catch (error) {
+                  console.error(`[ScoreImport] Error creating bowler:`, error);
+                  throw new ScoreImportError('Failed to create bowler', 'BOWLER_CREATION_ERROR');
+                }
               }
 
               bowlerCache.set(bowlerScore.bowlerId, bowler);
             }
 
-            // Create score record
+            // Create score
             const insertScore: InsertScore = {
               gameId: game.id,
               bowlerId: bowler.id,
@@ -194,16 +218,24 @@ export class ScoreImportService {
         }
       }
 
-      // Create all scores in a batch
-      console.log(`[ScoreImport] Creating ${scores.length} scores in batch`);
-      const createdScores = await storage.createBatchScores(scores);
+      // Create scores in batch
+      try {
+        const createdScores = await storage.createBatchScores(scores);
+        console.log('[ScoreImport] Successfully created scores:', {
+          total: createdScores.length,
+          games: createdGames.length
+        });
 
-      return {
-        gamesCreated: createdGames.length,
-        scoresCreated: createdScores.length
-      };
+        return {
+          gamesCreated: createdGames.length,
+          scoresCreated: createdScores.length
+        };
+      } catch (error) {
+        console.error('[ScoreImport] Error creating batch scores:', error);
+        throw new ScoreImportError('Failed to create scores', 'SCORE_CREATION_ERROR');
+      }
     } catch (error) {
-      console.error('[ScoreImport] Fatal error during score import:', error);
+      console.error('[ScoreImport] Import failed:', error);
       throw error;
     }
   }
