@@ -18,10 +18,11 @@ import ReportsPage from "@/pages/reports-page";
 import LeaguePastDuePage from "@/pages/league-past-due-page";
 import PastDuePage from "@/pages/past-due-page";
 import SignUpPage from "@/pages/sign-up-page";
+import LoginPage from "@/pages/login-page";
+import BowlerDashboardPage from "@/pages/bowler-dashboard-page";
 import { useEffect, useRef } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
-import BowlerDashboardPage from "@/pages/bowler-dashboard-page";
 
 function Router() {
   useEffect(() => {
@@ -31,7 +32,11 @@ function Router() {
 
   return (
     <Switch>
+      {/* Authentication routes */}
       <Route path="/sign-up" component={SignUpPage} />
+      <Route path="/login" component={LoginPage} />
+
+      {/* Protected routes */}
       <Route path="/bowler-dashboard" component={BowlerDashboardPage} />
       <Route path="/" component={HomePage} />
       <Route path="/leagues" component={LeaguesPage} />
