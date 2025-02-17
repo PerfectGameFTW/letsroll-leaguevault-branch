@@ -12,30 +12,33 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardContent, CardTitle, CardDescription } from "@/components/ui/card";
-import { insertBowlerSchema, type InsertBowler } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
+import { z } from "zod";
 
-export default function BowlerSignupPage() {
+const loginSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(1, "Password is required"),
+});
+
+type LoginForm = z.infer<typeof loginSchema>;
+
+export default function LoginPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
-  const form = useForm<InsertBowler>({
-    resolver: zodResolver(insertBowlerSchema),
+  const form = useForm<LoginForm>({
+    resolver: zodResolver(loginSchema),
     defaultValues: {
-      name: "",
       email: "",
-      phoneNumber: "",
       password: "",
-      confirmPassword: "",
-      active: true,
     },
   });
 
   const mutation = useMutation({
-    mutationFn: async (data: InsertBowler) => {
-      const response = await fetch("/api/bowlers", {
+    mutationFn: async (data: LoginForm) => {
+      const response = await fetch("/api/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -52,14 +55,14 @@ export default function BowlerSignupPage() {
     },
     onSuccess: () => {
       toast({
-        title: "Welcome!",
-        description: "Your account has been created successfully.",
+        title: "Welcome back!",
+        description: "You have been successfully logged in.",
       });
       navigate("/dashboard");
     },
     onError: (error: Error) => {
       toast({
-        title: "Error creating account",
+        title: "Login failed",
         description: error.message,
         variant: "destructive",
       });
@@ -70,9 +73,9 @@ export default function BowlerSignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center space-y-2">
-          <CardTitle className="text-3xl font-bold">Welcome to LeagueVault</CardTitle>
+          <CardTitle className="text-3xl font-bold">Welcome Back</CardTitle>
           <CardDescription className="text-base">
-            Create your account to make and track payments and scores
+            Log in to your LeagueVault account
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -81,24 +84,6 @@ export default function BowlerSignupPage() {
               onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
               className="space-y-4"
             >
-              <FormField
-                control={form.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Full Name</FormLabel>
-                    <FormControl>
-                      <Input 
-                        placeholder="Enter your full name" 
-                        {...field} 
-                        className="h-11"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               <FormField
                 control={form.control}
                 name="email"
@@ -120,25 +105,6 @@ export default function BowlerSignupPage() {
 
               <FormField
                 control={form.control}
-                name="phoneNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Phone Number</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="tel" 
-                        placeholder="Enter your phone number"
-                        {...field} 
-                        className="h-11"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name="password"
                 render={({ field }) => (
                   <FormItem>
@@ -146,26 +112,7 @@ export default function BowlerSignupPage() {
                     <FormControl>
                       <Input 
                         type="password" 
-                        placeholder="Create a password"
-                        {...field} 
-                        className="h-11"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="confirmPassword"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Confirm Password</FormLabel>
-                    <FormControl>
-                      <Input 
-                        type="password" 
-                        placeholder="Confirm your password"
+                        placeholder="Enter your password"
                         {...field} 
                         className="h-11"
                       />
@@ -183,18 +130,18 @@ export default function BowlerSignupPage() {
                 {mutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating Account...
+                    Logging in...
                   </>
                 ) : (
-                  "Sign Up"
+                  "Log In"
                 )}
               </Button>
 
               <div className="text-center space-y-2 mt-6">
                 <p className="text-sm text-muted-foreground">
-                  Already have an account?{" "}
-                  <Button variant="link" className="p-0 h-auto" onClick={() => navigate("/login")}>
-                    Log in
+                  Don't have an account?{" "}
+                  <Button variant="link" className="p-0 h-auto" onClick={() => navigate("/signup")}>
+                    Sign up
                   </Button>
                 </p>
               </div>
