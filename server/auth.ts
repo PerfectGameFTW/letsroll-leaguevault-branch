@@ -48,6 +48,23 @@ function isValidUser(user: any): user is SelectUser {
 }
 
 export function setupAuth(app: Express) {
+  // Trust proxy in all environments for proper IP detection
+  app.set("trust proxy", 1);
+
+  // Add CORS headers before session middleware
+  app.use((req, res, next) => {
+    const origin = req.headers.origin || '*';
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, Content-Length, X-Requested-With');
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || 'your-secret-key',
     resave: false,
@@ -60,26 +77,21 @@ export function setupAuth(app: Express) {
     }),
     cookie: {
       secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      sameSite: 'none', // Allow cross-site cookies in development
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: '/',
-      httpOnly: true,
-      domain: process.env.NODE_ENV === "production" ? undefined : "localhost"
+      httpOnly: true
     },
     name: 'bowlingleague.sid' // Custom session cookie name
   };
-
-  // Trust first proxy if in production
-  if (process.env.NODE_ENV === "production") {
-    app.set("trust proxy", 1);
-  }
 
   app.use(session(sessionSettings));
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Add session diagnostic middleware with enhanced logging
+  // Add session diagnostic middleware
   app.use((req, res, next) => {
+    const isMobile = /mobile/i.test(req.headers['user-agent'] || '');
     console.log('[Auth] Session diagnostic:', {
       hasSession: !!req.session,
       sessionID: req.sessionID,
@@ -87,8 +99,14 @@ export function setupAuth(app: Express) {
       path: req.path,
       method: req.method,
       cookies: req.headers.cookie,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      userAgent: req.headers['user-agent'],
+      isMobile,
+      remoteAddress: req.ip,
+      origin: req.headers.origin,
+      host: req.headers.host
     });
+
     next();
   });
 
@@ -137,7 +155,6 @@ export function setupAuth(app: Express) {
     try {
       const user = await storage.getUser(id);
       if (!user) {
-        // Instead of throwing an error, just return null to handle expired sessions gracefully
         console.log(`[Auth] No user found for ID: ${id}, clearing session`);
         return done(null, null);
       }
@@ -155,10 +172,82 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Auth routes
+  // Auth routes with enhanced error handling and logging
+  app.post("/api/login", (req, res, next) => {
+    console.log('[Auth] Login attempt:', {
+      email: req.body.email,
+      hasPassword: !!req.body.password,
+      cookies: req.headers.cookie,
+      userAgent: req.headers['user-agent'],
+      isMobile: /mobile/i.test(req.headers['user-agent'] || '')
+    });
+
+    passport.authenticate("local", (err, user, info) => {
+      if (err) {
+        console.error('[Auth] Login error:', err);
+        return next(err);
+      }
+      if (!user) {
+        console.log('[Auth] Login failed:', info?.message);
+        return res.status(401).json({
+          success: false,
+          error: { message: info?.message || "Invalid credentials" }
+        });
+      }
+      req.login(user, (err) => {
+        if (err) {
+          console.error('[Auth] Session creation error:', err);
+          return next(err);
+        }
+        console.log(`[Auth] Login successful for user ID: ${user.id}`, {
+          sessionID: req.sessionID,
+          hasSession: !!req.session,
+          isMobile: /mobile/i.test(req.headers['user-agent'] || '')
+        });
+        res.json({
+          success: true,
+          data: { ...user, password: undefined }
+        });
+      });
+    })(req, res, next);
+  });
+
+  app.get("/api/user", (req, res) => {
+    console.log('[Auth] /api/user request:', {
+      isAuthenticated: req.isAuthenticated(),
+      hasSession: !!req.session,
+      sessionID: req.sessionID,
+      cookies: req.headers.cookie,
+      userAgent: req.headers['user-agent'],
+      isMobile: /mobile/i.test(req.headers['user-agent'] || ''),
+      timestamp: new Date().toISOString()
+    });
+
+    if (!req.isAuthenticated()) {
+      console.log('[Auth] Unauthorized access attempt to /api/user');
+      return res.status(401).json({
+        success: false,
+        error: {
+          message: "Not authenticated",
+          code: "AUTH_REQUIRED",
+          details: {
+            hasSession: !!req.session,
+            sessionID: req.sessionID,
+            isMobile: /mobile/i.test(req.headers['user-agent'] || '')
+          }
+        }
+      });
+    }
+
+    console.log(`[Auth] Current user data requested, ID: ${(req.user as SelectUser).id}`);
+    res.json({
+      success: true,
+      data: { ...req.user, password: undefined }
+    });
+  });
   app.post("/api/register", async (req, res) => {
     try {
-      console.log('[Auth] Processing registration request:', { 
+      console.log('[Auth] Processing registration request:', {
         email: req.body.email,
         hasPassword: !!req.body.password,
         validation: 'starting'
@@ -254,7 +343,7 @@ export function setupAuth(app: Express) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           success: false,
-          error: { 
+          error: {
             message: "Validation failed",
             details: error.errors.map(err => ({
               field: err.path.join('.'),
@@ -265,7 +354,7 @@ export function setupAuth(app: Express) {
       }
       res.status(500).json({
         success: false,
-        error: { 
+        error: {
           message: error instanceof Error ? error.message : "Failed to register user"
         }
       });
@@ -287,44 +376,6 @@ export function setupAuth(app: Express) {
     }
   });
 
-  // Update login endpoint with enhanced logging
-  app.post("/api/login", (req, res, next) => {
-    console.log('[Auth] Login attempt:', {
-      email: req.body.email,
-      hasPassword: !!req.body.password,
-      cookies: req.headers.cookie,
-      userAgent: req.headers['user-agent']
-    });
-
-    passport.authenticate("local", (err, user, info) => {
-      if (err) {
-        console.error('[Auth] Login error:', err);
-        return next(err);
-      }
-      if (!user) {
-        console.log('[Auth] Login failed:', info?.message);
-        return res.status(401).json({
-          success: false,
-          error: { message: info?.message || "Invalid credentials" }
-        });
-      }
-      req.login(user, (err) => {
-        if (err) {
-          console.error('[Auth] Session creation error:', err);
-          return next(err);
-        }
-        console.log(`[Auth] Login successful for user ID: ${user.id}`, {
-          sessionID: req.sessionID,
-          hasSession: !!req.session
-        });
-        res.json({
-          success: true,
-          data: { ...user, password: undefined }
-        });
-      });
-    })(req, res, next);
-  });
-
   app.post("/api/logout", (req, res, next) => {
     if (req.user) {
       console.log(`[Auth] Logging out user ID: ${(req.user as SelectUser).id}`);
@@ -336,39 +387,6 @@ export function setupAuth(app: Express) {
       }
       console.log('[Auth] Logout successful');
       res.json({ success: true });
-    });
-  });
-
-  // Update user endpoint with enhanced logging
-  app.get("/api/user", (req, res) => {
-    console.log('[Auth] /api/user request:', {
-      isAuthenticated: req.isAuthenticated(),
-      hasSession: !!req.session,
-      sessionID: req.sessionID,
-      cookies: req.headers.cookie,
-      userAgent: req.headers['user-agent'],
-      timestamp: new Date().toISOString()
-    });
-
-    if (!req.isAuthenticated()) {
-      console.log('[Auth] Unauthorized access attempt to /api/user');
-      return res.status(401).json({
-        success: false,
-        error: { 
-          message: "Not authenticated",
-          code: "AUTH_REQUIRED",
-          details: {
-            hasSession: !!req.session,
-            sessionID: req.sessionID
-          }
-        }
-      });
-    }
-
-    console.log(`[Auth] Current user data requested, ID: ${(req.user as SelectUser).id}`);
-    res.json({
-      success: true,
-      data: { ...req.user, password: undefined }
     });
   });
 }

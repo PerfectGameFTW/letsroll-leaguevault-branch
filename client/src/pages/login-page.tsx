@@ -1,4 +1,4 @@
-import { FC } from "react";
+import { FC, useState } from "react";
 import {
   Card,
   CardContent,
@@ -22,6 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
+import { Loader2 } from "@/components/ui/loader";
 
 const loginSchema = z.object({
   email: z
@@ -37,6 +38,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 const LoginPage: FC = () => {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -48,14 +50,18 @@ const LoginPage: FC = () => {
 
   const onSubmit = async (data: LoginFormData) => {
     try {
-      console.log("[Login] Attempting login with email:", data.email);
+      setIsLoading(true);
+      console.log("[Login] Attempting login with email:", data.email, {
+        isMobile: window.innerWidth <= 768,
+        timestamp: new Date().toISOString()
+      });
 
       const response = await fetch("/api/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        credentials: "include", // Important: Include credentials for cookies
+        credentials: "include", 
         body: JSON.stringify(data),
       });
 
@@ -65,6 +71,10 @@ const LoginPage: FC = () => {
           status: response.status,
           statusText: response.statusText,
           error: errorData,
+          isMobile: window.innerWidth <= 768,
+          url: response.url,
+          cookiesPresent: document.cookie.length > 0,
+          timestamp: new Date().toISOString()
         });
         throw new Error(errorData.error?.message || "Invalid email or password");
       }
@@ -74,17 +84,41 @@ const LoginPage: FC = () => {
         userId: userData.data.id,
         bowlerId: userData.data.bowlerId,
         sessionPresent: document.cookie.includes('bowlingleague.sid'),
+        isMobile: window.innerWidth <= 768,
+        cookiesEnabled: navigator.cookieEnabled,
+        timestamp: new Date().toISOString()
       });
+
+      const verifySession = async () => {
+        try {
+          const verifyResponse = await fetch("/api/user", {
+            credentials: "include"
+          });
+          return verifyResponse.ok;
+        } catch (error) {
+          console.error("[Login] Session verification failed:", error);
+          return false;
+        }
+      };
+
+      const delay = window.innerWidth <= 768 ? 2000 : 500;
+      console.log(`[Login] Waiting ${delay}ms before session verification`);
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+
+      const isSessionValid = await verifySession();
+
+      if (!isSessionValid) {
+        console.error("[Login] Session validation failed after delay");
+        throw new Error("Failed to establish secure session. Please try again.");
+      }
 
       toast({
         title: "Login successful!",
         description: "Welcome back to the bowling league management system.",
       });
 
-      // Small delay to ensure cookie is set
-      setTimeout(() => {
-        setLocation("/bowler-dashboard");
-      }, 100);
+      setLocation("/bowler-dashboard");
     } catch (error) {
       console.error("[Login] Login error:", error);
       toast({
@@ -92,6 +126,8 @@ const LoginPage: FC = () => {
         description: error instanceof Error ? error.message : "Failed to login. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -120,6 +156,7 @@ const LoginPage: FC = () => {
                         type="email"
                         placeholder="john@example.com"
                         {...field}
+                        disabled={isLoading}
                       />
                     </FormControl>
                     <FormMessage />
@@ -137,14 +174,22 @@ const LoginPage: FC = () => {
                         type="password"
                         placeholder="••••••••"
                         {...field}
+                        disabled={isLoading}
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full">
-                Sign In
+              <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  "Sign In"
+                )}
               </Button>
             </form>
           </Form>
