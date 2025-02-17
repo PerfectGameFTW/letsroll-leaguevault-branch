@@ -16,11 +16,11 @@ import {
   Menu,
   FileText
 } from "lucide-react";
-import { Link, useLocation, useNavigate } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { differenceInWeeks, startOfToday, isValid, parseISO } from "date-fns";
 
 interface NavItem {
@@ -73,46 +73,16 @@ interface ApiResponse<T> {
 
 const BowlerDashboardPage: FC = () => {
   const { toast } = useToast();
-  const [location, setLocation] = useLocation();
+  const [location] = useLocation();
   const [open, setOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
 
   const { data: currentUser, error: userError, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
-    retry: (failureCount, error: any) => {
-      // Don't retry on 401 errors
-      if (error.status === 401) {
-        console.log('[BowlerDashboard] Not retrying 401 error');
-        return false;
-      }
-      // Retry up to 3 times for other errors
-      const shouldRetry = failureCount < 3;
-      console.log(`[BowlerDashboard] Retry attempt ${failureCount}/3:`, { shouldRetry, error });
-      return shouldRetry;
-    },
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
-    onError: (error: any) => {
-      console.error("[BowlerDashboard] Error fetching user data:", {
-        error,
-        message: error.message,
-        status: error.status,
-        isMobile: window.innerWidth <= 768,
-        timestamp: new Date().toISOString()
-      });
-
-      if (error.status === 401) {
-        toast({
-          title: "Session Expired",
-          description: "Please sign in again to continue.",
-          variant: "destructive",
-        });
-        setLocation("/login");
-        return;
-      }
-
+    onError: (error) => {
+      console.error("[BowlerDashboard] Error fetching user data:", error);
       toast({
-        title: "Error Loading Data",
-        description: "Unable to load your dashboard data. Please try refreshing the page.",
+        title: "Error",
+        description: "Failed to load user data. Please try again later.",
         variant: "destructive",
       });
     },
@@ -128,53 +98,24 @@ const BowlerDashboardPage: FC = () => {
     getBowlerLeagueId
   } = useBowlers();
 
-  useEffect(() => {
-    setIsLoading(isUserLoading || isInitialLoading || isLoadingRelatedData);
-  }, [isUserLoading, isInitialLoading, isLoadingRelatedData]);
-
   const bowler = currentUser?.data?.bowlerId ? bowlers.find(b => b.id === currentUser.data.bowlerId) : null;
   const leagueId = bowler ? getBowlerLeagueId(bowler) : null;
 
-  const { data: leagueResponse, error: leagueError } = useQuery<ApiResponse<League>>({
+  // Add league query with proper typing
+  const { data: leagueResponse } = useQuery<ApiResponse<League>>({
     queryKey: [`/api/leagues/${leagueId}`],
     enabled: !!leagueId,
-    retry: 3,
-    onError: (error: any) => {
-      console.error("[BowlerDashboard] Error fetching league data:", {
-        error,
-        leagueId,
-        isMobile: window.innerWidth <= 768
-      });
-    }
   });
-
   const league = leagueResponse?.data;
 
-  const { data: paymentsResponse, error: paymentsError } = useQuery<ApiResponse<Payment[]>>({
+  // Add payments query with proper typing
+  const { data: paymentsResponse } = useQuery<ApiResponse<Payment[]>>({
     queryKey: ["/api/payments", bowler?.id, leagueId],
     enabled: !!bowler?.id && !!leagueId,
-    retry: 3,
-    onError: (error: any) => {
-      console.error("[BowlerDashboard] Error fetching payments data:", {
-        error,
-        bowlerId: bowler?.id,
-        leagueId,
-        isMobile: window.innerWidth <= 768
-      });
-    }
   });
-
   const payments = paymentsResponse?.data || [];
 
-  const hasError = userError || bowlersError || leagueError || paymentsError;
-  const errorMessage = hasError ?
-    ((userError as Error)?.message ||
-      (bowlersError as Error)?.message ||
-      (leagueError as Error)?.message ||
-      (paymentsError as Error)?.message ||
-      'An unexpected error occurred') : null;
-
-  if (isLoading) {
+  if (isUserLoading || isInitialLoading || isLoadingRelatedData) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -182,23 +123,42 @@ const BowlerDashboardPage: FC = () => {
     );
   }
 
-  if (hasError) {
+  if (userError || bowlersError) {
     return (
-      <Card className="mx-4">
+      <Card>
         <CardHeader>
           <CardTitle>Error Loading Dashboard</CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-destructive">
-            {errorMessage}. Please try refreshing the page.
+            {userError ? "Failed to load user data" : "Failed to load bowler data"}. Please try again later.
           </p>
-          <Button
-            onClick={() => window.location.reload()}
-            className="mt-4"
-            variant="outline"
-          >
-            Refresh Page
-          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!currentUser?.data) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Authentication Required</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p>Please log in to view your dashboard.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!bowler) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Profile Setup Required</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p>Your bowler profile has not been set up yet. Please contact a league administrator.</p>
         </CardContent>
       </Card>
     );
@@ -207,6 +167,7 @@ const BowlerDashboardPage: FC = () => {
   const teamName = getBowlerTeamName(bowler);
   const leagueName = getBowlerFirstLeagueName(bowler);
 
+  // Financial calculations
   const totalPaidPayments = payments.filter(p => p.status === 'paid') || [];
   const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
 
@@ -263,14 +224,16 @@ const BowlerDashboardPage: FC = () => {
 
   return (
     <div className="flex min-h-screen">
+      {/* Desktop Navigation */}
       <aside className="hidden lg:block w-64 border-r px-4 py-6">
         <div className="mb-6">
-          <h2 className="text-lg font-semibold">{bowler?.name}</h2>
+          <h2 className="text-lg font-semibold">{bowler.name}</h2>
           <p className="text-sm text-muted-foreground">{leagueName}</p>
         </div>
         <SideNav />
       </aside>
 
+      {/* Mobile Navigation */}
       <div className="lg:hidden fixed top-4 left-4 z-50">
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
@@ -280,7 +243,7 @@ const BowlerDashboardPage: FC = () => {
           </SheetTrigger>
           <SheetContent side="left" className="w-64">
             <div className="mb-6">
-              <h2 className="text-lg font-semibold">{bowler?.name}</h2>
+              <h2 className="text-lg font-semibold">{bowler.name}</h2>
               <p className="text-sm text-muted-foreground">{leagueName}</p>
             </div>
             <SideNav />
@@ -288,11 +251,12 @@ const BowlerDashboardPage: FC = () => {
         </Sheet>
       </div>
 
+      {/* Main Content */}
       <main className="flex-1 px-4 py-6">
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{bowler?.name}'s Dashboard</CardTitle>
+              <CardTitle>{bowler.name}'s Dashboard</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="rounded-lg border p-4 space-y-4 mt-6">
@@ -309,6 +273,7 @@ const BowlerDashboardPage: FC = () => {
                 </div>
               </div>
 
+              {/* Financial Summary Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
                 <Card>
                   <CardHeader className="pb-2">

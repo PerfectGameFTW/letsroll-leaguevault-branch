@@ -55,7 +55,6 @@ export const leagues = pgTable("leagues", {
   practiceStartTime: text("practice_start_time"),
   competitionStartTime: text("competition_start_time"),
   qubicaId: text("qubica_id").unique(),
-  rules: text("rules"),
 }, (table) => ({
   activeNameIdx: index("leagues_active_name_idx").on(table.active, table.name),
   seasonIdx: index("leagues_season_idx").on(table.seasonStart, table.seasonEnd)
@@ -333,7 +332,6 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   practiceStartTime: timeSchema.optional(),
   competitionStartTime: timeSchema.optional(),
   qubicaId: z.string().nullable().optional(),
-  rules: z.string().nullable().optional(),
 }).omit({ id: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
@@ -467,7 +465,6 @@ export const partialLeagueSchema = z.object({
   practiceStartTime: timeSchema,
   competitionStartTime: timeSchema,
   qubicaId: z.string().nullable(),
-  rules: z.string().nullable(),
 }).partial().refine(
   (data) => {
     if (data.seasonStart && data.seasonEnd) {

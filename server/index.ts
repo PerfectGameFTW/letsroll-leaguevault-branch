@@ -442,7 +442,7 @@ async function shutdown() {
 
   const startTime = Date.now();
   shutdownPhases.initiated = true;
-  let shutdownTimeoutId: NodeJS.Timeout | null = null;
+  let shutdownTimeoutId: NodeJS.Timeout;
 
   try {
     // Set a maximum wait time for active requests
