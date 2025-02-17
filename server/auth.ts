@@ -15,17 +15,23 @@ declare global {
 
 const scryptAsync = promisify(scrypt);
 
-async function hashPassword(password: string) {
-  const salt = randomBytes(16).toString("hex");
-  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
-  return `${buf.toString("hex")}.${salt}`;
-}
-
 async function comparePasswords(supplied: string, stored: string) {
-  const [hashed, salt] = stored.split(".");
-  const hashedBuf = Buffer.from(hashed, "hex");
-  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-  return timingSafeEqual(hashedBuf, suppliedBuf);
+  try {
+    console.log("[Auth] Comparing passwords, stored hash length:", stored.length);
+    const [hashed, salt] = stored.split(".");
+
+    if (!hashed || !salt) {
+      console.error("[Auth] Invalid stored password format");
+      return false;
+    }
+
+    const hashedBuf = Buffer.from(hashed, "hex");
+    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+    return timingSafeEqual(hashedBuf, suppliedBuf);
+  } catch (error) {
+    console.error("[Auth] Error comparing passwords:", error);
+    return false;
+  }
 }
 
 export function setupAuth(app: Express) {
@@ -53,12 +59,34 @@ export function setupAuth(app: Express) {
       },
       async (email, password, done) => {
         try {
+          console.log("[Auth] Attempting login for email:", email);
           const bowler = await storage.getBowlerByEmail(email);
-          if (!bowler || !(await comparePasswords(password, bowler.passwordHash))) {
+
+          if (!bowler) {
+            console.log("[Auth] Login failed: Bowler not found");
             return done(null, false, { message: "Invalid email or password" });
           }
-          return done(null, bowler);
+
+          if (!bowler.passwordHash) {
+            console.log("[Auth] Login failed: No password hash found for bowler");
+            return done(null, false, { message: "Invalid email or password" });
+          }
+
+          try {
+            const isValid = await comparePasswords(password, bowler.passwordHash);
+            console.log("[Auth] Password validation result:", isValid);
+            if (!isValid) {
+              console.log("[Auth] Login failed: Invalid password");
+              return done(null, false, { message: "Invalid email or password" });
+            }
+            console.log("[Auth] Login successful for email:", email);
+            return done(null, bowler);
+          } catch (error) {
+            console.error("[Auth] Password comparison error:", error);
+            return done(null, false, { message: "Invalid email or password" });
+          }
         } catch (error) {
+          console.error("[Auth] Login error:", error);
           return done(error);
         }
       }
@@ -66,14 +94,17 @@ export function setupAuth(app: Express) {
   );
 
   passport.serializeUser((user, done) => {
+    console.log("[Auth] Serializing user:", user.id);
     done(null, user.id);
   });
 
   passport.deserializeUser(async (id: number, done) => {
     try {
+      console.log("[Auth] Deserializing user:", id);
       const bowler = await storage.getBowler(id);
       done(null, bowler);
     } catch (error) {
+      console.error("[Auth] Deserialization error:", error);
       done(error);
     }
   });

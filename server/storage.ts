@@ -10,6 +10,9 @@ import {
   type Game, type InsertGame,
   type Score, type InsertScore,
 } from "@shared/schema.js";
+import * as session from 'express-session';
+import connectPg from 'connect-pg-simple';
+
 
 export interface IStorage {
   // League methods
@@ -68,9 +71,21 @@ export interface IStorage {
   getGameScores(gameId: number): Promise<Score[]>;
   getTeamByNumber(leagueId: number, teamNumber: number): Promise<Team | undefined>;
   getScoresByLeagueAndWeek(leagueId: number, weekNumber: number): Promise<Score[]>;
+  sessionStore: session.Store;
+  getBowlerByEmail(email: string): Promise<Bowler | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
+  sessionStore: session.Store;
+
+  constructor() {
+    const PostgresSessionStore = connectPg(session);
+    this.sessionStore = new PostgresSessionStore({
+      tableName: 'session',
+      createTableIfMissing: true,
+    });
+  }
+
   // League methods
   async getLeagues(): Promise<League[]> {
     return db.select().from(leagues).orderBy(leagues.id);
@@ -660,6 +675,14 @@ export class DatabaseStorage implements IStorage {
 
     console.log('[Storage] Found scores:', scoresWithDetails.length);
     return scoresWithDetails;
+  }
+
+  async getBowlerByEmail(email: string): Promise<Bowler | undefined> {
+    const [result] = await db
+      .select()
+      .from(bowlers)
+      .where(eq(bowlers.email, email));
+    return result;
   }
 }
 
