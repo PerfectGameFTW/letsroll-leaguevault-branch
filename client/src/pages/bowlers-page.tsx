@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Eye, EyeOff, Search, Pencil } from "lucide-react";
+import { Loader2, Plus, Eye, EyeOff, Search } from "lucide-react";
 import type { Bowler } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
@@ -26,9 +26,10 @@ function BowlerTableSkeleton() {
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
+          <TableHead>League Name</TableHead>
+          <TableHead>Team Name</TableHead>
           <TableHead>Weekly Fee</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead>Actions</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -38,13 +39,16 @@ function BowlerTableSkeleton() {
               <div className="h-4 w-32 bg-muted animate-pulse rounded" />
             </TableCell>
             <TableCell>
+              <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+            </TableCell>
+            <TableCell>
+              <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+            </TableCell>
+            <TableCell>
               <div className="h-4 w-16 bg-muted animate-pulse rounded" />
             </TableCell>
             <TableCell>
               <div className="h-6 w-16 bg-muted animate-pulse rounded-full" />
-            </TableCell>
-            <TableCell>
-              <div className="h-8 w-16 bg-muted animate-pulse rounded" />
             </TableCell>
           </TableRow>
         ))}
@@ -57,13 +61,13 @@ export default function BowlersPage() {
   const [showForm, setShowForm] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedBowler, setSelectedBowler] = useState<Bowler | undefined>();
   const { toast } = useToast();
 
   const { 
     bowlers: filteredBowlers, 
     getWeeklyFee,
     getBowlerFirstLeagueName,
+    getBowlerTeamName,
     isInitialLoading,
     isLoadingRelatedData 
   } = useBowlers({
@@ -114,9 +118,9 @@ export default function BowlersPage() {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>League Name</TableHead>
+                <TableHead>Team Name</TableHead>
                 <TableHead>Weekly Fee</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -137,6 +141,7 @@ export default function BowlersPage() {
                 filteredBowlers.map((bowler) => {
                   const weeklyFee = getWeeklyFee(bowler);
                   const leagueName = getBowlerFirstLeagueName(bowler);
+                  const teamName = getBowlerTeamName(bowler);
                   return (
                     <TableRow key={bowler.id}>
                       <TableCell>
@@ -160,6 +165,13 @@ export default function BowlersPage() {
                         {isLoadingRelatedData ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
+                          teamName
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isLoadingRelatedData ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
                           `$${(weeklyFee / 100).toFixed(2)}`
                         )}
                       </TableCell>
@@ -167,19 +179,6 @@ export default function BowlersPage() {
                         <Badge variant={bowler.active ? "default" : "secondary"}>
                           {bowler.active ? "Active" : "Inactive"}
                         </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedBowler(bowler);
-                            setShowForm(true);
-                          }}
-                        >
-                          <Pencil className="h-4 w-4 mr-2" />
-                          Edit
-                        </Button>
                       </TableCell>
                     </TableRow>
                   );
@@ -194,9 +193,7 @@ export default function BowlersPage() {
         open={showForm} 
         onClose={() => {
           setShowForm(false);
-          setSelectedBowler(undefined);
         }}
-        bowler={selectedBowler}
       />
     </Layout>
   );
