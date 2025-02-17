@@ -49,6 +49,20 @@ export function useBowlers({ showInactive = false, searchQuery = "" }: UseBowler
     });
   }, [bowlers, searchQuery, showInactive]);
 
+  // Get first league name for a bowler (alphabetically ordered)
+  const getBowlerFirstLeagueName = useMemo(() => (bowler: Bowler) => {
+    const bowlerLeagueIds = bowlerLeagues
+      .filter(bl => bl.bowlerId === bowler.id && bl.active)
+      .map(bl => bl.leagueId);
+
+    const bowlerLeagueNames = leagues
+      .filter(league => bowlerLeagueIds.includes(league.id))
+      .map(league => league.name)
+      .sort();
+
+    return bowlerLeagueNames[0] || "No League";
+  }, [bowlerLeagues, leagues]);
+
   // Memoize bowler-team-league relationships to avoid recalculations
   const getBowlerTeam = useMemo(() => (bowler: Bowler) => {
     const activeBowlerLeague = bowlerLeagues.find(bl => 
@@ -76,6 +90,7 @@ export function useBowlers({ showInactive = false, searchQuery = "" }: UseBowler
     bowlers: filteredBowlers,
     getBowlerTeam,
     getWeeklyFee,
+    getBowlerFirstLeagueName,
     isInitialLoading,
     isLoadingRelatedData,
   };

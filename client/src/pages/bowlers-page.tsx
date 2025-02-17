@@ -63,6 +63,7 @@ export default function BowlersPage() {
   const { 
     bowlers: filteredBowlers, 
     getWeeklyFee,
+    getBowlerFirstLeagueName,
     isInitialLoading,
     isLoadingRelatedData 
   } = useBowlers({
@@ -112,6 +113,7 @@ export default function BowlersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>League Name</TableHead>
                 <TableHead>Weekly Fee</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
@@ -120,7 +122,7 @@ export default function BowlersPage() {
             <TableBody>
               {filteredBowlers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center py-4">
+                  <TableCell colSpan={5} className="text-center py-4">
                     {isLoadingRelatedData ? (
                       <div className="flex items-center justify-center">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -134,6 +136,7 @@ export default function BowlersPage() {
               ) : (
                 filteredBowlers.map((bowler) => {
                   const weeklyFee = getWeeklyFee(bowler);
+                  const leagueName = getBowlerFirstLeagueName(bowler);
                   return (
                     <TableRow key={bowler.id}>
                       <TableCell>
@@ -145,6 +148,13 @@ export default function BowlersPage() {
                             {bowler.name}
                           </Link>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {isLoadingRelatedData ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          leagueName
+                        )}
                       </TableCell>
                       <TableCell>
                         {isLoadingRelatedData ? (
