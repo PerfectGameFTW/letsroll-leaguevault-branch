@@ -3,6 +3,7 @@ import { BowlerLayout } from "@/components/bowler-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import type { League } from "@shared/schema";
+import { RulesEditor } from "@/components/rules-editor";
 
 export default function RulesPage() {
   // Get current user and their bowler ID
@@ -66,11 +67,18 @@ export default function RulesPage() {
             <CardHeader>
               <CardTitle>General Rules</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <p>League rules and regulations will be displayed here.</p>
-              <p className="text-muted-foreground">
-                Please check with your league secretary for the complete set of rules and regulations.
-              </p>
+            <CardContent>
+              {league.rules ? (
+                <RulesEditor
+                  content={league.rules}
+                  onChange={() => {}}
+                  readOnly
+                />
+              ) : (
+                <p className="text-muted-foreground">
+                  No rules have been set for this league yet. Please check with your league secretary for the complete set of rules and regulations.
+                </p>
+              )}
             </CardContent>
           </Card>
         </div>

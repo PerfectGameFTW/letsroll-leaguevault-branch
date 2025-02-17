@@ -42,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RulesEditor } from "@/components/rules-editor";
 
 // Add a new array for weekday options
 const weekDayOptions = [
@@ -84,6 +85,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       practiceStartTime: "",
       competitionStartTime: "",
       weeklyFee: 2000, // Default to $20.00
+      rules: "",
     },
   });
 
@@ -120,6 +122,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         practiceStartTime: league.practiceStartTime || "",
         competitionStartTime: league.competitionStartTime || "",
         weeklyFee: league.weeklyFee || 2000,
+        rules: league.rules || "",
       });
     } else if (!open) {
       form.reset({
@@ -132,6 +135,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         practiceStartTime: "",
         competitionStartTime: "",
         weeklyFee: 2000,
+        rules: "",
       });
       setShowDeleteConfirm(false);
     }
@@ -409,6 +413,23 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                           onCheckedChange={field.onChange}
                         />
                       </FormControl>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="rules"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>League Rules</FormLabel>
+                      <FormControl>
+                        <RulesEditor
+                          content={field.value || ""}
+                          onChange={field.onChange}
+                          readOnly={false}
+                        />
+                      </FormControl>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
