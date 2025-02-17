@@ -26,7 +26,6 @@ function BowlerTableSkeleton() {
       <TableHeader>
         <TableRow>
           <TableHead>Name</TableHead>
-          <TableHead>Email</TableHead>
           <TableHead>Weekly Fee</TableHead>
           <TableHead>Status</TableHead>
           <TableHead>Actions</TableHead>
@@ -37,9 +36,6 @@ function BowlerTableSkeleton() {
           <TableRow key={i}>
             <TableCell>
               <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-            </TableCell>
-            <TableCell>
-              <div className="h-4 w-48 bg-muted animate-pulse rounded" />
             </TableCell>
             <TableCell>
               <div className="h-4 w-16 bg-muted animate-pulse rounded" />
@@ -116,7 +112,6 @@ export default function BowlersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
                 <TableHead>Weekly Fee</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
@@ -125,7 +120,7 @@ export default function BowlersPage() {
             <TableBody>
               {filteredBowlers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-4">
+                  <TableCell colSpan={4} className="text-center py-4">
                     {isLoadingRelatedData ? (
                       <div className="flex items-center justify-center">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -151,7 +146,6 @@ export default function BowlersPage() {
                           </Link>
                         </div>
                       </TableCell>
-                      <TableCell>{bowler.email}</TableCell>
                       <TableCell>
                         {isLoadingRelatedData ? (
                           <Loader2 className="h-4 w-4 animate-spin" />

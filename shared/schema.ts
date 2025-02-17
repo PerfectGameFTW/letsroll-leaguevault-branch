@@ -76,7 +76,7 @@ export const teams = pgTable("teams", {
 export const bowlers = pgTable("bowlers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
-  email: text("email").notNull(),
+  email: text("email"),
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
   squareCustomerId: text("square_customer_id"),
@@ -292,7 +292,7 @@ const baseWeeklyStatsSchema = createInsertSchema(weeklyStats);
 // Enhanced insert schemas with additional validation
 export const insertBowlerSchema = baseBowlerSchema.extend({
   name: nameSchema,
-  email: emailSchema,
+  email: emailSchema.optional(),
   active: z.boolean().default(true),
   order: z.number().min(0).default(0),
   squareCustomerId: z.string().nullable().optional(),
