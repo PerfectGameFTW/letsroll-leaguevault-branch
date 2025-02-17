@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import type { League, Payment } from "@shared/schema";
-import { BowlerLayout } from "@/components/bowler-layout";
+import { Layout } from "@/components/layout";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { Link } from "wouter";
 import {
@@ -32,12 +32,6 @@ export default function PaymentHistoryPage() {
 
   const bowlerId = currentUser?.data?.bowlerId;
 
-  // Get bowler details
-  const { data: bowlerResponse } = useQuery<ApiResponse<{ name: string }>>({
-    queryKey: [`/api/bowlers/${bowlerId}`],
-    enabled: !!bowlerId,
-  });
-
   // Get league information for the bowler
   const { data: bowlerLeaguesResponse } = useQuery<ApiResponse<{ leagueId: number }[]>>({
     queryKey: ["/api/bowler-leagues", bowlerId],
@@ -60,7 +54,6 @@ export default function PaymentHistoryPage() {
 
   const league = leagueResponse?.data;
   const payments = paymentsResponse?.data || [];
-  const bowlerName = bowlerResponse?.data?.name;
 
   // Calculate payment statistics
   const totalPaidPayments = payments.filter(p => p.status === 'paid');
@@ -91,24 +84,24 @@ export default function PaymentHistoryPage() {
 
   if (loadingLeague || loadingPayments) {
     return (
-      <BowlerLayout bowlerName={bowlerName} leagueName={league?.name}>
+      <Layout>
         <div className="flex items-center justify-center h-[50vh]">
           <Loader2 className="h-8 w-8 animate-spin" />
         </div>
-      </BowlerLayout>
+      </Layout>
     );
   }
 
   if (!league) {
     return (
-      <BowlerLayout bowlerName={bowlerName}>
+      <Layout>
         <div className="text-center">League not found</div>
-      </BowlerLayout>
+      </Layout>
     );
   }
 
   return (
-    <BowlerLayout bowlerName={bowlerName} leagueName={league.name}>
+    <Layout>
       <div className="space-y-6">
         <Link
           href="/bowler-dashboard"
@@ -206,9 +199,9 @@ export default function PaymentHistoryPage() {
                         <TableCell>
                           <Badge variant="outline">
                             {payment.type === 'cash' ? 'Cash' :
-                              payment.type === 'check' ? `Check #${payment.checkNumber}` :
-                                payment.type === 'credit_card' ? 'Credit Card' :
-                                  'Other Payment'}
+                             payment.type === 'check' ? `Check #${payment.checkNumber}` :
+                             payment.type === 'credit_card' ? 'Credit Card' :
+                             'Other Payment'}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -225,6 +218,6 @@ export default function PaymentHistoryPage() {
           </CardContent>
         </Card>
       </div>
-    </BowlerLayout>
+    </Layout>
   );
 }
