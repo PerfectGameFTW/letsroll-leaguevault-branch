@@ -416,47 +416,81 @@ export const insertWeeklyStatsSchema = baseWeeklyStatsSchema.extend({
   gamesPlayed: z.number().int().min(1).max(4),
 }).omit({ id: true });
 
+// Update the insertUserSchema definition
 export const insertUserSchema = baseUserSchema.extend({
   email: emailSchema,
-  password: z.string()
+  password: z
+    .string()
     .min(8, "Password must be at least 8 characters")
     .max(100, "Password must be less than 100 characters")
     .superRefine((password, ctx) => {
-      if (!/[A-Z]/.test(password)) {
-        ctx.addIssue({
+      console.log('[Schema] Starting password validation for:', password?.slice(0, 3) + '***');
+
+      const hasUppercase = /[A-Z]/.test(password);
+      const hasLowercase = /[a-z]/.test(password);
+      const hasNumber = /[0-9]/.test(password);
+      const hasSpecial = /[!@#$%^&*]/.test(password);
+      const commonPasswords = [
+        "Password123!", "Admin123!", "Test123!",
+        "Welcome123!", "Abc123456!", "Qwerty123!"
+      ];
+
+      const validationResults = {
+        hasUppercase,
+        hasLowercase,
+        hasNumber,
+        hasSpecial,
+        isCommonPassword: commonPasswords.includes(password),
+        length: password.length
+      };
+
+      console.log('[Schema] Validation results:', validationResults);
+
+      const issues = [];
+
+      if (!hasUppercase) {
+        issues.push({
           code: z.ZodIssueCode.custom,
           message: "Password must contain at least one uppercase letter",
           path: ["password"]
         });
       }
-      if (!/[a-z]/.test(password)) {
-        ctx.addIssue({
+      if (!hasLowercase) {
+        issues.push({
           code: z.ZodIssueCode.custom,
           message: "Password must contain at least one lowercase letter",
           path: ["password"]
         });
       }
-      if (!/[0-9]/.test(password)) {
-        ctx.addIssue({
+      if (!hasNumber) {
+        issues.push({
           code: z.ZodIssueCode.custom,
           message: "Password must contain at least one number",
           path: ["password"]
         });
       }
-      if (!/[!@#$%^&*]/.test(password)) {
-        ctx.addIssue({
+      if (!hasSpecial) {
+        issues.push({
           code: z.ZodIssueCode.custom,
           message: "Password must contain at least one special character (!@#$%^&*)",
           path: ["password"]
         });
       }
-      const commonPasswords = ["Password123!", "Admin123!", "Test123!"];
       if (commonPasswords.includes(password)) {
-        ctx.addIssue({
+        issues.push({
           code: z.ZodIssueCode.custom,
-          message: "Please use a less common password",
+          message: "This password is too common. Please choose a more unique password",
           path: ["password"]
         });
+      }
+
+      // Add all collected issues to context
+      issues.forEach(issue => ctx.addIssue(issue));
+
+      if (issues.length > 0) {
+        console.log('[Schema] Password validation failed with issues:', issues);
+      } else {
+        console.log('[Schema] Password validation passed');
       }
     }),
   bowlerId: z.number().nullable().optional(),

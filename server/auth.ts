@@ -150,12 +150,23 @@ export function setupAuth(app: Express) {
         validation: 'starting'
       });
 
-      // Validate input against schema with strict password requirements
-      const result = insertUserSchema.safeParse({
+      // Detailed password validation logging
+      console.log('[Auth] Password characteristics:', {
+        length: req.body.password?.length,
+        hasUppercase: /[A-Z]/.test(req.body.password),
+        hasLowercase: /[a-z]/.test(req.body.password),
+        hasNumber: /[0-9]/.test(req.body.password),
+        hasSpecial: /[!@#$%^&*]/.test(req.body.password)
+      });
+
+      const registrationData = {
         email: req.body.email,
         password: req.body.password,
         bowlerId: req.body.bowlerId || null
-      });
+      };
+
+      console.log('[Auth] Validating full registration data');
+      const result = insertUserSchema.safeParse(registrationData);
 
       console.log('[Auth] Validation result:', { 
         success: result.success,
@@ -163,10 +174,9 @@ export function setupAuth(app: Express) {
       });
 
       if (!result.success) {
-        console.log('[Auth] Registration validation failed:', result.error.format());
         return res.status(400).json({
           success: false,
-          error: { 
+          error: {
             message: "Registration validation failed",
             details: Object.entries(result.error.format())
               .filter(([key]) => key !== '_errors')
@@ -215,7 +225,7 @@ export function setupAuth(app: Express) {
       });
     } catch (error) {
       console.error('[Auth] Registration error:', error);
-      if (error instanceof ZodError) {
+      if (error instanceof z.ZodError) {
         return res.status(400).json({
           success: false,
           error: { 

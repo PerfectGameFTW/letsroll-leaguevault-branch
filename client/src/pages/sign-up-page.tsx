@@ -30,6 +30,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { FormDescription } from "@/components/ui/form";
 
 const signUpSchema = z.object({
   name: z
@@ -54,8 +55,8 @@ const signUpSchema = z.object({
     .min(8, "Password must be at least 8 characters")
     .max(100, "Password must be less than 100 characters")
     .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-      "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])/,
+      "Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character"
     ),
 });
 
@@ -133,9 +134,9 @@ const SignUpPage: FC = () => {
         });
       }
 
-      console.log("[SignUp] Sending registration request:", { 
-        email: signupData.email, 
-        bowlerId: signupData.bowlerId 
+      console.log("[SignUp] Sending registration request:", {
+        email: signupData.email,
+        bowlerId: signupData.bowlerId
       });
 
       const response = await fetch("/api/register", {
@@ -269,6 +270,16 @@ const SignUpPage: FC = () => {
                         {...field}
                       />
                     </FormControl>
+                    <FormDescription className="text-sm text-muted-foreground">
+                      Password must contain:
+                      <ul className="list-disc list-inside">
+                        <li>At least 8 characters</li>
+                        <li>One uppercase letter</li>
+                        <li>One lowercase letter</li>
+                        <li>One number</li>
+                        <li>One special character (!@#$%^&*)</li>
+                      </ul>
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
