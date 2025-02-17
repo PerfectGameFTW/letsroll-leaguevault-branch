@@ -84,7 +84,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       weekDay: "Monday",
       practiceStartTime: "",
       competitionStartTime: "",
-      weeklyFee: 2000, // Default to $20.00
+      weeklyFee: 2000,
       rules: "",
     },
   });
@@ -423,11 +423,13 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     <FormItem>
                       <FormLabel>League Rules</FormLabel>
                       <FormControl>
-                        <RulesEditor
-                          content={field.value || ""}
-                          onChange={field.onChange}
-                          readOnly={false}
-                        />
+                        <div className="w-full">
+                          <RulesEditor
+                            content={field.value || ""}
+                            onChange={field.onChange}
+                            readOnly={false}
+                          />
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>

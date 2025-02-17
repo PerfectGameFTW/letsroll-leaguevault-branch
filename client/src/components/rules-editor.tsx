@@ -1,17 +1,8 @@
-import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import TextAlign from '@tiptap/extension-text-align';
-import { Button } from "@/components/ui/button";
-import { Toggle } from "@/components/ui/toggle";
-import {
-  Bold,
-  Italic,
-  List,
-  ListOrdered,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
-} from "lucide-react";
+import { CKEditor } from '@ckeditor/ckeditor5-react';
+import ClassicEditor from '@ckeditor/ckeditor5-build-classic';
+import { ErrorBoundary } from 'react-error-boundary';
+import { AlertCircle, Loader2 } from 'lucide-react';
+import { useState } from 'react';
 
 interface RulesEditorProps {
   content: string;
@@ -19,112 +10,62 @@ interface RulesEditorProps {
   readOnly?: boolean;
 }
 
+function EditorErrorFallback({ error }: { error: Error }) {
+  return (
+    <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
+      <AlertCircle className="h-5 w-5" />
+      <p>Error loading editor: {error.message}</p>
+    </div>
+  );
+}
+
 export function RulesEditor({ content, onChange, readOnly = false }: RulesEditorProps) {
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      TextAlign.configure({
-        types: ['heading', 'paragraph'],
-      }),
-    ],
-    content: content || '',
-    editable: !readOnly,
-    onUpdate: ({ editor }) => {
-      const html = editor.getHTML();
-      console.log('Editor content updated:', html); // Debug log
-      onChange(html);
-    },
-    editorProps: {
-      attributes: {
-        class: 'prose prose-sm sm:prose lg:prose-lg xl:prose-xl focus:outline-none max-w-none',
-        spellcheck: 'true',
-      },
-    },
-  });
-
-  if (!editor) {
-    return null;
-  }
-
-  const handleButtonClick = (action: () => boolean) => {
-    editor.chain().focus().run(() => {
-      action();
-      return true;
-    });
-  };
+  const [isLoading, setIsLoading] = useState(true);
 
   return (
     <div className="space-y-4">
-      {!readOnly && (
-        <div className="border rounded-lg p-2 flex flex-wrap gap-2 bg-background">
-          <Toggle
-            size="sm"
-            pressed={editor.isActive("bold")}
-            onPressedChange={() => handleButtonClick(() => editor.chain().toggleBold().run())}
-            aria-label="Toggle bold"
-          >
-            <Bold className="h-4 w-4" />
-          </Toggle>
-          <Toggle
-            size="sm"
-            pressed={editor.isActive("italic")}
-            onPressedChange={() => handleButtonClick(() => editor.chain().toggleItalic().run())}
-            aria-label="Toggle italic"
-          >
-            <Italic className="h-4 w-4" />
-          </Toggle>
-          <Toggle
-            size="sm"
-            pressed={editor.isActive("bulletList")}
-            onPressedChange={() => handleButtonClick(() => editor.chain().toggleBulletList().run())}
-            aria-label="Toggle bullet list"
-          >
-            <List className="h-4 w-4" />
-          </Toggle>
-          <Toggle
-            size="sm"
-            pressed={editor.isActive("orderedList")}
-            onPressedChange={() => handleButtonClick(() => editor.chain().toggleOrderedList().run())}
-            aria-label="Toggle ordered list"
-          >
-            <ListOrdered className="h-4 w-4" />
-          </Toggle>
-          <div className="flex border-l pl-2 ml-2">
-            <Toggle
-              size="sm"
-              pressed={editor.isActive({ textAlign: "left" })}
-              onPressedChange={() => handleButtonClick(() => editor.chain().setTextAlign("left").run())}
-              aria-label="Align left"
-            >
-              <AlignLeft className="h-4 w-4" />
-            </Toggle>
-            <Toggle
-              size="sm"
-              pressed={editor.isActive({ textAlign: "center" })}
-              onPressedChange={() => handleButtonClick(() => editor.chain().setTextAlign("center").run())}
-              aria-label="Align center"
-            >
-              <AlignCenter className="h-4 w-4" />
-            </Toggle>
-            <Toggle
-              size="sm"
-              pressed={editor.isActive({ textAlign: "right" })}
-              onPressedChange={() => handleButtonClick(() => editor.chain().setTextAlign("right").run())}
-              aria-label="Align right"
-            >
-              <AlignRight className="h-4 w-4" />
-            </Toggle>
+      <ErrorBoundary FallbackComponent={EditorErrorFallback}>
+        <div className="min-h-[200px] border rounded-lg p-4 bg-background">
+          {isLoading && (
+            <div className="flex justify-center items-center h-[200px]">
+              <Loader2 className="h-6 w-6 animate-spin" />
+            </div>
+          )}
+          <div className={isLoading ? 'opacity-0' : 'opacity-100 transition-opacity'}>
+            <CKEditor
+              editor={ClassicEditor}
+              data={content}
+              disabled={readOnly}
+              onReady={() => {
+                setIsLoading(false);
+              }}
+              onChange={(event, editor) => {
+                try {
+                  const data = editor.getData();
+                  onChange(data);
+                } catch (error) {
+                  console.error('CKEditor onChange error:', error);
+                }
+              }}
+              config={{
+                toolbar: readOnly ? [] : [
+                  'heading',
+                  '|',
+                  'bold',
+                  'italic',
+                  '|',
+                  'bulletedList',
+                  'numberedList',
+                  '|',
+                  'undo',
+                  'redo'
+                ],
+                placeholder: 'Enter league rules here...',
+              }}
+            />
           </div>
         </div>
-      )}
-      <div 
-        className={`border rounded-lg p-4 min-h-[200px] ${
-          !readOnly ? "prose-sm sm:prose lg:prose-lg xl:prose-xl cursor-text bg-background" : "prose"
-        } max-w-none focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2`}
-        onClick={() => !readOnly && editor.chain().focus().run()}
-      >
-        <EditorContent editor={editor} />
-      </div>
+      </ErrorBoundary>
     </div>
   );
 }
