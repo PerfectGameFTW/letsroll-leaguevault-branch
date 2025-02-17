@@ -5,7 +5,8 @@ import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
-import { User as SelectUser } from "@shared/schema";
+import { User as SelectUser, insertUserSchema } from "@shared/schema";
+import { z } from "zod";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
 
@@ -143,12 +144,29 @@ export function setupAuth(app: Express) {
   app.post("/api/register", async (req, res, next) => {
     try {
       console.log('[Auth] Processing registration request:', { email: req.body.email });
-      const { email, password, bowlerId } = req.body;
+
+      // Validate input against schema
+      const validatedInput = insertUserSchema.safeParse({
+        email: req.body.email,
+        password: req.body.password,
+        bowlerId: req.body.bowlerId || null
+      });
+
+      if (!validatedInput.success) {
+        console.log('[Auth] Registration validation failed:', validatedInput.error);
+        return res.status(400).json({
+          success: false,
+          error: { 
+            message: "Validation failed", 
+            details: validatedInput.error.errors 
+          }
+        });
+      }
 
       // Check if user already exists
-      const existingUser = await storage.getUserByEmail(email);
+      const existingUser = await storage.getUserByEmail(validatedInput.data.email);
       if (existingUser) {
-        console.log(`[Auth] Registration failed - email already exists: ${email}`);
+        console.log(`[Auth] Registration failed - email already exists: ${validatedInput.data.email}`);
         return res.status(400).json({
           success: false,
           error: { message: "Email already registered" }
@@ -157,9 +175,8 @@ export function setupAuth(app: Express) {
 
       // Create new user with hashed password
       const user = await storage.createUser({
-        email,
-        password: await hashPassword(password),
-        bowlerId: bowlerId || null
+        ...validatedInput.data,
+        password: await hashPassword(validatedInput.data.password)
       });
 
       if (!isValidUser(user)) {

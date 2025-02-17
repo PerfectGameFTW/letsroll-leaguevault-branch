@@ -28,7 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 
 const signUpSchema = z.object({
@@ -63,6 +63,8 @@ type SignUpFormData = z.infer<typeof signUpSchema>;
 
 const SignUpPage: FC = () => {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
   const form = useForm<SignUpFormData>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
@@ -86,6 +88,8 @@ const SignUpPage: FC = () => {
 
   const onSubmit = async (data: SignUpFormData) => {
     try {
+      console.log("[SignUp] Submitting registration form:", { email: data.email });
+
       // First check if a user account already exists with this email
       const existingUsersResponse = await fetch(`/api/users/check-email/${encodeURIComponent(data.email)}`);
       if (!existingUsersResponse.ok) {
@@ -129,6 +133,11 @@ const SignUpPage: FC = () => {
         });
       }
 
+      console.log("[SignUp] Sending registration request:", { 
+        email: signupData.email, 
+        bowlerId: signupData.bowlerId 
+      });
+
       const response = await fetch("/api/register", {
         method: "POST",
         headers: {
@@ -142,12 +151,18 @@ const SignUpPage: FC = () => {
         throw new Error(errorData.message || "Failed to sign up. Please try again.");
       }
 
+      const userData = await response.json();
+      console.log("[SignUp] Registration successful:", { userId: userData.data.id });
+
       toast({
         title: "Sign up successful!",
         description: "Welcome to the bowling league management system.",
       });
+
+      // Redirect to dashboard or home page after successful registration
+      setLocation("/");
     } catch (error) {
-      console.error('Sign up error:', error);
+      console.error('[SignUp] Registration error:', error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to sign up. Please try again.",
