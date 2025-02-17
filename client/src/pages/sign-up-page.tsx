@@ -66,6 +66,7 @@ const SignUpPage: FC = () => {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
+  // Initialize form with schema validation
   const form = useForm<SignUpFormData>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
@@ -77,21 +78,28 @@ const SignUpPage: FC = () => {
     },
   });
 
+  // Fetch leagues for dropdown
   const { data: leagues } = useQuery({
     queryKey: ["/api/leagues"],
     queryFn: async () => {
-      const response = await fetch("/api/leagues");
-      if (!response.ok) throw new Error("Failed to fetch leagues");
-      const data = await response.json();
-      return data.data;
+      try {
+        const response = await fetch("/api/leagues");
+        if (!response.ok) throw new Error("Failed to fetch leagues");
+        const data = await response.json();
+        return data.data;
+      } catch (error) {
+        console.error('[SignUp] Failed to fetch leagues:', error);
+        throw error;
+      }
     },
   });
 
+  // Handle form submission
   const onSubmit = async (data: SignUpFormData) => {
     try {
       console.log("[SignUp] Submitting registration form:", { email: data.email });
 
-      // First check if a user account already exists with this email
+      // Check if email exists
       const existingUsersResponse = await fetch(`/api/users/check-email/${encodeURIComponent(data.email)}`);
       if (!existingUsersResponse.ok) {
         throw new Error("Failed to verify email availability");
@@ -107,14 +115,14 @@ const SignUpPage: FC = () => {
         return;
       }
 
-      // Check for existing bowler with same name and email
+      // Check for existing bowler
       const bowlersResponse = await fetch("/api/bowlers");
       if (!bowlersResponse.ok) {
         throw new Error("Failed to check existing bowlers");
       }
       const bowlersData = await bowlersResponse.json();
 
-      // Look for a match based on name and email
+      // Look for matching bowler
       const existingBowler = bowlersData.data.find((bowler: any) =>
         bowler.name.toLowerCase() === data.name.toLowerCase() &&
         bowler.email.toLowerCase() === data.email.toLowerCase()
@@ -122,7 +130,6 @@ const SignUpPage: FC = () => {
 
       let signupData = { ...data };
       if (existingBowler) {
-        // If matching bowler found, include their ID in the signup data
         signupData = {
           ...data,
           bowlerId: existingBowler.id,
@@ -134,11 +141,7 @@ const SignUpPage: FC = () => {
         });
       }
 
-      console.log("[SignUp] Sending registration request:", {
-        email: signupData.email,
-        bowlerId: signupData.bowlerId
-      });
-
+      // Submit registration
       const response = await fetch("/api/register", {
         method: "POST",
         headers: {
@@ -160,7 +163,7 @@ const SignUpPage: FC = () => {
         description: "Welcome to the bowling league management system.",
       });
 
-      // Redirect to dashboard or home page after successful registration
+      // Redirect to home page
       setLocation("/");
     } catch (error) {
       console.error('[SignUp] Registration error:', error);

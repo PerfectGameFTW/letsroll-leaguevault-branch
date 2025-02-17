@@ -19,21 +19,6 @@ interface PortStatus {
   };
 }
 
-interface HealthCheckResponse {
-  status: string;
-  port: number;
-  ready: boolean;
-  mode?: string;
-  timestamp: string;
-  database?: {
-    connected: boolean;
-    url: string;
-  };
-  vite?: {
-    setup: boolean;
-  };
-}
-
 async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
   try {
     console.log('[wait-for-port] Reading port status file...');
@@ -71,14 +56,14 @@ async function checkHealth(port: number, retryCount = 0): Promise<boolean> {
       return false;
     }
 
-    const data = await response.json() as HealthCheckResponse;
+    const data = await response.json();
     console.log('[wait-for-port] Health check response:', data);
 
     // Verify all components are ready
     const isHealthy = data.status === 'healthy' && 
                      data.ready === true && 
                      data.database?.connected === true &&
-                     data.vite?.setup === true;
+                     (process.env.NODE_ENV === 'production' || data.vite?.setup === true);
 
     if (!isHealthy && retryCount < MAX_RETRIES) {
       console.log(`[wait-for-port] Components not ready, retrying (${retryCount + 1}/${MAX_RETRIES})...`);
@@ -99,56 +84,54 @@ async function checkHealth(port: number, retryCount = 0): Promise<boolean> {
   }
 }
 
-async function waitForPort() {
+// Export the waitForPort function so it can be used by the workflow
+export async function waitForPort() {
   console.log('[wait-for-port] Starting server readiness check...');
   const startTime = Date.now();
   let lastLogTime = 0;
   const LOG_INTERVAL = 5000; // Log every 5 seconds
 
-  while (Date.now() - startTime < TIMEOUT) {
-    const currentTime = Date.now();
-    const elapsedTime = currentTime - startTime;
+  try {
+    while (Date.now() - startTime < TIMEOUT) {
+      const currentTime = Date.now();
+      const elapsedTime = currentTime - startTime;
 
-    // Log progress periodically
-    if (currentTime - lastLogTime >= LOG_INTERVAL) {
-      console.log(`[wait-for-port] Waiting for server... (${Math.round(elapsedTime / 1000)}s elapsed)`);
-      lastLogTime = currentTime;
-    }
-
-    const status = await readPortStatus();
-
-    if (status) {
-      console.log(`[wait-for-port] Found port ${status.port}, checking health...`);
-
-      if (status.ready) {
-        const isHealthy = await checkHealth(status.port);
-        if (isHealthy) {
-          console.log(`[wait-for-port] Server is fully ready on port ${status.port}`);
-          process.exit(0);
-        } else {
-          console.log('[wait-for-port] Server is not yet healthy, continuing to wait...');
-        }
-      } else {
-        console.log('[wait-for-port] Server not marked as ready yet, continuing to wait...');
+      // Log progress periodically
+      if (currentTime - lastLogTime >= LOG_INTERVAL) {
+        console.log(`[wait-for-port] Waiting for server... (${Math.round(elapsedTime / 1000)}s elapsed)`);
+        lastLogTime = currentTime;
       }
-    } else {
-      console.log('[wait-for-port] No port status file found yet, continuing to wait...');
+
+      const status = await readPortStatus();
+
+      if (status) {
+        console.log(`[wait-for-port] Found port ${status.port}, checking health...`);
+
+        if (status.ready) {
+          const isHealthy = await checkHealth(status.port);
+          if (isHealthy) {
+            console.log(`[wait-for-port] Server is fully ready on port ${status.port}`);
+            return status.port;
+          }
+        }
+      }
+
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
     }
 
-    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+    throw new Error(`Timeout waiting for server after ${TIMEOUT/1000} seconds`);
+  } catch (error) {
+    console.error('[wait-for-port] Error during port wait:', error);
+    throw error;
   }
-
-  console.error(`[wait-for-port] Timeout waiting for server after ${TIMEOUT/1000} seconds`);
-  process.exit(1);
 }
 
-// Start the wait-for-port process with error handling
-process.on('unhandledRejection', (error) => {
-  console.error('[wait-for-port] Unhandled promise rejection:', error);
-  process.exit(1);
-});
-
-waitForPort().catch(error => {
-  console.error('[wait-for-port] Fatal error waiting for server:', error);
-  process.exit(1);
-});
+// Start the wait-for-port process
+if (require.main === module) {
+  waitForPort()
+    .then(() => process.exit(0))
+    .catch(error => {
+      console.error('[wait-for-port] Fatal error:', error);
+      process.exit(1);
+    });
+}

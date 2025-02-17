@@ -55,8 +55,8 @@ export function setupAuth(app: Express) {
     store: new PostgresSessionStore({
       pool,
       createTableIfMissing: true,
-      pruneSessionInterval: 60, // Cleanup expired sessions every minute
-      tableName: 'session' // Explicitly set table name
+      pruneSessionInterval: 60,
+      tableName: 'session'
     }),
     cookie: {
       secure: process.env.NODE_ENV === "production",
@@ -105,32 +105,24 @@ export function setupAuth(app: Express) {
   );
 
   passport.serializeUser((user, done) => {
-    try {
-      console.log(`[Auth] Serializing user ID: ${user.id}`);
-      if (!isValidUser(user)) {
-        console.error('[Auth] Invalid user object during serialization:', user);
-        return done(new Error('Invalid user object during serialization'));
-      }
-      done(null, user.id);
-    } catch (error) {
-      console.error('[Auth] Serialization error:', error);
-      done(error);
+    if (!isValidUser(user)) {
+      return done(new Error('Invalid user object during serialization'));
     }
+    done(null, user.id);
   });
 
   passport.deserializeUser(async (id: number, done) => {
     try {
-      console.log(`[Auth] Deserializing user ID: ${id}`);
       const user = await storage.getUser(id);
-
       if (!user) {
-        console.log(`[Auth] No user found for ID: ${id}`);
-        return done(new Error(`User not found: ${id}`));
+        // Instead of throwing an error, just return null to handle expired sessions gracefully
+        console.log(`[Auth] No user found for ID: ${id}, clearing session`);
+        return done(null, null);
       }
 
       if (!isValidUser(user)) {
         console.error(`[Auth] Invalid user object for ID: ${id}`, user);
-        return done(new Error(`Invalid user object: ${id}`));
+        return done(null, null);
       }
 
       console.log(`[Auth] Successfully deserialized user ID: ${id}`);
