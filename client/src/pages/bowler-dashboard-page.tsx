@@ -4,7 +4,8 @@ import { useBowlers } from "@/hooks/use-bowlers";
 import { useQuery } from "@tanstack/react-query";
 import type { User } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trophy, CreditCard, Calendar } from "lucide-react";
+import { Link } from "wouter";
 import {
   Table,
   TableBody,
@@ -13,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 
 const BowlerDashboardPage: FC = () => {
   const { toast } = useToast();
@@ -34,7 +36,8 @@ const BowlerDashboardPage: FC = () => {
     getBowlerFirstLeagueName, 
     isInitialLoading, 
     isLoadingRelatedData,
-    error: bowlersError
+    error: bowlersError,
+    getBowlerLeagueId
   } = useBowlers();
 
   console.log("[BowlerDashboard] Current user:", currentUser?.data);
@@ -92,6 +95,7 @@ const BowlerDashboardPage: FC = () => {
 
   const teamName = getBowlerTeamName(bowler);
   const leagueName = getBowlerFirstLeagueName(bowler);
+  const leagueId = getBowlerLeagueId(bowler);
 
   return (
     <div className="space-y-6">
@@ -129,15 +133,29 @@ const BowlerDashboardPage: FC = () => {
                       </span>
                     </TableCell>
                   </TableRow>
+                  {bowler.qubicaId && (
+                    <TableRow>
+                      <TableCell className="font-medium">Qubica ID</TableCell>
+                      <TableCell>{bowler.qubicaId}</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </div>
             <div>
-              <h3 className="text-lg font-semibold mb-2">Recent Activity</h3>
-              <div className="bg-muted/50 rounded-lg p-4">
-                <p className="text-sm text-muted-foreground">
-                  Recent activity and statistics will be displayed here in future updates.
-                </p>
+              <h3 className="text-lg font-semibold mb-2">League Information</h3>
+              <div className="rounded-lg border p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Current League</p>
+                    <p className="text-lg font-semibold">{leagueName || "Not Assigned"}</p>
+                  </div>
+                  <Trophy className="h-8 w-8 text-primary opacity-50" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Team</p>
+                  <p className="text-lg font-semibold">{teamName || "Not Assigned"}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -150,36 +168,54 @@ const BowlerDashboardPage: FC = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">View Scores</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Track your performance and view historical scores
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Payment History</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  View and manage your league payments
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">League Schedule</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Check upcoming games and events
-                </p>
-              </CardContent>
-            </Card>
+            <Link href={`/bowlers/${bowler.id}/scores`}>
+              <Card className="cursor-pointer hover:bg-accent transition-colors">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Trophy className="h-5 w-5 text-primary opacity-75" />
+                    View Scores
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Track your performance and view historical scores
+                  </p>
+                  <Button variant="secondary" className="w-full">View Scores</Button>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link href="/payments">
+              <Card className="cursor-pointer hover:bg-accent transition-colors">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <CreditCard className="h-5 w-5 text-primary opacity-75" />
+                    Payment History
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    View and manage your league payments
+                  </p>
+                  <Button variant="secondary" className="w-full">View Payments</Button>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link href={leagueId ? `/leagues/${leagueId}` : "/leagues"}>
+              <Card className="cursor-pointer hover:bg-accent transition-colors">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Calendar className="h-5 w-5 text-primary opacity-75" />
+                    League Schedule
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Check upcoming games and events
+                  </p>
+                  <Button variant="secondary" className="w-full">View Schedule</Button>
+                </CardContent>
+              </Card>
+            </Link>
           </div>
         </CardContent>
       </Card>

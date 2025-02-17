@@ -88,6 +88,17 @@ export function useBowlers({ showInactive = false, searchQuery = "" }: UseBowler
     return team?.name || "No Team";
   }, [getBowlerTeam]);
 
+  // Get first league ID for a bowler
+  const getBowlerLeagueId = useMemo(() => (bowler: Bowler) => {
+    const activeBowlerLeague = bowlerLeagues
+      .find(bl => bl.bowlerId === bowler.id && bl.active);
+
+    if (!activeBowlerLeague) return undefined;
+
+    const team = teams.find(t => t.id === activeBowlerLeague.teamId);
+    return team?.leagueId;
+  }, [bowlerLeagues, teams]);
+
   // Show loading skeleton while initial data is being fetched
   const isInitialLoading = loadingBowlers && !bowlers.length;
   const isLoadingRelatedData = (loadingBowlerLeagues || loadingTeams || loadingLeagues) && bowlers.length > 0;
@@ -98,6 +109,7 @@ export function useBowlers({ showInactive = false, searchQuery = "" }: UseBowler
     getWeeklyFee,
     getBowlerFirstLeagueName,
     getBowlerTeamName,
+    getBowlerLeagueId,
     isInitialLoading,
     isLoadingRelatedData,
   };
