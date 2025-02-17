@@ -20,18 +20,35 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 
 const signUpSchema = z.object({
   name: z
     .string()
-    .min(2, "Name must be at least 2 characters")
-    .max(100, "Name must be less than 100 characters"),
+    .min(2, "Full name must be at least 2 characters")
+    .max(100, "Full name must be less than 100 characters")
+    .regex(/^[a-zA-Z\s'-]+$/, "Full name can only contain letters, spaces, hyphens, and apostrophes"),
   email: z
     .string()
-    .email("Invalid email address")
+    .email("Please enter a valid email address")
     .max(255, "Email must be less than 255 characters"),
+  phone: z
+    .string()
+    .min(10, "Phone number must be at least 10 digits")
+    .max(15, "Phone number must be less than 15 digits")
+    .regex(/^[+]?[\d\s-()]+$/, "Please enter a valid phone number"),
+  leagueId: z
+    .string()
+    .min(1, "Please select a league"),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
@@ -51,22 +68,89 @@ const SignUpPage: FC = () => {
     defaultValues: {
       name: "",
       email: "",
+      phone: "",
+      leagueId: "",
       password: "",
+    },
+  });
+
+  const { data: leagues } = useQuery({
+    queryKey: ["/api/leagues"],
+    queryFn: async () => {
+      const response = await fetch("/api/leagues");
+      if (!response.ok) throw new Error("Failed to fetch leagues");
+      const data = await response.json();
+      return data.data;
     },
   });
 
   const onSubmit = async (data: SignUpFormData) => {
     try {
-      // TODO: Implement sign up logic
-      console.log("Form submitted:", data);
+      // First check if a user account already exists with this email
+      const existingUsersResponse = await fetch(`/api/users/check-email/${encodeURIComponent(data.email)}`);
+      if (!existingUsersResponse.ok) {
+        throw new Error("Failed to verify email availability");
+      }
+      const existingUserData = await existingUsersResponse.json();
+
+      if (existingUserData.exists) {
+        toast({
+          title: "Account Already Exists",
+          description: "An account with this email already exists. Please sign in instead.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Check for existing bowler with same name and email
+      const bowlersResponse = await fetch("/api/bowlers");
+      if (!bowlersResponse.ok) {
+        throw new Error("Failed to check existing bowlers");
+      }
+      const bowlersData = await bowlersResponse.json();
+
+      // Look for a match based on name and email
+      const existingBowler = bowlersData.data.find((bowler: any) =>
+        bowler.name.toLowerCase() === data.name.toLowerCase() &&
+        bowler.email.toLowerCase() === data.email.toLowerCase()
+      );
+
+      let signupData = { ...data };
+      if (existingBowler) {
+        // If matching bowler found, include their ID in the signup data
+        signupData = {
+          ...data,
+          bowlerId: existingBowler.id,
+        };
+
+        toast({
+          title: "Existing Bowler Found",
+          description: "We've matched your information with an existing bowler profile.",
+        });
+      }
+
+      const response = await fetch("/api/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(signupData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || "Failed to sign up. Please try again.");
+      }
+
       toast({
         title: "Sign up successful!",
         description: "Welcome to the bowling league management system.",
       });
     } catch (error) {
+      console.error('Sign up error:', error);
       toast({
         title: "Error",
-        description: "Failed to sign up. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to sign up. Please try again.",
         variant: "destructive",
       });
     }
@@ -104,7 +188,7 @@ const SignUpPage: FC = () => {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email</FormLabel>
+                    <FormLabel>Email Address</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
@@ -112,6 +196,47 @@ const SignUpPage: FC = () => {
                         {...field}
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="tel"
+                        placeholder="(555) 123-4567"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="leagueId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>League</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a league" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {leagues?.map((league: { id: number; name: string }) => (
+                          <SelectItem key={league.id} value={league.id.toString()}>
+                            {league.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
