@@ -426,7 +426,10 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                         <div className="w-full">
                           <RulesEditor
                             content={field.value || ""}
-                            onChange={field.onChange}
+                            onChange={(content) => {
+                              console.log('Rules content updated:', content); // Debug log
+                              field.onChange(content);
+                            }}
                             readOnly={false}
                           />
                         </div>

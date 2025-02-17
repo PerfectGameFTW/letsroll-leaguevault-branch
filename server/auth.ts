@@ -61,11 +61,18 @@ export function setupAuth(app: Express) {
     cookie: {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      path: '/',
+      httpOnly: true
+    },
+    name: 'bowlingleague.sid' // Custom session cookie name
   };
 
-  app.set("trust proxy", 1);
+  // Trust first proxy if in production
+  if (process.env.NODE_ENV === "production") {
+    app.set("trust proxy", 1);
+  }
+
   app.use(session(sessionSettings));
   app.use(passport.initialize());
   app.use(passport.session());
@@ -307,13 +314,26 @@ export function setupAuth(app: Express) {
   });
 
   app.get("/api/user", (req, res) => {
+    console.log('[Auth] /api/user request:', {
+      isAuthenticated: req.isAuthenticated(),
+      hasSession: !!req.session,
+      sessionID: req.sessionID,
+      cookies: req.headers.cookie,
+      userAgent: req.headers['user-agent'],
+      timestamp: new Date().toISOString()
+    });
+
     if (!req.isAuthenticated()) {
       console.log('[Auth] Unauthorized access attempt to /api/user');
       return res.status(401).json({
         success: false,
-        error: { message: "Not authenticated" }
+        error: { 
+          message: "Not authenticated",
+          code: "AUTH_REQUIRED"
+        }
       });
     }
+
     console.log(`[Auth] Current user data requested, ID: ${(req.user as SelectUser).id}`);
     res.json({
       success: true,
