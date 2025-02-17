@@ -518,14 +518,77 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
   async createBatchScores(batchScores: InsertScore[]): Promise<Score[]> {
-    if (batchScores.length === 0) return [];
+    try {
+      if (batchScores.length === 0) {
+        console.log('[Storage/createBatchScores] No scores to create');
+        return [];
+      }
 
-    const results = await db
-      .insert(scores)
-      .values(batchScores)
-      .returning();
+      console.log('[Storage/createBatchScores] Attempting to create batch scores:', {
+        count: batchScores.length,
+        sample: batchScores.slice(0, 2).map(score => ({
+          gameId: score.gameId,
+          bowlerId: score.bowlerId,
+          teamId: score.teamId,
+          score: score.score,
+          laneNumber: score.laneNumber
+        }))
+      });
 
-    return results;
+      // Validate all scores have required fields before attempting insertion
+      const invalidScores = batchScores.filter(score =>
+        !score.gameId || !score.bowlerId || !score.teamId ||
+        typeof score.score !== 'number' || typeof score.handicap !== 'number'
+      );
+
+      if (invalidScores.length > 0) {
+        console.error('[Storage/createBatchScores] Invalid scores found:',
+          invalidScores.map(score => ({
+            gameId: score.gameId,
+            bowlerId: score.bowlerId,
+            teamId: score.teamId,
+            score: score.score,
+            handicap: score.handicap
+          }))
+        );
+        throw new Error('Invalid score data detected');
+      }
+
+      const results = await db
+        .insert(scores)
+        .values(batchScores)
+        .returning();
+
+      console.log('[Storage/createBatchScores] Successfully created scores:', {
+        requested: batchScores.length,
+        created: results.length,
+        sample: results.slice(0, 2).map(score => ({
+          id: score.id,
+          gameId: score.gameId,
+          score: score.score,
+          laneNumber: score.laneNumber
+        }))
+      });
+
+      return results;
+    } catch (error) {
+      console.error('[Storage/createBatchScores] Error creating batch scores:', {
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        scoreCount: batchScores.length,
+        sampleScore: batchScores[0] ? {
+          gameId: batchScores[0].gameId,
+          bowlerId: batchScores[0].bowlerId,
+          teamId: batchScores[0].teamId,
+          score: batchScores[0].score,
+          laneNumber: batchScores[0].laneNumber
+        } : 'No scores'
+      });
+      throw error;
+    }
   }
   async getGameScores(gameId: number): Promise<Score[]> {
     return db

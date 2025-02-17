@@ -80,13 +80,47 @@ export class ScoreImportService {
     try {
       console.log('[ScoreImport] Starting import process...');
 
+      // Debug log the file content
+      console.log('[ScoreImport] File content analysis:', {
+        totalLength: fileContent.length,
+        firstLines: fileContent.split('\n').slice(0, 5).map(line => ({
+          content: line,
+          length: line.length,
+          charCodes: line.split('').map(c => c.charCodeAt(0))
+        }))
+      });
+
       // Parse file content
       let parsedData: QubicaScoreImport;
       try {
         parsedData = parseQubicaScoreFile(fileContent);
-        console.log('[ScoreImport] Successfully parsed score file');
+        console.log('[ScoreImport] Successfully parsed score file:', {
+          header: {
+            ...parsedData.header,
+            date: parsedData.header.date.toISOString(),
+            weekNumber: parsedData.header.weekNumber
+          },
+          gamesCount: parsedData.games.length,
+          sampleGame: parsedData.games[0] ? {
+            teamNumber: parsedData.games[0].teamNumber,
+            laneNumber: parsedData.games[0].laneNumber,
+            bowlerCount: parsedData.games[0].bowlers.length,
+            bowlers: parsedData.games[0].bowlers.map(b => ({
+              name: b.bowlerName,
+              score: b.score,
+              position: b.position
+            }))
+          } : 'No games found'
+        });
       } catch (error) {
-        console.error('[ScoreImport] File parsing error:', error);
+        console.error('[ScoreImport] File parsing error:', {
+          error: error instanceof Error ? {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+          } : error,
+          fileContentSample: fileContent.substring(0, 200)
+        });
         throw new ScoreImportError('Failed to parse score file', 'PARSE_ERROR');
       }
 
@@ -107,6 +141,11 @@ export class ScoreImportService {
 
       // Create games for the week
       try {
+        console.log('[ScoreImport] Creating games for week:', {
+          weekNumber: parsedData.header.weekNumber,
+          date: gameDate.toISOString()
+        });
+
         for (let gameNumber = 1; gameNumber <= 3; gameNumber++) {
           const insertGame: InsertGame = {
             leagueId: this.leagueId,
@@ -133,6 +172,17 @@ export class ScoreImportService {
       const teamCache = new Map<string, Team>();
       const bowlerCache = new Map<string, Bowler>();
 
+      console.log('[ScoreImport] Processing games:', {
+        totalGames: parsedData.games.length,
+        sampleGame: parsedData.games[0] ? {
+          teamNumber: parsedData.games[0].teamNumber,
+          laneNumber: parsedData.games[0].laneNumber,
+          bowlerCount: parsedData.games[0].bowlers.length,
+          bowlerNames: parsedData.games[0].bowlers.map(b => b.bowlerName)
+        } : 'No games'
+      });
+
+      // Process each team game
       for (const teamGame of parsedData.games) {
         const game = createdGames.find(g => g.gameNumber === teamGame.gameNumber);
         if (!game) {
@@ -220,10 +270,26 @@ export class ScoreImportService {
 
       // Create scores in batch
       try {
+        console.log('[ScoreImport] Attempting to create batch scores:', {
+          count: scores.length,
+          sample: scores.slice(0, 2).map(score => ({
+            gameId: score.gameId,
+            bowlerId: score.bowlerId,
+            teamId: score.teamId,
+            score: score.score,
+            laneNumber: score.laneNumber
+          }))
+        });
+
         const createdScores = await storage.createBatchScores(scores);
         console.log('[ScoreImport] Successfully created scores:', {
           total: createdScores.length,
-          games: createdGames.length
+          games: createdGames.length,
+          sample: createdScores.slice(0, 2).map(score => ({
+            id: score.id,
+            gameId: score.gameId,
+            score: score.score
+          }))
         });
 
         return {
@@ -231,7 +297,20 @@ export class ScoreImportService {
           scoresCreated: createdScores.length
         };
       } catch (error) {
-        console.error('[ScoreImport] Error creating batch scores:', error);
+        console.error('[ScoreImport] Error creating batch scores:', {
+          error: error instanceof Error ? {
+            name: error.name,
+            message: error.message,
+            stack: error.stack
+          } : error,
+          scoreCount: scores.length,
+          sampleScore: scores[0] ? {
+            gameId: scores[0].gameId,
+            bowlerId: scores[0].bowlerId,
+            teamId: scores[0].teamId,
+            score: scores[0].score
+          } : 'No scores'
+        });
         throw new ScoreImportError('Failed to create scores', 'SCORE_CREATION_ERROR');
       }
     } catch (error) {

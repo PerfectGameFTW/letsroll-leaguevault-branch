@@ -237,4 +237,15 @@ export class GoogleDriveService {
         (error instanceof Error ? error.message : String(error)));
     }
   }
+
+  async markFileAsProcessed(fileId: string): Promise<void> {
+    // Get archive folder ID from environment
+    const archiveFolderId = process.env.GOOGLE_DRIVE_ARCHIVE_FOLDER_ID;
+    if (!archiveFolderId) {
+      throw new Error('Archive folder ID not configured');
+    }
+
+    // Move file to archive folder
+    await this.moveToArchive(fileId, archiveFolderId);
+  }
 }
