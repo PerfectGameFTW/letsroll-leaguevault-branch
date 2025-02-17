@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, LayoutDashboard } from "lucide-react";
+import { Home, Users, CreditCard, Trophy, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, LayoutDashboard } from "lucide-react";
 import { useState, useEffect, Suspense, memo } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -32,15 +32,15 @@ const baseNavigation = [
   { name: "Dashboard", href: "/", icon: Home },
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
-  { name: "Reports", href: "/reports", icon: FileText },
+  { name: "Reports", href: "/reports", icon: LayoutDashboard },
   { name: "Bowler Dashboard", href: "/bowler-dashboard", icon: LayoutDashboard },
 ];
 
 // Memoized navigation items to prevent unnecessary re-renders
-const NavigationItem = memo(({ item, isActive, isCollapsed }: { 
-  item: typeof baseNavigation[0], 
-  isActive: boolean, 
-  isCollapsed: boolean 
+const NavigationItem = memo(({ item, isActive, isCollapsed }: {
+  item: typeof baseNavigation[0],
+  isActive: boolean,
+  isCollapsed: boolean
 }) => {
   const Icon = item.icon;
   return (
@@ -70,11 +70,11 @@ const NavigationItem = memo(({ item, isActive, isCollapsed }: {
 });
 
 // Memoized leagues section to prevent unnecessary re-renders
-const LeaguesSection = memo(({ 
-  isCollapsed, 
-  leagues, 
-  isInLeaguesSection, 
-  location 
+const LeaguesSection = memo(({
+  isCollapsed,
+  leagues,
+  isInLeaguesSection,
+  location
 }: {
   isCollapsed: boolean,
   leagues: League[],

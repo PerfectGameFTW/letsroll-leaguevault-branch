@@ -4,9 +4,12 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Loader2, Users, DollarSign, Trophy } from "lucide-react";
 import type { League } from "@shared/schema";
 import { useParams, Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function LeagueViewPage() {
   const params = useParams();
+  const { toast } = useToast();
   const leagueId = parseInt(params.leagueId!);
 
   const { data: leagueResponse, isLoading } = useQuery<{ data: League }>({
@@ -14,6 +17,7 @@ export default function LeagueViewPage() {
   });
 
   const league = leagueResponse?.data;
+
 
   if (isLoading) {
     return (

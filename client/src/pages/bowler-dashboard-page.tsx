@@ -13,8 +13,7 @@ import {
   History,
   UserCircle,
   ChevronRight,
-  Menu,
-  FileText
+  Menu
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -49,11 +48,6 @@ const navItems: NavItem[] = [
     icon: Medal,
     label: "League Standings",
     href: "/standings"
-  },
-  {
-    icon: FileText,
-    label: "League Rules",
-    href: "/rules"
   },
   {
     icon: UserCircle,
