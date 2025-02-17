@@ -2,6 +2,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
+  users, // Add users table import
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
@@ -9,6 +10,7 @@ import {
   type Payment, type InsertPayment,
   type Game, type InsertGame,
   type Score, type InsertScore,
+  type User, type InsertUser, // Add User types
 } from "@shared/schema.js";
 
 export interface IStorage {
@@ -68,6 +70,12 @@ export interface IStorage {
   getGameScores(gameId: number): Promise<Score[]>;
   getTeamByNumber(leagueId: number, teamNumber: number): Promise<Team | undefined>;
   getScoresByLeagueAndWeek(leagueId: number, weekNumber: number): Promise<Score[]>;
+
+  // Add new user methods to interface
+  getUser(id: number): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  linkUserToBowler(userId: number, bowlerId: number): Promise<User>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -660,6 +668,31 @@ export class DatabaseStorage implements IStorage {
 
     console.log('[Storage] Found scores:', scoresWithDetails.length);
     return scoresWithDetails;
+  }
+
+  // Implement new user methods
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async createUser(user: InsertUser): Promise<User> {
+    const [result] = await db.insert(users).values(user).returning();
+    return result;
+  }
+
+  async linkUserToBowler(userId: number, bowlerId: number): Promise<User> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ bowlerId })
+      .where(eq(users.id, userId))
+      .returning();
+    return updatedUser;
   }
 }
 

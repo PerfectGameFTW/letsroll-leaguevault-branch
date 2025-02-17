@@ -199,6 +199,15 @@ export const weeklyStats = pgTable("weekly_stats", {
   bowlerStatsIdx: index("bowler_stats_idx").on(table.bowlerLeagueId),
 }));
 
+// Add users table after the existing tables, before relations
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  password: text("password").notNull(),
+  bowlerId: integer("bowler_id").references(() => bowlers.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Relations
 export const leagueRelations = relations(leagues, ({ many }) => ({
   teams: many(teams),
@@ -217,6 +226,7 @@ export const teamRelations = relations(teams, ({ one, many }) => ({
 export const bowlerRelations = relations(bowlers, ({ many }) => ({
   bowlerLeagues: many(bowlerLeagues),
   payments: many(payments),
+  users: many(users), // Add this line to existing bowler relations
 }));
 
 export const bowlerLeagueRelations = relations(bowlerLeagues, ({ one }) => ({
@@ -277,6 +287,15 @@ export const weeklyStatsRelations = relations(weeklyStats, ({ one }) => ({
   }),
 }));
 
+// Add user relations after existing relations
+export const userRelations = relations(users, ({ one }) => ({
+  bowler: one(bowlers, {
+    fields: [users.bowlerId],
+    references: [bowlers.id],
+  }),
+}));
+
+
 // Validation schemas
 // Base schemas using drizzle-zod
 const baseBowlerSchema = createInsertSchema(bowlers);
@@ -288,6 +307,9 @@ const baseGameSchema = createInsertSchema(games);
 const baseScoreSchema = createInsertSchema(scores);
 const baseSeriesSchema = createInsertSchema(series);
 const baseWeeklyStatsSchema = createInsertSchema(weeklyStats);
+
+// Add validation schemas after existing schemas
+const baseUserSchema = createInsertSchema(users);
 
 // Enhanced insert schemas with additional validation
 export const insertBowlerSchema = baseBowlerSchema.extend({
@@ -394,6 +416,11 @@ export const insertWeeklyStatsSchema = baseWeeklyStatsSchema.extend({
   gamesPlayed: z.number().int().min(1).max(4),
 }).omit({ id: true });
 
+export const insertUserSchema = baseUserSchema.extend({
+  email: emailSchema,
+  password: z.string().min(8, "Password must be at least 8 characters"),
+}).omit({ id: true, createdAt: true });
+
 // Export partial schemas for updates
 export const partialBowlerSchema = z.object(baseBowlerSchema.shape).partial();
 export const partialLeagueSchema = z.object({
@@ -452,6 +479,11 @@ export type InsertSeries = z.infer<typeof insertSeriesSchema>;
 
 export type WeeklyStat = typeof weeklyStats.$inferSelect;
 export type InsertWeeklyStat = z.infer<typeof insertWeeklyStatsSchema>;
+
+// Add type exports after existing types
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
 
 // API response types
 export interface ApiResponse<T> {

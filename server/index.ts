@@ -47,6 +47,7 @@ import { storage } from './storage.js';
 import path from 'path';
 import net from 'net';
 import fs from 'fs';
+import { setupAuth } from "./auth.js"; // Added import
 
 interface PortStatus {
   port: number;
@@ -89,6 +90,8 @@ app.use(requestTracker);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
+// Setup authentication  //Added authentication middleware setup
+setupAuth(app);
 
 // Port status monitoring middleware
 app.use(async (req: Request, res: Response, next: NextFunction) => {
