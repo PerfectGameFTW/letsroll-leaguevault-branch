@@ -21,6 +21,7 @@ import SignUpPage from "@/pages/sign-up-page";
 import { useEffect, useRef } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
+import BowlerDashboardPage from "@/pages/bowler-dashboard-page";
 
 function Router() {
   useEffect(() => {
@@ -31,6 +32,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/sign-up" component={SignUpPage} />
+      <Route path="/bowler-dashboard" component={BowlerDashboardPage} />
       <Route path="/" component={HomePage} />
       <Route path="/leagues" component={LeaguesPage} />
       <Route path="/leagues/:leagueId" component={LeagueViewPage} />

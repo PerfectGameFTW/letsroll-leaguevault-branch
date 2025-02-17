@@ -144,7 +144,11 @@ const SignUpPage: FC = () => {
 
   const onSubmit = async (data: SignUpFormData) => {
     try {
-      console.log("[SignUp] Submitting registration form:", { email: data.email });
+      console.log("[SignUp] Starting registration process:", { 
+        email: data.email,
+        name: data.name,
+        leagueId: data.leagueId 
+      });
 
       const existingUsersResponse = await fetch(`/api/users/check-email/${encodeURIComponent(data.email)}`);
       if (!existingUsersResponse.ok) {
@@ -161,6 +165,8 @@ const SignUpPage: FC = () => {
         return;
       }
 
+      // Check for existing bowler
+      console.log("[SignUp] Checking for existing bowler profile");
       const bowlersResponse = await fetch("/api/bowlers");
       if (!bowlersResponse.ok) {
         throw new Error("Failed to check existing bowlers");
@@ -172,41 +178,51 @@ const SignUpPage: FC = () => {
         bowler.email.toLowerCase() === data.email.toLowerCase()
       );
 
-      let signupData = { ...data };
       if (existingBowler) {
-        signupData = {
-          ...data,
-          bowlerId: existingBowler.id,
-        };
-
+        console.log("[SignUp] Found existing bowler:", existingBowler);
         toast({
           title: "Existing Bowler Found",
           description: "We've matched your information with an existing bowler profile.",
         });
       }
 
+      console.log("[SignUp] Submitting registration data");
       const response = await fetch("/api/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(signupData),
+        body: JSON.stringify(data),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || "Failed to sign up. Please try again.");
+        throw new Error(errorData.error?.message || "Failed to sign up. Please try again.");
       }
 
       const userData = await response.json();
-      console.log("[SignUp] Registration successful:", { userId: userData.data.id });
-
-      toast({
-        title: "Sign up successful!",
-        description: "Welcome to the bowling league management system.",
+      console.log("[SignUp] Registration successful:", { 
+        userId: userData.data.id,
+        bowlerId: userData.data.bowlerId,
+        success: userData.success 
       });
 
-      setLocation("/");
+      // Verify the user data includes the bowler ID
+      if (!userData.data.bowlerId) {
+        console.error("[SignUp] Warning: Registered user does not have a bowler ID");
+        toast({
+          title: "Partial Registration Success",
+          description: "Your account was created but some profile information may be incomplete. Please contact support.",
+          variant: "warning",
+        });
+      } else {
+        toast({
+          title: "Sign up successful!",
+          description: "Welcome to the bowling league management system.",
+        });
+      }
+
+      setLocation("/bowler-dashboard");
     } catch (error) {
       console.error('[SignUp] Registration error:', error);
       toast({
