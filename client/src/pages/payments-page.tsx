@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { PaymentForm } from "@/components/payment-form";
@@ -25,13 +25,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useMutation } from "@tanstack/react-query";
 
 export default function PaymentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
   const { toast } = useToast();
 
-  // Query to get all leagues - with longer staleTime to reduce refetches
+
+  // Query to get all leagues
   const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
     staleTime: 1000 * 60 * 30, // 30 minutes
@@ -51,15 +53,9 @@ export default function PaymentsPage() {
 
   const deletePaymentMutation = useMutation({
     mutationFn: async (id: number) => {
-      console.log('[Frontend] Deleting payment:', id);
       const response = await apiRequest("DELETE", `/api/payments/${id}`);
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[Frontend] Payment deletion failed:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText
-        });
         throw new Error(`Failed to delete payment: ${errorText}`);
       }
       return id;
@@ -107,116 +103,123 @@ export default function PaymentsPage() {
 
   return (
     <Layout>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Payments</h1>
-        <Button onClick={() => setShowForm(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Record Payment
-        </Button>
-      </div>
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-2xl font-bold">Payments</h1>
+          <Button onClick={() => setShowForm(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Record Payment
+          </Button>
+        </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Bowler</TableHead>
-              <TableHead>Week Of</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Payment Type</TableHead>
-              <TableHead className="w-[100px]">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {payments.length === 0 ? (
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={6} className="text-center">
-                  No payments found
-                </TableCell>
+                <TableHead>Bowler</TableHead>
+                <TableHead>Week Of</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Payment Type</TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
-            ) : (
-              payments.map((payment) => {
-                const bowler = bowlers.find((b) => b.id === payment.bowlerId);
-                return (
-                  <TableRow key={payment.id}>
-                    <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
-                    <TableCell>
-                      {format(new Date(payment.weekOf), "MMM d, yyyy")}
-                    </TableCell>
-                    <TableCell>${(payment.amount / 100).toFixed(2)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={payment.status === "paid" ? "default" : "secondary"}
-                      >
-                        {payment.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {payment.type === 'cash' ? 'Cash' :
-                          payment.type === 'check' ? `Check #${payment.checkNumber}` :
-                            payment.type === 'credit_card' ? 'Credit Card' :
-                              'Unknown'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => setPaymentToDelete(payment.id)}
-                        disabled={deletePaymentMutation.isPending}
-                      >
-                        {deletePaymentMutation.isPending ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        )}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
-
-      <PaymentForm
-        open={showForm}
-        onClose={() => setShowForm(false)}
-        bowlers={bowlers}
-        leagueId={defaultLeagueId}
-      />
-
-      <Dialog open={paymentToDelete !== null} onOpenChange={setOpen => setPaymentToDelete(setOpen ? paymentToDelete : null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Payment</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this payment? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setPaymentToDelete(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => handleDelete(paymentToDelete!)}
-              disabled={deletePaymentMutation.isPending}
-            >
-              {deletePaymentMutation.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+            </TableHeader>
+            <TableBody>
+              {payments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center">
+                    No payments found
+                  </TableCell>
+                </TableRow>
               ) : (
-                "Delete"
+                payments.map((payment) => {
+                  const bowler = bowlers.find((b) => b.id === payment.bowlerId);
+                  return (
+                    <TableRow key={payment.id}>
+                      <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
+                      <TableCell>
+                        {format(new Date(payment.weekOf), "MMM d, yyyy")}
+                      </TableCell>
+                      <TableCell>${(payment.amount / 100).toFixed(2)}</TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            payment.status === "paid" ? "default" :
+                              payment.status === "pending" ? "secondary" :
+                                payment.status === "failed" ? "destructive" :
+                                  "outline"
+                          }
+                        >
+                          {payment.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {payment.type === 'cash' ? 'Cash' :
+                            payment.type === 'check' ? `Check #${payment.checkNumber}` :
+                              payment.type === 'credit_card' ? 'Credit Card' :
+                                'Other Payment'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setPaymentToDelete(payment.id)}
+                          disabled={deletePaymentMutation.isPending}
+                        >
+                          {deletePaymentMutation.isPending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          )}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
               )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </TableBody>
+          </Table>
+        </div>
+
+        <PaymentForm
+          open={showForm}
+          onClose={() => setShowForm(false)}
+          bowlers={bowlers}
+          leagueId={defaultLeagueId}
+        />
+
+        <Dialog open={paymentToDelete !== null} onOpenChange={setOpen => setPaymentToDelete(setOpen ? paymentToDelete : null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Payment</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this payment? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setPaymentToDelete(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleDelete(paymentToDelete!)}
+                disabled={deletePaymentMutation.isPending}
+              >
+                {deletePaymentMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Delete"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </Layout>
   );
 }
