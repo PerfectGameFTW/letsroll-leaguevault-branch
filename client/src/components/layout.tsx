@@ -224,10 +224,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   });
 
   // Add debug logging
+  console.log('[Layout] Query state:', { isLoading, error: leaguesError });
   console.log('[Layout] Leagues response:', leaguesResponse);
-  if (leaguesError) {
-    console.error('[Layout] Error loading leagues:', leaguesError);
-  }
 
   // Ensure leagues is always an array, even when the response is loading or errored
   const leagues = leaguesResponse?.success && Array.isArray(leaguesResponse?.data)
