@@ -26,6 +26,10 @@ export default function BowlerSignupPage() {
     defaultValues: {
       name: "",
       email: "",
+      phoneNumber: "",
+      username: "",
+      password: "",
+      confirmPassword: "",
       active: true,
     },
   });
@@ -52,7 +56,6 @@ export default function BowlerSignupPage() {
         title: "Welcome!",
         description: "Your account has been created successfully.",
       });
-      // Navigate to the bowler dashboard (we'll create this later)
       navigate("/dashboard");
     },
     onError: (error: Error) => {
@@ -65,12 +68,12 @@ export default function BowlerSignupPage() {
   });
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl font-bold">Welcome to LeagueVault</CardTitle>
-          <CardDescription>
-            Create your account to join leagues and track your scores
+        <CardHeader className="text-center space-y-2">
+          <CardTitle className="text-3xl font-bold">Welcome to LeagueVault</CardTitle>
+          <CardDescription className="text-base">
+            Create your account to make and track payments and scores
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -89,6 +92,7 @@ export default function BowlerSignupPage() {
                       <Input 
                         placeholder="Enter your full name" 
                         {...field} 
+                        className="h-11"
                       />
                     </FormControl>
                     <FormMessage />
@@ -107,6 +111,82 @@ export default function BowlerSignupPage() {
                         type="email" 
                         placeholder="Enter your email address"
                         {...field} 
+                        className="h-11"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="phoneNumber"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="tel" 
+                        placeholder="Enter your phone number"
+                        {...field} 
+                        className="h-11"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="username"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Username</FormLabel>
+                    <FormControl>
+                      <Input 
+                        placeholder="Choose a username"
+                        {...field} 
+                        className="h-11"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="password" 
+                        placeholder="Create a password"
+                        {...field} 
+                        className="h-11"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Confirm Password</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="password" 
+                        placeholder="Confirm your password"
+                        {...field} 
+                        className="h-11"
                       />
                     </FormControl>
                     <FormMessage />
@@ -116,7 +196,7 @@ export default function BowlerSignupPage() {
 
               <Button
                 type="submit"
-                className="w-full"
+                className="w-full h-11 mt-6 text-base font-medium"
                 disabled={mutation.isPending}
               >
                 {mutation.isPending ? (
@@ -129,13 +209,14 @@ export default function BowlerSignupPage() {
                 )}
               </Button>
 
-              {/* We can add a login link here later when we implement authentication */}
-              <p className="text-center text-sm text-muted-foreground">
-                Already have an account?{" "}
-                <Button variant="link" className="p-0 h-auto" onClick={() => navigate("/login")}>
-                  Log in
-                </Button>
-              </p>
+              <div className="text-center space-y-2 mt-6">
+                <p className="text-sm text-muted-foreground">
+                  Already have an account?{" "}
+                  <Button variant="link" className="p-0 h-auto" onClick={() => navigate("/login")}>
+                    Log in
+                  </Button>
+                </p>
+              </div>
             </form>
           </Form>
         </CardContent>

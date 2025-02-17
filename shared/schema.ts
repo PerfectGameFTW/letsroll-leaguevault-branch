@@ -77,6 +77,8 @@ export const bowlers = pgTable("bowlers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email"),
+  phoneNumber: text("phone_number"),
+  passwordHash: text("password_hash").notNull(),
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
   squareCustomerId: text("square_customer_id"),
@@ -290,14 +292,29 @@ const baseSeriesSchema = createInsertSchema(series);
 const baseWeeklyStatsSchema = createInsertSchema(weeklyStats);
 
 // Enhanced insert schemas with additional validation
+// Enhanced validation rules
+const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+
+
 export const insertBowlerSchema = baseBowlerSchema.extend({
   name: nameSchema,
   email: emailSchema.optional(),
+  phoneNumber: z.string().regex(phoneRegex, "Invalid phone number format").optional(),
+  password: z.string().min(8, "Password must be at least 8 characters")
+    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+    .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+    .regex(/[0-9]/, "Password must contain at least one number"),
+  confirmPassword: z.string(),
   active: z.boolean().default(true),
   order: z.number().min(0).default(0),
   squareCustomerId: z.string().nullable().optional(),
   qubicaId: z.string().nullable().optional(),
-}).omit({ id: true });
+}).omit({ id: true, passwordHash: true })
+.refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+});
 
 export const insertLeagueSchema = baseLeagueSchema.extend({
   name: nameSchema,
@@ -344,15 +361,14 @@ export const insertPaymentSchema = basePaymentSchema.extend({
 }).omit({ id: true, createdAt: true });
 
 // Update the insert schemas with stronger validation
+const frameRegex = /^([0-9FX]|[0-9]\/|-)+$/;
+
 export const insertGameSchema = baseGameSchema.extend({
   leagueId: positiveIntSchema,
   weekNumber: positiveIntSchema,
   gameNumber: z.number().int().min(1).max(3),
   date: dateSchema,
 }).omit({ id: true });
-
-// Frame validation regex for standard bowling notation
-const frameRegex = /^([0-9FX]|[0-9]\/|-)+$/;
 
 export const insertScoreSchema = baseScoreSchema.extend({
   gameId: positiveIntSchema,
