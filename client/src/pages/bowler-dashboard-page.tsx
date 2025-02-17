@@ -4,16 +4,8 @@ import { useBowlers } from "@/hooks/use-bowlers";
 import { useQuery } from "@tanstack/react-query";
 import type { User } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Trophy, CreditCard, Calendar } from "lucide-react";
+import { Loader2, Trophy, CreditCard, Gift } from "lucide-react";
 import { Link } from "wouter";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 
 const BowlerDashboardPage: FC = () => {
@@ -40,11 +32,17 @@ const BowlerDashboardPage: FC = () => {
     getBowlerLeagueId
   } = useBowlers();
 
+  // Add loyalty points query
+  const { data: loyaltyInfo, isLoading: isLoyaltyLoading } = useQuery({
+    queryKey: ["/api/square/loyalty", currentUser?.data?.bowlerId],
+    enabled: !!currentUser?.data?.bowlerId,
+  });
+
   console.log("[BowlerDashboard] Current user:", currentUser?.data);
   const bowler = currentUser?.data?.bowlerId ? bowlers.find(b => b.id === currentUser.data.bowlerId) : null;
   console.log("[BowlerDashboard] Found bowler:", bowler);
 
-  if (isUserLoading || isInitialLoading || isLoadingRelatedData) {
+  if (isUserLoading || isInitialLoading || isLoadingRelatedData || isLoyaltyLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -95,7 +93,6 @@ const BowlerDashboardPage: FC = () => {
 
   const teamName = getBowlerTeamName(bowler);
   const leagueName = getBowlerFirstLeagueName(bowler);
-  const leagueId = getBowlerLeagueId(bowler);
 
   return (
     <div className="space-y-6">
@@ -103,47 +100,11 @@ const BowlerDashboardPage: FC = () => {
         <CardHeader>
           <CardTitle>{bowler.name}'s Dashboard</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <h3 className="text-lg font-semibold mb-2">Profile Information</h3>
-              <Table>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="font-medium">Name</TableCell>
-                    <TableCell>{bowler.name}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="font-medium">Email</TableCell>
-                    <TableCell>{bowler.email}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="font-medium">League</TableCell>
-                    <TableCell>{leagueName || "Not assigned to a league"}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="font-medium">Team</TableCell>
-                    <TableCell>{teamName || "Not assigned to a team"}</TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="font-medium">Status</TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${bowler.active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                        {bowler.active ? 'Active' : 'Inactive'}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                  {bowler.qubicaId && (
-                    <TableRow>
-                      <TableCell className="font-medium">Qubica ID</TableCell>
-                      <TableCell>{bowler.qubicaId}</TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold mb-2">League Information</h3>
+        <CardContent className="space-y-6">
+          {/* League Information Section */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-1">
+              <h3 className="text-lg font-semibold mb-4">League Information</h3>
               <div className="rounded-lg border p-4 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -159,31 +120,9 @@ const BowlerDashboardPage: FC = () => {
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Quick Actions</CardTitle>
-        </CardHeader>
-        <CardContent>
+          {/* Quick Action Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Link href={`/bowlers/${bowler.id}/scores`}>
-              <Card className="cursor-pointer hover:bg-accent transition-colors">
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Trophy className="h-5 w-5 text-primary opacity-75" />
-                    View Scores
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    Track your performance and view historical scores
-                  </p>
-                  <Button variant="secondary" className="w-full">View Scores</Button>
-                </CardContent>
-              </Card>
-            </Link>
             <Link href="/payments">
               <Card className="cursor-pointer hover:bg-accent transition-colors">
                 <CardHeader>
@@ -200,22 +139,50 @@ const BowlerDashboardPage: FC = () => {
                 </CardContent>
               </Card>
             </Link>
-            <Link href={leagueId ? `/leagues/${leagueId}` : "/leagues"}>
+            <Link href={`/bowlers/${bowler.id}/scores`}>
               <Card className="cursor-pointer hover:bg-accent transition-colors">
                 <CardHeader>
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-primary opacity-75" />
-                    League Schedule
+                    <Trophy className="h-5 w-5 text-primary opacity-75" />
+                    View Scores
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Check upcoming games and events
+                    Track your performance and view historical scores
                   </p>
-                  <Button variant="secondary" className="w-full">View Schedule</Button>
+                  <Button variant="secondary" className="w-full">View Scores</Button>
                 </CardContent>
               </Card>
             </Link>
+            <Card className="cursor-pointer hover:bg-accent transition-colors">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Gift className="h-5 w-5 text-primary opacity-75" />
+                  Loyalty Program
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoyaltyLoading ? (
+                  <div className="flex items-center justify-center p-4">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  </div>
+                ) : loyaltyInfo ? (
+                  <div className="space-y-2 mb-4">
+                    <p className="text-sm text-muted-foreground">Current Points</p>
+                    <p className="text-2xl font-bold">{loyaltyInfo.points}</p>
+                    <p className="text-sm text-muted-foreground">Loyalty Status: {loyaltyInfo.status}</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Join our loyalty program to earn rewards
+                  </p>
+                )}
+                <Button variant="secondary" className="w-full">
+                  {loyaltyInfo ? "View Rewards" : "Enroll Now"}
+                </Button>
+              </CardContent>
+            </Card>
           </div>
         </CardContent>
       </Card>
