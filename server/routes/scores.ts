@@ -2,6 +2,19 @@ import { Router } from 'express';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { z } from 'zod';
+import { GoogleDriveService } from '../services/google-drive.js';
+import { ScoreImportService } from '../services/score-import.js';
+
+// Custom error class for score import errors
+class ScoreImportError extends Error {
+  code: string;
+
+  constructor(message: string, code: string = 'IMPORT_ERROR') {
+    super(message);
+    this.name = 'ScoreImportError';
+    this.code = code;
+  }
+}
 
 // Validation schema for league and week params
 const getLeagueScoresSchema = z.object({

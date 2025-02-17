@@ -56,6 +56,11 @@ router.patch("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const update = partialPaymentSchema.parse(req.body);
 
+    // Convert null notes to undefined to match the schema
+    if (update.notes === null) {
+      update.notes = undefined;
+    }
+
     // If updating to check payment type, ensure check number is provided
     if (update.type === 'check' && !update.checkNumber) {
       return sendError(res, 'Check number is required for check payments', 400, 'VALIDATION_ERROR');

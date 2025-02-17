@@ -37,7 +37,6 @@ export default function LeaguesPage() {
 
   const leagues = leaguesResponse?.data;
 
-  // Query to get teams for each league with proper typing
   const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
     queryFn: async () => {

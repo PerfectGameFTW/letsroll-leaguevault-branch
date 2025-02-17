@@ -39,6 +39,12 @@ const navItems: NavItem[] = [
   }
 ];
 
+interface BowlerLayoutProps {
+  children: ReactNode;
+  bowlerName: string;
+  leagueName: string;
+}
+
 const SideNav = () => {
   const [location] = useLocation();
 

@@ -49,7 +49,6 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    // Parse dates from ISO strings before validation
     const update = partialLeagueSchema.parse({
       ...req.body,
       seasonStart: req.body.seasonStart ? new Date(req.body.seasonStart) : undefined,

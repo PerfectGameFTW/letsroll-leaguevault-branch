@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Loader2, Users, DollarSign, Trophy } from "lucide-react";
+import { Loader2, Users, DollarSign } from "lucide-react";
 import type { League } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -56,25 +56,6 @@ export default function LeagueViewPage() {
               <CardContent>
                 <p className="text-sm text-muted-foreground">
                   Add or remove bowlers, organize team rosters, and manage team assignments
-                </p>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href={`/leagues/${leagueId}/scores`} className="block">
-            <Card className="hover:bg-accent transition-colors">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Trophy className="h-5 w-5 mr-2" />
-                  Weekly Scores
-                </CardTitle>
-                <CardDescription>
-                  View team matchups and scores
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Track weekly performance, view lane assignments and team matchups
                 </p>
               </CardContent>
             </Card>
