@@ -63,7 +63,8 @@ export function setupAuth(app: Express) {
       sameSite: "lax",
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: '/',
-      httpOnly: true
+      httpOnly: true,
+      domain: process.env.NODE_ENV === "production" ? undefined : "localhost"
     },
     name: 'bowlingleague.sid' // Custom session cookie name
   };
@@ -76,6 +77,20 @@ export function setupAuth(app: Express) {
   app.use(session(sessionSettings));
   app.use(passport.initialize());
   app.use(passport.session());
+
+  // Add session diagnostic middleware with enhanced logging
+  app.use((req, res, next) => {
+    console.log('[Auth] Session diagnostic:', {
+      hasSession: !!req.session,
+      sessionID: req.sessionID,
+      isAuthenticated: req.isAuthenticated(),
+      path: req.path,
+      method: req.method,
+      cookies: req.headers.cookie,
+      timestamp: new Date().toISOString()
+    });
+    next();
+  });
 
   passport.use(
     new LocalStrategy({
@@ -272,7 +287,15 @@ export function setupAuth(app: Express) {
     }
   });
 
+  // Update login endpoint with enhanced logging
   app.post("/api/login", (req, res, next) => {
+    console.log('[Auth] Login attempt:', {
+      email: req.body.email,
+      hasPassword: !!req.body.password,
+      cookies: req.headers.cookie,
+      userAgent: req.headers['user-agent']
+    });
+
     passport.authenticate("local", (err, user, info) => {
       if (err) {
         console.error('[Auth] Login error:', err);
@@ -290,7 +313,10 @@ export function setupAuth(app: Express) {
           console.error('[Auth] Session creation error:', err);
           return next(err);
         }
-        console.log(`[Auth] Login successful for user ID: ${user.id}`);
+        console.log(`[Auth] Login successful for user ID: ${user.id}`, {
+          sessionID: req.sessionID,
+          hasSession: !!req.session
+        });
         res.json({
           success: true,
           data: { ...user, password: undefined }
@@ -313,6 +339,7 @@ export function setupAuth(app: Express) {
     });
   });
 
+  // Update user endpoint with enhanced logging
   app.get("/api/user", (req, res) => {
     console.log('[Auth] /api/user request:', {
       isAuthenticated: req.isAuthenticated(),
@@ -329,7 +356,11 @@ export function setupAuth(app: Express) {
         success: false,
         error: { 
           message: "Not authenticated",
-          code: "AUTH_REQUIRED"
+          code: "AUTH_REQUIRED",
+          details: {
+            hasSession: !!req.session,
+            sessionID: req.sessionID
+          }
         }
       });
     }

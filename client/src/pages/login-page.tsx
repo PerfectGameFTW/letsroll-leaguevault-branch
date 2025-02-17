@@ -49,17 +49,23 @@ const LoginPage: FC = () => {
   const onSubmit = async (data: LoginFormData) => {
     try {
       console.log("[Login] Attempting login with email:", data.email);
-      
+
       const response = await fetch("/api/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include", // Important: Include credentials for cookies
         body: JSON.stringify(data),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        console.error("[Login] Server error response:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData,
+        });
         throw new Error(errorData.error?.message || "Invalid email or password");
       }
 
@@ -67,6 +73,7 @@ const LoginPage: FC = () => {
       console.log("[Login] Login successful:", {
         userId: userData.data.id,
         bowlerId: userData.data.bowlerId,
+        sessionPresent: document.cookie.includes('bowlingleague.sid'),
       });
 
       toast({
@@ -74,7 +81,10 @@ const LoginPage: FC = () => {
         description: "Welcome back to the bowling league management system.",
       });
 
-      setLocation("/bowler-dashboard");
+      // Small delay to ensure cookie is set
+      setTimeout(() => {
+        setLocation("/bowler-dashboard");
+      }, 100);
     } catch (error) {
       console.error("[Login] Login error:", error);
       toast({
