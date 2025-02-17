@@ -34,15 +34,12 @@ const baseNavigation = [
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
   { name: "Reports", href: "/reports", icon: FileText },
+  { name: "Sign Up", href: "/sign-up", icon: UserPlus },
+  { name: "Login", href: "/login", icon: LogIn },
 ];
 
 const bottomNavigation = [
   { name: "Bowler Dashboard", href: "/bowler-dashboard", icon: BarChart3 },
-];
-
-const authNavigation = [
-  { name: "Sign Up", href: "/sign-up", icon: UserPlus },
-  { name: "Login", href: "/login", icon: LogIn },
 ];
 
 // Memoized navigation items to prevent unnecessary re-renders
@@ -78,19 +75,42 @@ const NavigationItem = memo(({ item, isActive, isCollapsed }: {
   );
 });
 
-// Updated LeaguesSection component with proper type checking
+// Update LeaguesSection component with proper TypeScript types and loading state
 const LeaguesSection = memo(({
   isCollapsed,
   leagues = [], // Provide default empty array
   isInLeaguesSection,
-  location
+  location,
+  isLoading
 }: {
   isCollapsed: boolean,
   leagues: League[],
   isInLeaguesSection: boolean,
-  location: string
+  location: string,
+  isLoading: boolean
 }) => {
-  const [isLeaguesExpanded, setIsLeaguesExpanded] = useState(false);
+  const [isLeaguesExpanded, setIsLeaguesExpanded] = useState(
+    getStoredValue("leaguesExpanded", false)
+  );
+
+  useEffect(() => {
+    setStoredValue("leaguesExpanded", isLeaguesExpanded);
+  }, [isLeaguesExpanded]);
+
+  // Handle loading state
+  if (isLoading) {
+    return (
+      <div className="animate-pulse">
+        <div className="h-10 bg-gray-200 rounded-md mb-2"></div>
+      </div>
+    );
+  }
+
+  // Safety check for leagues data
+  if (!Array.isArray(leagues)) {
+    console.warn('[Layout] Invalid leagues data:', leagues);
+    return null;
+  }
 
   if (isCollapsed) {
     return (
@@ -144,7 +164,7 @@ const LeaguesSection = memo(({
           <ChevronDown className="h-4 w-4" />
         )}
       </button>
-      {isLeaguesExpanded && (
+      {isLeaguesExpanded && leagues.length > 0 && (
         <div className="ml-9 mt-1 space-y-1">
           <Link href="/leagues">
             <span className={cn(
@@ -185,19 +205,34 @@ const ErrorFallback = ({ error }: { error: Error }) => {
   );
 };
 
+interface LeaguesResponse {
+  success: boolean;
+  data: League[];
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(() =>
     getStoredValue("sidebarCollapsed", false)
   );
 
-  const { data: leaguesResponse, error: leaguesError } = useQuery<{ data: League[] }>({
+  const { data: leaguesResponse, error: leaguesError, isLoading } = useQuery<LeaguesResponse>({
     queryKey: ["/api/leagues"],
     staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: 2, // Only retry twice to avoid infinite retries
+    retryDelay: 1000, // Wait 1 second between retries
   });
 
-  // Ensure leagues is always an array
-  const leagues = leaguesResponse?.data ?? [];
+  // Add debug logging
+  console.log('[Layout] Leagues response:', leaguesResponse);
+  if (leaguesError) {
+    console.error('[Layout] Error loading leagues:', leaguesError);
+  }
+
+  // Ensure leagues is always an array, even when the response is loading or errored
+  const leagues = leaguesResponse?.success && Array.isArray(leaguesResponse?.data)
+    ? leaguesResponse.data
+    : [];
 
   useEffect(() => {
     setStoredValue("sidebarCollapsed", isCollapsed);
@@ -205,10 +240,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const isInLeaguesSection = location.startsWith('/leagues') ||
     leagues.some(league => location.startsWith(`/leagues/${league.id}`));
-
-  if (leaguesError) {
-    console.error('Error loading leagues:', leaguesError);
-  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -255,26 +286,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       />
                     ))}
 
-                    <LeaguesSection
-                      isCollapsed={isCollapsed}
-                      leagues={leagues}
-                      isInLeaguesSection={isInLeaguesSection}
-                      location={location}
-                    />
+                    {/* Only render LeaguesSection when we have finished loading or have data */}
+                    {(!isLoading || leagues.length > 0) && !leaguesError && (
+                      <LeaguesSection
+                        isCollapsed={isCollapsed}
+                        leagues={leagues}
+                        isInLeaguesSection={isInLeaguesSection}
+                        location={location}
+                        isLoading={isLoading}
+                      />
+                    )}
 
                     {bottomNavigation.map((item) => (
-                      <NavigationItem
-                        key={item.name}
-                        item={item}
-                        isActive={location === item.href}
-                        isCollapsed={isCollapsed}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Auth navigation at the bottom */}
-                  <div className="pt-2 border-t border-gray-200 mt-auto">
-                    {authNavigation.map((item) => (
                       <NavigationItem
                         key={item.name}
                         item={item}
