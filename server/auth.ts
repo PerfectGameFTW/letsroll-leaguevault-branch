@@ -7,6 +7,7 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { z } from "zod";
+import { ZodError } from "zod";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
 
@@ -141,32 +142,46 @@ export function setupAuth(app: Express) {
   });
 
   // Auth routes
-  app.post("/api/register", async (req, res, next) => {
+  app.post("/api/register", async (req, res) => {
     try {
-      console.log('[Auth] Processing registration request:', { email: req.body.email });
+      console.log('[Auth] Processing registration request:', { 
+        email: req.body.email,
+        hasPassword: !!req.body.password,
+        validation: 'starting'
+      });
 
-      // Validate input against schema
-      const validatedInput = insertUserSchema.safeParse({
+      // Validate input against schema with strict password requirements
+      const result = insertUserSchema.safeParse({
         email: req.body.email,
         password: req.body.password,
         bowlerId: req.body.bowlerId || null
       });
 
-      if (!validatedInput.success) {
-        console.log('[Auth] Registration validation failed:', validatedInput.error);
+      console.log('[Auth] Validation result:', { 
+        success: result.success,
+        errors: !result.success ? result.error.format() : undefined
+      });
+
+      if (!result.success) {
+        console.log('[Auth] Registration validation failed:', result.error.format());
         return res.status(400).json({
           success: false,
           error: { 
-            message: "Validation failed", 
-            details: validatedInput.error.errors 
+            message: "Registration validation failed",
+            details: Object.entries(result.error.format())
+              .filter(([key]) => key !== '_errors')
+              .map(([field, error]) => ({
+                field,
+                message: error._errors.join(', ')
+              }))
           }
         });
       }
 
       // Check if user already exists
-      const existingUser = await storage.getUserByEmail(validatedInput.data.email);
+      const existingUser = await storage.getUserByEmail(result.data.email);
       if (existingUser) {
-        console.log(`[Auth] Registration failed - email already exists: ${validatedInput.data.email}`);
+        console.log(`[Auth] Registration failed - email already exists: ${result.data.email}`);
         return res.status(400).json({
           success: false,
           error: { message: "Email already registered" }
@@ -174,15 +189,13 @@ export function setupAuth(app: Express) {
       }
 
       // Create new user with hashed password
-      const user = await storage.createUser({
-        ...validatedInput.data,
-        password: await hashPassword(validatedInput.data.password)
-      });
+      const hashedPassword = await hashPassword(result.data.password);
+      console.log('[Auth] Creating user with validated data');
 
-      if (!isValidUser(user)) {
-        console.error('[Auth] Created user has invalid structure:', user);
-        throw new Error('Invalid user structure after creation');
-      }
+      const user = await storage.createUser({
+        ...result.data,
+        password: hashedPassword
+      });
 
       console.log(`[Auth] User registered successfully, ID: ${user.id}`);
 
@@ -190,7 +203,10 @@ export function setupAuth(app: Express) {
       req.login(user, (err) => {
         if (err) {
           console.error('[Auth] Login after registration failed:', err);
-          return next(err);
+          return res.status(500).json({
+            success: false,
+            error: { message: "Failed to login after registration" }
+          });
         }
         res.status(201).json({
           success: true,
@@ -199,7 +215,24 @@ export function setupAuth(app: Express) {
       });
     } catch (error) {
       console.error('[Auth] Registration error:', error);
-      next(error);
+      if (error instanceof ZodError) {
+        return res.status(400).json({
+          success: false,
+          error: { 
+            message: "Validation failed",
+            details: error.errors.map(err => ({
+              field: err.path.join('.'),
+              message: err.message
+            }))
+          }
+        });
+      }
+      res.status(500).json({
+        success: false,
+        error: { 
+          message: error instanceof Error ? error.message : "Failed to register user"
+        }
+      });
     }
   });
 

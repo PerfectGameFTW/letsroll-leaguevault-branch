@@ -199,7 +199,7 @@ export const weeklyStats = pgTable("weekly_stats", {
   bowlerStatsIdx: index("bowler_stats_idx").on(table.bowlerLeagueId),
 }));
 
-// Add users table after the existing tables, before relations
+// Add users table after the existing scores table, before relations
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
@@ -418,7 +418,48 @@ export const insertWeeklyStatsSchema = baseWeeklyStatsSchema.extend({
 
 export const insertUserSchema = baseUserSchema.extend({
   email: emailSchema,
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .max(100, "Password must be less than 100 characters")
+    .superRefine((password, ctx) => {
+      if (!/[A-Z]/.test(password)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Password must contain at least one uppercase letter",
+          path: ["password"]
+        });
+      }
+      if (!/[a-z]/.test(password)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Password must contain at least one lowercase letter",
+          path: ["password"]
+        });
+      }
+      if (!/[0-9]/.test(password)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Password must contain at least one number",
+          path: ["password"]
+        });
+      }
+      if (!/[!@#$%^&*]/.test(password)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Password must contain at least one special character (!@#$%^&*)",
+          path: ["password"]
+        });
+      }
+      const commonPasswords = ["Password123!", "Admin123!", "Test123!"];
+      if (commonPasswords.includes(password)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Please use a less common password",
+          path: ["password"]
+        });
+      }
+    }),
+  bowlerId: z.number().nullable().optional(),
 }).omit({ id: true, createdAt: true });
 
 // Export partial schemas for updates
