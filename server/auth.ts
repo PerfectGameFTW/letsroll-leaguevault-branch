@@ -150,15 +150,6 @@ export function setupAuth(app: Express) {
         validation: 'starting'
       });
 
-      // Detailed password validation logging
-      console.log('[Auth] Password characteristics:', {
-        length: req.body.password?.length,
-        hasUppercase: /[A-Z]/.test(req.body.password),
-        hasLowercase: /[a-z]/.test(req.body.password),
-        hasNumber: /[0-9]/.test(req.body.password),
-        hasSpecial: /[!@#$%^&*]/.test(req.body.password)
-      });
-
       const registrationData = {
         email: req.body.email,
         password: req.body.password,
@@ -168,22 +159,20 @@ export function setupAuth(app: Express) {
       console.log('[Auth] Validating full registration data');
       const result = insertUserSchema.safeParse(registrationData);
 
-      console.log('[Auth] Validation result:', { 
-        success: result.success,
-        errors: !result.success ? result.error.format() : undefined
-      });
-
       if (!result.success) {
+        console.log('[Auth] Validation errors:', result.error.errors);
+
+        // Extract all validation error messages
+        const validationErrors = result.error.errors.map(error => ({
+          field: error.path.join('.'),
+          message: error.message
+        }));
+
         return res.status(400).json({
           success: false,
           error: {
             message: "Registration validation failed",
-            details: Object.entries(result.error.format())
-              .filter(([key]) => key !== '_errors')
-              .map(([field, error]) => ({
-                field,
-                message: error._errors.join(', ')
-              }))
+            details: validationErrors
           }
         });
       }
