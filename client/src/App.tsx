@@ -31,9 +31,10 @@ function Router() {
 
   return (
     <Switch>
-      <Route path="/" component={BowlerSignupPage} />
+      <Route path="/sign-up" component={BowlerSignupPage} />
       <Route path="/login" component={LoginPage} />
-      <Route path="/admin" component={HomePage} />
+      <Route path="/" component={HomePage} />
+      <Route path="/bowler-dashboard" component={HomePage} />
       <Route path="/leagues" component={LeaguesPage} />
       <Route path="/leagues/:leagueId" component={LeagueViewPage} />
       <Route path="/leagues/:leagueId/teams" component={TeamsPage} />

@@ -17,17 +17,26 @@ const scryptAsync = promisify(scrypt);
 
 async function comparePasswords(supplied: string, stored: string) {
   try {
-    console.log("[Auth] Comparing passwords, stored hash length:", stored.length);
+    console.log("[Auth] Starting password comparison");
+    console.log("[Auth] Stored hash format:", {
+      length: stored.length,
+      containsSalt: stored.includes('.'),
+      format: stored.split('.').length === 2 ? 'valid' : 'invalid'
+    });
+
     const [hashed, salt] = stored.split(".");
 
     if (!hashed || !salt) {
-      console.error("[Auth] Invalid stored password format");
+      console.error("[Auth] Invalid stored password format - missing hash or salt");
       return false;
     }
 
     const hashedBuf = Buffer.from(hashed, "hex");
     const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-    return timingSafeEqual(hashedBuf, suppliedBuf);
+
+    const result = timingSafeEqual(hashedBuf, suppliedBuf);
+    console.log("[Auth] Password comparison completed:", result);
+    return result;
   } catch (error) {
     console.error("[Auth] Error comparing passwords:", error);
     return false;
@@ -66,6 +75,13 @@ export function setupAuth(app: Express) {
             console.log("[Auth] Login failed: Bowler not found");
             return done(null, false, { message: "Invalid email or password" });
           }
+
+          console.log("[Auth] Bowler found:", {
+            id: bowler.id,
+            email: bowler.email,
+            hasPasswordHash: !!bowler.passwordHash,
+            passwordHashLength: bowler.passwordHash?.length
+          });
 
           if (!bowler.passwordHash) {
             console.log("[Auth] Login failed: No password hash found for bowler");
@@ -110,6 +126,7 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/login", (req, res, next) => {
+    console.log("[Auth] Received login request for email:", req.body.email);
     passport.authenticate("local", (err: Error, user: Express.User, info: { message: string }) => {
       if (err) {
         console.error("[Auth] Login error:", err);
