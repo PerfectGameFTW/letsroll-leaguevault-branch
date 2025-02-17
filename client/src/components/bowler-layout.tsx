@@ -81,7 +81,7 @@ interface BowlerLayoutProps {
   leagueName?: string;
 }
 
-const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leagueName }) => {
+export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leagueName }) => {
   const [open, setOpen] = useState(false);
 
   return (
@@ -120,4 +120,3 @@ const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leagueName 
     </div>
   );
 };
-export default BowlerLayout;
