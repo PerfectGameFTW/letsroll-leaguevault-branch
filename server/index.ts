@@ -153,7 +153,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Enhanced port status writing function
+// Update the writePortStatus function with better error handling and logging
 async function writePortStatus(port: number, ready: boolean = false, health: Partial<PortStatus['health']> = {}) {
   try {
     const status: PortStatus = {
@@ -375,8 +375,12 @@ async function startServer() {
     serverPort = port;
     await validateStartupPhase('port', ['cleanup', 'database']);
 
-    // Initial port status - only database is ready
-    await writePortStatus(port, false, { database: true });
+    // Initial port status with all health indicators
+    await writePortStatus(port, false, {
+      database: true,
+      vite: viteSetupComplete,
+      server: false
+    });
 
     // Phase 4: Server startup
     console.log('[Server] Phase 4: Starting HTTP server...');
@@ -393,13 +397,11 @@ async function startServer() {
         await validateStartupPhase('server', ['cleanup', 'database', 'port']);
 
         // Update status - server is now ready
-        await writePortStatus(port, true, { database: true, server: true });
-
-        if (process.env.NODE_ENV !== "production") {
-          console.log('[Server] Running in development mode with Vite middleware');
-        } else {
-          console.log('[Server] Running in production mode');
-        }
+        await writePortStatus(port, true, {
+          database: true,
+          vite: viteSetupComplete,
+          server: true
+        });
         resolve();
       });
 
