@@ -1,8 +1,8 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, ChevronDown, Trophy, ClipboardPlus } from "lucide-react";
-import { useState, useEffect, Suspense, memo } from "react";
-import { Button } from "./ui/button";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard } from "lucide-react";
+import { useState, useEffect, Suspense } from "react";
+import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import type { League } from "@shared/schema";
 import { ErrorBoundary } from "react-error-boundary";
@@ -35,131 +35,148 @@ const setStoredValue = (key: string, value: any) => {
   }
 };
 
-const baseNavigation = [
-  { name: "Dashboard", href: "/", icon: Home },
-  { name: "Leagues", href: "/leagues", icon: Trophy, hasDropdown: true },
-  { name: "Bowlers", href: "/bowlers", icon: Users },
-  { name: "Payments", href: "/payments", icon: CreditCard },
-  { name: "Reports", href: "/reports", icon: ClipboardPlus },
+interface NavItem {
+  icon: typeof LayoutDashboard;
+  label: string;
+  href: string;
+  hasDropdown?: boolean;
+  subItems?: NavItem[];
+}
+
+const navItems: NavItem[] = [
+  {
+    icon: Home,
+    label: "Dashboard",
+    href: "/"
+  },
+  {
+    icon: Trophy,
+    label: "Leagues",
+    href: "/leagues",
+    hasDropdown: true
+  },
+  {
+    icon: Users,
+    label: "Bowlers",
+    href: "/bowlers"
+  },
+  {
+    icon: CreditCard,
+    label: "Payments",
+    href: "/payments"
+  },
+  { 
+    icon: ClipboardPlus,
+    label: "Reports",
+    href: "/reports",
+    hasDropdown: true,
+    subItems: [
+      { icon: ClipboardPlus, label: "League Reports", href: "/reports" }
+    ]
+  },
+  {
+    icon: LayoutDashboard,
+    label: "Bowler Dashboard",
+    href: "/bowler-dashboard"
+  }
 ];
 
-const NavigationItem = memo(({ item, isActive, isCollapsed }: {
-  item: typeof baseNavigation[0],
-  isActive: boolean,
-  isCollapsed: boolean
-}) => {
-  const Icon = item.icon;
+const SideNav = () => {
+  const [location] = useLocation();
+
+  return (
+    <nav className="space-y-2">
+      {navItems.map((item) => {
+        const isActive = location === item.href;
+        if (item.hasDropdown) {
+          return (
+            <NavigationMenu key={item.href}>
+              <NavigationMenuList>
+                <NavigationMenuItem>
+                  <NavigationMenuTrigger
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
+                      isActive && "bg-accent"
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.label}
+                  </NavigationMenuTrigger>
+                  <NavigationMenuContent>
+                    <div className="w-[200px] p-2">
+                      {item.subItems ? (
+                        // Render sub-items for Reports
+                        item.subItems.map((subItem) => (
+                          <Link key={subItem.href} href={subItem.href}>
+                            <button className="flex w-full items-center px-4 py-2 text-sm rounded-md hover:bg-accent">
+                              <subItem.icon className="h-4 w-4 mr-2" />
+                              {subItem.label}
+                            </button>
+                          </Link>
+                        ))
+                      ) : (
+                        // Render leagues dropdown
+                        <>
+                          {item.label === "Leagues" && (
+                            <LeaguesDropdownContent />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </NavigationMenuContent>
+                </NavigationMenuItem>
+              </NavigationMenuList>
+            </NavigationMenu>
+          );
+        }
+
+        return (
+          <Link key={item.href} href={item.href}>
+            <button
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
+                isActive && "bg-accent"
+              )}
+            >
+              <item.icon className="h-4 w-4" />
+              {item.label}
+              {isActive && <ChevronRight className="ml-auto h-4 w-4" />}
+            </button>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+};
+
+const LeaguesDropdownContent = () => {
   const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
-    enabled: item.hasDropdown,
   });
 
   const leagues = leaguesResponse?.data || [];
 
-  if (item.hasDropdown && !isCollapsed) {
-    return (
-      <NavigationMenu>
-        <NavigationMenuList>
-          <NavigationMenuItem>
-            <NavigationMenuTrigger
-              className={cn(
-                "w-full flex items-center px-2 py-2 text-sm font-medium rounded-md",
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-gray-600 hover:bg-gray-50"
-              )}
-            >
-              <Icon
-                className={cn(
-                  "h-5 w-5 flex-shrink-0 mr-3",
-                  isActive ? "text-primary-foreground" : "text-gray-400"
-                )}
-              />
-              {item.name}
-            </NavigationMenuTrigger>
-            <NavigationMenuContent>
-              <div className="w-[200px] p-2">
-                {leagues.map((league) => (
-                  <Link key={league.id} href={`/leagues/${league.id}`}>
-                    <a className="block px-4 py-2 text-sm rounded-md hover:bg-accent">
-                      {league.name}
-                    </a>
-                  </Link>
-                ))}
-                <div className="border-t mt-2 pt-2">
-                  <Link href="/leagues">
-                    <a className="block px-4 py-2 text-sm rounded-md hover:bg-accent font-medium">
-                      View All Leagues
-                    </a>
-                  </Link>
-                </div>
-              </div>
-            </NavigationMenuContent>
-          </NavigationMenuItem>
-        </NavigationMenuList>
-      </NavigationMenu>
-    );
-  }
-
-  if (item.hasDropdown && isCollapsed) {
-    return (
-      <Link href={item.href}>
-        <a
-          className={cn(
-            "flex items-center px-2 py-2 text-sm font-medium rounded-md",
-            isActive
-              ? "bg-primary text-primary-foreground"
-              : "text-gray-600 hover:bg-gray-50"
-          )}
-          title={item.name}
-        >
-          <Icon
-            className={cn(
-              "h-5 w-5 mx-auto",
-              isActive ? "text-primary-foreground" : "text-gray-400"
-            )}
-          />
-        </a>
-      </Link>
-    );
-  }
-
   return (
-    <Link href={item.href}>
-      <a
-        className={cn(
-          "flex items-center px-2 py-2 text-sm font-medium rounded-md",
-          isActive
-            ? "bg-primary text-primary-foreground"
-            : "text-gray-600 hover:bg-gray-50"
-        )}
-        title={isCollapsed ? item.name : undefined}
-      >
-        <Icon
-          className={cn(
-            "h-5 w-5 flex-shrink-0",
-            isActive ? "text-primary-foreground" : "text-gray-400",
-            isCollapsed ? "mx-auto" : "mr-3"
-          )}
-        />
-        {!isCollapsed && item.name}
-      </a>
-    </Link>
-  );
-});
-
-NavigationItem.displayName = "NavigationItem";
-
-const ErrorFallback = ({ error }: { error: Error }) => {
-  return (
-    <div className="p-4 text-sm text-red-500">
-      Error loading content: {error.message}
-    </div>
+    <>
+      {leagues.map((league) => (
+        <Link key={league.id} href={`/leagues/${league.id}`}>
+          <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent">
+            {league.name}
+          </button>
+        </Link>
+      ))}
+      <div className="border-t mt-2 pt-2">
+        <Link href="/leagues">
+          <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent font-medium">
+            View All Leagues
+          </button>
+        </Link>
+      </div>
+    </>
   );
 };
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(() =>
     getStoredValue("sidebarCollapsed", false)
   );
@@ -203,14 +220,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <ErrorBoundary FallbackComponent={ErrorFallback}>
               <Suspense fallback={<div className="p-4">Loading...</div>}>
                 <nav className="mt-8 flex-1 space-y-1 px-2">
-                  {baseNavigation.map((item) => (
-                    <NavigationItem
-                      key={item.name}
-                      item={item}
-                      isActive={location === item.href}
-                      isCollapsed={isCollapsed}
-                    />
-                  ))}
+                  <SideNav />
                 </nav>
               </Suspense>
             </ErrorBoundary>
@@ -230,3 +240,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+const ErrorFallback = ({ error }: { error: Error }) => {
+  return (
+    <div className="p-4 text-sm text-red-500">
+      Error loading content: {error.message}
+    </div>
+  );
+};
