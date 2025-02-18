@@ -10,7 +10,6 @@ import {
   NavigationMenu,
   NavigationMenuContent,
   NavigationMenuItem,
-  NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
@@ -42,7 +41,6 @@ const baseNavigation = [
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
   { name: "Reports", href: "/reports", icon: LayoutDashboard },
-  { name: "Bowler Dashboard", href: "/bowler-dashboard", icon: LayoutDashboard },
 ];
 
 const NavigationItem = memo(({ item, isActive, isCollapsed }: {
@@ -51,84 +49,86 @@ const NavigationItem = memo(({ item, isActive, isCollapsed }: {
   isCollapsed: boolean
 }) => {
   const Icon = item.icon;
-  const { data: leagues } = useQuery<League[]>({
-    queryKey: ['/api/leagues'],
+  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
+    queryKey: ["/api/leagues"],
     enabled: item.hasDropdown,
   });
 
+  const leagues = leaguesResponse?.data || [];
+
   if (item.hasDropdown && !isCollapsed) {
     return (
-      <div className="relative">
-        <NavigationMenu>
-          <NavigationMenuList className="flex flex-col">
-            <NavigationMenuItem>
-              <NavigationMenuTrigger className={cn(
+      <NavigationMenu>
+        <NavigationMenuList>
+          <NavigationMenuItem>
+            <NavigationMenuTrigger
+              className={cn(
                 "w-full flex items-center px-2 py-2 text-sm font-medium rounded-md",
                 isActive
                   ? "bg-primary text-primary-foreground"
                   : "text-gray-600 hover:bg-gray-50"
-              )}>
-                <Icon className={cn(
+              )}
+            >
+              <Icon
+                className={cn(
                   "h-5 w-5 flex-shrink-0 mr-3",
                   isActive ? "text-primary-foreground" : "text-gray-400"
-                )} />
-                {item.name}
-              </NavigationMenuTrigger>
-              <NavigationMenuContent className="absolute left-full top-0 ml-1 w-48">
-                <div className="w-full rounded-md border bg-popover p-2 shadow-lg">
-                  {leagues?.map((league) => (
-                    <Link key={league.id} href={`/leagues/${league.id}`}>
-                      <a className="block px-4 py-2 text-sm rounded-md hover:bg-accent">
-                        {league.name}
-                      </a>
-                    </Link>
-                  ))}
-                  <div className="border-t mt-2 pt-2">
-                    <Link href="/leagues">
-                      <a className="block px-4 py-2 text-sm rounded-md hover:bg-accent font-medium">
-                        View All Leagues
-                      </a>
-                    </Link>
-                  </div>
+                )}
+              />
+              {item.name}
+            </NavigationMenuTrigger>
+            <NavigationMenuContent>
+              <div className="w-[200px] p-2">
+                {leagues.map((league) => (
+                  <Link key={league.id} href={`/leagues/${league.id}`}>
+                    <a className="block px-4 py-2 text-sm rounded-md hover:bg-accent">
+                      {league.name}
+                    </a>
+                  </Link>
+                ))}
+                <div className="border-t mt-2 pt-2">
+                  <Link href="/leagues">
+                    <a className="block px-4 py-2 text-sm rounded-md hover:bg-accent font-medium">
+                      View All Leagues
+                    </a>
+                  </Link>
                 </div>
-              </NavigationMenuContent>
-            </NavigationMenuItem>
-          </NavigationMenuList>
-        </NavigationMenu>
-      </div>
+              </div>
+            </NavigationMenuContent>
+          </NavigationMenuItem>
+        </NavigationMenuList>
+      </NavigationMenu>
     );
   }
 
   if (item.hasDropdown && isCollapsed) {
     return (
-      <div className="relative group">
-        <Link href={item.href}>
-          <span
+      <Link href={item.href}>
+        <a
+          className={cn(
+            "flex items-center px-2 py-2 text-sm font-medium rounded-md",
+            isActive
+              ? "bg-primary text-primary-foreground"
+              : "text-gray-600 hover:bg-gray-50"
+          )}
+          title={item.name}
+        >
+          <Icon
             className={cn(
-              "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-              isActive
-                ? "bg-primary text-primary-foreground"
-                : "text-gray-600 hover:bg-gray-50"
+              "h-5 w-5 mx-auto",
+              isActive ? "text-primary-foreground" : "text-gray-400"
             )}
-            title={item.name}
-          >
-            <Icon
-              className={cn(
-                "h-5 w-5 flex-shrink-0 mx-auto",
-                isActive ? "text-primary-foreground" : "text-gray-400"
-              )}
-            />
-          </span>
-        </Link>
-      </div>
+          />
+        </a>
+      </Link>
     );
   }
 
   return (
     <Link href={item.href}>
-      <span
+      <a
         className={cn(
-          "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+          "flex items-center px-2 py-2 text-sm font-medium rounded-md",
           isActive
             ? "bg-primary text-primary-foreground"
             : "text-gray-600 hover:bg-gray-50"
@@ -143,10 +143,12 @@ const NavigationItem = memo(({ item, isActive, isCollapsed }: {
           )}
         />
         {!isCollapsed && item.name}
-      </span>
+      </a>
     </Link>
   );
 });
+
+NavigationItem.displayName = "NavigationItem";
 
 const ErrorFallback = ({ error }: { error: Error }) => {
   return (

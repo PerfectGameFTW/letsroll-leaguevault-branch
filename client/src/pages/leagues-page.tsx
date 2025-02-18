@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Pencil } from "lucide-react";
 import type { League, Team } from "@shared/schema";
+import type { ScoreWithRelations } from "@/lib/types/scores";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInWeeks } from "date-fns";
@@ -26,26 +27,12 @@ export default function LeaguesPage() {
 
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
-    queryFn: async () => {
-      const response = await fetch("/api/leagues");
-      if (!response.ok) {
-        throw new Error('Failed to fetch leagues');
-      }
-      return response.json();
-    }
   });
 
   const leagues = leaguesResponse?.data;
 
   const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams"],
-    queryFn: async () => {
-      const response = await fetch("/api/teams");
-      if (!response.ok) {
-        throw new Error('Failed to fetch teams');
-      }
-      return response.json();
-    }
   });
 
   const allTeams = teamsResponse?.data || [];
@@ -79,7 +66,7 @@ export default function LeaguesPage() {
         </Button>
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-md border mb-8">
         <Table>
           <TableHeader>
             <TableRow>
