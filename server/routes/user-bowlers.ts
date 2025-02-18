@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api';
 import { z } from 'zod';
+import { User as SelectUser } from '@shared/schema';
 
 const router = Router();
 
@@ -9,6 +10,10 @@ const router = Router();
 function requireAuth(req: any, res: any, next: any) {
   if (!req.isAuthenticated()) {
     return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
+  }
+  const user = req.user as SelectUser;
+  if (!user) {
+    return sendError(res, 'Invalid session', 401, 'INVALID_SESSION');
   }
   next();
 }
@@ -21,16 +26,17 @@ const linkBowlerSchema = z.object({
 // Link a bowler to the authenticated user
 router.post('/link-bowler', requireAuth, async (req, res) => {
   try {
+    const user = req.user as SelectUser;
     const { bowlerId } = linkBowlerSchema.parse(req.body);
-    
+
     // Verify bowler exists
     const bowler = await storage.getBowler(bowlerId);
     if (!bowler) {
       return sendError(res, 'Bowler not found', 404, 'NOT_FOUND');
     }
-    
+
     // Link bowler to user
-    const updatedUser = await storage.linkUserToBowler(req.user.id, bowlerId);
+    const updatedUser = await storage.linkUserToBowler(user.id, bowlerId);
     sendSuccess(res, updatedUser);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -44,11 +50,12 @@ router.post('/link-bowler', requireAuth, async (req, res) => {
 // Get the bowler associated with the authenticated user
 router.get('/bowler', requireAuth, async (req, res) => {
   try {
-    if (!req.user.bowlerId) {
+    const user = req.user as SelectUser;
+    if (!user.bowlerId) {
       return sendSuccess(res, null);
     }
-    
-    const bowler = await storage.getBowler(req.user.bowlerId);
+
+    const bowler = await storage.getBowler(user.bowlerId);
     sendSuccess(res, bowler);
   } catch (error) {
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler');
@@ -58,7 +65,9 @@ router.get('/bowler', requireAuth, async (req, res) => {
 // Unlink bowler from user
 router.delete('/unlink-bowler', requireAuth, async (req, res) => {
   try {
-    await storage.linkUserToBowler(req.user.id, null);
+    const user = req.user as SelectUser;
+    // Update the user's bowlerId to undefined instead of null
+    await storage.linkUserToBowler(user.id, undefined);
     sendSuccess(res, { message: 'Bowler unlinked successfully' });
   } catch (error) {
     sendError(res, error instanceof Error ? error.message : 'Failed to unlink bowler');

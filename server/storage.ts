@@ -75,7 +75,7 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  linkUserToBowler(userId: number, bowlerId: number): Promise<User>;
+  linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -686,10 +686,10 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async linkUserToBowler(userId: number, bowlerId: number): Promise<User> {
+  async linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User> {
     const [updatedUser] = await db
       .update(users)
-      .set({ bowlerId })
+      .set({ bowlerId: bowlerId ?? null })
       .where(eq(users.id, userId))
       .returning();
     return updatedUser;
