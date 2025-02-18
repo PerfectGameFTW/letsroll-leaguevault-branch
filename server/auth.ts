@@ -61,7 +61,8 @@ export function setupAuth(app: Express) {
     cookie: {
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      httpOnly: true
     }
   };
 
@@ -306,18 +307,80 @@ export function setupAuth(app: Express) {
     });
   });
 
-  app.get("/api/user", (req, res) => {
-    if (!req.isAuthenticated()) {
-      console.log('[Auth] Unauthorized access attempt to /api/user');
-      return res.status(401).json({
+  app.get("/api/user", async (req, res) => {
+    try {
+      console.log('[Auth] /api/user request:', { 
+        isAuthenticated: req.isAuthenticated(),
+        hasSession: !!req.session,
+        sessionID: req.sessionID,
+        cookies: req.headers.cookie
+      });
+
+      if (!req.isAuthenticated()) {
+        console.log('[Auth] User not authenticated');
+        return res.status(401).json({
+          success: false,
+          error: { 
+            message: "Not authenticated",
+            code: "AUTH_REQUIRED"
+          }
+        });
+      }
+
+      if (!req.user) {
+        console.log('[Auth] No user object in authenticated session');
+        return res.status(401).json({
+          success: false,
+          error: { 
+            message: "Session invalid",
+            code: "INVALID_SESSION"
+          }
+        });
+      }
+
+      // Validate user object structure
+      if (!isValidUser(req.user)) {
+        console.error('[Auth] Invalid user object structure:', req.user);
+        return res.status(500).json({
+          success: false,
+          error: { 
+            message: "Invalid user data",
+            code: "INVALID_USER_DATA"
+          }
+        });
+      }
+
+      // Verify user still exists in database
+      const user = await storage.getUser((req.user as SelectUser).id);
+      if (!user) {
+        console.log(`[Auth] User ${(req.user as SelectUser).id} no longer exists in database`);
+        req.logout((err) => {
+          if (err) console.error('[Auth] Error logging out deleted user:', err);
+        });
+        return res.status(404).json({
+          success: false,
+          error: { 
+            message: "User not found",
+            code: "USER_NOT_FOUND"
+          }
+        });
+      }
+
+      console.log(`[Auth] Successfully retrieved user data for ID: ${user.id}`);
+      res.json({
+        success: true,
+        data: { ...user, password: undefined }
+      });
+    } catch (error) {
+      console.error('[Auth] Error in /api/user route:', error);
+      res.status(500).json({
         success: false,
-        error: { message: "Not authenticated" }
+        error: { 
+          message: "Internal server error",
+          code: "SERVER_ERROR",
+          details: error instanceof Error ? error.message : undefined
+        }
       });
     }
-    console.log(`[Auth] Current user data requested, ID: ${(req.user as SelectUser).id}`);
-    res.json({
-      success: true,
-      data: { ...req.user, password: undefined }
-    });
   });
 }

@@ -65,21 +65,75 @@ interface ApiResponse<T> {
   };
 }
 
-const BowlerDashboardPage: FC = () => {
+export const BowlerDashboardPage: FC = () => {
   const { toast } = useToast();
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
 
-  const { data: currentUser, error: userError, isLoading: isUserLoading } = useQuery<ApiResponse<User>, Error>({
+  // Enhanced user data query with proper session handling and detailed error logging
+  const { data: currentUserResponse, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
-    onError: (err: Error) => {
-      console.error("[BowlerDashboard] Error fetching user data:", err);
-      toast({
-        title: "Error",
-        description: "Failed to load user data. Please try again later.",
-        variant: "destructive",
-      });
+    queryFn: async () => {
+      try {
+        const response = await fetch("/api/user", {
+          credentials: "include", // Important for session cookies
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+          },
+        });
+
+        // Log response details for debugging
+        console.log("[BowlerDashboard] User API Response:", {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers.entries()),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("[BowlerDashboard] API Error Response:", errorText);
+
+          // Show user-friendly error message
+          toast({
+            title: "Error Loading Data",
+            description: "Unable to load user data. Please try again.",
+            variant: "destructive",
+          });
+
+          throw new Error(`Failed to fetch user data: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log("[BowlerDashboard] User Data:", data);
+
+        if (!data.success) {
+          throw new Error(data.error?.message || "Failed to fetch user data");
+        }
+
+        return data;
+      } catch (error) {
+        console.error("[BowlerDashboard] Error fetching user data:", error);
+
+        // Show more specific error message based on error type
+        let errorMessage = "Unable to load user data. Please try again.";
+        if (error instanceof TypeError) {
+          errorMessage = "Network error. Please check your connection.";
+        }
+
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive",
+        });
+
+        throw error;
+      }
     },
+    retry: 3,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    refetchOnWindowFocus: false, // Prevent unnecessary refetches
   });
 
   const {
@@ -88,17 +142,18 @@ const BowlerDashboardPage: FC = () => {
     getBowlerFirstLeagueName,
     isInitialLoading,
     isLoadingRelatedData,
-    error: bowlersError,
     getBowlerLeagueId
   } = useBowlers();
 
-  const bowler = currentUser?.data?.bowlerId ? bowlers.find(b => b.id === currentUser.data.bowlerId) : null;
+  const currentUser = currentUserResponse?.data;
+  const bowler = currentUser?.bowlerId ? bowlers.find(b => b.id === currentUser.bowlerId) : null;
   const leagueId = bowler ? getBowlerLeagueId(bowler) : null;
 
   // Add league query with proper typing
   const { data: leagueResponse } = useQuery<ApiResponse<League>>({
     queryKey: [`/api/leagues/${leagueId}`],
     enabled: !!leagueId,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
   const league = leagueResponse?.data;
 
@@ -106,9 +161,11 @@ const BowlerDashboardPage: FC = () => {
   const { data: paymentsResponse } = useQuery<ApiResponse<Payment[]>>({
     queryKey: ["/api/payments", bowler?.id, leagueId],
     enabled: !!bowler?.id && !!leagueId,
+    staleTime: 1000 * 60, // Cache for 1 minute since payments change frequently
   });
   const payments = paymentsResponse?.data || [];
 
+  // Show initial loading state
   if (isUserLoading || isInitialLoading || isLoadingRelatedData) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -117,42 +174,38 @@ const BowlerDashboardPage: FC = () => {
     );
   }
 
-  if (userError || bowlersError) {
+  // Show authentication required state
+  if (!currentUser) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Error Loading Dashboard</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-destructive">
-            {userError ? "Failed to load user data" : "Failed to load bowler data"}. Please try again later.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!currentUser?.data) {
-    return (
-      <Card>
+      <Card className="mx-auto max-w-md mt-8">
         <CardHeader>
           <CardTitle>Authentication Required</CardTitle>
+          <CardDescription>Please log in to view your dashboard</CardDescription>
         </CardHeader>
-        <CardContent>
-          <p>Please log in to view your dashboard.</p>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground">
+            You need to be logged in to access your bowler dashboard.
+          </p>
+          <Link href="/login">
+            <Button className="w-full">Log In</Button>
+          </Link>
         </CardContent>
       </Card>
     );
   }
 
+  // Show profile setup required state
   if (!bowler) {
     return (
-      <Card>
+      <Card className="mx-auto max-w-md mt-8">
         <CardHeader>
           <CardTitle>Profile Setup Required</CardTitle>
+          <CardDescription>Your bowler profile needs to be configured</CardDescription>
         </CardHeader>
         <CardContent>
-          <p>Your bowler profile has not been set up yet. Please contact a league administrator.</p>
+          <p className="text-muted-foreground">
+            Please contact a league administrator to set up your bowler profile.
+          </p>
         </CardContent>
       </Card>
     );
@@ -221,7 +274,7 @@ const BowlerDashboardPage: FC = () => {
       {/* Desktop Navigation */}
       <aside className="hidden lg:block w-64 border-r px-4 py-6">
         <div className="mb-6">
-          <h2 className="text-lg font-semibold">{bowler.name}</h2>
+          <h2 className="text-lg font-semibold">{bowler?.name}</h2>
           <p className="text-sm text-muted-foreground">{leagueName}</p>
         </div>
         <SideNav />
@@ -237,7 +290,7 @@ const BowlerDashboardPage: FC = () => {
           </SheetTrigger>
           <SheetContent side="left" className="w-64">
             <div className="mb-6">
-              <h2 className="text-lg font-semibold">{bowler.name}</h2>
+              <h2 className="text-lg font-semibold">{bowler?.name}</h2>
               <p className="text-sm text-muted-foreground">{leagueName}</p>
             </div>
             <SideNav />
@@ -250,7 +303,7 @@ const BowlerDashboardPage: FC = () => {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{bowler.name}'s Dashboard</CardTitle>
+              <CardTitle>{bowler?.name}'s Dashboard</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="rounded-lg border p-4 space-y-4 mt-6">
