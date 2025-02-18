@@ -37,13 +37,47 @@ export default function LeaguesPage() {
 
   const allTeams = teamsResponse?.data || [];
 
+  // Get weekly scores for the first league (if any)
+  const firstLeague = leagues?.[0];
+  const currentWeek = firstLeague ? Math.ceil(differenceInWeeks(new Date(), new Date(firstLeague.seasonStart))) : 0;
+
+  console.log('[LeaguesPage] First league and current week:', {
+    firstLeague: firstLeague ? { 
+      id: firstLeague.id, 
+      name: firstLeague.name,
+      seasonStart: firstLeague.seasonStart 
+    } : null,
+    currentWeek
+  });
+
+  const { data: scoresResponse, isLoading: loadingScores } = useQuery<{ data: ScoreWithRelations[] }>({
+    queryKey: ["/api/scores/history", firstLeague?.id],
+    queryFn: async () => {
+      if (!firstLeague?.id) throw new Error("No league selected");
+      const response = await fetch(`/api/scores?leagueId=${firstLeague.id}&weekNumber=${currentWeek}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || 'Failed to fetch scores');
+      }
+      return response.json();
+    },
+    enabled: !!firstLeague && currentWeek > 0,
+  });
+
+  const weeklyScores = scoresResponse?.data || [];
+
+  console.log('[LeaguesPage] Weekly scores:', {
+    responseData: scoresResponse?.data,
+    scoresCount: weeklyScores.length
+  });
+
   // Create a map of league ID to team count
   const teamCounts = allTeams.reduce((acc, team) => {
     acc[team.leagueId] = (acc[team.leagueId] || 0) + 1;
     return acc;
   }, {} as Record<number, number>);
 
-  if (loadingLeagues || loadingTeams) {
+  if (loadingLeagues || loadingTeams || loadingScores) {
     return (
       <Layout>
         <div className="flex items-center justify-center h-[50vh]">
@@ -130,6 +164,36 @@ export default function LeaguesPage() {
           </TableBody>
         </Table>
       </div>
+
+      {weeklyScores.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold mb-4">Recent Scores</h2>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Bowler</TableHead>
+                  <TableHead>Team</TableHead>
+                  <TableHead>Score</TableHead>
+                  <TableHead>Average</TableHead>
+                  <TableHead>Handicap</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {weeklyScores.map((score) => (
+                  <TableRow key={score.id}>
+                    <TableCell>{score.bowler.name}</TableCell>
+                    <TableCell>{score.team.name}</TableCell>
+                    <TableCell>{score.score}</TableCell>
+                    <TableCell>{score.average || 'N/A'}</TableCell>
+                    <TableCell>{score.handicap}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      )}
 
       <LeagueForm 
         open={showForm} 
