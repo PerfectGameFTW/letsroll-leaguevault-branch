@@ -1,10 +1,9 @@
-import { useParams } from "wouter";
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
-import { Link } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import type { ApiResponse } from "@/lib/types/api";
 
 interface Game {
@@ -39,11 +38,9 @@ interface LanePair {
 export default function ScoresPage() {
   const { leagueId: rawLeagueId, weekNumber: rawWeekNumber } = useParams<{ leagueId: string; weekNumber: string }>();
 
-  // Convert parameters to numbers immediately
   const leagueId = rawLeagueId ? parseInt(rawLeagueId, 10) : undefined;
   const weekNumber = rawWeekNumber ? parseInt(rawWeekNumber, 10) : undefined;
 
-  // Early validation of parameters
   if (!leagueId || isNaN(leagueId) || !weekNumber || isNaN(weekNumber)) {
     return (
       <Layout>
@@ -55,38 +52,9 @@ export default function ScoresPage() {
     );
   }
 
-  // Debug logging
-  console.log('[ScoresPage] Request parameters:', {
-    raw: { leagueId: rawLeagueId, weekNumber: rawWeekNumber },
-    parsed: { leagueId, weekNumber },
-    url: `/api/scores?leagueId=${leagueId}&weekNumber=${weekNumber}`
-  });
-
   const { data: scoresResponse, isLoading, error } = useQuery<ApiResponse<LanePair[]>>({
     queryKey: ['/api/scores', leagueId, weekNumber],
-    queryFn: async () => {
-      try {
-        const queryParams = new URLSearchParams({
-          leagueId: leagueId.toString(),
-          weekNumber: weekNumber.toString()
-        });
-
-        const url = `/api/scores?${queryParams.toString()}`;
-        console.log('[ScoresPage] Fetching scores from:', url);
-
-        const response = await fetch(url);
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('[ScoresPage] API error:', errorData);
-          throw new Error(errorData.error?.message || 'Failed to fetch scores');
-        }
-        return response.json();
-      } catch (error) {
-        console.error('[ScoresPage] Error in query:', error);
-        throw error;
-      }
-    },
-    enabled: true 
+    enabled: true
   });
 
   if (isLoading) {
@@ -131,7 +99,7 @@ export default function ScoresPage() {
         </Link>
 
         <div>
-          <h1 className="text-2xl font-bold mb-2">Weekly Scores</h1>
+          <h1 className="text-2xl font-bold mb-2">League Scores</h1>
           <p className="text-muted-foreground mb-6">
             Week {rawWeekNumber} Scores
           </p>

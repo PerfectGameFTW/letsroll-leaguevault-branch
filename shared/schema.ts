@@ -563,7 +563,7 @@ export interface WeeklyStatWithBowler extends WeeklyStat {
   };
 }
 
-// QubicaAMF Score Import Types
+// Keep the QubicaAMF Score Import Types but remove import-specific schemas
 export interface QubicaScoreFileHeader {
   date: Date;
   centerName: string;
@@ -592,7 +592,6 @@ export interface QubicaBowlerScore {
   handicap: number;
   average: number;
   hasBumpers: boolean;
-  // Add the new array fields to match database schema
   frames: string[];
   splits: string[];
   notes: string[];
@@ -611,25 +610,6 @@ export interface QubicaScoreImport {
   games: QubicaTeamGame[];
 }
 
-// Create base schemas for import validation
-const qubicaImportGameBaseSchema = z.object({
-  qubicaWeekNumber: positiveIntSchema,
-  qubicaSessionTime: timeSchema,
-});
-
-const qubicaImportScoreBaseSchema = z.object({
-  qubicaBowlerId: z.string(),
-  qubicaTeamNumber: z.string(),
-  scoreSheet: z.string(),
-});
-
-// Extend existing schemas with QubicaAMF-specific fields
-export const importGameSchema = baseGameSchema.merge(qubicaImportGameBaseSchema);
-export const importScoreSchema = baseScoreSchema.merge(qubicaImportScoreBaseSchema);
-
-// Export additional types for the import process
-export type ImportGame = z.infer<typeof importGameSchema>;
-export type ImportScore = z.infer<typeof importScoreSchema>;
 
 // Add new interface for detailed score information
 export interface DetailedScore extends Score {

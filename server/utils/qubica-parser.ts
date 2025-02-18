@@ -5,13 +5,11 @@ export class QubicaParser {
   private currentIndex: number = 0;
 
   constructor(fileContent: string) {
-    // Split while preserving whitespace and line endings, and filter out empty lines
     this.lines = fileContent.split(/\r?\n/).filter(line => line.trim().length > 0);
     console.log(`[QubicaParser] Initialized with ${this.lines.length} lines`);
   }
 
   private parseLine(line: string): { [key: string]: string } {
-    // Parse fixed-width format fields
     const fields = {
       teamNumber: line.substring(0, 3),
       gameSequence: line.substring(3, 5),
@@ -37,7 +35,6 @@ export class QubicaParser {
     try {
       const fields = this.parseLine(line);
 
-      // Remove leading zeros from team number and convert to integer
       const teamNumber = String(parseInt(fields.teamNumber) || 0);
       const position = parseInt(fields.position) || 0;
       const bowlerId = fields.bowlerId.trim();
@@ -46,22 +43,12 @@ export class QubicaParser {
       const laneNumber = parseInt(fields.lane) || 0;
       const gameSequence = parseInt(fields.gameSequence) || 1;
 
-      // Check for status flags
       const statusFlags = fields.statusFlags.toUpperCase();
       const status = {
         isVacant: name.toUpperCase().includes('VACANT'),
         isAbsent: statusFlags.includes('A'),
         isSub: statusFlags.includes('S')
       };
-
-      console.log('[QubicaParser] Parsed bowler line:', {
-        teamNumber,
-        gameSequence,
-        name,
-        score,
-        laneNumber,
-        status
-      });
 
       return {
         teamNumber,
@@ -99,11 +86,8 @@ export class QubicaParser {
     });
 
     try {
-      // Parse fixed width header fields
       const leagueId = headerLine.substring(0, 15).trim();
       const leagueName = headerLine.substring(23, 60).trim();
-
-      // Week number is typically after the league name
       const weekMatch = headerLine.match(/Week\s+(\d+)/i);
       const weekNumber = weekMatch ? parseInt(weekMatch[1]) : 1;
 
@@ -113,11 +97,8 @@ export class QubicaParser {
         weekNumber
       });
 
-      // Use current date if parsing fails
-      const date = new Date();
-
       return {
-        date,
+        date: new Date(),
         centerName: "Bonnie Lanes",
         leagueName: leagueName || 'Unknown League',
         weekNumber,
@@ -136,10 +117,7 @@ export class QubicaParser {
     const header = this.parseHeader();
     const games: QubicaTeamGame[] = [];
 
-    // Skip header line
     this.currentIndex = 1;
-
-    // Group bowlers by team and game
     const teamGames = new Map<string, Map<number, QubicaBowlerScore[]>>();
 
     while (this.currentIndex < this.lines.length) {
@@ -161,27 +139,16 @@ export class QubicaParser {
           }
 
           teamGameMap.get(gameNumber)!.push(bowlerScore);
-
-          console.log('[QubicaParser] Added bowler score:', {
-            teamNumber,
-            gameNumber,
-            bowlerName: bowlerScore.bowlerName,
-            score: bowlerScore.score,
-            laneNumber: bowlerScore.laneNumber
-          });
         }
       }
 
       this.currentIndex++;
     }
 
-    // Convert team games map to array format
     for (const [teamNumber, teamGameMap] of teamGames) {
       for (const [gameNumber, bowlers] of teamGameMap) {
         if (bowlers.length > 0) {
-          // Sort bowlers by position
           bowlers.sort((a, b) => a.position - b.position);
-
           games.push({
             teamNumber,
             gameNumber,
@@ -193,7 +160,6 @@ export class QubicaParser {
       }
     }
 
-    // Sort games by team number and game number
     games.sort((a, b) => {
       const teamA = parseInt(a.teamNumber);
       const teamB = parseInt(b.teamNumber);
