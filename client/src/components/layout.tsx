@@ -1,11 +1,19 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, LayoutDashboard } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, ChevronDown, Trophy, LayoutDashboard } from "lucide-react";
 import { useState, useEffect, Suspense, memo } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
 import type { League } from "@shared/schema";
 import { ErrorBoundary } from "react-error-boundary";
+import {
+  NavigationMenu,
+  NavigationMenuContent,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  NavigationMenuTrigger,
+} from "@/components/ui/navigation-menu";
 
 // Safe localStorage access function with memoization
 const getStoredValue = (key: string, defaultValue: any) => {
@@ -30,19 +38,92 @@ const setStoredValue = (key: string, value: any) => {
 
 const baseNavigation = [
   { name: "Dashboard", href: "/", icon: Home },
+  { name: "Leagues", href: "/leagues", icon: Trophy, hasDropdown: true },
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
   { name: "Reports", href: "/reports", icon: LayoutDashboard },
   { name: "Bowler Dashboard", href: "/bowler-dashboard", icon: LayoutDashboard },
 ];
 
-// Memoized navigation items to prevent unnecessary re-renders
 const NavigationItem = memo(({ item, isActive, isCollapsed }: {
   item: typeof baseNavigation[0],
   isActive: boolean,
   isCollapsed: boolean
 }) => {
   const Icon = item.icon;
+  const { data: leagues } = useQuery<League[]>({
+    queryKey: ['/api/leagues'],
+    enabled: item.hasDropdown,
+  });
+
+  if (item.hasDropdown && !isCollapsed) {
+    return (
+      <div className="relative">
+        <NavigationMenu>
+          <NavigationMenuList className="flex flex-col">
+            <NavigationMenuItem>
+              <NavigationMenuTrigger className={cn(
+                "w-full flex items-center px-2 py-2 text-sm font-medium rounded-md",
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-gray-600 hover:bg-gray-50"
+              )}>
+                <Icon className={cn(
+                  "h-5 w-5 flex-shrink-0 mr-3",
+                  isActive ? "text-primary-foreground" : "text-gray-400"
+                )} />
+                {item.name}
+              </NavigationMenuTrigger>
+              <NavigationMenuContent className="absolute left-full top-0 ml-1 w-48">
+                <div className="w-full rounded-md border bg-popover p-2 shadow-lg">
+                  {leagues?.map((league) => (
+                    <Link key={league.id} href={`/leagues/${league.id}`}>
+                      <a className="block px-4 py-2 text-sm rounded-md hover:bg-accent">
+                        {league.name}
+                      </a>
+                    </Link>
+                  ))}
+                  <div className="border-t mt-2 pt-2">
+                    <Link href="/leagues">
+                      <a className="block px-4 py-2 text-sm rounded-md hover:bg-accent font-medium">
+                        View All Leagues
+                      </a>
+                    </Link>
+                  </div>
+                </div>
+              </NavigationMenuContent>
+            </NavigationMenuItem>
+          </NavigationMenuList>
+        </NavigationMenu>
+      </div>
+    );
+  }
+
+  if (item.hasDropdown && isCollapsed) {
+    return (
+      <div className="relative group">
+        <Link href={item.href}>
+          <span
+            className={cn(
+              "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
+              isActive
+                ? "bg-primary text-primary-foreground"
+                : "text-gray-600 hover:bg-gray-50"
+            )}
+            title={item.name}
+          >
+            <Icon
+              className={cn(
+                "h-5 w-5 flex-shrink-0 mx-auto",
+                isActive ? "text-primary-foreground" : "text-gray-400"
+              )}
+            />
+          </span>
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <Link href={item.href}>
       <span
@@ -57,9 +138,7 @@ const NavigationItem = memo(({ item, isActive, isCollapsed }: {
         <Icon
           className={cn(
             "h-5 w-5 flex-shrink-0",
-            isActive
-              ? "text-primary-foreground"
-              : "text-gray-400",
+            isActive ? "text-primary-foreground" : "text-gray-400",
             isCollapsed ? "mx-auto" : "mr-3"
           )}
         />
@@ -68,7 +147,6 @@ const NavigationItem = memo(({ item, isActive, isCollapsed }: {
     </Link>
   );
 });
-
 
 const ErrorFallback = ({ error }: { error: Error }) => {
   return (
@@ -123,12 +201,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <ErrorBoundary FallbackComponent={ErrorFallback}>
               <Suspense fallback={<div className="p-4">Loading...</div>}>
                 <nav className="mt-8 flex-1 space-y-1 px-2">
-                  <NavigationItem
-                    item={baseNavigation[0]}
-                    isActive={location === "/"}
-                    isCollapsed={isCollapsed}
-                  />
-                  {baseNavigation.slice(1).map((item) => (
+                  {baseNavigation.map((item) => (
                     <NavigationItem
                       key={item.name}
                       item={item}
@@ -144,12 +217,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className={cn("transition-all duration-300", isCollapsed ? "pl-16" : "pl-64")}>
-        {!isCollapsed && (
-          <div
-            className="fixed inset-0 bg-black/20 z-40"
-            onClick={() => setIsCollapsed(true)}
-          />
-        )}
         <main className="py-6 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <ErrorBoundary FallbackComponent={ErrorFallback}>
             <Suspense fallback={<div>Loading...</div>}>
