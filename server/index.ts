@@ -436,13 +436,15 @@ async function startServer() {
 }
 
 // Enhanced shutdown function with phase tracking
+// Fix for shutdownTimeoutId initialization and usage
+let shutdownTimeoutId: NodeJS.Timeout | undefined;
+
 async function shutdown() {
   console.log('[Server] Initiating graceful shutdown...');
   console.log(`[Server] Active requests: ${activeRequests}`);
 
   const startTime = Date.now();
   shutdownPhases.initiated = true;
-  let shutdownTimeoutId: NodeJS.Timeout;
 
   try {
     // Set a maximum wait time for active requests
