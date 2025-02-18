@@ -97,7 +97,26 @@ export default function WeeklyPaymentsPage() {
   const teams = teamsResponse?.data || [];
   const payments = paymentsResponse?.data || [];
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
-  const bowlers = bowlersResponse?.data || [];
+  const allBowlers = bowlersResponse?.data || [];
+
+  // Debug logs for incoming data
+  console.log('Selected Team ID:', selectedTeam);
+  console.log('Bowler Leagues:', bowlerLeagues);
+  console.log('All Bowlers:', allBowlers);
+  console.log('League ID:', leagueId);
+
+  // Filter bowlers for the selected team
+  const bowlers = allBowlers.filter(bowler => {
+    const isAssigned = bowlerLeagues.some(bl => 
+      bl.bowlerId === bowler.id && 
+      bl.teamId === parseInt(selectedTeam || '0', 10) &&
+      bl.leagueId === leagueId
+    );
+    console.log(`Bowler ${bowler.name} (${bowler.id}) assigned to team ${selectedTeam}: ${isAssigned}`);
+    return isAssigned;
+  });
+
+  console.log('Filtered Bowlers:', bowlers);
 
   // Handle payment input changes
   const handlePaymentTypeChange = (bowlerId: number, type: string) => {
@@ -477,7 +496,7 @@ export default function WeeklyPaymentsPage() {
                 {selectedTeamData.name} - Week {getWeekNumber(selectedDate)}
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
               {loadingPayments || loadingBowlers ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin" />
