@@ -221,12 +221,12 @@ export default function BowlerViewPage() {
   let amountPastDue = 0;
 
   if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
-    // Validate dates using the more robust method
-    const seasonStart = league.seasonStart ? parseISO(league.seasonStart) : null;
-    const seasonEnd = league.seasonEnd ? parseISO(league.seasonEnd) : null;
+    // Validate dates and handle both string and Date types
+    const seasonStart = typeof league.seasonStart === 'string' ? parseISO(league.seasonStart) : league.seasonStart;
+    const seasonEnd = typeof league.seasonEnd === 'string' ? parseISO(league.seasonEnd) : league.seasonEnd;
     const today = startOfToday();
 
-    if (seasonStart && seasonEnd && isValid(today)) {
+    if (seasonStart && seasonEnd && isValid(seasonStart) && isValid(seasonEnd) && isValid(today)) {
       if (today < seasonStart) {
         weeksDue = 0;
       } else if (today > seasonEnd) {
