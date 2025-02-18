@@ -68,11 +68,7 @@ const navItems: NavItem[] = [
   { 
     icon: ClipboardPlus,
     label: "Reports",
-    href: "/reports",
-    hasDropdown: true,
-    subItems: [
-      { icon: ClipboardPlus, label: "League Reports", href: "/reports" }
-    ]
+    href: "/reports"
   },
   {
     icon: LayoutDashboard,
@@ -104,23 +100,9 @@ const SideNav = () => {
                   </NavigationMenuTrigger>
                   <NavigationMenuContent>
                     <div className="w-[200px] p-2">
-                      {item.subItems ? (
-                        // Render sub-items for Reports
-                        item.subItems.map((subItem) => (
-                          <Link key={subItem.href} href={subItem.href}>
-                            <button className="flex w-full items-center px-4 py-2 text-sm rounded-md hover:bg-accent">
-                              <subItem.icon className="h-4 w-4 mr-2" />
-                              {subItem.label}
-                            </button>
-                          </Link>
-                        ))
-                      ) : (
-                        // Render leagues dropdown
-                        <>
-                          {item.label === "Leagues" && (
-                            <LeaguesDropdownContent />
-                          )}
-                        </>
+                      {/* Render leagues dropdown */}
+                      {item.label === "Leagues" && (
+                        <LeaguesDropdownContent />
                       )}
                     </div>
                   </NavigationMenuContent>
