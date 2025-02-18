@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, ChevronDown, Trophy, LayoutDashboard } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, ChevronDown, Trophy, ClipboardPlus } from "lucide-react";
 import { useState, useEffect, Suspense, memo } from "react";
 import { Button } from "./ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -40,7 +40,7 @@ const baseNavigation = [
   { name: "Leagues", href: "/leagues", icon: Trophy, hasDropdown: true },
   { name: "Bowlers", href: "/bowlers", icon: Users },
   { name: "Payments", href: "/payments", icon: CreditCard },
-  { name: "Reports", href: "/reports", icon: LayoutDashboard },
+  { name: "Reports", href: "/reports", icon: ClipboardPlus },
 ];
 
 const NavigationItem = memo(({ item, isActive, isCollapsed }: {
