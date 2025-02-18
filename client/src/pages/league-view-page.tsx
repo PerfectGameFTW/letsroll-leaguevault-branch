@@ -12,11 +12,25 @@ export default function LeagueViewPage() {
   const { toast } = useToast();
   const leagueId = parseInt(params.leagueId!);
 
-  const { data: leagueResponse, isLoading } = useQuery<{ data: League }>({
+  const { data: leagueResponse, isLoading, error } = useQuery<{ success: true; data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
+    queryFn: async () => {
+      console.log('[LeagueViewPage] Fetching league:', leagueId);
+      const response = await fetch(`/api/leagues/${leagueId}`);
+      if (!response.ok) {
+        console.error('[LeagueViewPage] Failed to fetch league:', await response.text());
+        throw new Error('Failed to fetch league');
+      }
+      const data = await response.json();
+      console.log('[LeagueViewPage] League response:', data);
+      return data;
+    },
+    retry: false
   });
 
+  // Access the league data from the nested structure
   const league = leagueResponse?.data;
+  console.log('[LeagueViewPage] Processed league data:', league);
 
   if (isLoading) {
     return (
@@ -28,10 +42,27 @@ export default function LeagueViewPage() {
     );
   }
 
+  if (error) {
+    return (
+      <Layout>
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-destructive">Error loading league</h2>
+          <p className="text-muted-foreground">{error instanceof Error ? error.message : 'Unknown error occurred'}</p>
+        </div>
+      </Layout>
+    );
+  }
+
   if (!league) {
     return (
       <Layout>
-        <div className="text-center">League not found</div>
+        <div className="text-center">
+          <h2 className="text-xl font-semibold text-destructive">League not found</h2>
+          <p className="text-muted-foreground">The requested league could not be found</p>
+          <Link href="/leagues" className="text-primary hover:underline mt-4 inline-block">
+            Return to Leagues
+          </Link>
+        </div>
       </Layout>
     );
   }
