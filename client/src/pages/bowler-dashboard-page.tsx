@@ -197,11 +197,13 @@ export const BowlerDashboardPage: FC = () => {
     }
 
     try {
+      // Calculate amount in cents
       const amount = calculateTotalAmount();
       if (amount <= 0) {
         throw new Error("Invalid payment amount calculated");
       }
 
+      console.log('[BowlerDashboard] Processing payment:', { amount });
       const result = await createPayment(amount, card);
 
       if (result.status === 'COMPLETED') {

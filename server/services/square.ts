@@ -18,13 +18,14 @@ async function initializeSquareClient() {
         throw new Error('Square access token is not configured');
       }
 
+      const environment = process.env.NODE_ENV === 'production' ? Environment.Production : Environment.Sandbox;
       squareClient = new Client({
         accessToken: process.env.SQUARE_ACCESS_TOKEN,
-        environment: process.env.NODE_ENV === 'production' ? Environment.Production : Environment.Sandbox
+        environment
       });
 
       console.log('[Square Service] Square client initialized successfully');
-      console.log('[Square Service] Using environment:', process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox');
+      console.log('[Square Service] Using environment:', environment === Environment.Production ? 'Production' : 'Sandbox');
     } catch (error) {
       console.error('[Square Service] Failed to initialize Square client:', error);
       throw new Error('Failed to initialize Square client: ' + (error instanceof Error ? error.message : String(error)));
@@ -52,28 +53,39 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
       }
     });
 
-    let customerId;
+    if (!searchResponse?.result) {
+      throw new Error('API Error: Invalid search response');
+    }
+
+    let customerId: string;
+    const [firstName, ...lastNameParts] = name.split(' ');
+    const lastName = lastNameParts.join(' ');
 
     if (searchResponse.result.customers?.[0]?.id) {
       console.log('[Square Service] Found existing customer, updating...');
       customerId = searchResponse.result.customers[0].id;
       const updateResponse = await client.customersApi.updateCustomer(customerId, {
-        givenName: name.split(' ')[0],
-        familyName: name.split(' ').slice(1).join(' ') || '',
+        givenName: firstName,
+        familyName: lastName || '',
         emailAddress: email.toLowerCase(),
       });
-      console.log('[Square Service] Customer updated successfully:', updateResponse.result.customer?.id);
+
+      if (!updateResponse?.result?.customer) {
+        throw new Error('API Error: Invalid update response');
+      }
+
+      console.log('[Square Service] Customer updated successfully:', updateResponse.result.customer.id);
     } else {
       console.log('[Square Service] No existing customer found, creating new...');
       const customerResponse = await client.customersApi.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
-        givenName: name.split(' ')[0],
-        familyName: name.split(' ').slice(1).join(' ') || '',
+        givenName: firstName,
+        familyName: lastName || '',
         emailAddress: email.toLowerCase(),
       });
 
-      if (!customerResponse.result?.customer?.id) {
-        throw new Error('Failed to create Square customer: No customer ID returned');
+      if (!customerResponse?.result?.customer?.id) {
+        throw new Error('API Error: Invalid create response');
       }
 
       customerId = customerResponse.result.customer.id;
@@ -109,21 +121,21 @@ export async function processPayment(sourceId: string, amount: number, locationI
       amount, 
       locationId,
       sourceIdLength: sourceId.length,
-      environment: client.environment
+      mode: process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox'
     });
 
     const response = await client.paymentsApi.createPayment({
       sourceId,
       idempotencyKey: `${Date.now()}-${Math.random()}`,
       amountMoney: {
-        amount: BigInt(amount * 100), // Fixed: Multiply by 100 for cents
+        amount: BigInt(amount),
         currency: 'USD'
       },
       locationId,
     });
 
-    if (!response.result.payment) {
-      throw new Error("Payment creation failed: No payment object returned");
+    if (!response?.result?.payment) {
+      throw new Error('API Error: Invalid payment response');
     }
 
     const payment = response.result.payment;

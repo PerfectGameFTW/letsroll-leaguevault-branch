@@ -10,19 +10,27 @@ type ApiResponse<T> = { result: T };
 type CustomerResponse = ApiResponse<{
   customer: {
     id: string;
+    givenName?: string;
+    familyName?: string;
+    emailAddress?: string;
   };
 }>;
 
 type SearchCustomersResponse = ApiResponse<{
-  customers: Array<{ id: string; }>;
+  customers: Array<{
+    id: string;
+    givenName?: string;
+    familyName?: string;
+    emailAddress?: string;
+  }>;
 }>;
 
 type PaymentResponse = ApiResponse<{
   payment: {
     id: string;
     status: string;
-    cardDetails: {
-      card: {
+    cardDetails?: {
+      card?: {
         last4: string;
         cardBrand: string;
       };
@@ -45,7 +53,11 @@ const createMockClient = () => ({
 // Mock Square SDK
 jest.mock('square', () => ({
   __esModule: true,
-  Client: jest.fn().mockImplementation(() => createMockClient())
+  Client: jest.fn().mockImplementation(() => createMockClient()),
+  Environment: {
+    Production: 'production',
+    Sandbox: 'sandbox'
+  }
 }));
 
 describe('Square Service', () => {
@@ -56,6 +68,7 @@ describe('Square Service', () => {
     jest.resetModules();
     process.env = { ...mockEnv };
     process.env.SQUARE_ACCESS_TOKEN = 'test-token';
+    process.env.NODE_ENV = 'test';
     mockClient = createMockClient();
     (jest.requireMock('square') as any).Client.mockImplementation(() => mockClient);
   });
@@ -67,19 +80,24 @@ describe('Square Service', () => {
 
   describe('createOrUpdateCustomer', () => {
     it('should create a new customer when one does not exist', async () => {
-      const searchResponse: SearchCustomersResponse = {
-        result: { customers: [] }
-      };
-      const createResponse: CustomerResponse = {
+      // Mock empty search response
+      mockClient.customersApi.searchCustomers.mockResolvedValueOnce({
+        result: {
+          customers: []
+        }
+      });
+
+      // Mock successful customer creation
+      mockClient.customersApi.createCustomer.mockResolvedValueOnce({
         result: {
           customer: {
-            id: 'test-customer-id'
+            id: 'test-customer-id',
+            givenName: 'John',
+            familyName: 'Doe',
+            emailAddress: 'john@example.com'
           }
         }
-      };
-
-      mockClient.customersApi.searchCustomers.mockResolvedValueOnce(searchResponse);
-      mockClient.customersApi.createCustomer.mockResolvedValueOnce(createResponse);
+      });
 
       const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
 
@@ -88,20 +106,47 @@ describe('Square Service', () => {
         name: 'John Doe',
         email: 'john@example.com'
       });
+
+      expect(mockClient.customersApi.createCustomer).toHaveBeenCalledWith({
+        idempotencyKey: expect.any(String),
+        givenName: 'John',
+        familyName: 'Doe',
+        emailAddress: 'john@example.com'
+      });
     });
 
     it('should update an existing customer', async () => {
-      const searchResponse: SearchCustomersResponse = {
+      // Mock existing customer search response
+      mockClient.customersApi.searchCustomers.mockResolvedValueOnce({
         result: {
           customers: [{
-            id: 'existing-customer-id'
+            id: 'existing-customer-id',
+            givenName: 'John',
+            familyName: 'Doe',
+            emailAddress: 'john@example.com'
           }]
         }
-      };
+      });
 
-      mockClient.customersApi.searchCustomers.mockResolvedValueOnce(searchResponse);
+      // Mock successful customer update
+      mockClient.customersApi.updateCustomer.mockResolvedValueOnce({
+        result: {
+          customer: {
+            id: 'existing-customer-id',
+            givenName: 'John',
+            familyName: 'Doe',
+            emailAddress: 'john@example.com'
+          }
+        }
+      });
 
       const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
+
+      expect(result).toEqual({
+        id: 'existing-customer-id',
+        name: 'John Doe',
+        email: 'john@example.com'
+      });
 
       expect(mockClient.customersApi.updateCustomer).toHaveBeenCalledWith(
         'existing-customer-id',
@@ -125,7 +170,7 @@ describe('Square Service', () => {
             }
           }
         }
-      } as PaymentResponse);
+      });
 
       const result = await processPayment('source-id', 1000, 'location-id');
 
@@ -136,6 +181,16 @@ describe('Square Service', () => {
           last4: '1234',
           brand: 'VISA'
         }
+      });
+
+      expect(mockClient.paymentsApi.createPayment).toHaveBeenCalledWith({
+        sourceId: 'source-id',
+        idempotencyKey: expect.any(String),
+        amountMoney: {
+          amount: BigInt(1000),
+          currency: 'USD'
+        },
+        locationId: 'location-id'
       });
     });
   });
@@ -154,7 +209,7 @@ describe('Square Service', () => {
 
       await expect(
         createOrUpdateCustomer('John Doe', 'john@example.com')
-      ).rejects.toThrow('API Error');
+      ).rejects.toThrow('Failed to create/update Square customer: API Error');
     });
   });
 });

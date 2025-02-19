@@ -37,21 +37,23 @@ export async function initializeSquare() {
     // Create new initialization promise
     initializationPromise = (async () => {
       if (!payments) {
-        console.log('[Square] Loading Square SDK...');
+        console.log('[Square] Starting Square SDK initialization...');
 
         if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
-          console.error('[Square] Missing Square credentials');
-          throw new Error("Square credentials are not configured");
+          console.error('[Square] Missing required Square credentials');
+          throw new Error("Square credentials are not properly configured");
         }
 
         try {
+          console.log('[Square] Loading Square SDK from CDN...');
           await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
+          console.log('[Square] Square SDK loaded successfully');
         } catch (error) {
           console.error('[Square] Failed to load Square SDK:', error);
           throw new Error("Failed to load Square SDK: " + (error instanceof Error ? error.message : String(error)));
         }
 
-        console.log('[Square] Initializing Square payments...');
+        console.log('[Square] Initializing Square payments with provided credentials');
         try {
           payments = await window.Square.payments(
             import.meta.env.VITE_SQUARE_APP_ID,
@@ -69,7 +71,7 @@ export async function initializeSquare() {
 
     return initializationPromise;
   } catch (error) {
-    console.error('[Square] Error initializing Square:', error);
+    console.error('[Square] Critical error during Square initialization:', error);
     initializationPromise = null;
     throw error;
   }
