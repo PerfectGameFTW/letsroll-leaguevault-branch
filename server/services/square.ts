@@ -1,4 +1,4 @@
-import { ApiError, Client as SquareClient, Environment } from '@square/sdk';
+import { ApiError, Client } from 'square';
 
 interface SquareCustomer {
   id: string;
@@ -7,27 +7,32 @@ interface SquareCustomer {
 }
 
 // Initialize Square client
-let squareClient: SquareClient | null = null;
+let squareClient: Client | null = null;
 
-function initializeSquareClient(): SquareClient {
-  if (!squareClient && process.env.SQUARE_ACCESS_TOKEN) {
-    try {
-      squareClient = new SquareClient({
+function initializeSquareClient(): Client {
+  try {
+    if (!process.env.SQUARE_ACCESS_TOKEN) {
+      console.log('[Square] Using development mode with sandbox credentials');
+      // In development/sandbox mode, we can proceed with limited functionality
+      return new Client({
+        accessToken: 'sandbox-token',
+        environment: 'sandbox'
+      });
+    }
+
+    if (!squareClient) {
+      squareClient = new Client({
         accessToken: process.env.SQUARE_ACCESS_TOKEN,
-        environment: process.env.NODE_ENV === 'production' ? Environment.Production : Environment.Sandbox
+        environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
       });
       console.log('[Square] Client initialized successfully');
-    } catch (error) {
-      console.error('[Square] Failed to initialize client:', error);
-      throw new Error('Failed to initialize Square client: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
-  }
 
-  if (!squareClient) {
-    throw new Error("Square client not initialized. Please check your credentials.");
+    return squareClient;
+  } catch (error) {
+    console.error('[Square] Client initialization error:', error);
+    throw new Error('Failed to initialize Square client: ' + (error instanceof Error ? error.message : 'Unknown error'));
   }
-
-  return squareClient;
 }
 
 export async function processPayment(sourceId: string, amount: number, locationId: string = process.env.SQUARE_LOCATION_ID!): Promise<{
@@ -38,10 +43,6 @@ export async function processPayment(sourceId: string, amount: number, locationI
     brand: string;
   };
 }> {
-  if (!process.env.SQUARE_ACCESS_TOKEN) {
-    throw new Error("Square access token not configured");
-  }
-
   if (!locationId) {
     throw new Error("Square location ID not configured");
   }
@@ -88,7 +89,9 @@ export async function processPayment(sourceId: string, amount: number, locationI
     console.error('[Square] Payment processing error:', error);
 
     if (error instanceof ApiError) {
-      throw new Error(`Payment processing failed: ${error.result.errors?.[0]?.detail ?? error.message}`);
+      const errorDetail = error.result?.errors?.[0]?.detail;
+      const errorCode = error.result?.errors?.[0]?.code;
+      throw new Error(`Payment processing failed: ${errorDetail ?? error.message} (Code: ${errorCode})`);
     } else if (error instanceof Error) {
       throw error;
     } else {
