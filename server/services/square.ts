@@ -79,6 +79,30 @@ export async function processPayment(sourceId: string, amount: number, locationI
   }
 }
 
+export async function createOrUpdateCustomer(name: string, email: string): Promise<SquareCustomer | null> {
+  try {
+    const client = await initializeSquareClient();
+    const response = await client.customersApi.createCustomer({
+      idempotencyKey: `${Date.now()}-${Math.random()}`,
+      givenName: name,
+      emailAddress: email,
+    });
+    console.log("Customer created", response)
+    return {
+      id: response.result.customer.id,
+      name: response.result.customer.givenName,
+      email: response.result.customer.emailAddress
+    };
+  } catch (error) {
+    console.error('[Square Service] Customer creation error:', error);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('An unexpected error occurred while creating customer');
+  }
+}
+
 export default {
-  processPayment
+  processPayment,
+  createOrUpdateCustomer
 };
