@@ -69,24 +69,31 @@ export const BowlerDashboardPage: FC = () => {
     queryKey: [`/api/dashboard-data`, leagueId],
     enabled: !!leagueId,
     queryFn: async () => {
-      const [leagueRes, paymentsRes] = await Promise.all([
-        fetch(`/api/leagues/${leagueId}`),
-        fetch(`/api/payments?bowlerId=${bowler?.id}&leagueId=${leagueId}`)
-      ]);
+      if (!leagueId) throw new Error('League ID is required');
 
-      if (!leagueRes.ok || !paymentsRes.ok) {
-        throw new Error('Failed to fetch dashboard data');
+      try {
+        const [leagueRes, paymentsRes] = await Promise.all([
+          fetch(`/api/leagues/${leagueId}`),
+          fetch(`/api/payments?bowlerId=${bowler?.id}&leagueId=${leagueId}`)
+        ]);
+
+        if (!leagueRes.ok || !paymentsRes.ok) {
+          throw new Error('Failed to fetch dashboard data');
+        }
+
+        const [leagueData, paymentsData] = await Promise.all([
+          leagueRes.json() as Promise<ApiResponse<League>>,
+          paymentsRes.json() as Promise<ApiResponse<Payment[]>>
+        ]);
+
+        return {
+          league: leagueData.data,
+          payments: paymentsData.data
+        };
+      } catch (error) {
+        console.error('[BowlerDashboard] Data fetch error:', error);
+        throw error;
       }
-
-      const [leagueData, paymentsData] = await Promise.all([
-        leagueRes.json() as Promise<ApiResponse<League>>,
-        paymentsRes.json() as Promise<ApiResponse<Payment[]>>
-      ]);
-
-      return {
-        league: leagueData.data,
-        payments: paymentsData.data
-      };
     },
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
@@ -140,12 +147,21 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
+  // Pass validated data to FinancialSummary
+  const financialSummaryProps = {
+    bowler,
+    league: league!,
+    payments,
+    teamName: getBowlerTeamName(bowler),
+    leagueName: getBowlerFirstLeagueName(bowler),
+  };
+
   return (
     <div className="flex min-h-screen">
       {/* Desktop Navigation */}
       <aside className="hidden lg:block w-64 border-r px-4 py-6">
         <div className="mb-6">
-          <h2 className="text-lg font-semibold">{bowler?.name}</h2>
+          <h2 className="text-lg font-semibold">{bowler.name}</h2>
           <p className="text-sm text-muted-foreground">{getBowlerFirstLeagueName(bowler)}</p>
         </div>
         <Suspense fallback={<div>Loading navigation...</div>}>
@@ -163,7 +179,7 @@ export const BowlerDashboardPage: FC = () => {
           </SheetTrigger>
           <SheetContent side="left" className="w-64">
             <div className="mb-6">
-              <h2 className="text-lg font-semibold">{bowler?.name}</h2>
+              <h2 className="text-lg font-semibold">{bowler.name}</h2>
               <p className="text-sm text-muted-foreground">{getBowlerFirstLeagueName(bowler)}</p>
             </div>
             <Suspense fallback={<div>Loading navigation...</div>}>
@@ -178,17 +194,11 @@ export const BowlerDashboardPage: FC = () => {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>{bowler?.name}'s Dashboard</CardTitle>
+              <CardTitle>{bowler.name}'s Dashboard</CardTitle>
             </CardHeader>
             <CardContent>
               <Suspense fallback={<div>Loading financial summary...</div>}>
-                <FinancialSummary
-                  bowler={bowler}
-                  league={league}
-                  payments={payments}
-                  teamName={getBowlerTeamName(bowler)}
-                  leagueName={getBowlerFirstLeagueName(bowler)}
-                />
+                <FinancialSummary {...financialSummaryProps} />
               </Suspense>
             </CardContent>
           </Card>

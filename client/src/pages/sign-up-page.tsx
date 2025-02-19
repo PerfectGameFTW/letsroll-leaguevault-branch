@@ -183,6 +183,7 @@ const SignUpPage: FC = () => {
         toast({
           title: "Existing Bowler Found",
           description: "We've matched your information with an existing bowler profile.",
+          variant: "default",
         });
       }
 
@@ -213,12 +214,13 @@ const SignUpPage: FC = () => {
         toast({
           title: "Partial Registration Success",
           description: "Your account was created but some profile information may be incomplete. Please contact support.",
-          variant: "warning",
+          variant: "destructive",
         });
       } else {
         toast({
           title: "Sign up successful!",
           description: "Welcome to the bowling league management system.",
+          variant: "default",
         });
       }
 

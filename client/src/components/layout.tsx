@@ -1,10 +1,10 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard } from "lucide-react";
-import { useState, useEffect, Suspense } from "react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2 } from "lucide-react";
+import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import type { League } from "@shared/schema";
+import type { League, ApiResponse } from "@shared/schema";
 import { ErrorBoundary } from "react-error-boundary";
 import {
   NavigationMenu,
@@ -31,7 +31,7 @@ const setStoredValue = (key: string, value: any) => {
       localStorage.setItem(key, JSON.stringify(value));
     }
   } catch (error) {
-    console.warn('localStorage access error:', error);
+    console.warn('[Layout] localStorage access error:', error);
   }
 };
 
@@ -77,6 +77,42 @@ const navItems: NavItem[] = [
   }
 ];
 
+const LeagueLoadingFallback = () => (
+  <div className="w-[200px] p-4 flex items-center justify-center">
+    <Loader2 className="h-4 w-4 animate-spin" />
+  </div>
+);
+
+const LeaguesDropdownContent = () => {
+  const { data: leaguesResponse, isLoading } = useQuery<ApiResponse<League[]>>({
+    queryKey: ["/api/leagues"],
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  const leagues = leaguesResponse?.data || [];
+
+  if (isLoading) return <LeagueLoadingFallback />;
+
+  return (
+    <div className="w-[200px] p-2">
+      {leagues.map((league: League) => (
+        <Link key={league.id} href={`/leagues/${league.id}`}>
+          <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors">
+            {league.name}
+          </button>
+        </Link>
+      ))}
+      <div className="border-t mt-2 pt-2">
+        <Link href="/leagues">
+          <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors font-medium">
+            View All Leagues
+          </button>
+        </Link>
+      </div>
+    </div>
+  );
+};
+
 const SideNav = () => {
   const [location] = useLocation();
 
@@ -99,12 +135,9 @@ const SideNav = () => {
                     {item.label}
                   </NavigationMenuTrigger>
                   <NavigationMenuContent>
-                    <div className="w-[200px] p-2">
-                      {/* Render leagues dropdown */}
-                      {item.label === "Leagues" && (
-                        <LeaguesDropdownContent />
-                      )}
-                    </div>
+                    <Suspense fallback={<LeagueLoadingFallback />}>
+                      <LeaguesDropdownContent />
+                    </Suspense>
                   </NavigationMenuContent>
                 </NavigationMenuItem>
               </NavigationMenuList>
@@ -131,48 +164,56 @@ const SideNav = () => {
   );
 };
 
-const LeaguesDropdownContent = () => {
-  const { data: leaguesResponse } = useQuery<{ data: League[] }>({
-    queryKey: ["/api/leagues"],
-  });
-
-  const leagues = leaguesResponse?.data || [];
-
+const ErrorFallback = ({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) => {
   return (
-    <>
-      {leagues.map((league) => (
-        <Link key={league.id} href={`/leagues/${league.id}`}>
-          <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent">
-            {league.name}
-          </button>
-        </Link>
-      ))}
-      <div className="border-t mt-2 pt-2">
-        <Link href="/leagues">
-          <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent font-medium">
-            View All Leagues
-          </button>
-        </Link>
-      </div>
-    </>
+    <div className="p-4 rounded-md bg-destructive/10 text-destructive space-y-2">
+      <p className="font-medium">Something went wrong:</p>
+      <p className="text-sm">{error.message}</p>
+      <Button 
+        variant="outline" 
+        size="sm"
+        onClick={resetErrorBoundary}
+        className="mt-2"
+      >
+        Try again
+      </Button>
+    </div>
   );
 };
+
+const LoadingFallback = () => (
+  <div className="p-4 flex items-center justify-center">
+    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+  </div>
+);
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(() =>
     getStoredValue("sidebarCollapsed", false)
   );
 
+  const toggleSidebar = useCallback(() => {
+    setIsCollapsed((prev: boolean) => !prev);
+  }, []);
+
   useEffect(() => {
     setStoredValue("sidebarCollapsed", isCollapsed);
   }, [isCollapsed]);
+
+  const sidebarWidth = useMemo(() => 
+    isCollapsed ? "w-16" : "w-64"
+  , [isCollapsed]);
+
+  const mainContentPadding = useMemo(() =>
+    isCollapsed ? "pl-16" : "pl-64"
+  , [isCollapsed]);
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div
         className={cn(
           "fixed top-0 bottom-0 left-0 z-50 bg-white border-r transition-all duration-300",
-          isCollapsed ? "w-16" : "w-64"
+          sidebarWidth
         )}
       >
         <div className="flex flex-col h-full">
@@ -190,7 +231,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 variant="ghost"
                 size="sm"
                 className="p-0 w-8 h-8"
-                onClick={() => setIsCollapsed(!isCollapsed)}
+                onClick={toggleSidebar}
+                aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               >
                 {isCollapsed ? (
                   <ChevronRight className="h-4 w-4" />
@@ -199,8 +241,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 )}
               </Button>
             </div>
-            <ErrorBoundary FallbackComponent={ErrorFallback}>
-              <Suspense fallback={<div className="p-4">Loading...</div>}>
+            <ErrorBoundary 
+              FallbackComponent={ErrorFallback}
+              onReset={() => {
+                // Reset the error boundary state
+                window.location.reload();
+              }}
+            >
+              <Suspense fallback={<LoadingFallback />}>
                 <nav className="mt-8 flex-1 space-y-1 px-2">
                   <SideNav />
                 </nav>
@@ -210,10 +258,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </div>
 
-      <div className={cn("transition-all duration-300", isCollapsed ? "pl-16" : "pl-64")}>
+      <div className={cn("transition-all duration-300", mainContentPadding)}>
         <main className="py-6 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
-          <ErrorBoundary FallbackComponent={ErrorFallback}>
-            <Suspense fallback={<div>Loading...</div>}>
+          <ErrorBoundary 
+            FallbackComponent={ErrorFallback}
+            onReset={() => {
+              // Reset the error boundary state
+              window.location.reload();
+            }}
+          >
+            <Suspense fallback={<LoadingFallback />}>
               {children}
             </Suspense>
           </ErrorBoundary>
@@ -222,11 +276,3 @@ export function Layout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-
-const ErrorFallback = ({ error }: { error: Error }) => {
-  return (
-    <div className="p-4 text-sm text-red-500">
-      Error loading content: {error.message}
-    </div>
-  );
-};
