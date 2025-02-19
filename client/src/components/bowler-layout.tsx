@@ -128,7 +128,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
 
       {/* Main Content */}
       <main className="flex-1 px-4 py-6 lg:py-6">
-        <div className="max-w-7xl mx-auto pt-6 lg:pt-0">
+        <div className="max-w-7xl mx-auto mt-14 lg:mt-0">
           {children}
         </div>
       </main>
