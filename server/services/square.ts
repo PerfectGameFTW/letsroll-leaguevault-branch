@@ -1,5 +1,4 @@
-import { Square } from 'square';
-const { Client, Environment } = Square;
+import { Client, Environment } from 'square';
 
 // Initialize Square client with enhanced error handling and logging
 let squareClient: typeof Client | null = null;
