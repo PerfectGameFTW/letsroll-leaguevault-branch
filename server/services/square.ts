@@ -1,4 +1,4 @@
-import { Client, Environment } from 'square';
+import { ApiError, Client, Environment } from 'square';
 
 interface SquareCustomer {
   id: string;
