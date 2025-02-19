@@ -21,12 +21,14 @@ export default function TeamsPage() {
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
 
-  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ success: true; data: League }>({
+  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
+    enabled: !!leagueId
   });
+
   const league = leagueResponse?.data;
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true; data: Team[] }>({
+  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams", leagueId],
     queryFn: async () => {
       const response = await fetch(`/api/teams?leagueId=${leagueId}`);
@@ -34,11 +36,11 @@ export default function TeamsPage() {
         throw new Error('Failed to fetch teams');
       }
       return response.json();
-    }
+    },
+    enabled: !!leagueId
   });
 
   const teams = teamsResponse?.data || [];
-  // Ensure we sort by team number, handling undefined/null cases
   const sortedTeams = teams
     .slice()
     .sort((a, b) => {
@@ -69,15 +71,15 @@ export default function TeamsPage() {
     <Layout>
       <div className="space-y-4">
         <Link
-          href={`/leagues/${leagueId}`}
+          href="/leagues"
           className="text-muted-foreground hover:text-foreground flex items-center mb-4"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to League Dashboard
+          Back to Leagues
         </Link>
 
         <div className="space-y-4 mb-6">
-          <h1 className="text-2xl font-bold">{league?.name}</h1>
+          <h1 className="text-2xl font-bold">{league.name}</h1>
           <Button onClick={() => setShowForm(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Add Team

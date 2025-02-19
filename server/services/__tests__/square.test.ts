@@ -7,44 +7,46 @@ import {
   processPayment
 } from '../square';
 
-// Keep interfaces for documentation purposes
-interface CustomerResponse {
+// Define response types for type checking
+type ApiResponse<T> = { result: T };
+
+type CustomerResponse = ApiResponse<{
   customer: {
     id: string;
   };
-}
+}>;
 
-interface SearchCustomersResponse {
-  customers: Array<{ id: string }>;
-}
+type SearchCustomersResponse = ApiResponse<{
+  customers: Array<{ id: string; }>;
+}>;
 
-interface CustomerGroupResponse {
+type CustomerGroupResponse = ApiResponse<{
   group: {
     id: string;
     name?: string;
   };
-}
+}>;
 
-interface CustomerGroupsResponse {
+type CustomerGroupsResponse = ApiResponse<{
   groups: Array<{
     id: string;
     name: string;
   }>;
-}
+}>;
 
-interface LoyaltyProgramResponse {
+type LoyaltyProgramResponse = ApiResponse<{
   programs: Array<{
     id: string;
   }>;
-}
+}>;
 
-interface LoyaltyAccountResponse {
+type LoyaltyAccountResponse = ApiResponse<{
   loyaltyAccount: {
     id: string;
   };
-}
+}>;
 
-interface PaymentResponse {
+type PaymentResponse = ApiResponse<{
   payment: {
     id: string;
     status: string;
@@ -55,9 +57,9 @@ interface PaymentResponse {
       };
     };
   };
-}
+}>;
 
-// Create a mock client factory
+// Create mock client factory with explicit return types
 const createMockClient = () => ({
   customersApi: {
     searchCustomers: jest.fn(),
@@ -79,11 +81,11 @@ const createMockClient = () => ({
   }
 });
 
-// Mock the Square SDK
+// Mock Square SDK
 jest.mock('square', () => ({
   __esModule: true,
   Square: {
-    Client: jest.fn().mockImplementation(createMockClient)
+    Client: jest.fn().mockImplementation(() => createMockClient())
   }
 }));
 
@@ -106,17 +108,19 @@ describe('Square Service', () => {
 
   describe('createOrUpdateCustomer', () => {
     it('should create a new customer when one does not exist', async () => {
-      mockClient.customersApi.searchCustomers.mockResolvedValue({
+      const searchResponse: SearchCustomersResponse = {
         result: { customers: [] }
-      } as any);
-
-      mockClient.customersApi.createCustomer.mockResolvedValue({
+      };
+      const createResponse: CustomerResponse = {
         result: {
           customer: {
             id: 'test-customer-id'
           }
         }
-      } as any);
+      };
+
+      mockClient.customersApi.searchCustomers.mockResolvedValue(searchResponse);
+      mockClient.customersApi.createCustomer.mockResolvedValue(createResponse);
 
       const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
 
@@ -128,13 +132,15 @@ describe('Square Service', () => {
     });
 
     it('should update an existing customer', async () => {
-      mockClient.customersApi.searchCustomers.mockResolvedValue({
+      const searchResponse: SearchCustomersResponse = {
         result: {
           customers: [{
             id: 'existing-customer-id'
           }]
         }
-      } as any);
+      };
+
+      mockClient.customersApi.searchCustomers.mockResolvedValue(searchResponse);
 
       const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
 
@@ -147,14 +153,16 @@ describe('Square Service', () => {
 
   describe('addCustomerToLeagueGroup', () => {
     it('should add customer to existing group', async () => {
-      mockClient.customerGroupsApi.listCustomerGroups.mockResolvedValue({
+      const groupsResponse: CustomerGroupsResponse = {
         result: {
           groups: [{
             id: 'existing-group-id',
             name: 'Test League'
           }]
         }
-      } as any);
+      };
+
+      mockClient.customerGroupsApi.listCustomerGroups.mockResolvedValue(groupsResponse);
 
       const result = await addCustomerToLeagueGroup('customer-id', 'Test League');
 
@@ -168,7 +176,7 @@ describe('Square Service', () => {
     it('should create new group if it does not exist', async () => {
       mockClient.customerGroupsApi.listCustomerGroups.mockResolvedValue({
         result: { groups: [] }
-      } as any);
+      } as CustomerGroupsResponse);
 
       mockClient.customerGroupsApi.createCustomerGroup.mockResolvedValue({
         result: {
@@ -176,7 +184,7 @@ describe('Square Service', () => {
             id: 'new-group-id'
           }
         }
-      } as any);
+      } as CustomerGroupResponse);
 
       const result = await addCustomerToLeagueGroup('customer-id', 'New League');
 
@@ -192,11 +200,11 @@ describe('Square Service', () => {
             id: 'loyalty-program-id'
           }]
         }
-      } as any);
+      } as LoyaltyProgramResponse);
 
       mockClient.loyaltyApi.searchLoyaltyAccounts.mockResolvedValue({
         result: { loyaltyAccounts: [] }
-      } as any);
+      } as ApiResponse<{ loyaltyAccounts: any[] }>);
 
       mockClient.loyaltyApi.createLoyaltyAccount.mockResolvedValue({
         result: {
@@ -204,7 +212,7 @@ describe('Square Service', () => {
             id: 'loyalty-account-id'
           }
         }
-      } as any);
+      } as LoyaltyAccountResponse);
 
       const result = await enrollInLoyalty('customer-id');
 
@@ -227,7 +235,7 @@ describe('Square Service', () => {
             }
           }
         }
-      } as any);
+      } as PaymentResponse);
 
       const result = await processPayment('source-id', 1000, 'location-id');
 
@@ -251,7 +259,7 @@ describe('Square Service', () => {
 
     it('should handle API errors', async () => {
       mockClient.customersApi.searchCustomers.mockRejectedValue(
-        new Error('API Error') as any
+        new Error('API Error')
       );
 
       await expect(
