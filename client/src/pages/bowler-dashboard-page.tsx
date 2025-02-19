@@ -1,14 +1,14 @@
 import { FC, Suspense } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useBowlers } from "@/hooks/use-bowlers";
 import { useQuery } from "@tanstack/react-query";
-import type { User } from "@shared/schema";
+import type { User, Payment } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, AlertCircle, ArrowRight } from "lucide-react";
+import { Loader2, AlertCircle, ArrowRight, CreditCard, Calendar } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { BowlerLayout } from "@/components/bowler-layout";
-import { startOfToday, differenceInWeeks } from "date-fns";
+import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -19,8 +19,8 @@ interface ApiResponse<T> {
   };
 }
 
-interface Payment {
-  status: string;
+interface UpcomingPayment {
+  dueDate: Date;
   amount: number;
 }
 
@@ -93,6 +93,7 @@ export const BowlerDashboardPage: FC = () => {
     .reduce((sum: number, p: Payment) => sum + p.amount, 0);
 
   let amountPastDue = 0;
+  let upcomingPayments: UpcomingPayment[] = [];
 
   if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
     const seasonStart = new Date(league.seasonStart);
@@ -105,6 +106,20 @@ export const BowlerDashboardPage: FC = () => {
 
     const totalSeasonDues = league.weeklyFee * weeksDue;
     amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
+
+    // Calculate upcoming payments for the next 4 weeks
+    if (bowler?.squareCustomerId) {
+      const nextPaymentDate = addWeeks(today, 1);
+      for (let i = 0; i < 4; i++) {
+        const paymentDate = addWeeks(nextPaymentDate, i);
+        if (paymentDate <= seasonEnd) {
+          upcomingPayments.push({
+            dueDate: paymentDate,
+            amount: league.weeklyFee
+          });
+        }
+      }
+    }
   }
 
   if (isUserLoading || isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
@@ -171,42 +186,100 @@ export const BowlerDashboardPage: FC = () => {
 
         {/* Payment Status Card */}
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle>Payment Status</CardTitle>
-            <CardDescription>Current payment information for {league?.name}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <h3 className="text-lg font-semibold">Payment Setup</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {bowler?.squareCustomerId
-                      ? "Your payment method is configured"
-                      : "Set up your payment method to enable automatic payments"}
-                  </p>
+              {!bowler?.squareCustomerId ? (
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <CreditCard className="h-5 w-5" />
+                    <p>Set up your payment method to enable automatic payments</p>
+                  </div>
+                  <div className="rounded-md bg-secondary/50 p-4">
+                    <h3 className="font-semibold mb-2">Why set up automatic payments?</h3>
+                    <ul className="space-y-2 text-sm text-muted-foreground">
+                      <li>• Never miss a payment deadline</li>
+                      <li>• Choose flexible payment schedules</li>
+                      <li>• Secure and hassle-free transactions</li>
+                      <li>• Special discounts for full season payments</li>
+                    </ul>
+                  </div>
+                  <Link href={`/bowlers/${bowler.id}/payment-setup`}>
+                    <Button className="w-full">
+                      Set Up Payments Now
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </Link>
                 </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <h3 className="text-lg font-semibold">Payment Method</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Your automatic payments are configured
+                      </p>
+                    </div>
+                    <Link href={`/bowlers/${bowler.id}/payment-setup`}>
+                      <Button variant="outline">
+                        Update Payment Settings
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </div>
 
-                <Link href={`/bowlers/${bowler.id}/payment-setup`}>
-                  <Button>
-                    {bowler?.squareCustomerId ? "Update Payment Method" : "Set Up Payments"}
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
+                  {/* Upcoming Payments Section */}
+                  {upcomingPayments.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-lg font-semibold">Upcoming Payments</h3>
+                      <div className="space-y-2">
+                        {upcomingPayments.map((payment, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Calendar className="h-5 w-5 text-muted-foreground" />
+                              <div>
+                                <p className="font-medium">
+                                  {format(payment.dueDate, 'MMMM d, yyyy')}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  Automatic payment scheduled
+                                </p>
+                              </div>
+                            </div>
+                            <p className="font-semibold">
+                              ${(payment.amount / 100).toFixed(2)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                      <Link href="/payment-history">
+                        <Button variant="link" className="p-0">
+                          View full payment history
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
 
-              {amountPastDue > 0 && (
-                <div className="rounded-md bg-destructive/10 p-4">
-                  <div className="flex items-start">
-                    <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
-                    <div className="ml-3">
-                      <h3 className="text-sm font-medium text-destructive">Payment Past Due</h3>
-                      <div className="mt-1 text-sm text-destructive">
-                        <p>You have an outstanding balance of ${(amountPastDue / 100).toFixed(2)}.</p>
-                        <p className="mt-2">Please make a payment to maintain your active status in the league.</p>
+                  {amountPastDue > 0 && (
+                    <div className="rounded-md bg-destructive/10 p-4">
+                      <div className="flex items-start">
+                        <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+                        <div className="ml-3">
+                          <h3 className="text-sm font-medium text-destructive">Payment Past Due</h3>
+                          <div className="mt-1 text-sm text-destructive">
+                            <p>You have an outstanding balance of ${(amountPastDue / 100).toFixed(2)}.</p>
+                            <p className="mt-2">Please make a payment to maintain your active status in the league.</p>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
