@@ -2,32 +2,17 @@ import { FC, Suspense, lazy } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useBowlers } from "@/hooks/use-bowlers";
 import { useQuery } from "@tanstack/react-query";
-import type { User, League, Payment } from "@shared/schema";
+import type { User } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Loader2,
-  Trophy,
-  CreditCard,
-  LayoutDashboard,
-  Medal,
-  History,
-  UserCircle,
-  ChevronRight,
-  Menu,
-  AlertCircle,
-  ArrowRight
-} from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Loader2, Menu, AlertCircle, ArrowRight } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
-import { differenceInWeeks, startOfToday, isValid } from "date-fns";
-import { Badge } from "@/components/ui/badge";
+import { startOfToday, differenceInWeeks } from "date-fns";
 
-// Lazy load components that aren't immediately visible
+// Lazy load components
 const SideNav = lazy(() => import("@/components/bowler-dashboard/side-nav"));
-const FinancialSummary = lazy(() => import("@/components/bowler-dashboard/financial-summary"));
 
 interface ApiResponse<T> {
   success: boolean;
@@ -40,14 +25,12 @@ interface ApiResponse<T> {
 
 export const BowlerDashboardPage: FC = () => {
   const { toast } = useToast();
-  const [location] = useLocation();
   const [open, setOpen] = useState(false);
 
-  // Enhanced user data query with proper caching
   const { data: currentUserResponse, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
-    gcTime: 1000 * 60 * 30, // Keep in cache for 30 minutes
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 30,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
@@ -67,7 +50,7 @@ export const BowlerDashboardPage: FC = () => {
   const bowler = currentUser?.bowlerId ? bowlers.find(b => b.id === currentUser.bowlerId) : null;
   const leagueId = bowler ? getBowlerLeagueId(bowler) : null;
 
-  // Combine league and payments queries to reduce waterfall
+  // Get league and payment data for status checks
   const { data: combinedData, isLoading: isCombinedLoading } = useQuery({
     queryKey: [`/api/dashboard-data`, leagueId],
     enabled: !!leagueId,
@@ -85,8 +68,8 @@ export const BowlerDashboardPage: FC = () => {
         }
 
         const [leagueData, paymentsData] = await Promise.all([
-          leagueRes.json() as Promise<ApiResponse<League>>,
-          paymentsRes.json() as Promise<ApiResponse<Payment[]>>
+          leagueRes.json(),
+          paymentsRes.json()
         ]);
 
         return {
@@ -98,17 +81,17 @@ export const BowlerDashboardPage: FC = () => {
         throw error;
       }
     },
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 
   const league = combinedData?.league;
   const payments = combinedData?.payments || [];
 
-  // Calculate payment summary
-  const totalPaidPayments = payments.filter(p => p.status === 'paid');
-  const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
-  let weeksDue = 0;
-  let totalSeasonDues = 0;
+  // Calculate only what's needed for payment status
+  const totalPaidAmount = payments
+    .filter(p => p.status === 'paid')
+    .reduce((sum, p) => sum + p.amount, 0);
+
   let amountPastDue = 0;
 
   if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
@@ -116,19 +99,14 @@ export const BowlerDashboardPage: FC = () => {
     const seasonEnd = new Date(league.seasonEnd);
     const today = startOfToday();
 
-    if (today < seasonStart) {
-      weeksDue = 0;
-    } else if (today > seasonEnd) {
-      weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
-    } else {
-      weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
-    }
+    const weeksDue = today < seasonStart ? 0 :
+                    today > seasonEnd ? Math.max(0, differenceInWeeks(seasonEnd, seasonStart)) :
+                    Math.max(0, differenceInWeeks(today, seasonStart));
 
-    totalSeasonDues = league.weeklyFee * weeksDue;
+    const totalSeasonDues = league.weeklyFee * weeksDue;
     amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
   }
 
-  // Show loading state
   if (isUserLoading || isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -137,7 +115,6 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-  // Show authentication required state
   if (!currentUser) {
     return (
       <Card className="mx-auto max-w-md mt-8">
@@ -157,7 +134,6 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-  // Show profile setup required state
   if (!bowler) {
     return (
       <Card className="mx-auto max-w-md mt-8">
@@ -173,15 +149,6 @@ export const BowlerDashboardPage: FC = () => {
       </Card>
     );
   }
-
-  // Pass validated data to FinancialSummary
-  const financialSummaryProps = {
-    bowler,
-    league: league!,
-    payments,
-    teamName: getBowlerTeamName(bowler),
-    leagueName: getBowlerFirstLeagueName(bowler),
-  };
 
   return (
     <div className="flex min-h-screen">
@@ -219,17 +186,29 @@ export const BowlerDashboardPage: FC = () => {
       {/* Main Content */}
       <main className="flex-1 px-4 py-6">
         <div className="space-y-6">
+          {/* Dashboard Overview Card */}
           <Card>
             <CardHeader>
               <CardTitle>{bowler.name}'s Dashboard</CardTitle>
+              <CardDescription>League and team information</CardDescription>
             </CardHeader>
             <CardContent>
-              <Suspense fallback={<div>Loading financial summary...</div>}>
-                <FinancialSummary {...financialSummaryProps} />
-              </Suspense>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">League</h3>
+                    <p className="mt-1 text-lg">{getBowlerFirstLeagueName(bowler)}</p>
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-medium text-muted-foreground">Team</h3>
+                    <p className="mt-1 text-lg">{getBowlerTeamName(bowler)}</p>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
+          {/* Payment Status Card */}
           <Card>
             <CardHeader>
               <CardTitle>Payment Status</CardTitle>
@@ -237,38 +216,6 @@ export const BowlerDashboardPage: FC = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Weekly Fee</CardTitle>
-                      <CardDescription>Regular payment amount</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-2xl font-bold">${((league?.weeklyFee || 0) / 100).toFixed(2)}</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Amount Paid</CardTitle>
-                      <CardDescription>Total payments received</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-2xl font-bold">${(totalPaidAmount / 100).toFixed(2)}</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Past Due Amount</CardTitle>
-                      <CardDescription>Outstanding balance</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
                     <h3 className="text-lg font-semibold">Payment Setup</h3>

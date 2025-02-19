@@ -68,7 +68,10 @@ export default function PaymentHistoryPage() {
 
   let weeksDue = 0;
   let totalSeasonDues = 0;
+  let totalWeeksInSeason = 0;
+  let fullSeasonAmount = 0;
   let amountPastDue = 0;
+  let remainingBalance = 0;
 
   if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
     const seasonStart = new Date(league.seasonStart);
@@ -84,12 +87,15 @@ export default function PaymentHistoryPage() {
     }
 
     totalSeasonDues = league.weeklyFee * weeksDue;
+    totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
+    fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
     amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
+    remainingBalance = fullSeasonAmount - totalPaidAmount;
   }
 
   if (loadingLeague || loadingPayments) {
     return (
-      <BowlerLayout bowlerName={bowlerName || 'Loading...'} leagueName={league?.name || 'Loading...'}>
+      <BowlerLayout bowlerName={bowlerName} leagueName={league?.name || 'Loading...'}>
         <div className="flex items-center justify-center h-[50vh]">
           <Loader2 className="h-8 w-8 animate-spin" />
         </div>
@@ -99,14 +105,14 @@ export default function PaymentHistoryPage() {
 
   if (!league) {
     return (
-      <BowlerLayout bowlerName={bowlerName || 'Not Found'}>
+      <BowlerLayout bowlerName={bowlerName} leagueName="League not found">
         <div className="text-center">League not found</div>
       </BowlerLayout>
     );
   }
 
   return (
-    <BowlerLayout bowlerName={bowlerName || 'Not Found'} leagueName={league.name || 'Unknown League'}>
+    <BowlerLayout bowlerName={bowlerName} leagueName={league.name}>
       <div className="space-y-6">
         <Link
           href="/bowler-dashboard"
@@ -119,17 +125,29 @@ export default function PaymentHistoryPage() {
         <div>
           <h1 className="text-2xl font-bold mb-2">Payment History</h1>
           <p className="text-muted-foreground mb-6">
-            Track your payments and balance for {league.name || "Unknown League"}
+            Track your payments and balance for {league.name}
           </p>
         </div>
 
-        {/* Payment Summary Cards */}
-        <div className="grid gap-4 md:grid-cols-3">
+        {/* Six detailed payment cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Total Amount Due</CardTitle>
+              <CardTitle className="text-lg">Weekly Fee</CardTitle>
+              <CardDescription>Regular payment amount</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">${((league?.weeklyFee || 0) / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Amount Due to Date</CardTitle>
               <CardDescription>
-                {weeksDue} week{weeksDue === 1 ? "" : "s"} at ${(league.weeklyFee / 100).toFixed(2)}
+                {weeksDue} week{weeksDue === 1 ? "" : "s"} at ${(
+                  (league?.weeklyFee || 0) / 100
+                ).toFixed(2)}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -139,8 +157,8 @@ export default function PaymentHistoryPage() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Amount Paid</CardTitle>
-              <CardDescription>Total payments received</CardDescription>
+              <CardTitle className="text-lg">Amount Paid to Date</CardTitle>
+              <CardDescription>All payments received</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">${(totalPaidAmount / 100).toFixed(2)}</p>
@@ -149,13 +167,35 @@ export default function PaymentHistoryPage() {
 
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Past Due Amount</CardTitle>
-              <CardDescription>Outstanding balance</CardDescription>
+              <CardTitle className="text-lg">Amount Past Due to Date</CardTitle>
+              <CardDescription>Unpaid fees for weeks passed</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-destructive">
-                ${(amountPastDue / 100).toFixed(2)}
-              </p>
+              <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Full Season Lineage Amount Due</CardTitle>
+              <CardDescription>
+                {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at ${(
+                  (league?.weeklyFee || 0) / 100
+                ).toFixed(2)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-orange-600">${(fullSeasonAmount / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Full Season Remaining Balance</CardTitle>
+              <CardDescription>Amount left to pay</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-orange-600">${(remainingBalance / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
         </div>
