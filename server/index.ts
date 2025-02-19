@@ -218,7 +218,7 @@ const cleanupPortStatus = async () => {
     await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
 
     // Force kill any existing process on port 5000
-    const command = process.platform === 'win32' 
+    const command = process.platform === 'win32'
       ? `FOR /F "tokens=5" %P IN ('netstat -a -n -o ^| find ":5000" ^| find "LISTENING"') DO TaskKill /PID %P /F /T`
       : `lsof -ti:5000 | xargs -r kill -9`;
 
@@ -527,12 +527,12 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// API-specific middleware
+// API-specific middleware - Moved before route registration
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -540,12 +540,61 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Register API routes
+// Register API routes - Moved after CORS middleware
 console.log('[Server] Registering API routes...');
 registerRoutes(app);
 
+// Global error handler - Moved to the end
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('[Error]', err);
+  if (!res.headersSent) {
+    res.status(err.status || 500).json({
+      success: false,
+      error: {
+        message: err.message || "Internal Server Error",
+        code: err.code,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+  next(err);
+});
+
 // Development mode setup with better error handling
 if (process.env.NODE_ENV !== "production") {
+  // API-specific middleware
+  app.use('/api', (req, res, next) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
+  // Register API routes first
+  console.log('[Server] Registering API routes...');
+  registerRoutes(app);
+
+  // Global API error handler
+  app.use('/api', (err: any, req: Request, res: Response, next: NextFunction) => {
+    console.error('[API Error]', err);
+    if (!res.headersSent) {
+      res.status(err.status || 500).json({
+        success: false,
+        error: {
+          message: err.message || "Internal Server Error",
+          code: err.code || 'INTERNAL_ERROR',
+          timestamp: new Date().toISOString()
+        }
+      });
+    }
+  });
+
+  // Then set up Vite middleware
   console.log('[Server] Setting up Vite middleware for development...');
   setupVite(app, server)
     .then(() => {
@@ -565,7 +614,7 @@ if (process.env.NODE_ENV !== "production") {
       process.exit(1);
     });
 } else {
-  // Production mode setup
+  // Production mode setup remains unchanged
   app.use(express.static(path.join(process.cwd(), 'dist/public')));
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
@@ -575,22 +624,6 @@ if (process.env.NODE_ENV !== "production") {
   });
   startServer();
 }
-
-// Global error handler
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error('[Error]', err);
-  if (!res.headersSent) {
-    res.status(err.status || 500).json({
-      success: false,
-      error: {
-        message: err.message || "Internal Server Error",
-        code: err.code,
-        timestamp: new Date().toISOString()
-      }
-    });
-  }
-  next(err);
-});
 
 // Add cleanup handler with timeout
 let shutdownTimeoutId: NodeJS.Timeout | undefined;
