@@ -1,4 +1,4 @@
-import type { Client } from 'square';
+import { Client, Environment } from 'square';
 
 interface SquareCustomer {
   id: string;
@@ -6,19 +6,23 @@ interface SquareCustomer {
   email: string;
 }
 
-// Initialize Square client using dynamic import
-let squareClient: any = null;
+// Initialize Square client with enhanced error handling
+let squareClient: Client | null = null;
 
 async function initializeSquareClient() {
   if (!squareClient && process.env.SQUARE_ACCESS_TOKEN) {
     try {
-      const Square = await import('square');
-      squareClient = new Square.Client({
+      console.log('[Square Service] Initializing Square client...');
+      squareClient = new Client({
         accessToken: process.env.SQUARE_ACCESS_TOKEN,
-        environment: 'sandbox'
+        environment: Environment.Sandbox,
+        userAgentDetail: 'bowling-league-app',
+        timeout: 30000,
       });
+      console.log('[Square Service] Square client initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize Square client:', error);
+      console.error('[Square Service] Failed to initialize Square client:', error);
+      throw error;
     }
   }
   return squareClient;
