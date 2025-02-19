@@ -27,16 +27,16 @@ export async function initializeSquare() {
 
         if (!appId || !locationId) {
           console.error('[Square] Missing credentials:', { appId: !!appId, locationId: !!locationId });
-          throw new Error("Square credentials are not configured properly");
+          throw new Error("Square credentials are not properly configured. Please check your environment variables.");
         }
 
         try {
-          console.log('[Square] Initializing payments...');
+          console.log('[Square] Initializing payments with app ID and location...');
           payments = await window.Square.payments(appId, locationId);
           console.log('[Square] Payments initialized successfully');
         } catch (error) {
           console.error('[Square] Failed to initialize payments:', error);
-          throw new Error("Failed to initialize Square payments");
+          throw new Error("Failed to initialize Square payments. Please ensure your credentials are correct.");
         }
       }
 
@@ -45,18 +45,19 @@ export async function initializeSquare() {
 
     return initializationPromise;
   } catch (error) {
-    console.error('[Square] Error initializing Square:', error);
+    console.error('[Square] Error in Square initialization:', error);
     initializationPromise = null;
-    throw error;
+    throw error instanceof Error ? error : new Error('Failed to initialize Square payments');
   }
 }
 
 export async function createPayment(amount: number, cardInstance: any) {
   try {
     if (!cardInstance) {
-      throw new Error("Card form not initialized");
+      throw new Error("Card form not initialized. Please refresh and try again.");
     }
 
+    console.log('[Square] Starting payment process...');
     console.log('[Square] Tokenizing card...');
     const result = await cardInstance.tokenize();
 
@@ -65,9 +66,10 @@ export async function createPayment(amount: number, cardInstance: any) {
 
       const locationId = import.meta.env.VITE_SQUARE_LOCATION_ID;
       if (!locationId) {
-        throw new Error("Square location ID not configured");
+        throw new Error("Square location ID is not configured");
       }
 
+      console.log('[Square] Sending payment request to server...');
       const response = await fetch('/api/square/payments', {
         method: 'POST',
         headers: {
@@ -86,11 +88,10 @@ export async function createPayment(amount: number, cardInstance: any) {
           const errorData = await response.json();
           errorMessage = errorData?.error?.message || errorMessage;
         } catch (e) {
-          // If response is not JSON, try to get text
           try {
             const errorText = await response.text();
             console.error('[Square] Non-JSON error response:', errorText);
-            errorMessage = errorText; // Use text as error message if JSON parsing fails
+            errorMessage = errorText || 'Unable to process payment. Please try again.';
           } catch (textError) {
             console.error('[Square] Failed to read error response');
           }
@@ -99,18 +100,15 @@ export async function createPayment(amount: number, cardInstance: any) {
       }
 
       const payment = await response.json();
-      console.log('[Square] Payment processed:', payment);
+      console.log('[Square] Payment processed successfully:', payment);
       return payment.data;
     } else {
       console.error('[Square] Card tokenization failed:', result);
-      throw new Error(result.errors?.[0]?.message || "Failed to process card information");
+      throw new Error(result.errors?.[0]?.message || "Failed to process card information. Please check your card details and try again.");
     }
   } catch (error) {
-    console.error('[Square] Error processing payment:', error);
-    if (error instanceof Error) {
-      throw error;
-    }
-    throw new Error('An unexpected error occurred while processing payment');
+    console.error('[Square] Payment processing error:', error);
+    throw error instanceof Error ? error : new Error('An unexpected error occurred while processing your payment');
   }
 }
 

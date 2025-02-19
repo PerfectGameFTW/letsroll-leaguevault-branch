@@ -38,10 +38,10 @@ router.post('/payments', async (req, res) => {
     console.error('[Square Route] Payment processing error:', error);
 
     if (error instanceof z.ZodError) {
-      sendError(res, 'Invalid payment data provided', 400, 'VALIDATION_ERROR');
+      sendError(res, 'Invalid payment data provided', 400, "VALIDATION_ERROR");
     } else {
       const errorMessage = error instanceof Error ? error.message : 'Failed to process payment';
-      const statusCode = error.statusCode || 500;
+      const statusCode = (error as { statusCode?: number })?.statusCode || 500;
       sendError(res, errorMessage, statusCode);
     }
   }
