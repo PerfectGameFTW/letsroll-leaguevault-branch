@@ -1,7 +1,6 @@
-import { FC, ReactNode, useState } from "react";
+import { FC, ReactNode } from "react";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu, LayoutDashboard, History, Trophy, Medal, UserCircle, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -54,16 +53,16 @@ const SideNav = () => {
         const isActive = location === item.href;
         return (
           <Link key={item.href} href={item.href}>
-            <a
+            <button
               className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
                 isActive && "bg-accent"
               )}
             >
               <item.icon className="h-4 w-4" />
               {item.label}
               {isActive && <ChevronRight className="ml-auto h-4 w-4" />}
-            </a>
+            </button>
           </Link>
         );
       })}
@@ -72,7 +71,7 @@ const SideNav = () => {
 };
 
 export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leagueName }) => {
-  const [open, setOpen] = useState(false);
+  const [location] = useLocation();
 
   return (
     <div className="flex min-h-screen">
@@ -86,26 +85,38 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
       </aside>
 
       {/* Mobile Navigation */}
-      <div className="lg:hidden fixed top-4 left-4 z-50">
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger asChild>
-            <Button variant="outline" size="icon">
-              <Menu className="h-4 w-4" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-64">
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold">{bowlerName}</h2>
-              <p className="text-sm text-muted-foreground">{leagueName}</p>
-            </div>
-            <SideNav />
-          </SheetContent>
-        </Sheet>
+      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t">
+        <nav className="flex justify-around items-center h-16">
+          {navItems.map((item) => {
+            const isActive = location === item.href;
+            return (
+              <Link key={item.href} href={item.href}>
+                <div
+                  role="button"
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 p-2 transition-colors duration-200",
+                    isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <item.icon className="h-5 w-5" />
+                  <span className="text-xs font-medium">{item.label}</span>
+                </div>
+              </Link>
+            );
+          })}
+        </nav>
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 px-4 py-6">
-        {children}
+      <main className="flex-1 px-4 py-6 lg:py-6 pb-20 lg:pb-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="lg:hidden mb-6">
+            <h2 className="text-lg font-semibold">{bowlerName}</h2>
+            <p className="text-sm text-muted-foreground">{leagueName}</p>
+          </div>
+          {children}
+        </div>
       </main>
     </div>
   );
