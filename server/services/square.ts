@@ -93,15 +93,30 @@ export async function processPayment(sourceId: string, amount: number, locationI
       }
     };
   } catch (error) {
-    console.error('[Square Service] Payment processing error:', error);
+    console.error('[Square Service] Payment processing error:', JSON.stringify(error, null, 2));
+    
     if (error instanceof Error) {
       throw error;
     } else if (typeof error === 'object' && error !== null) {
-      // Handle Square API errors which may come as objects
-      const errorMessage = (error as any).message || (error as any).details?.[0]?.message;
-      throw new Error(errorMessage || 'Failed to process payment with Square');
+      const squareError = error as any;
+      // Handle various Square error formats
+      const errorMessage = 
+        squareError.message || 
+        squareError.details?.[0]?.message ||
+        squareError.errors?.[0]?.detail ||
+        squareError.errors?.[0]?.message;
+      
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+      
+      // If we have a status code but no message
+      if (squareError.statusCode) {
+        throw new Error(`Square API error (${squareError.statusCode})`);
+      }
     }
-    throw new Error('An unexpected error occurred while processing payment');
+    
+    throw new Error('Payment processing failed - please try again');
   }
 }
 
