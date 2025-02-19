@@ -1,5 +1,5 @@
-import { Client, Environment } from 'square';
-import type { ApiError } from 'square';
+import { Square } from 'square';
+import type { ApiError } from 'square/dist/types';
 
 interface SquareCustomer {
   id: string;
@@ -10,7 +10,7 @@ interface SquareCustomer {
 // Initialize Square client
 let squareClient: Client | null = null;
 
-function initializeSquareClient(): Client {
+function initializeSquareClient(): Square {
   try {
     if (!process.env.SQUARE_ACCESS_TOKEN) {
       console.log('[Square] Using development mode with sandbox credentials');
@@ -22,7 +22,7 @@ function initializeSquareClient(): Client {
     }
 
     if (!squareClient) {
-      squareClient = new Client({
+      squareClient = new Square({
         accessToken: process.env.SQUARE_ACCESS_TOKEN,
         environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
       });
