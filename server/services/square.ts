@@ -1,9 +1,9 @@
-import { Client, Environment } from '@square/sdk';
+import { default as Square } from 'square';
 
-// Initialize Square client
-let squareClient: Client | null = null;
+// Initialize Square client with enhanced error handling and logging
+let squareClient: Square.Client | null = null;
 
-async function initializeSquareClient(): Promise<Client> {
+async function initializeSquareClient(): Promise<Square.Client> {
   try {
     // Return existing client if already initialized
     if (squareClient) {
@@ -18,9 +18,9 @@ async function initializeSquareClient(): Promise<Client> {
     }
 
     console.log('[Square Service] Initializing Square client...');
-    squareClient = new Client({
+    squareClient = new Square.Client({
       accessToken,
-      environment: Environment.Sandbox, // Use sandbox for testing
+      environment: Square.Environment.Sandbox, // Use sandbox for testing
       userAgentDetail: 'bowling-league-app', // Add custom user agent for tracking
       timeout: 30000, // 30 second timeout
     });
