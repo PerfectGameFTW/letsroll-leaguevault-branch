@@ -15,7 +15,7 @@ function initializeSquareClient(): Square {
   try {
     if (!process.env.SQUARE_ACCESS_TOKEN) {
       console.log('[Square] Using development mode with sandbox credentials');
-      return new Square({
+      return new Square.Client({
         accessToken: 'sandbox-token',
         environment: 'sandbox'
       });
