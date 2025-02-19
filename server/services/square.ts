@@ -1,6 +1,7 @@
-const { Client } = require('square');
-import type { ApiError } from 'square';
-import type { Environment } from 'square';
+import { Square } from 'square';
+const Client = Square.Client;
+const Environment = Square.Environment;
+type ApiError = Square.ApiError;
 
 interface SquareCustomer {
   id: string;
