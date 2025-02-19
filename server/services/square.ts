@@ -1,8 +1,9 @@
-import { ApiError, Client, Environment } from 'square';
+import type { Client, Environment } from 'square';
+import Square from 'square';
 
 let squareClient: Client | null = null;
 if (process.env.SQUARE_ACCESS_TOKEN) {
-  squareClient = new Client({
+  squareClient = new Square.Client({
     accessToken: process.env.SQUARE_ACCESS_TOKEN,
     environment: 'sandbox' as Environment,
   });
@@ -18,7 +19,6 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
   if (!squareClient) return null;
 
   try {
-    // Search for existing customer by email
     const searchResponse = await squareClient.customersApi.searchCustomers({
       query: {
         filter: {
@@ -31,7 +31,6 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
 
     let customerId: string;
 
-    // If customer exists, update their details
     if (searchResponse.result.customers?.[0]?.id) {
       customerId = searchResponse.result.customers[0].id;
       await squareClient.customersApi.updateCustomer(customerId, {
@@ -40,7 +39,6 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
         emailAddress: email.toLowerCase(),
       });
     } else {
-      // Create new customer if none exists
       const customerResponse = await squareClient.customersApi.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
         givenName: name.split(' ')[0],
@@ -72,9 +70,7 @@ export async function addCustomerToLeagueGroup(customerId: string, leagueName: s
   try {
     // First try to find if the league group already exists
     const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
-    const existingGroup = groupsResponse.result.groups?.find(
-      (g) => g.name === leagueName
-    );
+    const existingGroup = groupsResponse.result.groups?.find((g: { name: string; id: string }) => g.name === leagueName);
 
     let groupId: string;
 
@@ -111,7 +107,6 @@ export async function enrollInLoyalty(customerId: string): Promise<any> {
     throw new Error("Square access token not configured");
   }
 
-  // First, check if a loyalty program exists
   const programResponse = await squareClient.loyaltyApi.listLoyaltyPrograms();
 
   if (!programResponse.result.programs || programResponse.result.programs.length === 0) {
@@ -123,7 +118,6 @@ export async function enrollInLoyalty(customerId: string): Promise<any> {
     throw new Error("Invalid loyalty program configuration");
   }
 
-  // Check if customer is already enrolled
   const searchResponse = await squareClient.loyaltyApi.searchLoyaltyAccounts({
     query: {
       customerIds: [customerId]
@@ -134,7 +128,6 @@ export async function enrollInLoyalty(customerId: string): Promise<any> {
     return searchResponse.result.loyaltyAccounts[0];
   }
 
-  // Enroll the customer in the loyalty program
   const enrollResponse = await squareClient.loyaltyApi.createLoyaltyAccount({
     loyaltyAccount: {
       programId,
@@ -159,7 +152,6 @@ export async function getLoyaltyPoints(customerId: string): Promise<{
     throw new Error("Square access token not configured");
   }
 
-  // Search for customer's loyalty account
   const searchResponse = await squareClient.loyaltyApi.searchLoyaltyAccounts({
     query: {
       customerIds: [customerId]
