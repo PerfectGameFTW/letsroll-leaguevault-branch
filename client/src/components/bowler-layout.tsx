@@ -3,6 +3,12 @@ import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Menu, LayoutDashboard, History, Trophy, Medal, UserCircle, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface NavItem {
   icon: typeof LayoutDashboard;
@@ -37,12 +43,6 @@ const navItems: NavItem[] = [
     href: "/profile"
   }
 ];
-
-interface BowlerLayoutProps {
-  children: ReactNode;
-  bowlerName: string;
-  leagueName: string;
-}
 
 const SideNav = () => {
   const [location] = useLocation();
@@ -85,39 +85,59 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
       </aside>
 
       {/* Mobile Navigation */}
-      <div className="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t">
-        <nav className="flex justify-around items-center h-16">
-          {navItems.map((item) => {
-            const isActive = location === item.href;
-            return (
-              <Link key={item.href} href={item.href}>
-                <div
-                  role="button"
-                  aria-current={isActive ? "page" : undefined}
-                  className={cn(
-                    "flex flex-col items-center gap-1.5 p-2 transition-colors duration-200",
-                    isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
-                  )}
-                >
-                  <item.icon className="h-5 w-5" />
-                  <span className="text-xs font-medium">{item.label}</span>
-                </div>
-              </Link>
-            );
-          })}
-        </nav>
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+        <div className="flex items-center justify-between h-14 px-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-8 w-8"
+              >
+                <Menu className="h-4 w-4" />
+                <span className="sr-only">Toggle navigation menu</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              {navItems.map((item) => {
+                const isActive = location === item.href;
+                return (
+                  <Link key={item.href} href={item.href}>
+                    <DropdownMenuItem
+                      className={cn(
+                        "flex items-center gap-2 cursor-pointer transition-colors",
+                        isActive && "bg-accent"
+                      )}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      <span>{item.label}</span>
+                      {isActive && <ChevronRight className="ml-auto h-4 w-4" />}
+                    </DropdownMenuItem>
+                  </Link>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <h1 className="text-lg font-semibold">LeagueVault</h1>
+
+          {/* Empty div to maintain center alignment */}
+          <div className="w-8" />
+        </div>
       </div>
 
       {/* Main Content */}
-      <main className="flex-1 px-4 py-6 lg:py-6 pb-20 lg:pb-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="lg:hidden mb-6">
-            <h2 className="text-lg font-semibold">{bowlerName}</h2>
-            <p className="text-sm text-muted-foreground">{leagueName}</p>
-          </div>
+      <main className="flex-1 px-4 py-6 lg:py-6">
+        <div className="max-w-7xl mx-auto pt-6 lg:pt-0">
           {children}
         </div>
       </main>
     </div>
   );
 };
+
+interface BowlerLayoutProps {
+  children: ReactNode;
+  bowlerName: string;
+  leagueName: string;
+}

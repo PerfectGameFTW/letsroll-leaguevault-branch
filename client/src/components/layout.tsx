@@ -224,7 +224,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             )}>
               {!isCollapsed && (
                 <h1 className="text-xl font-bold text-gray-900">
-                  League Manager
+                  LeagueVault
                 </h1>
               )}
               <Button
