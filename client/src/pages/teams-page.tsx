@@ -23,7 +23,9 @@ export default function TeamsPage() {
 
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
-    enabled: !!leagueId
+    enabled: !!leagueId,
+    retry: false,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
   const league = leagueResponse?.data;
@@ -31,13 +33,23 @@ export default function TeamsPage() {
   const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams", leagueId],
     queryFn: async () => {
-      const response = await fetch(`/api/teams?leagueId=${leagueId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch teams');
+      try {
+        console.log('[TeamsPage] Fetching teams for league:', leagueId);
+        const response = await fetch(`/api/teams?leagueId=${leagueId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch teams');
+        }
+        const data = await response.json();
+        console.log('[TeamsPage] Teams data:', data);
+        return data;
+      } catch (error) {
+        console.error('[TeamsPage] Error fetching teams:', error);
+        throw error;
       }
-      return response.json();
     },
-    enabled: !!leagueId
+    enabled: !!leagueId,
+    retry: false,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
   const teams = teamsResponse?.data || [];
