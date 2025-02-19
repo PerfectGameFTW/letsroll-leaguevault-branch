@@ -1,5 +1,5 @@
-const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
-const SHUTDOWN_TIMEOUT = 30000; // 30 seconds
+const STARTUP_PHASE_TIMEOUT = 60000; // 60 seconds
+const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 const HOST = '0.0.0.0';
 const preferredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
 
@@ -49,7 +49,7 @@ import { storage } from './storage.js';
 import path from 'path';
 import net from 'net';
 import fs from 'fs';
-import { setupAuth } from "./auth.js"; // Added import
+import { setupAuth } from "./auth.js";
 
 interface PortStatus {
   port: number;
@@ -92,7 +92,7 @@ app.use(requestTracker);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Setup authentication  //Added authentication middleware setup
+// Setup authentication
 setupAuth(app);
 
 // Port status monitoring middleware
@@ -248,8 +248,22 @@ async function cleanupPortStatus() {
 // Add enhanced port conflict detection
 async function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
-    const tester = net.createServer()
+    const tester = net.createServer();
+    let timeoutId: NodeJS.Timeout;
+
+    const cleanup = () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      tester.removeAllListeners();
+      try {
+        tester.close();
+      } catch (err) {
+        // Ignore errors during cleanup
+      }
+    };
+
+    tester
       .once('error', (err: NodeJS.ErrnoException) => {
+        cleanup();
         if (err.code === 'EADDRINUSE') {
           console.log(`[Server] Port ${port} is already in use`);
         } else {
@@ -258,21 +272,25 @@ async function isPortAvailable(port: number): Promise<boolean> {
         resolve(false);
       })
       .once('listening', () => {
-        tester.once('close', () => {
-          console.log(`[Server] Port ${port} is available`);
-          resolve(true);
-        });
-        tester.close();
-      })
-      .listen(port, '0.0.0.0');
+        cleanup();
+        console.log(`[Server] Port ${port} is available`);
+        resolve(true);
+      });
 
-    // Shorter timeout for port check
-    setTimeout(() => {
-      tester.removeAllListeners();
-      tester.close();
+    // Set a shorter timeout for port check
+    timeoutId = setTimeout(() => {
+      cleanup();
       console.log(`[Server] Port ${port} check timed out`);
       resolve(false);
-    }, 1000); // Reduced from 3000ms to 1000ms
+    }, 1000);
+
+    try {
+      tester.listen(port, '0.0.0.0');
+    } catch (err) {
+      cleanup();
+      console.error(`[Server] Error during port check:`, err);
+      resolve(false);
+    }
   });
 }
 
@@ -307,68 +325,69 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
   throw new Error(`No available ports found between ${startPort} and ${startPort + maxAttempts - 1}`);
 }
 
-// Function to wait for the server to be ready
+// Enhance the waitForServerReady function with better timeout handling
 function waitForServerReady(port: number): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     console.log(`[Server] Waiting for server readiness on port ${port}...`);
     let attempts = 0;
-    const maxAttempts = 30; // 3 seconds maximum wait
+    const maxAttempts = 60; // Increased to 60 attempts (6 seconds total)
+    const checkInterval = 100; // Check every 100ms
     let lastHealthUpdate = Date.now();
     const minUpdateInterval = 1000; // Minimum 1 second between status updates
     let readinessReported = false;
 
-    const checkInterval = setInterval(async () => {
-      attempts++;
+    const check = async () => {
       try {
-        const response = await fetch(`http://localhost:${port}/api/health`);
-        if (response.ok) {
-          const health = await response.json();
-          if (health.status === 'healthy' && health.database.connected) {
-            // Only update status and log if we haven't reported readiness yet
-            if (!readinessReported) {
-              const now = Date.now();
-              if (now - lastHealthUpdate >= minUpdateInterval) {
-                await writePortStatus(port, true, {
-                  database: true,
-                  vite: viteSetupComplete,
-                  server: true
-                });
-                lastHealthUpdate = now;
-              }
+        const response = await fetch(`http://${HOST}:${port}/api/health`);
+        const health = await response.json();
 
-              clearInterval(checkInterval);
-              isServerReady = true;
-              readinessReported = true;
-              console.log(`[Server] Server is ready on port ${port}`);
-              resolve();
-              return;
+        if (response.ok && health.status === 'healthy') {
+          if (!readinessReported) {
+            const now = Date.now();
+            if (now - lastHealthUpdate >= minUpdateInterval) {
+              await writePortStatus(port, true, {
+                database: true,
+                vite: viteSetupComplete,
+                server: true
+              });
+              lastHealthUpdate = now;
             }
+
+            clearInterval(interval);
+            isServerReady = true;
+            readinessReported = true;
+            console.log(`[Server] Server is ready on port ${port}`);
+            resolve();
+            return;
           }
+        } else {
+          console.log(`[Server] Health check response: ${JSON.stringify(health)}`);
         }
       } catch (error) {
-        // Only log every few attempts to reduce noise
-        if (attempts % 5 === 0) {
-          console.log(`[Server] Still waiting for readiness (attempt ${attempts}/${maxAttempts})...`);
+        if (attempts % 10 === 0) { // Log every 10th attempt
+          console.log(`[Server] Waiting for readiness (attempt ${attempts}/${maxAttempts})`);
         }
       }
 
-      // Check if we've exceeded max attempts
+      attempts++;
       if (attempts >= maxAttempts) {
-        clearInterval(checkInterval);
-        console.log(`[Server] Server readiness check completed on port ${port}`);
-        // Set server as ready even if health check doesn't respond
-        isServerReady = true;
+        clearInterval(interval);
         if (!readinessReported) {
+          console.warn('[Server] Server readiness check timed out, but continuing...');
+          isServerReady = true;
           await writePortStatus(port, true, {
             database: true,
             vite: viteSetupComplete,
             server: true
           });
           readinessReported = true;
+          resolve(); // Resolve anyway to prevent hanging
         }
-        resolve();
       }
-    }, 100);
+    };
+
+    const interval = setInterval(check, checkInterval);
+    check(); // Run first check immediately
   });
 }
 
@@ -414,85 +433,216 @@ async function validateStartupPhase(currentPhase: keyof typeof startupPhases, re
 }
 
 
-// Update startServer to use findAvailablePort
+// Enhance startServer function with better error handling
 async function startServer() {
-  try {
-    console.log('[Server] Starting server initialization...');
+  let retries = 3;
 
-    // Phase 1: Cleanup
-    console.log('[Server] Phase 1: Cleaning up stale port status...');
-    await cleanupPortStatus();
-    await validateStartupPhase('cleanup');
-
-    // Phase 2: Database with retry
-    console.log('[Server] Phase 2: Testing database connection...');
-    await testDatabaseConnectionWithRetry();
-    await validateStartupPhase('database', ['cleanup']);
-
-    // Phase 3: Port allocation with resilient port finding
-    console.log('[Server] Phase 3: Finding available port...');
+  while (retries > 0) {
     try {
-      serverPort = await findAvailablePort(preferredPort);
+      console.log(`[Server] Starting server (attempt ${4 - retries}/3)...`);
+
+      // Phase 1: Cleanup
+      console.log('[Server] Phase 1: Cleaning up stale port status...');
+      await cleanupPortStatus();
+      await validateStartupPhase('cleanup');
+
+      // Phase 2: Database with retry
+      console.log('[Server] Phase 2: Testing database connection...');
+      await testDatabaseConnectionWithRetry(5, 2000); // More retries, longer backoff
+      await validateStartupPhase('database', ['cleanup']);
+
+      // Phase 3: Port allocation
+      console.log('[Server] Phase 3: Finding available port...');
+      try {
+        serverPort = await findAvailablePort(preferredPort);
+      } catch (error) {
+        console.error('[Server] Port allocation failed:', error);
+        throw error;
+      }
+      await validateStartupPhase('port', ['cleanup', 'database']);
+
+      // Initial port status
+      await writePortStatus(serverPort, false, {
+        database: true,
+        vite: viteSetupComplete,
+        server: false
+      });
+
+      // Phase 4: Server startup
+      console.log(`[Server] Phase 4: Starting HTTP server on ${HOST}:${serverPort}...`);
+
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Server startup timeout'));
+        }, STARTUP_PHASE_TIMEOUT);
+
+        server.listen({ port: serverPort, host: HOST }, () => {
+          clearTimeout(timeout);
+          console.log(`[Server] Server is running at http://${HOST}:${serverPort}`);
+          resolve();
+        });
+
+        server.once('error', (err) => {
+          clearTimeout(timeout);
+          reject(err);
+        });
+      });
+
+      await validateStartupPhase('server', ['cleanup', 'database', 'port']);
+
+      // Wait for server to be ready
+      await waitForServerReady(serverPort);
+      console.log(`[Server] Server is fully initialized and ready on port ${serverPort}`);
+
+      // Final status update
+      await writePortStatus(serverPort, true, {
+        database: true,
+        server: true,
+        vite: viteSetupComplete
+      });
+
+      return; // Success, exit retry loop
     } catch (error) {
-      console.error('[Server] Failed to find available port:', error);
-      throw error;
+      console.error(`[Server] Startup attempt ${4 - retries}/3 failed:`, error);
+      retries--;
+
+      if (retries === 0) {
+        console.error('[Server] All startup attempts failed');
+        if (serverPort) {
+          await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
+        }
+        process.exit(1);
+      }
+
+      console.log(`[Server] Retrying in 5 seconds...`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
     }
-    await validateStartupPhase('port', ['cleanup', 'database']);
-
-    // Update port status with health indicators
-    await writePortStatus(serverPort, false, {
-      database: true,
-      vite: viteSetupComplete,
-      server: false
-    });
-
-    // Phase 4: Server startup with proper host binding
-    console.log(`[Server] Phase 4: Starting HTTP server on ${HOST}:${serverPort}...`);
-
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Server startup timeout'));
-      }, STARTUP_PHASE_TIMEOUT);
-
-      server.listen({ port: serverPort, host: HOST }, () => {
-        clearTimeout(timeout);
-        console.log(`[Server] Server is running at http://${HOST}:${serverPort}`);
-        resolve();
-      });
-
-      server.once('error', (err) => {
-        clearTimeout(timeout);
-        console.error('[Server] Failed to start server:', err);
-        reject(err);
-      });
-    });
-
-    await validateStartupPhase('server', ['cleanup', 'database', 'port']);
-
-    // Wait for server to be fully ready
-    await waitForServerReady(serverPort);
-    console.log(`[Server] Server is fully initialized and ready on port ${serverPort}`);
-    isServerReady = true;
-
-    // Final port status update
-    await writePortStatus(serverPort, true, {
-      database: true,
-      server: true,
-      vite: viteSetupComplete
-    });
-
-  } catch (error) {
-    console.error('[Server] Fatal error during startup:', error);
-    // Cleanup port status file on error
-    if (serverPort) {
-      await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
-    }
-    process.exit(1);
   }
 }
 
-// Enhanced shutdown function with phase tracking
-// Fix for shutdownTimeoutId initialization and usage
+// Update the health check endpoint for better error handling
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbStart = Date.now();
+    await testConnection();
+    const dbDuration = Date.now() - dbStart;
+
+    const status = {
+      status: 'healthy',
+      port: serverPort,
+      ready: isServerReady,
+      mode: process.env.NODE_ENV,
+      timestamp: new Date().toISOString(),
+      diagnostics: {
+        database_response_time: `${dbDuration}ms`,
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+      },
+      phases: {
+        startup: startupPhases,
+        shutdown: shutdownPhases
+      },
+      database: {
+        connected: true,
+        url: process.env.DATABASE_URL ? 'configured' : 'missing'
+      },
+      vite: {
+        setup: viteSetupComplete
+      }
+    };
+
+    // Update port status file
+    await writePortStatus(serverPort!, isServerReady, {
+      database: true,
+      vite: viteSetupComplete,
+      server: true
+    });
+
+    res.json(status);
+  } catch (error) {
+    console.error('[Server] Health check error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    res.status(503).json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: {
+        message: errorMessage,
+        code: error instanceof Error ? error.name : 'UnknownError'
+      },
+      phases: {
+        startup: startupPhases,
+        shutdown: shutdownPhases
+      }
+    });
+  }
+});
+
+// API-specific middleware
+app.use('/api', (req, res, next) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Register API routes
+console.log('[Server] Registering API routes...');
+registerRoutes(app);
+
+// Development mode setup with better error handling
+if (process.env.NODE_ENV !== "production") {
+  console.log('[Server] Setting up Vite middleware for development...');
+  setupVite(app, server)
+    .then(() => {
+      console.log('[Server] Vite middleware setup complete');
+      viteSetupComplete = true;
+      if (serverPort) {
+        writePortStatus(serverPort, isServerReady, {
+          database: true,
+          vite: true,
+          server: true
+        });
+      }
+      startServer();
+    })
+    .catch((error) => {
+      console.error('[Server] Critical error setting up Vite:', error);
+      process.exit(1);
+    });
+} else {
+  // Production mode setup
+  app.use(express.static(path.join(process.cwd(), 'dist/public')));
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'API endpoint not found' });
+    }
+    res.sendFile(path.join(process.cwd(), 'dist/public/index.html'));
+  });
+  startServer();
+}
+
+// Global error handler
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('[Error]', err);
+  if (!res.headersSent) {
+    res.status(err.status || 500).json({
+      success: false,
+      error: {
+        message: err.message || "Internal Server Error",
+        code: err.code,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+  next(err);
+});
+
+// Add cleanup handler with timeout
 let shutdownTimeoutId: NodeJS.Timeout | undefined;
 
 async function shutdown() {
@@ -594,123 +744,6 @@ async function shutdown() {
   }
 }
 
-// Update health check endpoint to include shutdown status
-app.get('/api/health', async (req, res) => {
-  try {
-    await testConnection();
-    const status = {
-      status: 'healthy',
-      port: serverPort,
-      ready: isServerReady,
-      mode: process.env.NODE_ENV,
-      timestamp: new Date().toISOString(),
-      phases: {
-        startup: startupPhases,
-        shutdown: shutdownPhases
-      },
-      database: {
-        connected: true,
-        url: process.env.DATABASE_URL ? 'configured' : 'missing'
-      },
-      vite: {
-        setup: viteSetupComplete
-      }
-    };
-
-    // Update port status file with latest health info
-    await writePortStatus(serverPort!, isServerReady, {
-      database: true,
-      vite: viteSetupComplete,
-      server: true
-    });
-
-    res.json(status);
-  } catch (error) {
-    console.error('[Server] Health check error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(503).json({
-      status: 'unhealthy',
-      phases: {
-        startup: startupPhases,
-        shutdown: shutdownPhases
-      },
-      error: {
-        message: errorMessage,
-        code: error instanceof Error ? error.name : 'UnknownError',
-        timestamp: new Date().toISOString()
-      }
-    });
-  }
-});
-
-
-// API-specific middleware
-app.use('/api', (req, res, next) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
-// Register API routes
-console.log('[Server] Registering API routes...');
-registerRoutes(app);
-
-// Development mode setup
-if (process.env.NODE_ENV !== "production") {
-  console.log('[Server] Setting up Vite middleware for development...');
-  setupVite(app, server)
-    .then(() => {
-      console.log('[Server] Vite middleware setup complete');
-      viteSetupComplete = true;
-      // Update port status after Vite setup
-      if (serverPort) {
-        writePortStatus(serverPort, true, {
-          database: true,
-          vite: true,
-          server: true
-        });
-      }
-      startServer();
-    })
-    .catch((error) => {
-      console.error('[Server] Error setting up Vite:', error);
-      process.exit(1);
-    });
-} else {
-  // Production mode setup
-  app.use(express.static(path.join(process.cwd(), 'dist/public')));
-  app.get('*', (req, res) => {
-    if (req.path.startsWith('/api/')) {
-      return res.status(404).json({ error: 'API endpoint not found' });
-    }
-    res.sendFile(path.join(process.cwd(), 'dist/public/index.html'));
-  });
-  startServer();
-}
-
-// Global error handler
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error('[Error]', err);
-  if (!res.headersSent) {
-    res.status(err.status || 500).json({
-      success: false,
-      error: {
-        message: err.message || "Internal Server Error",
-        code: err.code,
-        timestamp: new Date().toISOString()
-      }
-    });
-  }
-  next(err);
-});
-
-// Add cleanup handler with timeout
 process.on('SIGTERM', () => {
   console.log('[Server] Received SIGTERM signal');
   const forceShutdownTimeout = setTimeout(() => {
