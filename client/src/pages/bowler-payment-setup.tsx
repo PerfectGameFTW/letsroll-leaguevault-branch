@@ -16,7 +16,7 @@ import { Loader2, AlertCircle, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
-import { useParams, useNavigate } from "wouter"; //Import useNavigate
+import { useParams, useLocation } from "wouter";
 import type { League, BowlerLeague } from "@shared/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -48,7 +48,7 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
     description: "Pay for half of the season upfront (with 5% discount)",
     calculateAmount: (weeklyFee, totalWeeks) => {
       const halfSeasonAmount = weeklyFee * Math.ceil(totalWeeks / 2);
-      return Math.round(halfSeasonAmount * 0.95); // 5% discount
+      return Math.round(halfSeasonAmount * 0.95);
     },
   },
   {
@@ -57,7 +57,7 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
     description: "Pay for the entire season upfront (with 10% discount)",
     calculateAmount: (weeklyFee, totalWeeks) => {
       const fullSeasonAmount = weeklyFee * totalWeeks;
-      return Math.round(fullSeasonAmount * 0.90); // 10% discount
+      return Math.round(fullSeasonAmount * 0.90);
     },
   },
 ];
@@ -65,15 +65,14 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
 export default function BowlerPaymentSetupPage() {
   const params = useParams();
   const { toast } = useToast();
-  const navigate = useNavigate(); // Add useNavigate hook
+  const [, setLocation] = useLocation();
   const bowlerId = parseInt(params.bowlerId!);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [user, setUser] = useState(null); // Add user state for email and name
+  const [user, setUser] = useState(null);
 
-  // Initialize Square payment form
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
       console.error('[BowlerPaymentSetup] Square initialization error:', error);
@@ -85,28 +84,24 @@ export default function BowlerPaymentSetupPage() {
     },
   });
 
-  // Query for bowler's league associations
   const { data: bowlerLeaguesResponse } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", bowlerId],
     enabled: !!bowlerId,
   });
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  // Get league details for the bowler's active leagues
   const { data: leagueResponse } = useQuery<{ data: League }>({
     queryKey: ["/api/leagues", bowlerLeagues[0]?.leagueId],
     enabled: !!bowlerLeagues.length,
   });
   const league = leagueResponse?.data;
 
-  // Initialize card when container is ready
   useEffect(() => {
     if (cardContainerRef.current && !isInitialized) {
       initializeCard(cardContainerRef.current);
     }
   }, [cardContainerRef.current, isInitialized]);
 
-  // Calculate payment amount based on selected schedule
   const calculatePaymentAmount = () => {
     if (!league) return 0;
 
@@ -121,7 +116,6 @@ export default function BowlerPaymentSetupPage() {
     return selectedOption.calculateAmount(league.weeklyFee, totalWeeks);
   };
 
-  // Handle payment submission
   const handleSubmit = async () => {
     if (!card || !league) {
       toast({
@@ -141,93 +135,37 @@ export default function BowlerPaymentSetupPage() {
         throw new Error("Invalid payment amount calculated");
       }
 
-      console.log('[BowlerPaymentSetup] Setting up recurring payment:', {
+      console.log('[BowlerPaymentSetup] Processing payment:', {
         amount,
         schedule: selectedSchedule,
-        bowlerId
+        bowlerId,
+        leagueId: league.id
       });
 
-      // Step 1: Tokenize the card first
-      const result = await card.tokenize();
-      if (result.status !== 'OK' || !result.token) {
-        throw new Error('Card validation failed');
-      }
-
-      // Step 2: Create or get Square customer
-      const customerResponse = await fetch('/api/square/customers', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bowlerId,
-          email: user?.email,
-          name: user?.name
-        })
-      });
-
-      if (!customerResponse.ok) {
-        throw new Error('Failed to create customer profile');
-      }
-
-      const { customerId } = await customerResponse.json();
-
-      // Step 3: Save card for recurring payments
-      const cardResponse = await fetch('/api/square/cards', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId,
-          sourceId: result.token
-        })
-      });
-
-      if (!cardResponse.ok) {
-        throw new Error('Failed to save card for recurring payments');
-      }
-
-      const { cardId } = await cardResponse.json();
-
-      // Step 4: Set up recurring payment schedule
-      const paymentResponse = await fetch('/api/square/recurring-payments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId,
-          cardId,
-          amount,
-          schedule: selectedSchedule,
-          bowlerId,
-          leagueId: league.id
-        })
-      });
-
-      const paymentResult = await paymentResponse.json();
-
-      if (!paymentResponse.ok) {
-        throw new Error(paymentResult.error?.message || 'Failed to set up recurring payments');
-      }
+      // Process the initial payment
+      const paymentResult = await createPayment(amount, card, bowlerId, league.id);
 
       toast({
-        title: "Payment Setup Successful",
-        description: `Your ${selectedSchedule} payment schedule has been set up successfully.`,
+        title: "Payment Successful",
+        description: `Your ${selectedSchedule} payment has been processed successfully.`,
       });
 
-      // Redirect to payment confirmation or dashboard
-      navigate('/dashboard');
+      setLocation('/dashboard');
 
     } catch (error) {
-      console.error('[BowlerPaymentSetup] Payment setup error:', error);
+      console.error('[BowlerPaymentSetup] Payment error:', error);
       let errorMessage: string;
 
       try {
         const parsedError = JSON.parse(error instanceof Error ? error.message : String(error));
-        errorMessage = parsedError.error?.message || "Failed to set up payment schedule";
+        errorMessage = parsedError.error?.message || "Failed to process payment";
       } catch (parseError) {
         errorMessage = error instanceof Error ? error.message : String(error);
       }
 
       setPaymentError(errorMessage);
       toast({
-        title: "Payment Setup Failed",
+        title: "Payment Failed",
         description: errorMessage,
         variant: "destructive",
       });

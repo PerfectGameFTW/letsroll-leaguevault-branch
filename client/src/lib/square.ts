@@ -77,7 +77,7 @@ export async function initializeSquare() {
   }
 }
 
-export async function createPayment(amount: number, cardInstance: any): Promise<PaymentResult> {
+export async function createPayment(amount: number, cardInstance: any, bowlerId: number, leagueId: number): Promise<PaymentResult> {
   try {
     if (!cardInstance) {
       console.error('[Square] Card form not initialized');
@@ -115,7 +115,9 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
 
       const paymentData = {
         sourceId: result.token,
-        amount
+        amount,
+        bowlerId,
+        leagueId
       };
 
       console.log('[Square] Payment request data:', {
