@@ -353,8 +353,7 @@ async function validateStartupPhase(currentPhase: keyof typeof startupPhases, re
   console.log(`[Server] Startup phase '${currentPhase}' completed successfully`);
 }
 
-// Update the startServer function to use new safeguards
-const preferredPort = parseInt(process.env.PORT || '3000');
+const preferredPort = 5000;
 const HOST = '0.0.0.0';
 
 async function startServer() {
@@ -371,33 +370,32 @@ async function startServer() {
     await testDatabaseConnectionWithRetry();
     await validateStartupPhase('database', ['cleanup']);
 
-    // Phase 3: Port allocation - Use process.env.PORT or fallback
-    console.log('[Server] Phase 3: Allocating port...');
-    const port = preferredPort;
-    serverPort = port;
+    // Phase 3: Port allocation
+    console.log(`[Server] Phase 3: Allocating port ${preferredPort}...`);
+    serverPort = preferredPort;
     await validateStartupPhase('port', ['cleanup', 'database']);
 
     // Update port status with health indicators
-    await writePortStatus(port, false, {
+    await writePortStatus(serverPort, false, {
       database: true,
       vite: viteSetupComplete,
       server: false
     });
 
     // Phase 4: Server startup with proper host binding
-    console.log('[Server] Phase 4: Starting HTTP server...');
+    console.log(`[Server] Phase 4: Starting HTTP server on ${HOST}:${serverPort}...`);
 
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Server startup timeout'));
       }, STARTUP_PHASE_TIMEOUT);
 
-      server.listen(port, HOST, async () => {
+      server.listen(serverPort, HOST, async () => {
         clearTimeout(timeout);
-        console.log(`[Server] Server is running at http://${HOST}:${port}`);
+        console.log(`[Server] Server is running at http://${HOST}:${serverPort}`);
         await validateStartupPhase('server', ['cleanup', 'database', 'port']);
 
-        await writePortStatus(port, true, {
+        await writePortStatus(serverPort, true, {
           database: true,
           vite: viteSetupComplete,
           server: true
