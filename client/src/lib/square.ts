@@ -100,33 +100,7 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
       }));
     }
 
-    // Verify and format Square credentials
-    const appId = import.meta.env.VITE_SQUARE_APP_ID?.trim();
-    const locationId = import.meta.env.VITE_SQUARE_LOCATION_ID?.trim();
-
-    if (!appId || !locationId) {
-      console.error('[Square] Missing required Square credentials');
-      throw new Error(JSON.stringify({
-        error: {
-          message: "Payment system is not properly configured. Please contact support.",
-          code: "CONFIGURATION_ERROR"
-        }
-      }));
-    }
-
-    // Validate location ID format
-    if (!/^[A-Z0-9]{12}$/.test(locationId)) {
-      console.error('[Square] Invalid location ID format:', locationId);
-      throw new Error(JSON.stringify({
-        error: {
-          message: "Invalid Square location configuration. Please contact support.",
-          code: "INVALID_LOCATION"
-        }
-      }));
-    }
-
     console.log('[Square] Starting payment process for amount:', amount);
-    console.log('[Square] Using location ID:', locationId);
     console.log('[Square] Tokenizing card...');
 
     const result = await cardInstance.tokenize();
@@ -141,8 +115,7 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
 
       const paymentData = {
         sourceId: result.token,
-        amount,
-        locationId,
+        amount
       };
 
       console.log('[Square] Payment request data:', {

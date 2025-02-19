@@ -35,6 +35,131 @@ async function initializeSquareClient() {
   return squareClient;
 }
 
+export async function processPayment(sourceId: string, amount: number) {
+  const client = await initializeSquareClient();
+  if (!client) {
+    throw new Error(JSON.stringify({
+      error: {
+        message: "Payment system is temporarily unavailable",
+        code: "INITIALIZATION_ERROR"
+      }
+    }));
+  }
+
+  try {
+    console.log('[Square Service] Processing payment:', { 
+      amount,
+      sourceIdLength: sourceId.length,
+      mode: process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox'
+    });
+
+    // Validate inputs
+    if (!sourceId || !amount) {
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Missing required payment information',
+          code: "INVALID_REQUEST"
+        }
+      }));
+    }
+
+    // Ensure amount is a positive integer
+    if (amount <= 0 || !Number.isInteger(amount)) {
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Invalid payment amount',
+          code: "INVALID_AMOUNT"
+        }
+      }));
+    }
+
+    const response = await client.paymentsApi.createPayment({
+      sourceId,
+      idempotencyKey: `${Date.now()}-${Math.random()}`,
+      amountMoney: {
+        amount: BigInt(amount),
+        currency: 'USD'
+      },
+      autocomplete: true
+    });
+
+    if (!response?.result?.payment) {
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Unable to process payment',
+          code: "INVALID_RESPONSE"
+        }
+      }));
+    }
+
+    const payment = response.result.payment;
+    console.log('[Square Service] Payment processed successfully:', {
+      paymentId: payment.id,
+      status: payment.status,
+      cardLast4: payment.cardDetails?.card?.last4 ?? '****',
+      cardBrand: payment.cardDetails?.card?.cardBrand ?? 'UNKNOWN',
+      amount: payment.amountMoney?.amount?.toString()
+    });
+
+    return {
+      id: payment.id,
+      status: payment.status,
+      card: {
+        last4: payment.cardDetails?.card?.last4 ?? '****',
+        brand: payment.cardDetails?.card?.cardBrand ?? 'UNKNOWN'
+      }
+    };
+  } catch (error) {
+    console.error('[Square Service] Payment processing error:', {
+      error: error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      } : error,
+      input: { 
+        amount,
+        sourceIdPresent: !!sourceId
+      }
+    });
+
+    // Handle Square API specific errors
+    if ((error as ApiError)?.statusCode === 400) {
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Invalid payment information. Please check your card details.',
+          code: "INVALID_REQUEST"
+        }
+      }));
+    }
+
+    if ((error as ApiError)?.statusCode === 401) {
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Payment system is temporarily unavailable. Please try again later.',
+          code: "SYSTEM_ERROR"
+        }
+      }));
+    }
+
+    if ((error as ApiError)?.statusCode === 402) {
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Your payment was declined. Please try a different card.',
+          code: "PAYMENT_DECLINED"
+        }
+      }));
+    }
+
+    // For all other errors, return a user-friendly message
+    throw new Error(JSON.stringify({
+      error: {
+        message: 'Unable to process your payment. Please try again later.',
+        code: "PAYMENT_FAILED"
+      }
+    }));
+  }
+}
+
 export async function createOrUpdateCustomer(name: string, email: string): Promise<SquareCustomer | null> {
   const client = await initializeSquareClient();
   if (!client) {
@@ -108,137 +233,6 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
       input: { name, email }
     });
     throw new Error('Failed to create/update Square customer: ' + (error instanceof Error ? error.message : String(error)));
-  }
-}
-
-export async function processPayment(sourceId: string, amount: number, locationId: string) {
-  const client = await initializeSquareClient();
-  if (!client) {
-    throw new Error(JSON.stringify({
-      error: {
-        message: "Square client not initialized",
-        code: "INITIALIZATION_ERROR"
-      }
-    }));
-  }
-
-  try {
-    console.log('[Square Service] Processing payment:', { 
-      amount, 
-      locationId,
-      sourceIdLength: sourceId.length,
-      mode: process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox'
-    });
-
-    // Validate inputs
-    if (!sourceId || !amount || !locationId) {
-      throw new Error(JSON.stringify({
-        error: {
-          message: 'Missing required payment parameters',
-          code: "INVALID_REQUEST"
-        }
-      }));
-    }
-
-    // Ensure amount is a positive integer
-    if (amount <= 0 || !Number.isInteger(amount)) {
-      throw new Error(JSON.stringify({
-        error: {
-          message: 'Invalid payment amount',
-          code: "INVALID_AMOUNT"
-        }
-      }));
-    }
-
-    const response = await client.paymentsApi.createPayment({
-      sourceId,
-      idempotencyKey: `${Date.now()}-${Math.random()}`,
-      amountMoney: {
-        amount: BigInt(amount),
-        currency: 'USD'
-      },
-      locationId,
-      autocomplete: true
-    });
-
-    if (!response?.result?.payment) {
-      throw new Error(JSON.stringify({
-        error: {
-          message: 'Invalid payment response from Square API',
-          code: "INVALID_RESPONSE"
-        }
-      }));
-    }
-
-    const payment = response.result.payment;
-    console.log('[Square Service] Payment processed successfully:', {
-      paymentId: payment.id,
-      status: payment.status,
-      cardLast4: payment.cardDetails?.card?.last4 ?? '****',
-      cardBrand: payment.cardDetails?.card?.cardBrand ?? 'UNKNOWN',
-      amount: payment.amountMoney?.amount?.toString()
-    });
-
-    return {
-      id: payment.id,
-      status: payment.status,
-      card: {
-        last4: payment.cardDetails?.card?.last4 ?? '****',
-        brand: payment.cardDetails?.card?.cardBrand ?? 'UNKNOWN'
-      }
-    };
-  } catch (error) {
-    // Enhanced error logging with proper type checking
-    console.error('[Square Service] Payment processing error:', {
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error,
-      input: { 
-        amount,
-        locationId,
-        sourceIdPresent: !!sourceId
-      }
-    });
-
-    // Handle Square API specific errors
-    if ((error as ApiError)?.statusCode === 400) {
-      const squareError = error as ApiError;
-      const details = squareError.result?.errors?.[0]?.detail || 'Invalid request parameters';
-      throw new Error(JSON.stringify({
-        error: {
-          message: `Square API Error: ${details}`,
-          code: "INVALID_REQUEST"
-        }
-      }));
-    }
-
-    if ((error as ApiError)?.statusCode === 401) {
-      throw new Error(JSON.stringify({
-        error: {
-          message: 'Square API Error: Invalid credentials',
-          code: "AUTHENTICATION_ERROR"
-        }
-      }));
-    }
-
-    if ((error as ApiError)?.statusCode === 402) {
-      throw new Error(JSON.stringify({
-        error: {
-          message: 'Square API Error: Payment required',
-          code: "PAYMENT_REQUIRED"
-        }
-      }));
-    }
-
-    // For all other errors, ensure we return a properly formatted JSON error
-    throw new Error(JSON.stringify({
-      error: {
-        message: 'Failed to process Square payment: ' + (error instanceof Error ? error.message : String(error)),
-        code: "PAYMENT_FAILED"
-      }
-    }));
   }
 }
 

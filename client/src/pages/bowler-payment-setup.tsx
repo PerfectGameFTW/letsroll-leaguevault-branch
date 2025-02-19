@@ -16,7 +16,7 @@ import { Loader2, AlertCircle, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
-import { useParams } from "wouter";
+import { useParams, useNavigate } from "wouter"; //Import useNavigate
 import type { League, BowlerLeague } from "@shared/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
@@ -65,11 +65,13 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
 export default function BowlerPaymentSetupPage() {
   const params = useParams();
   const { toast } = useToast();
+  const navigate = useNavigate(); // Add useNavigate hook
   const bowlerId = parseInt(params.bowlerId!);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [user, setUser] = useState(null); // Add user state for email and name
 
   // Initialize Square payment form
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
@@ -139,34 +141,87 @@ export default function BowlerPaymentSetupPage() {
         throw new Error("Invalid payment amount calculated");
       }
 
-      console.log('[BowlerPaymentSetup] Processing payment:', {
+      console.log('[BowlerPaymentSetup] Setting up recurring payment:', {
         amount,
         schedule: selectedSchedule,
         bowlerId
       });
 
-      const result = await createPayment(amount, card);
-      console.log('[BowlerPaymentSetup] Payment result:', result);
-
-      if (result.status === 'COMPLETED') {
-        toast({
-          title: "Payment Setup Successful",
-          description: `Your ${selectedSchedule} payment schedule has been set up successfully.`,
-        });
-      } else {
-        console.error('[BowlerPaymentSetup] Payment not completed:', result);
-        throw new Error("Payment was not completed successfully");
+      // Step 1: Tokenize the card first
+      const result = await card.tokenize();
+      if (result.status !== 'OK' || !result.token) {
+        throw new Error('Card validation failed');
       }
+
+      // Step 2: Create or get Square customer
+      const customerResponse = await fetch('/api/square/customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bowlerId,
+          email: user?.email,
+          name: user?.name
+        })
+      });
+
+      if (!customerResponse.ok) {
+        throw new Error('Failed to create customer profile');
+      }
+
+      const { customerId } = await customerResponse.json();
+
+      // Step 3: Save card for recurring payments
+      const cardResponse = await fetch('/api/square/cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId,
+          sourceId: result.token
+        })
+      });
+
+      if (!cardResponse.ok) {
+        throw new Error('Failed to save card for recurring payments');
+      }
+
+      const { cardId } = await cardResponse.json();
+
+      // Step 4: Set up recurring payment schedule
+      const paymentResponse = await fetch('/api/square/recurring-payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId,
+          cardId,
+          amount,
+          schedule: selectedSchedule,
+          bowlerId,
+          leagueId: league.id
+        })
+      });
+
+      const paymentResult = await paymentResponse.json();
+
+      if (!paymentResponse.ok) {
+        throw new Error(paymentResult.error?.message || 'Failed to set up recurring payments');
+      }
+
+      toast({
+        title: "Payment Setup Successful",
+        description: `Your ${selectedSchedule} payment schedule has been set up successfully.`,
+      });
+
+      // Redirect to payment confirmation or dashboard
+      navigate('/dashboard');
+
     } catch (error) {
-      console.error('[BowlerPaymentSetup] Payment error:', error);
+      console.error('[BowlerPaymentSetup] Payment setup error:', error);
       let errorMessage: string;
 
       try {
-        // Try to parse error message as JSON
         const parsedError = JSON.parse(error instanceof Error ? error.message : String(error));
-        errorMessage = parsedError.error?.message || "Failed to process payment";
+        errorMessage = parsedError.error?.message || "Failed to set up payment schedule";
       } catch (parseError) {
-        // If JSON parsing fails, use the raw error message
         errorMessage = error instanceof Error ? error.message : String(error);
       }
 
