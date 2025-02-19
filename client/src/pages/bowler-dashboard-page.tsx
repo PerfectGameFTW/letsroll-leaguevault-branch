@@ -366,7 +366,8 @@ export const BowlerDashboardPage: FC = () => {
                           <h3 className="text-lg font-semibold">Payment Information</h3>
                           <div
                             ref={cardContainerRef}
-                            className="min-h-[44px] p-3 border rounded-lg bg-card"
+                            className="min-h-[250px] p-4 border rounded-lg bg-card"
+                            style={{ minHeight: '250px' }}
                           />
                           {squareError && (
                             <p className="text-sm text-destructive">{squareError}</p>

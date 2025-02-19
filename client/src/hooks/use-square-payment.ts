@@ -32,6 +32,7 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
         setCard(null);
         setIsInitialized(false);
         setError(null);
+        console.log('[useSquarePayment] Card cleanup completed');
       } catch (error) {
         console.error('[useSquarePayment] Error during cleanup:', error);
       }
@@ -97,9 +98,9 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
           initializationAttempts.current = 0;
           onError?.(errorMessage);
           toast({
-            title: "Payment Form Error",
-            description: "Unable to initialize payment form. Please check your Square credentials.",
-            variant: "destructive",
+            title: "Payment Form Notice",
+            description: "Credit card payment form unavailable. Please try again or choose a different payment method.",
+            variant: "default",
           });
         }
       }
