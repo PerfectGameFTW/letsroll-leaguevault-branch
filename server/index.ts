@@ -213,39 +213,27 @@ const cleanupStalePortStatus = async () => {
   }
 };
 
-async function cleanupPortStatus() {
+const cleanupPortStatus = async () => {
   try {
-    // Attempt to read existing port status
-    const existingStatus = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8')
-      .then(content => JSON.parse(content) as PortStatus)
-      .catch(() => null);
-
-    if (existingStatus) {
-      // Check if the process is still running
-      try {
-        process.kill(existingStatus.pid, 0);
-        console.log(`[Server] Found existing server process (PID: ${existingStatus.pid})`);
-
-        // If process exists and port status is recent (within last minute)
-        const isRecent = Date.now() - new Date(existingStatus.timestamp).getTime() < 60000;
-        if (isRecent) {
-          throw new Error('Another server instance is already running');
-        }
-      } catch (e) {
-        // Process doesn't exist, safe to cleanup
-        console.log('[Server] Cleaning up stale port status file');
-      }
-    }
-
-    // Remove the status file
     await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
+
+    // Force kill any existing process on port 5000
+    const command = process.platform === 'win32' 
+      ? `FOR /F "tokens=5" %P IN ('netstat -a -n -o ^| find ":5000" ^| find "LISTENING"') DO TaskKill /PID %P /F /T`
+      : `lsof -ti:5000 | xargs -r kill -9`;
+
+    try {
+      require('child_process').execSync(command);
+      console.log('[Server] Successfully cleaned up port 5000');
+    } catch (e) {
+      // Ignore errors as the process might not exist
+    }
   } catch (error) {
     console.error('[Server] Error during port status cleanup:', error);
     throw error;
   }
-}
+};
 
-// Add enhanced port conflict detection
 async function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const tester = net.createServer();
