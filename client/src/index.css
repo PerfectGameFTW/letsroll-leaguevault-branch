@@ -1,3 +1,16 @@
+
+/* Square Payment Form Base Styles */
+.sq-input {
+  border: 1px solid #E5E7EB;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.sq-input--focus {
+  border-color: #2563EB;
+  box-shadow: 0 0 0 1px #2563EB;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

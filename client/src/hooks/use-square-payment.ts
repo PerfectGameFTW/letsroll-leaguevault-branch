@@ -59,25 +59,7 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
       }
 
       console.log('[useSquarePayment] Creating new card form...');
-      const newCard = await payments.card({
-        style: {
-          input: {
-            font: '14px',
-            color: '#111827'
-          },
-          'input::placeholder': {
-            color: '#6B7280'
-          },
-          '[class^="input-container"]': {
-            border: '1px solid #E5E7EB',
-            boxShadow: '0 1px 2px 0 rgb(0 0 0 / 0.05)'
-          },
-          '[class^="input-container"][class*="is-focus"]': {
-            border: '1px solid #2563EB',
-            boxShadow: '0 0 0 1px #2563EB'
-          }
-        }
-      });
+      const newCard = await payments.card();
 
       console.log('[useSquarePayment] Attaching card to container...');
       await newCard.attach(container);
