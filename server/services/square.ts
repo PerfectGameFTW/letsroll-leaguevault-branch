@@ -1,4 +1,4 @@
-import { ApiError, Client, Environment } from 'square';
+import { ApiError, Client, Environment } from '@square/web-sdk';
 
 interface SquareCustomer {
   id: string;
