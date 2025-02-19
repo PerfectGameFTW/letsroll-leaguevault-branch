@@ -562,38 +562,6 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 // Development mode setup with better error handling
 if (process.env.NODE_ENV !== "production") {
-  // API-specific middleware
-  app.use('/api', (req, res, next) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
-    if (req.method === 'OPTIONS') {
-      return res.sendStatus(200);
-    }
-    next();
-  });
-
-  // Register API routes first
-  console.log('[Server] Registering API routes...');
-  registerRoutes(app);
-
-  // Global API error handler
-  app.use('/api', (err: any, req: Request, res: Response, next: NextFunction) => {
-    console.error('[API Error]', err);
-    if (!res.headersSent) {
-      res.status(err.status || 500).json({
-        success: false,
-        error: {
-          message: err.message || "Internal Server Error",
-          code: err.code || 'INTERNAL_ERROR',
-          timestamp: new Date().toISOString()
-        }
-      });
-    }
-  });
-
   // Then set up Vite middleware
   console.log('[Server] Setting up Vite middleware for development...');
   setupVite(app, server)
