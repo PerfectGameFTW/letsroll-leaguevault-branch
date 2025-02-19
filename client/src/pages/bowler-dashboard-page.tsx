@@ -158,13 +158,13 @@ export const BowlerDashboardPage: FC = () => {
       <div className="space-y-6">
         {/* Dashboard Overview Card */}
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-4">
             <CardTitle className="text-3xl font-bold">{bowler.name}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="space-y-0.5">
               <p className="text-lg">{getBowlerFirstLeagueName(bowler)}</p>
-              <p className="text-lg text-muted-foreground">{getBowlerTeamName(bowler)}</p>
+              <p className="text-base text-muted-foreground">{getBowlerTeamName(bowler)}</p>
             </div>
           </CardContent>
         </Card>
