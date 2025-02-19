@@ -354,6 +354,9 @@ async function validateStartupPhase(currentPhase: keyof typeof startupPhases, re
 }
 
 // Update the startServer function to use new safeguards
+const preferredPort = parseInt(process.env.PORT || '3000');
+const HOST = '0.0.0.0';
+
 async function startServer() {
   try {
     console.log('[Server] Starting server initialization...');
@@ -368,23 +371,21 @@ async function startServer() {
     await testDatabaseConnectionWithRetry();
     await validateStartupPhase('database', ['cleanup']);
 
-    // Phase 3: Port allocation
+    // Phase 3: Port allocation - Use process.env.PORT or fallback
     console.log('[Server] Phase 3: Allocating port...');
-    const preferredPort = parseInt(process.env.PORT || '5000');
-    const port = await findAvailablePort(preferredPort);
+    const port = preferredPort;
     serverPort = port;
     await validateStartupPhase('port', ['cleanup', 'database']);
 
-    // Initial port status with all health indicators
+    // Update port status with health indicators
     await writePortStatus(port, false, {
       database: true,
       vite: viteSetupComplete,
       server: false
     });
 
-    // Phase 4: Server startup
+    // Phase 4: Server startup with proper host binding
     console.log('[Server] Phase 4: Starting HTTP server...');
-    const HOST = '0.0.0.0';
 
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -396,7 +397,6 @@ async function startServer() {
         console.log(`[Server] Server is running at http://${HOST}:${port}`);
         await validateStartupPhase('server', ['cleanup', 'database', 'port']);
 
-        // Update status - server is now ready
         await writePortStatus(port, true, {
           database: true,
           vite: viteSetupComplete,
