@@ -76,10 +76,10 @@ export default function LeagueViewPage() {
           <Link href={`/leagues/${leagueId}/teams`} className="block">
             <Card className="hover:bg-accent transition-colors">
               <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Users className="h-5 w-5 mr-2" />
-                  Roster Management
-                </CardTitle>
+                <div className="flex justify-center mb-2">
+                  <Users className="h-6 w-6" />
+                </div>
+                <CardTitle>Roster Management</CardTitle>
                 <CardDescription>
                   Manage bowlers and teams in your league
                 </CardDescription>
@@ -95,10 +95,10 @@ export default function LeagueViewPage() {
           <Link href={`/leagues/${leagueId}/weekly-payments`} className="block">
             <Card className="hover:bg-accent transition-colors">
               <CardHeader>
-                <CardTitle className="flex items-center">
-                  <CircleDollarSign className="h-5 w-5 mr-2" />
-                  Weekly Payments
-                </CardTitle>
+                <div className="flex justify-center mb-2">
+                  <CircleDollarSign className="h-6 w-6" />
+                </div>
+                <CardTitle>Weekly Payments</CardTitle>
                 <CardDescription>
                   Log and track weekly cash/check payments
                 </CardDescription>
@@ -114,10 +114,10 @@ export default function LeagueViewPage() {
           <Link href={`/leagues/${leagueId}/scores`} className="block">
             <Card className="hover:bg-accent transition-colors">
               <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Trophy className="h-5 w-5 mr-2" />
-                  Weekly Scores
-                </CardTitle>
+                <div className="flex justify-center mb-2">
+                  <Trophy className="h-6 w-6" />
+                </div>
+                <CardTitle>Weekly Scores</CardTitle>
                 <CardDescription>
                   View and track weekly bowling scores
                 </CardDescription>

@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { differenceInWeeks, startOfToday, isValid, parseISO, format } from "date-fns";
+import { differenceInWeeks, startOfToday, format } from "date-fns";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -60,7 +60,7 @@ export default function PaymentHistoryPage() {
 
   const league = leagueResponse?.data;
   const payments = paymentsResponse?.data || [];
-  const bowlerName = bowlerResponse?.data?.name;
+  const bowlerName = bowlerResponse?.data?.name || '';
 
   // Calculate payment statistics
   const totalPaidPayments = payments.filter(p => p.status === 'paid');
@@ -71,27 +71,25 @@ export default function PaymentHistoryPage() {
   let amountPastDue = 0;
 
   if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
-    const seasonStart = parseISO(league.seasonStart);
-    const seasonEnd = parseISO(league.seasonEnd);
+    const seasonStart = new Date(league.seasonStart);
+    const seasonEnd = new Date(league.seasonEnd);
     const today = startOfToday();
 
-    if (isValid(seasonStart) && isValid(seasonEnd) && isValid(today)) {
-      if (today < seasonStart) {
-        weeksDue = 0;
-      } else if (today > seasonEnd) {
-        weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
-      } else {
-        weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
-      }
-
-      totalSeasonDues = league.weeklyFee * weeksDue;
-      amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
+    if (today < seasonStart) {
+      weeksDue = 0;
+    } else if (today > seasonEnd) {
+      weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
+    } else {
+      weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
     }
+
+    totalSeasonDues = league.weeklyFee * weeksDue;
+    amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
   }
 
   if (loadingLeague || loadingPayments) {
     return (
-      <BowlerLayout bowlerName={bowlerName} leagueName={league?.name}>
+      <BowlerLayout bowlerName={bowlerName || 'Loading...'} leagueName={league?.name || 'Loading...'}>
         <div className="flex items-center justify-center h-[50vh]">
           <Loader2 className="h-8 w-8 animate-spin" />
         </div>
@@ -101,14 +99,14 @@ export default function PaymentHistoryPage() {
 
   if (!league) {
     return (
-      <BowlerLayout bowlerName={bowlerName}>
+      <BowlerLayout bowlerName={bowlerName || 'Not Found'}>
         <div className="text-center">League not found</div>
       </BowlerLayout>
     );
   }
 
   return (
-    <BowlerLayout bowlerName={bowlerName} leagueName={league.name}>
+    <BowlerLayout bowlerName={bowlerName || 'Not Found'} leagueName={league.name || 'Unknown League'}>
       <div className="space-y-6">
         <Link
           href="/bowler-dashboard"
@@ -121,7 +119,7 @@ export default function PaymentHistoryPage() {
         <div>
           <h1 className="text-2xl font-bold mb-2">Payment History</h1>
           <p className="text-muted-foreground mb-6">
-            Track your payments and balance for {league.name}
+            Track your payments and balance for {league.name || "Unknown League"}
           </p>
         </div>
 
@@ -188,7 +186,7 @@ export default function PaymentHistoryPage() {
                   </TableRow>
                 ) : (
                   payments.map((payment) => {
-                    const weekNumber = league?.seasonStart
+                    const weekNumber = league.seasonStart
                       ? Math.max(1, differenceInWeeks(new Date(payment.weekOf), new Date(league.seasonStart)) + 1)
                       : '-';
 
@@ -212,7 +210,7 @@ export default function PaymentHistoryPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={payment.status === 'paid' ? 'success' : 'default'}>
+                          <Badge variant={payment.status === 'paid' ? 'default' : 'destructive'}>
                             {payment.status}
                           </Badge>
                         </TableCell>
