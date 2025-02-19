@@ -93,30 +93,48 @@ export async function processPayment(sourceId: string, amount: number, locationI
       }
     };
   } catch (error) {
-    console.error('[Square Service] Payment processing error:', JSON.stringify(error, null, 2));
-    
+    console.error('[Square Service] Payment processing error:', error);
+    // Log the full error context
+    console.error('[Square Service] Error context:', {
+      error,
+      type: typeof error,
+      keys: error ? Object.keys(error) : [],
+      stack: error?.stack,
+      name: error?.name
+    });
+
+    if (!error) {
+      throw new Error('Payment processing failed - no error details available');
+    }
+
     if (error instanceof Error) {
       throw error;
-    } else if (typeof error === 'object' && error !== null) {
+    }
+
+    if (typeof error === 'object') {
       const squareError = error as any;
-      // Handle various Square error formats
       const errorMessage = 
         squareError.message || 
         squareError.details?.[0]?.message ||
         squareError.errors?.[0]?.detail ||
-        squareError.errors?.[0]?.message;
-      
+        squareError.errors?.[0]?.message ||
+        squareError.result?.errors?.[0]?.detail;
+
       if (errorMessage) {
         throw new Error(errorMessage);
       }
-      
-      // If we have a status code but no message
+
       if (squareError.statusCode) {
         throw new Error(`Square API error (${squareError.statusCode})`);
       }
+
+      // If we have any error data at all, stringify and return it
+      if (Object.keys(squareError).length > 0) {
+        throw new Error(`Square API error: ${JSON.stringify(squareError)}`);
+      }
     }
     
-    throw new Error('Payment processing failed - please try again');
+    throw new Error('Payment processing failed - unknown error');
   }
 }
 
