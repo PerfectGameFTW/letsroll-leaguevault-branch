@@ -1,3 +1,6 @@
+const HOST = '0.0.0.0';
+const preferredPort = 5000;
+
 // Add constant for logging cleanup
 const LOG_PREFIX = '[Server]';
 const DB_LOG_PREFIX = '[Database]';
@@ -11,8 +14,8 @@ export function log(message: string, source = LOG_PREFIX, level: 'info' | 'error
     hour12: true,
   });
 
-  const logFn = level === 'error' ? console.error : 
-                level === 'warn' ? console.warn : 
+  const logFn = level === 'error' ? console.error :
+                level === 'warn' ? console.warn :
                 console.log;
 
   logFn(`${formattedTime} ${source} ${message}`);
@@ -233,6 +236,11 @@ const cleanupStalePortStatus = async () => {
 
 async function cleanupPortStatus() {
   try {
+    // First check if the file exists
+    if (!fs.existsSync(PORT_STATUS_FILE)) {
+      return;
+    }
+
     // Attempt to read existing port status
     const existingStatus = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8')
       .then(content => JSON.parse(content) as PortStatus)
@@ -246,20 +254,24 @@ async function cleanupPortStatus() {
 
         // If process exists and port status is recent (within last minute)
         const isRecent = Date.now() - new Date(existingStatus.timestamp).getTime() < 60000;
-        if (isRecent) {
-          throw new Error('Another server instance is already running');
+        if (!isRecent) {
+          // Process exists but status is stale, safe to cleanup
+          await fs.promises.unlink(PORT_STATUS_FILE);
+          log('Cleaned up stale port status file');
         }
       } catch (e) {
         // Process doesn't exist, safe to cleanup
-        log('Cleaning up stale port status file');
+        await fs.promises.unlink(PORT_STATUS_FILE);
+        log('Cleaned up orphaned port status file');
       }
+    } else {
+      // Invalid or corrupted status file, safe to remove
+      await fs.promises.unlink(PORT_STATUS_FILE);
+      log('Removed invalid port status file');
     }
-
-    // Remove the status file
-    await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
   } catch (error) {
-    log(`Error during port status cleanup: ${error}`, LOG_PREFIX, 'error');
-    throw error;
+    log(`Warning during port status cleanup: ${error}`, LOG_PREFIX, 'warn');
+    // Continue even if cleanup fails
   }
 }
 
@@ -270,6 +282,8 @@ async function isPortAvailable(port: number): Promise<boolean> {
       .once('error', (err: NodeJS.ErrnoException) => {
         if (err.code === 'EADDRINUSE') {
           log(`Port ${port} is in use`);
+        } else {
+          log(`Error checking port ${port}: ${err.message}`, LOG_PREFIX, 'warn');
         }
         resolve(false);
       })
@@ -277,14 +291,14 @@ async function isPortAvailable(port: number): Promise<boolean> {
         tester.once('close', () => resolve(true));
         tester.close();
       })
-      .listen(port);
+      .listen(port, HOST);
 
     // Quick timeout for port check
     setTimeout(() => {
       tester.removeAllListeners();
       tester.close();
       resolve(false);
-    }, 500);
+    }, 1000); // Increased timeout for more reliable checks
   });
 }
 
@@ -299,6 +313,18 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
     const port = startPort + attempt;
 
     try {
+      // Test if port is already registered in status file
+      if (fs.existsSync(PORT_STATUS_FILE)) {
+        const status = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8')
+          .then(content => JSON.parse(content))
+          .catch(() => null);
+
+        if (status && status.port === port) {
+          log(`Port ${port} is registered in status file, skipping...`);
+          continue;
+        }
+      }
+
       const isAvailable = await isPortAvailable(port);
       if (isAvailable) {
         log(`Found available port: ${port}`);
@@ -312,11 +338,15 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
       }
       log(`Port ${port} is in use, trying next port...`);
     } catch (error) {
-      log(`Error checking port ${port}: ${error}`, LOG_PREFIX, 'error');
+      log(`Error checking port ${port}: ${error}`, LOG_PREFIX, 'warn');
+      // Continue to next port even if there's an error
+      continue;
     }
   }
 
-  throw new Error(`No available ports found between ${startPort} and ${startPort + maxAttempts - 1}`);
+  const error = new Error(`No available ports found between ${startPort} and ${startPort + maxAttempts - 1}`);
+  log(error.message, LOG_PREFIX, 'error');
+  throw error;
 }
 
 // Function to wait for the server to be ready
@@ -402,79 +432,7 @@ async function testDatabaseConnectionWithRetry(maxRetries = 5, backoffMs = 1000)
 }
 
 // Enhanced shutdown with better cleanup
-async function shutdown(force: boolean = false): Promise<void> {
-  log('Initiating graceful shutdown...');
-  const startTime = Date.now();
-  shutdownPhases.initiated = true;
 
-  try {
-    if (!force) {
-      // Wait for active requests with a shorter timeout
-      const gracefulTimeout = Math.min(5000, SHUTDOWN_TIMEOUT / 2);
-      await Promise.race([
-        new Promise<void>(async (resolve) => {
-          while (activeRequests > 0 && (Date.now() - startTime) < gracefulTimeout) {
-            log(`Waiting for ${activeRequests} active requests...`, LOG_PREFIX, 'warn');
-            await new Promise(r => setTimeout(r, 100));
-          }
-          resolve();
-        }),
-        new Promise((_,reject) => setTimeout(() => reject(new Error('Graceful shutdown timeout')), gracefulTimeout))
-      ]).catch(err => {
-        log(`Graceful shutdown timeout: ${err.message}`, LOG_PREFIX, 'warn');
-      });
-    }
-
-    shutdownPhases.requests_drained = true;
-
-    // Cleanup port status file
-    if (fs.existsSync(PORT_STATUS_FILE)) {
-      await fs.promises.unlink(PORT_STATUS_FILE);
-      log('Port status file cleaned up');
-    }
-    shutdownPhases.port_status_cleaned = true;
-
-    // Database cleanup with retry
-    try {
-      await dbCleanup();
-      log('Database connections cleaned up');
-      shutdownPhases.database_cleaned = true;
-    } catch (error) {
-      log('Database cleanup error:', LOG_PREFIX, 'error');
-      throw error;
-    }
-
-    // Server close with timeout
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error('Server close timeout'));
-      }, 5000);
-
-      server.close((err) => {
-        clearTimeout(timeout);
-        if (err) {
-          log('Error closing server:', LOG_PREFIX, 'error');
-          reject(err);
-        } else {
-          log('Server closed successfully');
-          shutdownPhases.server_closed = true;
-          resolve();
-        }
-      });
-    });
-
-    const totalTime = Date.now() - startTime;
-    log(`Shutdown completed in ${totalTime}ms`);
-  } catch (error) {
-    log('Shutdown error:', LOG_PREFIX, 'error');
-    throw error;
-  }
-}
-
-const preferredPort = 5000;
-const HOST = '0.0.0.0';
-
-// Update startServer to use findAvailablePort
 async function startServer() {
   try {
     log('Starting server initialization...');
@@ -659,12 +617,12 @@ async function shutdown() {
 
     const totalTime = Date.now() - startTime;
     log(`Graceful shutdown completed in ${totalTime}ms`);
-    log('Final shutdown phase status:', LOG_PREFIX, 'info', JSON.stringify(shutdownPhases));
+    log('Final shutdown phase status:', LOG_PREFIX, 'info');
     process.exit(0);
   } catch (error) {
     const totalTime = Date.now() - startTime;
     log(`Error during shutdown after ${totalTime}ms: ${error}`, LOG_PREFIX, 'error');
-    log('Shutdown phases at error:', LOG_PREFIX, 'error', JSON.stringify(shutdownPhases));
+    log('Shutdown phases at error:', LOG_PREFIX, 'error');
     process.exit(1);
   } finally {
     if (shutdownTimeoutId) {
