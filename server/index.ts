@@ -1,7 +1,7 @@
 const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 const HOST = '0.0.0.0';
-const preferredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
+const preferredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
 
 // Define phase tracking interfaces
 interface StartupPhases {
