@@ -81,17 +81,29 @@ export async function createPayment(amount: number, cardInstance: any) {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        console.error('[Square] Payment processing failed:', errorData);
-        throw new Error(errorData?.error?.message || 'Payment processing failed');
+        let errorMessage = 'Payment processing failed';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData?.error?.message || errorMessage;
+        } catch (e) {
+          // If response is not JSON, try to get text
+          try {
+            const errorText = await response.text();
+            console.error('[Square] Non-JSON error response:', errorText);
+            errorMessage = errorText; // Use text as error message if JSON parsing fails
+          } catch (textError) {
+            console.error('[Square] Failed to read error response');
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const payment = await response.json();
       console.log('[Square] Payment processed:', payment);
       return payment.data;
     } else {
-      console.error('[Square] Card tokenization failed:', result.errors);
-      throw new Error(result.errors[0].message);
+      console.error('[Square] Card tokenization failed:', result);
+      throw new Error(result.errors?.[0]?.message || "Failed to process card information");
     }
   } catch (error) {
     console.error('[Square] Error processing payment:', error);

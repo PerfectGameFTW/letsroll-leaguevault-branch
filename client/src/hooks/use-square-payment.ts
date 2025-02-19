@@ -32,7 +32,6 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
         setCard(null);
         setIsInitialized(false);
         setError(null);
-        console.log('[useSquarePayment] Card cleanup completed');
       } catch (error) {
         console.error('[useSquarePayment] Error during cleanup:', error);
       }

@@ -14,7 +14,10 @@ const paymentSchema = z.object({
 
 router.post('/payments', async (req, res) => {
   try {
-    console.log('[Square Route] Processing payment request:', req.body);
+    console.log('[Square Route] Processing payment request:', {
+      ...req.body,
+      sourceId: req.body.sourceId ? '[REDACTED]' : undefined
+    });
 
     // Validate request body
     const validatedData = paymentSchema.parse(req.body);
@@ -25,14 +28,21 @@ router.post('/payments', async (req, res) => {
       validatedData.locationId
     );
 
-    console.log('[Square Route] Payment processed successfully:', payment);
+    console.log('[Square Route] Payment processed successfully:', {
+      id: payment.id,
+      status: payment.status
+    });
+
     sendSuccess(res, payment);
   } catch (error) {
     console.error('[Square Route] Payment processing error:', error);
+
     if (error instanceof z.ZodError) {
-      sendError(res, 'Invalid payment data provided', 400);
+      sendError(res, 'Invalid payment data provided', 400, 'VALIDATION_ERROR');
     } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to process payment', 500);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to process payment';
+      const statusCode = error.statusCode || 500;
+      sendError(res, errorMessage, statusCode);
     }
   }
 });
