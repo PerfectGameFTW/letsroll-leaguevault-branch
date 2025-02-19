@@ -90,6 +90,12 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
       throw new Error("Invalid payment amount");
     }
 
+    // Verify required environment variables
+    if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
+      console.error('[Square] Missing required Square credentials');
+      throw new Error("Square credentials are not properly configured");
+    }
+
     console.log('[Square] Starting payment process for amount:', amount);
     console.log('[Square] Tokenizing card...');
 
@@ -122,6 +128,12 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
         body: JSON.stringify(paymentData),
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('[Square] Server payment error:', errorData);
+        throw new Error(errorData.error?.message || 'Payment processing failed');
+      }
+
       const responseData = await response.json();
       console.log('[Square] Server response:', {
         status: response.status,
@@ -129,17 +141,8 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
         data: responseData
       });
 
-      if (!response.ok) {
-        const errorMessage = responseData.error?.message || responseData.error || 'Payment processing failed';
-        console.error('[Square] Payment processing failed:', {
-          status: response.status,
-          error: errorMessage
-        });
-
-        throw new Error(errorMessage);
-      }
-
       if (!responseData.status || responseData.status !== 'COMPLETED') {
+        console.error('[Square] Payment not completed:', responseData);
         throw new Error("Payment was not completed successfully");
       }
 
@@ -153,7 +156,7 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
       return responseData;
     } else {
       const errors = result.errors || [];
-      const errorMessage = errors[0]?.message || 'Card tokenization failed';
+      const errorMessage = errors.map(e => e.message).join(', ') || 'Card tokenization failed';
       console.error('[Square] Card tokenization failed:', {
         errors,
         firstError: errorMessage

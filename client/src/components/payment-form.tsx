@@ -23,6 +23,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import type { InsertPayment, Bowler } from "@shared/schema";
 import { insertPaymentSchema } from "@shared/schema";
 import { useQueryClient } from "@tanstack/react-query";
+import { Loader2, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface PaymentFormProps {
   open: boolean;
@@ -35,6 +37,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const { toast } = useToast();
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [isSquareReady, setIsSquareReady] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const initializationAttempted = useRef(false);
   const queryClient = useQueryClient();
 
@@ -117,15 +120,27 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
   const onSubmit = async (data: InsertPayment) => {
     try {
-      console.log('[PaymentForm] Submitting payment:', data);
+      setPaymentError(null);
+      console.log('[PaymentForm] Submitting payment:', {
+        ...data,
+        amount: data.amount / 100,
+      });
 
-      if (data.type === 'credit_card' && card) {
-        const result = await card.tokenize();
-        if (result.status === 'OK') {
-          data.squarePaymentId = result.token;
-        } else {
-          throw new Error(result.errors?.[0]?.message || 'Failed to process credit card');
+      if (data.type === 'credit_card') {
+        if (!card) {
+          throw new Error('Credit card form not initialized');
         }
+
+        console.log('[PaymentForm] Tokenizing card...');
+        const result = await card.tokenize();
+
+        if (result.status !== 'OK' || !result.token) {
+          const errors = result.errors || [];
+          throw new Error(errors.map(e => e.message).join(', ') || 'Failed to process credit card');
+        }
+
+        console.log('[PaymentForm] Card tokenized successfully');
+        data.squarePaymentId = result.token;
       }
 
       const response = await fetch('/api/payments', {
@@ -136,10 +151,14 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         body: JSON.stringify(data),
       });
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || 'Failed to process payment');
+        console.error('[PaymentForm] Payment API error:', responseData);
+        throw new Error(responseData.error?.message || 'Failed to process payment');
       }
+
+      console.log('[PaymentForm] Payment processed successfully:', responseData);
 
       toast({
         title: "Success",
@@ -150,9 +169,11 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       onClose();
     } catch (error) {
       console.error('[PaymentForm] Payment submission error:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to process payment";
+      setPaymentError(errorMessage);
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to process payment. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -167,6 +188,13 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {paymentError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{paymentError}</AlertDescription>
+              </Alert>
+            )}
+
             <FormField
               control={form.control}
               name="bowlerId"
@@ -192,7 +220,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                     </select>
                   </FormControl>
                   <FormMessage>
-                    {form.formState.errors.bowlerId?.message || 
+                    {form.formState.errors.bowlerId?.message ||
                      (!field.value && "Please select a bowler")}
                   </FormMessage>
                 </FormItem>
@@ -309,9 +337,19 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               </Button>
               <Button
                 type="submit"
-                disabled={paymentType === "credit_card" && !isSquareReady}
+                disabled={
+                  form.formState.isSubmitting || 
+                  (paymentType === "credit_card" && !isSquareReady)
+                }
               >
-                Submit Payment
+                {form.formState.isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  "Submit Payment"
+                )}
               </Button>
             </div>
           </form>

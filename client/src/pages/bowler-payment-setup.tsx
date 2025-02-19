@@ -18,6 +18,7 @@ import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useParams } from "wouter";
 import type { League, BowlerLeague } from "@shared/schema";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type PaymentSchedule = "weekly" | "monthly" | "half" | "full";
 
@@ -67,10 +68,13 @@ export default function BowlerPaymentSetupPage() {
   const bowlerId = parseInt(params.bowlerId!);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
   const cardContainerRef = useRef<HTMLDivElement>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Initialize Square payment form
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
+      console.error('[BowlerPaymentSetup] Square initialization error:', error);
       toast({
         title: "Payment Setup Error",
         description: error,
@@ -127,12 +131,22 @@ export default function BowlerPaymentSetupPage() {
     }
 
     try {
+      setPaymentError(null);
+      setIsProcessing(true);
+
       const amount = calculatePaymentAmount();
       if (amount <= 0) {
         throw new Error("Invalid payment amount calculated");
       }
 
+      console.log('[BowlerPaymentSetup] Processing payment:', {
+        amount,
+        schedule: selectedSchedule,
+        bowlerId
+      });
+
       const result = await createPayment(amount, card);
+      console.log('[BowlerPaymentSetup] Payment result:', result);
 
       if (result.status === 'COMPLETED') {
         toast({
@@ -142,15 +156,20 @@ export default function BowlerPaymentSetupPage() {
 
         // Additional success actions like updating user payment status could go here
       } else {
+        console.error('[BowlerPaymentSetup] Payment not completed:', result);
         throw new Error("Payment was not completed successfully");
       }
     } catch (error) {
-      console.error('[PaymentSetup] Payment error:', error);
+      console.error('[BowlerPaymentSetup] Payment error:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to set up payment";
+      setPaymentError(errorMessage);
       toast({
         title: "Payment Setup Failed",
-        description: error instanceof Error ? error.message : "Failed to set up payment. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -173,6 +192,13 @@ export default function BowlerPaymentSetupPage() {
             Choose your preferred payment schedule for {league.name}
           </p>
         </div>
+
+        {paymentError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{paymentError}</AlertDescription>
+          </Alert>
+        )}
 
         <Card>
           <CardHeader>
@@ -236,10 +262,17 @@ export default function BowlerPaymentSetupPage() {
           <CardFooter>
             <Button
               onClick={handleSubmit}
-              disabled={!isInitialized || !!squareError}
+              disabled={!isInitialized || !!squareError || isProcessing}
               className="w-full"
             >
-              Set Up Payment Schedule
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing Payment...
+                </>
+              ) : (
+                "Set Up Payment Schedule"
+              )}
             </Button>
           </CardFooter>
         </Card>
