@@ -45,9 +45,7 @@ const createMockClient = () => ({
 // Mock Square SDK
 jest.mock('square', () => ({
   __esModule: true,
-  default: {
-    Client: jest.fn().mockImplementation(() => createMockClient())
-  }
+  Client: jest.fn().mockImplementation(() => createMockClient())
 }));
 
 describe('Square Service', () => {
@@ -59,7 +57,7 @@ describe('Square Service', () => {
     process.env = { ...mockEnv };
     process.env.SQUARE_ACCESS_TOKEN = 'test-token';
     mockClient = createMockClient();
-    (jest.requireMock('square') as any).default.Client.mockImplementation(() => mockClient);
+    (jest.requireMock('square') as any).Client.mockImplementation(() => mockClient);
   });
 
   afterEach(() => {
