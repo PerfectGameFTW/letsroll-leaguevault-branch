@@ -62,7 +62,7 @@ export const BowlerDashboardPage: FC = () => {
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
   const cardContainerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize Square payment form with proper error handling
+  // Initialize Square payment form with enhanced error handling and logging
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
       console.error('[Square Payment Error]:', error);
@@ -73,6 +73,41 @@ export const BowlerDashboardPage: FC = () => {
       });
     },
   });
+
+  // Initialize card when payment setup is shown with detailed logging
+  useEffect(() => {
+    console.log('[BowlerDashboard] Payment setup state:', {
+      showPaymentSetup,
+      isInitialized,
+      hasCardContainer: !!cardContainerRef.current,
+      cardState: card ? 'exists' : 'null'
+    });
+
+    if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
+      console.log('[BowlerDashboard] Attempting to initialize Square payment form');
+      try {
+        initializeCard(cardContainerRef.current);
+        console.log('[BowlerDashboard] Square payment form initialized successfully');
+      } catch (error) {
+        console.error('[BowlerDashboard] Error initializing payment form:', error);
+        toast({
+          title: "Payment Setup Error",
+          description: "Failed to initialize payment form. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }
+  }, [showPaymentSetup, isInitialized, initializeCard, card]);
+
+  // Cleanup effect - only destroy card when component unmounts
+  useEffect(() => {
+    return () => {
+      if (card) {
+        console.log('[BowlerDashboard] Cleaning up Square payment form');
+        card.destroy();
+      }
+    };
+  }, [card]);
 
   const { data: currentUserResponse, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
@@ -135,25 +170,7 @@ export const BowlerDashboardPage: FC = () => {
   const league = combinedData?.league;
   const payments = combinedData?.payments || [];
 
-  // Initialize card when container is ready and payment setup is shown
-  useEffect(() => {
-    if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
-      console.log('[BowlerDashboard] Initializing Square payment form');
-      initializeCard(cardContainerRef.current);
-    }
-  }, [showPaymentSetup, cardContainerRef.current, isInitialized, initializeCard]);
 
-  // Cleanup effect for Square payment form
-  useEffect(() => {
-    return () => {
-      if (card) {
-        console.log('[BowlerDashboard] Cleaning up Square payment form');
-        card.destroy();
-      }
-    };
-  }, [card]);
-
-  // Calculate payment amount based on selected schedule
   const calculatePaymentAmount = () => {
     if (!league || !bowler) return 0;
 
@@ -169,7 +186,6 @@ export const BowlerDashboardPage: FC = () => {
     return selectedOption.calculateAmount(weeklyFee, totalWeeks);
   };
 
-  // Handle payment submission
   const handleSubmitPayment = async () => {
     if (!card || !league || !bowler) {
       toast({
@@ -316,41 +332,57 @@ export const BowlerDashboardPage: FC = () => {
                 showPaymentSetup ? (
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-lg font-semibold mb-4">Choose Payment Schedule</h3>
-                      <RadioGroup
-                        value={selectedSchedule}
-                        onValueChange={(value) => setSelectedSchedule(value as PaymentSchedule)}
-                        className="space-y-4"
-                      >
-                        {PAYMENT_OPTIONS.map((option) => (
-                          <div key={option.id} className="flex items-center space-x-2">
-                            <RadioGroupItem value={option.id} id={option.id} />
-                            <Label htmlFor={option.id} className="flex flex-col">
-                              <span className="font-medium">{option.label}</span>
-                              <span className="text-sm text-muted-foreground">
-                                {option.description}
-                              </span>
-                              <span className="text-sm font-semibold">
-                                ${(calculatePaymentAmount() / 100).toFixed(2)}
-                              </span>
-                            </Label>
-                          </div>
-                        ))}
-                      </RadioGroup>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Payment Schedule Selection */}
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold">Choose Payment Schedule</h3>
+                          <RadioGroup
+                            value={selectedSchedule}
+                            onValueChange={(value) => {
+                              console.log('[BowlerDashboard] Selected payment schedule:', value);
+                              setSelectedSchedule(value as PaymentSchedule);
+                            }}
+                            className="space-y-4"
+                          >
+                            {PAYMENT_OPTIONS.map((option) => (
+                              <div key={option.id} className="flex items-center space-x-2">
+                                <RadioGroupItem value={option.id} id={option.id} />
+                                <Label htmlFor={option.id} className="flex flex-col">
+                                  <span className="font-medium">{option.label}</span>
+                                  <span className="text-sm text-muted-foreground">
+                                    {option.description}
+                                  </span>
+                                  <span className="text-sm font-semibold">
+                                    ${(calculatePaymentAmount() / 100).toFixed(2)}
+                                  </span>
+                                </Label>
+                              </div>
+                            ))}
+                          </RadioGroup>
+                        </div>
+
+                        {/* Card Input Form */}
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold">Payment Information</h3>
+                          <div
+                            ref={cardContainerRef}
+                            className="min-h-[250px] p-4 border rounded-lg bg-card"
+                            style={{ minHeight: '250px' }}
+                          />
+                          {squareError && (
+                            <p className="text-sm text-destructive">{squareError}</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="space-y-4">
-                      <h3 className="text-lg font-semibold">Payment Information</h3>
-                      <div ref={cardContainerRef} />
-                      {squareError && (
-                        <p className="text-sm text-destructive">{squareError}</p>
-                      )}
-                    </div>
-
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 pt-4 border-t">
                       <Button
                         variant="outline"
-                        onClick={() => setShowPaymentSetup(false)}
+                        onClick={() => {
+                          console.log('[BowlerDashboard] Canceling payment setup');
+                          setShowPaymentSetup(false);
+                        }}
                       >
                         Cancel
                       </Button>
@@ -377,7 +409,7 @@ export const BowlerDashboardPage: FC = () => {
                         <li>• Special discounts for full season payments</li>
                       </ul>
                     </div>
-                    <Button 
+                    <Button
                       className="w-full"
                       onClick={() => setShowPaymentSetup(true)}
                     >
@@ -395,7 +427,7 @@ export const BowlerDashboardPage: FC = () => {
                         Your automatic payments are configured
                       </p>
                     </div>
-                    <Button 
+                    <Button
                       variant="outline"
                       onClick={() => setShowPaymentSetup(true)}
                     >
@@ -463,8 +495,6 @@ export const BowlerDashboardPage: FC = () => {
   );
 };
 
-export default BowlerDashboardPage;
-
 interface ApiResponse<T> {
   success: boolean;
   data: T;
@@ -478,3 +508,5 @@ interface UpcomingPayment {
   dueDate: Date;
   amount: number;
 }
+
+export default BowlerDashboardPage;
