@@ -1,4 +1,4 @@
-import { ApiError, Client, Environment } from 'square';
+import { Client, Environment } from 'square';
 
 interface SquareCustomer {
   id: string;
@@ -11,6 +11,7 @@ let squareClient: Client | null = null;
 
 async function initializeSquareClient() {
   if (!squareClient && process.env.SQUARE_ACCESS_TOKEN) {
+    console.log('[Square Service] Initializing with token:', process.env.SQUARE_ACCESS_TOKEN.substring(0, 4) + '...');
     try {
       console.log('[Square Service] Initializing Square client...');
       squareClient = new Client({
