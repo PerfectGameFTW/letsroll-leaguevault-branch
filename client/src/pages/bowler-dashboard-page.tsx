@@ -13,7 +13,9 @@ import {
   History,
   UserCircle,
   ChevronRight,
-  Menu
+  Menu,
+  AlertCircle,
+  ArrowRight
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -21,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useState } from "react";
 import { differenceInWeeks, startOfToday, isValid } from "date-fns";
+import { Badge } from "@/components/ui/badge";
 
 // Lazy load components that aren't immediately visible
 const SideNav = lazy(() => import("@/components/bowler-dashboard/side-nav"));
@@ -100,6 +103,30 @@ export const BowlerDashboardPage: FC = () => {
 
   const league = combinedData?.league;
   const payments = combinedData?.payments || [];
+
+  // Calculate payment summary
+  const totalPaidPayments = payments.filter(p => p.status === 'paid');
+  const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
+  let weeksDue = 0;
+  let totalSeasonDues = 0;
+  let amountPastDue = 0;
+
+  if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
+    const seasonStart = new Date(league.seasonStart);
+    const seasonEnd = new Date(league.seasonEnd);
+    const today = startOfToday();
+
+    if (today < seasonStart) {
+      weeksDue = 0;
+    } else if (today > seasonEnd) {
+      weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
+    } else {
+      weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
+    }
+
+    totalSeasonDues = league.weeklyFee * weeksDue;
+    amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
+  }
 
   // Show loading state
   if (isUserLoading || isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
@@ -200,6 +227,81 @@ export const BowlerDashboardPage: FC = () => {
               <Suspense fallback={<div>Loading financial summary...</div>}>
                 <FinancialSummary {...financialSummaryProps} />
               </Suspense>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Status</CardTitle>
+              <CardDescription>Current payment information for {league?.name}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">Weekly Fee</CardTitle>
+                      <CardDescription>Regular payment amount</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-2xl font-bold">${((league?.weeklyFee || 0) / 100).toFixed(2)}</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">Amount Paid</CardTitle>
+                      <CardDescription>Total payments received</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-2xl font-bold">${(totalPaidAmount / 100).toFixed(2)}</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">Past Due Amount</CardTitle>
+                      <CardDescription>Outstanding balance</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-semibold">Payment Setup</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {bowler?.squareCustomerId
+                        ? "Your payment method is configured"
+                        : "Set up your payment method to enable automatic payments"}
+                    </p>
+                  </div>
+
+                  <Link href={`/bowlers/${bowler.id}/payment-setup`}>
+                    <Button>
+                      {bowler?.squareCustomerId ? "Update Payment Method" : "Set Up Payments"}
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </Link>
+                </div>
+
+                {amountPastDue > 0 && (
+                  <div className="rounded-md bg-destructive/10 p-4">
+                    <div className="flex items-start">
+                      <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+                      <div className="ml-3">
+                        <h3 className="text-sm font-medium text-destructive">Payment Past Due</h3>
+                        <div className="mt-1 text-sm text-destructive">
+                          <p>You have an outstanding balance of ${(amountPastDue / 100).toFixed(2)}.</p>
+                          <p className="mt-2">Please make a payment to maintain your active status in the league.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
