@@ -199,12 +199,24 @@ export const BowlerDashboardPage: FC = () => {
     try {
       // Calculate amount in cents
       const amount = calculateTotalAmount();
+      console.log('[BowlerDashboard] Processing payment:', { 
+        amount,
+        schedule: selectedSchedule,
+        bowlerId: bowler.id,
+        leagueId: league.id,
+        weeklyFee: getWeeklyFee(bowler),
+        totalWeeks: Math.ceil(
+          (new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) /
+          (7 * 24 * 60 * 60 * 1000)
+        )
+      });
+
       if (amount <= 0) {
         throw new Error("Invalid payment amount calculated");
       }
 
-      console.log('[BowlerDashboard] Processing payment:', { amount });
       const result = await createPayment(amount, card);
+      console.log('[BowlerDashboard] Payment result:', result);
 
       if (result.status === 'COMPLETED') {
         toast({
@@ -216,7 +228,7 @@ export const BowlerDashboardPage: FC = () => {
         throw new Error("Payment was not completed successfully");
       }
     } catch (error) {
-      console.error('[PaymentSetup] Payment error:', error);
+      console.error('[BowlerDashboard] Payment error:', error);
       toast({
         title: "Payment Setup Failed",
         description: error instanceof Error ? error.message : "Failed to set up payment. Please try again.",

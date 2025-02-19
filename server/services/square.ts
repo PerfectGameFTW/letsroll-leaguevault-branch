@@ -1,4 +1,5 @@
 import { Client, Environment } from 'square';
+import type { ApiError } from 'square';
 
 interface SquareCustomer {
   id: string;
@@ -124,6 +125,16 @@ export async function processPayment(sourceId: string, amount: number, locationI
       mode: process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox'
     });
 
+    // Validate inputs
+    if (!sourceId || !amount || !locationId) {
+      throw new Error('Missing required payment parameters');
+    }
+
+    // Ensure amount is a positive integer
+    if (amount <= 0 || !Number.isInteger(amount)) {
+      throw new Error('Invalid payment amount');
+    }
+
     const response = await client.paymentsApi.createPayment({
       sourceId,
       idempotencyKey: `${Date.now()}-${Math.random()}`,
@@ -132,10 +143,11 @@ export async function processPayment(sourceId: string, amount: number, locationI
         currency: 'USD'
       },
       locationId,
+      autocomplete: true
     });
 
     if (!response?.result?.payment) {
-      throw new Error('API Error: Invalid payment response');
+      throw new Error('Invalid payment response from Square API');
     }
 
     const payment = response.result.payment;
@@ -143,7 +155,8 @@ export async function processPayment(sourceId: string, amount: number, locationI
       paymentId: payment.id,
       status: payment.status,
       cardLast4: payment.cardDetails?.card?.last4 ?? '****',
-      cardBrand: payment.cardDetails?.card?.cardBrand ?? 'UNKNOWN'
+      cardBrand: payment.cardDetails?.card?.cardBrand ?? 'UNKNOWN',
+      amount: payment.amountMoney?.amount?.toString()
     });
 
     return {
@@ -155,6 +168,7 @@ export async function processPayment(sourceId: string, amount: number, locationI
       }
     };
   } catch (error) {
+    // Enhanced error logging with proper type checking
     console.error('[Square Service] Payment processing error:', {
       error: error instanceof Error ? {
         name: error.name,
@@ -167,6 +181,22 @@ export async function processPayment(sourceId: string, amount: number, locationI
         sourceIdPresent: !!sourceId
       }
     });
+
+    // Handle Square API specific errors
+    if ((error as ApiError)?.statusCode === 400) {
+      const squareError = error as ApiError;
+      const details = squareError.result?.errors?.[0]?.detail || 'Invalid request parameters';
+      throw new Error(`Square API Error: ${details}`);
+    }
+
+    if ((error as ApiError)?.statusCode === 401) {
+      throw new Error('Square API Error: Invalid credentials');
+    }
+
+    if ((error as ApiError)?.statusCode === 402) {
+      throw new Error('Square API Error: Payment required');
+    }
+
     throw new Error('Failed to process Square payment: ' + (error instanceof Error ? error.message : String(error)));
   }
 }

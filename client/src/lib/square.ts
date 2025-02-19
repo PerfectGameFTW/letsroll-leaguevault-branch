@@ -84,11 +84,16 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
       throw new Error("Card form not initialized");
     }
 
+    // Ensure amount is a positive integer
+    if (amount <= 0 || !Number.isInteger(amount)) {
+      console.error('[Square] Invalid payment amount:', amount);
+      throw new Error("Invalid payment amount");
+    }
+
     console.log('[Square] Starting payment process for amount:', amount);
-
     console.log('[Square] Tokenizing card...');
-    const result = await cardInstance.tokenize();
 
+    const result = await cardInstance.tokenize();
     if (result.status === 'OK') {
       console.log('[Square] Card tokenized successfully');
 
@@ -105,9 +110,20 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Square] Payment processing failed:', errorText);
-        throw new Error(errorText || 'Payment processing failed');
+        let errorMessage: string;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || 'Payment processing failed';
+        } catch {
+          errorMessage = await response.text() || 'Payment processing failed';
+        }
+
+        console.error('[Square] Payment processing failed:', {
+          status: response.status,
+          error: errorMessage
+        });
+
+        throw new Error(errorMessage);
       }
 
       const payment = await response.json();
@@ -120,8 +136,12 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
 
       return payment;
     } else {
-      console.error('[Square] Card tokenization failed:', result.errors);
-      throw new Error(result.errors[0]?.message || 'Card tokenization failed');
+      const errorMessage = result.errors?.[0]?.message || 'Card tokenization failed';
+      console.error('[Square] Card tokenization failed:', {
+        errors: result.errors,
+        firstError: errorMessage
+      });
+      throw new Error(errorMessage);
     }
   } catch (error) {
     console.error('[Square] Error processing payment:', {
@@ -132,6 +152,8 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
       } : error,
       amount
     });
+
+    // Re-throw with a more user-friendly message
     throw new Error('Payment processing failed: ' + (error instanceof Error ? error.message : String(error)));
   }
 }
