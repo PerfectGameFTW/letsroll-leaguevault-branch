@@ -1,4 +1,4 @@
-import { Client, Environment } from 'square';
+import { ApiError, Client as SquareClient, Environment } from '@square/sdk';
 
 interface SquareCustomer {
   id: string;
@@ -7,12 +7,12 @@ interface SquareCustomer {
 }
 
 // Initialize Square client
-let squareClient: Client | null = null;
+let squareClient: SquareClient | null = null;
 
-function initializeSquareClient(): Client {
+function initializeSquareClient(): SquareClient {
   if (!squareClient && process.env.SQUARE_ACCESS_TOKEN) {
     try {
-      squareClient = new Client({
+      squareClient = new SquareClient({
         accessToken: process.env.SQUARE_ACCESS_TOKEN,
         environment: process.env.NODE_ENV === 'production' ? Environment.Production : Environment.Sandbox
       });
@@ -87,64 +87,16 @@ export async function processPayment(sourceId: string, amount: number, locationI
   } catch (error) {
     console.error('[Square] Payment processing error:', error);
 
-    if (error instanceof Error) {
-      throw new Error(`Payment processing failed: ${error.message}`);
+    if (error instanceof ApiError) {
+      throw new Error(`Payment processing failed: ${error.result.errors?.[0]?.detail ?? error.message}`);
+    } else if (error instanceof Error) {
+      throw error;
     } else {
       throw new Error('An unexpected error occurred during payment processing');
     }
   }
 }
 
-export async function createOrUpdateCustomer(name: string, email: string): Promise<SquareCustomer> {
-  const client = initializeSquareClient();
-
-  try {
-    // Search for existing customer by email
-    const searchResponse = await client.customersApi.searchCustomers({
-      query: {
-        filter: {
-          emailAddress: {
-            exact: email
-          }
-        }
-      }
-    });
-
-    let customer;
-    if (searchResponse.result.customers?.length) {
-      // Update existing customer
-      const existingCustomer = searchResponse.result.customers[0];
-      const updateResponse = await client.customersApi.updateCustomer(existingCustomer.id!, {
-        emailAddress: email,
-        givenName: name
-      });
-      customer = updateResponse.result.customer;
-    } else {
-      // Create new customer
-      const createResponse = await client.customersApi.createCustomer({
-        idempotencyKey: `${Date.now()}-${Math.random()}`,
-        emailAddress: email,
-        givenName: name
-      });
-      customer = createResponse.result.customer;
-    }
-
-    if (!customer) {
-      throw new Error("Failed to create or update customer");
-    }
-
-    return {
-      id: customer.id!,
-      name: customer.givenName ?? name,
-      email: customer.emailAddress ?? email
-    };
-  } catch (error) {
-    console.error('[Square] Customer operation failed:', error);
-    throw error instanceof Error ? error : new Error('Failed to create or update customer');
-  }
-}
-
 export default {
-  processPayment,
-  createOrUpdateCustomer
+  processPayment
 };
