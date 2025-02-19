@@ -1,4 +1,4 @@
-import { Client } from 'square';
+const { Client } = require('square');
 import type { ApiError } from 'square';
 import type { Environment } from 'square';
 
