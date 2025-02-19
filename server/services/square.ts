@@ -1,4 +1,5 @@
-import { Client, Environment } from 'square';
+import Square from 'square';
+const { Client, Environment } = Square;
 
 interface SquareCustomer {
   id: string;
