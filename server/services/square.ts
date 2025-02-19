@@ -1,6 +1,6 @@
-import { Square } from 'square';
-const { Client, Environment } = Square;
-type { ApiError } = Square;
+import { Client } from 'square';
+import type { ApiError } from 'square';
+import type { Environment } from 'square';
 
 interface SquareCustomer {
   id: string;
