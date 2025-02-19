@@ -212,11 +212,26 @@ export default function BowlerPaymentSetupPage() {
               Enter your card details to set up automatic payments
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <div ref={cardContainerRef} />
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <div ref={cardContainerRef} className="min-h-[140px] p-4 bg-card rounded-lg border" />
+              {isInitialized && (
+                <div className="absolute top-4 right-4">
+                  <CreditCard className="h-5 w-5 text-muted-foreground" />
+                </div>
+              )}
+            </div>
             {squareError && (
-              <p className="text-sm text-destructive mt-2">{squareError}</p>
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <AlertCircle className="h-4 w-4" />
+                <p>{squareError}</p>
+              </div>
             )}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex-1 border-t" />
+              <span>Secure payment powered by Square</span>
+              <div className="flex-1 border-t" />
+            </div>
           </CardContent>
           <CardFooter>
             <Button
