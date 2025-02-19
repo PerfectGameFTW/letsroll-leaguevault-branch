@@ -159,12 +159,12 @@ export const BowlerDashboardPage: FC = () => {
         {/* Dashboard Overview Card */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl font-bold">Dashboard Overview</CardTitle>
+            <CardTitle className="text-3xl font-bold">{bowler.name}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
-              <p className="text-lg">League: {getBowlerFirstLeagueName(bowler)}</p>
-              <p className="text-lg text-muted-foreground">Team: {getBowlerTeamName(bowler)}</p>
+            <div className="space-y-4">
+              <p className="text-lg">{getBowlerFirstLeagueName(bowler)}</p>
+              <p className="text-lg text-muted-foreground">{getBowlerTeamName(bowler)}</p>
             </div>
           </CardContent>
         </Card>
