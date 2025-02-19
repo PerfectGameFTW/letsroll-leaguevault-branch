@@ -96,6 +96,10 @@ export async function processPayment(sourceId: string, amount: number, locationI
     console.error('[Square Service] Payment processing error:', error);
     if (error instanceof Error) {
       throw error;
+    } else if (typeof error === 'object' && error !== null) {
+      // Handle Square API errors which may come as objects
+      const errorMessage = (error as any).message || (error as any).details?.[0]?.message;
+      throw new Error(errorMessage || 'Failed to process payment with Square');
     }
     throw new Error('An unexpected error occurred while processing payment');
   }
