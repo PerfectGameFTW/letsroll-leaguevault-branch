@@ -94,30 +94,53 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
     console.log('[Square] Tokenizing card...');
 
     const result = await cardInstance.tokenize();
-    if (result.status === 'OK') {
-      console.log('[Square] Card tokenized successfully');
+    console.log('[Square] Tokenization result:', {
+      status: result.status,
+      hasErrors: !!result.errors,
+      token: result.token ? 'present' : 'missing'
+    });
+
+    if (result.status === 'OK' && result.token) {
+      console.log('[Square] Card tokenized successfully, sending to server...');
+
+      const paymentData = {
+        sourceId: result.token,
+        amount,
+        locationId: import.meta.env.VITE_SQUARE_LOCATION_ID,
+      };
+
+      console.log('[Square] Payment request data:', {
+        ...paymentData,
+        sourceId: 'hidden-for-security'
+      });
 
       const response = await fetch('/api/square/payments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          sourceId: result.token,
-          amount,
-          locationId: import.meta.env.VITE_SQUARE_LOCATION_ID,
-        }),
+        body: JSON.stringify(paymentData),
       });
 
       const responseData = await response.json();
+      console.log('[Square] Server response:', {
+        status: response.status,
+        ok: response.ok,
+        data: responseData
+      });
 
       if (!response.ok) {
+        const errorMessage = responseData.error?.message || responseData.error || 'Payment processing failed';
         console.error('[Square] Payment processing failed:', {
           status: response.status,
-          error: responseData.error || 'Payment processing failed'
+          error: errorMessage
         });
 
-        throw new Error(responseData.error || 'Payment processing failed');
+        throw new Error(errorMessage);
+      }
+
+      if (!responseData.status || responseData.status !== 'COMPLETED') {
+        throw new Error("Payment was not completed successfully");
       }
 
       console.log('[Square] Payment processed successfully:', {
@@ -129,15 +152,16 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
 
       return responseData;
     } else {
-      const errorMessage = result.errors?.[0]?.message || 'Card tokenization failed';
+      const errors = result.errors || [];
+      const errorMessage = errors[0]?.message || 'Card tokenization failed';
       console.error('[Square] Card tokenization failed:', {
-        errors: result.errors,
+        errors,
         firstError: errorMessage
       });
       throw new Error(errorMessage);
     }
   } catch (error) {
-    console.error('[Square] Error processing payment:', {
+    console.error('[Square] Payment error:', {
       error: error instanceof Error ? {
         name: error.name,
         message: error.message,
