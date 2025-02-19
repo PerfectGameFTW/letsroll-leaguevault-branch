@@ -154,7 +154,16 @@ app.use((req, res, next) => {
 });
 
 // Update the writePortStatus function with better error handling and logging
-async function writePortStatus(port: number, ready: boolean = false, health: Partial<PortStatus['health']> = {}) {
+async function writePortStatus(
+  port: number,
+  ready: boolean = false,
+  health: Partial<PortStatus['health']> = {}
+): Promise<void> {
+  if (typeof port !== 'number') {
+    console.error('[Server] Invalid port type:', typeof port);
+    return;
+  }
+
   try {
     const status: PortStatus = {
       port,
@@ -234,6 +243,7 @@ async function cleanupPortStatus() {
   }
 }
 
+// Add enhanced port conflict detection
 async function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const tester = net.createServer()
@@ -260,6 +270,7 @@ async function isPortAvailable(port: number): Promise<boolean> {
   });
 }
 
+// Update findAvailablePort to be more robust
 async function findAvailablePort(startPort: number, maxAttempts: number = 10): Promise<number> {
   console.log(`[Server] Looking for available port starting from ${startPort}...`);
 
@@ -370,9 +381,13 @@ async function startServer() {
     await testDatabaseConnectionWithRetry();
     await validateStartupPhase('database', ['cleanup']);
 
-    // Phase 3: Port allocation
+    // Phase 3: Port allocation with type safety
     console.log(`[Server] Phase 3: Allocating port ${preferredPort}...`);
+    // Ensure serverPort is always a number
     serverPort = preferredPort;
+    if (typeof serverPort !== 'number') {
+      throw new Error('Invalid port configuration');
+    }
     await validateStartupPhase('port', ['cleanup', 'database']);
 
     // Update port status with health indicators
@@ -395,11 +410,14 @@ async function startServer() {
         console.log(`[Server] Server is running at http://${HOST}:${serverPort}`);
         await validateStartupPhase('server', ['cleanup', 'database', 'port']);
 
-        await writePortStatus(serverPort, true, {
-          database: true,
-          vite: viteSetupComplete,
-          server: true
-        });
+        // Ensure port is a number before calling writePortStatus
+        if (typeof serverPort === 'number') {
+          await writePortStatus(serverPort, true, {
+            database: true,
+            vite: viteSetupComplete,
+            server: true
+          });
+        }
         resolve();
       });
 
@@ -411,17 +429,18 @@ async function startServer() {
     });
 
     // Wait for server to be fully ready
-    await waitForServerReady(serverPort);
+    if (typeof serverPort === 'number') {
+      await waitForServerReady(serverPort);
+      console.log(`[Server] Server is fully initialized and ready on port ${serverPort}`);
+      isServerReady = true;
 
-    console.log(`[Server] Server is fully initialized and ready on port ${serverPort}`);
-    isServerReady = true;
-
-    // Final port status update
-    await writePortStatus(serverPort, true, { 
-      database: true, 
-      server: true,
-      vite: viteSetupComplete 
-    });
+      // Final port status update
+      await writePortStatus(serverPort, true, {
+        database: true,
+        server: true,
+        vite: viteSetupComplete
+      });
+    }
 
   } catch (error) {
     console.error('[Server] Fatal error during startup:', error);
