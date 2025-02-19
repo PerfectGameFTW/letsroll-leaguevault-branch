@@ -1,9 +1,9 @@
-
 /* Square Payment Form Base Styles */
 .sq-input {
   border: 1px solid #E5E7EB;
   border-radius: 4px;
   padding: 8px;
+  min-height: 44px !important;
 }
 
 .sq-input--focus {
