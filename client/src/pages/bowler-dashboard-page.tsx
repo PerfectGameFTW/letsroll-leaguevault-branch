@@ -189,27 +189,18 @@ export const BowlerDashboardPage: FC = () => {
           {/* Dashboard Overview Card */}
           <Card>
             <CardHeader>
-              <CardTitle>{bowler.name}'s Dashboard</CardTitle>
-              <CardDescription>League and team information</CardDescription>
+              <CardTitle className="text-2xl font-bold">{bowler.name}'s Dashboard</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">League</h3>
-                    <p className="mt-1 text-lg">{getBowlerFirstLeagueName(bowler)}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-muted-foreground">Team</h3>
-                    <p className="mt-1 text-lg">{getBowlerTeamName(bowler)}</p>
-                  </div>
-                </div>
+              <div className="space-y-2">
+                <p className="text-lg">{getBowlerFirstLeagueName(bowler)}</p>
+                <p className="text-lg text-muted-foreground">{getBowlerTeamName(bowler)}</p>
               </div>
             </CardContent>
           </Card>
 
           {/* Payment Status Card */}
-          <Card>
+          <Card className="mt-6">
             <CardHeader>
               <CardTitle>Payment Status</CardTitle>
               <CardDescription>Current payment information for {league?.name}</CardDescription>
