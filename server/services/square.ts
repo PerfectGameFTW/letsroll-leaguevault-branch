@@ -1,5 +1,4 @@
-import Square from 'square';
-const { Client, Environment } = Square;
+import { Client, Environment } from 'square';
 
 interface SquareCustomer {
   id: string;
@@ -13,12 +12,19 @@ async function initializeSquareClient() {
   if (!squareClient && process.env.SQUARE_ACCESS_TOKEN) {
     try {
       console.log('[Square Service] Initializing Square client...');
+      console.log('[Square Service] Environment:', process.env.NODE_ENV);
+
+      if (!process.env.SQUARE_ACCESS_TOKEN) {
+        throw new Error('Square access token is not configured');
+      }
+
       squareClient = new Client({
         accessToken: process.env.SQUARE_ACCESS_TOKEN,
-        environment: Environment.Sandbox, // Ensure we're using sandbox environment
-        userAgentDetail: 'bowling-league-app'
+        environment: process.env.NODE_ENV === 'production' ? Environment.Production : Environment.Sandbox
       });
+
       console.log('[Square Service] Square client initialized successfully');
+      console.log('[Square Service] Using environment:', process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox');
     } catch (error) {
       console.error('[Square Service] Failed to initialize Square client:', error);
       throw new Error('Failed to initialize Square client: ' + (error instanceof Error ? error.message : String(error)));
@@ -102,7 +108,7 @@ export async function processPayment(sourceId: string, amount: number, locationI
     console.log('[Square Service] Processing payment:', { 
       amount, 
       locationId,
-      sourceIdLength: sourceId.length, // Log length for debugging without exposing sensitive data
+      sourceIdLength: sourceId.length,
       environment: client.environment
     });
 
@@ -110,7 +116,7 @@ export async function processPayment(sourceId: string, amount: number, locationI
       sourceId,
       idempotencyKey: `${Date.now()}-${Math.random()}`,
       amountMoney: {
-        amount: BigInt(amount),
+        amount: BigInt(amount * 100), // Fixed: Multiply by 100 for cents
         currency: 'USD'
       },
       locationId,

@@ -171,17 +171,17 @@ export const BowlerDashboardPage: FC = () => {
   const payments = combinedData?.payments || [];
 
 
-  const calculatePaymentAmount = () => {
+  const calculateTotalAmount = () => {
     if (!league || !bowler) return 0;
-
-    const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule);
-    if (!selectedOption) return 0;
 
     const weeklyFee = getWeeklyFee(bowler);
     const totalWeeks = Math.ceil(
       (new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) /
       (7 * 24 * 60 * 60 * 1000)
     );
+
+    const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule);
+    if (!selectedOption) return 0;
 
     return selectedOption.calculateAmount(weeklyFee, totalWeeks);
   };
@@ -197,7 +197,7 @@ export const BowlerDashboardPage: FC = () => {
     }
 
     try {
-      const amount = calculatePaymentAmount();
+      const amount = calculateTotalAmount();
       if (amount <= 0) {
         throw new Error("Invalid payment amount calculated");
       }
@@ -344,21 +344,47 @@ export const BowlerDashboardPage: FC = () => {
                             }}
                             className="space-y-4"
                           >
-                            {PAYMENT_OPTIONS.map((option) => (
-                              <div key={option.id} className="flex items-center space-x-2">
-                                <RadioGroupItem value={option.id} id={option.id} />
-                                <Label htmlFor={option.id} className="flex flex-col">
-                                  <span className="font-medium">{option.label}</span>
-                                  <span className="text-sm text-muted-foreground">
-                                    {option.description}
-                                  </span>
-                                  <span className="text-sm font-semibold">
-                                    ${(calculatePaymentAmount() / 100).toFixed(2)}
-                                  </span>
-                                </Label>
-                              </div>
-                            ))}
+                            {PAYMENT_OPTIONS.map((option) => {
+                              const weeklyFee = bowler ? getWeeklyFee(bowler) : 0;
+                              const totalWeeks = league ? Math.ceil(
+                                (new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) /
+                                (7 * 24 * 60 * 60 * 1000)
+                              ) : 0;
+
+                              const amount = option.calculateAmount(weeklyFee, totalWeeks);
+
+                              return (
+                                <div key={option.id} className="flex items-center space-x-2">
+                                  <RadioGroupItem value={option.id} id={option.id} />
+                                  <Label htmlFor={option.id} className="flex flex-col">
+                                    <span className="font-medium">{option.label}</span>
+                                    <span className="text-sm text-muted-foreground">
+                                      {option.description}
+                                    </span>
+                                    <span className="text-sm font-semibold">
+                                      ${(amount / 100).toFixed(2)}
+                                    </span>
+                                  </Label>
+                                </div>
+                              );
+                            })}
                           </RadioGroup>
+
+                          {/* Add Total Amount Display */}
+                          <div className="mt-6 p-4 rounded-lg border bg-secondary/50">
+                            <div className="flex justify-between items-center">
+                              <span className="font-semibold">Total Amount:</span>
+                              <span className="text-lg font-bold">
+                                ${(calculateTotalAmount() / 100).toFixed(2)}
+                              </span>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-2">
+                              {selectedSchedule === 'weekly' && 'Billed weekly'}
+                              {selectedSchedule === 'monthly' && 'Billed monthly (every 4 weeks)'}
+                              {selectedSchedule === 'half' && 'One-time payment for half season'}
+                              {selectedSchedule === 'full' && 'One-time payment for full season'}
+                            </p>
+                          </div>
                         </div>
 
                         {/* Card Input Form */}
