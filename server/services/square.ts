@@ -6,12 +6,6 @@ interface SquareCustomer {
   email: string;
 }
 
-// Initialize Square client
-const squareClient = new Client({
-  accessToken: process.env.SQUARE_ACCESS_TOKEN || '',
-  environment: Environment.Sandbox
-});
-
 // Initialize Square client with enhanced error handling
 let squareClient: Client | null = null;
 
