@@ -5,9 +5,16 @@ let squareClient: typeof Client | null = null;
 
 async function initializeSquareClient(): Promise<typeof Client> {
   try {
-    // Return existing client if already initialized
+    // Return existing client if already initialized and valid
     if (squareClient) {
-      return squareClient;
+      try {
+        // Test existing client
+        await squareClient.locationsApi.listLocations();
+        return squareClient;
+      } catch (error) {
+        console.log('[Square Service] Existing client invalid, reinitializing...');
+        squareClient = null;
+      }
     }
 
     // Validate required credentials
@@ -20,9 +27,9 @@ async function initializeSquareClient(): Promise<typeof Client> {
     console.log('[Square Service] Initializing Square client...');
     squareClient = new Client({
       accessToken,
-      environment: Environment.Sandbox, // Use sandbox for testing
-      userAgentDetail: 'bowling-league-app', // Add custom user agent for tracking
-      timeout: 30000, // 30 second timeout
+      environment: Environment.Sandbox,
+      userAgentDetail: 'bowling-league-app',
+      timeout: 30000,
     });
 
     // Test connection by making a simple API call
@@ -59,6 +66,9 @@ export async function processPayment(sourceId: string, amount: number, locationI
     brand: string;
   };
 }> {
+  if (!sourceId || !amount || !locationId) {
+    throw new Error('Missing required payment parameters');
+  }
   try {
     const client = await initializeSquareClient();
     console.log('[Square Service] Processing payment:', { amount, locationId });
