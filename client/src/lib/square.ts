@@ -20,22 +20,18 @@ export async function initializeSquare() {
     initializationPromise = (async () => {
       if (!payments) {
         console.log('[Square] Loading Square Web Payments SDK...');
-        await loadScript("https://web.squarecdn.com/v1/square.js");
+        await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
 
-        if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
-          console.error('[Square] Missing Square credentials');
-          throw new Error("Square credentials are not configured");
+        if (!import.meta.env.VITE_SQUARE_APP_ID) {
+          console.error('[Square] Missing Square App ID');
+          throw new Error("Square App ID is not configured");
         }
 
-        console.log('[Square] Initializing Square payments...', {
-          appId: import.meta.env.VITE_SQUARE_APP_ID,
-          locationId: import.meta.env.VITE_SQUARE_LOCATION_ID
-        });
+        console.log('[Square] Initializing Square payments with App ID:', import.meta.env.VITE_SQUARE_APP_ID);
 
-        payments = await window.Square.payments(
-          import.meta.env.VITE_SQUARE_APP_ID,
-          import.meta.env.VITE_SQUARE_LOCATION_ID
-        );
+        payments = await window.Square.payments(import.meta.env.VITE_SQUARE_APP_ID, {
+          environment: 'sandbox'
+        });
         console.log('[Square] Square payments initialized successfully');
       }
 
@@ -46,13 +42,17 @@ export async function initializeSquare() {
   } catch (error) {
     console.error('[Square] Error initializing Square:', error);
     initializationPromise = null;
-    throw new Error('Failed to initialize Square payments: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    throw error instanceof Error ? error : new Error('Failed to initialize Square payments: ' + String(error));
   }
 }
 
 export async function createPayment(amount: number, cardInstance: any) {
   if (!cardInstance) {
     throw new Error("Card form not initialized");
+  }
+
+  if (!import.meta.env.VITE_SQUARE_LOCATION_ID) {
+    throw new Error("Square Location ID is not configured");
   }
 
   try {

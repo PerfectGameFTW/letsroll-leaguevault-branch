@@ -17,7 +17,7 @@ function initializeSquareClient(): Client {
     if (!squareClient) {
       squareClient = new Client({
         accessToken: process.env.SQUARE_ACCESS_TOKEN || 'sandbox-token',
-        environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
+        environment: 'sandbox' // Always use sandbox for now
       });
       console.log('[Square] Client initialized successfully');
     }
