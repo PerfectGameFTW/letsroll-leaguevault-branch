@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import {
   Card,
@@ -12,7 +12,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, CreditCard } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
@@ -68,10 +68,9 @@ export default function BowlerPaymentSetupPage() {
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
   const cardContainerRef = useRef<HTMLDivElement>(null);
 
-  // Initialize Square payment form with enhanced error handling
+  // Initialize Square payment form
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
-      console.error('[PaymentSetup] Square payment error:', error);
       toast({
         title: "Payment Setup Error",
         description: error,
@@ -80,52 +79,24 @@ export default function BowlerPaymentSetupPage() {
     },
   });
 
-  // Query for bowler's league associations with improved error handling
-  const { data: bowlerLeaguesResponse, error: leaguesError } = useQuery<{ data: BowlerLeague[] }>({
+  // Query for bowler's league associations
+  const { data: bowlerLeaguesResponse } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", bowlerId],
     enabled: !!bowlerId,
-    onError: (error) => {
-      console.error('[PaymentSetup] Error fetching bowler leagues:', error);
-      toast({
-        title: "Data Loading Error",
-        description: "Failed to load league information. Please try again.",
-        variant: "destructive",
-      });
-    },
   });
-
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  // Get league details with improved error handling
-  const { data: leagueResponse, error: leagueError } = useQuery<{ data: League }>({
+  // Get league details for the bowler's active leagues
+  const { data: leagueResponse } = useQuery<{ data: League }>({
     queryKey: ["/api/leagues", bowlerLeagues[0]?.leagueId],
     enabled: !!bowlerLeagues.length,
-    onError: (error) => {
-      console.error('[PaymentSetup] Error fetching league details:', error);
-      toast({
-        title: "Data Loading Error",
-        description: "Failed to load league details. Please try again.",
-        variant: "destructive",
-      });
-    },
   });
-
   const league = leagueResponse?.data;
 
-  // Initialize card when container is ready with improved error handling
+  // Initialize card when container is ready
   useEffect(() => {
     if (cardContainerRef.current && !isInitialized) {
-      console.log('[PaymentSetup] Initializing Square payment form...');
-      try {
-        initializeCard(cardContainerRef.current);
-      } catch (error) {
-        console.error('[PaymentSetup] Error initializing payment form:', error);
-        toast({
-          title: "Payment Setup Error",
-          description: "Failed to initialize payment form. Please try again.",
-          variant: "destructive",
-        });
-      }
+      initializeCard(cardContainerRef.current);
     }
   }, [cardContainerRef.current, isInitialized]);
 
@@ -144,10 +115,9 @@ export default function BowlerPaymentSetupPage() {
     return selectedOption.calculateAmount(league.weeklyFee, totalWeeks);
   };
 
-  // Handle payment submission with improved error handling and validation
+  // Handle payment submission
   const handleSubmit = async () => {
     if (!card || !league) {
-      console.error('[PaymentSetup] Missing required data:', { card: !!card, league: !!league });
       toast({
         title: "Payment Setup Error",
         description: "Unable to process payment at this time. Please try again later.",
@@ -157,21 +127,20 @@ export default function BowlerPaymentSetupPage() {
     }
 
     try {
-      console.log('[PaymentSetup] Calculating payment amount...');
       const amount = calculatePaymentAmount();
       if (amount <= 0) {
         throw new Error("Invalid payment amount calculated");
       }
 
-      console.log('[PaymentSetup] Processing payment...', { amount });
       const result = await createPayment(amount, card);
-      console.log('[PaymentSetup] Payment result:', result);
 
       if (result.status === 'COMPLETED') {
         toast({
           title: "Payment Setup Successful",
           description: `Your ${selectedSchedule} payment schedule has been set up successfully.`,
         });
+
+        // Additional success actions like updating user payment status could go here
       } else {
         throw new Error("Payment was not completed successfully");
       }
@@ -245,10 +214,7 @@ export default function BowlerPaymentSetupPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="relative">
-              <div 
-                ref={cardContainerRef} 
-                className="min-h-[120px] p-4 bg-card rounded-lg border" 
-              />
+              <div ref={cardContainerRef} className="min-h-[140px] p-4 bg-card rounded-lg border" />
               {isInitialized && (
                 <div className="absolute top-4 right-4">
                   <CreditCard className="h-5 w-5 text-muted-foreground" />

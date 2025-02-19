@@ -37,21 +37,6 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/games', gamesRouter);
   app.use('/api/square', squareRouter);
 
-  // Global error handler for API routes
-  app.use('/api', (err: any, req: any, res: any, next: any) => {
-    console.error('[API Error]', err);
-    const statusCode = err.status || 500;
-    const message = err.message || 'Internal server error';
-
-    res.status(statusCode).json({
-      success: false,
-      error: {
-        message,
-        code: err.code || 'INTERNAL_ERROR'
-      }
-    });
-  });
-
   console.log('[Routes] API routes registered');
   return server;
 }

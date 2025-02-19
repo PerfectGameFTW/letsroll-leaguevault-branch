@@ -19,19 +19,19 @@ export async function initializeSquare() {
     // Create new initialization promise
     initializationPromise = (async () => {
       if (!payments) {
-        console.log('[Square] Loading Square Web Payments SDK...');
+        console.log('[Square] Loading Square SDK...');
         await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
 
-        if (!import.meta.env.VITE_SQUARE_APP_ID) {
-          console.error('[Square] Missing Square App ID');
-          throw new Error("Square App ID is not configured");
+        if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
+          console.error('[Square] Missing Square credentials');
+          throw new Error("Square credentials are not configured");
         }
 
-        console.log('[Square] Initializing Square payments with App ID:', import.meta.env.VITE_SQUARE_APP_ID);
-
-        payments = await window.Square.payments(import.meta.env.VITE_SQUARE_APP_ID, {
-          environment: 'sandbox'
-        });
+        console.log('[Square] Initializing Square payments...');
+        payments = await window.Square.payments(
+          import.meta.env.VITE_SQUARE_APP_ID,
+          import.meta.env.VITE_SQUARE_LOCATION_ID
+        );
         console.log('[Square] Square payments initialized successfully');
       }
 
@@ -42,30 +42,21 @@ export async function initializeSquare() {
   } catch (error) {
     console.error('[Square] Error initializing Square:', error);
     initializationPromise = null;
-    throw error instanceof Error ? error : new Error('Failed to initialize Square payments: ' + String(error));
+    throw error;
   }
 }
 
 export async function createPayment(amount: number, cardInstance: any) {
-  if (!cardInstance) {
-    throw new Error("Card form not initialized");
-  }
-
-  if (!import.meta.env.VITE_SQUARE_LOCATION_ID) {
-    throw new Error("Square Location ID is not configured");
-  }
-
   try {
-    console.log('[Square] Starting payment process for amount:', amount);
+    if (!cardInstance) {
+      console.error('[Square] Card form not initialized');
+      throw new Error("Card form not initialized");
+    }
 
-    // Tokenize the card
     console.log('[Square] Tokenizing card...');
     const result = await cardInstance.tokenize();
-
     if (result.status === 'OK') {
       console.log('[Square] Card tokenized successfully');
-
-      // Make payment request
       const response = await fetch('/api/square/payments', {
         method: 'POST',
         headers: {
@@ -78,28 +69,28 @@ export async function createPayment(amount: number, cardInstance: any) {
         }),
       });
 
-      const data = await response.json();
-      console.log('[Square] Payment response:', data);
-
       if (!response.ok) {
-        throw new Error(data.error?.message || 'Payment processing failed');
+        const error = await response.text();
+        console.error('[Square] Payment processing failed:', error);
+        throw new Error(error || 'Payment processing failed');
       }
 
-      if (!data.success) {
-        throw new Error(data.error?.message || 'Payment was not successful');
-      }
-
+      const payment = await response.json();
+      console.log('[Square] Payment processed:', payment);
       return {
-        id: data.data.id,
-        status: data.data.status
+        id: payment.id,
+        status: payment.status
       };
     } else {
       console.error('[Square] Card tokenization failed:', result.errors);
       throw new Error(result.errors[0].message);
     }
   } catch (error) {
-    console.error('[Square] Payment processing error:', error);
-    throw error instanceof Error ? error : new Error('An unexpected error occurred');
+    console.error('[Square] Error processing payment:', error);
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error('An unexpected error occurred while processing payment');
   }
 }
 

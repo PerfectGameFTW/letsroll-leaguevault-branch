@@ -46,14 +46,6 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
       return;
     }
 
-    if (!import.meta.env.VITE_SQUARE_LOCATION_ID) {
-      const errorMessage = 'Square Location ID is not configured';
-      console.error('[useSquarePayment]', errorMessage);
-      setError(errorMessage);
-      onError?.(errorMessage);
-      return;
-    }
-
     try {
       // Clean up existing card instance if any
       cleanupCard();
@@ -67,10 +59,7 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
       }
 
       console.log('[useSquarePayment] Creating new card form...');
-      const newCard = await payments.card({
-        environment: 'sandbox',
-        locationId: import.meta.env.VITE_SQUARE_LOCATION_ID
-      });
+      const newCard = await payments.card();
 
       console.log('[useSquarePayment] Attaching card to container...');
       await newCard.attach(container);
@@ -111,7 +100,7 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
           toast({
             title: "Payment Form Notice",
             description: "Credit card payment form unavailable. Please try again or choose a different payment method.",
-            variant: "destructive",
+            variant: "default",
           });
         }
       }

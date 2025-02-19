@@ -1,61 +1,218 @@
-import { Client } from 'square';
+import type { Client } from 'square';
 
-interface PaymentResult {
+interface SquareCustomer {
+  id: string;
+  name: string;
+  email: string;
+}
+
+// Initialize Square client using dynamic import
+let squareClient: any = null;
+
+async function initializeSquareClient() {
+  if (!squareClient && process.env.SQUARE_ACCESS_TOKEN) {
+    try {
+      const Square = await import('square');
+      squareClient = new Square.Client({
+        accessToken: process.env.SQUARE_ACCESS_TOKEN,
+        environment: 'sandbox'
+      });
+    } catch (error) {
+      console.error('Failed to initialize Square client:', error);
+    }
+  }
+  return squareClient;
+}
+
+export async function createOrUpdateCustomer(name: string, email: string): Promise<SquareCustomer | null> {
+  const client = await initializeSquareClient();
+  if (!client) return null;
+
+  try {
+    const searchResponse = await client.customersApi.searchCustomers({
+      query: {
+        filter: {
+          emailAddress: {
+            exact: email.toLowerCase()
+          }
+        }
+      }
+    });
+
+    let customerId;
+
+    if (searchResponse.result.customers?.[0]?.id) {
+      customerId = searchResponse.result.customers[0].id;
+      await client.customersApi.updateCustomer(customerId, {
+        givenName: name.split(' ')[0],
+        familyName: name.split(' ').slice(1).join(' ') || '',
+        emailAddress: email.toLowerCase(),
+      });
+    } else {
+      const customerResponse = await client.customersApi.createCustomer({
+        idempotencyKey: `${Date.now()}-${Math.random()}`,
+        givenName: name.split(' ')[0],
+        familyName: name.split(' ').slice(1).join(' ') || '',
+        emailAddress: email.toLowerCase(),
+      });
+
+      if (!customerResponse.result?.customer?.id) {
+        throw new Error('Failed to create Square customer');
+      }
+
+      customerId = customerResponse.result.customer.id;
+    }
+
+    return {
+      id: customerId,
+      name,
+      email
+    };
+  } catch (error) {
+    console.error('Square customer operation error:', error instanceof Error ? error.message : error);
+    throw error;
+  }
+}
+
+export async function addCustomerToLeagueGroup(customerId: string, leagueName: string): Promise<string | null> {
+  const client = await initializeSquareClient();
+  if (!client) return null;
+
+  try {
+    // First try to find if the league group already exists
+    const groupsResponse = await client.customerGroupsApi.listCustomerGroups();
+    const existingGroup = groupsResponse.result.groups?.find((g: { name: string; id: string }) => g.name === leagueName);
+
+    let groupId: string;
+
+    if (existingGroup?.id) {
+      groupId = existingGroup.id;
+    } else {
+      // Create new group if it doesn't exist
+      const groupResponse = await client.customerGroupsApi.createCustomerGroup({
+        idempotencyKey: `league-${leagueName}`,
+        group: {
+          name: leagueName,
+        },
+      });
+
+      if (!groupResponse.result.group?.id) {
+        throw new Error("Failed to create league group");
+      }
+
+      groupId = groupResponse.result.group.id;
+    }
+
+    // Add customer to group using the correct API method
+    await client.customersApi.addGroupToCustomer(customerId, groupId);
+
+    return groupId;
+  } catch (error) {
+    console.error('Error managing customer group:', error);
+    throw error;
+  }
+}
+
+export async function enrollInLoyalty(customerId: string): Promise<any> {
+  const client = await initializeSquareClient();
+  if (!client) {
+    throw new Error("Square access token not configured");
+  }
+
+  const programResponse = await client.loyaltyApi.listLoyaltyPrograms();
+
+  if (!programResponse.result.programs || programResponse.result.programs.length === 0) {
+    throw new Error("No loyalty program found. Please set up a loyalty program in Square Dashboard first.");
+  }
+
+  const programId = programResponse.result.programs[0].id;
+  if (!programId) {
+    throw new Error("Invalid loyalty program configuration");
+  }
+
+  const searchResponse = await client.loyaltyApi.searchLoyaltyAccounts({
+    query: {
+      customerIds: [customerId]
+    }
+  });
+
+  if (searchResponse.result.loyaltyAccounts && searchResponse.result.loyaltyAccounts.length > 0) {
+    return searchResponse.result.loyaltyAccounts[0];
+  }
+
+  const enrollResponse = await client.loyaltyApi.createLoyaltyAccount({
+    loyaltyAccount: {
+      programId,
+      customerId,
+    },
+    idempotencyKey: `${Date.now()}-${Math.random()}`
+  });
+
+  if (!enrollResponse.result.loyaltyAccount) {
+    throw new Error("Failed to create loyalty account");
+  }
+
+  return enrollResponse.result.loyaltyAccount;
+}
+
+export async function getLoyaltyPoints(customerId: string): Promise<{
+  points: number;
+  lifetimePoints: number;
+  enrolledAt: string;
+}> {
+  const client = await initializeSquareClient();
+  if (!client) {
+    throw new Error("Square access token not configured");
+  }
+
+  const searchResponse = await client.loyaltyApi.searchLoyaltyAccounts({
+    query: {
+      customerIds: [customerId]
+    }
+  });
+
+  if (!searchResponse.result.loyaltyAccounts || searchResponse.result.loyaltyAccounts.length === 0) {
+    throw new Error("Customer is not enrolled in loyalty program");
+  }
+
+  const loyaltyAccount = searchResponse.result.loyaltyAccounts[0];
+
+  return {
+    points: loyaltyAccount.balance ?? 0,
+    lifetimePoints: loyaltyAccount.lifetimePoints ?? 0,
+    enrolledAt: loyaltyAccount.createdAt ?? new Date().toISOString(),
+  };
+}
+
+export async function processPayment(sourceId: string, amount: number, locationId: string): Promise<{
   id: string;
   status: string;
   card: {
     last4: string;
     brand: string;
   };
-}
-
-// Initialize Square client
-let squareClient: Client | null = null;
-
-function initializeSquareClient(): Client {
-  try {
-    if (!squareClient) {
-      squareClient = new Client({
-        accessToken: process.env.SQUARE_ACCESS_TOKEN || 'sandbox-token',
-        environment: 'sandbox' // Always use sandbox for now
-      });
-      console.log('[Square] Client initialized successfully');
-    }
-    return squareClient;
-  } catch (error) {
-    console.error('[Square] Client initialization error:', error);
-    throw error instanceof Error ? error : new Error('Failed to initialize Square client');
-  }
-}
-
-export async function processPayment(sourceId: string, amount: number, locationId: string = process.env.SQUARE_LOCATION_ID!): Promise<PaymentResult> {
-  if (!locationId) {
-    throw new Error("Square location ID not configured");
+}> {
+  const client = await initializeSquareClient();
+  if (!client) {
+    throw new Error("Square access token not configured");
   }
 
-  const client = initializeSquareClient();
-  console.log('[Square] Processing payment:', { sourceId, amount, locationId });
-
   try {
-    const paymentBody = {
+    const response = await client.paymentsApi.createPayment({
       sourceId,
-      idempotencyKey: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      idempotencyKey: `${Date.now()}-${Math.random()}`,
       amountMoney: {
         amount: BigInt(amount),
         currency: 'USD'
       },
       locationId,
-    };
+    });
 
-    console.log('[Square] Sending payment request:', paymentBody);
-    const response = await client.paymentsApi.createPayment(paymentBody);
-
-    if (!response?.result?.payment) {
+    if (!response.result.payment) {
       throw new Error("Payment creation failed");
     }
 
     const payment = response.result.payment;
-    console.log('[Square] Payment processed successfully:', payment);
 
     return {
       id: payment.id ?? '',
@@ -66,17 +223,15 @@ export async function processPayment(sourceId: string, amount: number, locationI
       }
     };
   } catch (error) {
-    console.error('[Square] Payment processing error:', error);
-
-    if (error && typeof error === 'object' && 'result' in error && error.result?.errors?.[0]) {
-      const errorDetail = error.result.errors[0].detail;
-      const errorCode = error.result.errors[0].code;
-      throw new Error(`Payment processing failed: ${errorDetail ?? 'Unknown error'} (Code: ${errorCode})`);
-    } 
-    throw error instanceof Error ? error : new Error('An unexpected error occurred during payment processing');
+    console.error('Payment processing error:', error);
+    throw error;
   }
 }
 
 export default {
+  createOrUpdateCustomer,
+  addCustomerToLeagueGroup,
+  enrollInLoyalty,
+  getLoyaltyPoints,
   processPayment
 };
