@@ -22,7 +22,7 @@ function initializeSquareClient(): Square {
     }
 
     if (!squareClient) {
-      squareClient = new Square({
+      squareClient = new Square.Client({
         accessToken: process.env.SQUARE_ACCESS_TOKEN,
         environment: process.env.NODE_ENV === 'production' ? 'production' : 'sandbox'
       });
