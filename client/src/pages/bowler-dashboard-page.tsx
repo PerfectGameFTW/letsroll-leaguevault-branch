@@ -1,31 +1,78 @@
-import { FC, Suspense } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useBowlers } from "@/hooks/use-bowlers";
+import { useState, useRef, useEffect, FC } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { User, Payment } from "@shared/schema";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useSquarePayment } from "@/hooks/use-square-payment";
+import { createPayment } from "@/lib/square";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Loader2, AlertCircle, ArrowRight, CreditCard, Calendar } from "lucide-react";
 import { Link } from "wouter";
-import { Button } from "@/components/ui/button";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
+import type { League, Payment, User, Bowler } from "@shared/schema";
+import { useBowlers } from "@/hooks/use-bowlers";
 
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error?: {
-    message: string;
-    code?: string;
-  };
+type PaymentSchedule = "weekly" | "monthly" | "half" | "full";
+
+interface PaymentOption {
+  id: PaymentSchedule;
+  label: string;
+  description: string;
+  calculateAmount: (weeklyFee: number, totalWeeks: number) => number;
 }
 
-interface UpcomingPayment {
-  dueDate: Date;
-  amount: number;
-}
+const PAYMENT_OPTIONS: PaymentOption[] = [
+  {
+    id: "weekly",
+    label: "Weekly Automatic Payment",
+    description: "Your card will be charged weekly for league dues",
+    calculateAmount: (weeklyFee) => weeklyFee,
+  },
+  {
+    id: "monthly",
+    label: "Monthly Automatic Payment",
+    description: "Your card will be charged monthly (4 weeks of dues)",
+    calculateAmount: (weeklyFee) => weeklyFee * 4,
+  },
+  {
+    id: "half",
+    label: "Half Season Payment",
+    description: "Pay for half of the season upfront (with 5% discount)",
+    calculateAmount: (weeklyFee, totalWeeks) => {
+      const halfSeasonAmount = weeklyFee * Math.ceil(totalWeeks / 2);
+      return Math.round(halfSeasonAmount * 0.95); // 5% discount
+    },
+  },
+  {
+    id: "full",
+    label: "Full Season Payment",
+    description: "Pay for the entire season upfront (with 10% discount)",
+    calculateAmount: (weeklyFee, totalWeeks) => {
+      const fullSeasonAmount = weeklyFee * totalWeeks;
+      return Math.round(fullSeasonAmount * 0.90); // 10% discount
+    },
+  },
+];
 
 export const BowlerDashboardPage: FC = () => {
   const { toast } = useToast();
+  const [showPaymentSetup, setShowPaymentSetup] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
+  const cardContainerRef = useRef<HTMLDivElement>(null);
+
+  // Initialize Square payment form with proper error handling
+  const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
+    onError: (error) => {
+      console.error('[Square Payment Error]:', error);
+      toast({
+        title: "Payment Setup Error",
+        description: error,
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: currentUserResponse, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
@@ -41,13 +88,14 @@ export const BowlerDashboardPage: FC = () => {
     getBowlerFirstLeagueName,
     isInitialLoading,
     isLoadingRelatedData,
-    getBowlerLeagueId
+    getBowlerLeagueId,
+    getWeeklyFee
   } = useBowlers({
     isEnabled: !!currentUserResponse?.data?.bowlerId,
   });
 
   const currentUser = currentUserResponse?.data;
-  const bowler = currentUser?.bowlerId ? bowlers.find(b => b.id === currentUser.bowlerId) : null;
+  const bowler = currentUser?.bowlerId ? bowlers.find((b: Bowler) => b.id === currentUser.bowlerId) : null;
   const leagueId = bowler ? getBowlerLeagueId(bowler) : null;
 
   // Get league and payment data for status checks
@@ -87,7 +135,79 @@ export const BowlerDashboardPage: FC = () => {
   const league = combinedData?.league;
   const payments = combinedData?.payments || [];
 
-  // Calculate only what's needed for payment status
+  // Initialize card when container is ready and payment setup is shown
+  useEffect(() => {
+    if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
+      console.log('[BowlerDashboard] Initializing Square payment form');
+      initializeCard(cardContainerRef.current);
+    }
+  }, [showPaymentSetup, cardContainerRef.current, isInitialized, initializeCard]);
+
+  // Cleanup effect for Square payment form
+  useEffect(() => {
+    return () => {
+      if (card) {
+        console.log('[BowlerDashboard] Cleaning up Square payment form');
+        card.destroy();
+      }
+    };
+  }, [card]);
+
+  // Calculate payment amount based on selected schedule
+  const calculatePaymentAmount = () => {
+    if (!league || !bowler) return 0;
+
+    const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule);
+    if (!selectedOption) return 0;
+
+    const weeklyFee = getWeeklyFee(bowler);
+    const totalWeeks = Math.ceil(
+      (new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) /
+      (7 * 24 * 60 * 60 * 1000)
+    );
+
+    return selectedOption.calculateAmount(weeklyFee, totalWeeks);
+  };
+
+  // Handle payment submission
+  const handleSubmitPayment = async () => {
+    if (!card || !league || !bowler) {
+      toast({
+        title: "Payment Setup Error",
+        description: "Unable to process payment at this time. Please try again later.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const amount = calculatePaymentAmount();
+      if (amount <= 0) {
+        throw new Error("Invalid payment amount calculated");
+      }
+
+      const result = await createPayment(amount, card);
+
+      if (result.status === 'COMPLETED') {
+        toast({
+          title: "Payment Setup Successful",
+          description: `Your ${selectedSchedule} payment schedule has been set up successfully.`,
+        });
+        setShowPaymentSetup(false);
+      } else {
+        throw new Error("Payment was not completed successfully");
+      }
+    } catch (error) {
+      console.error('[PaymentSetup] Payment error:', error);
+      toast({
+        title: "Payment Setup Failed",
+        description: error instanceof Error ? error.message : "Failed to set up payment. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Calculate payment status and upcoming payments...
   const totalPaidAmount = payments
     .filter((p: Payment) => p.status === 'paid')
     .reduce((sum: number, p: Payment) => sum + p.amount, 0);
@@ -95,16 +215,17 @@ export const BowlerDashboardPage: FC = () => {
   let amountPastDue = 0;
   let upcomingPayments: UpcomingPayment[] = [];
 
-  if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
+  if (league?.seasonStart && league.seasonEnd && bowler) {
+    const weeklyFee = getWeeklyFee(bowler);
     const seasonStart = new Date(league.seasonStart);
     const seasonEnd = new Date(league.seasonEnd);
     const today = startOfToday();
 
     const weeksDue = today < seasonStart ? 0 :
-                    today > seasonEnd ? Math.max(0, differenceInWeeks(seasonEnd, seasonStart)) :
-                    Math.max(0, differenceInWeeks(today, seasonStart));
+                     today > seasonEnd ? Math.max(0, differenceInWeeks(seasonEnd, seasonStart)) :
+                     Math.max(0, differenceInWeeks(today, seasonStart));
 
-    const totalSeasonDues = league.weeklyFee * weeksDue;
+    const totalSeasonDues = weeklyFee * weeksDue;
     amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
 
     // Calculate upcoming payments for the next 4 weeks
@@ -115,7 +236,7 @@ export const BowlerDashboardPage: FC = () => {
         if (paymentDate <= seasonEnd) {
           upcomingPayments.push({
             dueDate: paymentDate,
-            amount: league.weeklyFee
+            amount: weeklyFee
           });
         }
       }
@@ -192,27 +313,79 @@ export const BowlerDashboardPage: FC = () => {
           <CardContent>
             <div className="space-y-6">
               {!bowler?.squareCustomerId ? (
-                <div className="space-y-4 pt-2">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <CreditCard className="h-5 w-5" />
-                    <p>Set up your payment method to enable automatic payments</p>
+                showPaymentSetup ? (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">Choose Payment Schedule</h3>
+                      <RadioGroup
+                        value={selectedSchedule}
+                        onValueChange={(value) => setSelectedSchedule(value as PaymentSchedule)}
+                        className="space-y-4"
+                      >
+                        {PAYMENT_OPTIONS.map((option) => (
+                          <div key={option.id} className="flex items-center space-x-2">
+                            <RadioGroupItem value={option.id} id={option.id} />
+                            <Label htmlFor={option.id} className="flex flex-col">
+                              <span className="font-medium">{option.label}</span>
+                              <span className="text-sm text-muted-foreground">
+                                {option.description}
+                              </span>
+                              <span className="text-sm font-semibold">
+                                ${(calculatePaymentAmount() / 100).toFixed(2)}
+                              </span>
+                            </Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-semibold">Payment Information</h3>
+                      <div ref={cardContainerRef} />
+                      {squareError && (
+                        <p className="text-sm text-destructive">{squareError}</p>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => setShowPaymentSetup(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={handleSubmitPayment}
+                        disabled={!isInitialized || !!squareError}
+                      >
+                        Set Up Payment Schedule
+                      </Button>
+                    </div>
                   </div>
-                  <div className="rounded-md bg-secondary/50 p-4">
-                    <h3 className="font-semibold mb-2">Why set up automatic payments?</h3>
-                    <ul className="space-y-2 text-sm text-muted-foreground">
-                      <li>• Never miss a payment deadline</li>
-                      <li>• Choose flexible payment schedules</li>
-                      <li>• Secure and hassle-free transactions</li>
-                      <li>• Special discounts for full season payments</li>
-                    </ul>
-                  </div>
-                  <Link href={`/bowlers/${bowler.id}/payment-setup`}>
-                    <Button className="w-full">
+                ) : (
+                  <div className="space-y-4 pt-2">
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <CreditCard className="h-5 w-5" />
+                      <p>Set up your payment method to enable automatic payments</p>
+                    </div>
+                    <div className="rounded-md bg-secondary/50 p-4">
+                      <h3 className="font-semibold mb-2">Why set up automatic payments?</h3>
+                      <ul className="space-y-2 text-sm text-muted-foreground">
+                        <li>• Never miss a payment deadline</li>
+                        <li>• Choose flexible payment schedules</li>
+                        <li>• Secure and hassle-free transactions</li>
+                        <li>• Special discounts for full season payments</li>
+                      </ul>
+                    </div>
+                    <Button 
+                      className="w-full"
+                      onClick={() => setShowPaymentSetup(true)}
+                    >
                       Set Up Payments Now
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
-                  </Link>
-                </div>
+                  </div>
+                )
               ) : (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
@@ -222,15 +395,15 @@ export const BowlerDashboardPage: FC = () => {
                         Your automatic payments are configured
                       </p>
                     </div>
-                    <Link href={`/bowlers/${bowler.id}/payment-setup`}>
-                      <Button variant="outline">
-                        Update Payment Settings
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </Link>
+                    <Button 
+                      variant="outline"
+                      onClick={() => setShowPaymentSetup(true)}
+                    >
+                      Update Payment Settings
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
                   </div>
 
-                  {/* Upcoming Payments Section */}
                   {upcomingPayments.length > 0 && (
                     <div className="space-y-3">
                       <h3 className="text-lg font-semibold">Upcoming Payments</h3>
@@ -291,3 +464,17 @@ export const BowlerDashboardPage: FC = () => {
 };
 
 export default BowlerDashboardPage;
+
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: {
+    message: string;
+    code?: string;
+  };
+}
+
+interface UpcomingPayment {
+  dueDate: Date;
+  amount: number;
+}
