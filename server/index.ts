@@ -1,4 +1,4 @@
-const STARTUP_PHASE_TIMEOUT = 60000; // 60 seconds
+const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 const HOST = '0.0.0.0';
 const preferredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
@@ -325,16 +325,13 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
   throw new Error(`No available ports found between ${startPort} and ${startPort + maxAttempts - 1}`);
 }
 
-// Enhance the waitForServerReady function with better timeout handling
+// Update the waitForServerReady function
 function waitForServerReady(port: number): Promise<void> {
   return new Promise((resolve, reject) => {
     console.log(`[Server] Waiting for server readiness on port ${port}...`);
     let attempts = 0;
-    const maxAttempts = 60; // Increased to 60 attempts (6 seconds total)
+    const maxAttempts = 30; // 30 attempts (3 seconds total)
     const checkInterval = 100; // Check every 100ms
-    let lastHealthUpdate = Date.now();
-    const minUpdateInterval = 1000; // Minimum 1 second between status updates
-    let readinessReported = false;
 
     const check = async () => {
       try {
@@ -342,47 +339,24 @@ function waitForServerReady(port: number): Promise<void> {
         const health = await response.json();
 
         if (response.ok && health.status === 'healthy') {
-          if (!readinessReported) {
-            const now = Date.now();
-            if (now - lastHealthUpdate >= minUpdateInterval) {
-              await writePortStatus(port, true, {
-                database: true,
-                vite: viteSetupComplete,
-                server: true
-              });
-              lastHealthUpdate = now;
-            }
-
-            clearInterval(interval);
-            isServerReady = true;
-            readinessReported = true;
-            console.log(`[Server] Server is ready on port ${port}`);
-            resolve();
-            return;
-          }
-        } else {
-          console.log(`[Server] Health check response: ${JSON.stringify(health)}`);
+          clearInterval(interval);
+          isServerReady = true;
+          console.log(`[Server] Server is ready on port ${port}`);
+          resolve();
+          return;
         }
       } catch (error) {
-        if (attempts % 10 === 0) { // Log every 10th attempt
+        attempts++;
+        if (attempts % 5 === 0) { // Log every 5th attempt
           console.log(`[Server] Waiting for readiness (attempt ${attempts}/${maxAttempts})`);
         }
       }
 
-      attempts++;
       if (attempts >= maxAttempts) {
         clearInterval(interval);
-        if (!readinessReported) {
-          console.warn('[Server] Server readiness check timed out, but continuing...');
-          isServerReady = true;
-          await writePortStatus(port, true, {
-            database: true,
-            vite: viteSetupComplete,
-            server: true
-          });
-          readinessReported = true;
-          resolve(); // Resolve anyway to prevent hanging
-        }
+        console.warn('[Server] Server readiness check timed out, but continuing...');
+        isServerReady = true;
+        resolve(); // Resolve anyway to prevent hanging
       }
     };
 
@@ -433,90 +407,78 @@ async function validateStartupPhase(currentPhase: keyof typeof startupPhases, re
 }
 
 
-// Enhance startServer function with better error handling
+// Update startServer function for faster startup
 async function startServer() {
-  let retries = 3;
+  try {
+    console.log('[Server] Starting server...');
 
-  while (retries > 0) {
+    // Phase 1: Quick cleanup
+    await cleanupPortStatus();
+    await validateStartupPhase('cleanup');
+
+    // Phase 2: Database check with shorter timeout
+    const dbConnected = await Promise.race([
+      testConnection(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Database connection timeout')), 5000))
+    ]).catch(error => {
+      console.warn('[Server] Database connection failed:', error);
+      return false;
+    });
+    await validateStartupPhase('database', ['cleanup']);
+
+    // Phase 3: Port allocation
     try {
-      console.log(`[Server] Starting server (attempt ${4 - retries}/3)...`);
-
-      // Phase 1: Cleanup
-      console.log('[Server] Phase 1: Cleaning up stale port status...');
-      await cleanupPortStatus();
-      await validateStartupPhase('cleanup');
-
-      // Phase 2: Database with retry
-      console.log('[Server] Phase 2: Testing database connection...');
-      await testDatabaseConnectionWithRetry(5, 2000); // More retries, longer backoff
-      await validateStartupPhase('database', ['cleanup']);
-
-      // Phase 3: Port allocation
-      console.log('[Server] Phase 3: Finding available port...');
-      try {
-        serverPort = await findAvailablePort(preferredPort);
-      } catch (error) {
-        console.error('[Server] Port allocation failed:', error);
-        throw error;
-      }
-      await validateStartupPhase('port', ['cleanup', 'database']);
-
-      // Initial port status
-      await writePortStatus(serverPort, false, {
-        database: true,
-        vite: viteSetupComplete,
-        server: false
-      });
-
-      // Phase 4: Server startup
-      console.log(`[Server] Phase 4: Starting HTTP server on ${HOST}:${serverPort}...`);
-
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error('Server startup timeout'));
-        }, STARTUP_PHASE_TIMEOUT);
-
-        server.listen({ port: serverPort, host: HOST }, () => {
-          clearTimeout(timeout);
-          console.log(`[Server] Server is running at http://${HOST}:${serverPort}`);
-          resolve();
-        });
-
-        server.once('error', (err) => {
-          clearTimeout(timeout);
-          reject(err);
-        });
-      });
-
-      await validateStartupPhase('server', ['cleanup', 'database', 'port']);
-
-      // Wait for server to be ready
-      await waitForServerReady(serverPort);
-      console.log(`[Server] Server is fully initialized and ready on port ${serverPort}`);
-
-      // Final status update
-      await writePortStatus(serverPort, true, {
-        database: true,
-        server: true,
-        vite: viteSetupComplete
-      });
-
-      return; // Success, exit retry loop
+      serverPort = await findAvailablePort(preferredPort);
     } catch (error) {
-      console.error(`[Server] Startup attempt ${4 - retries}/3 failed:`, error);
-      retries--;
-
-      if (retries === 0) {
-        console.error('[Server] All startup attempts failed');
-        if (serverPort) {
-          await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
-        }
-        process.exit(1);
-      }
-
-      console.log(`[Server] Retrying in 5 seconds...`);
-      await new Promise(resolve => setTimeout(resolve, 5000));
+      console.error('[Server] Port allocation failed:', error);
+      throw error;
     }
+    await validateStartupPhase('port', ['cleanup', 'database']);
+
+    // Initial port status
+    await writePortStatus(serverPort, false, {
+      database: dbConnected,
+      vite: viteSetupComplete,
+      server: false
+    });
+
+    // Phase 4: Server startup with timeout
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('Server startup timeout'));
+      }, 5000);
+
+      server.listen({ port: serverPort, host: HOST }, () => {
+        clearTimeout(timeout);
+        console.log(`[Server] Server is running at http://${HOST}:${serverPort}`);
+        resolve();
+      });
+
+      server.once('error', (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
+
+    await validateStartupPhase('server', ['cleanup', 'database', 'port']);
+
+    // Wait for server to be ready with shorter timeout
+    await waitForServerReady(serverPort);
+    console.log(`[Server] Server is fully initialized and ready on port ${serverPort}`);
+
+    // Final status update
+    await writePortStatus(serverPort, true, {
+      database: dbConnected,
+      server: true,
+      vite: viteSetupComplete
+    });
+
+  } catch (error) {
+    console.error('[Server] Critical startup error:', error);
+    if (serverPort) {
+      await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
+    }
+    process.exit(1);
   }
 }
 
