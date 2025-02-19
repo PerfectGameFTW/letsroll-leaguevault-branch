@@ -5,33 +5,35 @@ import type { Bowler, Team, League, BowlerLeague, ApiResponse } from "@shared/sc
 interface UseBowlersOptions {
   showInactive?: boolean;
   searchQuery?: string;
+  isEnabled?: boolean;
 }
 
-export function useBowlers({ showInactive = false, searchQuery = "" }: UseBowlersOptions = {}) {
+export function useBowlers({ showInactive = false, searchQuery = "", isEnabled = true }: UseBowlersOptions = {}) {
   // Query for bowlers with proper error handling and longer cache time
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<ApiResponse<Bowler[]>>({
     queryKey: ["/api/bowlers"],
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    enabled: isEnabled,
   });
 
   // Only fetch bowler leagues if we have bowlers
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<ApiResponse<BowlerLeague[]>>({
     queryKey: ["/api/bowler-leagues"],
-    enabled: !!bowlersResponse?.data?.length,
+    enabled: !!bowlersResponse?.data?.length && isEnabled,
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
   // Only fetch teams if we have bowler leagues that need team information
   const { data: teamsResponse, isLoading: loadingTeams } = useQuery<ApiResponse<Team[]>>({
     queryKey: ["/api/teams"],
-    enabled: !!bowlerLeaguesResponse?.data?.length,
+    enabled: !!bowlerLeaguesResponse?.data?.length && isEnabled,
     staleTime: 1000 * 60 * 15, // Cache for 15 minutes as team data changes less frequently
   });
 
   // Only fetch leagues if we have teams that need league information
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
-    enabled: !!teamsResponse?.data?.length,
+    enabled: !!teamsResponse?.data?.length && isEnabled,
     staleTime: 1000 * 60 * 30, // Cache for 30 minutes as league data changes very infrequently
   });
 
