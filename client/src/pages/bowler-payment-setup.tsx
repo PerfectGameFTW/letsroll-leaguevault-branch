@@ -153,15 +153,23 @@ export default function BowlerPaymentSetupPage() {
           title: "Payment Setup Successful",
           description: `Your ${selectedSchedule} payment schedule has been set up successfully.`,
         });
-
-        // Additional success actions like updating user payment status could go here
       } else {
         console.error('[BowlerPaymentSetup] Payment not completed:', result);
         throw new Error("Payment was not completed successfully");
       }
     } catch (error) {
       console.error('[BowlerPaymentSetup] Payment error:', error);
-      const errorMessage = error instanceof Error ? error.message : "Failed to set up payment";
+      let errorMessage: string;
+
+      try {
+        // Try to parse error message as JSON
+        const parsedError = JSON.parse(error instanceof Error ? error.message : String(error));
+        errorMessage = parsedError.error?.message || "Failed to process payment";
+      } catch (parseError) {
+        // If JSON parsing fails, use the raw error message
+        errorMessage = error instanceof Error ? error.message : String(error);
+      }
+
       setPaymentError(errorMessage);
       toast({
         title: "Payment Setup Failed",

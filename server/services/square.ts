@@ -114,7 +114,12 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
 export async function processPayment(sourceId: string, amount: number, locationId: string) {
   const client = await initializeSquareClient();
   if (!client) {
-    throw new Error("Square client not initialized");
+    throw new Error(JSON.stringify({
+      error: {
+        message: "Square client not initialized",
+        code: "INITIALIZATION_ERROR"
+      }
+    }));
   }
 
   try {
@@ -127,12 +132,22 @@ export async function processPayment(sourceId: string, amount: number, locationI
 
     // Validate inputs
     if (!sourceId || !amount || !locationId) {
-      throw new Error('Missing required payment parameters');
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Missing required payment parameters',
+          code: "INVALID_REQUEST"
+        }
+      }));
     }
 
     // Ensure amount is a positive integer
     if (amount <= 0 || !Number.isInteger(amount)) {
-      throw new Error('Invalid payment amount');
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Invalid payment amount',
+          code: "INVALID_AMOUNT"
+        }
+      }));
     }
 
     const response = await client.paymentsApi.createPayment({
@@ -147,7 +162,12 @@ export async function processPayment(sourceId: string, amount: number, locationI
     });
 
     if (!response?.result?.payment) {
-      throw new Error('Invalid payment response from Square API');
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Invalid payment response from Square API',
+          code: "INVALID_RESPONSE"
+        }
+      }));
     }
 
     const payment = response.result.payment;
@@ -186,18 +206,39 @@ export async function processPayment(sourceId: string, amount: number, locationI
     if ((error as ApiError)?.statusCode === 400) {
       const squareError = error as ApiError;
       const details = squareError.result?.errors?.[0]?.detail || 'Invalid request parameters';
-      throw new Error(`Square API Error: ${details}`);
+      throw new Error(JSON.stringify({
+        error: {
+          message: `Square API Error: ${details}`,
+          code: "INVALID_REQUEST"
+        }
+      }));
     }
 
     if ((error as ApiError)?.statusCode === 401) {
-      throw new Error('Square API Error: Invalid credentials');
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Square API Error: Invalid credentials',
+          code: "AUTHENTICATION_ERROR"
+        }
+      }));
     }
 
     if ((error as ApiError)?.statusCode === 402) {
-      throw new Error('Square API Error: Payment required');
+      throw new Error(JSON.stringify({
+        error: {
+          message: 'Square API Error: Payment required',
+          code: "PAYMENT_REQUIRED"
+        }
+      }));
     }
 
-    throw new Error('Failed to process Square payment: ' + (error instanceof Error ? error.message : String(error)));
+    // For all other errors, ensure we return a properly formatted JSON error
+    throw new Error(JSON.stringify({
+      error: {
+        message: 'Failed to process Square payment: ' + (error instanceof Error ? error.message : String(error)),
+        code: "PAYMENT_FAILED"
+      }
+    }));
   }
 }
 

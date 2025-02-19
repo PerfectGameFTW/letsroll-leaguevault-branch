@@ -81,22 +81,52 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
   try {
     if (!cardInstance) {
       console.error('[Square] Card form not initialized');
-      throw new Error("Card form not initialized");
+      throw new Error(JSON.stringify({
+        error: {
+          message: "Please complete the card details before proceeding",
+          code: "INITIALIZATION_ERROR"
+        }
+      }));
     }
 
     // Ensure amount is a positive integer
     if (amount <= 0 || !Number.isInteger(amount)) {
       console.error('[Square] Invalid payment amount:', amount);
-      throw new Error("Invalid payment amount");
+      throw new Error(JSON.stringify({
+        error: {
+          message: "Invalid payment amount. Please enter a valid amount.",
+          code: "INVALID_AMOUNT"
+        }
+      }));
     }
 
-    // Verify required environment variables
-    if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
+    // Verify and format Square credentials
+    const appId = import.meta.env.VITE_SQUARE_APP_ID?.trim();
+    const locationId = import.meta.env.VITE_SQUARE_LOCATION_ID?.trim();
+
+    if (!appId || !locationId) {
       console.error('[Square] Missing required Square credentials');
-      throw new Error("Square credentials are not properly configured");
+      throw new Error(JSON.stringify({
+        error: {
+          message: "Payment system is not properly configured. Please contact support.",
+          code: "CONFIGURATION_ERROR"
+        }
+      }));
+    }
+
+    // Validate location ID format
+    if (!/^[A-Z0-9]{12}$/.test(locationId)) {
+      console.error('[Square] Invalid location ID format:', locationId);
+      throw new Error(JSON.stringify({
+        error: {
+          message: "Invalid Square location configuration. Please contact support.",
+          code: "INVALID_LOCATION"
+        }
+      }));
     }
 
     console.log('[Square] Starting payment process for amount:', amount);
+    console.log('[Square] Using location ID:', locationId);
     console.log('[Square] Tokenizing card...');
 
     const result = await cardInstance.tokenize();
@@ -112,7 +142,7 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
       const paymentData = {
         sourceId: result.token,
         amount,
-        locationId: import.meta.env.VITE_SQUARE_LOCATION_ID,
+        locationId,
       };
 
       console.log('[Square] Payment request data:', {
@@ -128,13 +158,20 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
         body: JSON.stringify(paymentData),
       });
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('[Square] Server payment error:', errorData);
-        throw new Error(errorData.error?.message || 'Payment processing failed');
+        console.error('[Square] Server payment error:', responseData);
+        // Format the error message to be more user-friendly
+        const errorMessage = responseData.error?.message || 'Payment processing failed';
+        throw new Error(JSON.stringify({
+          error: {
+            message: errorMessage.replace(/Square API Error:/i, 'Payment Error:'),
+            code: responseData.error?.code || "PAYMENT_FAILED"
+          }
+        }));
       }
 
-      const responseData = await response.json();
       console.log('[Square] Server response:', {
         status: response.status,
         ok: response.ok,
@@ -143,7 +180,12 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
 
       if (!responseData.status || responseData.status !== 'COMPLETED') {
         console.error('[Square] Payment not completed:', responseData);
-        throw new Error("Payment was not completed successfully");
+        throw new Error(JSON.stringify({
+          error: {
+            message: "We couldn't complete your payment. Please try again.",
+            code: "PAYMENT_INCOMPLETE"
+          }
+        }));
       }
 
       console.log('[Square] Payment processed successfully:', {
@@ -156,12 +198,17 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
       return responseData;
     } else {
       const errors = result.errors || [];
-      const errorMessage = errors.map(e => e.message).join(', ') || 'Card tokenization failed';
+      const errorMessage = errors.map((e: any) => e.message).join(', ') || 'Card validation failed';
       console.error('[Square] Card tokenization failed:', {
         errors,
         firstError: errorMessage
       });
-      throw new Error(errorMessage);
+      throw new Error(JSON.stringify({
+        error: {
+          message: "Please check your card details and try again.",
+          code: "TOKENIZATION_ERROR"
+        }
+      }));
     }
   } catch (error) {
     console.error('[Square] Payment error:', {
@@ -173,8 +220,31 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
       amount
     });
 
-    // Re-throw with a more user-friendly message
-    throw new Error('Payment processing failed: ' + (error instanceof Error ? error.message : String(error)));
+    // If the error is already JSON formatted, parse and reformat it
+    if (error instanceof Error && error.message.startsWith('{')) {
+      try {
+        const parsedError = JSON.parse(error.message);
+        // Make the error message more user-friendly
+        if (parsedError.error?.message) {
+          parsedError.error.message = parsedError.error.message
+            .replace(/Square API Error:/i, 'Payment Error:')
+            .replace(/location_id=/i, 'location ')
+            .replace(/\bLY5C3TE48WEXX\b/, 'configuration');
+        }
+        throw new Error(JSON.stringify(parsedError));
+      } catch {
+        // If JSON parsing fails, throw the original error
+        throw error;
+      }
+    }
+
+    // Otherwise, wrap it in our error format
+    throw new Error(JSON.stringify({
+      error: {
+        message: 'Unable to process payment. Please try again later.',
+        code: "PAYMENT_FAILED"
+      }
+    }));
   }
 }
 
