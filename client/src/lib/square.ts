@@ -1,8 +1,25 @@
 import { loadScript } from "@/lib/utils";
 
+interface PaymentResult {
+  id: string;
+  status: string;
+  card?: {
+    last4: string;
+    brand: string;
+  };
+}
+
+interface SquareCustomer {
+  id: string;
+  name: string;
+  email: string;
+}
+
 declare global {
   interface Window {
-    Square: any;
+    Square: {
+      payments: (appId: string, locationId: string) => Promise<any>;
+    };
   }
 }
 
@@ -46,7 +63,7 @@ export async function initializeSquare() {
   }
 }
 
-export async function createPayment(amount: number, cardInstance: any) {
+export async function createPayment(amount: number, cardInstance: any): Promise<PaymentResult> {
   try {
     if (!cardInstance) {
       console.error('[Square] Card form not initialized');
@@ -76,11 +93,8 @@ export async function createPayment(amount: number, cardInstance: any) {
       }
 
       const payment = await response.json();
-      console.log('[Square] Payment processed:', payment);
-      return {
-        id: payment.id,
-        status: payment.status
-      };
+      console.log('[Square] Payment processed successfully:', payment);
+      return payment;
     } else {
       console.error('[Square] Card tokenization failed:', result.errors);
       throw new Error(result.errors[0].message);
@@ -94,7 +108,7 @@ export async function createPayment(amount: number, cardInstance: any) {
   }
 }
 
-export async function createSquareCustomer(name: string, email: string, teamId: number) {
+export async function createSquareCustomer(name: string, email: string, teamId: number): Promise<SquareCustomer> {
   try {
     const response = await fetch('/api/square/customers', {
       method: 'POST',
@@ -111,6 +125,7 @@ export async function createSquareCustomer(name: string, email: string, teamId: 
 
     return await response.json();
   } catch (error) {
+    console.error('[Square] Error creating customer:', error);
     if (error instanceof Error) {
       throw error;
     }
@@ -118,8 +133,7 @@ export async function createSquareCustomer(name: string, email: string, teamId: 
   }
 }
 
-export function getSquareCustomerUrl(customerId: string) {
-  // This URL format might need to be adjusted based on your Square account setup
+export function getSquareCustomerUrl(customerId: string): string {
   return `https://squareup.com/dashboard/customers/${customerId}`;
 }
 

@@ -1,11 +1,8 @@
 import { jest } from '@jest/globals';
 import {
   createOrUpdateCustomer,
-  addCustomerToLeagueGroup,
-  enrollInLoyalty,
-  getLoyaltyPoints,
   processPayment
-} from '../square';
+} from '../square.js';
 
 // Define response types for type checking
 type ApiResponse<T> = { result: T };
@@ -18,32 +15,6 @@ type CustomerResponse = ApiResponse<{
 
 type SearchCustomersResponse = ApiResponse<{
   customers: Array<{ id: string; }>;
-}>;
-
-type CustomerGroupResponse = ApiResponse<{
-  group: {
-    id: string;
-    name?: string;
-  };
-}>;
-
-type CustomerGroupsResponse = ApiResponse<{
-  groups: Array<{
-    id: string;
-    name: string;
-  }>;
-}>;
-
-type LoyaltyProgramResponse = ApiResponse<{
-  programs: Array<{
-    id: string;
-  }>;
-}>;
-
-type LoyaltyAccountResponse = ApiResponse<{
-  loyaltyAccount: {
-    id: string;
-  };
 }>;
 
 type PaymentResponse = ApiResponse<{
@@ -62,29 +33,19 @@ type PaymentResponse = ApiResponse<{
 // Create mock client factory with explicit return types
 const createMockClient = () => ({
   customersApi: {
-    searchCustomers: jest.fn(),
-    updateCustomer: jest.fn(),
-    createCustomer: jest.fn(),
-    addGroupToCustomer: jest.fn()
-  },
-  customerGroupsApi: {
-    listCustomerGroups: jest.fn(),
-    createCustomerGroup: jest.fn()
-  },
-  loyaltyApi: {
-    listLoyaltyPrograms: jest.fn(),
-    searchLoyaltyAccounts: jest.fn(),
-    createLoyaltyAccount: jest.fn()
+    searchCustomers: jest.fn<() => Promise<SearchCustomersResponse>>(),
+    updateCustomer: jest.fn<() => Promise<CustomerResponse>>(),
+    createCustomer: jest.fn<() => Promise<CustomerResponse>>(),
   },
   paymentsApi: {
-    createPayment: jest.fn()
+    createPayment: jest.fn<() => Promise<PaymentResponse>>()
   }
 });
 
 // Mock Square SDK
 jest.mock('square', () => ({
   __esModule: true,
-  Square: {
+  default: {
     Client: jest.fn().mockImplementation(() => createMockClient())
   }
 }));
@@ -98,7 +59,7 @@ describe('Square Service', () => {
     process.env = { ...mockEnv };
     process.env.SQUARE_ACCESS_TOKEN = 'test-token';
     mockClient = createMockClient();
-    (jest.requireMock('square') as any).Square.Client.mockImplementation(() => mockClient);
+    (jest.requireMock('square') as any).default.Client.mockImplementation(() => mockClient);
   });
 
   afterEach(() => {
@@ -119,8 +80,8 @@ describe('Square Service', () => {
         }
       };
 
-      mockClient.customersApi.searchCustomers.mockResolvedValue(searchResponse);
-      mockClient.customersApi.createCustomer.mockResolvedValue(createResponse);
+      mockClient.customersApi.searchCustomers.mockResolvedValueOnce(searchResponse);
+      mockClient.customersApi.createCustomer.mockResolvedValueOnce(createResponse);
 
       const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
 
@@ -140,7 +101,7 @@ describe('Square Service', () => {
         }
       };
 
-      mockClient.customersApi.searchCustomers.mockResolvedValue(searchResponse);
+      mockClient.customersApi.searchCustomers.mockResolvedValueOnce(searchResponse);
 
       const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
 
@@ -151,78 +112,9 @@ describe('Square Service', () => {
     });
   });
 
-  describe('addCustomerToLeagueGroup', () => {
-    it('should add customer to existing group', async () => {
-      const groupsResponse: CustomerGroupsResponse = {
-        result: {
-          groups: [{
-            id: 'existing-group-id',
-            name: 'Test League'
-          }]
-        }
-      };
-
-      mockClient.customerGroupsApi.listCustomerGroups.mockResolvedValue(groupsResponse);
-
-      const result = await addCustomerToLeagueGroup('customer-id', 'Test League');
-
-      expect(result).toBe('existing-group-id');
-      expect(mockClient.customersApi.addGroupToCustomer).toHaveBeenCalledWith(
-        'customer-id',
-        'existing-group-id'
-      );
-    });
-
-    it('should create new group if it does not exist', async () => {
-      mockClient.customerGroupsApi.listCustomerGroups.mockResolvedValue({
-        result: { groups: [] }
-      } as CustomerGroupsResponse);
-
-      mockClient.customerGroupsApi.createCustomerGroup.mockResolvedValue({
-        result: {
-          group: {
-            id: 'new-group-id'
-          }
-        }
-      } as CustomerGroupResponse);
-
-      const result = await addCustomerToLeagueGroup('customer-id', 'New League');
-
-      expect(result).toBe('new-group-id');
-    });
-  });
-
-  describe('enrollInLoyalty', () => {
-    it('should enroll customer in loyalty program', async () => {
-      mockClient.loyaltyApi.listLoyaltyPrograms.mockResolvedValue({
-        result: {
-          programs: [{
-            id: 'loyalty-program-id'
-          }]
-        }
-      } as LoyaltyProgramResponse);
-
-      mockClient.loyaltyApi.searchLoyaltyAccounts.mockResolvedValue({
-        result: { loyaltyAccounts: [] }
-      } as ApiResponse<{ loyaltyAccounts: any[] }>);
-
-      mockClient.loyaltyApi.createLoyaltyAccount.mockResolvedValue({
-        result: {
-          loyaltyAccount: {
-            id: 'loyalty-account-id'
-          }
-        }
-      } as LoyaltyAccountResponse);
-
-      const result = await enrollInLoyalty('customer-id');
-
-      expect(result).toHaveProperty('id', 'loyalty-account-id');
-    });
-  });
-
   describe('processPayment', () => {
     it('should process payment successfully', async () => {
-      mockClient.paymentsApi.createPayment.mockResolvedValue({
+      mockClient.paymentsApi.createPayment.mockResolvedValueOnce({
         result: {
           payment: {
             id: 'payment-id',
@@ -258,7 +150,7 @@ describe('Square Service', () => {
     });
 
     it('should handle API errors', async () => {
-      mockClient.customersApi.searchCustomers.mockRejectedValue(
+      mockClient.customersApi.searchCustomers.mockRejectedValueOnce(
         new Error('API Error')
       );
 
