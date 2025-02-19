@@ -47,4 +47,4 @@ author = 39355628
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "tsx server/index.ts"
+args = "npx concurrently 'tsx watch server/index.ts' 'npm run dev -- --host 0.0.0.0'"
