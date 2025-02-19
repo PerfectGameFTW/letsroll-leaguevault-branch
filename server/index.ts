@@ -1,5 +1,7 @@
 const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 30000; // 30 seconds
+const HOST = '0.0.0.0';
+const preferredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
 
 // Define phase tracking interfaces
 interface StartupPhases {
@@ -411,8 +413,6 @@ async function validateStartupPhase(currentPhase: keyof typeof startupPhases, re
   console.log(`[Server] Startup phase '${currentPhase}' completed successfully`);
 }
 
-const preferredPort = 5000;
-const HOST = '0.0.0.0';
 
 // Update startServer to use findAvailablePort
 async function startServer() {
@@ -454,7 +454,7 @@ async function startServer() {
         reject(new Error('Server startup timeout'));
       }, STARTUP_PHASE_TIMEOUT);
 
-      server.listen(serverPort, HOST, () => {
+      server.listen({ port: serverPort, host: HOST }, () => {
         clearTimeout(timeout);
         console.log(`[Server] Server is running at http://${HOST}:${serverPort}`);
         resolve();

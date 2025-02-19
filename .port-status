@@ -1,8 +1,8 @@
 {
   "port": 5000,
   "ready": true,
-  "timestamp": "2025-02-19T00:51:55.672Z",
-  "pid": 3866,
+  "timestamp": "2025-02-19T01:39:34.027Z",
+  "pid": 6016,
   "mode": "development",
   "health": {
     "database": true,
