@@ -109,32 +109,25 @@ export async function createPayment(amount: number, cardInstance: any): Promise<
         }),
       });
 
-      if (!response.ok) {
-        let errorMessage: string;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || 'Payment processing failed';
-        } catch {
-          errorMessage = await response.text() || 'Payment processing failed';
-        }
+      const responseData = await response.json();
 
+      if (!response.ok) {
         console.error('[Square] Payment processing failed:', {
           status: response.status,
-          error: errorMessage
+          error: responseData.error || 'Payment processing failed'
         });
 
-        throw new Error(errorMessage);
+        throw new Error(responseData.error || 'Payment processing failed');
       }
 
-      const payment = await response.json();
       console.log('[Square] Payment processed successfully:', {
-        paymentId: payment.id,
-        status: payment.status,
-        cardLast4: payment.card?.last4,
-        cardBrand: payment.card?.brand
+        paymentId: responseData.id,
+        status: responseData.status,
+        cardLast4: responseData.card?.last4,
+        cardBrand: responseData.card?.brand
       });
 
-      return payment;
+      return responseData;
     } else {
       const errorMessage = result.errors?.[0]?.message || 'Card tokenization failed';
       console.error('[Square] Card tokenization failed:', {
