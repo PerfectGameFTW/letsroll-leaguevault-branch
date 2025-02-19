@@ -19,15 +19,19 @@ export async function initializeSquare() {
     // Create new initialization promise
     initializationPromise = (async () => {
       if (!payments) {
-        console.log('[Square] Loading Square SDK...');
-        await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
+        console.log('[Square] Loading Square Web Payments SDK...');
+        await loadScript("https://web.squarecdn.com/v1/square.js");
 
         if (!import.meta.env.VITE_SQUARE_APP_ID || !import.meta.env.VITE_SQUARE_LOCATION_ID) {
           console.error('[Square] Missing Square credentials');
           throw new Error("Square credentials are not configured");
         }
 
-        console.log('[Square] Initializing Square payments...');
+        console.log('[Square] Initializing Square payments...', {
+          appId: import.meta.env.VITE_SQUARE_APP_ID,
+          locationId: import.meta.env.VITE_SQUARE_LOCATION_ID
+        });
+
         payments = await window.Square.payments(
           import.meta.env.VITE_SQUARE_APP_ID,
           import.meta.env.VITE_SQUARE_LOCATION_ID
@@ -58,43 +62,41 @@ export async function createPayment(amount: number, cardInstance: any) {
     console.log('[Square] Tokenizing card...');
     const result = await cardInstance.tokenize();
 
-    if (result.status !== 'OK') {
+    if (result.status === 'OK') {
+      console.log('[Square] Card tokenized successfully');
+
+      // Make payment request
+      const response = await fetch('/api/square/payments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sourceId: result.token,
+          amount,
+          locationId: import.meta.env.VITE_SQUARE_LOCATION_ID,
+        }),
+      });
+
+      const data = await response.json();
+      console.log('[Square] Payment response:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error?.message || 'Payment processing failed');
+      }
+
+      if (!data.success) {
+        throw new Error(data.error?.message || 'Payment was not successful');
+      }
+
+      return {
+        id: data.data.id,
+        status: data.data.status
+      };
+    } else {
       console.error('[Square] Card tokenization failed:', result.errors);
       throw new Error(result.errors[0].message);
     }
-
-    console.log('[Square] Card tokenized successfully');
-
-    // Make payment request
-    const response = await fetch('/api/square/payments', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        sourceId: result.token,
-        amount,
-        locationId: import.meta.env.VITE_SQUARE_LOCATION_ID,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('[Square] Payment request failed:', errorData);
-      throw new Error(errorData.error?.message || 'Payment processing failed');
-    }
-
-    const responseData = await response.json();
-    console.log('[Square] Payment response:', responseData);
-
-    if (!responseData.success) {
-      throw new Error(responseData.error?.message || 'Payment was not successful');
-    }
-
-    return {
-      id: responseData.data.id,
-      status: responseData.data.status
-    };
   } catch (error) {
     console.error('[Square] Payment processing error:', error);
     throw error instanceof Error ? error : new Error('An unexpected error occurred');

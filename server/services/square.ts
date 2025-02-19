@@ -1,4 +1,4 @@
-import { ApiError, Client } from 'square';
+import { Client } from 'square';
 
 interface PaymentResult {
   id: string;
@@ -68,10 +68,10 @@ export async function processPayment(sourceId: string, amount: number, locationI
   } catch (error) {
     console.error('[Square] Payment processing error:', error);
 
-    if (error instanceof ApiError) {
-      const errorDetail = error.result?.errors?.[0]?.detail;
-      const errorCode = error.result?.errors?.[0]?.code;
-      throw new Error(`Payment processing failed: ${errorDetail ?? error.message} (Code: ${errorCode})`);
+    if (error && typeof error === 'object' && 'result' in error && error.result?.errors?.[0]) {
+      const errorDetail = error.result.errors[0].detail;
+      const errorCode = error.result.errors[0].code;
+      throw new Error(`Payment processing failed: ${errorDetail ?? 'Unknown error'} (Code: ${errorCode})`);
     } 
     throw error instanceof Error ? error : new Error('An unexpected error occurred during payment processing');
   }
