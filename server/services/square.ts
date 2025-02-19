@@ -1,4 +1,6 @@
-import { Client, Environment } from 'square';
+import { ApiError } from 'square';
+import { Client } from 'square/dist/client.js';
+import { Environment } from 'square/dist/environments.js';
 
 interface SquareCustomer {
   id: string;
