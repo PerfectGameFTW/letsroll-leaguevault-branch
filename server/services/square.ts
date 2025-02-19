@@ -1,13 +1,4 @@
-import type { Client, Environment } from 'square';
-import Square from 'square';
-
-let squareClient: Client | null = null;
-if (process.env.SQUARE_ACCESS_TOKEN) {
-  squareClient = new Square.Client({
-    accessToken: process.env.SQUARE_ACCESS_TOKEN,
-    environment: 'sandbox' as Environment,
-  });
-}
+import type { Client } from 'square';
 
 interface SquareCustomer {
   id: string;
@@ -15,11 +6,30 @@ interface SquareCustomer {
   email: string;
 }
 
+// Initialize Square client using dynamic import
+let squareClient: any = null;
+
+async function initializeSquareClient() {
+  if (!squareClient && process.env.SQUARE_ACCESS_TOKEN) {
+    try {
+      const Square = await import('square');
+      squareClient = new Square.Client({
+        accessToken: process.env.SQUARE_ACCESS_TOKEN,
+        environment: 'sandbox'
+      });
+    } catch (error) {
+      console.error('Failed to initialize Square client:', error);
+    }
+  }
+  return squareClient;
+}
+
 export async function createOrUpdateCustomer(name: string, email: string): Promise<SquareCustomer | null> {
-  if (!squareClient) return null;
+  const client = await initializeSquareClient();
+  if (!client) return null;
 
   try {
-    const searchResponse = await squareClient.customersApi.searchCustomers({
+    const searchResponse = await client.customersApi.searchCustomers({
       query: {
         filter: {
           emailAddress: {
@@ -29,17 +39,17 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
       }
     });
 
-    let customerId: string;
+    let customerId;
 
     if (searchResponse.result.customers?.[0]?.id) {
       customerId = searchResponse.result.customers[0].id;
-      await squareClient.customersApi.updateCustomer(customerId, {
+      await client.customersApi.updateCustomer(customerId, {
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
         emailAddress: email.toLowerCase(),
       });
     } else {
-      const customerResponse = await squareClient.customersApi.createCustomer({
+      const customerResponse = await client.customersApi.createCustomer({
         idempotencyKey: `${Date.now()}-${Math.random()}`,
         givenName: name.split(' ')[0],
         familyName: name.split(' ').slice(1).join(' ') || '',
@@ -59,17 +69,18 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
       email
     };
   } catch (error) {
-    console.error('Square customer operation error:', error);
+    console.error('Square customer operation error:', error instanceof Error ? error.message : error);
     throw error;
   }
 }
 
 export async function addCustomerToLeagueGroup(customerId: string, leagueName: string): Promise<string | null> {
-  if (!squareClient) return null;
+  const client = await initializeSquareClient();
+  if (!client) return null;
 
   try {
     // First try to find if the league group already exists
-    const groupsResponse = await squareClient.customerGroupsApi.listCustomerGroups();
+    const groupsResponse = await client.customerGroupsApi.listCustomerGroups();
     const existingGroup = groupsResponse.result.groups?.find((g: { name: string; id: string }) => g.name === leagueName);
 
     let groupId: string;
@@ -78,7 +89,7 @@ export async function addCustomerToLeagueGroup(customerId: string, leagueName: s
       groupId = existingGroup.id;
     } else {
       // Create new group if it doesn't exist
-      const groupResponse = await squareClient.customerGroupsApi.createCustomerGroup({
+      const groupResponse = await client.customerGroupsApi.createCustomerGroup({
         idempotencyKey: `league-${leagueName}`,
         group: {
           name: leagueName,
@@ -93,7 +104,7 @@ export async function addCustomerToLeagueGroup(customerId: string, leagueName: s
     }
 
     // Add customer to group using the correct API method
-    await squareClient.customersApi.addGroupToCustomer(customerId, groupId);
+    await client.customersApi.addGroupToCustomer(customerId, groupId);
 
     return groupId;
   } catch (error) {
@@ -103,11 +114,12 @@ export async function addCustomerToLeagueGroup(customerId: string, leagueName: s
 }
 
 export async function enrollInLoyalty(customerId: string): Promise<any> {
-  if (!squareClient) {
+  const client = await initializeSquareClient();
+  if (!client) {
     throw new Error("Square access token not configured");
   }
 
-  const programResponse = await squareClient.loyaltyApi.listLoyaltyPrograms();
+  const programResponse = await client.loyaltyApi.listLoyaltyPrograms();
 
   if (!programResponse.result.programs || programResponse.result.programs.length === 0) {
     throw new Error("No loyalty program found. Please set up a loyalty program in Square Dashboard first.");
@@ -118,7 +130,7 @@ export async function enrollInLoyalty(customerId: string): Promise<any> {
     throw new Error("Invalid loyalty program configuration");
   }
 
-  const searchResponse = await squareClient.loyaltyApi.searchLoyaltyAccounts({
+  const searchResponse = await client.loyaltyApi.searchLoyaltyAccounts({
     query: {
       customerIds: [customerId]
     }
@@ -128,7 +140,7 @@ export async function enrollInLoyalty(customerId: string): Promise<any> {
     return searchResponse.result.loyaltyAccounts[0];
   }
 
-  const enrollResponse = await squareClient.loyaltyApi.createLoyaltyAccount({
+  const enrollResponse = await client.loyaltyApi.createLoyaltyAccount({
     loyaltyAccount: {
       programId,
       customerId,
@@ -148,11 +160,12 @@ export async function getLoyaltyPoints(customerId: string): Promise<{
   lifetimePoints: number;
   enrolledAt: string;
 }> {
-  if (!squareClient) {
+  const client = await initializeSquareClient();
+  if (!client) {
     throw new Error("Square access token not configured");
   }
 
-  const searchResponse = await squareClient.loyaltyApi.searchLoyaltyAccounts({
+  const searchResponse = await client.loyaltyApi.searchLoyaltyAccounts({
     query: {
       customerIds: [customerId]
     }
@@ -179,12 +192,13 @@ export async function processPayment(sourceId: string, amount: number, locationI
     brand: string;
   };
 }> {
-  if (!squareClient) {
+  const client = await initializeSquareClient();
+  if (!client) {
     throw new Error("Square access token not configured");
   }
 
   try {
-    const response = await squareClient.paymentsApi.createPayment({
+    const response = await client.paymentsApi.createPayment({
       sourceId,
       idempotencyKey: `${Date.now()}-${Math.random()}`,
       amountMoney: {
