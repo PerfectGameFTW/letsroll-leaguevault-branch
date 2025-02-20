@@ -278,28 +278,56 @@ export class DatabaseStorage implements IStorage {
 
   // Payment methods
   async getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date): Promise<Payment[]> {
-    const query = db.select().from(payments);
-    const conditions = [];
+    try {
+      console.log('[Storage] Getting payments with filters:', {
+        bowlerId,
+        leagueId,
+        teamId,
+        weekOf: weekOf?.toISOString()
+      });
 
-    if (bowlerId !== undefined) {
-      conditions.push(eq(payments.bowlerId, bowlerId));
-    }
-    if (leagueId !== undefined) {
-      conditions.push(eq(payments.leagueId, leagueId));
-    }
-    if (weekOf !== undefined) {
-      const startDate = new Date(weekOf);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(weekOf);
-      endDate.setHours(23, 59, 59, 999);
-      conditions.push(sql`${payments.weekOf} BETWEEN ${startDate} AND ${endDate}`);
-    }
+      const query = db.select().from(payments);
+      const conditions = [];
 
-    if (conditions.length > 0) {
-      return query.where(and(...conditions)).orderBy(desc(payments.weekOf));
-    }
+      if (bowlerId !== undefined) {
+        conditions.push(eq(payments.bowlerId, bowlerId));
+      }
+      if (leagueId !== undefined) {
+        conditions.push(eq(payments.leagueId, leagueId));
+      }
+      if (weekOf !== undefined) {
+        const startDate = new Date(weekOf);
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = new Date(weekOf);
+        endDate.setHours(23, 59, 59, 999);
+        conditions.push(sql`${payments.weekOf} BETWEEN ${startDate} AND ${endDate}`);
+      }
 
-    return query.orderBy(desc(payments.weekOf));
+      if (conditions.length > 0) {
+        query.where(and(...conditions));
+      }
+
+      query.orderBy(desc(payments.weekOf));
+
+      const results = await query;
+
+      console.log('[Storage] Payment query results:', {
+        count: results.length,
+        samples: results.slice(0, 2).map(p => ({
+          id: p.id,
+          amount: p.amount,
+          bowlerId: p.bowlerId,
+          type: p.type,
+          status: p.status,
+          weekOf: p.weekOf
+        }))
+      });
+
+      return results;
+    } catch (error) {
+      console.error('[Storage] Error getting payments:', error);
+      throw error;
+    }
   }
 
   async createPayment(payment: InsertPayment): Promise<Payment> {

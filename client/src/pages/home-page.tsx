@@ -4,6 +4,7 @@ import { Layout } from "@/components/layout";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Link } from "wouter";
 import type { Bowler, League, ApiResponse } from "@shared/schema";
+import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
 
 // Cache time constants
 const CACHE_TIME = 1000 * 30; // 30 seconds
@@ -61,27 +62,31 @@ export default function HomePage() {
 
   return (
     <Layout>
-      <div className="grid gap-4 md:grid-cols-2">
-        <Link href="/leagues" className="block transition-transform hover:scale-105">
-          <Card className="cursor-pointer hover:border-primary">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Leagues</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalLeagues}</div>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/bowlers" className="block transition-transform hover:scale-105">
-          <Card className="cursor-pointer hover:border-primary">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Active Bowlers</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{activeBowlers}</div>
-            </CardContent>
-          </Card>
-        </Link>
+      <div className="space-y-8">
+        <div className="grid gap-4 md:grid-cols-2">
+          <Link href="/leagues" className="block transition-transform hover:scale-105">
+            <Card className="cursor-pointer hover:border-primary">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Leagues</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{totalLeagues}</div>
+              </CardContent>
+            </Card>
+          </Link>
+          <Link href="/bowlers" className="block transition-transform hover:scale-105">
+            <Card className="cursor-pointer hover:border-primary">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Bowlers</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{activeBowlers}</div>
+              </CardContent>
+            </Card>
+          </Link>
+        </div>
+
+        <PastDueBowlersSection />
       </div>
     </Layout>
   );

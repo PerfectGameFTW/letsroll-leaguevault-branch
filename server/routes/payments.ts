@@ -32,10 +32,25 @@ router.get("/", async (req, res) => {
     const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
     const weekOf = req.query.weekOf ? new Date(req.query.weekOf as string) : undefined;
 
+    console.log('[Payments Route] GET request with filters:', {
+      bowlerId,
+      leagueId,
+      teamId,
+      weekOf: weekOf?.toISOString(),
+      rawQuery: req.query
+    });
+
     const payments = await storage.getPayments(bowlerId, leagueId, teamId, weekOf);
     console.log('[Payments Route] Retrieved payments:', {
       filters: { bowlerId, leagueId, teamId, weekOf },
-      count: payments.length
+      count: payments.length,
+      samples: payments.slice(0, 2).map(p => ({
+        id: p.id,
+        amount: p.amount,
+        bowlerId: p.bowlerId,
+        type: p.type,
+        status: p.status
+      }))
     });
     sendSuccess(res, payments);
   } catch (error) {
