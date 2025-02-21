@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, FC, useMemo } from "react";
+import { useState, useRef, useEffect, FC } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
@@ -27,6 +27,7 @@ const Drawer = {
 
 type PaymentSchedule = "weekly" | "monthly" | "half" | "full" | "custom";
 
+// Move type definitions outside of component
 interface PaymentOption {
   id: PaymentSchedule;
   label: string;
@@ -51,19 +52,13 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
     id: "half",
     label: "Half Season Payment",
     description: "Pay for half of the season upfront",
-    calculateAmount: (weeklyFee, totalWeeks) => {
-      const halfSeasonAmount = weeklyFee * Math.ceil(totalWeeks / 2);
-      return halfSeasonAmount;
-    },
+    calculateAmount: (weeklyFee, totalWeeks) => weeklyFee * Math.ceil(totalWeeks / 2),
   },
   {
     id: "full",
     label: "Full Season Payment",
     description: "Pay for the entire season upfront",
-    calculateAmount: (weeklyFee, totalWeeks) => {
-      const fullSeasonAmount = weeklyFee * totalWeeks;
-      return fullSeasonAmount;
-    },
+    calculateAmount: (weeklyFee, totalWeeks) => weeklyFee * totalWeeks,
   },
   {
     id: "custom",
@@ -73,7 +68,17 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   },
 ];
 
+// Utility function moved outside component
+const getSeasonLength = (currentLeague?: League | null) => {
+  if (!currentLeague?.seasonStart || !currentLeague?.seasonEnd) return 0;
+  return Math.ceil(
+    (new Date(currentLeague.seasonEnd).getTime() - new Date(currentLeague.seasonStart).getTime()) /
+    (7 * 24 * 60 * 60 * 1000)
+  );
+};
+
 export const BowlerDashboardPage: FC = () => {
+  // Initialize all state at the top of the component
   const { toast } = useToast();
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
@@ -81,23 +86,16 @@ export const BowlerDashboardPage: FC = () => {
   const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
   const cardContainerRef = useRef<HTMLDivElement>(null);
 
-  // Move getSeasonLength inside component
-  const getSeasonLength = (currentLeague?: League | null) => {
-    if (!currentLeague?.seasonStart || !currentLeague?.seasonEnd) return 0;
-    return Math.ceil(
-      (new Date(currentLeague.seasonEnd).getTime() - new Date(currentLeague.seasonStart).getTime()) /
-      (7 * 24 * 60 * 60 * 1000)
-    );
-  };
-
+  // User data query
   const { data: currentUserResponse, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 30,
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
+  const currentUser = currentUserResponse?.data;
+
+  // Bowlers data hook
   const {
     bowlers,
     getBowlerTeamName,
@@ -107,47 +105,70 @@ export const BowlerDashboardPage: FC = () => {
     getBowlerLeagueId,
     getWeeklyFee
   } = useBowlers({
-    isEnabled: !!currentUserResponse?.data?.bowlerId,
+    isEnabled: !!currentUser?.bowlerId,
   });
 
-  const currentUser = currentUserResponse?.data;
   const bowler = currentUser?.bowlerId ? bowlers.find((b: Bowler) => b.id === currentUser.bowlerId) : null;
   const leagueId = bowler ? getBowlerLeagueId(bowler) : null;
 
+  // Combined data query
   const { data: combinedData, isLoading: isCombinedLoading } = useQuery({
     queryKey: [`/api/dashboard-data`, leagueId],
     enabled: !!leagueId,
     queryFn: async () => {
       if (!leagueId) throw new Error('League ID is required');
 
-      try {
-        const [leagueRes, paymentsRes] = await Promise.all([
-          fetch(`/api/leagues/${leagueId}`),
-          fetch(`/api/payments?bowlerId=${bowler?.id}&leagueId=${leagueId}`)
-        ]);
+      const [leagueRes, paymentsRes] = await Promise.all([
+        fetch(`/api/leagues/${leagueId}`),
+        fetch(`/api/payments?bowlerId=${bowler?.id}&leagueId=${leagueId}`)
+      ]);
 
-        if (!leagueRes.ok || !paymentsRes.ok) {
-          throw new Error('Failed to fetch dashboard data');
-        }
-
-        const [leagueData, paymentsData] = await Promise.all([
-          leagueRes.json(),
-          paymentsRes.json()
-        ]);
-
-        return {
-          league: leagueData.data,
-          payments: paymentsData.data
-        };
-      } catch (error) {
-        console.error('[BowlerDashboard] Data fetch error:', error);
-        throw error;
+      if (!leagueRes.ok || !paymentsRes.ok) {
+        throw new Error('Failed to fetch dashboard data');
       }
+
+      const [leagueData, paymentsData] = await Promise.all([
+        leagueRes.json(),
+        paymentsRes.json()
+      ]);
+
+      return {
+        league: leagueData.data,
+        payments: paymentsData.data
+      };
     },
     staleTime: 1000 * 60 * 5,
   });
 
-  // Wait for all data to be loaded before rendering main content
+  // Square payment integration
+  const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
+    onError: (error) => {
+      console.error('[Square Payment Error]:', error);
+      toast({
+        title: "Payment Setup Error",
+        description: error,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Payment form initialization effect
+  useEffect(() => {
+    if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
+      initializeCard(cardContainerRef.current);
+    }
+  }, [showPaymentSetup, isInitialized, initializeCard]);
+
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      if (card) {
+        card.destroy();
+      }
+    };
+  }, [card]);
+
+  // Loading state check
   if (isUserLoading || isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -156,6 +177,7 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
+  // Early returns for authentication and profile setup
   if (!currentUser) {
     return (
       <Card className="mx-auto max-w-md mt-8">
@@ -191,11 +213,9 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-  // After all checks, we can safely access the data
   const league = combinedData?.league;
   const payments = combinedData?.payments || [];
 
-  // Ensure we have league data before proceeding
   if (!league) {
     return (
       <Card className="mx-auto max-w-md mt-8">
@@ -212,7 +232,7 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-  // Now we can safely calculate season-related data
+  // Calculate payment-related data
   const totalWeeks = getSeasonLength(league);
   const seasonPresets = [
     { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
@@ -226,19 +246,10 @@ export const BowlerDashboardPage: FC = () => {
     setSelectedWeeks(validWeeks);
   };
 
-  const incrementWeeks = () => {
-    handleWeekChange(selectedWeeks + 1);
-  };
-
-  const decrementWeeks = () => {
-    handleWeekChange(selectedWeeks - 1);
-  };
-
   const calculateTotalAmount = () => {
     if (!league || !bowler) return 0;
 
     const weeklyFee = getWeeklyFee(bowler);
-
     const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule);
     if (!selectedOption) return 0;
 
@@ -246,6 +257,40 @@ export const BowlerDashboardPage: FC = () => {
       ? selectedOption.calculateAmount(weeklyFee, totalWeeks, selectedWeeks)
       : selectedOption.calculateAmount(weeklyFee, totalWeeks);
   };
+
+  const totalPaidAmount = payments
+    .filter((p: Payment) => p.status === 'paid')
+    .reduce((sum: number, p: Payment) => sum + p.amount, 0);
+
+  let amountPastDue = 0;
+  let upcomingPayments: UpcomingPayment[] = [];
+
+  if (league?.seasonStart && league.seasonEnd && bowler) {
+    const weeklyFee = getWeeklyFee(bowler);
+    const seasonStart = new Date(league.seasonStart);
+    const seasonEnd = new Date(league.seasonEnd);
+    const today = startOfToday();
+
+    const weeksDue = today < seasonStart ? 0 :
+                    today > seasonEnd ? Math.max(0, differenceInWeeks(seasonEnd, seasonStart)) :
+                    Math.max(0, differenceInWeeks(today, seasonStart));
+
+    const totalSeasonDues = weeklyFee * weeksDue;
+    amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
+
+    if (bowler?.squareCustomerId) {
+      const nextPaymentDate = addWeeks(today, 1);
+      for (let i = 0; i < 4; i++) {
+        const paymentDate = addWeeks(nextPaymentDate, i);
+        if (paymentDate <= seasonEnd) {
+          upcomingPayments.push({
+            dueDate: paymentDate,
+            amount: weeklyFee
+          });
+        }
+      }
+    }
+  }
 
   const handleSubmitPayment = async () => {
     if (!card || !league || !bowler) {
@@ -259,21 +304,11 @@ export const BowlerDashboardPage: FC = () => {
 
     try {
       const amount = calculateTotalAmount();
-      console.log('[BowlerDashboard] Processing payment:', {
-        amount,
-        schedule: selectedSchedule,
-        bowlerId: bowler.id,
-        leagueId: league.id,
-        weeklyFee: getWeeklyFee(bowler),
-        totalWeeks: getSeasonLength(league)
-      });
-
       if (amount <= 0) {
         throw new Error("Invalid payment amount calculated");
       }
 
       const result = await createPayment(amount, card, bowler.id, league.id);
-      console.log('[BowlerDashboard] Payment result:', result);
 
       if (result.status === 'COMPLETED') {
         toast({
@@ -294,83 +329,13 @@ export const BowlerDashboardPage: FC = () => {
     }
   };
 
-  const totalPaidAmount = payments
-    .filter((p: Payment) => p.status === 'paid')
-    .reduce((sum: number, p: Payment) => sum + p.amount, 0);
+  const incrementWeeks = () => {
+    handleWeekChange(selectedWeeks + 1);
+  };
 
-  let amountPastDue = 0;
-  let upcomingPayments: UpcomingPayment[] = [];
-
-  if (league?.seasonStart && league.seasonEnd && bowler) {
-    const weeklyFee = getWeeklyFee(bowler);
-    const seasonStart = new Date(league.seasonStart);
-    const seasonEnd = new Date(league.seasonEnd);
-    const today = startOfToday();
-
-    const weeksDue = today < seasonStart ? 0 :
-                     today > seasonEnd ? Math.max(0, differenceInWeeks(seasonEnd, seasonStart)) :
-                     Math.max(0, differenceInWeeks(today, seasonStart));
-
-    const totalSeasonDues = weeklyFee * weeksDue;
-    amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
-
-    if (bowler?.squareCustomerId) {
-      const nextPaymentDate = addWeeks(today, 1);
-      for (let i = 0; i < 4; i++) {
-        const paymentDate = addWeeks(nextPaymentDate, i);
-        if (paymentDate <= seasonEnd) {
-          upcomingPayments.push({
-            dueDate: paymentDate,
-            amount: weeklyFee
-          });
-        }
-      }
-    }
-  }
-
-  const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
-    onError: (error) => {
-      console.error('[Square Payment Error]:', error);
-      toast({
-        title: "Payment Setup Error",
-        description: error,
-        variant: "destructive",
-      });
-    },
-  });
-
-  useEffect(() => {
-    console.log('[BowlerDashboard] Payment setup state:', {
-      showPaymentSetup,
-      isInitialized,
-      hasCardContainer: !!cardContainerRef.current,
-      cardState: card ? 'exists' : 'null'
-    });
-
-    if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
-      console.log('[BowlerDashboard] Attempting to initialize Square payment form');
-      try {
-        initializeCard(cardContainerRef.current);
-        console.log('[BowlerDashboard] Square payment form initialized successfully');
-      } catch (error) {
-        console.error('[BowlerDashboard] Error initializing payment form:', error);
-        toast({
-          title: "Payment Setup Error",
-          description: "Failed to initialize payment form. Please try again.",
-          variant: "destructive",
-        });
-      }
-    }
-  }, [showPaymentSetup, isInitialized, initializeCard, card]);
-
-  useEffect(() => {
-    return () => {
-      if (card) {
-        console.log('[BowlerDashboard] Cleaning up Square payment form');
-        card.destroy();
-      }
-    };
-  }, [card]);
+  const decrementWeeks = () => {
+    handleWeekChange(selectedWeeks - 1);
+  };
 
 
   return (

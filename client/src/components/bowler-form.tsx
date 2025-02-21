@@ -44,6 +44,16 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const { toast } = useToast();
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
+  // Move form initialization before any conditional logic
+  const form = useForm<InsertBowler>({
+    resolver: zodResolver(insertBowlerSchema),
+    defaultValues: {
+      name: bowler?.name ?? "",
+      email: bowler?.email ?? "",
+      active: bowler?.active ?? true,
+    },
+  });
+
   // Query for leagues with proper caching
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ success: true, data: League[] }>({
     queryKey: ["/api/leagues"],
@@ -65,22 +75,8 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
 
   const teams = teamsResponse?.data || [];
 
-  const form = useForm<InsertBowler>({
-    resolver: zodResolver(insertBowlerSchema),
-    defaultValues: bowler ? {
-      name: bowler.name,
-      email: bowler.email,
-      active: bowler.active,
-    } : {
-      name: "",
-      email: "",
-      active: true,
-    },
-  });
-
-  // Memoize mutation callbacks to prevent unnecessary re-renders
+  // Memoize mutation callbacks with proper dependencies
   const onSuccess = useCallback(() => {
-    // Invalidate only the bowlers query when a bowler is updated
     queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
     toast({
       title: bowler ? "Bowler updated" : "Bowler created",
