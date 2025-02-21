@@ -50,8 +50,8 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   },
   {
     id: "custom",
-    label: "Custom Weeks Payment",
-    description: "Choose the number of weeks to pay upfront",
+    label: "One Time Payment",
+    description: "Make a single payment for your selected number of weeks",
     calculateAmount: (weeklyFee, _, customWeeks = 1) => weeklyFee * customWeeks,
   },
 ];

@@ -322,12 +322,15 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
             )}
 
             {paymentType === "credit_card" && (
-              <div>
-                <div ref={cardContainerRef} className="mb-4" />
+              <div className="min-h-[200px] border rounded-lg bg-card">
+                <div ref={cardContainerRef} className="p-4" />
                 {!isSquareReady && (
-                  <p className="text-sm text-muted-foreground">
-                    Loading credit card form...
-                  </p>
+                  <div className="flex items-center justify-center p-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <p className="ml-2 text-sm text-muted-foreground">
+                      Loading credit card form...
+                    </p>
+                  </div>
                 )}
               </div>
             )}

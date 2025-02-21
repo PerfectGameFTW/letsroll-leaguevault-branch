@@ -44,7 +44,7 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   },
   {
     id: "custom",
-    label: "One Time Manual Payment",
+    label: "One Time Payment",
     description: "Make a single payment for your selected number of weeks",
     calculateAmount: (weeklyFee, _, customWeeks = 1) => weeklyFee * customWeeks,
   },
@@ -234,11 +234,16 @@ export default function BowlerPaymentSetupPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative">
-              <div
-                ref={cardContainerRef}
-                className="min-h-[140px] p-4 bg-card rounded-lg border"
-              />
+            <div className="relative min-h-[200px] border rounded-lg bg-card">
+              <div ref={cardContainerRef} className="p-4" />
+              {!isInitialized && (
+                <div className="flex items-center justify-center p-4">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  <p className="ml-2 text-sm text-muted-foreground">
+                    Loading credit card form...
+                  </p>
+                </div>
+              )}
               {isInitialized && (
                 <div className="absolute top-4 right-4">
                   <CreditCard className="h-5 w-5 text-muted-foreground" />
