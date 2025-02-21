@@ -213,6 +213,28 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Add after the existing payment table definition
+export const paymentSchedules = pgTable("payment_schedules", {
+  id: serial("id").primaryKey(),
+  bowlerId: integer("bowler_id")
+    .notNull()
+    .references(() => bowlers.id, { onDelete: 'cascade' }),
+  leagueId: integer("league_id")
+    .notNull()
+    .references(() => leagues.id, { onDelete: 'cascade' }),
+  frequency: text("frequency", { enum: ["weekly", "monthly"] }).notNull(),
+  amount: integer("amount").notNull(), // Store in cents
+  nextPaymentDate: timestamp("next_payment_date").notNull(),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastPaymentDate: timestamp("last_payment_date"),
+  squareCardId: text("square_card_id").notNull(),
+}, (table) => ({
+  bowlerScheduleIdx: index("bowler_schedule_idx").on(table.bowlerId, table.leagueId),
+  nextPaymentIdx: index("next_payment_idx").on(table.nextPaymentDate),
+  activeIdx: index("active_schedule_idx").on(table.active),
+}));
+
 // Relations
 export const leagueRelations = relations(leagues, ({ many }) => ({
   teams: many(teams),
@@ -292,6 +314,19 @@ export const weeklyStatsRelations = relations(weeklyStats, ({ one }) => ({
   }),
 }));
 
+// Add to relations
+export const paymentScheduleRelations = relations(paymentSchedules, ({ one }) => ({
+  bowler: one(bowlers, {
+    fields: [paymentSchedules.bowlerId],
+    references: [bowlers.id],
+  }),
+  league: one(leagues, {
+    fields: [paymentSchedules.leagueId],
+    references: [leagues.id],
+  }),
+}));
+
+
 // Add user relations after existing relations
 export const userRelations = relations(users, ({ one }) => ({
   bowler: one(bowlers, {
@@ -314,6 +349,9 @@ const baseWeeklyStatsSchema = createInsertSchema(weeklyStats);
 
 // Add validation schemas after existing schemas
 const baseUserSchema = createInsertSchema(users);
+
+// Add validation schemas
+const basePaymentScheduleSchema = createInsertSchema(paymentSchedules);
 
 // Enhanced insert schemas with additional validation
 export const insertBowlerSchema = baseBowlerSchema.extend({
@@ -458,6 +496,17 @@ export const insertUserSchema = baseUserSchema.extend({
   bowlerId: z.number().nullable().optional(),
 }).omit({ id: true, createdAt: true });
 
+export const insertPaymentScheduleSchema = basePaymentScheduleSchema.extend({
+  bowlerId: positiveIntSchema,
+  leagueId: positiveIntSchema,
+  frequency: z.enum(["weekly", "monthly"]),
+  amount: positiveIntSchema,
+  nextPaymentDate: dateSchema,
+  active: z.boolean().default(true),
+  squareCardId: z.string(),
+}).omit({ id: true, createdAt: true, lastPaymentDate: true });
+
+
 // Export partial schemas for updates
 export const partialBowlerSchema = z.object(baseBowlerSchema.shape).partial();
 export const partialLeagueSchema = z.object({
@@ -487,6 +536,7 @@ export const partialGameSchema = z.object(baseGameSchema.shape).partial();
 export const partialScoreSchema = z.object(baseScoreSchema.shape).partial();
 export const partialSeriesSchema = z.object(baseSeriesSchema.shape).partial();
 export const partialWeeklyStatsSchema = z.object(baseWeeklyStatsSchema.shape).partial();
+export const partialPaymentScheduleSchema = z.object(basePaymentScheduleSchema.shape).partial();
 
 // Type exports
 export type League = typeof leagues.$inferSelect;
@@ -520,6 +570,9 @@ export type InsertWeeklyStat = z.infer<typeof insertWeeklyStatsSchema>;
 // Add type exports after existing types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+
+export type PaymentSchedule = typeof paymentSchedules.$inferSelect;
+export type InsertPaymentSchedule = z.infer<typeof insertPaymentScheduleSchema>;
 
 
 // API response types

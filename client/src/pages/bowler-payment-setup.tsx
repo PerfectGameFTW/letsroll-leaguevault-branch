@@ -59,9 +59,7 @@ export default function BowlerPaymentSetupPage() {
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [user, setUser] = useState(null);
   const [customWeeks, setCustomWeeks] = useState(1);
-
 
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
@@ -87,11 +85,7 @@ export default function BowlerPaymentSetupPage() {
   const league = leagueResponse?.data;
 
   useEffect(() => {
-    console.log('[BowlerPaymentSetup] Card container ref:', !!cardContainerRef.current);
-    console.log('[BowlerPaymentSetup] Is initialized:', isInitialized);
-
     if (cardContainerRef.current && !isInitialized) {
-      console.log('[BowlerPaymentSetup] Initializing card...');
       initializeCard(cardContainerRef.current);
     }
   }, [isInitialized, initializeCard]);
@@ -129,19 +123,35 @@ export default function BowlerPaymentSetupPage() {
         throw new Error("Invalid payment amount calculated");
       }
 
-      console.log('[BowlerPaymentSetup] Processing payment:', {
-        amount,
-        schedule: selectedSchedule,
-        bowlerId,
-        leagueId: league.id
-      });
+      // Process payment and set up recurring schedule if needed
+      if (selectedSchedule !== "custom") {
+        // Create payment schedule
+        const scheduleResponse = await fetch("/api/payment-schedules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bowlerId,
+            leagueId: league.id,
+            frequency: selectedSchedule,
+            amount,
+            nextPaymentDate: new Date(),
+            squareCardId: card.id,
+          }),
+        });
+
+        if (!scheduleResponse.ok) {
+          throw new Error("Failed to set up payment schedule");
+        }
+      }
 
       // Process the initial payment
       const paymentResult = await createPayment(amount, card, bowlerId, league.id);
 
       toast({
         title: "Payment Successful",
-        description: `Your ${selectedSchedule} payment has been processed successfully.`,
+        description: selectedSchedule === "custom"
+          ? "Your one-time payment has been processed successfully."
+          : `Your ${selectedSchedule} payment schedule has been set up successfully.`,
       });
 
       setLocation('/dashboard');

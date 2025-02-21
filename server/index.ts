@@ -1,3 +1,29 @@
+import express, { type Request, Response, NextFunction } from "express";
+import { registerRoutes } from "./routes.js";
+import { setupVite } from "./vite.js";
+import { testConnection, cleanup as dbCleanup } from "./db.js";
+import { createServer } from 'http';
+import { ScoreSchedulerService } from './services/score-scheduler.js';
+import { storage } from './storage.js';
+import path from 'path';
+import net from 'net';
+import fs from 'fs';
+import { setupAuth } from "./auth.js";
+import { paymentScheduler } from './services/payment-scheduler.js';
+
+interface PortStatus {
+  port: number;
+  ready: boolean;
+  timestamp: string;
+  pid: number;
+  mode: string;
+  health: {
+    database: boolean;
+    vite: boolean;
+    server: boolean;
+  };
+}
+
 const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 const HOST = '0.0.0.0';
@@ -38,31 +64,6 @@ const shutdownPhases: ShutdownPhases = {
   database_cleaned: false,
   server_closed: false
 };
-
-import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes.js";
-import { setupVite } from "./vite.js";
-import { testConnection, cleanup as dbCleanup } from "./db.js";
-import { createServer } from 'http';
-import { ScoreSchedulerService } from './services/score-scheduler.js';
-import { storage } from './storage.js';
-import path from 'path';
-import net from 'net';
-import fs from 'fs';
-import { setupAuth } from "./auth.js";
-
-interface PortStatus {
-  port: number;
-  ready: boolean;
-  timestamp: string;
-  pid: number;
-  mode: string;
-  health: {
-    database: boolean;
-    vite: boolean;
-    server: boolean;
-  };
-}
 
 const app = express();
 const server = createServer(app);
@@ -414,6 +415,16 @@ async function startServer() {
     });
     await validateStartupPhase('database', ['cleanup']);
 
+    // Initialize payment scheduler after database connection
+    if (dbConnected) {
+      try {
+        await paymentScheduler.initialize();
+        console.log('[Server] Payment scheduler initialized');
+      } catch (error) {
+        console.error('[Server] Error initializing payment scheduler:', error);
+      }
+    }
+
     // Phase 3: Port allocation
     try {
       serverPort = await findAvailablePort(preferredPort);
@@ -603,6 +614,12 @@ async function shutdown() {
   shutdownPhases.initiated = true;
 
   try {
+    // Cancel all scheduled payments before shutdown
+    if (paymentScheduler) {
+      console.log('[Server] Cleaning up payment scheduler...');
+      paymentScheduler.cancelAllJobs(); // <--- UPDATED LINE
+    }
+
     // Set a maximum wait time for active requests
     const forceShutdown = new Promise((_, reject) => {
       shutdownTimeoutId = setTimeout(() => {
