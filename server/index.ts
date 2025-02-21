@@ -218,7 +218,7 @@ const cleanupPortStatus = async () => {
     await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
 
     // Force kill any existing process on port 5000
-    const command = process.platform === 'win32' 
+    const command = process.platform === 'win32'
       ? `FOR /F "tokens=5" %P IN ('netstat -a -n -o ^| find ":5000" ^| find "LISTENING"') DO TaskKill /PID %P /F /T`
       : `lsof -ti:5000 | xargs -r kill -9`;
 
@@ -425,7 +425,7 @@ async function startServer() {
 
     // Initial port status
     await writePortStatus(serverPort, false, {
-      database: dbConnected,
+      database: !!dbConnected, // Cast to boolean
       vite: viteSetupComplete,
       server: false
     });
@@ -456,7 +456,7 @@ async function startServer() {
 
     // Final status update
     await writePortStatus(serverPort, true, {
-      database: dbConnected,
+      database: !!dbConnected, // Cast to boolean
       server: true,
       vite: viteSetupComplete
     });

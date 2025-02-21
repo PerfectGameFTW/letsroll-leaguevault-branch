@@ -44,8 +44,8 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   },
   {
     id: "custom",
-    label: "Custom Weeks Payment",
-    description: "Choose the number of weeks to pay upfront",
+    label: "One Time Manual Payment",
+    description: "Make a single payment for your selected number of weeks",
     calculateAmount: (weeklyFee, _, customWeeks = 1) => weeklyFee * customWeeks,
   },
 ];
@@ -87,10 +87,14 @@ export default function BowlerPaymentSetupPage() {
   const league = leagueResponse?.data;
 
   useEffect(() => {
+    console.log('[BowlerPaymentSetup] Card container ref:', !!cardContainerRef.current);
+    console.log('[BowlerPaymentSetup] Is initialized:', isInitialized);
+
     if (cardContainerRef.current && !isInitialized) {
+      console.log('[BowlerPaymentSetup] Initializing card...');
       initializeCard(cardContainerRef.current);
     }
-  }, [cardContainerRef.current, isInitialized]);
+  }, [isInitialized, initializeCard]);
 
   const calculatePaymentAmount = () => {
     if (!league) return 0;
@@ -231,7 +235,10 @@ export default function BowlerPaymentSetupPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="relative">
-              <div ref={cardContainerRef} className="min-h-[140px] p-4 bg-card rounded-lg border" />
+              <div
+                ref={cardContainerRef}
+                className="min-h-[140px] p-4 bg-card rounded-lg border"
+              />
               {isInitialized && (
                 <div className="absolute top-4 right-4">
                   <CreditCard className="h-5 w-5 text-muted-foreground" />
