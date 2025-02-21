@@ -396,7 +396,7 @@ async function validateStartupPhase(currentPhase: keyof typeof startupPhases, re
 }
 
 
-// Update startServer function for faster startup
+// Update startServer function to better handle payment scheduler initialization
 async function startServer() {
   try {
     console.log('[Server] Starting server...');
@@ -419,9 +419,10 @@ async function startServer() {
     if (dbConnected) {
       try {
         await paymentScheduler.initialize();
-        console.log('[Server] Payment scheduler initialized');
+        console.log('[Server] Payment scheduler initialized successfully');
       } catch (error) {
         console.error('[Server] Error initializing payment scheduler:', error);
+        // Log error but don't fail startup - scheduler can be reinitialized later
       }
     }
 
@@ -606,6 +607,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 // Add cleanup handler with timeout
 let shutdownTimeoutId: NodeJS.Timeout | undefined;
 
+// Update shutdown function to properly cleanup payment scheduler
 async function shutdown() {
   console.log('[Server] Initiating graceful shutdown...');
   console.log(`[Server] Active requests: ${activeRequests}`);
@@ -617,7 +619,7 @@ async function shutdown() {
     // Cancel all scheduled payments before shutdown
     if (paymentScheduler) {
       console.log('[Server] Cleaning up payment scheduler...');
-      paymentScheduler.cancelAllJobs(); // <--- UPDATED LINE
+      paymentScheduler.cancelAllJobs();
     }
 
     // Set a maximum wait time for active requests

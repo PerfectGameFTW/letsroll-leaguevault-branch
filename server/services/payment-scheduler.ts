@@ -34,28 +34,28 @@ class PaymentScheduler {
     }
   }
 
-  private schedulePayment(schedule: typeof paymentSchedules.$inferSelect) {
-    const jobId = `payment-${schedule.id}`;
+  private schedulePayment(scheduleRecord: typeof paymentSchedules.$inferSelect) {
+    const jobId = `payment-${scheduleRecord.id}`;
 
     // Cancel existing job if any
     this.cancelJob(jobId);
 
     // Schedule new job
-    const job = schedule.scheduleJob(schedule.nextPaymentDate, async () => {
+    const job = schedule.scheduleJob(scheduleRecord.nextPaymentDate, async () => {
       try {
         // Process payment using Square
         const paymentResult = await createSquarePayment({
-          amount: schedule.amount,
-          cardId: schedule.squareCardId,
-          bowlerId: schedule.bowlerId,
-          leagueId: schedule.leagueId,
+          amount: scheduleRecord.amount,
+          cardId: scheduleRecord.squareCardId,
+          bowlerId: scheduleRecord.bowlerId,
+          leagueId: scheduleRecord.leagueId,
         });
 
         // If payment successful, update schedule and create payment record
         if (paymentResult.status === 'success') {
-          const nextDate = schedule.frequency === 'weekly'
-            ? addWeeks(schedule.nextPaymentDate, 1)
-            : addMonths(schedule.nextPaymentDate, 1);
+          const nextDate = scheduleRecord.frequency === 'weekly'
+            ? addWeeks(scheduleRecord.nextPaymentDate, 1)
+            : addMonths(scheduleRecord.nextPaymentDate, 1);
 
           // Update payment schedule
           await db.transaction(async (tx) => {
@@ -63,44 +63,44 @@ class PaymentScheduler {
               .update(paymentSchedules)
               .set({
                 nextPaymentDate: nextDate,
-                lastPaymentDate: schedule.nextPaymentDate,
+                lastPaymentDate: scheduleRecord.nextPaymentDate,
               })
-              .where(eq(paymentSchedules.id, schedule.id));
+              .where(eq(paymentSchedules.id, scheduleRecord.id));
 
             // Create payment record
             await tx.insert(payments).values({
-              bowlerId: schedule.bowlerId,
-              leagueId: schedule.leagueId,
-              amount: schedule.amount,
+              bowlerId: scheduleRecord.bowlerId,
+              leagueId: scheduleRecord.leagueId,
+              amount: scheduleRecord.amount,
               status: 'paid',
               type: 'credit_card',
-              weekOf: schedule.nextPaymentDate,
+              weekOf: scheduleRecord.nextPaymentDate,
               squarePaymentId: paymentResult.paymentId,
             });
           });
 
           // Schedule next payment
           this.schedulePayment({
-            ...schedule,
+            ...scheduleRecord,
             nextPaymentDate: nextDate,
           });
         } else {
           // Handle failed payment
-          logger.error(`Failed to process scheduled payment for schedule ${schedule.id}:`, paymentResult.error);
+          logger.error(`Failed to process scheduled payment for schedule ${scheduleRecord.id}:`, paymentResult.error);
 
           // Create failed payment record
           await db.insert(payments).values({
-            bowlerId: schedule.bowlerId,
-            leagueId: schedule.leagueId,
-            amount: schedule.amount,
+            bowlerId: scheduleRecord.bowlerId,
+            leagueId: scheduleRecord.leagueId,
+            amount: scheduleRecord.amount,
             status: 'failed',
             type: 'credit_card',
-            weekOf: schedule.nextPaymentDate,
+            weekOf: scheduleRecord.nextPaymentDate,
             notes: `Failed payment: ${paymentResult.error}`,
           });
         }
       } catch (error) {
-        logger.error(`Error processing scheduled payment for schedule ${schedule.id}:`, error);
+        logger.error(`Error processing scheduled payment for schedule ${scheduleRecord.id}:`, error);
       }
     });
 
