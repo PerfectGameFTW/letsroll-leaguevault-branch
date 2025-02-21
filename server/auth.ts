@@ -31,6 +31,15 @@ async function comparePasswords(supplied: string, stored: string) {
     const [hashed, salt] = stored.split(".");
     const hashedBuf = Buffer.from(hashed, "hex");
     const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+
+    // Add debug logging
+    console.log('[Auth Debug] Password comparison:', {
+      suppliedLength: suppliedBuf.length,
+      storedLength: hashedBuf.length,
+      salt,
+      match: timingSafeEqual(hashedBuf, suppliedBuf)
+    });
+
     return timingSafeEqual(hashedBuf, suppliedBuf);
   } catch (error) {
     console.error('[Auth] Error comparing passwords:', error);
@@ -81,31 +90,40 @@ export function setupAuth(app: Express) {
       passwordField: 'password'
     }, async (email: string, password: string, done) => {
       try {
-        console.log(`[Auth] Attempting login for email: ${email}`);
+        console.log(`[Auth Debug] Login attempt:`, {
+          email,
+          hasPassword: !!password,
+          timestamp: new Date().toISOString()
+        });
+
         const user = await storage.getUserByEmail(email);
 
         if (!user) {
-          console.log(`[Auth] No user found with email: ${email}`);
+          console.log(`[Auth Debug] No user found with email: ${email}`);
           return done(null, false, { message: "Invalid email or password" });
         }
 
         if (!isValidUser(user)) {
-          console.error('[Auth] Invalid user object structure:', user);
+          console.error('[Auth Debug] Invalid user object structure:', user);
           return done(null, false, { message: "Invalid user data structure" });
         }
 
         const isValidPassword = await comparePasswords(password, user.password);
-        console.log(`[Auth] Password validation result:`, isValidPassword);
+        console.log(`[Auth Debug] Password validation:`, {
+          userId: user.id,
+          isValid: isValidPassword,
+          timestamp: new Date().toISOString()
+        });
 
         if (!isValidPassword) {
-          console.log(`[Auth] Invalid password for email: ${email}`);
+          console.log(`[Auth Debug] Invalid password for email: ${email}`);
           return done(null, false, { message: "Invalid email or password" });
         }
 
-        console.log(`[Auth] Login successful for user ID: ${user.id}`);
+        console.log(`[Auth Debug] Login successful for user ID: ${user.id}`);
         return done(null, user);
       } catch (error) {
-        console.error('[Auth] Login error:', error);
+        console.error('[Auth Debug] Login error:', error);
         return done(error);
       }
     }),
