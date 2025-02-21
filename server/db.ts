@@ -11,38 +11,22 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ 
-  connectionString: process.env.DATABASE_URL,
-  max: 10, // Reduced from 20 to prevent connection overload
-  idleTimeoutMillis: 30000, // Reduced idle timeout to 30 seconds
-  connectionTimeoutMillis: 10000, // Increased connection timeout for better stability
-  maxUses: 5000, // Reduced from 7500 to prevent stale connections
-  keepAlive: true,
-  keepAliveInitialDelayMillis: 5000, // Reduced initial delay for faster recovery
-});
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle({ client: pool, schema });
 
-export const db = drizzle(pool, { 
-  schema,
-  logger: {
-    logQuery: (query, params) => {
-      if (!query.includes('pg_stat_activity')) {
-        console.log('[Database] Query:', query);
-        if (params && params.length > 0) {
-          console.log('[Database] Parameters:', params);
-        }
-      }
+
+// Improved error handling with connection state tracking
+let isShuttingDown = false;
+
+pool.on('error', (err, client) => {
+  console.error('[Database] Unexpected error on idle client', err);
+  if (!isShuttingDown && client) {
+    try {
+      client.release(true);
+    } catch (releaseError) {
+      console.error('[Database] Error releasing client:', releaseError);
     }
   }
-});
-
-// Enhanced error handling
-pool.on('error', async (err, client) => {
-  console.error('[Database] Unexpected error on idle client', err);
-  if (client) {
-    client.release(true);
-  }
-  // Attempt to reconnect
-  await testConnection(3, 1000);
 });
 
 pool.on('connect', (client) => {
@@ -52,37 +36,64 @@ pool.on('connect', (client) => {
   });
 });
 
-// Enhanced connection testing with better error handling
+// Improved connection testing with better state management
 export async function testConnection(retries = 3, delay = 1000): Promise<boolean> {
+  let client = null;
+  let lastError = null;
+
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const client = await pool.connect();
-      try {
-        await client.query('SELECT 1');
-        console.log('[Database] Connection test successful');
-        return true;
-      } finally {
-        client.release();
-      }
+      client = await pool.connect();
+      await client.query('SELECT 1');
+      console.log('[Database] Connection test successful');
+      return true;
     } catch (error) {
+      lastError = error;
       console.error(`[Database] Connection attempt ${attempt} failed:`, error);
+
       if (attempt === retries) {
-        throw error;
+        throw lastError;
       }
-      await new Promise(resolve => setTimeout(resolve, delay));
+
+      await new Promise(resolve => setTimeout(resolve, delay * attempt)); // Exponential backoff
+    } finally {
+      if (client) {
+        try {
+          await client.release(false);
+        } catch (releaseError) {
+          console.error('[Database] Error releasing test connection:', releaseError);
+          // Don't throw here - we want to continue cleanup
+        }
+      }
     }
   }
   return false;
 }
 
-// Enhanced cleanup with better error handling
+// Improved cleanup with better state management
 export async function cleanup(): Promise<void> {
+  if (isShuttingDown) {
+    console.log('[Database] Cleanup already in progress');
+    return;
+  }
+
+  isShuttingDown = true;
+  console.log('[Database] Starting pool cleanup...');
+
   try {
-    console.log('[Database] Starting pool cleanup...');
-    await pool.end();
+    // Wait for any in-progress queries to complete (up to 5 seconds)
+    await Promise.race([
+      pool.end(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Pool cleanup timeout')), 5000)
+      )
+    ]);
+
     console.log('[Database] Pool cleanup completed');
   } catch (error) {
     console.error('[Database] Error during pool cleanup:', error);
-    throw error;
+    // Continue despite errors - best effort cleanup
+  } finally {
+    isShuttingDown = false;
   }
 }
