@@ -25,7 +25,7 @@ const navItems: NavItem[] = [
   {
     icon: History,
     label: "Payment History",
-    href: "/payments"
+    href: "/payment-history"
   },
   {
     icon: Trophy,
