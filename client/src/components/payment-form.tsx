@@ -136,7 +136,12 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
         if (result.status !== 'OK' || !result.token) {
           const errors = result.errors || [];
-          throw new Error(errors.map(e => e.message).join(', ') || 'Failed to process credit card');
+          const errorMessage = errors.map((e: { message: string }) => e.message).join(', ') || 'Card validation failed';
+          console.error('[PaymentForm] Card tokenization failed:', {
+            errors,
+            firstError: errorMessage
+          });
+          throw new Error(errorMessage);
         }
 
         console.log('[PaymentForm] Card tokenized successfully');

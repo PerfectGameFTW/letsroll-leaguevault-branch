@@ -13,14 +13,15 @@ import { BowlerLayout } from "@/components/bowler-layout";
 import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
 import type { League, Payment, User, Bowler } from "@shared/schema";
 import { useBowlers } from "@/hooks/use-bowlers";
+import { Slider } from "@/components/ui/slider";
 
-type PaymentSchedule = "weekly" | "monthly" | "half" | "full";
+type PaymentSchedule = "weekly" | "monthly" | "half" | "full" | "custom";
 
 interface PaymentOption {
   id: PaymentSchedule;
   label: string;
   description: string;
-  calculateAmount: (weeklyFee: number, totalWeeks: number) => number;
+  calculateAmount: (weeklyFee: number, totalWeeks: number, customWeeks?: number) => number;
 }
 
 const PAYMENT_OPTIONS: PaymentOption[] = [
@@ -54,12 +55,19 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
       return fullSeasonAmount;
     },
   },
+  {
+    id: "custom",
+    label: "Custom Weeks Payment",
+    description: "Choose the number of weeks to pay upfront",
+    calculateAmount: (weeklyFee, _, customWeeks = 1) => weeklyFee * customWeeks,
+  },
 ];
 
 export const BowlerDashboardPage: FC = () => {
   const { toast } = useToast();
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
+  const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
   const cardContainerRef = useRef<HTMLDivElement>(null);
 
   // Initialize Square payment form with enhanced error handling and logging
@@ -183,7 +191,9 @@ export const BowlerDashboardPage: FC = () => {
     const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule);
     if (!selectedOption) return 0;
 
-    return selectedOption.calculateAmount(weeklyFee, totalWeeks);
+    return selectedOption.id === 'custom'
+      ? selectedOption.calculateAmount(weeklyFee, totalWeeks, selectedWeeks)
+      : selectedOption.calculateAmount(weeklyFee, totalWeeks);
   };
 
   const handleSubmitPayment = async () => {
@@ -199,7 +209,7 @@ export const BowlerDashboardPage: FC = () => {
     try {
       // Calculate amount in cents
       const amount = calculateTotalAmount();
-      console.log('[BowlerDashboard] Processing payment:', { 
+      console.log('[BowlerDashboard] Processing payment:', {
         amount,
         schedule: selectedSchedule,
         bowlerId: bowler.id,
@@ -365,7 +375,9 @@ export const BowlerDashboardPage: FC = () => {
                                 (7 * 24 * 60 * 60 * 1000)
                               ) : 0;
 
-                              const amount = option.calculateAmount(weeklyFee, totalWeeks);
+                              const amount = option.id === 'custom'
+                                ? option.calculateAmount(weeklyFee, totalWeeks, selectedWeeks)
+                                : option.calculateAmount(weeklyFee, totalWeeks);
 
                               return (
                                 <div key={option.id} className="flex items-center space-x-2">
@@ -384,6 +396,36 @@ export const BowlerDashboardPage: FC = () => {
                             })}
                           </RadioGroup>
 
+                          {selectedSchedule === 'custom' && (
+                            <div className="mt-4 space-y-4">
+                              <Label>Select Number of Weeks</Label>
+                              <Slider
+                                value={[selectedWeeks]}
+                                onValueChange={(value) => {
+                                  console.log('[BowlerDashboard] Updating selected weeks:', value[0]);
+                                  setSelectedWeeks(value[0]);
+                                }}
+                                min={1}
+                                max={league ? Math.ceil(
+                                  (new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) /
+                                  (7 * 24 * 60 * 60 * 1000)
+                                ) : 1}
+                                step={1}
+                                className="w-full"
+                              />
+                              <div className="flex justify-between text-sm text-muted-foreground">
+                                <span>1 week</span>
+                                <span>{selectedWeeks} week{selectedWeeks > 1 ? 's' : ''} selected</span>
+                                <span>
+                                  {league ? Math.ceil(
+                                    (new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) /
+                                    (7 * 24 * 60 * 60 * 1000)
+                                  ) : 1} weeks total
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
                           {/* Add Total Amount Display */}
                           <div className="mt-6 p-4 rounded-lg border bg-secondary/50">
                             <div className="flex justify-between items-center">
@@ -397,6 +439,7 @@ export const BowlerDashboardPage: FC = () => {
                               {selectedSchedule === 'monthly' && 'Billed monthly (every 4 weeks)'}
                               {selectedSchedule === 'half' && 'One-time payment for half season'}
                               {selectedSchedule === 'full' && 'One-time payment for full season'}
+                              {selectedSchedule === 'custom' && `One-time payment for ${selectedWeeks} week${selectedWeeks > 1 ? 's' : ''}`}
                             </p>
                           </div>
                         </div>
