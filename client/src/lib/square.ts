@@ -7,6 +7,11 @@ interface PaymentResult {
     last4: string;
     brand: string;
   };
+  cardOnFile?: {
+    id: string;
+    last4: string;
+    brand: string;
+  };
 }
 
 interface SquareCustomer {
@@ -77,7 +82,7 @@ export async function initializeSquare() {
   }
 }
 
-export async function createPayment(amount: number, cardInstance: any, bowlerId: number, leagueId: number): Promise<PaymentResult> {
+export async function createPayment(amount: number, cardInstance: any, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
   try {
     if (!cardInstance) {
       console.error('[Square] Card form not initialized');
@@ -103,11 +108,23 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
     console.log('[Square] Starting payment process for amount:', amount);
     console.log('[Square] Tokenizing card...');
 
-    const result = await cardInstance.tokenize();
+    // If storeCard is true, request a card-on-file token
+    const tokenizationOptions = storeCard ? {
+      customerAcceptedCardOnFile: true,
+      verificationMethod: 'EXTERNAL',
+      verificationDetails: {
+        amount: amount.toString(),
+        currencyCode: 'USD',
+        intent: 'STORE'
+      }
+    } : undefined;
+
+    const result = await cardInstance.tokenize(tokenizationOptions);
     console.log('[Square] Tokenization result:', {
       status: result.status,
       hasErrors: !!result.errors,
-      token: result.token ? 'present' : 'missing'
+      token: result.token ? 'present' : 'missing',
+      isCardOnFile: storeCard
     });
 
     if (result.status === 'OK' && result.token) {
@@ -117,7 +134,8 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
         sourceId: result.token,
         amount,
         bowlerId,
-        leagueId
+        leagueId,
+        storeCard
       };
 
       console.log('[Square] Payment request data:', {
@@ -137,7 +155,6 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
 
       if (!response.ok) {
         console.error('[Square] Server payment error:', responseData);
-        // Format the error message to be more user-friendly
         const errorMessage = responseData.error?.message || 'Payment processing failed';
         throw new Error(JSON.stringify({
           error: {
@@ -167,7 +184,8 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
         paymentId: responseData.id,
         status: responseData.status,
         cardLast4: responseData.card?.last4,
-        cardBrand: responseData.card?.brand
+        cardBrand: responseData.card?.brand,
+        cardOnFile: responseData.cardOnFile
       });
 
       return responseData;

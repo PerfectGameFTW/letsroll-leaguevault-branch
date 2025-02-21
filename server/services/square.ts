@@ -35,7 +35,7 @@ async function initializeSquareClient() {
   return squareClient;
 }
 
-export async function processPayment(sourceId: string, amount: number) {
+export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false) {
   const client = await initializeSquareClient();
   if (!client) {
     throw new Error(JSON.stringify({
@@ -50,7 +50,8 @@ export async function processPayment(sourceId: string, amount: number) {
     console.log('[Square Service] Processing payment:', { 
       amount,
       sourceIdLength: sourceId.length,
-      mode: process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox'
+      mode: process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox',
+      storeCard
     });
 
     // Validate inputs
@@ -80,7 +81,9 @@ export async function processPayment(sourceId: string, amount: number) {
         amount: BigInt(amount),
         currency: 'USD'
       },
-      autocomplete: true
+      autocomplete: true,
+      // Request card-on-file creation if storeCard is true
+      storeCardAfterPayment: storeCard
     });
 
     if (!response?.result?.payment) {
@@ -93,21 +96,42 @@ export async function processPayment(sourceId: string, amount: number) {
     }
 
     const payment = response.result.payment;
+    const cardDetails = payment.cardDetails?.card;
+
+    // If storing card was requested, get the card on file details
+    let cardOnFile;
+    if (storeCard && payment.cardDetails?.status === 'CAPTURED') {
+      try {
+        const cardResponse = await client.cardsApi.retrieveCard(payment.cardDetails.card?.id || '');
+        if (cardResponse?.result?.card) {
+          cardOnFile = {
+            id: cardResponse.result.card.id,
+            last4: cardResponse.result.card.last4,
+            brand: cardResponse.result.card.cardBrand
+          };
+        }
+      } catch (error) {
+        console.error('[Square Service] Error retrieving stored card:', error);
+      }
+    }
+
     console.log('[Square Service] Payment processed successfully:', {
       paymentId: payment.id,
       status: payment.status,
-      cardLast4: payment.cardDetails?.card?.last4 ?? '****',
-      cardBrand: payment.cardDetails?.card?.cardBrand ?? 'UNKNOWN',
-      amount: payment.amountMoney?.amount?.toString()
+      cardLast4: cardDetails?.last4 ?? '****',
+      cardBrand: cardDetails?.cardBrand ?? 'UNKNOWN',
+      amount: payment.amountMoney?.amount?.toString(),
+      cardOnFile: cardOnFile ? 'created' : 'not-created'
     });
 
     return {
       id: payment.id,
       status: payment.status,
       card: {
-        last4: payment.cardDetails?.card?.last4 ?? '****',
-        brand: payment.cardDetails?.card?.cardBrand ?? 'UNKNOWN'
-      }
+        last4: cardDetails?.last4 ?? '****',
+        brand: cardDetails?.cardBrand ?? 'UNKNOWN'
+      },
+      cardOnFile
     };
   } catch (error) {
     console.error('[Square Service] Payment processing error:', {
@@ -118,7 +142,8 @@ export async function processPayment(sourceId: string, amount: number) {
       } : error,
       input: { 
         amount,
-        sourceIdPresent: !!sourceId
+        sourceIdPresent: !!sourceId,
+        storeCard
       }
     });
 

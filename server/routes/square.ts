@@ -8,18 +8,41 @@ router.post('/payments', async (req, res) => {
   try {
     console.log('[Square Routes] Processing payment request:', {
       amount: req.body.amount,
-      sourceIdPresent: !!req.body.sourceId
+      sourceIdPresent: !!req.body.sourceId,
+      storeCard: req.body.storeCard
     });
 
     const payment = await processPayment(
       req.body.sourceId,
-      req.body.amount
+      req.body.amount,
+      req.body.storeCard
     );
 
     console.log('[Square Routes] Payment processed successfully:', {
       paymentId: payment.id,
-      status: payment.status
+      status: payment.status,
+      cardOnFileCreated: !!payment.cardOnFile
     });
+
+    // If this is for a recurring payment schedule and we have a card on file,
+    // update the schedule with the new card token
+    if (req.body.storeCard && payment.cardOnFile) {
+      try {
+        await storage.updatePaymentScheduleCard(
+          req.body.bowlerId,
+          req.body.leagueId,
+          payment.cardOnFile.id
+        );
+        console.log('[Square Routes] Updated payment schedule with new card token:', {
+          bowlerId: req.body.bowlerId,
+          leagueId: req.body.leagueId,
+          cardToken: payment.cardOnFile.id
+        });
+      } catch (error) {
+        console.error('[Square Routes] Failed to update payment schedule card:', error);
+        // Don't throw here, as the payment was still successful
+      }
+    }
 
     // Save payment record to database
     const dbPayment = await storage.createPayment({
