@@ -81,7 +81,7 @@ export const BowlerDashboardPage: FC = () => {
   const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
   const cardContainerRef = useRef<HTMLDivElement>(null);
 
-  // Calculate season length and presets
+  // Move getSeasonLength inside component
   const getSeasonLength = (currentLeague?: League | null) => {
     if (!currentLeague?.seasonStart || !currentLeague?.seasonEnd) return 0;
     return Math.ceil(
@@ -89,72 +89,6 @@ export const BowlerDashboardPage: FC = () => {
       (7 * 24 * 60 * 60 * 1000)
     );
   };
-
-  // Calculate season presets based on current league
-  const seasonPresets = useMemo(() => {
-    const totalWeeks = getSeasonLength(league);
-    return [
-      { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
-      { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
-      { label: "Full Season", weeks: totalWeeks }
-    ];
-  }, [league]);
-
-  // Handle week selection
-  const handleWeekChange = (weeks: number) => {
-    const maxWeeks = getSeasonLength(league);
-    // Ensure weeks is within valid range
-    const validWeeks = Math.min(Math.max(1, weeks), maxWeeks);
-    setSelectedWeeks(validWeeks);
-  };
-
-  // Increment/decrement weeks
-  const incrementWeeks = () => handleWeekChange(selectedWeeks + 1);
-  const decrementWeeks = () => handleWeekChange(selectedWeeks - 1);
-
-  const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
-    onError: (error) => {
-      console.error('[Square Payment Error]:', error);
-      toast({
-        title: "Payment Setup Error",
-        description: error,
-        variant: "destructive",
-      });
-    },
-  });
-
-  useEffect(() => {
-    console.log('[BowlerDashboard] Payment setup state:', {
-      showPaymentSetup,
-      isInitialized,
-      hasCardContainer: !!cardContainerRef.current,
-      cardState: card ? 'exists' : 'null'
-    });
-
-    if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
-      console.log('[BowlerDashboard] Attempting to initialize Square payment form');
-      try {
-        initializeCard(cardContainerRef.current);
-        console.log('[BowlerDashboard] Square payment form initialized successfully');
-      } catch (error) {
-        console.error('[BowlerDashboard] Error initializing payment form:', error);
-        toast({
-          title: "Payment Setup Error",
-          description: "Failed to initialize payment form. Please try again.",
-          variant: "destructive",
-        });
-      }
-    }
-  }, [showPaymentSetup, isInitialized, initializeCard, card]);
-
-  useEffect(() => {
-    return () => {
-      if (card) {
-        console.log('[BowlerDashboard] Cleaning up Square payment form');
-        card.destroy();
-      }
-    };
-  }, [card]);
 
   const { data: currentUserResponse, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
@@ -213,15 +147,97 @@ export const BowlerDashboardPage: FC = () => {
     staleTime: 1000 * 60 * 5,
   });
 
+  // Wait for all data to be loaded before rendering main content
+  if (isUserLoading || isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <Card className="mx-auto max-w-md mt-8">
+        <CardHeader>
+          <CardTitle>Authentication Required</CardTitle>
+          <CardDescription>Please log in to view your dashboard</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground">
+            You need to be logged in to access your bowler dashboard.
+          </p>
+          <Link href="/login">
+            <Button className="w-full">Log In</Button>
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!bowler) {
+    return (
+      <Card className="mx-auto max-w-md mt-8">
+        <CardHeader>
+          <CardTitle>Profile Setup Required</CardTitle>
+          <CardDescription>Your bowler profile needs to be configured</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">
+            Please contact a league administrator to set up your bowler profile.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // After all checks, we can safely access the data
   const league = combinedData?.league;
   const payments = combinedData?.payments || [];
 
+  // Ensure we have league data before proceeding
+  if (!league) {
+    return (
+      <Card className="mx-auto max-w-md mt-8">
+        <CardHeader>
+          <CardTitle>League Data Unavailable</CardTitle>
+          <CardDescription>Unable to load league information</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">
+            Please try again later or contact support if the problem persists.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Now we can safely calculate season-related data
+  const totalWeeks = getSeasonLength(league);
+  const seasonPresets = [
+    { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
+    { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
+    { label: "Full Season", weeks: totalWeeks }
+  ];
+
+  const handleWeekChange = (weeks: number) => {
+    if (totalWeeks === 0) return;
+    const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
+    setSelectedWeeks(validWeeks);
+  };
+
+  const incrementWeeks = () => {
+    handleWeekChange(selectedWeeks + 1);
+  };
+
+  const decrementWeeks = () => {
+    handleWeekChange(selectedWeeks - 1);
+  };
 
   const calculateTotalAmount = () => {
     if (!league || !bowler) return 0;
 
     const weeklyFee = getWeeklyFee(bowler);
-    const totalWeeks = getSeasonLength(league);
 
     const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule);
     if (!selectedOption) return 0;
@@ -312,48 +328,50 @@ export const BowlerDashboardPage: FC = () => {
     }
   }
 
-  if (isUserLoading || isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
+    onError: (error) => {
+      console.error('[Square Payment Error]:', error);
+      toast({
+        title: "Payment Setup Error",
+        description: error,
+        variant: "destructive",
+      });
+    },
+  });
 
-  if (!currentUser) {
-    return (
-      <Card className="mx-auto max-w-md mt-8">
-        <CardHeader>
-          <CardTitle>Authentication Required</CardTitle>
-          <CardDescription>Please log in to view your dashboard</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            You need to be logged in to access your bowler dashboard.
-          </p>
-          <Link href="/login">
-            <Button className="w-full">Log In</Button>
-          </Link>
-        </CardContent>
-      </Card>
-    );
-  }
+  useEffect(() => {
+    console.log('[BowlerDashboard] Payment setup state:', {
+      showPaymentSetup,
+      isInitialized,
+      hasCardContainer: !!cardContainerRef.current,
+      cardState: card ? 'exists' : 'null'
+    });
 
-  if (!bowler) {
-    return (
-      <Card className="mx-auto max-w-md mt-8">
-        <CardHeader>
-          <CardTitle>Profile Setup Required</CardTitle>
-          <CardDescription>Your bowler profile needs to be configured</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Please contact a league administrator to set up your bowler profile.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+    if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
+      console.log('[BowlerDashboard] Attempting to initialize Square payment form');
+      try {
+        initializeCard(cardContainerRef.current);
+        console.log('[BowlerDashboard] Square payment form initialized successfully');
+      } catch (error) {
+        console.error('[BowlerDashboard] Error initializing payment form:', error);
+        toast({
+          title: "Payment Setup Error",
+          description: "Failed to initialize payment form. Please try again.",
+          variant: "destructive",
+        });
+      }
+    }
+  }, [showPaymentSetup, isInitialized, initializeCard, card]);
+
+  useEffect(() => {
+    return () => {
+      if (card) {
+        console.log('[BowlerDashboard] Cleaning up Square payment form');
+        card.destroy();
+      }
+    };
+  }, [card]);
+
 
   return (
     <BowlerLayout
@@ -396,7 +414,6 @@ export const BowlerDashboardPage: FC = () => {
                           >
                             {PAYMENT_OPTIONS.map((option) => {
                               const weeklyFee = bowler ? getWeeklyFee(bowler) : 0;
-                              const totalWeeks = getSeasonLength(league);
 
                               const amount = option.id === 'custom'
                                 ? option.calculateAmount(weeklyFee, totalWeeks, selectedWeeks)
@@ -472,7 +489,7 @@ export const BowlerDashboardPage: FC = () => {
                                               value={selectedWeeks}
                                               onChange={(e) => handleWeekChange(parseInt(e.target.value) || 1)}
                                               min={1}
-                                              max={getSeasonLength(league)}
+                                              max={totalWeeks}
                                               className="text-center"
                                             />
                                           </div>
@@ -481,7 +498,7 @@ export const BowlerDashboardPage: FC = () => {
                                             variant="outline"
                                             size="icon"
                                             onClick={incrementWeeks}
-                                            disabled={selectedWeeks >= getSeasonLength(league)}
+                                            disabled={selectedWeeks >= totalWeeks}
                                           >
                                             <Plus className="h-4 w-4" />
                                           </Button>
