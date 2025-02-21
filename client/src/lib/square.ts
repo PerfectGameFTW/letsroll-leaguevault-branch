@@ -110,7 +110,7 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
 
     // If storeCard is true, request a card-on-file token
     const tokenizationOptions = storeCard ? {
-      customerAcceptedCardOnFile: true,
+      cardOnFile: true,
       verificationMethod: 'EXTERNAL',
       verificationDetails: {
         amount: amount.toString(),

@@ -3,6 +3,7 @@ import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
   users, // Add users table import
+  paymentSchedules, // Add paymentSchedules table import
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
@@ -76,6 +77,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
+  updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -721,6 +723,39 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId))
       .returning();
     return updatedUser;
+  }
+
+  async updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void> {
+    try {
+      console.log('[Storage] Updating payment schedule card:', {
+        bowlerId,
+        leagueId,
+        cardIdLength: cardId.length
+      });
+
+      await db
+        .update(paymentSchedules)
+        .set({ squareCardId: cardId })
+        .where(
+          and(
+            eq(paymentSchedules.bowlerId, bowlerId),
+            eq(paymentSchedules.leagueId, leagueId),
+            eq(paymentSchedules.active, true)
+          )
+        );
+
+      console.log('[Storage] Successfully updated payment schedule card');
+    } catch (error) {
+      console.error('[Storage] Error updating payment schedule card:', {
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        input: { bowlerId, leagueId, cardIdLength: cardId.length }
+      });
+      throw error;
+    }
   }
 }
 

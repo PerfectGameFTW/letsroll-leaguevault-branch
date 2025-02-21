@@ -49,7 +49,7 @@ export async function processPayment(sourceId: string, amount: number, storeCard
   try {
     console.log('[Square Service] Processing payment:', { 
       amount,
-      sourceIdLength: sourceId.length,
+      sourceIdPrefix: sourceId.substring(0, 5),
       mode: process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox',
       storeCard
     });
@@ -74,17 +74,22 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       }));
     }
 
-    const response = await client.paymentsApi.createPayment({
+    const paymentRequest = {
       sourceId,
       idempotencyKey: `${Date.now()}-${Math.random()}`,
       amountMoney: {
         amount: BigInt(amount),
         currency: 'USD'
       },
-      autocomplete: true,
-      // Request card-on-file creation if storeCard is true
-      storeCardAfterPayment: storeCard
-    });
+      autocomplete: true
+    };
+
+    // If storing card is requested, add the card_on_file parameter
+    if (storeCard) {
+      paymentRequest.card_on_file = true;
+    }
+
+    const response = await client.paymentsApi.createPayment(paymentRequest);
 
     if (!response?.result?.payment) {
       throw new Error(JSON.stringify({
@@ -121,7 +126,11 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       cardLast4: cardDetails?.last4 ?? '****',
       cardBrand: cardDetails?.cardBrand ?? 'UNKNOWN',
       amount: payment.amountMoney?.amount?.toString(),
-      cardOnFile: cardOnFile ? 'created' : 'not-created'
+      cardOnFile: cardOnFile ? {
+        id: `${cardOnFile.id.substring(0, 10)}...`,
+        last4: cardOnFile.last4,
+        brand: cardOnFile.brand
+      } : 'not-created'
     });
 
     return {

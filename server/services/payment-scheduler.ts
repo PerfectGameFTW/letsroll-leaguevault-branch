@@ -13,7 +13,10 @@ class PaymentScheduler {
     try {
       // Cancel any existing jobs
       this.cancelAllJobs();
-      logger.info('[PaymentScheduler] Initializing payment scheduler...');
+      logger.info('[PaymentScheduler] Initializing payment scheduler...', {
+        activeJobs: this.jobs.size,
+        timestamp: new Date().toISOString()
+      });
 
       // Get all active payment schedules
       logger.info('[PaymentScheduler] Querying active payment schedules...');
@@ -31,7 +34,8 @@ class PaymentScheduler {
           bowlerId: s.bowlerId,
           nextPaymentDate: s.nextPaymentDate,
           amount: s.amount,
-          cardId: s.squareCardId
+          cardId: s.squareCardId ? `${s.squareCardId.substring(0, 10)}...` : 'none',
+          isValidCard: s.squareCardId?.startsWith('ccof:')
         }))
       });
 
@@ -39,9 +43,11 @@ class PaymentScheduler {
       const validSchedules = activeSchedules.filter(schedule => {
         const isValidCard = schedule.squareCardId && schedule.squareCardId.startsWith('ccof:');
         if (!isValidCard) {
-          logger.error(`[PaymentScheduler] Invalid card ID for schedule ${schedule.id}`, {
-            cardId: schedule.squareCardId,
-            bowlerId: schedule.bowlerId
+          logger.error(`[PaymentScheduler] Invalid card token for schedule ${schedule.id}`, {
+            cardId: schedule.squareCardId ? `${schedule.squareCardId.substring(0, 10)}...` : 'none',
+            bowlerId: schedule.bowlerId,
+            expectedPrefix: 'ccof:',
+            validationTime: new Date().toISOString()
           });
         }
         return isValidCard;
@@ -54,29 +60,47 @@ class PaymentScheduler {
           frequency: schedule.frequency,
           bowlerId: schedule.bowlerId,
           leagueId: schedule.leagueId,
-          cardId: schedule.squareCardId
+          cardToken: `${schedule.squareCardId?.substring(0, 10)}...`,
+          scheduledAt: new Date().toISOString()
         });
         this.schedulePayment(schedule);
       });
 
       const skippedCount = activeSchedules.length - validSchedules.length;
-      logger.info(`[PaymentScheduler] Initialization complete. ${validSchedules.length} payment schedules activated, ${skippedCount} skipped due to invalid card IDs`);
+      logger.info(`[PaymentScheduler] Initialization complete`, {
+        activated: validSchedules.length,
+        skipped: skippedCount,
+        totalSchedules: activeSchedules.length,
+        completionTime: new Date().toISOString()
+      });
     } catch (error) {
       logger.error("[PaymentScheduler] Failed to initialize payment scheduler:", {
         error: error instanceof Error ? {
           name: error.name,
           message: error.message,
           stack: error.stack
-        } : error
+        } : error,
+        timestamp: new Date().toISOString()
       });
       throw error;
     }
   }
 
   private validateCardId(cardId: string | null): boolean {
-    if (!cardId) return false;
+    if (!cardId) {
+      logger.warn('[PaymentScheduler] Missing card token', {
+        validationTime: new Date().toISOString()
+      });
+      return false;
+    }
     // Card tokens should start with 'ccof:' for stored cards
-    return cardId.startsWith('ccof:');
+    const isValid = cardId.startsWith('ccof:');
+    logger.info('[PaymentScheduler] Card token validation', {
+      tokenPrefix: cardId.substring(0, 5),
+      isValid,
+      validationTime: new Date().toISOString()
+    });
+    return isValid;
   }
 
   private schedulePayment(scheduleRecord: typeof paymentSchedules.$inferSelect) {
@@ -85,10 +109,11 @@ class PaymentScheduler {
 
     // Validate card ID
     if (!this.validateCardId(scheduleRecord.squareCardId)) {
-      logger.error(`[PaymentScheduler] Invalid card ID for job ${jobId}`, {
-        cardId: scheduleRecord.squareCardId,
+      logger.error(`[PaymentScheduler] Invalid card token for job ${jobId}`, {
+        cardId: scheduleRecord.squareCardId ? `${scheduleRecord.squareCardId.substring(0, 10)}...` : 'none',
         scheduleId: scheduleRecord.id,
-        bowlerId: scheduleRecord.bowlerId
+        bowlerId: scheduleRecord.bowlerId,
+        validationTime: now.toISOString()
       });
       return;
     }
@@ -102,7 +127,7 @@ class PaymentScheduler {
         amount: scheduleRecord.amount,
         frequency: scheduleRecord.frequency,
         bowlerId: scheduleRecord.bowlerId,
-        cardId: scheduleRecord.squareCardId
+        cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`
       }
     });
 
@@ -115,12 +140,17 @@ class PaymentScheduler {
         logger.info(`[PaymentScheduler] Executing scheduled payment for ${jobId}`, {
           amount: scheduleRecord.amount,
           bowlerId: scheduleRecord.bowlerId,
-          executionTime: new Date(),
-          scheduledTime: scheduleRecord.nextPaymentDate
+          cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`,
+          executionTime: new Date().toISOString(),
+          scheduledTime: scheduleRecord.nextPaymentDate.toISOString()
         });
 
         // Process payment using Square
-        logger.info(`[PaymentScheduler] Initiating Square payment for ${jobId}`);
+        logger.info(`[PaymentScheduler] Initiating Square payment for ${jobId}`, {
+          cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`,
+          initiationTime: new Date().toISOString()
+        });
+
         const paymentResult = await createSquarePayment({
           amount: scheduleRecord.amount,
           cardId: scheduleRecord.squareCardId,
@@ -131,7 +161,11 @@ class PaymentScheduler {
         logger.info(`[PaymentScheduler] Payment processed for ${jobId}`, {
           status: paymentResult.status,
           paymentId: paymentResult.paymentId,
-          processingTime: new Date()
+          processingTime: new Date().toISOString(),
+          responseData: {
+            ...paymentResult,
+            cardId: paymentResult.cardId ? `${paymentResult.cardId.substring(0, 10)}...` : undefined
+          }
         });
 
         // If payment successful, update schedule and create payment record
@@ -143,10 +177,11 @@ class PaymentScheduler {
           logger.info(`[PaymentScheduler] Updating schedule ${scheduleRecord.id}`, {
             currentPaymentDate: scheduleRecord.nextPaymentDate,
             nextPaymentDate: nextDate,
-            updateTime: new Date()
+            updateTime: new Date().toISOString(),
+            frequency: scheduleRecord.frequency
           });
 
-          // Update payment schedule
+          // Update payment schedule and create payment record in transaction
           await db.transaction(async (tx) => {
             // Update schedule
             await tx
@@ -157,7 +192,11 @@ class PaymentScheduler {
               })
               .where(eq(paymentSchedules.id, scheduleRecord.id));
 
-            logger.info(`[PaymentScheduler] Creating payment record for ${jobId}`);
+            logger.info(`[PaymentScheduler] Creating payment record for ${jobId}`, {
+              paymentId: paymentResult.paymentId,
+              squareStatus: paymentResult.status,
+              recordTime: new Date().toISOString()
+            });
 
             // Create payment record
             await tx.insert(payments).values({
@@ -171,13 +210,15 @@ class PaymentScheduler {
             });
 
             logger.info(`[PaymentScheduler] Transaction completed for ${jobId}`, {
-              completionTime: new Date()
+              completionTime: new Date().toISOString(),
+              nextScheduledDate: nextDate
             });
           });
 
           // Schedule next payment
           logger.info(`[PaymentScheduler] Scheduling next payment for ${jobId}`, {
-            nextPaymentDate: nextDate
+            nextPaymentDate: nextDate,
+            schedulingTime: new Date().toISOString()
           });
 
           this.schedulePayment({
@@ -186,9 +227,15 @@ class PaymentScheduler {
           });
         } else {
           // Handle failed payment
-          logger.error(`[PaymentScheduler] Payment failed for ${jobId}:`, {
+          logger.error(`[PaymentScheduler] Payment failed for ${jobId}`, {
             error: paymentResult.error,
-            schedule: scheduleRecord
+            schedule: {
+              id: scheduleRecord.id,
+              bowlerId: scheduleRecord.bowlerId,
+              amount: scheduleRecord.amount,
+              cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`
+            },
+            failureTime: new Date().toISOString()
           });
 
           // Create failed payment record
@@ -203,14 +250,19 @@ class PaymentScheduler {
           });
         }
       } catch (error) {
-        logger.error(`[PaymentScheduler] Critical error processing payment for ${jobId}:`, {
+        logger.error(`[PaymentScheduler] Critical error processing payment for ${jobId}`, {
           error: error instanceof Error ? {
             name: error.name,
             message: error.message,
             stack: error.stack
           } : error,
-          schedule: scheduleRecord,
-          executionTime: new Date()
+          schedule: {
+            id: scheduleRecord.id,
+            bowlerId: scheduleRecord.bowlerId,
+            amount: scheduleRecord.amount,
+            cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`
+          },
+          executionTime: new Date().toISOString()
         });
       }
     });
@@ -245,8 +297,9 @@ class PaymentScheduler {
     if (!this.validateCardId(schedule.squareCardId)) {
       logger.error(`[PaymentScheduler] Cannot add schedule with invalid card ID`, {
         scheduleId: schedule.id,
-        cardId: schedule.squareCardId,
-        bowlerId: schedule.bowlerId
+        cardId: schedule.squareCardId ? `${schedule.squareCardId.substring(0, 10)}...` : 'none',
+        bowlerId: schedule.bowlerId,
+        validationTime: new Date().toISOString()
       });
       return;
     }
@@ -257,13 +310,16 @@ class PaymentScheduler {
       nextPaymentDate: schedule.nextPaymentDate,
       frequency: schedule.frequency,
       bowlerId: schedule.bowlerId,
-      cardId: schedule.squareCardId
+      cardId: `${schedule.squareCardId?.substring(0, 10)}...`,
+      addedAt: new Date().toISOString()
     });
     this.schedulePayment(schedule);
   }
 
   async removeSchedule(scheduleId: number) {
-    logger.info(`[PaymentScheduler] Removing payment schedule ${scheduleId}`);
+    logger.info(`[PaymentScheduler] Removing payment schedule ${scheduleId}`, {
+      removalTime: new Date().toISOString()
+    });
     this.cancelJob(`payment-${scheduleId}`);
   }
 
@@ -272,8 +328,9 @@ class PaymentScheduler {
     if (!this.validateCardId(schedule.squareCardId)) {
       logger.error(`[PaymentScheduler] Cannot update schedule with invalid card ID`, {
         scheduleId: schedule.id,
-        cardId: schedule.squareCardId,
-        bowlerId: schedule.bowlerId
+        cardId: schedule.squareCardId ? `${schedule.squareCardId.substring(0, 10)}...` : 'none',
+        bowlerId: schedule.bowlerId,
+        validationTime: new Date().toISOString()
       });
       return;
     }
@@ -283,7 +340,8 @@ class PaymentScheduler {
       nextPaymentDate: schedule.nextPaymentDate,
       frequency: schedule.frequency,
       bowlerId: schedule.bowlerId,
-      cardId: schedule.squareCardId
+      cardId: `${schedule.squareCardId?.substring(0, 10)}...`,
+      updatedAt: new Date().toISOString()
     });
     this.schedulePayment(schedule);
   }
