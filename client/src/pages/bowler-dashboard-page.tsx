@@ -39,19 +39,19 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   {
     id: "half",
     label: "Half Season Payment",
-    description: "Pay for half of the season upfront (with 5% discount)",
+    description: "Pay for half of the season upfront",
     calculateAmount: (weeklyFee, totalWeeks) => {
       const halfSeasonAmount = weeklyFee * Math.ceil(totalWeeks / 2);
-      return Math.round(halfSeasonAmount * 0.95); // 5% discount
+      return halfSeasonAmount;
     },
   },
   {
     id: "full",
     label: "Full Season Payment",
-    description: "Pay for the entire season upfront (with 10% discount)",
+    description: "Pay for the entire season upfront",
     calculateAmount: (weeklyFee, totalWeeks) => {
       const fullSeasonAmount = weeklyFee * totalWeeks;
-      return Math.round(fullSeasonAmount * 0.90); // 10% discount
+      return fullSeasonAmount;
     },
   },
 ];
@@ -215,7 +215,7 @@ export const BowlerDashboardPage: FC = () => {
         throw new Error("Invalid payment amount calculated");
       }
 
-      const result = await createPayment(amount, card);
+      const result = await createPayment(amount, card, bowler.id, league.id);
       console.log('[BowlerDashboard] Payment result:', result);
 
       if (result.status === 'COMPLETED') {
