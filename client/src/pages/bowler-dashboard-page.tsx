@@ -39,19 +39,19 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   {
     id: "half",
     label: "Half Season Payment",
-    description: "Pay for half of the season upfront",
+    description: "Pay for half of the season upfront (with 5% discount)",
     calculateAmount: (weeklyFee, totalWeeks) => {
       const halfSeasonAmount = weeklyFee * Math.ceil(totalWeeks / 2);
-      return halfSeasonAmount; // Removed 5% discount
+      return Math.round(halfSeasonAmount * 0.95); // 5% discount
     },
   },
   {
     id: "full",
     label: "Full Season Payment",
-    description: "Pay for the entire season upfront",
+    description: "Pay for the entire season upfront (with 10% discount)",
     calculateAmount: (weeklyFee, totalWeeks) => {
       const fullSeasonAmount = weeklyFee * totalWeeks;
-      return fullSeasonAmount; // Removed 10% discount
+      return Math.round(fullSeasonAmount * 0.90); // 10% discount
     },
   },
 ];
