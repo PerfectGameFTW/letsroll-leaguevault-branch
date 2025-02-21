@@ -1,8 +1,8 @@
 {
-  "port": 5001,
+  "port": 5003,
   "ready": true,
-  "timestamp": "2025-02-21T18:55:14.262Z",
-  "pid": 4104,
+  "timestamp": "2025-02-21T19:00:13.312Z",
+  "pid": 4507,
   "mode": "development",
   "health": {
     "database": true,
