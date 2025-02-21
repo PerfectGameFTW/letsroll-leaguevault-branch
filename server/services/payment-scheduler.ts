@@ -13,6 +13,7 @@ class PaymentScheduler {
     try {
       // Cancel any existing jobs
       this.cancelAllJobs();
+      logger.info('[PaymentScheduler] Initializing payment scheduler...');
 
       // Get all active payment schedules
       const activeSchedules = await db
@@ -23,19 +24,28 @@ class PaymentScheduler {
           lte(paymentSchedules.nextPaymentDate, new Date())
         ));
 
+      logger.info(`[PaymentScheduler] Found ${activeSchedules.length} active schedules to process`);
+
       // Schedule jobs for each active schedule
       activeSchedules.forEach(schedule => {
+        logger.info(`[PaymentScheduler] Scheduling payment for schedule ${schedule.id}`, {
+          amount: schedule.amount,
+          nextPaymentDate: schedule.nextPaymentDate,
+          frequency: schedule.frequency
+        });
         this.schedulePayment(schedule);
       });
 
-      logger.info(`Initialized ${activeSchedules.length} payment schedules`);
+      logger.info(`[PaymentScheduler] Initialized ${activeSchedules.length} payment schedules`);
     } catch (error) {
-      logger.error("Failed to initialize payment scheduler:", error);
+      logger.error("[PaymentScheduler] Failed to initialize payment scheduler:", error);
+      throw error; // Propagate error for proper handling
     }
   }
 
   private schedulePayment(scheduleRecord: typeof paymentSchedules.$inferSelect) {
     const jobId = `payment-${scheduleRecord.id}`;
+    logger.info(`[PaymentScheduler] Setting up job ${jobId} for next payment at ${scheduleRecord.nextPaymentDate}`);
 
     // Cancel existing job if any
     this.cancelJob(jobId);
@@ -43,12 +53,22 @@ class PaymentScheduler {
     // Schedule new job
     const job = schedule.scheduleJob(scheduleRecord.nextPaymentDate, async () => {
       try {
+        logger.info(`[PaymentScheduler] Processing scheduled payment for ${jobId}`, {
+          amount: scheduleRecord.amount,
+          bowlerId: scheduleRecord.bowlerId
+        });
+
         // Process payment using Square
         const paymentResult = await createSquarePayment({
           amount: scheduleRecord.amount,
           cardId: scheduleRecord.squareCardId,
           bowlerId: scheduleRecord.bowlerId,
           leagueId: scheduleRecord.leagueId,
+        });
+
+        logger.info(`[PaymentScheduler] Payment processed for ${jobId}`, {
+          status: paymentResult.status,
+          paymentId: paymentResult.paymentId
         });
 
         // If payment successful, update schedule and create payment record
@@ -59,6 +79,8 @@ class PaymentScheduler {
 
           // Update payment schedule
           await db.transaction(async (tx) => {
+            logger.info(`[PaymentScheduler] Updating schedule ${scheduleRecord.id} with next payment date ${nextDate}`);
+
             await tx
               .update(paymentSchedules)
               .set({
@@ -77,6 +99,8 @@ class PaymentScheduler {
               weekOf: scheduleRecord.nextPaymentDate,
               squarePaymentId: paymentResult.paymentId,
             });
+
+            logger.info(`[PaymentScheduler] Payment record created and schedule updated for ${jobId}`);
           });
 
           // Schedule next payment
@@ -86,7 +110,7 @@ class PaymentScheduler {
           });
         } else {
           // Handle failed payment
-          logger.error(`Failed to process scheduled payment for schedule ${scheduleRecord.id}:`, paymentResult.error);
+          logger.error(`[PaymentScheduler] Failed to process scheduled payment for ${jobId}:`, paymentResult.error);
 
           // Create failed payment record
           await db.insert(payments).values({
@@ -100,36 +124,43 @@ class PaymentScheduler {
           });
         }
       } catch (error) {
-        logger.error(`Error processing scheduled payment for schedule ${scheduleRecord.id}:`, error);
+        logger.error(`[PaymentScheduler] Error processing scheduled payment for ${jobId}:`, error);
       }
     });
 
     this.jobs.set(jobId, job);
   }
 
-  // Public method to cancel all jobs
   public cancelAllJobs() {
+    logger.info(`[PaymentScheduler] Cancelling all ${this.jobs.size} scheduled jobs`);
     this.jobs.forEach(job => job.cancel());
     this.jobs.clear();
   }
 
-  // Public method to cancel a specific job
   public cancelJob(jobId: string) {
     if (this.jobs.has(jobId)) {
+      logger.info(`[PaymentScheduler] Cancelling job ${jobId}`);
       this.jobs.get(jobId)?.cancel();
       this.jobs.delete(jobId);
     }
   }
 
   async addSchedule(schedule: typeof paymentSchedules.$inferSelect) {
+    logger.info(`[PaymentScheduler] Adding new payment schedule`, {
+      scheduleId: schedule.id,
+      amount: schedule.amount,
+      nextPaymentDate: schedule.nextPaymentDate
+    });
     this.schedulePayment(schedule);
   }
 
   async removeSchedule(scheduleId: number) {
+    logger.info(`[PaymentScheduler] Removing payment schedule ${scheduleId}`);
     this.cancelJob(`payment-${scheduleId}`);
   }
 
   async updateSchedule(schedule: typeof paymentSchedules.$inferSelect) {
+    logger.info(`[PaymentScheduler] Updating payment schedule ${schedule.id}`);
     this.schedulePayment(schedule);
   }
 }
