@@ -70,6 +70,27 @@ export async function testConnection(retries = 3, delay = 1000): Promise<boolean
   return false;
 }
 
+export async function testCleanup(): Promise<void> {
+  console.log('[Database] Starting cleanup test...');
+
+  // Get a client from the pool
+  const client = await pool.connect();
+
+  try {
+    // Run a test query
+    await client.query('SELECT 1');
+    console.log('[Database] Test query executed successfully');
+  } finally {
+    // Release the client back to the pool
+    client.release();
+    console.log('[Database] Client released successfully');
+  }
+
+  // Test the cleanup function
+  await cleanup();
+  console.log('[Database] Cleanup test completed');
+}
+
 // Improved cleanup with better state management
 export async function cleanup(): Promise<void> {
   if (isShuttingDown) {
