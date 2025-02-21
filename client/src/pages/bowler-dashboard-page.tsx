@@ -25,7 +25,7 @@ const Drawer = {
   Overlay: DrawerPrimitive.Overlay,
 };
 
-type PaymentSchedule = "weekly" | "monthly" | "half" | "full" | "custom";
+type PaymentSchedule = "weekly" | "monthly" | "custom";
 
 // Move type definitions outside of component
 interface PaymentOption {
@@ -49,18 +49,6 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
     calculateAmount: (weeklyFee) => weeklyFee * 4,
   },
   {
-    id: "half",
-    label: "Half Season Payment",
-    description: "Pay for half of the season upfront",
-    calculateAmount: (weeklyFee, totalWeeks) => weeklyFee * Math.ceil(totalWeeks / 2),
-  },
-  {
-    id: "full",
-    label: "Full Season Payment",
-    description: "Pay for the entire season upfront",
-    calculateAmount: (weeklyFee, totalWeeks) => weeklyFee * totalWeeks,
-  },
-  {
     id: "custom",
     label: "Custom Weeks Payment",
     description: "Choose the number of weeks to pay upfront",
@@ -73,7 +61,7 @@ const getSeasonLength = (currentLeague?: League | null) => {
   if (!currentLeague?.seasonStart || !currentLeague?.seasonEnd) return 0;
   return Math.ceil(
     (new Date(currentLeague.seasonEnd).getTime() - new Date(currentLeague.seasonStart).getTime()) /
-    (7 * 24 * 60 * 60 * 1000)
+      (7 * 24 * 60 * 60 * 1000)
   );
 };
 
@@ -272,8 +260,8 @@ export const BowlerDashboardPage: FC = () => {
     const today = startOfToday();
 
     const weeksDue = today < seasonStart ? 0 :
-                    today > seasonEnd ? Math.max(0, differenceInWeeks(seasonEnd, seasonStart)) :
-                    Math.max(0, differenceInWeeks(today, seasonStart));
+                      today > seasonEnd ? Math.max(0, differenceInWeeks(seasonEnd, seasonStart)) :
+                      Math.max(0, differenceInWeeks(today, seasonStart));
 
     const totalSeasonDues = weeklyFee * weeksDue;
     amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
@@ -510,8 +498,6 @@ export const BowlerDashboardPage: FC = () => {
                             <p className="text-sm text-muted-foreground mt-2">
                               {selectedSchedule === 'weekly' && 'Billed weekly'}
                               {selectedSchedule === 'monthly' && 'Billed monthly (every 4 weeks)'}
-                              {selectedSchedule === 'half' && 'One-time payment for half season'}
-                              {selectedSchedule === 'full' && 'One-time payment for full season'}
                               {selectedSchedule === 'custom' && `One-time payment for ${selectedWeeks} week${selectedWeeks > 1 ? 's' : ''}`}
                             </p>
                           </div>

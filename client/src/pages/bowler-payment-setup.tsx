@@ -20,13 +20,13 @@ import { useParams, useLocation } from "wouter";
 import type { League, BowlerLeague } from "@shared/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-type PaymentSchedule = "weekly" | "monthly" | "half" | "full";
+type PaymentSchedule = "weekly" | "monthly" | "custom";
 
 interface PaymentOption {
   id: PaymentSchedule;
   label: string;
   description: string;
-  calculateAmount: (weeklyFee: number, totalWeeks: number) => number;
+  calculateAmount: (weeklyFee: number, totalWeeks: number, customWeeks?: number) => number;
 }
 
 const PAYMENT_OPTIONS: PaymentOption[] = [
@@ -43,22 +43,10 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
     calculateAmount: (weeklyFee) => weeklyFee * 4,
   },
   {
-    id: "half",
-    label: "Half Season Payment",
-    description: "Pay for half of the season upfront (with 5% discount)",
-    calculateAmount: (weeklyFee, totalWeeks) => {
-      const halfSeasonAmount = weeklyFee * Math.ceil(totalWeeks / 2);
-      return Math.round(halfSeasonAmount * 0.95);
-    },
-  },
-  {
-    id: "full",
-    label: "Full Season Payment",
-    description: "Pay for the entire season upfront (with 10% discount)",
-    calculateAmount: (weeklyFee, totalWeeks) => {
-      const fullSeasonAmount = weeklyFee * totalWeeks;
-      return Math.round(fullSeasonAmount * 0.90);
-    },
+    id: "custom",
+    label: "Custom Weeks Payment",
+    description: "Choose the number of weeks to pay upfront",
+    calculateAmount: (weeklyFee, _, customWeeks = 1) => weeklyFee * customWeeks,
   },
 ];
 
@@ -72,6 +60,8 @@ export default function BowlerPaymentSetupPage() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [user, setUser] = useState(null);
+  const [customWeeks, setCustomWeeks] = useState(1);
+
 
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
@@ -113,7 +103,7 @@ export default function BowlerPaymentSetupPage() {
       (7 * 24 * 60 * 60 * 1000)
     );
 
-    return selectedOption.calculateAmount(league.weeklyFee, totalWeeks);
+    return selectedOption.calculateAmount(league.weeklyFee, totalWeeks, customWeeks);
   };
 
   const handleSubmit = async () => {
