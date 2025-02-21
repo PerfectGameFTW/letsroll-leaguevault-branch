@@ -175,6 +175,7 @@ export default function PaymentHistoryPage() {
             </CardContent>
           </Card>
 
+          {/* Replaced Card Component */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Full Season Lineage Amount Due</CardTitle>
@@ -185,17 +186,18 @@ export default function PaymentHistoryPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-orange-600">${(fullSeasonAmount / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">${(fullSeasonAmount / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
 
+          {/* Replaced Card Component */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Full Season Remaining Balance</CardTitle>
               <CardDescription>Amount left to pay</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-orange-600">${(remainingBalance / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">${(remainingBalance / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
         </div>
@@ -244,9 +246,9 @@ export default function PaymentHistoryPage() {
                         <TableCell>
                           <Badge variant="outline">
                             {payment.type === 'cash' ? 'Cash' :
-                             payment.type === 'check' ? `Check #${payment.checkNumber}` :
-                             payment.type === 'credit_card' ? 'Credit Card' :
-                             'Other Payment'}
+                              payment.type === 'check' ? `Check #${payment.checkNumber}` :
+                                payment.type === 'credit_card' ? 'Credit Card' :
+                                  'Other Payment'}
                           </Badge>
                         </TableCell>
                         <TableCell>
