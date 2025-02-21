@@ -1,0 +1,40 @@
+[1] file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1342
+[1] e}};a(bn,"PendingItem");var Ne=bn;function Cc(){throw new Error("Release called \
+[1]                                                       ^
+[1] 
+[1] Error: Release called on client which has already been released to the pool.
+[1]     at throwOnDoubleRelease (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1342:55)
+[1]     at An.release (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1395:55)
+[1]     at Cn.<anonymous> (/home/runner/workspace/server/db.ts:42:12)
+[1]     at Cn.emit (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:397:12)
+[1]     at An.idleListener (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1348:63)
+[1]     at An.emit (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:397:71)
+[1]     at An._handleErrorEvent (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1292:31)
+[1]     at An._handleErrorMessage (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1293:79)
+[1]     at fn.emit (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:397:12)
+[1]     at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1212:29
+[1]     at cn.parse (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1127:71)
+[1]     at v.<anonymous> (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1190:16)
+[1]     at v.emit (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:397:12)
+[1]     at WebSocket.<anonymous> (file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:987:80)
+[1]     at callListener (/home/runner/workspace/node_modules/ws/lib/event-target.js:290:14)
+[1]     at WebSocket.onMessage (/home/runner/workspace/node_modules/ws/lib/event-target.js:209:9)
+[1]     at WebSocket.emit (node:events:518:28)
+[1]     at Receiver.receiverOnMessage (/home/runner/workspace/node_modules/ws/lib/websocket.js:1220:20)
+[1]     at Receiver.emit (node:events:518:28)
+[1]     at Receiver.dataMessage (/home/runner/workspace/node_modules/ws/lib/receiver.js:569:14)
+[1]     at Receiver.getData (/home/runner/workspace/node_modules/ws/lib/receiver.js:496:10)
+[1]     at Receiver.startLoop (/home/runner/workspace/node_modules/ws/lib/receiver.js:167:16)
+[1]     at Receiver._write (/home/runner/workspace/node_modules/ws/lib/receiver.js:94:10)
+[1]     at writeOrBuffer (node:internal/streams/writable:572:12)
+[1]     at _write (node:internal/streams/writable:501:10)
+[1]     at Writable.write (node:internal/streams/writable:510:10)
+[1]     at TLSSocket.socketOnData (/home/runner/workspace/node_modules/ws/lib/websocket.js:1355:35)
+[1]     at TLSSocket.emit (node:events:518:28)
+[1]     at addChunk (node:internal/streams/readable:561:12)
+[1]     at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+[1]     at Readable.push (node:internal/streams/readable:392:5)
+[1]     at TLSWrap.onStreamRead (node:internal/stream_base_commons:191:23)
+[1] 
+[1] Node.js v20.18.1
+[1] npm run dev -- --host 0.0.0.0 exited with code 1
