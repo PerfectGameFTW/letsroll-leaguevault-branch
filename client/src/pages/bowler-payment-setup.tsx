@@ -12,6 +12,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Loader2, AlertCircle, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSquarePayment } from "@/hooks/use-square-payment";
@@ -20,13 +21,13 @@ import { useParams, useLocation } from "wouter";
 import type { League, BowlerLeague } from "@shared/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-type PaymentSchedule = "weekly" | "monthly" | "half" | "full";
+type PaymentSchedule = "weekly" | "monthly" | "half" | "full" | "custom";
 
 interface PaymentOption {
   id: PaymentSchedule;
   label: string;
   description: string;
-  calculateAmount: (weeklyFee: number, totalWeeks: number) => number;
+  calculateAmount: (weeklyFee: number, totalWeeks: number, customWeeks?: number) => number;
 }
 
 const PAYMENT_OPTIONS: PaymentOption[] = [
@@ -60,6 +61,12 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
       return Math.round(fullSeasonAmount * 0.90);
     },
   },
+  {
+    id: "custom",
+    label: "Custom Payment",
+    description: "Choose the number of weeks to pay for (one-time payment)",
+    calculateAmount: (weeklyFee, _, customWeeks = 1) => weeklyFee * customWeeks,
+  },
 ];
 
 export default function BowlerPaymentSetupPage() {
@@ -68,10 +75,14 @@ export default function BowlerPaymentSetupPage() {
   const [, setLocation] = useLocation();
   const bowlerId = parseInt(params.bowlerId!);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
+  const [customWeeks, setCustomWeeks] = useState<string>("1");
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [user, setUser] = useState(null);
+
+  // Debug log for selected schedule
+  console.log('Selected Schedule:', selectedSchedule);
+  console.log('Available Options:', PAYMENT_OPTIONS.map(opt => opt.id));
 
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
@@ -113,7 +124,20 @@ export default function BowlerPaymentSetupPage() {
       (7 * 24 * 60 * 60 * 1000)
     );
 
+    const customWeeksNum = parseInt(customWeeks);
+    if (selectedSchedule === "custom" && !isNaN(customWeeksNum)) {
+      // Ensure the number of weeks is within the season bounds
+      const validWeeks = Math.min(Math.max(1, customWeeksNum), totalWeeks);
+      return selectedOption.calculateAmount(league.weeklyFee, totalWeeks, validWeeks);
+    }
+
     return selectedOption.calculateAmount(league.weeklyFee, totalWeeks);
+  };
+
+  const handleCustomWeeksChange = (value: string) => {
+    // Only allow positive integers
+    const numValue = value.replace(/[^0-9]/g, '');
+    setCustomWeeks(numValue);
   };
 
   const handleSubmit = async () => {
@@ -124,6 +148,19 @@ export default function BowlerPaymentSetupPage() {
         variant: "destructive",
       });
       return;
+    }
+
+    // Validate custom weeks input
+    if (selectedSchedule === "custom") {
+      const weeksNum = parseInt(customWeeks);
+      if (isNaN(weeksNum) || weeksNum < 1) {
+        toast({
+          title: "Invalid Input",
+          description: "Please enter a valid number of weeks (minimum 1).",
+          variant: "destructive",
+        });
+        return;
+      }
     }
 
     try {
@@ -139,15 +176,18 @@ export default function BowlerPaymentSetupPage() {
         amount,
         schedule: selectedSchedule,
         bowlerId,
-        leagueId: league.id
+        leagueId: league.id,
+        customWeeks: selectedSchedule === "custom" ? parseInt(customWeeks) : undefined,
       });
 
-      // Process the initial payment
+      // Process the payment
       const paymentResult = await createPayment(amount, card, bowlerId, league.id);
 
       toast({
         title: "Payment Successful",
-        description: `Your ${selectedSchedule} payment has been processed successfully.`,
+        description: selectedSchedule === "custom"
+          ? `Your payment for ${customWeeks} weeks has been processed successfully.`
+          : `Your ${selectedSchedule} payment has been processed successfully.`,
       });
 
       setLocation('/dashboard');
@@ -211,13 +251,16 @@ export default function BowlerPaymentSetupPage() {
           <CardContent>
             <RadioGroup
               value={selectedSchedule}
-              onValueChange={(value) => setSelectedSchedule(value as PaymentSchedule)}
+              onValueChange={(value) => {
+                console.log('Selected value:', value);
+                setSelectedSchedule(value as PaymentSchedule);
+              }}
               className="space-y-4"
             >
               {PAYMENT_OPTIONS.map((option) => (
                 <div key={option.id} className="flex items-center space-x-2">
                   <RadioGroupItem value={option.id} id={option.id} />
-                  <Label htmlFor={option.id} className="flex flex-col">
+                  <Label htmlFor={option.id} className="flex flex-col flex-1">
                     <span className="font-medium">{option.label}</span>
                     <span className="text-sm text-muted-foreground">
                       {option.description}
@@ -225,6 +268,18 @@ export default function BowlerPaymentSetupPage() {
                     <span className="text-sm font-semibold">
                       ${(calculatePaymentAmount() / 100).toFixed(2)}
                     </span>
+                    {option.id === "custom" && selectedSchedule === "custom" && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Input
+                          type="text"
+                          value={customWeeks}
+                          onChange={(e) => handleCustomWeeksChange(e.target.value)}
+                          className="w-24"
+                          placeholder="1"
+                        />
+                        <span className="text-sm text-muted-foreground">weeks</span>
+                      </div>
+                    )}
                   </Label>
                 </div>
               ))}
@@ -236,7 +291,7 @@ export default function BowlerPaymentSetupPage() {
           <CardHeader>
             <CardTitle>Payment Information</CardTitle>
             <CardDescription>
-              Enter your card details to set up automatic payments
+              Enter your card details to set up {selectedSchedule === "custom" ? "your payment" : "automatic payments"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -272,7 +327,7 @@ export default function BowlerPaymentSetupPage() {
                   Processing Payment...
                 </>
               ) : (
-                "Set Up Payment Schedule"
+                selectedSchedule === "custom" ? "Make One-Time Payment" : "Set Up Payment Schedule"
               )}
             </Button>
           </CardFooter>
