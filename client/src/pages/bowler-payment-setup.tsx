@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import {
   Card,
@@ -80,9 +80,7 @@ export default function BowlerPaymentSetupPage() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Debug log for selected schedule
-  console.log('Selected Schedule:', selectedSchedule);
-  console.log('Available Options:', PAYMENT_OPTIONS.map(opt => opt.id));
+  console.log('[BowlerPaymentSetup] Initializing payment setup page');
 
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
@@ -108,10 +106,16 @@ export default function BowlerPaymentSetupPage() {
   const league = leagueResponse?.data;
 
   useEffect(() => {
+    console.log('[BowlerPaymentSetup] Checking card initialization conditions:', {
+      hasCardContainer: !!cardContainerRef.current,
+      isInitialized,
+    });
+
     if (cardContainerRef.current && !isInitialized) {
+      console.log('[BowlerPaymentSetup] Initializing Square card...');
       initializeCard(cardContainerRef.current);
     }
-  }, [cardContainerRef.current, isInitialized]);
+  }, [cardContainerRef.current, isInitialized, initializeCard]);
 
   const calculatePaymentAmount = () => {
     if (!league) return 0;
@@ -126,7 +130,6 @@ export default function BowlerPaymentSetupPage() {
 
     const customWeeksNum = parseInt(customWeeks);
     if (selectedSchedule === "custom" && !isNaN(customWeeksNum)) {
-      // Ensure the number of weeks is within the season bounds
       const validWeeks = Math.min(Math.max(1, customWeeksNum), totalWeeks);
       return selectedOption.calculateAmount(league.weeklyFee, totalWeeks, validWeeks);
     }
@@ -135,7 +138,6 @@ export default function BowlerPaymentSetupPage() {
   };
 
   const handleCustomWeeksChange = (value: string) => {
-    // Only allow positive integers
     const numValue = value.replace(/[^0-9]/g, '');
     setCustomWeeks(numValue);
   };
@@ -150,7 +152,6 @@ export default function BowlerPaymentSetupPage() {
       return;
     }
 
-    // Validate custom weeks input
     if (selectedSchedule === "custom") {
       const weeksNum = parseInt(customWeeks);
       if (isNaN(weeksNum) || weeksNum < 1) {
@@ -180,8 +181,16 @@ export default function BowlerPaymentSetupPage() {
         customWeeks: selectedSchedule === "custom" ? parseInt(customWeeks) : undefined,
       });
 
-      // Process the payment
-      const paymentResult = await createPayment(amount, card, bowlerId, league.id);
+      const paymentResult = await createPayment(
+        amount, 
+        card, 
+        bowlerId, 
+        league.id, 
+        selectedSchedule === "custom" ? {
+          type: "custom",
+          weeksPaid: parseInt(customWeeks)
+        } : undefined
+      );
 
       toast({
         title: "Payment Successful",
@@ -251,10 +260,7 @@ export default function BowlerPaymentSetupPage() {
           <CardContent>
             <RadioGroup
               value={selectedSchedule}
-              onValueChange={(value) => {
-                console.log('Selected value:', value);
-                setSelectedSchedule(value as PaymentSchedule);
-              }}
+              onValueChange={(value) => setSelectedSchedule(value as PaymentSchedule)}
               className="space-y-4"
             >
               {PAYMENT_OPTIONS.map((option) => (

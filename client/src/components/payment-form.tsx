@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +38,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [isSquareReady, setIsSquareReady] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [customWeeks, setCustomWeeks] = useState<string>("");
   const initializationAttempted = useRef(false);
   const queryClient = useQueryClient();
 
@@ -74,11 +75,19 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     if (leagueId) {
       form.setValue('leagueId', leagueId, { shouldDirty: false });
     }
-  }, [leagueId]);
+  }, [leagueId, form]);
 
   const paymentType = form.watch("type");
 
   useEffect(() => {
+    console.log('[PaymentForm] Card initialization check:', {
+      open,
+      paymentType,
+      isInitialized,
+      hasCardContainer: !!cardContainerRef.current,
+      attempted: initializationAttempted.current
+    });
+
     if (!open || paymentType !== "credit_card") {
       if (isInitialized) {
         cleanupCard();
@@ -95,6 +104,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     initializationAttempted.current = true;
     const container = cardContainerRef.current;
 
+    console.log('[PaymentForm] Initializing card form...');
     initializeCard(container)
       .then(() => {
         console.log('[PaymentForm] Card form initialized successfully');
@@ -110,13 +120,19 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           variant: "default",
         });
       });
-  }, [open, paymentType]);
+  }, [open, paymentType, isInitialized, cleanupCard, initializeCard, form]);
 
   useEffect(() => {
     if (!open) {
       form.reset();
+      setCustomWeeks("");
     }
-  }, [open]);
+  }, [open, form]);
+
+  const handleCustomWeeksChange = (value: string) => {
+    const numValue = value.replace(/[^0-9]/g, '');
+    setCustomWeeks(numValue);
+  };
 
   const onSubmit = async (data: InsertPayment) => {
     try {
@@ -136,11 +152,16 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
         if (result.status !== 'OK' || !result.token) {
           const errors = result.errors || [];
-          throw new Error(errors.map(e => e.message).join(', ') || 'Failed to process credit card');
+          throw new Error(errors.map((e: { message: string }) => e.message).join(', ') || 'Failed to process credit card');
         }
 
         console.log('[PaymentForm] Card tokenized successfully');
         data.squarePaymentId = result.token;
+      }
+
+      // Add weeksPaid for custom payment type
+      if (data.type === 'custom' && customWeeks) {
+        data.weeksPaid = parseInt(customWeeks, 10);
       }
 
       const response = await fetch('/api/payments', {
@@ -206,7 +227,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                       {...field}
                       className="w-full p-2 border rounded"
                       value={field.value || ""}
-                      onChange={(e) => {
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
                         const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
                         field.onChange(value);
                       }}
@@ -238,7 +259,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                       type="number"
                       step="0.01"
                       {...field}
-                      onChange={(e) => {
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                         const dollars = parseFloat(e.target.value);
                         field.onChange(Math.round(dollars * 100));
                       }}
@@ -261,7 +282,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                       type="date"
                       {...field}
                       value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
-                      onChange={(e) => field.onChange(new Date(e.target.value))}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => field.onChange(new Date(e.target.value))}
                     />
                   </FormControl>
                   <FormMessage />
@@ -293,6 +314,10 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                         <RadioGroupItem value="credit_card" id="credit_card" />
                         <label htmlFor="credit_card">Credit Card</label>
                       </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="custom" id="custom" />
+                        <label htmlFor="custom">Custom Payment</label>
+                      </div>
                     </RadioGroup>
                   </FormControl>
                   <FormMessage />
@@ -316,9 +341,34 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               />
             )}
 
+            {paymentType === "custom" && (
+              <FormField
+                control={form.control}
+                name="weeksPaid"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Number of Weeks</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={customWeeks}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                          handleCustomWeeksChange(e.target.value);
+                          field.onChange(parseInt(e.target.value, 10) || undefined);
+                        }}
+                        placeholder="Enter number of weeks"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
             {paymentType === "credit_card" && (
               <div>
-                <div ref={cardContainerRef} className="mb-4" />
+                <div ref={cardContainerRef} className="mb-4 min-h-[100px] p-4 border rounded-lg" />
                 {!isSquareReady && (
                   <p className="text-sm text-muted-foreground">
                     Loading credit card form...
@@ -339,7 +389,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 type="submit"
                 disabled={
                   form.formState.isSubmitting || 
-                  (paymentType === "credit_card" && !isSquareReady)
+                  (paymentType === "credit_card" && !isSquareReady) ||
+                  (paymentType === "custom" && !customWeeks)
                 }
               >
                 {form.formState.isSubmitting ? (

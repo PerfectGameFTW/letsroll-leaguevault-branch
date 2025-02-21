@@ -9,6 +9,11 @@ interface PaymentResult {
   };
 }
 
+interface CustomPaymentOptions {
+  type: 'custom';
+  weeksPaid: number;
+}
+
 interface SquareCustomer {
   id: string;
   name: string;
@@ -77,7 +82,13 @@ export async function initializeSquare() {
   }
 }
 
-export async function createPayment(amount: number, cardInstance: any, bowlerId: number, leagueId: number): Promise<PaymentResult> {
+export async function createPayment(
+  amount: number, 
+  cardInstance: any, 
+  bowlerId: number, 
+  leagueId: number,
+  customOptions?: CustomPaymentOptions
+): Promise<PaymentResult> {
   try {
     if (!cardInstance) {
       console.error('[Square] Card form not initialized');
@@ -117,7 +128,11 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
         sourceId: result.token,
         amount,
         bowlerId,
-        leagueId
+        leagueId,
+        ...(customOptions && {
+          type: customOptions.type,
+          weeksPaid: customOptions.weeksPaid
+        })
       };
 
       console.log('[Square] Payment request data:', {
@@ -137,7 +152,6 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
 
       if (!response.ok) {
         console.error('[Square] Server payment error:', responseData);
-        // Format the error message to be more user-friendly
         const errorMessage = responseData.error?.message || 'Payment processing failed';
         throw new Error(JSON.stringify({
           error: {
