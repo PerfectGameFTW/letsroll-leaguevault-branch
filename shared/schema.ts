@@ -23,13 +23,11 @@ export const PaymentStatus = {
   FAILED: PAYMENT_STATUSES[2],
 } as const;
 
-// Update payment types to include custom
-const PAYMENT_TYPES = ["cash", "check", "credit_card", "custom"] as const;
+const PAYMENT_TYPES = ["cash", "check", "credit_card"] as const;
 export const PaymentType = {
   CASH: PAYMENT_TYPES[0],
   CHECK: PAYMENT_TYPES[1],
   CREDIT_CARD: PAYMENT_TYPES[2],
-  CUSTOM: PAYMENT_TYPES[3],
 } as const;
 
 // Date validation schemas
@@ -116,7 +114,6 @@ export const bowlerLeagues = pgTable("bowler_leagues", {
   ),
 }));
 
-// Update the payments table definition to include weeksPaid
 export const payments = pgTable("payments", {
   id: serial("id").primaryKey(),
   bowlerId: integer("bowler_id")
@@ -132,7 +129,6 @@ export const payments = pgTable("payments", {
   checkNumber: text("check_number"),
   squarePaymentId: text("square_payment_id"),
   notes: text("notes"),
-  weeksPaid: integer("weeks_paid"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -361,7 +357,6 @@ export const insertBowlerLeagueSchema = baseBowlerLeagueSchema.extend({
   order: z.number().min(0).default(0),
 }).omit({ id: true });
 
-// Update the payment schema
 export const insertPaymentSchema = basePaymentSchema.extend({
   bowlerId: positiveIntSchema,
   leagueId: positiveIntSchema,
@@ -372,7 +367,6 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   checkNumber: z.string().optional(),
   squarePaymentId: z.string().optional(),
   notes: z.string().optional(),
-  weeksPaid: z.number().int().positive().optional(),
 }).omit({ id: true, createdAt: true });
 
 // Update the insert schemas with stronger validation

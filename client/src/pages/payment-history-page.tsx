@@ -248,14 +248,8 @@ export default function PaymentHistoryPage() {
                             {payment.type === 'cash' ? 'Cash' :
                               payment.type === 'check' ? `Check #${payment.checkNumber}` :
                                 payment.type === 'credit_card' ? 'Credit Card' :
-                                  payment.type === 'custom' ? 'Custom Payment' :
-                                    'Other Payment'}
+                                  'Other Payment'}
                           </Badge>
-                          {payment.type === 'custom' && payment.weeksPaid && (
-                            <div className="text-xs text-muted-foreground mt-1">
-                              {payment.weeksPaid} weeks paid
-                            </div>
-                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant={payment.status === 'paid' ? 'default' : 'destructive'}>

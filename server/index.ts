@@ -174,9 +174,9 @@ async function writePortStatus(
       pid: process.pid,
       mode: process.env.NODE_ENV || 'development',
       health: {
-        database: Boolean(health.database),
-        vite: Boolean(health.vite),
-        server: Boolean(health.server)
+        database: health.database || false,
+        vite: health.vite || false,
+        server: health.server || false
       }
     };
 
@@ -218,7 +218,7 @@ const cleanupPortStatus = async () => {
     await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
 
     // Force kill any existing process on port 5000
-    const command = process.platform === 'win32'
+    const command = process.platform === 'win32' 
       ? `FOR /F "tokens=5" %P IN ('netstat -a -n -o ^| find ":5000" ^| find "LISTENING"') DO TaskKill /PID %P /F /T`
       : `lsof -ti:5000 | xargs -r kill -9`;
 
