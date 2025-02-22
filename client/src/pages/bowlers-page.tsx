@@ -28,7 +28,8 @@ function BowlerTableSkeleton() {
           <TableHead>Name</TableHead>
           <TableHead>League Name</TableHead>
           <TableHead>Team Name</TableHead>
-          <TableHead>Weekly Fee</TableHead>
+          <TableHead>Qubica ID</TableHead>
+          <TableHead>Square Customer ID</TableHead>
           <TableHead>Status</TableHead>
         </TableRow>
       </TableHeader>
@@ -45,7 +46,10 @@ function BowlerTableSkeleton() {
               <div className="h-4 w-32 bg-muted animate-pulse rounded" />
             </TableCell>
             <TableCell>
-              <div className="h-4 w-16 bg-muted animate-pulse rounded" />
+              <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+            </TableCell>
+            <TableCell>
+              <div className="h-4 w-32 bg-muted animate-pulse rounded" />
             </TableCell>
             <TableCell>
               <div className="h-6 w-16 bg-muted animate-pulse rounded-full" />
@@ -63,13 +67,12 @@ export default function BowlersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
 
-  const { 
-    bowlers: filteredBowlers, 
-    getWeeklyFee,
+  const {
+    bowlers: filteredBowlers,
     getBowlerFirstLeagueName,
     getBowlerTeamName,
     isInitialLoading,
-    isLoadingRelatedData 
+    isLoadingRelatedData
   } = useBowlers({
     showInactive,
     searchQuery
@@ -119,14 +122,15 @@ export default function BowlersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>League Name</TableHead>
                 <TableHead>Team Name</TableHead>
-                <TableHead>Weekly Fee</TableHead>
+                <TableHead>Qubica ID</TableHead>
+                <TableHead>Square Customer ID</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredBowlers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-4">
+                  <TableCell colSpan={6} className="text-center py-4">
                     {isLoadingRelatedData ? (
                       <div className="flex items-center justify-center">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -139,14 +143,13 @@ export default function BowlersPage() {
                 </TableRow>
               ) : (
                 filteredBowlers.map((bowler) => {
-                  const weeklyFee = getWeeklyFee(bowler);
                   const leagueName = getBowlerFirstLeagueName(bowler);
                   const teamName = getBowlerTeamName(bowler);
                   return (
                     <TableRow key={bowler.id}>
                       <TableCell>
                         <div className="space-y-1">
-                          <Link 
+                          <Link
                             href={`/bowlers/${bowler.id}`}
                             className="hover:underline text-foreground block"
                           >
@@ -168,12 +171,11 @@ export default function BowlersPage() {
                           teamName
                         )}
                       </TableCell>
-                      <TableCell>
-                        {isLoadingRelatedData ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          `$${(weeklyFee / 100).toFixed(2)}`
-                        )}
+                      <TableCell className="font-mono text-sm text-muted-foreground">
+                        {bowler.qubicaId || '—'}
+                      </TableCell>
+                      <TableCell className="font-mono text-sm text-muted-foreground">
+                        {bowler.squareCustomerId || '—'}
                       </TableCell>
                       <TableCell>
                         <Badge variant={bowler.active ? "default" : "secondary"}>
@@ -189,8 +191,8 @@ export default function BowlersPage() {
         )}
       </div>
 
-      <BowlerForm 
-        open={showForm} 
+      <BowlerForm
+        open={showForm}
         onClose={() => {
           setShowForm(false);
         }}
