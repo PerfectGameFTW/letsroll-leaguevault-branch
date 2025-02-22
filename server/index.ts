@@ -17,6 +17,7 @@ interface PortStatus {
   timestamp: string;
   pid: number;
   mode: string;
+  workflow: string;
   health: {
     database: boolean;
     vite: boolean;
@@ -174,6 +175,7 @@ async function writePortStatus(
       timestamp: new Date().toISOString(),
       pid: process.pid,
       mode: process.env.NODE_ENV || 'development',
+      workflow: 'Dev',
       health: {
         database: health.database || false,
         vite: health.vite || false,
