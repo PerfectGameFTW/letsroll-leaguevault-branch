@@ -48,6 +48,7 @@ args = "node server/index.js"
 [[workflows.workflow]]
 name = "Dev"
 author = 39355628
+mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
