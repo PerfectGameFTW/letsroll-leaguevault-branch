@@ -48,7 +48,10 @@ interface ShutdownPhases {
   server_closed: boolean;
 }
 
-// Initialize phase tracking
+// Initialize phase tracking with workflow identification
+const WORKFLOW_ID = process.env.REPL_WORKFLOW || 'Dev';
+console.log(`[startup] Starting server in workflow: ${WORKFLOW_ID}`);
+
 const startupPhases: StartupPhases = {
   cleanup: false,
   database: false,
@@ -57,6 +60,9 @@ const startupPhases: StartupPhases = {
   vite: false,
   final: false
 };
+
+// Write workflow status to port status file
+fs.writeFileSync('.workflow-status', WORKFLOW_ID);
 
 const shutdownPhases: ShutdownPhases = {
   initiated: false,
