@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -59,7 +59,7 @@ export async function apiRequest(
   }
 }
 
-async function defaultQueryFn({ queryKey }: { queryKey: readonly unknown[] }) {
+export const getQueryFn: QueryFunction = async ({ queryKey }) => {
   try {
     const url = ensureApiPrefix(queryKey[0] as string);
     console.log(`[Query] Fetching ${url}`);
@@ -79,19 +79,19 @@ async function defaultQueryFn({ queryKey }: { queryKey: readonly unknown[] }) {
     console.error(`[Query] Error fetching ${queryKey[0]}:`, error);
     throw error;
   }
-}
+};
 
-// Create a new QueryClient instance
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      queryFn: defaultQueryFn,
-      retry: 1,
+      queryFn: getQueryFn,
+      retry: 1, // Allow one retry
       refetchOnWindowFocus: false,
       refetchOnMount: true,
       refetchOnReconnect: false,
-      staleTime: 5000,
-      gcTime: 1000 * 60 * 5,
+      staleTime: 5000, // Consider data stale after 5 seconds
+      gcTime: 1000 * 60 * 5, // Keep unused data in cache for 5 minutes
+      suspense: false,
     },
     mutations: {
       retry: false,
@@ -99,31 +99,20 @@ const queryClient = new QueryClient({
   },
 });
 
-// Export the queryClient instance
-export { queryClient };
-
 // Reset the entire query cache
-export function resetQueryCache() {
+export const resetQueryCache = () => {
   queryClient.clear();
-}
+};
 
 // Reset specific queries by their keys
-export async function resetQueries(queryKeys: string[]) {
+export const resetQueries = async (queryKeys: string[]) => {
   await Promise.all(
     queryKeys.map(key => queryClient.resetQueries({ queryKey: [key] }))
   );
-}
-
-// Invalidate multiple queries at once
-export async function invalidateQueries(keys: string[]) {
-  console.log('[Query] Invalidating queries:', keys);
-  await Promise.all(
-    keys.map(key => queryClient.invalidateQueries({ queryKey: [key] }))
-  );
-}
+};
 
 // Prefetch initial data
-export async function prefetchQueries() {
+export const prefetchQueries = async () => {
   try {
     console.log('[Query] Prefetching initial data...');
     await Promise.all([
@@ -135,4 +124,12 @@ export async function prefetchQueries() {
   } catch (error) {
     console.error('[Query] Error prefetching initial data:', error);
   }
-}
+};
+
+// Invalidate multiple queries at once
+export const invalidateQueries = async (keys: string[]) => {
+  console.log('[Query] Invalidating queries:', keys);
+  await Promise.all(
+    keys.map(key => queryClient.invalidateQueries({ queryKey: [key] }))
+  );
+};

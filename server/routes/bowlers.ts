@@ -62,15 +62,10 @@ router.post("/", async (req, res) => {
     console.log('Creating new bowler:', req.body);
     const bowler = insertBowlerSchema.parse(req.body);
 
-    // Email is required for Square customer creation
-    if (!bowler.email) {
-      return sendError(res, "Email is required to create a bowler", 400, 'EMAIL_REQUIRED');
-    }
-
-    // Check for existing bowler with same email
+    // Check for existing bowler
     const existingBowlers = await storage.getBowlers();
-    const existingBowler = existingBowlers?.find(b =>
-      b.email?.toLowerCase() === bowler.email?.toLowerCase()
+    const existingBowler = (existingBowlers || []).find(b =>
+      b.email.toLowerCase() === bowler.email.toLowerCase()
     );
 
     if (existingBowler) {
@@ -78,28 +73,28 @@ router.post("/", async (req, res) => {
       return sendError(res, "A bowler with this email already exists", 400, 'DUPLICATE_EMAIL');
     }
 
-    // Create Square customer first
-    let squareCustomer;
+    // Create bowler in database first
+    const created = await storage.createBowler(bowler);
+    console.log('Bowler created in database:', created);
+
+    // Then create Square customer
     try {
-      squareCustomer = await createOrUpdateCustomer(bowler.name, bowler.email);
+      const squareCustomer = await createOrUpdateCustomer(created.name, created.email);
       console.log('Square customer created:', squareCustomer);
 
-      if (!squareCustomer?.id) {
-        throw new Error('Failed to create Square customer - no ID returned');
+      if (squareCustomer) {
+        const updated = await storage.updateBowler(created.id, {
+          squareCustomerId: squareCustomer.id,
+          active: true // Ensure active status is set
+        });
+        console.log('Bowler updated with Square ID:', updated);
+        return sendSuccess(res, updated, 201);
       }
     } catch (squareError) {
-      console.error('Error creating Square customer:', squareError);
-      return sendError(res, 'Failed to create Square customer record. Please try again.', 500);
+      console.error('Square API error:', squareError);
+      // Continue with the created bowler even if Square integration fails
     }
 
-    // Then create bowler with Square customer ID
-    const created = await storage.createBowler({
-      ...bowler,
-      squareCustomerId: squareCustomer.id,
-      active: true
-    });
-
-    console.log('Bowler created in database:', created);
     sendSuccess(res, created, 201);
   } catch (error) {
     console.error('Error creating bowler:', error);
@@ -123,24 +118,7 @@ router.patch("/:id", async (req, res) => {
       return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
     }
 
-    // If email is being updated, update Square customer
-    if (update.email && bowler.squareCustomerId) {
-      try {
-        // Update Square customer with existing ID
-        await createOrUpdateCustomer(bowler.name, update.email);
-      } catch (squareError) {
-        console.error('Error updating Square customer:', squareError);
-        return sendError(res, 'Failed to update Square customer record', 500);
-      }
-    }
-
-    // Update bowler in database
-    const safeUpdate = {
-      ...update,
-      email: update.email || undefined // Convert null to undefined
-    };
-
-    const updated = await storage.updateBowler(id, safeUpdate);
+    const updated = await storage.updateBowler(id, update);
     console.log('Bowler updated:', updated);
     sendSuccess(res, updated);
   } catch (error) {

@@ -1,9 +1,6 @@
-// Debug flags
-const DEBUG_HOOKS = true;
-
 // Interface definitions remain unchanged at the top
 import { useState, useRef, useEffect, FC, useMemo, useCallback } from "react";
-import { useQuery, queryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -21,6 +18,36 @@ import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
 import type { League, Payment, User, Bowler } from "@shared/schema";
 import { useBowlers } from "@/hooks/use-bowlers";
 
+const DEBUG_HOOKS = true;
+
+// Custom hook for drawer state management
+function usePaymentDrawer() {
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
+
+  const handleWeekChange = useCallback((weeks: number, totalWeeks: number) => {
+    if (totalWeeks === 0) return;
+    const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
+    setSelectedWeeks(validWeeks);
+  }, []);
+
+  return {
+    isDrawerOpen,
+    setIsDrawerOpen,
+    selectedWeeks,
+    handleWeekChange
+  };
+}
+
+// Drawer type definition
+const Drawer = DrawerPrimitive as {
+  Root: typeof DrawerPrimitive.Root;
+  Portal: typeof DrawerPrimitive.Portal;
+  Overlay: typeof DrawerPrimitive.Overlay;
+  Content: typeof DrawerPrimitive.Content;
+};
+
+// Type definitions remain unchanged - moved outside component
 type PaymentSchedule = "weekly" | "monthly" | "custom";
 interface PaymentOption {
   id: PaymentSchedule;
@@ -41,6 +68,7 @@ interface ApiResponse<T> {
   };
 }
 
+// Payment options constant remains unchanged
 const PAYMENT_OPTIONS: PaymentOption[] = [
   {
     id: "weekly",
@@ -62,6 +90,7 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   },
 ];
 
+// getSeasonLength utility function remains unchanged
 const getSeasonLength = (currentLeague?: League | null) => {
   if (!currentLeague?.seasonStart || !currentLeague?.seasonEnd) return 0;
   return Math.ceil(
@@ -70,44 +99,21 @@ const getSeasonLength = (currentLeague?: League | null) => {
   );
 };
 
-const Drawer = DrawerPrimitive as {
-  Root: typeof DrawerPrimitive.Root;
-  Portal: typeof DrawerPrimitive.Portal;
-  Overlay: typeof DrawerPrimitive.Overlay;
-  Content: typeof DrawerPrimitive.Content;
-};
-
-function usePaymentDrawer() {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
-
-  const handleWeekChange = useCallback((weeks: number, totalWeeks: number) => {
-    if (totalWeeks === 0) return;
-    const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
-    setSelectedWeeks(validWeeks);
-  }, []);
-
-  return {
-    isDrawerOpen,
-    setIsDrawerOpen,
-    selectedWeeks,
-    handleWeekChange
-  };
-}
-
-
 export const BowlerDashboardPage: FC = () => {
   if (DEBUG_HOOKS) {
     console.log('[BowlerDashboard] Component rendering start'); // Debug log
   }
 
+  // Initialize all state hooks at the top level
   const { toast } = useToast();
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
 
+  // Use custom drawer hook
   const { isDrawerOpen, setIsDrawerOpen, selectedWeeks, handleWeekChange: customHandleWeekChange } = usePaymentDrawer();
 
+  // User and Bowler data hooks
   const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
     staleTime: 1000 * 60 * 5,
@@ -132,26 +138,18 @@ export const BowlerDashboardPage: FC = () => {
     isEnabled: !!currentUser?.bowlerId,
   });
 
+  // Memoize derived values
   const bowler = useMemo(() =>
     currentUser?.bowlerId ? bowlers.find((b: Bowler) => b.id === currentUser.bowlerId) : null,
     [currentUser?.bowlerId, bowlers]
   );
-
-  // Debug logging for bowler data
-  if (DEBUG_HOOKS && bowler) {
-    console.log('[BowlerDashboard] Found bowler:', {
-      id: bowler.id,
-      name: bowler.name,
-      squareCustomerId: bowler.squareCustomerId ?? 'not set',
-      active: bowler.active
-    });
-  }
 
   const leagueId = useMemo(() =>
     bowler ? getBowlerLeagueId(bowler) : null,
     [bowler, getBowlerLeagueId]
   );
 
+  // League and payments data hook
   const { data: combinedData, isLoading: isCombinedLoading } = useQuery({
     queryKey: [`/api/dashboard-data`, leagueId],
     enabled: !!leagueId,
@@ -191,6 +189,7 @@ export const BowlerDashboardPage: FC = () => {
     },
   });
 
+  // Memoized values
   const league = combinedData?.league;
   const payments = combinedData?.payments || [];
   const totalWeeks = useMemo(() => getSeasonLength(league), [league]);
@@ -203,6 +202,7 @@ export const BowlerDashboardPage: FC = () => {
     [payments]
   );
 
+  // Calculate upcoming payments using memoized values
   const upcomingPayments = useMemo(() => {
     if (!league?.seasonStart || !league?.seasonEnd || !weeklyFee) return [];
 
@@ -224,6 +224,7 @@ export const BowlerDashboardPage: FC = () => {
     return payments;
   }, [league, weeklyFee]);
 
+  // Calculate amount past due using memoized values
   const amountPastDue = useMemo(() => {
     if (!league?.seasonStart || !league?.seasonEnd || !weeklyFee) return 0;
 
@@ -239,6 +240,7 @@ export const BowlerDashboardPage: FC = () => {
     return Math.max(0, totalSeasonDues - totalPaidAmount);
   }, [league, weeklyFee, totalPaidAmount]);
 
+  // Memoized handlers
   const handleWeekChangeWrapper = useCallback((weeks: number) => customHandleWeekChange(weeks, totalWeeks), [customHandleWeekChange, totalWeeks]);
 
 
@@ -269,7 +271,7 @@ export const BowlerDashboardPage: FC = () => {
         throw new Error("Invalid payment amount calculated");
       }
 
-      const result = await createPayment(amount, card, bowler.id, league.id, bowler.squareCustomerId);
+      const result = await createPayment(amount, card, bowler.id, league.id);
 
       if (result.status === 'COMPLETED') {
         toast({
@@ -277,10 +279,6 @@ export const BowlerDashboardPage: FC = () => {
           description: `Your ${selectedSchedule} payment schedule has been set up successfully.`,
         });
         setShowPaymentSetup(false);
-
-        // Invalidate queries to refresh the data
-        queryClient.invalidateQueries({ queryKey: ['/api/bowlers'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/user'] });
       } else {
         throw new Error("Payment was not completed successfully");
       }
@@ -302,6 +300,7 @@ export const BowlerDashboardPage: FC = () => {
     handleWeekChangeWrapper(selectedWeeks - 1);
   };
 
+  // Calculate payment frequency based on actual payment history
   const getPaymentFrequency = useCallback(() => {
     if (!payments?.length) return null;
 
@@ -316,6 +315,7 @@ export const BowlerDashboardPage: FC = () => {
     return weeks >= 4 ? 'monthly' : 'weekly';
   }, [payments]);
 
+  // Group all useEffect hooks together
   useEffect(() => {
     if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
       initializeCard(cardContainerRef.current);
@@ -336,353 +336,343 @@ export const BowlerDashboardPage: FC = () => {
     };
   }, [card]);
 
+  // Define seasonPresets before renderPaymentStatus
   const seasonPresets = useMemo(() => [
     { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
     { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
     { label: "Full Season", weeks: totalWeeks }
   ], [totalWeeks]);
 
-  console.log('[BowlerDashboard] Payment Status Debug:', {
-    hasSquareCustomerId: bowler?.squareCustomerId ? 'yes' : 'no',
-    bowlerId: bowler?.id,
-    showPaymentSetup,
-  });
-
+  // Memoize renderPaymentStatus after seasonPresets is defined
   const renderPaymentStatus = useMemo(() => {
-    console.log('[BowlerDashboard] Rendering payment status, squareCustomerId:', bowler?.squareCustomerId);
-
-    if (!bowler || showPaymentSetup) {
-      return (
-        <div className="space-y-6">
-          <div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Choose Payment Schedule</h3>
-                <RadioGroup
-                  value={selectedSchedule}
-                  onValueChange={(value) => {
-                    console.log('[BowlerDashboard] Selected payment schedule:', value);
-                    setSelectedSchedule(value as PaymentSchedule);
-                  }}
-                  className="space-y-4"
-                >
-                  {PAYMENT_OPTIONS.map((option) => {
-                    const amount = option.id === 'custom'
-                      ? option.calculateAmount(weeklyFee, totalWeeks, selectedWeeks)
-                      : option.calculateAmount(weeklyFee, totalWeeks);
-
-                    return (
-                      <div key={option.id} className="flex items-center space-x-2">
-                        <RadioGroupItem value={option.id} id={option.id} />
-                        <Label htmlFor={option.id} className="flex flex-col">
-                          <span className="font-medium">{option.label}</span>
-                          <span className="text-sm text-muted-foreground">
-                            {option.description}
-                          </span>
-                          <span className="text-sm font-semibold">
-                            ${(amount / 100).toFixed(2)}
-                          </span>
-                        </Label>
-                      </div>
-                    );
-                  })}
-                </RadioGroup>
-
-                {selectedSchedule === 'custom' && (
-                  <>
-                    <Button
-                      variant="outline"
-                      onClick={() => setIsDrawerOpen(true)}
-                      className="w-full mt-4"
-                    >
-                      Select Number of Weeks
-                    </Button>
-
-                    <Drawer.Root
-                      open={isDrawerOpen}
-                      onOpenChange={setIsDrawerOpen}
-                    >
-                      <Drawer.Portal>
-                        <Drawer.Overlay className="fixed inset-0 bg-black/40" />
-                        <Drawer.Content className="bg-background flex flex-col fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-[10px]">
-                          <div className="p-4 bg-muted/40 rounded-t-[10px] flex-1">
-                            <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-muted mb-8" />
-
-                            <div className="max-w-md mx-auto">
-                              <h3 className="font-semibold mb-4">Select Number of Weeks</h3>
-
-                              <div className="grid grid-cols-3 gap-4 mb-6">
-                                {seasonPresets.map(preset => (
-                                  <Button
-                                    key={preset.label}
-                                    variant={selectedWeeks === preset.weeks ? "default" : "outline"}
-                                    onClick={() => handleWeekChangeWrapper(preset.weeks)}
-                                    className="w-full"
-                                    disabled={!league || preset.weeks === 0}
-                                  >
-                                    {preset.label}
-                                  </Button>
-                                ))}
-                              </div>
-
-                              <div className="flex items-center space-x-4 mb-6">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={decrementWeeks}
-                                  disabled={selectedWeeks <= 1}
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-
-                                <div className="flex-1">
-                                  <Input
-                                    type="number"
-                                    value={selectedWeeks}
-                                    onChange={(e) => handleWeekChangeWrapper(parseInt(e.target.value) || 1)}
-                                    min={1}
-                                    max={totalWeeks}
-                                    className="text-center"
-                                  />
-                                </div>
-
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={incrementWeeks}
-                                  disabled={selectedWeeks >= totalWeeks}
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                              </div>
-
-                              <div className="rounded-lg border bg-card p-4">
-                                <div className="flex justify-between items-center mb-2">
-                                  <span className="text-sm text-muted-foreground">Weekly Fee</span>
-                                  <span>${(weeklyFee / 100).toFixed(2)}</span>
-                                </div>
-                                <div className="flex justify-between items-center mb-2">
-                                  <span className="text-sm text-muted-foreground">Number of Weeks</span>
-                                  <span>{selectedWeeks}</span>
-                                </div>
-                                <div className="flex justify-between items-center pt-2 border-t">
-                                  <span className="font-semibold">Total Amount</span>
-                                  <span className="text-lg font-bold">
-                                    ${(calculateTotalAmount() / 100).toFixed(2)}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <Button
-                                className="w-full mt-6"
-                                onClick={() => setIsDrawerOpen(false)}
-                              >
-                                Confirm Selection
-                              </Button>
-                            </div>
-                          </div>
-                        </Drawer.Content>
-                      </Drawer.Portal>
-                    </Drawer.Root>
-                  </>
-                )}
-
-                <div className="mt-6 p-4 rounded-lg border bg-secondary/50">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold">Total Amount:</span>
-                    <span className="text-lg font-bold">
-                      ${(calculateTotalAmount() / 100).toFixed(2)}
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    {selectedSchedule === 'weekly' && 'Billed weekly'}
-                    {selectedSchedule === 'monthly' && 'Billed monthly (every 4 weeks)'}
-                    {selectedSchedule === 'custom' && `One-time payment for ${selectedWeeks} week${selectedWeeks > 1 ? 's' : ''}`}
-                  </p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Payment Information</h3>
-                <div
-                  ref={cardContainerRef}
-                  className="min-h-[250px] p-4 border rounded-lg bg-card"
-                  style={{ minHeight: '250px' }}
-                />
-                {squareError && (
-                  <p className="text-sm text-destructive">{squareError}</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-2 pt-4 border-t">
-            <Button
-              variant="outline"
-              onClick={() => {
-                console.log('[BowlerDashboard] Canceling payment setup');
-                setShowPaymentSetup(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSubmitPayment}
-              disabled={!isInitialized || !!squareError}
-            >
-              Set Up Payment Schedule
-            </Button>
-          </div>
-        </div>
-      );
-    }
-
-    if (bowler?.squareCustomerId) {
-      console.log('[BowlerDashboard] Showing payment status for bowler with square ID');
-      return (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Payment Status</CardTitle>
-              <CardDescription>Your automatic payment configuration</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <Card className="bg-secondary/10">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Automatic Payment Schedule</CardTitle>
-                    <CardDescription>
-                      Your league dues are automatically charged according to your selected schedule
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-4">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium">Payment Frequency</p>
-                          <p className="text-sm text-muted-foreground">
-                            {getPaymentFrequency() === 'weekly' ? 'Weekly Payments' : 'Monthly Payments (every 4 weeks)'}
-                          </p>
-                        </div>
-                        <Badge variant="outline">
-                          {getPaymentFrequency() === 'weekly' ? 'Weekly' : 'Monthly'}
-                        </Badge>
-                      </div>
-
-                      {payments?.length > 0 && (
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">Last Payment</p>
-                            <p className="text-sm text-muted-foreground">
-                              {format(new Date(payments[0].weekOf), "MMMM d, yyyy")}
-                            </p>
-                          </div>
-                          <p className="font-medium">${(payments[0].amount / 100).toFixed(2)}</p>
-                        </div>
-                      )}
-
-                      {upcomingPayments.length > 0 && (
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">Next Payment</p>
-                            <p className="text-sm text-muted-foreground">
-                              {format(upcomingPayments[0].dueDate, "MMMM d, yyyy")}
-                            </p>
-                          </div>
-                          <p className="font-medium">
-                            ${(upcomingPayments[0].amount / 100).toFixed(2)}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-4 border-t">
-                      <Button
-                        variant="outline"
-                        onClick={() => setShowPaymentSetup(true)}
-                        className="w-full"
-                      >
-                        Update Payment Settings
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {upcomingPayments.length > 0 && (
-                  <div className="space-y-3">
-                    <h3 className="text-lg font-semibold">Upcoming Payments</h3>
-                    <div className="space-y-2">
-                      {upcomingPayments.map((payment, index) => (
-                        <div
-                          key={index}
-                          className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                        >
-                          <div className="flex items-center gap-3">
-                            <Calendar className="h-5 w-5 text-muted-foreground" />
-                            <div>
-                              <p className="font-medium">
-                                {format(payment.dueDate, 'MMMM d, yyyy')}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                Automatic payment scheduled
-                              </p>
-                            </div>
-                          </div>
-                          <p className="font-semibold">
-                            ${(payment.amount / 100).toFixed(2)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {amountPastDue > 0 && (
-            <div className="rounded-md bg-destructive/10 p-4">
-              <div className="flex items-start">
-                <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-destructive">Payment Past Due</h3>
-                  <div className="mt-1 text-sm text-destructive">
-                    <p>You have an outstanding balance of ${(amountPastDue / 100).toFixed(2)}.</p>
-                    <p className="mt-2">Please make a payment to maintain your active status in the league.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    console.log('[BowlerDashboard] Showing initial setup prompt - no square ID');
     return (
-      <div className="space-y-4 pt-2">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <CreditCard className="h-5 w-5" />
-          <p>Set up your payment method to enable automatic payments</p>
-        </div>
-        <div className="rounded-md bg-secondary/50 p-4">
-          <h3 className="font-semibold mb-2">Why set up automatic payments?</h3>
-          <ul className="space-y-2 text-sm text-muted-foreground">
-            <li>• Never miss a payment deadline</li>
-            <li>• Choose flexible payment schedules</li>
-            <li>• Secure and hassle-free transactions</li>
-            <li>• Special discounts for full season payments</li>
-          </ul>
-        </div>
-        <Button
-          className="w-full"
-          onClick={() => setShowPaymentSetup(true)}
-        >
-          Set Up Payments Now
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
-      </div>
+      <>
+        {bowler?.squareCustomerId ? (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment Status</CardTitle>
+                <CardDescription>Your automatic payment configuration</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <Card className="bg-secondary/10">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">Automatic Payment Schedule</CardTitle>
+                      <CardDescription>
+                        Your league dues are automatically charged according to your selected schedule
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-4">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">Payment Frequency</p>
+                            <p className="text-sm text-muted-foreground">
+                              {getPaymentFrequency() === 'weekly' ? 'Weekly Payments' : 'Monthly Payments (every 4 weeks)'}
+                            </p>
+                          </div>
+                          <Badge variant="outline">
+                            {getPaymentFrequency() === 'weekly' ? 'Weekly' : 'Monthly'}
+                          </Badge>
+                        </div>
+
+                        {payments?.length > 0 && (
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium">Last Payment</p>
+                              <p className="text-sm text-muted-foreground">
+                                {format(new Date(payments[0].weekOf), "MMMM d, yyyy")}
+                              </p>
+                            </div>
+                            <p className="font-medium">${(payments[0].amount / 100).toFixed(2)}</p>
+                          </div>
+                        )}
+
+                        {upcomingPayments.length > 0 && (
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium">Next Payment</p>
+                              <p className="text-sm text-muted-foreground">
+                                {format(upcomingPayments[0].dueDate, "MMMM d, yyyy")}
+                              </p>
+                            </div>
+                            <p className="font-medium">
+                              ${(upcomingPayments[0].amount / 100).toFixed(2)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-4 border-t">
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowPaymentSetup(true)}
+                          className="w-full"
+                        >
+                          Update Payment Settings
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {upcomingPayments.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-lg font-semibold">Upcoming Payments</h3>
+                      <div className="space-y-2">
+                        {upcomingPayments.map((payment, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Calendar className="h-5 w-5 text-muted-foreground" />
+                              <div>
+                                <p className="font-medium">
+                                  {format(payment.dueDate, 'MMMM d, yyyy')}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  Automatic payment scheduled
+                                </p>
+                              </div>
+                            </div>
+                            <p className="font-semibold">
+                              ${(payment.amount / 100).toFixed(2)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {amountPastDue > 0 && (
+              <div className="rounded-md bg-destructive/10 p-4">
+                <div className="flex items-start">
+                  <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-destructive">Payment Past Due</h3>
+                    <div className="mt-1 text-sm text-destructive">
+                      <p>You have an outstanding balance of ${(amountPastDue / 100).toFixed(2)}.</p>
+                      <p className="mt-2">Please make a payment to maintain your active status in the league.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          showPaymentSetup ? (
+            <div className="space-y-6">
+              <div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Choose Payment Schedule</h3>
+                    <RadioGroup
+                      value={selectedSchedule}
+                      onValueChange={(value) => {
+                        console.log('[BowlerDashboard] Selected payment schedule:', value);
+                        setSelectedSchedule(value as PaymentSchedule);
+                      }}
+                      className="space-y-4"
+                    >
+                      {PAYMENT_OPTIONS.map((option) => {
+                        const amount = option.id === 'custom'
+                          ? option.calculateAmount(weeklyFee, totalWeeks, selectedWeeks)
+                          : option.calculateAmount(weeklyFee, totalWeeks);
+
+                        return (
+                          <div key={option.id} className="flex items-center space-x-2">
+                            <RadioGroupItem value={option.id} id={option.id} />
+                            <Label htmlFor={option.id} className="flex flex-col">
+                              <span className="font-medium">{option.label}</span>
+                              <span className="text-sm text-muted-foreground">
+                                {option.description}
+                              </span>
+                              <span className="text-sm font-semibold">
+                                ${(amount / 100).toFixed(2)}
+                              </span>
+                            </Label>
+                          </div>
+                        );
+                      })}
+                    </RadioGroup>
+
+                    {selectedSchedule === 'custom' && (
+                      <>
+                        <Button
+                          variant="outline"
+                          onClick={() => setIsDrawerOpen(true)}
+                          className="w-full mt-4"
+                        >
+                          Select Number of Weeks
+                        </Button>
+
+                        <Drawer.Root
+                          open={isDrawerOpen}
+                          onOpenChange={setIsDrawerOpen}
+                        >
+                          <Drawer.Portal>
+                            <Drawer.Overlay className="fixed inset-0 bg-black/40" />
+                            <Drawer.Content className="bg-background flex flex-col fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-[10px]">
+                              <div className="p-4 bg-muted/40 rounded-t-[10px] flex-1">
+                                <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-muted mb-8" />
+
+                                <div className="max-w-md mx-auto">
+                                  <h3 className="font-semibold mb-4">Select Number of Weeks</h3>
+
+                                  <div className="grid grid-cols-3 gap-4 mb-6">
+                                    {seasonPresets.map(preset => (
+                                      <Button
+                                        key={preset.label}
+                                        variant={selectedWeeks === preset.weeks ? "default" : "outline"}
+                                        onClick={() => handleWeekChangeWrapper(preset.weeks)}
+                                        className="w-full"
+                                        disabled={!league || preset.weeks === 0}
+                                      >
+                                        {preset.label}
+                                      </Button>
+                                    ))}
+                                  </div>
+
+                                  <div className="flex items-center space-x-4 mb-6">
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      onClick={decrementWeeks}
+                                      disabled={selectedWeeks <= 1}
+                                    >
+                                      <Minus className="h-4 w-4" />
+                                    </Button>
+
+                                    <div className="flex-1">
+                                      <Input
+                                        type="number"
+                                        value={selectedWeeks}
+                                        onChange={(e) => handleWeekChangeWrapper(parseInt(e.target.value) || 1)}
+                                        min={1}
+                                        max={totalWeeks}
+                                        className="text-center"
+                                      />
+                                    </div>
+
+                                    <Button
+                                      variant="outline"
+                                      size="icon"
+                                      onClick={incrementWeeks}
+                                      disabled={selectedWeeks >= totalWeeks}
+                                    >
+                                      <Plus className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+
+                                  <div className="rounded-lg border bg-card p-4">
+                                    <div className="flex justify-between items-center mb-2">
+                                      <span className="text-sm text-muted-foreground">Weekly Fee</span>
+                                      <span>${(weeklyFee / 100).toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center mb-2">
+                                      <span className="text-sm text-muted-foreground">Number of Weeks</span>
+                                      <span>{selectedWeeks}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-2 border-t">
+                                      <span className="font-semibold">Total Amount</span>
+                                      <span className="text-lg font-bold">
+                                        ${(calculateTotalAmount() / 100).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <Button
+                                    className="w-full mt-6"
+                                    onClick={() => setIsDrawerOpen(false)}
+                                  >
+                                    Confirm Selection
+                                  </Button>
+                                </div>
+                              </div>
+                            </Drawer.Content>
+                          </Drawer.Portal>
+                        </Drawer.Root>
+                      </>
+                    )}
+
+                    <div className="mt-6 p-4 rounded-lg border bg-secondary/50">
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold">Total Amount:</span>
+                        <span className="text-lg font-bold">
+                          ${(calculateTotalAmount() / 100).toFixed(2)}
+                        </span>
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        {selectedSchedule === 'weekly' && 'Billed weekly'}
+                        {selectedSchedule === 'monthly' && 'Billed monthly (every 4 weeks)'}
+                        {selectedSchedule === 'custom' && `One-time payment for ${selectedWeeks} week${selectedWeeks > 1 ? 's' : ''}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Payment Information</h3>
+                    <div
+                      ref={cardContainerRef}
+                      className="min-h-[250px] p-4 border rounded-lg bg-card"
+                      style={{ minHeight: '250px' }}
+                    />
+                    {squareError && (
+                      <p className="text-sm text-destructive">{squareError}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    console.log('[BowlerDashboard] Canceling payment setup');
+                    setShowPaymentSetup(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSubmitPayment}
+                  disabled={!isInitialized || !!squareError}
+                >
+                  Set Up Payment Schedule
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <CreditCard className="h-5 w-5" />
+                <p>Set up your payment method to enable automatic payments</p>
+              </div>
+              <div className="rounded-md bg-secondary/50 p-4">
+                <h3 className="font-semibold mb-2">Why set up automatic payments?</h3>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li>• Never miss a payment deadline</li>
+                  <li>• Choose flexible payment schedules</li>
+                  <li>• Secure and hassle-free transactions</li>
+                  <li>• Special discounts for full season payments</li>
+                </ul>
+              </div>
+              <Button
+                className="w-full"
+                onClick={() => setShowPaymentSetup(true)}
+              >
+                Set Up Payments Now
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          )
+        )}
+      </>
     );
   }, [
     bowler,
@@ -703,6 +693,8 @@ export const BowlerDashboardPage: FC = () => {
     getPaymentFrequency
   ]);
 
+
+  // Loading and error states
   if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">

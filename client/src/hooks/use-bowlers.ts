@@ -48,13 +48,7 @@ export function useBowlers({ showInactive = false, searchQuery = "", isEnabled =
     bowlersCount: bowlers.length,
     bowlerLeaguesCount: bowlerLeagues.length,
     teamsCount: teams.length,
-    leaguesCount: leagues.length,
-    // Add debug info for bowler squareCustomerId
-    bowlerSquareIds: bowlers.map(b => ({
-      id: b.id,
-      name: b.name,
-      hasSquareId: !!b.squareCustomerId
-    }))
+    leaguesCount: leagues.length
   }); // Debug log
 
   // Memoize filtered bowlers to avoid unnecessary recalculations

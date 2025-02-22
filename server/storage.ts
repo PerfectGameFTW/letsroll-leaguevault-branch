@@ -78,7 +78,6 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
-  updateBowlerSquareId(bowlerId: number, squareCustomerId: string): Promise<Bowler>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -754,39 +753,6 @@ export class DatabaseStorage implements IStorage {
           stack: error.stack
         } : error,
         input: { bowlerId, leagueId, cardIdLength: cardId.length }
-      });
-      throw error;
-    }
-  }
-
-  async updateBowlerSquareId(bowlerId: number, squareCustomerId: string): Promise<Bowler> {
-    try {
-      console.log('[Storage] Updating bowler Square customer ID:', {
-        bowlerId,
-        squareCustomerIdLength: squareCustomerId.length
-      });
-
-      const [updatedBowler] = await db
-        .update(bowlers)
-        .set({ squareCustomerId })
-        .where(eq(bowlers.id, bowlerId))
-        .returning();
-
-      console.log('[Storage] Successfully updated bowler Square customer ID:', {
-        bowlerId: updatedBowler.id,
-        hasSquareId: !!updatedBowler.squareCustomerId
-      });
-
-      return updatedBowler;
-    } catch (error) {
-      console.error('[Storage] Error updating bowler Square customer ID:', {
-        error: error instanceof Error ? {
-          name: error.name,
-          message: error.message,
-          stack: error.stack
-        } : error,
-        bowlerId,
-        squareCustomerIdLength: squareCustomerId.length
       });
       throw error;
     }
