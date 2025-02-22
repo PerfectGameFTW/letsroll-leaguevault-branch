@@ -1,6 +1,6 @@
 import { Switch, Route } from "wouter";
-import { queryClient, prefetchQueries } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home-page";
@@ -29,7 +29,9 @@ import { useToast } from "@/hooks/use-toast";
 function Router() {
   useEffect(() => {
     // Prefetch data when router mounts
-    prefetchQueries().catch(console.error);
+    queryClient.prefetchQuery({ queryKey: ["/api/leagues"] });
+    queryClient.prefetchQuery({ queryKey: ["/api/teams"] });
+    queryClient.prefetchQuery({ queryKey: ["/api/bowlers"] });
   }, []);
 
   return (
@@ -69,7 +71,6 @@ function App() {
 
   useEffect(() => {
     async function initSquare() {
-      // Skip if already initialized or max attempts reached
       if (initialized.current || initializationAttempts.current >= maxAttempts) {
         return;
       }
@@ -84,19 +85,16 @@ function App() {
         initializationAttempts.current++;
 
         if (initializationAttempts.current < maxAttempts) {
-          // Retry with exponential backoff
           const delay = Math.min(1000 * Math.pow(2, initializationAttempts.current), 5000);
           console.log(`[App] Retrying Square initialization in ${delay}ms (attempt ${initializationAttempts.current}/${maxAttempts})`);
           setTimeout(initSquare, delay);
         } else {
-          // Only show error toast if all retries fail
           console.error('[App] Square initialization failed after all attempts');
           toast({
             title: "Square Integration Notice",
             description: "Payment system initialization delayed. Credit card payments may be temporarily unavailable.",
             variant: "default",
           });
-          // Reset for potential future attempts
           initializationAttempts.current = 0;
         }
       }
@@ -104,7 +102,6 @@ function App() {
 
     initSquare();
 
-    // Cleanup function
     return () => {
       initialized.current = false;
       initializationAttempts.current = 0;

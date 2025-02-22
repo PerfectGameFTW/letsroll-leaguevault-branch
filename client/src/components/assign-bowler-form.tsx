@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import type { Bowler, BowlerLeague } from "@shared/schema";
-import { queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 interface AssignBowlerFormProps {
@@ -28,6 +28,7 @@ interface AssignBowlerFormProps {
 
 export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowlerFormProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selectedBowlerId, setSelectedBowlerId] = useState<string>("");
 
   // Query to get all bowlers - now only getting bowlers with Square customer IDs
@@ -85,33 +86,13 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
       });
 
       try {
-        const response = await fetch("/api/bowler-leagues", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            bowlerId,
-            leagueId,
-            teamId,
-          }),
+        const response = await apiRequest("POST", "/api/bowler-leagues", {
+          bowlerId,
+          leagueId,
+          teamId,
         });
 
-        const text = await response.text();
-        console.log("[AssignBowler] Raw response:", text);
-
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          console.error("[AssignBowler] Failed to parse response as JSON:", e);
-          throw new Error("Server returned invalid JSON");
-        }
-
-        if (!response.ok) {
-          throw new Error(data.error || "Failed to assign bowler");
-        }
-
+        const data = await response.json();
         console.log("[AssignBowler] Assignment successful:", data);
         return data;
       } catch (error) {

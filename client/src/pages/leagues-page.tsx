@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Pencil } from "lucide-react";
 import type { League, Team } from "@shared/schema";
 import type { ScoreWithRelations } from "@/lib/types/scores";
-import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInWeeks } from "date-fns";
 import { Link } from "wouter";

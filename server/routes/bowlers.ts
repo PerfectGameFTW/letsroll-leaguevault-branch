@@ -124,16 +124,23 @@ router.patch("/:id", async (req, res) => {
     }
 
     // If email is being updated, update Square customer
-    if (update.email && update.email !== bowler.email) {
+    if (update.email && bowler.squareCustomerId) {
       try {
-        await createOrUpdateCustomer(bowler.name, update.email, bowler.squareCustomerId);
+        // Update Square customer with existing ID
+        await createOrUpdateCustomer(bowler.name, update.email);
       } catch (squareError) {
         console.error('Error updating Square customer:', squareError);
         return sendError(res, 'Failed to update Square customer record', 500);
       }
     }
 
-    const updated = await storage.updateBowler(id, update);
+    // Update bowler in database
+    const safeUpdate = {
+      ...update,
+      email: update.email || undefined // Convert null to undefined
+    };
+
+    const updated = await storage.updateBowler(id, safeUpdate);
     console.log('Bowler updated:', updated);
     sendSuccess(res, updated);
   } catch (error) {
