@@ -76,12 +76,12 @@ router.post('/payments', async (req, res) => {
   }
 });
 
-router.post('/customers', async (req, res) => {
+router.post('/customer', async (req, res) => {
   try {
     console.log('[Square Routes] Creating/updating customer:', {
       name: req.body.name,
       email: req.body.email,
-      teamId: req.body.teamId
+      bowlerId: req.body.bowlerId
     });
 
     const customer = await createOrUpdateCustomer(
@@ -98,7 +98,15 @@ router.post('/customers', async (req, res) => {
       name: customer.name
     });
 
-    res.json(customer);
+    // Update bowler with Square customer ID
+    await storage.updateBowlerSquareId(req.body.bowlerId, customer.id);
+
+    console.log('[Square Routes] Updated bowler with Square customer ID:', {
+      bowlerId: req.body.bowlerId,
+      squareCustomerId: customer.id
+    });
+
+    res.json({ customerId: customer.id });
   } catch (error) {
     console.error('[Square Routes] Customer operation error:', {
       error: error instanceof Error ? {

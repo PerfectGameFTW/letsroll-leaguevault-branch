@@ -30,7 +30,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   const { toast } = useToast();
   const [selectedBowlerId, setSelectedBowlerId] = useState<string>("");
 
-  // Query to get all bowlers
+  // Query to get all bowlers - now only getting bowlers with Square customer IDs
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
     queryFn: async () => {
@@ -65,14 +65,14 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   const bowlers = bowlersResponse?.data || [];
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
-  // Filter out bowlers already in this team/league
+  // Filter out bowlers already in this team/league and ensure they have Square customer IDs
   const availableBowlers = bowlers.filter(bowler => {
     const alreadyInTeam = bowlerLeagues.some(bl => 
       bl.bowlerId === bowler.id && 
       bl.leagueId === leagueId && 
       bl.teamId === teamId
     );
-    return !alreadyInTeam && bowler.active;
+    return !alreadyInTeam && bowler.active && bowler.squareCustomerId;
   });
 
   // Mutation for assigning bowler to team
