@@ -554,7 +554,7 @@ export const BowlerDashboardPage: FC = () => {
 
 
   const renderPaymentStatus = useMemo(() => {
-    const currentPaymentSchedule = paymentScheduleResponse?.data;
+    console.log('[renderPaymentStatus] Rendering with paymentScheduleResponse:', paymentScheduleResponse);
 
     // Render loading state for payment schedule
     if (isPaymentScheduleLoading) {
@@ -569,7 +569,6 @@ export const BowlerDashboardPage: FC = () => {
     if (!bowler || !league) {
       return <p className="text-muted-foreground">No bowler or league data found.</p>;
     }
-
 
     return (
       <>
@@ -614,7 +613,6 @@ export const BowlerDashboardPage: FC = () => {
                             <p className="font-medium">${(payments[0].amount / 100).toFixed(2)}</p>
                           </div>
                         )}
-
                         {upcomingPayments.length > 0 && (
                           <div className="flex items-center justify-between">
                             <div className="space-y-1">
@@ -634,7 +632,10 @@ export const BowlerDashboardPage: FC = () => {
                         <Button
                           variant="outline"
                           onClick={() => {
-                            console.log('Opening modify schedule dialog');
+                            console.log('[BowlerDashboard] Opening modify schedule dialog', {
+                              paymentScheduleResponse,
+                              isModifyingSchedule
+                            });
                             setIsModifyingSchedule(true);
                           }}
                           className="w-full"
@@ -646,15 +647,18 @@ export const BowlerDashboardPage: FC = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Move ModifyScheduleDialog outside of any conditionals */}
+                  {/* Always render ModifyScheduleDialog when we have the required data */}
                   <ModifyScheduleDialog
                     currentFrequency={getPaymentFrequency(payments)}
                     currentAmount={weeklyFee}
                     isOpen={isModifyingSchedule}
-                    onClose={() => setIsModifyingSchedule(false)}
+                    onClose={() => {
+                      console.log('[BowlerDashboard] Closing modify schedule dialog');
+                      setIsModifyingSchedule(false);
+                    }}
                     bowlerId={bowler.id}
                     leagueId={league.id}
-                    scheduleId={currentPaymentSchedule?.id || 0}
+                    scheduleId={paymentScheduleResponse?.data?.id || 0}
                   />
 
                   {upcomingPayments.length > 0 && (
@@ -932,8 +936,7 @@ export const BowlerDashboardPage: FC = () => {
   if (!currentUser) {
     return (
       <Card className="mx-auto max-w-md mt8">
-        <CardHeader>
-          <CardTitle>Authentication Required</CardTitle>
+        <CardHeader<CardTitle>Authentication Required</CardTitle>
           <CardDescription>Please log in to view your dashboard</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
