@@ -143,6 +143,15 @@ function ModifyScheduleDialog({
     }
   });
 
+  console.log('[ModifyScheduleDialog] Rendering with props:', {
+    isOpen,
+    currentFrequency,
+    currentAmount,
+    bowlerId,
+    leagueId,
+    scheduleId
+  });
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
@@ -554,7 +563,8 @@ export const BowlerDashboardPage: FC = () => {
 
 
   const renderPaymentStatus = useMemo(() => {
-    console.log('[renderPaymentStatus] Rendering with paymentScheduleResponse:', paymentScheduleResponse);
+    console.log('[renderPaymentStatus] Payment schedule response:', paymentScheduleResponse);
+    console.log('[renderPaymentStatus] Current dialog state:', isModifyingSchedule);
 
     // Render loading state for payment schedule
     if (isPaymentScheduleLoading) {
@@ -647,7 +657,7 @@ export const BowlerDashboardPage: FC = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Always render ModifyScheduleDialog when we have the required data */}
+                  {/* ModifyScheduleDialog - Always render but control visibility with isOpen prop */}
                   <ModifyScheduleDialog
                     currentFrequency={getPaymentFrequency(payments)}
                     currentAmount={weeklyFee}
@@ -692,7 +702,6 @@ export const BowlerDashboardPage: FC = () => {
                 </div>
               </CardContent>
             </Card>
-
             {amountPastDue > 0 && (
               <div className="rounded-md bg-destructive/10 p-4">
                 <div className="flex items-start">
@@ -923,25 +932,16 @@ export const BowlerDashboardPage: FC = () => {
     setIsModifyingSchedule
   ]);
 
-  // Update the loading check to include payment schedule loading
-  if (isInitialLoading || isLoadingRelatedData || isCombinedLoading || isPaymentScheduleLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
-
-  // Early return if required data is missing
   if (!currentUser) {
     return (
-      <Card className="mx-auto max-w-md mt8">
-        <CardHeader<CardTitle>Authentication Required</CardTitle>
+      <Card className="mx-auto max-w-md mt-8">
+        <CardHeader>
+          <CardTitle>Authentication Required</CardTitle>
           <CardDescription>Please log in to view your dashboard</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            You need to be logged in to access your bowler dashboard.
+          <p className="textmuted-foreground">
+            You must be logged in to access your bowler dashboard.
           </p>
           <Link href="/auth">
             <Button className="w-full">
@@ -954,16 +954,24 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
+  if (isInitialLoading || isLoadingRelatedData || isCombinedLoading || isPaymentScheduleLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    );
+  }
+
   if (!bowler || !league) {
     return (
       <Card className="mx-auto max-w-md mt-8">
         <CardHeader>
           <CardTitle>Profile or League Data Missing</CardTitle>
-          <CardDescription>Required data is unavailable.</CardDescription>
+          <CardDescription>Unable to load your bowler profile or league information</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">
-            Please contact a league administrator if the problem persists.
+            Please ensure you have an active bowler profile and are assigned to a league.
           </p>
         </CardContent>
       </Card>
@@ -977,28 +985,7 @@ export const BowlerDashboardPage: FC = () => {
       league={getBowlerFirstLeagueName(bowler)}
     >
       <div className="space-y-6">
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-3xl font-bold">{bowler.name}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-0.5">
-              <p className="text-lg">{getBowlerFirstLeagueName(bowler)}</p>
-              <p className="text-base text-muted-foreground">{getBowlerTeamName(bowler)}</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>Payment Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {renderPaymentStatus}
-            </div>
-          </CardContent>
-        </Card>
+        {renderPaymentStatus}
       </div>
     </BowlerLayout>
   );

@@ -52,4 +52,4 @@ mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx concurrently 'tsx watch server/index.ts' 'npm run dev -- --host 0.0.0.0'"
+args = "npx concurrently --kill-others 'tsx watch server/index.ts' 'npm run dev -- --host 0.0.0.0'"
