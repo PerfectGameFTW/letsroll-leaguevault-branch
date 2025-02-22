@@ -1,9 +1,10 @@
 {
   "port": 5001,
   "ready": true,
-  "timestamp": "2025-02-22T07:22:24.856Z",
-  "pid": 2431,
+  "timestamp": "2025-02-22T07:36:27.870Z",
+  "pid": 3256,
   "mode": "development",
+  "workflow": "Dev",
   "health": {
     "database": true,
     "vite": true,

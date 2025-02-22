@@ -20,6 +20,25 @@ import { useBowlers } from "@/hooks/use-bowlers";
 
 const DEBUG_HOOKS = true;
 
+// Custom hook for drawer state management
+function usePaymentDrawer() {
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
+
+  const handleWeekChange = useCallback((weeks: number, totalWeeks: number) => {
+    if (totalWeeks === 0) return;
+    const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
+    setSelectedWeeks(validWeeks);
+  }, []);
+
+  return {
+    isDrawerOpen,
+    setIsDrawerOpen,
+    selectedWeeks,
+    handleWeekChange
+  };
+}
+
 // Drawer type definition
 const Drawer = DrawerPrimitive as {
   Root: typeof DrawerPrimitive.Root;
@@ -85,15 +104,14 @@ export const BowlerDashboardPage: FC = () => {
     console.log('[BowlerDashboard] Component rendering start'); // Debug log
   }
 
-  // Initialize all hooks at the top level
+  // Initialize all state hooks at the top level
   const { toast } = useToast();
   const cardContainerRef = useRef<HTMLDivElement>(null);
-
-  // UI State hooks
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
+
+  // Use custom drawer hook
+  const { isDrawerOpen, setIsDrawerOpen, selectedWeeks, handleWeekChange: customHandleWeekChange } = usePaymentDrawer();
 
   // User and Bowler data hooks
   const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
@@ -223,11 +241,8 @@ export const BowlerDashboardPage: FC = () => {
   }, [league, weeklyFee, totalPaidAmount]);
 
   // Memoized handlers
-  const handleWeekChange = useCallback((weeks: number) => {
-    if (totalWeeks === 0) return;
-    const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
-    setSelectedWeeks(validWeeks);
-  }, [totalWeeks]);
+  const handleWeekChangeWrapper = useCallback((weeks: number) => customHandleWeekChange(weeks, totalWeeks), [customHandleWeekChange, totalWeeks]);
+
 
   const calculateTotalAmount = useCallback(() => {
     if (!league || !bowler) return 0;
@@ -278,11 +293,11 @@ export const BowlerDashboardPage: FC = () => {
   };
 
   const incrementWeeks = () => {
-    handleWeekChange(selectedWeeks + 1);
+    handleWeekChangeWrapper(selectedWeeks + 1);
   };
 
   const decrementWeeks = () => {
-    handleWeekChange(selectedWeeks - 1);
+    handleWeekChangeWrapper(selectedWeeks - 1);
   };
 
   // Calculate payment frequency based on actual payment history
@@ -300,7 +315,7 @@ export const BowlerDashboardPage: FC = () => {
     return weeks >= 4 ? 'monthly' : 'weekly';
   }, [payments]);
 
-  // Effect hooks
+  // Group all useEffect hooks together
   useEffect(() => {
     if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
       initializeCard(cardContainerRef.current);
@@ -321,77 +336,135 @@ export const BowlerDashboardPage: FC = () => {
     };
   }, [card]);
 
-  // Loading and error states
-  if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!currentUser) {
-    return (
-      <Card className="mx-auto max-w-md mt-8">
-        <CardHeader>
-          <CardTitle>Authentication Required</CardTitle>
-          <CardDescription>Please log in to view your dashboard</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-muted-foreground">
-            You need to be logged in to access your bowler dashboard.
-          </p>
-          <Link href="/login">
-            <Button className="w-full">Log In</Button>
-          </Link>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!bowler) {
-    return (
-      <Card className="mx-auto max-w-md mt-8">
-        <CardHeader>
-          <CardTitle>Profile Setup Required</CardTitle>
-          <CardDescription>Your bowler profile needs to be configured</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Please contact a league administrator to set up your bowler profile.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!league) {
-    return (
-      <Card className="mx-auto max-w-md mt-8">
-        <CardHeader>
-          <CardTitle>League Data Unavailable</CardTitle>
-          <CardDescription>Unable to load league information</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Please try again later or contact support if the problem persists.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const seasonPresets = [
+  // Define seasonPresets before renderPaymentStatus
+  const seasonPresets = useMemo(() => [
     { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
     { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
     { label: "Full Season", weeks: totalWeeks }
-  ];
+  ], [totalWeeks]);
 
-
-  const renderPaymentStatus = () => {
+  // Memoize renderPaymentStatus after seasonPresets is defined
+  const renderPaymentStatus = useMemo(() => {
     return (
       <>
-        {!bowler?.squareCustomerId ? (
+        {bowler?.squareCustomerId ? (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment Status</CardTitle>
+                <CardDescription>Your automatic payment configuration</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-6">
+                  <Card className="bg-secondary/10">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-lg">Automatic Payment Schedule</CardTitle>
+                      <CardDescription>
+                        Your league dues are automatically charged according to your selected schedule
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-4">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">Payment Frequency</p>
+                            <p className="text-sm text-muted-foreground">
+                              {getPaymentFrequency() === 'weekly' ? 'Weekly Payments' : 'Monthly Payments (every 4 weeks)'}
+                            </p>
+                          </div>
+                          <Badge variant="outline">
+                            {getPaymentFrequency() === 'weekly' ? 'Weekly' : 'Monthly'}
+                          </Badge>
+                        </div>
+
+                        {payments?.length > 0 && (
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium">Last Payment</p>
+                              <p className="text-sm text-muted-foreground">
+                                {format(new Date(payments[0].weekOf), "MMMM d, yyyy")}
+                              </p>
+                            </div>
+                            <p className="font-medium">${(payments[0].amount / 100).toFixed(2)}</p>
+                          </div>
+                        )}
+
+                        {upcomingPayments.length > 0 && (
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                              <p className="text-sm font-medium">Next Payment</p>
+                              <p className="text-sm text-muted-foreground">
+                                {format(upcomingPayments[0].dueDate, "MMMM d, yyyy")}
+                              </p>
+                            </div>
+                            <p className="font-medium">
+                              ${(upcomingPayments[0].amount / 100).toFixed(2)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-4 border-t">
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowPaymentSetup(true)}
+                          className="w-full"
+                        >
+                          Update Payment Settings
+                          <ArrowRight className="ml-2 h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {upcomingPayments.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-lg font-semibold">Upcoming Payments</h3>
+                      <div className="space-y-2">
+                        {upcomingPayments.map((payment, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                          >
+                            <div className="flex items-center gap-3">
+                              <Calendar className="h-5 w-5 text-muted-foreground" />
+                              <div>
+                                <p className="font-medium">
+                                  {format(payment.dueDate, 'MMMM d, yyyy')}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  Automatic payment scheduled
+                                </p>
+                              </div>
+                            </div>
+                            <p className="font-semibold">
+                              ${(payment.amount / 100).toFixed(2)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {amountPastDue > 0 && (
+              <div className="rounded-md bg-destructive/10 p-4">
+                <div className="flex items-start">
+                  <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-destructive">Payment Past Due</h3>
+                    <div className="mt-1 text-sm text-destructive">
+                      <p>You have an outstanding balance of ${(amountPastDue / 100).toFixed(2)}.</p>
+                      <p className="mt-2">Please make a payment to maintain your active status in the league.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
           showPaymentSetup ? (
             <div className="space-y-6">
               <div>
@@ -456,7 +529,7 @@ export const BowlerDashboardPage: FC = () => {
                                       <Button
                                         key={preset.label}
                                         variant={selectedWeeks === preset.weeks ? "default" : "outline"}
-                                        onClick={() => handleWeekChange(preset.weeks)}
+                                        onClick={() => handleWeekChangeWrapper(preset.weeks)}
                                         className="w-full"
                                         disabled={!league || preset.weeks === 0}
                                       >
@@ -479,7 +552,7 @@ export const BowlerDashboardPage: FC = () => {
                                       <Input
                                         type="number"
                                         value={selectedWeeks}
-                                        onChange={(e) => handleWeekChange(parseInt(e.target.value) || 1)}
+                                        onChange={(e) => handleWeekChangeWrapper(parseInt(e.target.value) || 1)}
                                         min={1}
                                         max={totalWeeks}
                                         className="text-center"
@@ -598,128 +671,88 @@ export const BowlerDashboardPage: FC = () => {
               </Button>
             </div>
           )
-        ) : (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Status</CardTitle>
-                <CardDescription>Your automatic payment configuration</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  <Card className="bg-secondary/10">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Automatic Payment Schedule</CardTitle>
-                      <CardDescription>
-                        Your league dues are automatically charged according to your selected schedule
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-4">
-                        <div className="flex items-center justify-between">
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">Payment Frequency</p>
-                            <p className="text-sm text-muted-foreground">
-                              {getPaymentFrequency() === 'weekly' ? 'Weekly Payments' : 'Monthly Payments (every 4 weeks)'}
-                            </p>
-                          </div>
-                          <Badge variant="outline">
-                            {getPaymentFrequency() === 'weekly' ? 'Weekly' : 'Monthly'}
-                          </Badge>
-                        </div>
-
-                        {payments?.length > 0 && (
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium">Last Payment</p>
-                              <p className="text-sm text-muted-foreground">
-                                {format(new Date(payments[0].weekOf), "MMMM d, yyyy")}
-                              </p>
-                            </div>
-                            <p className="font-medium">${(payments[0].amount / 100).toFixed(2)}</p>
-                          </div>
-                        )}
-
-                        {upcomingPayments.length > 0 && (
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium">Next Payment</p>
-                              <p className="text-sm text-muted-foreground">
-                                {format(upcomingPayments[0].dueDate, "MMMM d, yyyy")}
-                              </p>
-                            </div>
-                            <p className="font-medium">
-                              {(upcomingPayments[0].amount / 100).toFixed(2)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 pt-4 border-t">
-                        <Button
-                          variant="outline"
-                          onClick={() => setShowPaymentSetup(true)}
-                          className="w-full"
-                        >
-                          Update Payment Settings
-                          <ArrowRight className="ml-2 h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {upcomingPayments.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-lg font-semibold">Upcoming Payments</h3>
-                      <div className="space-y-2">
-                        {upcomingPayments.map((payment, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                          >
-                            <div className="flex items-center gap-3">
-                              <Calendar className="h-5 w-5 text-muted-foreground" />
-                              <div>
-                                <p className="font-medium">
-                                  {format(payment.dueDate, 'MMMM d, yyyy')}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  Automatic payment scheduled
-                                </p>
-                              </div>
-                            </div>
-                            <p className="font-semibold">
-                              {(payment.amount / 100).toFixed(2)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {amountPastDue > 0 && (
-              <div className="rounded-md bg-destructive/10 p-4">
-                <div className="flex items-start">
-                  <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-destructive">Payment Past Due</h3>
-                    <div className="mt-1 text-sm text-destructive">
-                      <p>You have an outstanding balance of ${(amountPastDue / 100).toFixed(2)}.</p>
-                      <p className="mt-2">Please make a payment to maintain your active status in the league.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
         )}
       </>
-    )
+    );
+  }, [
+    bowler,
+    showPaymentSetup,
+    selectedSchedule,
+    weeklyFee,
+    totalWeeks,
+    selectedWeeks,
+    isDrawerOpen,
+    customHandleWeekChange,
+    calculateTotalAmount,
+    handleSubmitPayment,
+    isInitialized,
+    squareError,
+    payments,
+    upcomingPayments,
+    amountPastDue,
+    getPaymentFrequency
+  ]);
+
+
+  // Loading and error states
+  if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
+  if (!currentUser) {
+    return (
+      <Card className="mx-auto max-w-md mt-8">
+        <CardHeader>
+          <CardTitle>Authentication Required</CardTitle>
+          <CardDescription>Please log in to view your dashboard</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-muted-foreground">
+            You need to be logged in to access your bowler dashboard.
+          </p>
+          <Link href="/login">
+            <Button className="w-full">Log In</Button>
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!bowler) {
+    return (
+      <Card className="mx-auto max-w-md mt-8">
+        <CardHeader>
+          <CardTitle>Profile Setup Required</CardTitle>
+          <CardDescription>Your bowler profile needs to be configured</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">
+            Please contact a league administrator to set up your bowler profile.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!league) {
+    return (
+      <Card className="mx-auto max-w-md mt-8">
+        <CardHeader>
+          <CardTitle>League Data Unavailable</CardTitle>
+          <CardDescription>Unable to load league information</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground">
+            Please try again later or contact support if the problem persists.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <BowlerLayout
@@ -745,7 +778,7 @@ export const BowlerDashboardPage: FC = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-6">
-              {renderPaymentStatus()}
+              {renderPaymentStatus}
             </div>
           </CardContent>
         </Card>
