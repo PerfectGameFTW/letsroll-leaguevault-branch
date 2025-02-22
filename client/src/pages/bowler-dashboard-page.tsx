@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, FC } from "react";
+import { useState, useRef, useEffect, FC, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
@@ -16,23 +17,25 @@ import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
 import type { League, Payment, User, Bowler } from "@shared/schema";
 import { useBowlers } from "@/hooks/use-bowlers";
 
-// Define Drawer components for better type safety
-const Drawer = {
-  Root: DrawerPrimitive.Root,
-  Trigger: DrawerPrimitive.Trigger,
-  Portal: DrawerPrimitive.Portal,
-  Content: DrawerPrimitive.Content,
-  Overlay: DrawerPrimitive.Overlay,
-};
-
+// Type definitions remain unchanged
 type PaymentSchedule = "weekly" | "monthly" | "custom";
-
-// Move type definitions outside of component
 interface PaymentOption {
   id: PaymentSchedule;
   label: string;
   description: string;
   calculateAmount: (weeklyFee: number, totalWeeks: number, customWeeks?: number) => number;
+}
+interface UpcomingPayment {
+  dueDate: Date;
+  amount: number;
+}
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: {
+    message: string;
+    code?: string;
+  };
 }
 
 const PAYMENT_OPTIONS: PaymentOption[] = [
@@ -56,7 +59,6 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   },
 ];
 
-// Utility function moved outside component
 const getSeasonLength = (currentLeague?: League | null) => {
   if (!currentLeague?.seasonStart || !currentLeague?.seasonEnd) return 0;
   return Math.ceil(
@@ -65,17 +67,20 @@ const getSeasonLength = (currentLeague?: League | null) => {
   );
 };
 
+
 export const BowlerDashboardPage: FC = () => {
-  // Initialize all state at the top of the component
+  // Initialize all hooks at the top level
   const { toast } = useToast();
+  const cardContainerRef = useRef<HTMLDivElement>(null);
+
+  // UI State hooks
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
-  const cardContainerRef = useRef<HTMLDivElement>(null);
 
-  // User data query
-  const { data: currentUserResponse, isLoading: isUserLoading } = useQuery<ApiResponse<User>>({
+  // User and Bowler data hooks
+  const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 30,
@@ -83,7 +88,6 @@ export const BowlerDashboardPage: FC = () => {
 
   const currentUser = currentUserResponse?.data;
 
-  // Bowlers data hook
   const {
     bowlers,
     getBowlerTeamName,
@@ -91,15 +95,22 @@ export const BowlerDashboardPage: FC = () => {
     isInitialLoading,
     isLoadingRelatedData,
     getBowlerLeagueId,
-    getWeeklyFee
+    getWeeklyFee,
   } = useBowlers({
     isEnabled: !!currentUser?.bowlerId,
   });
 
-  const bowler = currentUser?.bowlerId ? bowlers.find((b: Bowler) => b.id === currentUser.bowlerId) : null;
-  const leagueId = bowler ? getBowlerLeagueId(bowler) : null;
+  const bowler = useMemo(() => 
+    currentUser?.bowlerId ? bowlers.find((b: Bowler) => b.id === currentUser.bowlerId) : null,
+    [currentUser?.bowlerId, bowlers]
+  );
 
-  // Combined data query
+  const leagueId = useMemo(() => 
+    bowler ? getBowlerLeagueId(bowler) : null,
+    [bowler, getBowlerLeagueId]
+  );
+
+  // League and payments data hook
   const { data: combinedData, isLoading: isCombinedLoading } = useQuery({
     queryKey: [`/api/dashboard-data`, leagueId],
     enabled: !!leagueId,
@@ -128,7 +139,6 @@ export const BowlerDashboardPage: FC = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Square payment integration
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
       console.error('[Square Payment Error]:', error);
@@ -140,14 +150,64 @@ export const BowlerDashboardPage: FC = () => {
     },
   });
 
-  // Payment form initialization effect
+  // Memoized values
+  const league = combinedData?.league;
+  const payments = combinedData?.payments || [];
+  const totalWeeks = useMemo(() => getSeasonLength(league), [league]);
+  const weeklyFee = useMemo(() => bowler ? getWeeklyFee(bowler) : 0, [bowler, getWeeklyFee]);
+
+  const totalPaidAmount = useMemo(() => 
+    payments
+      .filter((p: Payment) => p.status === 'paid')
+      .reduce((sum: number, p: Payment) => sum + p.amount, 0),
+    [payments]
+  );
+
+  // Calculate upcoming payments using memoized values
+  const upcomingPayments = useMemo(() => {
+    if (!league?.seasonStart || !league?.seasonEnd || !weeklyFee) return [];
+
+    const seasonEnd = new Date(league.seasonEnd);
+    const today = startOfToday();
+    const nextPaymentDate = addWeeks(today, 1);
+    const payments: UpcomingPayment[] = [];
+
+    for (let i = 0; i < 4; i++) {
+      const paymentDate = addWeeks(nextPaymentDate, i);
+      if (paymentDate <= seasonEnd) {
+        payments.push({
+          dueDate: paymentDate,
+          amount: weeklyFee
+        });
+      }
+    }
+
+    return payments;
+  }, [league, weeklyFee]);
+
+  // Calculate amount past due using memoized values
+  const amountPastDue = useMemo(() => {
+    if (!league?.seasonStart || !league?.seasonEnd || !weeklyFee) return 0;
+
+    const seasonStart = new Date(league.seasonStart);
+    const seasonEnd = new Date(league.seasonEnd);
+    const today = startOfToday();
+
+    const weeksDue = today < seasonStart ? 0 :
+                    today > seasonEnd ? Math.max(0, differenceInWeeks(seasonEnd, seasonStart)) :
+                    Math.max(0, differenceInWeeks(today, seasonStart));
+
+    const totalSeasonDues = weeklyFee * weeksDue;
+    return Math.max(0, totalSeasonDues - totalPaidAmount);
+  }, [league, weeklyFee, totalPaidAmount]);
+
+  // Effect hooks
   useEffect(() => {
     if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
       initializeCard(cardContainerRef.current);
     }
   }, [showPaymentSetup, isInitialized, initializeCard]);
 
-  // Cleanup effect
   useEffect(() => {
     return () => {
       if (card) {
@@ -156,8 +216,8 @@ export const BowlerDashboardPage: FC = () => {
     };
   }, [card]);
 
-  // Loading state check
-  if (isUserLoading || isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
+  // Loading and error states
+  if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -165,7 +225,6 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-  // Early returns for authentication and profile setup
   if (!currentUser) {
     return (
       <Card className="mx-auto max-w-md mt-8">
@@ -201,9 +260,6 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-  const league = combinedData?.league;
-  const payments = combinedData?.payments || [];
-
   if (!league) {
     return (
       <Card className="mx-auto max-w-md mt-8">
@@ -220,8 +276,6 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-  // Calculate payment-related data
-  const totalWeeks = getSeasonLength(league);
   const seasonPresets = [
     { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
     { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
@@ -237,7 +291,6 @@ export const BowlerDashboardPage: FC = () => {
   const calculateTotalAmount = () => {
     if (!league || !bowler) return 0;
 
-    const weeklyFee = getWeeklyFee(bowler);
     const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule);
     if (!selectedOption) return 0;
 
@@ -246,39 +299,6 @@ export const BowlerDashboardPage: FC = () => {
       : selectedOption.calculateAmount(weeklyFee, totalWeeks);
   };
 
-  const totalPaidAmount = payments
-    .filter((p: Payment) => p.status === 'paid')
-    .reduce((sum: number, p: Payment) => sum + p.amount, 0);
-
-  let amountPastDue = 0;
-  let upcomingPayments: UpcomingPayment[] = [];
-
-  if (league?.seasonStart && league.seasonEnd && bowler) {
-    const weeklyFee = getWeeklyFee(bowler);
-    const seasonStart = new Date(league.seasonStart);
-    const seasonEnd = new Date(league.seasonEnd);
-    const today = startOfToday();
-
-    const weeksDue = today < seasonStart ? 0 :
-                      today > seasonEnd ? Math.max(0, differenceInWeeks(seasonEnd, seasonStart)) :
-                      Math.max(0, differenceInWeeks(today, seasonStart));
-
-    const totalSeasonDues = weeklyFee * weeksDue;
-    amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
-
-    if (bowler?.squareCustomerId) {
-      const nextPaymentDate = addWeeks(today, 1);
-      for (let i = 0; i < 4; i++) {
-        const paymentDate = addWeeks(nextPaymentDate, i);
-        if (paymentDate <= seasonEnd) {
-          upcomingPayments.push({
-            dueDate: paymentDate,
-            amount: weeklyFee
-          });
-        }
-      }
-    }
-  }
 
   const handleSubmitPayment = async () => {
     if (!card || !league || !bowler) {
@@ -325,6 +345,20 @@ export const BowlerDashboardPage: FC = () => {
     handleWeekChange(selectedWeeks - 1);
   };
 
+  // Calculate payment frequency based on actual payment history
+  const getPaymentFrequency = () => {
+    if (!payments?.length) return null;
+
+    const recentPayments = payments.slice(0, 2);
+    if (recentPayments.length < 2) return 'weekly'; // Default to weekly for new setups
+
+    const weeks = differenceInWeeks(
+      new Date(recentPayments[0].weekOf),
+      new Date(recentPayments[1].weekOf)
+    );
+
+    return weeks >= 4 ? 'monthly' : 'weekly';
+  };
 
   return (
     <BowlerLayout
@@ -366,8 +400,6 @@ export const BowlerDashboardPage: FC = () => {
                             className="space-y-4"
                           >
                             {PAYMENT_OPTIONS.map((option) => {
-                              const weeklyFee = bowler ? getWeeklyFee(bowler) : 0;
-
                               const amount = option.id === 'custom'
                                 ? option.calculateAmount(weeklyFee, totalWeeks, selectedWeeks)
                                 : option.calculateAmount(weeklyFee, totalWeeks);
@@ -391,16 +423,16 @@ export const BowlerDashboardPage: FC = () => {
 
                           {selectedSchedule === 'custom' && (
                             <>
-                              <Button 
-                                variant="outline" 
+                              <Button
+                                variant="outline"
                                 onClick={() => setIsDrawerOpen(true)}
                                 className="w-full mt-4"
                               >
                                 Select Number of Weeks
                               </Button>
 
-                              <Drawer.Root 
-                                open={isDrawerOpen} 
+                              <Drawer.Root
+                                open={isDrawerOpen}
                                 onOpenChange={setIsDrawerOpen}
                               >
                                 <Drawer.Portal>
@@ -460,7 +492,7 @@ export const BowlerDashboardPage: FC = () => {
                                         <div className="rounded-lg border bg-card p-4">
                                           <div className="flex justify-between items-center mb-2">
                                             <span className="text-sm text-muted-foreground">Weekly Fee</span>
-                                            <span>${((bowler ? getWeeklyFee(bowler) : 0) / 100).toFixed(2)}</span>
+                                            <span>${(weeklyFee / 100).toFixed(2)}</span>
                                           </div>
                                           <div className="flex justify-between items-center mb-2">
                                             <span className="text-sm text-muted-foreground">Number of Weeks</span>
@@ -474,8 +506,8 @@ export const BowlerDashboardPage: FC = () => {
                                           </div>
                                         </div>
 
-                                        <Button 
-                                          className="w-full mt-6" 
+                                        <Button
+                                          className="w-full mt-6"
                                           onClick={() => setIsDrawerOpen(false)}
                                         >
                                           Confirm Selection
@@ -561,56 +593,105 @@ export const BowlerDashboardPage: FC = () => {
                 )
               ) : (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-semibold">Payment Method</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Your automatic payments are configured
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      onClick={() => setShowPaymentSetup(true)}
-                    >
-                      Update Payment Settings
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  {upcomingPayments.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-lg font-semibold">Upcoming Payments</h3>
-                      <div className="space-y-2">
-                        {upcomingPayments.map((payment, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                          >
-                            <div className="flex items-center gap-3">
-                              <Calendar className="h-5 w-5 text-muted-foreground" />
-                              <div>
-                                <p className="font-medium">
-                                  {format(payment.dueDate, 'MMMM d, yyyy')}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  Automatic payment scheduled
-                                </p>
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Payment Status</CardTitle>
+                      <CardDescription>Your automatic payment configuration</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-6">
+                        <Card className="bg-secondary/10">
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-lg">Automatic Payment Schedule</CardTitle>
+                            <CardDescription>
+                              Your league dues are automatically charged according to your selected schedule
+                            </CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-4">
+                            <div className="grid gap-4">
+                              <div className="flex items-center justify-between">
+                                <div className="space-y-1">
+                                  <p className="text-sm font-medium">Payment Frequency</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {getPaymentFrequency() === 'weekly' ? 'Weekly Payments' : 'Monthly Payments (every 4 weeks)'}
+                                  </p>
+                                </div>
+                                <Badge variant="outline">
+                                  {getPaymentFrequency() === 'weekly' ? 'Weekly' : 'Monthly'}
+                                </Badge>
                               </div>
+
+                              {payments?.length > 0 && (
+                                <div className="flex items-center justify-between">
+                                  <div className="space-y-1">
+                                    <p className="text-sm font-medium">Last Payment</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {format(new Date(payments[0].weekOf), "MMMM d, yyyy")}
+                                    </p>
+                                  </div>
+                                  <p className="font-medium">${(payments[0].amount / 100).toFixed(2)}</p>
+                                </div>
+                              )}
+
+                              {upcomingPayments.length > 0 && (
+                                <div className="flex items-center justify-between">
+                                  <div className="space-y-1">
+                                    <p className="text-sm font-medium">Next Payment</p>
+                                    <p className="text-sm text-muted-foreground">
+                                      {format(upcomingPayments[0].dueDate, "MMMM d, yyyy")}
+                                    </p>
+                                  </div>
+                                  <p className="font-medium">
+                                    ${(upcomingPayments[0].amount / 100).toFixed(2)}
+                                  </p>
+                                </div>
+                              )}
                             </div>
-                            <p className="font-semibold">
-                              ${(payment.amount / 100).toFixed(2)}
-                            </p>
+
+                            <div className="flex items-center gap-2 pt-4 border-t">
+                              <Button
+                                variant="outline"
+                                onClick={() => setShowPaymentSetup(true)}
+                                className="w-full"
+                              >
+                                Update Payment Settings
+                                <ArrowRight className="ml-2 h-4 w-4" />
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        {upcomingPayments.length > 0 && (
+                          <div className="space-y-3">
+                            <h3 className="text-lg font-semibold">Upcoming Payments</h3>
+                            <div className="space-y-2">
+                              {upcomingPayments.map((payment, index) => (
+                                <div
+                                  key={index}
+                                  className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <Calendar className="h-5 w-5 text-muted-foreground" />
+                                    <div>
+                                      <p className="font-medium">
+                                        {format(payment.dueDate, 'MMMM d, yyyy')}
+                                      </p>
+                                      <p className="text-sm text-muted-foreground">
+                                        Automatic payment scheduled
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <p className="font-semibold">
+                                    ${(payment.amount / 100).toFixed(2)}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        ))}
+                        )}
                       </div>
-                      <Link href="/payment-history">
-                        <Button variant="link" className="p-0">
-                          View full payment history
-                          <ArrowRight className="ml-2 h-4 w-4" />
-                        </Button>
-                      </Link>
-                    </div>
-                  )}
+                    </CardContent>
+                  </Card>
 
                   {amountPastDue > 0 && (
                     <div className="rounded-md bg-destructive/10 p-4">
@@ -635,19 +716,5 @@ export const BowlerDashboardPage: FC = () => {
     </BowlerLayout>
   );
 };
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error?: {
-    message: string;
-    code?: string;
-  };
-}
-
-interface UpcomingPayment {
-  dueDate: Date;
-  amount: number;
-}
 
 export default BowlerDashboardPage;
