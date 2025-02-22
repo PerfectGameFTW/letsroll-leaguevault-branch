@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage.js';
-import { insertPaymentSchema, partialPaymentSchema, insertPaymentScheduleSchema } from "@shared/schema.js";
+import { insertPaymentScheduleSchema, partialPaymentScheduleSchema } from "@shared/schema.js";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { processPayment } from '../services/square.js';
@@ -136,7 +136,7 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-// Add new route for updating payment schedules
+// Update payment schedule endpoint
 router.patch("/schedules/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -144,10 +144,10 @@ router.patch("/schedules/:id", async (req, res) => {
       return sendError(res, "Invalid schedule ID", 400, "INVALID_ID");
     }
 
-    // Create a schema for updating payment schedule without card ID
+    // Create a schema for updating payment schedule
     const updateScheduleSchema = insertPaymentScheduleSchema
-      .omit({ squareCardId: true })
-      .partial();
+      .pick({ frequency: true, amount: true })
+      .strict();
 
     console.log('[Payments Route] Updating payment schedule:', {
       scheduleId: id,
@@ -155,17 +155,36 @@ router.patch("/schedules/:id", async (req, res) => {
     });
 
     const updates = updateScheduleSchema.parse(req.body);
-    const updatedSchedule = await storage.updatePaymentSchedule(id, updates);
+    console.log('[Payments Route] Validated updates:', updates);
+
+    // Get the current schedule to ensure it exists
+    const currentSchedule = await storage.getPaymentSchedule(id);
+    if (!currentSchedule) {
+      return sendError(res, "Payment schedule not found", 404, "NOT_FOUND");
+    }
+
+    console.log('[Payments Route] Current schedule:', {
+      id: currentSchedule.id,
+      frequency: currentSchedule.frequency,
+      amount: currentSchedule.amount
+    });
+
+    // Update the schedule with new values while preserving other fields
+    const updatedSchedule = await storage.updatePaymentSchedule(id, {
+      ...currentSchedule,
+      ...updates,
+    });
+
+    console.log('[Payments Route] Schedule updated:', {
+      id: updatedSchedule.id,
+      newFrequency: updatedSchedule.frequency,
+      newAmount: updatedSchedule.amount,
+      nextPaymentDate: updatedSchedule.nextPaymentDate
+    });
 
     // Notify the payment scheduler about the updated schedule
     await paymentScheduler.updateSchedule(updatedSchedule);
-
-    console.log('[Payments Route] Successfully updated payment schedule:', {
-      scheduleId: id,
-      frequency: updatedSchedule.frequency,
-      amount: updatedSchedule.amount,
-      nextPaymentDate: updatedSchedule.nextPaymentDate
-    });
+    console.log('[Payments Route] Payment scheduler notified of update');
 
     sendSuccess(res, updatedSchedule);
   } catch (error) {

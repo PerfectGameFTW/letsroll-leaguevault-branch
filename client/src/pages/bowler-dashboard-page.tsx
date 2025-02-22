@@ -38,8 +38,8 @@ import {
 
 const DEBUG_HOOKS = true;
 
-function getPaymentFrequency(payments: Payment[] = []): PaymentSchedule {
-  if (!payments?.length) return 'weekly'; // Default to weekly for new setups
+function getPaymentFrequency(payments: Payment[] = []): "weekly" | "monthly" {
+  if (!payments?.length) return 'weekly';
 
   const recentPayments = payments.slice(0, 2);
   if (recentPayments.length < 2) return 'weekly';
@@ -321,7 +321,6 @@ export const BowlerDashboardPage: FC = () => {
     handleWeekChangeWrapper(selectedWeeks - 1);
   };
 
-
   useEffect(() => {
     if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
       initializeCard(cardContainerRef.current);
@@ -348,6 +347,12 @@ export const BowlerDashboardPage: FC = () => {
     { label: "Full Season", weeks: totalWeeks }
   ], [totalWeeks]);
 
+// Add interface for form data
+interface ModifyScheduleFormData {
+  frequency: "weekly" | "monthly";
+  amount: number;
+}
+
 function ModifyScheduleDialog({
   scheduleId,
   currentFrequency,
@@ -356,7 +361,7 @@ function ModifyScheduleDialog({
   onClose
 }: {
   scheduleId: number;
-  currentFrequency: PaymentSchedule;
+  currentFrequency: "weekly" | "monthly";
   currentAmount: number;
   isOpen: boolean;
   onClose: () => void;
@@ -375,11 +380,11 @@ function ModifyScheduleDialog({
     return currentFrequency === 'monthly' ? currentAmount / 4 : currentAmount;
   }, [currentFrequency, currentAmount]);
 
-  const form = useForm<PaymentSchedule>({
+  const form = useForm<ModifyScheduleFormData>({
     resolver: zodResolver(
       insertPaymentScheduleSchema
-        .omit({ squareCardId: true })
-        .partial()
+        .pick({ frequency: true, amount: true })
+        .strict()
     ),
     defaultValues: {
       frequency: currentFrequency,
@@ -401,14 +406,17 @@ function ModifyScheduleDialog({
   }, [frequency, baseWeeklyAmount, form]);
 
   const updateScheduleMutation = useMutation({
-    mutationFn: async (data: PaymentSchedule) => {
+    mutationFn: async (data: ModifyScheduleFormData) => {
       console.log('[ModifyScheduleDialog] Submitting update:', data);
       const response = await fetch(`/api/payments/schedules/${scheduleId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          frequency: data.frequency,
+          amount: data.amount,
+        }),
       });
 
       if (!response.ok) {
@@ -421,17 +429,19 @@ function ModifyScheduleDialog({
       console.log('[ModifyScheduleDialog] Update successful:', result);
       return result;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       console.log('[ModifyScheduleDialog] Invalidating queries...');
-      // Invalidate and refetch all related queries
-      [
-        ['/api/dashboard-data'],
-        ['/api/payments'],
-        ['/api/leagues', league?.id],
-        [`/api/payments/schedules/${scheduleId}`]
-      ].forEach(queryKey => {
-        queryClient.invalidateQueries({ queryKey });
-        queryClient.refetchQueries({ queryKey });
+      // Force a refetch of all related data
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/api/dashboard-data'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/payments'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/leagues'] }),
+      ]);
+
+      // Wait for refetch to complete before showing success message and closing
+      await queryClient.refetchQueries({
+        queryKey: ['/api/dashboard-data'],
+        exact: true
       });
 
       toast({
@@ -453,7 +463,10 @@ function ModifyScheduleDialog({
   const onSubmit = form.handleSubmit(async (data) => {
     try {
       setIsSubmitting(true);
+      console.log('[ModifyScheduleDialog] Submitting form data:', data);
       await updateScheduleMutation.mutateAsync(data);
+    } catch (error) {
+      console.error('[ModifyScheduleDialog] Submit error:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -544,7 +557,7 @@ function ModifyScheduleDialog({
   );
 }
 
-  const renderPaymentStatus = useMemo(() => {
+const renderPaymentStatus = useMemo(() => {
     const [isModifyingSchedule, setIsModifyingSchedule] = useState(false);
 
     return (
@@ -902,15 +915,13 @@ function ModifyScheduleDialog({
     payments,
     upcomingPayments,
     amountPastDue,
-    getPaymentFrequency,
-    league
+    getPaymentFrequency,league
   ]);
 
 
   if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    return (      <div className="flex items-center justify-center min-h-[60vh]">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
