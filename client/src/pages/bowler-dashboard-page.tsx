@@ -91,24 +91,35 @@ function ModifyScheduleDialog({
 
   const updateScheduleMutation = useMutation({
     mutationFn: async (data: ModifyScheduleFormData) => {
+      const payload = {
+        frequency: data.frequency,
+        amount: data.amount,
+        bowlerId,
+        leagueId,
+      };
+
+      console.log('[ModifyScheduleDialog] Sending update request:', {
+        scheduleId,
+        ...payload
+      });
+
       const response = await fetch(`/api/payments/schedules/${scheduleId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...data,
-          bowlerId,
-          leagueId
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('[ModifyScheduleDialog] Update failed:', errorData);
         throw new Error(errorData.error?.message || 'Failed to update payment schedule');
       }
 
-      return await response.json();
+      const result = await response.json();
+      console.log('[ModifyScheduleDialog] Update successful:', result);
+      return result;
     },
     onSuccess: async () => {
       await Promise.all([
@@ -124,6 +135,7 @@ function ModifyScheduleDialog({
       onClose();
     },
     onError: (error: Error) => {
+      console.error('[ModifyScheduleDialog] Update error:', error);
       toast({
         title: "Error",
         description: error.message,
@@ -135,21 +147,18 @@ function ModifyScheduleDialog({
   const onSubmit = form.handleSubmit(async (data) => {
     try {
       setIsSubmitting(true);
+      console.log('[ModifyScheduleDialog] Submitting form data:', {
+        data,
+        scheduleId,
+        bowlerId,
+        leagueId
+      });
       await updateScheduleMutation.mutateAsync(data);
     } catch (error) {
       console.error('[ModifyScheduleDialog] Submit error:', error);
     } finally {
       setIsSubmitting(false);
     }
-  });
-
-  console.log('[ModifyScheduleDialog] Rendering with props:', {
-    isOpen,
-    currentFrequency,
-    currentAmount,
-    bowlerId,
-    leagueId,
-    scheduleId
   });
 
   return (

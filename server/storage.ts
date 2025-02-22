@@ -2,8 +2,8 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
-  users, // Add users table import
-  paymentSchedules, // Add paymentSchedules table import
+  users, 
+  paymentSchedules, 
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
@@ -11,8 +11,8 @@ import {
   type Payment, type InsertPayment,
   type Game, type InsertGame,
   type Score, type InsertScore,
-  type User, type InsertUser, // Add User types
-  type PaymentSchedule, type InsertPaymentSchedule // Add PaymentSchedule types
+  type User, type InsertUser, 
+  type PaymentSchedule, type InsertPaymentSchedule 
 } from "@shared/schema.js";
 
 export interface IStorage {
@@ -417,7 +417,7 @@ export class DatabaseStorage implements IStorage {
           leagueId: game.leagueId,
           weekNumber: game.weekNumber,
           gameNumber: game.gameNumber,
-          date: gameDate.toISOString() // Convert to ISO string for consistent storage
+          date: gameDate.toISOString() 
         })
         .returning();
 
@@ -767,30 +767,84 @@ export class DatabaseStorage implements IStorage {
         scheduleId: id,
         updates: {
           ...updates,
-          squareCardId: updates.squareCardId ? `${updates.squareCardId.substring(0, 10)}...` : undefined
+          squareCardId: updates.squareCardId ? `${updates.squareCardId.substring(0, 10)}...` : undefined,
+          frequency: updates.frequency,
+          amount: updates.amount,
+          bowlerId: updates.bowlerId,
+          leagueId: updates.leagueId,
+          nextPaymentDate: updates.nextPaymentDate
         }
       });
 
+      // First get the existing schedule
       const [existingSchedule] = await db
         .select()
         .from(paymentSchedules)
-        .where(eq(paymentSchedules.id, id));
+        .where(
+          and(
+            eq(paymentSchedules.id, id),
+            eq(paymentSchedules.active, true)
+          )
+        );
 
       if (!existingSchedule) {
-        throw new Error(`Payment schedule ${id} not found`);
+        console.error('[Storage] Payment schedule not found:', id);
+        throw new Error(`Payment schedule ${id} not found or inactive`);
       }
 
-      // Create update object keeping the existing card ID
+      console.log('[Storage] Found existing schedule:', {
+        id: existingSchedule.id,
+        frequency: existingSchedule.frequency,
+        amount: existingSchedule.amount,
+        bowlerId: existingSchedule.bowlerId,
+        leagueId: existingSchedule.leagueId,
+        nextPaymentDate: existingSchedule.nextPaymentDate
+      });
+
+      // Validate the required fields in updates
+      if (!updates.frequency || typeof updates.amount !== 'number' || !updates.bowlerId || !updates.leagueId) {
+        const missingFields = [];
+        if (!updates.frequency) missingFields.push('frequency');
+        if (typeof updates.amount !== 'number') missingFields.push('amount');
+        if (!updates.bowlerId) missingFields.push('bowlerId');
+        if (!updates.leagueId) missingFields.push('leagueId');
+
+        const errorMessage = `Missing required fields for payment schedule update: ${missingFields.join(', ')}`;
+        console.error('[Storage] Validation error:', errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      // Merge existing data with updates
       const updateData = {
-        ...updates,
-        squareCardId: existingSchedule.squareCardId, // Keep existing card ID
+        ...existingSchedule,
+        frequency: updates.frequency,
+        amount: updates.amount,
+        bowlerId: updates.bowlerId,
+        leagueId: updates.leagueId,
+        nextPaymentDate: updates.nextPaymentDate || existingSchedule.nextPaymentDate,
+        squareCardId: existingSchedule.squareCardId,
+        active: true
       };
+
+      console.log('[Storage] Merged update data:', {
+        id,
+        frequency: updateData.frequency,
+        amount: updateData.amount,
+        bowlerId: updateData.bowlerId,
+        leagueId: updateData.leagueId,
+        nextPaymentDate: updateData.nextPaymentDate
+      });
 
       const [updatedSchedule] = await db
         .update(paymentSchedules)
         .set(updateData)
         .where(eq(paymentSchedules.id, id))
         .returning();
+
+      if (!updatedSchedule) {
+        console.error('[Storage] Failed to update schedule:', id);
+        throw new Error('Failed to update payment schedule - no rows updated');
+      }
 
       console.log('[Storage] Successfully updated payment schedule:', {
         scheduleId: id,
@@ -807,7 +861,11 @@ export class DatabaseStorage implements IStorage {
           message: error.message,
           stack: error.stack
         } : error,
-        scheduleId: id
+        scheduleId: id,
+        updateData: {
+          ...updates,
+          squareCardId: updates.squareCardId ? 'REDACTED' : undefined
+        }
       });
       throw error;
     }

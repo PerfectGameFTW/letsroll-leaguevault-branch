@@ -186,16 +186,16 @@ router.patch("/schedules/:id", async (req, res) => {
     // Create a schema for updating payment schedule that only allows frequency and amount
     const updateScheduleSchema = z.object({
       frequency: z.enum(["weekly", "monthly"]),
-      amount: z.number().int().positive()
+      amount: z.number().int().positive(),
+      bowlerId: z.number().int().positive(),
+      leagueId: z.number().int().positive()
     });
 
     const updates = updateScheduleSchema.parse(req.body);
     console.log('[Payments Route] Validated updates:', updates);
 
     // Get the current schedule to ensure it exists
-    const bowlerId = req.body.bowlerId; //Added
-    const leagueId = req.body.leagueId; //Added
-    const currentSchedule = await storage.getPaymentSchedule(bowlerId, leagueId);
+    const currentSchedule = await storage.getPaymentSchedule(updates.bowlerId, updates.leagueId);
     if (!currentSchedule) {
       console.error('[Payments Route] Schedule not found:', id);
       return sendError(res, "Payment schedule not found", 404, "NOT_FOUND");
@@ -213,16 +213,14 @@ router.patch("/schedules/:id", async (req, res) => {
     nextPaymentDate.setDate(nextPaymentDate.getDate() + (updates.frequency === 'weekly' ? 7 : 28));
 
     try {
-      // Update the schedule with new values, but keep the existing card token
+      // Update the schedule with new values, preserving existing data
       const updatedSchedule = await storage.updatePaymentSchedule(id, {
+        ...currentSchedule,
         frequency: updates.frequency,
         amount: updates.amount,
         nextPaymentDate,
-        // Keep existing values
-        bowlerId: currentSchedule.bowlerId,
-        leagueId: currentSchedule.leagueId,
-        active: currentSchedule.active,
-        squareCardId: currentSchedule.squareCardId,
+        bowlerId: updates.bowlerId,
+        leagueId: updates.leagueId
       });
 
       console.log('[Payments Route] Schedule updated successfully:', {
