@@ -1,9 +1,8 @@
-// Interface definitions remain unchanged at the top
 import { useState, useRef, useEffect, FC, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertPaymentScheduleSchema, type Payment } from "@shared/schema";
+import { insertPaymentScheduleSchema, type Payment, type League, type User, type Bowler } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -18,7 +17,6 @@ import { Loader2, AlertCircle, ArrowRight, CreditCard, Calendar, Plus, Minus } f
 import { Link } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
-import type { League, User, Bowler } from "@shared/schema";
 import { useBowlers } from "@/hooks/use-bowlers";
 import {
   Dialog,
@@ -45,96 +43,7 @@ interface ModifyScheduleFormData {
 // Update the PaymentSchedule type definition
 type PaymentSchedule = "weekly" | "monthly" | "custom";
 
-const DEBUG_HOOKS = true;
-
-function getPaymentFrequency(payments: Payment[] = []): "weekly" | "monthly" {
-  if (!payments?.length) return 'weekly';
-
-  const recentPayments = payments.slice(0, 2);
-  if (recentPayments.length < 2) return 'weekly';
-
-  const weeks = differenceInWeeks(
-    new Date(recentPayments[0].weekOf),
-    new Date(recentPayments[1].weekOf)
-  );
-
-  return weeks >= 4 ? 'monthly' : 'weekly';
-}
-
-function usePaymentDrawer() {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
-
-  const handleWeekChange = useCallback((weeks: number, totalWeeks: number) => {
-    if (totalWeeks === 0) return;
-    const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
-    setSelectedWeeks(validWeeks);
-  }, []);
-
-  return {
-    isDrawerOpen,
-    setIsDrawerOpen,
-    selectedWeeks,
-    handleWeekChange
-  };
-}
-
-const Drawer = DrawerPrimitive as {
-  Root: typeof DrawerPrimitive.Root;
-  Portal: typeof DrawerPrimitive.Portal;
-  Overlay: typeof DrawerPrimitive.Overlay;
-  Content: typeof DrawerPrimitive.Content;
-};
-
-interface PaymentOption {
-  id: PaymentSchedule;
-  label: string;
-  description: string;
-  calculateAmount: (weeklyFee: number, totalWeeks: number, customWeeks?: number) => number;
-}
-interface UpcomingPayment {
-  dueDate: Date;
-  amount: number;
-}
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error?: {
-    message: string;
-    code?: string;
-  };
-}
-
-const PAYMENT_OPTIONS: PaymentOption[] = [
-  {
-    id: "weekly",
-    label: "Weekly Automatic Payment",
-    description: "Your card will be charged weekly for league dues",
-    calculateAmount: (weeklyFee) => weeklyFee,
-  },
-  {
-    id: "monthly",
-    label: "Monthly Automatic Payment",
-    description: "Your card will be charged monthly (4 weeks of dues)",
-    calculateAmount: (weeklyFee) => weeklyFee * 4,
-  },
-  {
-    id: "custom",
-    label: "One Time Payment",
-    description: "Make a single payment for your selected number of weeks",
-    calculateAmount: (weeklyFee, _, customWeeks = 1) => weeklyFee * customWeeks,
-  },
-];
-
-const getSeasonLength = (currentLeague?: League | null) => {
-  if (!currentLeague?.seasonStart || !currentLeague?.seasonEnd) return 0;
-  return Math.ceil(
-    (new Date(currentLeague.seasonEnd).getTime() - new Date(currentLeague.seasonStart).getTime()) /
-      (7 * 24 * 60 * 60 * 1000)
-  );
-};
-
-// Move ModifyScheduleDialog outside of renderPaymentStatus
+// Move ModifyScheduleDialog component outside of any other component
 function ModifyScheduleDialog({
   currentFrequency,
   currentAmount,
@@ -156,7 +65,6 @@ function ModifyScheduleDialog({
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Calculate the base weekly amount from the current frequency and amount
   const baseWeeklyAmount = useMemo(() => {
     return currentFrequency === 'monthly' ? currentAmount / 4 : currentAmount;
   }, [currentFrequency, currentAmount]);
@@ -166,7 +74,7 @@ function ModifyScheduleDialog({
       z.object({
         frequency: z.enum(["weekly", "monthly"]),
         amount: z.number().int().positive()
-      }).strict()
+      })
     ),
     defaultValues: {
       frequency: currentFrequency,
@@ -174,8 +82,8 @@ function ModifyScheduleDialog({
     },
   });
 
-  // Watch frequency changes to update amount
   const frequency = form.watch("frequency");
+
   useEffect(() => {
     const newAmount = frequency === 'monthly' ? baseWeeklyAmount * 4 : baseWeeklyAmount;
     form.setValue('amount', newAmount, { shouldValidate: true });
@@ -183,13 +91,6 @@ function ModifyScheduleDialog({
 
   const updateScheduleMutation = useMutation({
     mutationFn: async (data: ModifyScheduleFormData) => {
-      console.log('[ModifyScheduleDialog] Submitting update:', {
-        scheduleId,
-        bowlerId,
-        leagueId,
-        data
-      });
-
       const response = await fetch(`/api/payments/schedules/${scheduleId}`, {
         method: 'PATCH',
         headers: {
@@ -204,13 +105,10 @@ function ModifyScheduleDialog({
 
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('[ModifyScheduleDialog] Update failed:', errorData);
         throw new Error(errorData.error?.message || 'Failed to update payment schedule');
       }
 
-      const result = await response.json();
-      console.log('[ModifyScheduleDialog] Update successful:', result);
-      return result;
+      return await response.json();
     },
     onSuccess: async () => {
       await Promise.all([
@@ -226,7 +124,6 @@ function ModifyScheduleDialog({
       onClose();
     },
     onError: (error: Error) => {
-      console.error('[ModifyScheduleDialog] Mutation error:', error);
       toast({
         title: "Error",
         description: error.message,
@@ -330,6 +227,96 @@ function ModifyScheduleDialog({
     </Dialog>
   );
 }
+
+const DEBUG_HOOKS = true;
+
+function getPaymentFrequency(payments: Payment[] = []): "weekly" | "monthly" {
+  if (!payments?.length) return 'weekly';
+
+  const recentPayments = payments.slice(0, 2);
+  if (recentPayments.length < 2) return 'weekly';
+
+  const weeks = differenceInWeeks(
+    new Date(recentPayments[0].weekOf),
+    new Date(recentPayments[1].weekOf)
+  );
+
+  return weeks >= 4 ? 'monthly' : 'weekly';
+}
+
+function usePaymentDrawer() {
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
+
+  const handleWeekChange = useCallback((weeks: number, totalWeeks: number) => {
+    if (totalWeeks === 0) return;
+    const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
+    setSelectedWeeks(validWeeks);
+  }, []);
+
+  return {
+    isDrawerOpen,
+    setIsDrawerOpen,
+    selectedWeeks,
+    handleWeekChange
+  };
+}
+
+const Drawer = DrawerPrimitive as {
+  Root: typeof DrawerPrimitive.Root;
+  Portal: typeof DrawerPrimitive.Portal;
+  Overlay: typeof DrawerPrimitive.Overlay;
+  Content: typeof DrawerPrimitive.Content;
+};
+
+interface PaymentOption {
+  id: PaymentSchedule;
+  label: string;
+  description: string;
+  calculateAmount: (weeklyFee: number, totalWeeks: number, customWeeks?: number) => number;
+}
+interface UpcomingPayment {
+  dueDate: Date;
+  amount: number;
+}
+interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: {
+    message: string;
+    code?: string;
+  };
+}
+
+const PAYMENT_OPTIONS: PaymentOption[] = [
+  {
+    id: "weekly",
+    label: "Weekly Automatic Payment",
+    description: "Your card will be charged weekly for league dues",
+    calculateAmount: (weeklyFee) => weeklyFee,
+  },
+  {
+    id: "monthly",
+    label: "Monthly Automatic Payment",
+    description: "Your card will be charged monthly (4 weeks of dues)",
+    calculateAmount: (weeklyFee) => weeklyFee * 4,
+  },
+  {
+    id: "custom",
+    label: "One Time Payment",
+    description: "Make a single payment for your selected number of weeks",
+    calculateAmount: (weeklyFee, _, customWeeks = 1) => weeklyFee * customWeeks,
+  },
+];
+
+const getSeasonLength = (currentLeague?: League | null) => {
+  if (!currentLeague?.seasonStart || !currentLeague?.seasonEnd) return 0;
+  return Math.ceil(
+    (new Date(currentLeague.seasonEnd).getTime() - new Date(currentLeague.seasonStart).getTime()) /
+      (7 * 24 * 60 * 60 * 1000)
+  );
+};
+
 
 export const BowlerDashboardPage: FC = () => {
   if (DEBUG_HOOKS) {
@@ -646,27 +633,29 @@ export const BowlerDashboardPage: FC = () => {
                       <div className="flex items-center gap-2 pt-4 border-t">
                         <Button
                           variant="outline"
-                          onClick={() => setIsModifyingSchedule(true)}
+                          onClick={() => {
+                            console.log('Opening modify schedule dialog');
+                            setIsModifyingSchedule(true);
+                          }}
                           className="w-full"
                         >
                           Modify Payment Schedule
                           <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
                       </div>
-
-                      {paymentScheduleResponse?.data && (
-                        <ModifyScheduleDialog
-                          currentFrequency={getPaymentFrequency(payments) || 'weekly'}
-                          currentAmount={weeklyFee}
-                          isOpen={isModifyingSchedule}
-                          onClose={() => setIsModifyingSchedule(false)}
-                          bowlerId={bowler.id}
-                          leagueId={league.id}
-                          scheduleId={paymentScheduleResponse.data.id}
-                        />
-                      )}
                     </CardContent>
                   </Card>
+
+                  {/* Move ModifyScheduleDialog outside of any conditionals */}
+                  <ModifyScheduleDialog
+                    currentFrequency={getPaymentFrequency(payments)}
+                    currentAmount={weeklyFee}
+                    isOpen={isModifyingSchedule}
+                    onClose={() => setIsModifyingSchedule(false)}
+                    bowlerId={bowler.id}
+                    leagueId={league.id}
+                    scheduleId={currentPaymentSchedule?.id || 0}
+                  />
 
                   {upcomingPayments.length > 0 && (
                     <div className="space-y-3">
@@ -935,22 +924,27 @@ export const BowlerDashboardPage: FC = () => {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin" />
-      </div>    );
+      </div>
+    );
   }
 
   // Early return if required data is missing
   if (!currentUser) {
     return (
-      <Card className="mx-auto max-w-md mt-8">
+      <Card className="mx-auto max-w-md mt8">
         <CardHeader>
           <CardTitle>Authentication Required</CardTitle>
           <CardDescription>Please log in to view your dashboard</CardDescription>
         </CardHeader>
-        <CardContent className="space-y4">
+        <CardContent className="space-y-4">
           <p className="text-muted-foreground">
             You need to be logged in to access your bowler dashboard.
-          </p>          <Link href="/login">
-            <Button className="w-full">Log In</Button>
+          </p>
+          <Link href="/auth">
+            <Button className="w-full">
+              Log In
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
           </Link>
         </CardContent>
       </Card>
@@ -973,11 +967,11 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-
   return (
     <BowlerLayout
-      bowlerName={bowler.name}
-      leagueName={getBowlerFirstLeagueName(bowler)}
+      bowler={bowler}
+      team={getBowlerTeamName(bowler)}
+      league={getBowlerFirstLeagueName(bowler)}
     >
       <div className="space-y-6">
         <Card>
