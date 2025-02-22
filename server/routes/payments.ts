@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import { storage } from '../storage.js';
-import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema.js";
+import { insertPaymentSchema, partialPaymentSchema, insertPaymentScheduleSchema } from "@shared/schema.js";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { processPayment } from '../services/square.js';
+import { paymentScheduler } from '../services/payment-scheduler.js';
 
 const router = Router();
 
@@ -132,6 +133,48 @@ router.delete("/:id", async (req, res) => {
   } catch (error) {
     console.error('[Payments Route] Delete error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to delete payment');
+  }
+});
+
+// Add new route for updating payment schedules
+router.patch("/schedules/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return sendError(res, "Invalid schedule ID", 400, "INVALID_ID");
+    }
+
+    // Create a schema for updating payment schedule without card ID
+    const updateScheduleSchema = insertPaymentScheduleSchema
+      .omit({ squareCardId: true })
+      .partial();
+
+    console.log('[Payments Route] Updating payment schedule:', {
+      scheduleId: id,
+      updates: req.body
+    });
+
+    const updates = updateScheduleSchema.parse(req.body);
+    const updatedSchedule = await storage.updatePaymentSchedule(id, updates);
+
+    // Notify the payment scheduler about the updated schedule
+    await paymentScheduler.updateSchedule(updatedSchedule);
+
+    console.log('[Payments Route] Successfully updated payment schedule:', {
+      scheduleId: id,
+      frequency: updatedSchedule.frequency,
+      amount: updatedSchedule.amount,
+      nextPaymentDate: updatedSchedule.nextPaymentDate
+    });
+
+    sendSuccess(res, updatedSchedule);
+  } catch (error) {
+    console.error('[Payments Route] Update schedule error:', error);
+    if (error instanceof z.ZodError) {
+      sendError(res, error, 400, "VALIDATION_ERROR");
+    } else {
+      sendError(res, error instanceof Error ? error.message : 'Failed to update payment schedule');
+    }
   }
 });
 

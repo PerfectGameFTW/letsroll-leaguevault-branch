@@ -12,6 +12,7 @@ import {
   type Game, type InsertGame,
   type Score, type InsertScore,
   type User, type InsertUser, // Add User types
+  type PaymentSchedule, type InsertPaymentSchedule // Add PaymentSchedule types
 } from "@shared/schema.js";
 
 export interface IStorage {
@@ -78,6 +79,7 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
+  updatePaymentSchedule(id: number, updates: Partial<InsertPaymentSchedule>): Promise<PaymentSchedule>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -753,6 +755,58 @@ export class DatabaseStorage implements IStorage {
           stack: error.stack
         } : error,
         input: { bowlerId, leagueId, cardIdLength: cardId.length }
+      });
+      throw error;
+    }
+  }
+
+  async updatePaymentSchedule(id: number, updates: Partial<InsertPaymentSchedule>): Promise<PaymentSchedule> {
+    try {
+      console.log('[Storage] Updating payment schedule:', {
+        scheduleId: id,
+        updates: {
+          ...updates,
+          squareCardId: updates.squareCardId ? `${updates.squareCardId.substring(0, 10)}...` : undefined
+        }
+      });
+
+      const [existingSchedule] = await db
+        .select()
+        .from(paymentSchedules)
+        .where(eq(paymentSchedules.id, id));
+
+      if (!existingSchedule) {
+        throw new Error(`Payment schedule ${id} not found`);
+      }
+
+      // Create update object keeping the existing card ID
+      const updateData = {
+        ...updates,
+        squareCardId: existingSchedule.squareCardId, // Keep existing card ID
+      };
+
+      const [updatedSchedule] = await db
+        .update(paymentSchedules)
+        .set(updateData)
+        .where(eq(paymentSchedules.id, id))
+        .returning();
+
+      console.log('[Storage] Successfully updated payment schedule:', {
+        scheduleId: id,
+        frequency: updatedSchedule.frequency,
+        amount: updatedSchedule.amount,
+        nextPaymentDate: updatedSchedule.nextPaymentDate
+      });
+
+      return updatedSchedule;
+    } catch (error) {
+      console.error('[Storage] Error updating payment schedule:', {
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        scheduleId: id
       });
       throw error;
     }

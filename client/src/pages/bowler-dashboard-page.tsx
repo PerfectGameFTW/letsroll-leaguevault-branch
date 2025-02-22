@@ -1,6 +1,9 @@
 // Interface definitions remain unchanged at the top
 import { useState, useRef, useEffect, FC, useMemo, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { insertPaymentScheduleSchema, PaymentSchedule } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -17,10 +20,24 @@ import { BowlerLayout } from "@/components/bowler-layout";
 import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
 import type { League, Payment, User, Bowler } from "@shared/schema";
 import { useBowlers } from "@/hooks/use-bowlers";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+
 
 const DEBUG_HOOKS = true;
 
-// Custom hook for drawer state management
 function usePaymentDrawer() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
@@ -39,7 +56,6 @@ function usePaymentDrawer() {
   };
 }
 
-// Drawer type definition
 const Drawer = DrawerPrimitive as {
   Root: typeof DrawerPrimitive.Root;
   Portal: typeof DrawerPrimitive.Portal;
@@ -47,7 +63,6 @@ const Drawer = DrawerPrimitive as {
   Content: typeof DrawerPrimitive.Content;
 };
 
-// Type definitions remain unchanged - moved outside component
 type PaymentSchedule = "weekly" | "monthly" | "custom";
 interface PaymentOption {
   id: PaymentSchedule;
@@ -68,7 +83,6 @@ interface ApiResponse<T> {
   };
 }
 
-// Payment options constant remains unchanged
 const PAYMENT_OPTIONS: PaymentOption[] = [
   {
     id: "weekly",
@@ -90,7 +104,6 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   },
 ];
 
-// getSeasonLength utility function remains unchanged
 const getSeasonLength = (currentLeague?: League | null) => {
   if (!currentLeague?.seasonStart || !currentLeague?.seasonEnd) return 0;
   return Math.ceil(
@@ -104,16 +117,13 @@ export const BowlerDashboardPage: FC = () => {
     console.log('[BowlerDashboard] Component rendering start'); // Debug log
   }
 
-  // Initialize all state hooks at the top level
   const { toast } = useToast();
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
 
-  // Use custom drawer hook
   const { isDrawerOpen, setIsDrawerOpen, selectedWeeks, handleWeekChange: customHandleWeekChange } = usePaymentDrawer();
 
-  // User and Bowler data hooks
   const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
     staleTime: 1000 * 60 * 5,
@@ -138,7 +148,6 @@ export const BowlerDashboardPage: FC = () => {
     isEnabled: !!currentUser?.bowlerId,
   });
 
-  // Memoize derived values
   const bowler = useMemo(() =>
     currentUser?.bowlerId ? bowlers.find((b: Bowler) => b.id === currentUser.bowlerId) : null,
     [currentUser?.bowlerId, bowlers]
@@ -149,7 +158,6 @@ export const BowlerDashboardPage: FC = () => {
     [bowler, getBowlerLeagueId]
   );
 
-  // League and payments data hook
   const { data: combinedData, isLoading: isCombinedLoading } = useQuery({
     queryKey: [`/api/dashboard-data`, leagueId],
     enabled: !!leagueId,
@@ -189,7 +197,6 @@ export const BowlerDashboardPage: FC = () => {
     },
   });
 
-  // Memoized values
   const league = combinedData?.league;
   const payments = combinedData?.payments || [];
   const totalWeeks = useMemo(() => getSeasonLength(league), [league]);
@@ -202,7 +209,6 @@ export const BowlerDashboardPage: FC = () => {
     [payments]
   );
 
-  // Calculate upcoming payments using memoized values
   const upcomingPayments = useMemo(() => {
     if (!league?.seasonStart || !league?.seasonEnd || !weeklyFee) return [];
 
@@ -224,7 +230,6 @@ export const BowlerDashboardPage: FC = () => {
     return payments;
   }, [league, weeklyFee]);
 
-  // Calculate amount past due using memoized values
   const amountPastDue = useMemo(() => {
     if (!league?.seasonStart || !league?.seasonEnd || !weeklyFee) return 0;
 
@@ -240,7 +245,6 @@ export const BowlerDashboardPage: FC = () => {
     return Math.max(0, totalSeasonDues - totalPaidAmount);
   }, [league, weeklyFee, totalPaidAmount]);
 
-  // Memoized handlers
   const handleWeekChangeWrapper = useCallback((weeks: number) => customHandleWeekChange(weeks, totalWeeks), [customHandleWeekChange, totalWeeks]);
 
 
@@ -300,7 +304,6 @@ export const BowlerDashboardPage: FC = () => {
     handleWeekChangeWrapper(selectedWeeks - 1);
   };
 
-  // Calculate payment frequency based on actual payment history
   const getPaymentFrequency = useCallback(() => {
     if (!payments?.length) return null;
 
@@ -315,7 +318,6 @@ export const BowlerDashboardPage: FC = () => {
     return weeks >= 4 ? 'monthly' : 'weekly';
   }, [payments]);
 
-  // Group all useEffect hooks together
   useEffect(() => {
     if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
       initializeCard(cardContainerRef.current);
@@ -336,15 +338,175 @@ export const BowlerDashboardPage: FC = () => {
     };
   }, [card]);
 
-  // Define seasonPresets before renderPaymentStatus
   const seasonPresets = useMemo(() => [
     { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
     { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
     { label: "Full Season", weeks: totalWeeks }
   ], [totalWeeks]);
 
-  // Memoize renderPaymentStatus after seasonPresets is defined
+  function ModifyScheduleDialog({ 
+    scheduleId, 
+    currentFrequency,
+    currentAmount,
+    isOpen, 
+    onClose 
+  }: { 
+    scheduleId: number;
+    currentFrequency: PaymentSchedule;
+    currentAmount: number;
+    isOpen: boolean;
+    onClose: () => void;
+  }) {
+    const { toast } = useToast();
+    const queryClient = useQueryClient();
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const form = useForm({
+      resolver: zodResolver(
+        insertPaymentScheduleSchema
+          .omit({ squareCardId: true })
+          .partial()
+      ),
+      defaultValues: {
+        frequency: currentFrequency,
+        amount: currentAmount,
+      },
+    });
+
+    const updateScheduleMutation = useMutation({
+      mutationFn: async (data: Partial<any>) => { // Replace any with the actual type if available
+        const response = await fetch(`/api/payments/schedules/${scheduleId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.message || 'Failed to update payment schedule');
+        }
+
+        return response.json();
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: [`/api/dashboard-data`] });
+        toast({
+          title: "Success",
+          description: "Payment schedule updated successfully",
+        });
+        onClose();
+      },
+      onError: (error: Error) => {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      },
+    });
+
+    const onSubmit = async (data: Partial<any>) => { // Replace any with the actual type if available
+      try {
+        setIsSubmitting(true);
+        await updateScheduleMutation.mutateAsync(data);
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+
+    return (
+      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Modify Payment Schedule</DialogTitle>
+          </DialogHeader>
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="frequency"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payment Frequency</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        className="flex flex-col space-y-1"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="weekly" id="weekly" />
+                          <Label htmlFor="weekly">Weekly</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <RadioGroupItem value="monthly" id="monthly" />
+                          <Label htmlFor="monthly">Monthly (every 4 weeks)</Label>
+                        </div>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="amount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Payment Amount ($)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        {...field}
+                        onChange={(e) => {
+                          const dollars = parseFloat(e.target.value);
+                          field.onChange(Math.round(dollars * 100));
+                        }}
+                        value={(field.value / 100).toFixed(2)}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-end space-x-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onClose}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    "Update Schedule"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   const renderPaymentStatus = useMemo(() => {
+    const [isModifyingSchedule, setIsModifyingSchedule] = useState(false);
+
     return (
       <>
         {bowler?.squareCustomerId ? (
@@ -407,13 +569,23 @@ export const BowlerDashboardPage: FC = () => {
                       <div className="flex items-center gap-2 pt-4 border-t">
                         <Button
                           variant="outline"
-                          onClick={() => setShowPaymentSetup(true)}
+                          onClick={() => setIsModifyingSchedule(true)}
                           className="w-full"
                         >
-                          Update Payment Settings
+                          Modify Payment Schedule
                           <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
                       </div>
+
+                      {league && (
+                        <ModifyScheduleDialog
+                          scheduleId={league.id}
+                          currentFrequency={getPaymentFrequency() || 'weekly'}
+                          currentAmount={weeklyFee}
+                          isOpen={isModifyingSchedule}
+                          onClose={() => setIsModifyingSchedule(false)}
+                        />
+                      )}
                     </CardContent>
                   </Card>
 
@@ -690,11 +862,11 @@ export const BowlerDashboardPage: FC = () => {
     payments,
     upcomingPayments,
     amountPastDue,
-    getPaymentFrequency
+    getPaymentFrequency,
+    league
   ]);
 
 
-  // Loading and error states
   if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
