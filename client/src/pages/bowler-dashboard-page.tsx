@@ -36,6 +36,12 @@ import {
 } from "@/components/ui/form";
 import * as z from 'zod';
 
+// Add these type definitions before the component
+interface ModifyScheduleFormData {
+  frequency: "weekly" | "monthly";
+  amount: number;
+}
+
 // Update the PaymentSchedule type definition
 type PaymentSchedule = "weekly" | "monthly" | "custom";
 
@@ -128,6 +134,203 @@ const getSeasonLength = (currentLeague?: League | null) => {
   );
 };
 
+// Move ModifyScheduleDialog outside of renderPaymentStatus
+function ModifyScheduleDialog({
+  currentFrequency,
+  currentAmount,
+  isOpen,
+  onClose,
+  bowlerId,
+  leagueId,
+  scheduleId
+}: {
+  currentFrequency: "weekly" | "monthly";
+  currentAmount: number;
+  isOpen: boolean;
+  onClose: () => void;
+  bowlerId: number;
+  leagueId: number;
+  scheduleId: number;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Calculate the base weekly amount from the current frequency and amount
+  const baseWeeklyAmount = useMemo(() => {
+    return currentFrequency === 'monthly' ? currentAmount / 4 : currentAmount;
+  }, [currentFrequency, currentAmount]);
+
+  const form = useForm<ModifyScheduleFormData>({
+    resolver: zodResolver(
+      z.object({
+        frequency: z.enum(["weekly", "monthly"]),
+        amount: z.number().int().positive()
+      }).strict()
+    ),
+    defaultValues: {
+      frequency: currentFrequency,
+      amount: currentAmount,
+    },
+  });
+
+  // Watch frequency changes to update amount
+  const frequency = form.watch("frequency");
+  useEffect(() => {
+    const newAmount = frequency === 'monthly' ? baseWeeklyAmount * 4 : baseWeeklyAmount;
+    form.setValue('amount', newAmount, { shouldValidate: true });
+  }, [frequency, baseWeeklyAmount, form]);
+
+  const updateScheduleMutation = useMutation({
+    mutationFn: async (data: ModifyScheduleFormData) => {
+      console.log('[ModifyScheduleDialog] Submitting update:', {
+        scheduleId,
+        bowlerId,
+        leagueId,
+        data
+      });
+
+      const response = await fetch(`/api/payments/schedules/${scheduleId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...data,
+          bowlerId,
+          leagueId
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('[ModifyScheduleDialog] Update failed:', errorData);
+        throw new Error(errorData.error?.message || 'Failed to update payment schedule');
+      }
+
+      const result = await response.json();
+      console.log('[ModifyScheduleDialog] Update successful:', result);
+      return result;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/api/payment-schedules'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/payments'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/dashboard-data'] }),
+      ]);
+
+      toast({
+        title: "Success",
+        description: "Payment schedule updated successfully",
+      });
+      onClose();
+    },
+    onError: (error: Error) => {
+      console.error('[ModifyScheduleDialog] Mutation error:', error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onSubmit = form.handleSubmit(async (data) => {
+    try {
+      setIsSubmitting(true);
+      await updateScheduleMutation.mutateAsync(data);
+    } catch (error) {
+      console.error('[ModifyScheduleDialog] Submit error:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  });
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Modify Payment Schedule</DialogTitle>
+        </DialogHeader>
+        <Form {...form}>
+          <form onSubmit={onSubmit} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="frequency"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Payment Frequency</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      value={field.value}
+                      className="flex flex-col space-y-1"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="weekly" id="weekly" />
+                        <Label htmlFor="weekly">Weekly (${(baseWeeklyAmount / 100).toFixed(2)}/week)</Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value="monthly" id="monthly" />
+                        <Label htmlFor="monthly">Monthly (${((baseWeeklyAmount * 4) / 100).toFixed(2)}/month)</Label>
+                      </div>
+                    </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="amount"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Payment Amount ($)</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      disabled
+                      {...field}
+                      value={(field.value / 100).toFixed(2)}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="flex justify-end space-x-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  "Update Schedule"
+                )}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export const BowlerDashboardPage: FC = () => {
   if (DEBUG_HOOKS) {
     console.log('[BowlerDashboard] Component rendering start'); // Debug log
@@ -137,6 +340,7 @@ export const BowlerDashboardPage: FC = () => {
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
+  const [isModifyingSchedule, setIsModifyingSchedule] = useState(false);
 
   const { isDrawerOpen, setIsDrawerOpen, selectedWeeks, handleWeekChange: customHandleWeekChange } = usePaymentDrawer();
 
@@ -145,10 +349,6 @@ export const BowlerDashboardPage: FC = () => {
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 30,
   });
-
-  if (DEBUG_HOOKS) {
-    console.log('[BowlerDashboard] Current user data:', currentUserResponse?.data); // Debug log
-  }
 
   const currentUser = currentUserResponse?.data;
 
@@ -173,6 +373,19 @@ export const BowlerDashboardPage: FC = () => {
     bowler ? getBowlerLeagueId(bowler) : null,
     [bowler, getBowlerLeagueId]
   );
+
+  // Add payment schedule query at component level
+  const { data: paymentScheduleResponse, isLoading: isPaymentScheduleLoading } = useQuery({
+    queryKey: [`/api/payment-schedules`, bowler?.id],
+    enabled: !!bowler?.id && !!leagueId,
+    queryFn: async () => {
+      const response = await fetch(`/api/payment-schedules?bowlerId=${bowler?.id}&leagueId=${leagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch payment schedule');
+      }
+      return response.json();
+    },
+  });
 
   const { data: combinedData, isLoading: isCombinedLoading } = useQuery({
     queryKey: [`/api/dashboard-data`, leagueId],
@@ -264,8 +477,10 @@ export const BowlerDashboardPage: FC = () => {
     return Math.max(0, totalSeasonDues - totalPaidAmount);
   }, [league, weeklyFee, totalPaidAmount]);
 
-  const handleWeekChangeWrapper = useCallback((weeks: number) => customHandleWeekChange(weeks, totalWeeks), [customHandleWeekChange, totalWeeks]);
-
+  const handleWeekChangeWrapper = useCallback((weeks: number) => {
+    if (!totalWeeks) return; // Add null check
+    customHandleWeekChange(weeks, totalWeeks);
+  }, [customHandleWeekChange, totalWeeks]);
 
   const calculateTotalAmount = useCallback(() => {
     if (!league || !bowler) return 0;
@@ -323,6 +538,13 @@ export const BowlerDashboardPage: FC = () => {
     handleWeekChangeWrapper(selectedWeeks - 1);
   };
 
+  // Define seasonPresets here, outside of the memo
+  const seasonPresets = useMemo(() => [
+    { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
+    { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
+    { label: "Full Season", weeks: totalWeeks }
+  ], [totalWeeks]);
+
   useEffect(() => {
     if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
       initializeCard(cardContainerRef.current);
@@ -345,224 +567,22 @@ export const BowlerDashboardPage: FC = () => {
 
 
   const renderPaymentStatus = useMemo(() => {
-    const [isModifyingSchedule, setIsModifyingSchedule] = useState(false);
-
-    const seasonPresets = useMemo(() => [
-      { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
-      { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
-      { label: "Full Season", weeks: totalWeeks }
-    ], [totalWeeks]);
-
-    // Update the form validation schema and form data handling
-    interface ModifyScheduleFormData {
-      frequency: "weekly" | "monthly";
-      amount: number;
-    }
-
-    // Update the payment schedule hooks
-    const { data: paymentScheduleResponse, isLoading: isPaymentScheduleLoading } = useQuery({
-      queryKey: [`/api/payment-schedules`, bowler?.id],
-      enabled: !!bowler?.id && !!leagueId,
-      queryFn: async () => {
-        const response = await fetch(`/api/payment-schedules?bowlerId=${bowler?.id}&leagueId=${leagueId}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch payment schedule');
-        }
-        return response.json();
-      },
-    });
-
     const currentPaymentSchedule = paymentScheduleResponse?.data;
 
-
-    function ModifyScheduleDialog({
-      currentFrequency,
-      currentAmount,
-      isOpen,
-      onClose
-    }: {
-      currentFrequency: "weekly" | "monthly";
-      currentAmount: number;
-      isOpen: boolean;
-      onClose: () => void;
-    }) {
-      const { toast } = useToast();
-      const queryClient = useQueryClient();
-      const [isSubmitting, setIsSubmitting] = useState(false);
-
-      // Calculate the base weekly amount from the current frequency and amount
-      const baseWeeklyAmount = useMemo(() => {
-        return currentFrequency === 'monthly' ? currentAmount / 4 : currentAmount;
-      }, [currentFrequency, currentAmount]);
-
-      const form = useForm<ModifyScheduleFormData>({
-        resolver: zodResolver(
-          z.object({
-            frequency: z.enum(["weekly", "monthly"]),
-            amount: z.number().int().positive()
-          }).strict()
-        ),
-        defaultValues: {
-          frequency: currentFrequency,
-          amount: currentAmount,
-        },
-      });
-
-      // Watch frequency changes to update amount
-      const frequency = form.watch("frequency");
-      useEffect(() => {
-        const newAmount = frequency === 'monthly' ? baseWeeklyAmount * 4 : baseWeeklyAmount;
-        form.setValue('amount', newAmount, { shouldValidate: true });
-      }, [frequency, baseWeeklyAmount, form]);
-
-      const updateScheduleMutation = useMutation({
-        mutationFn: async (data: ModifyScheduleFormData) => {
-          if (!currentPaymentSchedule?.id) {
-            throw new Error("No payment schedule found");
-          }
-
-          console.log('[ModifyScheduleDialog] Submitting update:', {
-            scheduleId: currentPaymentSchedule.id,
-            data
-          });
-
-          const response = await fetch(`/api/payments/schedules/${currentPaymentSchedule?.id}`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data),
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            console.error('[ModifyScheduleDialog] Update failed:', errorData);
-            throw new Error(errorData.error?.message || 'Failed to update payment schedule');
-          }
-
-          const result = await response.json();
-          console.log('[ModifyScheduleDialog] Update successful:', result);
-          return result;
-        },
-        onSuccess: async () => {
-          // Invalidate all related queries
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ['/api/payment-schedules'] }),
-            queryClient.invalidateQueries({ queryKey: ['/api/payments'] }),
-            queryClient.invalidateQueries({ queryKey: ['/api/dashboard-data'] }),
-          ]);
-
-          toast({
-            title: "Success",
-            description: "Payment schedule updated successfully",
-          });
-          onClose();
-        },
-        onError: (error: Error) => {
-          console.error('[ModifyScheduleDialog] Mutation error:', error);
-          toast({
-            title: "Error",
-            description: error.message,
-            variant: "destructive",
-          });
-        },
-      });
-
-      const onSubmit = form.handleSubmit(async (data) => {
-        try {
-          setIsSubmitting(true);
-          await updateScheduleMutation.mutateAsync(data);
-        } catch (error) {
-          console.error('[ModifyScheduleDialog] Submit error:', error);
-        } finally {
-          setIsSubmitting(false);
-        }
-      });
-
+    // Render loading state for payment schedule
+    if (isPaymentScheduleLoading) {
       return (
-        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Modify Payment Schedule</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={onSubmit} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="frequency"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Payment Frequency</FormLabel>
-                      <FormControl>
-                        <RadioGroup
-                          onValueChange={field.onChange}
-                          value={field.value}
-                          className="flex flex-col space-y-1"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="weekly" id="weekly" />
-                            <Label htmlFor="weekly">Weekly (${(baseWeeklyAmount / 100).toFixed(2)}/week)</Label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="monthly" id="monthly" />
-                            <Label htmlFor="monthly">Monthly (${((baseWeeklyAmount * 4) / 100).toFixed(2)}/month)</Label>
-                          </div>
-                        </RadioGroup>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="amount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Payment Amount ($)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          disabled
-                          {...field}
-                          value={(field.value / 100).toFixed(2)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="flex justify-end space-x-2 pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={onClose}
-                    disabled={isSubmitting}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Updating...
-                      </>
-                    ) : (
-                      "Update Schedule"
-                    )}
-                  </Button>
-                </div>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
+        <div className="flex items-center justify-center p-8">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
       );
     }
+
+    // Handle cases where bowler or league data is missing or incomplete.
+    if (!bowler || !league) {
+      return <p className="text-muted-foreground">No bowler or league data found.</p>;
+    }
+
 
     return (
       <>
@@ -634,12 +654,15 @@ export const BowlerDashboardPage: FC = () => {
                         </Button>
                       </div>
 
-                      {league && (
+                      {paymentScheduleResponse?.data && (
                         <ModifyScheduleDialog
                           currentFrequency={getPaymentFrequency(payments) || 'weekly'}
                           currentAmount={weeklyFee}
                           isOpen={isModifyingSchedule}
                           onClose={() => setIsModifyingSchedule(false)}
+                          bowlerId={bowler.id}
+                          leagueId={league.id}
+                          scheduleId={paymentScheduleResponse.data.id}
                         />
                       )}
                     </CardContent>
@@ -876,26 +899,9 @@ export const BowlerDashboardPage: FC = () => {
               </div>
             </div>
           ) : (
-            <div className="space-y-4 pt-2">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <CreditCard className="h-5 w-5" />
-                <p>Set up your payment method to enable automatic payments</p>
-              </div>
-              <div className="rounded-md bg-secondary/50 p-4">
-                <h3 className="font-semibold mb-2">Why set up automatic payments?</h3>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li>• Never miss a payment deadline</li>
-                  <li>• Choose flexible payment schedules</li>
-                  <li>• Secure and hassle-free transactions</li>
-                  <li>• Special discounts for full season payments</li>
-                </ul>
-              </div>
-              <Button
-                className="w-full"
-                onClick={() => setShowPaymentSetup(true)}
-              >
-                Set Up Payments Now
-                <ArrowRight className="ml-2 h-4 w-4" />
+            <div className="text-center py-8">
+              <Button onClick={() => setShowPaymentSetup(true)}>
+                Set Up Automatic Payments
               </Button>
             </div>
           )
@@ -904,12 +910,11 @@ export const BowlerDashboardPage: FC = () => {
     );
   }, [
     bowler,
-    showPaymentSetup,
-    selectedSchedule,
-    weeklyFee,
-    totalWeeks,
+    league,
     selectedWeeks,
-    isDrawerOpen,
+    selectedSchedule,
+    totalWeeks,
+    weeklyFee,
     customHandleWeekChange,
     calculateTotalAmount,
     handleSubmitPayment,
@@ -918,17 +923,22 @@ export const BowlerDashboardPage: FC = () => {
     payments,
     upcomingPayments,
     amountPastDue,
-    getPaymentFrequency, league,
-    isPaymentScheduleLoading
+    getPaymentFrequency,
+    isPaymentScheduleLoading,
+    paymentScheduleResponse,
+    isModifyingSchedule,
+    setIsModifyingSchedule
   ]);
+
+  // Update the loading check to include payment schedule loading
   if (isInitialLoading || isLoadingRelatedData || isCombinedLoading || isPaymentScheduleLoading) {
-    return(
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>    );
   }
 
+  // Early return if required data is missing
   if (!currentUser) {
     return (
       <Card className="mx-auto max-w-md mt-8">
@@ -947,36 +957,22 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-  if (!bowler) {
+  if (!bowler || !league) {
     return (
       <Card className="mx-auto max-w-md mt-8">
         <CardHeader>
-          <CardTitle>Profile Setup Required</CardTitle>
-          <CardDescription>Your bowler profile needs to be configured</CardDescription>
+          <CardTitle>Profile or League Data Missing</CardTitle>
+          <CardDescription>Required data is unavailable.</CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground">
-            Please contact a league administrator to setup your bowler profile.
+            Please contact a league administrator if the problem persists.
           </p>
         </CardContent>
       </Card>
     );
   }
 
-  if (!league) {    return (
-      <Card className="mx-auto max-w-md mt-8">
-        <CardHeader>
-          <CardTitle>League Data Unavailable</CardTitle>
-          <CardDescription>Unable to load league information</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Please try again later or contact support if the problem persists.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
 
   return (
     <BowlerLayout

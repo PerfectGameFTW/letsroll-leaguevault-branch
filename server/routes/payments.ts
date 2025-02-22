@@ -136,6 +136,39 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+// Add this route before the PATCH endpoint
+router.get("/schedules", async (req, res) => {
+  try {
+    const bowlerId = parseInt(req.query.bowlerId as string);
+    const leagueId = parseInt(req.query.leagueId as string);
+
+    if (isNaN(bowlerId) || isNaN(leagueId)) {
+      return sendError(res, "Invalid bowlerId or leagueId", 400, "INVALID_PARAMETERS");
+    }
+
+    console.log('[Payments Route] Fetching payment schedule:', { bowlerId, leagueId });
+
+    const schedule = await storage.getPaymentSchedule(bowlerId, leagueId);
+
+    if (!schedule) {
+      console.log('[Payments Route] No schedule found for:', { bowlerId, leagueId });
+      return sendError(res, "Payment schedule not found", 404, "NOT_FOUND");
+    }
+
+    console.log('[Payments Route] Found schedule:', {
+      id: schedule.id,
+      frequency: schedule.frequency,
+      amount: schedule.amount
+    });
+
+    sendSuccess(res, schedule);
+  } catch (error) {
+    console.error('[Payments Route] Error fetching schedule:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to fetch payment schedule');
+  }
+});
+
+
 // Update payment schedule endpoint
 router.patch("/schedules/:id", async (req, res) => {
   try {
@@ -160,7 +193,9 @@ router.patch("/schedules/:id", async (req, res) => {
     console.log('[Payments Route] Validated updates:', updates);
 
     // Get the current schedule to ensure it exists
-    const currentSchedule = await storage.getPaymentSchedule(id);
+    const bowlerId = req.body.bowlerId; //Added
+    const leagueId = req.body.leagueId; //Added
+    const currentSchedule = await storage.getPaymentSchedule(bowlerId, leagueId);
     if (!currentSchedule) {
       console.error('[Payments Route] Schedule not found:', id);
       return sendError(res, "Payment schedule not found", 404, "NOT_FOUND");
