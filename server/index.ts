@@ -61,8 +61,25 @@ const startupPhases: StartupPhases = {
   final: false
 };
 
-// Write workflow status to port status file
-fs.writeFileSync('.workflow-status', WORKFLOW_ID);
+// Write workflow status to port status file with additional metadata
+const workflowStatus = {
+  id: WORKFLOW_ID,
+  timestamp: new Date().toISOString(),
+  pid: process.pid,
+  active: true
+};
+fs.writeFileSync('.workflow-status', JSON.stringify(workflowStatus, null, 2));
+
+// Periodically update workflow status
+setInterval(() => {
+  try {
+    const status = JSON.parse(fs.readFileSync('.workflow-status', 'utf-8'));
+    status.timestamp = new Date().toISOString();
+    fs.writeFileSync('.workflow-status', JSON.stringify(status, null, 2));
+  } catch (error) {
+    console.error('[Server] Error updating workflow status:', error);
+  }
+}, 5000);
 
 const shutdownPhases: ShutdownPhases = {
   initiated: false,
