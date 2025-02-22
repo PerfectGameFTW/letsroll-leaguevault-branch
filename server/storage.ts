@@ -80,6 +80,7 @@ export interface IStorage {
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
   updatePaymentSchedule(id: number, updates: Partial<InsertPaymentSchedule>): Promise<PaymentSchedule>;
+  getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -807,6 +808,43 @@ export class DatabaseStorage implements IStorage {
           stack: error.stack
         } : error,
         scheduleId: id
+      });
+      throw error;
+    }
+  }
+
+  async getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined> {
+    try {
+      console.log('[Storage] Getting payment schedule:', { bowlerId, leagueId });
+
+      const [schedule] = await db
+        .select()
+        .from(paymentSchedules)
+        .where(
+          and(
+            eq(paymentSchedules.bowlerId, bowlerId),
+            eq(paymentSchedules.leagueId, leagueId),
+            eq(paymentSchedules.active, true)
+          )
+        );
+
+      console.log('[Storage] Found payment schedule:', schedule ? {
+        id: schedule.id,
+        frequency: schedule.frequency,
+        amount: schedule.amount,
+        nextPaymentDate: schedule.nextPaymentDate
+      } : 'None');
+
+      return schedule;
+    } catch (error) {
+      console.error('[Storage] Error getting payment schedule:', {
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        bowlerId,
+        leagueId
       });
       throw error;
     }

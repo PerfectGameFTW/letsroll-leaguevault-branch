@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, FC, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { insertPaymentScheduleSchema, type PaymentSchedule } from "@shared/schema";
+import { insertPaymentScheduleSchema, type Payment } from "@shared/schema";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -18,7 +18,7 @@ import { Loader2, AlertCircle, ArrowRight, CreditCard, Calendar, Plus, Minus } f
 import { Link } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
-import type { League, Payment, User, Bowler } from "@shared/schema";
+import type { League, User, Bowler } from "@shared/schema";
 import { useBowlers } from "@/hooks/use-bowlers";
 import {
   Dialog,
@@ -34,7 +34,10 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import * as z from 'zod';
 
+// Update the PaymentSchedule type definition
+type PaymentSchedule = "weekly" | "monthly" | "custom";
 
 const DEBUG_HOOKS = true;
 
@@ -77,7 +80,6 @@ const Drawer = DrawerPrimitive as {
   Content: typeof DrawerPrimitive.Content;
 };
 
-//type PaymentSchedule = "weekly" | "monthly" | "custom"; // Removed - duplicate declaration
 interface PaymentOption {
   id: PaymentSchedule;
   label: string;
@@ -341,224 +343,226 @@ export const BowlerDashboardPage: FC = () => {
     };
   }, [card]);
 
-  const seasonPresets = useMemo(() => [
-    { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
-    { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
-    { label: "Full Season", weeks: totalWeeks }
-  ], [totalWeeks]);
 
-// Add interface for form data
-interface ModifyScheduleFormData {
-  frequency: "weekly" | "monthly";
-  amount: number;
-}
+  const renderPaymentStatus = useMemo(() => {
+    const [isModifyingSchedule, setIsModifyingSchedule] = useState(false);
 
-function ModifyScheduleDialog({
-  scheduleId,
-  currentFrequency,
-  currentAmount,
-  isOpen,
-  onClose
-}: {
-  scheduleId: number;
-  currentFrequency: "weekly" | "monthly";
-  currentAmount: number;
-  isOpen: boolean;
-  onClose: () => void;
-}) {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+    const seasonPresets = useMemo(() => [
+      { label: "Quarter Season", weeks: Math.ceil(totalWeeks / 4) },
+      { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
+      { label: "Full Season", weeks: totalWeeks }
+    ], [totalWeeks]);
 
-  // Calculate the base weekly amount from the current frequency and amount
-  const baseWeeklyAmount = useMemo(() => {
-    console.log('[ModifyScheduleDialog] Calculating base weekly amount:', {
+    // Update the form validation schema and form data handling
+    interface ModifyScheduleFormData {
+      frequency: "weekly" | "monthly";
+      amount: number;
+    }
+
+    // Update the payment schedule hooks
+    const { data: paymentScheduleResponse, isLoading: isPaymentScheduleLoading } = useQuery({
+      queryKey: [`/api/payment-schedules`, bowler?.id],
+      enabled: !!bowler?.id && !!leagueId,
+      queryFn: async () => {
+        const response = await fetch(`/api/payment-schedules?bowlerId=${bowler?.id}&leagueId=${leagueId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch payment schedule');
+        }
+        return response.json();
+      },
+    });
+
+    const currentPaymentSchedule = paymentScheduleResponse?.data;
+
+
+    function ModifyScheduleDialog({
       currentFrequency,
       currentAmount,
-      baseWeeklyAmount: currentFrequency === 'monthly' ? currentAmount / 4 : currentAmount
-    });
-    return currentFrequency === 'monthly' ? currentAmount / 4 : currentAmount;
-  }, [currentFrequency, currentAmount]);
+      isOpen,
+      onClose
+    }: {
+      currentFrequency: "weekly" | "monthly";
+      currentAmount: number;
+      isOpen: boolean;
+      onClose: () => void;
+    }) {
+      const { toast } = useToast();
+      const queryClient = useQueryClient();
+      const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const form = useForm<ModifyScheduleFormData>({
-    resolver: zodResolver(
-      insertPaymentScheduleSchema
-        .pick({ frequency: true, amount: true })
-        .strict()
-    ),
-    defaultValues: {
-      frequency: currentFrequency,
-      amount: currentAmount,
-    },
-  });
+      // Calculate the base weekly amount from the current frequency and amount
+      const baseWeeklyAmount = useMemo(() => {
+        return currentFrequency === 'monthly' ? currentAmount / 4 : currentAmount;
+      }, [currentFrequency, currentAmount]);
 
-  // Watch frequency changes to update amount
-  const frequency = form.watch("frequency");
-  useEffect(() => {
-    const newAmount = frequency === 'monthly' ? baseWeeklyAmount * 4 : baseWeeklyAmount;
-    console.log('[ModifyScheduleDialog] Updating form amount:', {
-      frequency,
-      baseWeeklyAmount,
-      currentAmount,
-      newAmount,
-    });
-    form.setValue('amount', newAmount, { shouldValidate: true });
-  }, [frequency, baseWeeklyAmount, form]);
-
-  const updateScheduleMutation = useMutation({
-    mutationFn: async (data: ModifyScheduleFormData) => {
-      console.log('[ModifyScheduleDialog] Submitting update:', data);
-      const response = await fetch(`/api/payments/schedules/${scheduleId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
+      const form = useForm<ModifyScheduleFormData>({
+        resolver: zodResolver(
+          z.object({
+            frequency: z.enum(["weekly", "monthly"]),
+            amount: z.number().int().positive()
+          }).strict()
+        ),
+        defaultValues: {
+          frequency: currentFrequency,
+          amount: currentAmount,
         },
-        body: JSON.stringify({
-          frequency: data.frequency,
-          amount: data.amount,
-        }),
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        console.error('[ModifyScheduleDialog] Update failed:', error);
-        throw new Error(error.message || 'Failed to update payment schedule');
-      }
+      // Watch frequency changes to update amount
+      const frequency = form.watch("frequency");
+      useEffect(() => {
+        const newAmount = frequency === 'monthly' ? baseWeeklyAmount * 4 : baseWeeklyAmount;
+        form.setValue('amount', newAmount, { shouldValidate: true });
+      }, [frequency, baseWeeklyAmount, form]);
 
-      const result = await response.json();
-      console.log('[ModifyScheduleDialog] Update successful:', result);
-      return result;
-    },
-    onSuccess: async () => {
-      console.log('[ModifyScheduleDialog] Invalidating queries...');
-      // Force a refetch of all related data
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['/api/dashboard-data'] }),
-        queryClient.invalidateQueries({ queryKey: ['/api/payments'] }),
-        queryClient.invalidateQueries({ queryKey: ['/api/leagues'] }),
-      ]);
+      const updateScheduleMutation = useMutation({
+        mutationFn: async (data: ModifyScheduleFormData) => {
+          if (!currentPaymentSchedule?.id) {
+            throw new Error("No payment schedule found");
+          }
 
-      // Wait for refetch to complete before showing success message and closing
-      await queryClient.refetchQueries({
-        queryKey: ['/api/dashboard-data'],
-        exact: true
+          console.log('[ModifyScheduleDialog] Submitting update:', {
+            scheduleId: currentPaymentSchedule.id,
+            data
+          });
+
+          const response = await fetch(`/api/payments/schedules/${currentPaymentSchedule?.id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json();
+            console.error('[ModifyScheduleDialog] Update failed:', errorData);
+            throw new Error(errorData.error?.message || 'Failed to update payment schedule');
+          }
+
+          const result = await response.json();
+          console.log('[ModifyScheduleDialog] Update successful:', result);
+          return result;
+        },
+        onSuccess: async () => {
+          // Invalidate all related queries
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['/api/payment-schedules'] }),
+            queryClient.invalidateQueries({ queryKey: ['/api/payments'] }),
+            queryClient.invalidateQueries({ queryKey: ['/api/dashboard-data'] }),
+          ]);
+
+          toast({
+            title: "Success",
+            description: "Payment schedule updated successfully",
+          });
+          onClose();
+        },
+        onError: (error: Error) => {
+          console.error('[ModifyScheduleDialog] Mutation error:', error);
+          toast({
+            title: "Error",
+            description: error.message,
+            variant: "destructive",
+          });
+        },
       });
 
-      toast({
-        title: "Success",
-        description: "Payment schedule updated successfully",
+      const onSubmit = form.handleSubmit(async (data) => {
+        try {
+          setIsSubmitting(true);
+          await updateScheduleMutation.mutateAsync(data);
+        } catch (error) {
+          console.error('[ModifyScheduleDialog] Submit error:', error);
+        } finally {
+          setIsSubmitting(false);
+        }
       });
-      onClose();
-    },
-    onError: (error: Error) => {
-      console.error('[ModifyScheduleDialog] Mutation error:', error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
 
-  const onSubmit = form.handleSubmit(async (data) => {
-    try {
-      setIsSubmitting(true);
-      console.log('[ModifyScheduleDialog] Submitting form data:', data);
-      await updateScheduleMutation.mutateAsync(data);
-    } catch (error) {
-      console.error('[ModifyScheduleDialog] Submit error:', error);
-    } finally {
-      setIsSubmitting(false);
+      return (
+        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Modify Payment Schedule</DialogTitle>
+            </DialogHeader>
+            <Form {...form}>
+              <form onSubmit={onSubmit} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="frequency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Frequency</FormLabel>
+                      <FormControl>
+                        <RadioGroup
+                          onValueChange={field.onChange}
+                          value={field.value}
+                          className="flex flex-col space-y-1"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="weekly" id="weekly" />
+                            <Label htmlFor="weekly">Weekly (${(baseWeeklyAmount / 100).toFixed(2)}/week)</Label>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <RadioGroupItem value="monthly" id="monthly" />
+                            <Label htmlFor="monthly">Monthly (${((baseWeeklyAmount * 4) / 100).toFixed(2)}/month)</Label>
+                          </div>
+                        </RadioGroup>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Amount ($)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          disabled
+                          {...field}
+                          value={(field.value / 100).toFixed(2)}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onClose}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      "Update Schedule"
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      );
     }
-  });
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Modify Payment Schedule</DialogTitle>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={onSubmit} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="frequency"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Payment Frequency</FormLabel>
-                  <FormControl>
-                    <RadioGroup
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      className="flex flex-col space-y-1"
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="weekly" id="weekly" />
-                        <Label htmlFor="weekly">Weekly (${(baseWeeklyAmount / 100).toFixed(2)}/week)</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="monthly" id="monthly" />
-                        <Label htmlFor="monthly">Monthly (${((baseWeeklyAmount * 4) / 100).toFixed(2)}/month)</Label>
-                      </div>
-                    </RadioGroup>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Payment Amount ($)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      disabled
-                      {...field}
-                      value={(field.value / 100).toFixed(2)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Updating...
-                  </>
-                ) : (
-                  "Update Schedule"
-                )}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-const renderPaymentStatus = useMemo(() => {
-    const [isModifyingSchedule, setIsModifyingSchedule] = useState(false);
 
     return (
       <>
@@ -632,7 +636,6 @@ const renderPaymentStatus = useMemo(() => {
 
                       {league && (
                         <ModifyScheduleDialog
-                          scheduleId={league.id}
                           currentFrequency={getPaymentFrequency(payments) || 'weekly'}
                           currentAmount={weeklyFee}
                           isOpen={isModifyingSchedule}
@@ -915,13 +918,13 @@ const renderPaymentStatus = useMemo(() => {
     payments,
     upcomingPayments,
     amountPastDue,
-    getPaymentFrequency,league
+    getPaymentFrequency, league,
+    isPaymentScheduleLoading
   ]);
-
-
-  if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
-    return (      <div className="flex items-center justify-center min-h-[60vh]">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  if (isInitialLoading || isLoadingRelatedData || isCombinedLoading || isPaymentScheduleLoading) {
+    return(
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
