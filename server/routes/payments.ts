@@ -249,4 +249,34 @@ router.patch("/schedules/:id", async (req, res) => {
   }
 });
 
+// Add this endpoint after the PATCH /schedules/:id endpoint
+router.delete("/schedules/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return sendError(res, "Invalid schedule ID", 400, "INVALID_ID");
+    }
+
+    console.log('[Payments Route] Deleting payment schedule:', id);
+
+    // Get the schedule first to ensure it exists
+    const schedule = await storage.getPaymentScheduleById(id);
+    if (!schedule) {
+      return sendError(res, "Payment schedule not found", 404, "NOT_FOUND");
+    }
+
+    // Delete the schedule
+    await storage.deletePaymentSchedule(id);
+
+    // Notify the payment scheduler to stop tracking this schedule
+    await paymentScheduler.removeSchedule(id);
+
+    console.log('[Payments Route] Successfully deleted payment schedule:', id);
+    sendSuccess(res, { message: "Payment schedule deleted successfully" });
+  } catch (error) {
+    console.error('[Payments Route] Delete schedule error:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to delete payment schedule');
+  }
+});
+
 export default router;

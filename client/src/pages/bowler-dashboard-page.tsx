@@ -19,20 +19,15 @@ import { BowlerLayout } from "@/components/bowler-layout";
 import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
 import { useBowlers } from "@/hooks/use-bowlers";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import * as z from 'zod';
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Add these type definitions before the component
 interface ModifyScheduleFormData {
@@ -43,208 +38,6 @@ interface ModifyScheduleFormData {
 // Update the PaymentSchedule type definition
 type PaymentSchedule = "weekly" | "monthly" | "custom";
 
-// Move ModifyScheduleDialog component outside of any other component
-function ModifyScheduleDialog({
-  currentFrequency,
-  currentAmount,
-  isOpen,
-  onClose,
-  bowlerId,
-  leagueId,
-  scheduleId
-}: {
-  currentFrequency: "weekly" | "monthly";
-  currentAmount: number;
-  isOpen: boolean;
-  onClose: () => void;
-  bowlerId: number;
-  leagueId: number;
-  scheduleId: number;
-}) {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const baseWeeklyAmount = useMemo(() => {
-    return currentFrequency === 'monthly' ? currentAmount / 4 : currentAmount;
-  }, [currentFrequency, currentAmount]);
-
-  const form = useForm<ModifyScheduleFormData>({
-    resolver: zodResolver(
-      z.object({
-        frequency: z.enum(["weekly", "monthly"]),
-        amount: z.number().int().positive()
-      })
-    ),
-    defaultValues: {
-      frequency: currentFrequency,
-      amount: currentAmount,
-    },
-  });
-
-  const frequency = form.watch("frequency");
-
-  useEffect(() => {
-    const newAmount = frequency === 'monthly' ? baseWeeklyAmount * 4 : baseWeeklyAmount;
-    form.setValue('amount', newAmount, { shouldValidate: true });
-  }, [frequency, baseWeeklyAmount, form]);
-
-  const updateScheduleMutation = useMutation({
-    mutationFn: async (data: ModifyScheduleFormData) => {
-      const payload = {
-        frequency: data.frequency,
-        amount: data.amount,
-        bowlerId,
-        leagueId,
-      };
-
-      console.log('[ModifyScheduleDialog] Sending update request:', {
-        scheduleId,
-        ...payload
-      });
-
-      const response = await fetch(`/api/payments/schedules/${scheduleId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('[ModifyScheduleDialog] Update failed:', errorData);
-        throw new Error(errorData.error?.message || 'Failed to update payment schedule');
-      }
-
-      const result = await response.json();
-      console.log('[ModifyScheduleDialog] Update successful:', result);
-      return result;
-    },
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['/api/payment-schedules'] }),
-        queryClient.invalidateQueries({ queryKey: ['/api/payments'] }),
-        queryClient.invalidateQueries({ queryKey: ['/api/dashboard-data'] }),
-      ]);
-
-      toast({
-        title: "Success",
-        description: "Payment schedule updated successfully",
-      });
-      onClose();
-    },
-    onError: (error: Error) => {
-      console.error('[ModifyScheduleDialog] Update error:', error);
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const onSubmit = form.handleSubmit(async (data) => {
-    try {
-      setIsSubmitting(true);
-      console.log('[ModifyScheduleDialog] Submitting form data:', {
-        data,
-        scheduleId,
-        bowlerId,
-        leagueId
-      });
-      await updateScheduleMutation.mutateAsync(data);
-    } catch (error) {
-      console.error('[ModifyScheduleDialog] Submit error:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  });
-
-  return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Modify Payment Schedule</DialogTitle>
-        </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={onSubmit} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="frequency"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Payment Frequency</FormLabel>
-                  <FormControl>
-                    <RadioGroup
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      className="flex flex-col space-y-1"
-                    >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="weekly" id="weekly" />
-                        <Label htmlFor="weekly">Weekly (${(baseWeeklyAmount / 100).toFixed(2)}/week)</Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="monthly" id="monthly" />
-                        <Label htmlFor="monthly">Monthly (${((baseWeeklyAmount * 4) / 100).toFixed(2)}/month)</Label>
-                      </div>
-                    </RadioGroup>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Payment Amount ($)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      disabled
-                      {...field}
-                      value={(field.value / 100).toFixed(2)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="flex justify-end space-x-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Updating...
-                  </>
-                ) : (
-                  "Update Schedule"
-                )}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 const DEBUG_HOOKS = true;
 
@@ -345,7 +138,7 @@ export const BowlerDashboardPage: FC = () => {
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
-  const [isModifyingSchedule, setIsModifyingSchedule] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
 
   const { isDrawerOpen, setIsDrawerOpen, selectedWeeks, handleWeekChange: customHandleWeekChange } = usePaymentDrawer();
 
@@ -550,6 +343,53 @@ export const BowlerDashboardPage: FC = () => {
     { label: "Full Season", weeks: totalWeeks }
   ], [totalWeeks]);
 
+  const queryClient = useQueryClient();
+
+  const cancelPaymentsMutation = useMutation({
+    mutationFn: async () => {
+      if (!bowler?.id || !leagueId) {
+        throw new Error("Missing bowler or league information");
+      }
+
+      const response = await fetch(`/api/payment-schedules/${paymentScheduleResponse?.data?.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to cancel automatic payments');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/payment-schedules'] });
+      toast({
+        title: "Automatic Payments Cancelled",
+        description: "Your automatic payment schedule has been cancelled. You can set up a new payment schedule at any time.",
+      });
+      setShowPaymentSetup(true);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCancelPayments = async () => {
+    try {
+      await cancelPaymentsMutation.mutateAsync();
+    } catch (error) {
+      console.error('[BowlerDashboard] Cancel payments error:', error);
+    } finally {
+      setShowCancelDialog(false);
+    }
+  };
+
+
   useEffect(() => {
     if (showPaymentSetup && cardContainerRef.current && !isInitialized) {
       initializeCard(cardContainerRef.current);
@@ -573,7 +413,6 @@ export const BowlerDashboardPage: FC = () => {
 
   const renderPaymentStatus = useMemo(() => {
     console.log('[renderPaymentStatus] Payment schedule response:', paymentScheduleResponse);
-    console.log('[renderPaymentStatus] Current dialog state:', isModifyingSchedule);
 
     // Render loading state for payment schedule
     if (isPaymentScheduleLoading) {
@@ -649,36 +488,35 @@ export const BowlerDashboardPage: FC = () => {
 
                       <div className="flex items-center gap-2 pt-4 border-t">
                         <Button
-                          variant="outline"
-                          onClick={() => {
-                            console.log('[BowlerDashboard] Opening modify schedule dialog', {
-                              paymentScheduleResponse,
-                              isModifyingSchedule
-                            });
-                            setIsModifyingSchedule(true);
-                          }}
+                          variant="destructive"
+                          onClick={() => setShowCancelDialog(true)}
                           className="w-full"
                         >
-                          Modify Payment Schedule
-                          <ArrowRight className="ml-2 h-4 w-4" />
+                          Cancel Automatic Payments
                         </Button>
                       </div>
                     </CardContent>
                   </Card>
 
-                  {/* ModifyScheduleDialog - Always render but control visibility with isOpen prop */}
-                  <ModifyScheduleDialog
-                    currentFrequency={getPaymentFrequency(payments)}
-                    currentAmount={weeklyFee}
-                    isOpen={isModifyingSchedule}
-                    onClose={() => {
-                      console.log('[BowlerDashboard] Closing modify schedule dialog');
-                      setIsModifyingSchedule(false);
-                    }}
-                    bowlerId={bowler.id}
-                    leagueId={league.id}
-                    scheduleId={paymentScheduleResponse?.data?.id || 0}
-                  />
+                  <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel Automatic Payments?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will stop all future automatic payments for your league dues. You can set up a new payment schedule at any time.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Keep Current Schedule</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleCancelPayments}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Yes, Cancel Payments
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
 
                   {upcomingPayments.length > 0 && (
                     <div className="space-y-3">
@@ -910,8 +748,11 @@ export const BowlerDashboardPage: FC = () => {
               </div>
             </div>
           ) : (
-            <div className="text-center py-8">
-              <Button onClick={() => setShowPaymentSetup(true)}>
+            <div className="text-center">
+              <Button
+                onClick={() => setShowPaymentSetup(true)}
+                className="w-full md:w-auto"
+              >
                 Set Up Automatic Payments
               </Button>
             </div>
@@ -920,25 +761,15 @@ export const BowlerDashboardPage: FC = () => {
       </>
     );
   }, [
+    isPaymentScheduleLoading,
     bowler,
     league,
-    selectedWeeks,
-    selectedSchedule,
-    totalWeeks,
-    weeklyFee,
-    customHandleWeekChange,
-    calculateTotalAmount,
-    handleSubmitPayment,
-    isInitialized,
-    squareError,
     payments,
     upcomingPayments,
     amountPastDue,
-    getPaymentFrequency,
-    isPaymentScheduleLoading,
-    paymentScheduleResponse,
-    isModifyingSchedule,
-    setIsModifyingSchedule
+    showPaymentSetup,
+    showCancelDialog,
+    handleCancelPayments,
   ]);
 
   if (!currentUser) {
@@ -993,7 +824,13 @@ export const BowlerDashboardPage: FC = () => {
       team={getBowlerTeamName(bowler)}
       league={getBowlerFirstLeagueName(bowler)}
     >
-      <div className="space-y-6">
+      <div className="container py-6 space-y-6">
+        <div className="flex flex-col space-y-1.5">
+          <h2 className="text-2xl font-semibold tracking-tight">Payment Dashboard</h2>
+          <p className="text-sm text-muted-foreground">
+            Manage your league payments and automatic payment schedule
+          </p>
+        </div>
         {renderPaymentStatus}
       </div>
     </BowlerLayout>
