@@ -12,14 +12,12 @@ import { setupAuth } from "./auth.js";
 import { paymentScheduler } from './services/payment-scheduler.js';
 
 // Update the DEBUG constant at the beginning of the file
-const DEBUG = process.env.DEBUG !== '0';
+const DEBUG = process.env.DEBUG !== '0' || process.env.REPL_WORKFLOW_NAME === 'Dev';
 function debugLog(context: string, message: string, data?: any) {
   if (DEBUG) {
     console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
   }
 }
-
-// Rest of imports remain unchanged...
 
 const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
