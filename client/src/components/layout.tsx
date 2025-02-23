@@ -65,7 +65,7 @@ const navItems: NavItem[] = [
     label: "Payments",
     href: "/payments"
   },
-  { 
+  {
     icon: ClipboardPlus,
     label: "Reports",
     href: "/reports"
@@ -113,64 +113,13 @@ const LeaguesDropdownContent = () => {
   );
 };
 
-const SideNav = () => {
-  const [location] = useLocation();
-
-  return (
-    <nav className="space-y-2">
-      {navItems.map((item) => {
-        const isActive = location === item.href;
-        if (item.hasDropdown) {
-          return (
-            <NavigationMenu key={item.href}>
-              <NavigationMenuList>
-                <NavigationMenuItem>
-                  <NavigationMenuTrigger
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
-                      isActive && "bg-accent"
-                    )}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.label}
-                  </NavigationMenuTrigger>
-                  <NavigationMenuContent>
-                    <Suspense fallback={<LeagueLoadingFallback />}>
-                      <LeaguesDropdownContent />
-                    </Suspense>
-                  </NavigationMenuContent>
-                </NavigationMenuItem>
-              </NavigationMenuList>
-            </NavigationMenu>
-          );
-        }
-
-        return (
-          <Link key={item.href} href={item.href}>
-            <button
-              className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
-                isActive && "bg-accent"
-              )}
-            >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-              {isActive && <ChevronRight className="ml-auto h-4 w-4" />}
-            </button>
-          </Link>
-        );
-      })}
-    </nav>
-  );
-};
-
 const ErrorFallback = ({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) => {
   return (
     <div className="p-4 rounded-md bg-destructive/10 text-destructive space-y-2">
       <p className="font-medium">Something went wrong:</p>
       <p className="text-sm">{error.message}</p>
-      <Button 
-        variant="outline" 
+      <Button
+        variant="outline"
         size="sm"
         onClick={resetErrorBoundary}
         className="mt-2"
@@ -200,13 +149,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
     setStoredValue("sidebarCollapsed", isCollapsed);
   }, [isCollapsed]);
 
-  const sidebarWidth = useMemo(() => 
+  const sidebarWidth = useMemo(() =>
     isCollapsed ? "w-16" : "w-64"
   , [isCollapsed]);
 
   const mainContentPadding = useMemo(() =>
     isCollapsed ? "pl-16" : "pl-64"
   , [isCollapsed]);
+
+  const [location] = useLocation();
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -241,16 +192,64 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 )}
               </Button>
             </div>
-            <ErrorBoundary 
+            <ErrorBoundary
               FallbackComponent={ErrorFallback}
               onReset={() => {
-                // Reset the error boundary state
                 window.location.reload();
               }}
             >
               <Suspense fallback={<LoadingFallback />}>
                 <nav className="mt-8 flex-1 space-y-1 px-2">
-                  <SideNav />
+                  <div className="space-y-2">
+                    {navItems.map((item) => {
+                      const isActive = location === item.href;
+                      if (item.hasDropdown && !isCollapsed) {
+                        return (
+                          <NavigationMenu key={item.href}>
+                            <NavigationMenuList>
+                              <NavigationMenuItem>
+                                <NavigationMenuTrigger
+                                  className={cn(
+                                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
+                                    isActive && "bg-accent"
+                                  )}
+                                >
+                                  <item.icon className="h-4 w-4" />
+                                  {item.label}
+                                </NavigationMenuTrigger>
+                                <NavigationMenuContent>
+                                  <Suspense fallback={<LeagueLoadingFallback />}>
+                                    <LeaguesDropdownContent />
+                                  </Suspense>
+                                </NavigationMenuContent>
+                              </NavigationMenuItem>
+                            </NavigationMenuList>
+                          </NavigationMenu>
+                        );
+                      }
+
+                      return (
+                        <Link key={item.href} href={item.href}>
+                          <button
+                            className={cn(
+                              "flex w-full items-center gap-3 rounded-lg transition-all hover:bg-accent",
+                              isCollapsed ? "justify-center p-2" : "px-3 py-2",
+                              isActive && "bg-accent"
+                            )}
+                            title={isCollapsed ? item.label : undefined}
+                          >
+                            <item.icon className="h-4 w-4" />
+                            {!isCollapsed && (
+                              <>
+                                <span className="text-sm">{item.label}</span>
+                                {isActive && <ChevronRight className="ml-auto h-4 w-4" />}
+                              </>
+                            )}
+                          </button>
+                        </Link>
+                      );
+                    })}
+                  </div>
                 </nav>
               </Suspense>
             </ErrorBoundary>
@@ -260,10 +259,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <div className={cn("transition-all duration-300", mainContentPadding)}>
         <main className="py-6 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
-          <ErrorBoundary 
+          <ErrorBoundary
             FallbackComponent={ErrorFallback}
             onReset={() => {
-              // Reset the error boundary state
               window.location.reload();
             }}
           >
