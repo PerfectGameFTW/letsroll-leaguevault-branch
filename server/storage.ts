@@ -81,6 +81,8 @@ export interface IStorage {
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
   updatePaymentSchedule(id: number, updates: Partial<InsertPaymentSchedule>): Promise<PaymentSchedule>;
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
+  getPaymentScheduleById(id: number): Promise<PaymentSchedule | undefined>;
+  deletePaymentSchedule(id: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -417,7 +419,7 @@ export class DatabaseStorage implements IStorage {
           leagueId: game.leagueId,
           weekNumber: game.weekNumber,
           gameNumber: game.gameNumber,
-          date: gameDate.toISOString() 
+          date: gameDate.toISOString()
         })
         .returning();
 
@@ -887,7 +889,7 @@ export class DatabaseStorage implements IStorage {
         );
 
       console.log('[Storage] Found payment schedule:', schedule ? {
-        id: schedule.id,
+                id: schedule.id,
         frequency: schedule.frequency,
         amount: schedule.amount,
         nextPaymentDate: schedule.nextPaymentDate
@@ -907,6 +909,76 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
   }
+  async getPaymentScheduleById(id: number): Promise<PaymentSchedule | undefined> {
+    try {
+      console.log('[Storage] Getting payment schedule by ID:', id);
+
+      const [schedule] = await db
+        .select()
+        .from(paymentSchedules)
+        .where(
+          and(
+            eq(paymentSchedules.id, id),
+            eq(paymentSchedules.active, true)
+          )
+        );
+
+      console.log('[Storage] Found payment schedule:', schedule ? {
+        id: schedule.id,
+        frequency: schedule.frequency,
+        amount: schedule.amount,
+        nextPaymentDate: schedule.nextPaymentDate
+      } : 'None');
+
+      return schedule;
+    } catch (error) {
+      console.error('[Storage] Error getting payment schedule by ID:', {
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        scheduleId: id
+      });
+      throw error;
+    }
+  }
+
+  async deletePaymentSchedule(id: number): Promise<boolean> {
+    try {
+      console.log('[Storage] Deleting payment schedule:', id);
+
+      // Mark the schedule as inactive instead of physically deleting it
+      const [updatedSchedule] = await db
+        .update(paymentSchedules)
+        .set({ active: false })
+        .where(eq(paymentSchedules.id, id))
+        .returning();
+
+      const success = !!updatedSchedule;
+      console.log('[Storage] Payment schedule deletion result:', {
+        scheduleId: id,
+        success,
+        updatedSchedule: updatedSchedule ? {
+          id: updatedSchedule.id,
+          active: updatedSchedule.active
+        } : 'None'
+      });
+
+      return success;
+    } catch (error) {
+      console.error('[Storage] Error deleting payment schedule:', {
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        scheduleId: id
+      });
+      throw error;
+    }
+  }
+
 }
 
 export const storage = new DatabaseStorage();

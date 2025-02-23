@@ -353,6 +353,9 @@ export const BowlerDashboardPage: FC = () => {
 
       const response = await fetch(`/api/payment-schedules/${paymentScheduleResponse?.data?.id}`, {
         method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
 
       if (!response.ok) {
