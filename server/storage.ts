@@ -2,8 +2,8 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
-  users, 
-  paymentSchedules, 
+  users, // Add users table import
+  paymentSchedules, // Add paymentSchedules table import
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
@@ -11,8 +11,7 @@ import {
   type Payment, type InsertPayment,
   type Game, type InsertGame,
   type Score, type InsertScore,
-  type User, type InsertUser, 
-  type PaymentSchedule, type InsertPaymentSchedule 
+  type User, type InsertUser, // Add User types
 } from "@shared/schema.js";
 
 export interface IStorage {
