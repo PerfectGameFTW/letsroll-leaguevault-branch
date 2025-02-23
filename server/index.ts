@@ -165,27 +165,63 @@ app.use((req, res, next) => {
   next();
 });
 
-// Add workflow name detection improvement
+// Update the getWorkflowName function to match wait-for-port.ts
 const getWorkflowName = () => {
-  // Check for active workflow name from environment
-  const workflowName = process.env.REPL_WORKFLOW_NAME || process.env.REPL_SLUG || 'Dev';
-  debugLog('Workflow', `Detected workflow name: ${workflowName}`, {
-    REPL_WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
-    REPL_SLUG: process.env.REPL_SLUG
+  const npmScript = process.env.npm_lifecycle_event;
+  const replWorkflow = process.env.REPL_WORKFLOW_NAME;
+  const replSlug = process.env.REPL_SLUG;
+  const isDev = process.env.NODE_ENV === 'development' || npmScript === 'dev';
+
+  debugLog('Workflow', 'Detecting current workflow', {
+    npm_lifecycle_event: npmScript,
+    REPL_WORKFLOW_NAME: replWorkflow,
+    REPL_SLUG: replSlug,
+    NODE_ENV: process.env.NODE_ENV,
+    isDev,
+    pwd: process.env.PWD,
+    path: process.env.PATH?.split(':')[0]
   });
-  return workflowName;
+
+  // Priority 1: Development environment or dev script should always be "Dev" workflow
+  if (isDev) {
+    debugLog('Workflow', 'Detected Dev workflow from development environment');
+    return 'Dev';
+  }
+
+  // Priority 2: Explicit workflow name from environment
+  if (replWorkflow) {
+    debugLog('Workflow', `Using explicit workflow name: ${replWorkflow}`);
+    return replWorkflow;
+  }
+
+  // Priority 3: For backwards compatibility, map workspace to Dev in development
+  if (replSlug === 'workspace' && process.env.NODE_ENV === 'development') {
+    debugLog('Workflow', 'Mapped workspace to Dev workflow in development');
+    return 'Dev';
+  }
+
+  debugLog('Workflow', 'Using default workflow name');
+  return replSlug || 'Unknown';
 };
 
-// Add instance management
+// Add instance management with workflow awareness
 const INSTANCE_LOCK_FILE = '.server-instance.lock';
 
 async function acquireInstanceLock(): Promise<boolean> {
+  const currentWorkflow = getWorkflowName();
+
   try {
     const lockData = {
       pid: process.pid,
       timestamp: new Date().toISOString(),
-      workflow: getWorkflowName()
+      workflow: currentWorkflow,
+      environment: {
+        NODE_ENV: process.env.NODE_ENV,
+        npm_lifecycle_event: process.env.npm_lifecycle_event
+      }
     };
+
+    debugLog('Instance', 'Attempting to acquire lock', lockData);
 
     // Try to create lock file
     await fs.promises.writeFile(
@@ -194,27 +230,39 @@ async function acquireInstanceLock(): Promise<boolean> {
       { flag: 'wx' } // Fail if file exists
     );
 
-    debugLog('Instance', 'Acquired server instance lock', lockData);
+    debugLog('Instance', 'Successfully acquired lock', lockData);
     return true;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
       try {
-        // Check if existing lock is stale
+        // Check existing lock
         const existing = JSON.parse(
           await fs.promises.readFile(INSTANCE_LOCK_FILE, 'utf-8')
         );
 
+        debugLog('Instance', 'Found existing lock', existing);
+
+        // Allow different workflows to run concurrently
+        if (existing.workflow !== currentWorkflow) {
+          debugLog('Instance', 'Lock belongs to different workflow, allowing concurrent execution', {
+            current: currentWorkflow,
+            existing: existing.workflow
+          });
+          return true;
+        }
+
+        // For same workflow, check if process is still running
         try {
-          process.kill(existing.pid, 0); // Check if process exists
-          debugLog('Instance', 'Another server instance is running', existing);
+          process.kill(existing.pid, 0);
+          debugLog('Instance', 'Found running instance of same workflow', existing);
           return false;
         } catch {
-          // Process doesn't exist, safe to override
+          debugLog('Instance', 'Found stale lock, cleaning up', existing);
           await fs.promises.unlink(INSTANCE_LOCK_FILE);
           return acquireInstanceLock();
         }
-      } catch {
-        // Lock file exists but is invalid/corrupted
+      } catch (err) {
+        debugLog('Instance', 'Found invalid lock file, cleaning up');
         await fs.promises.unlink(INSTANCE_LOCK_FILE);
         return acquireInstanceLock();
       }
@@ -603,11 +651,26 @@ app.get('/api/health', async (req, res) => {
     await testConnection();
     const dbDuration = Date.now() - dbStart;
 
+    // Add detailed workflow information
+    const workflowInfo = {
+      detected: getWorkflowName(),
+      environment: {
+        NODE_ENV: process.env.NODE_ENV,
+        npm_lifecycle_event: process.env.npm_lifecycle_event,
+        REPL_WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
+        isDev: process.env.NODE_ENV === 'development' || process.env.npm_lifecycle_event === 'dev'
+      }
+    };
+
+    debugLog('Health', 'Workflow information:', workflowInfo);
+
     const status = {
       status: 'healthy',
       port: serverPort,
       ready: isServerReady,
       mode: process.env.NODE_ENV,
+      workflow: workflowInfo.detected,
+      workflow_info: workflowInfo,
       timestamp: new Date().toISOString(),
       diagnostics: {
         database_response_time: `${dbDuration}ms`,
@@ -627,7 +690,7 @@ app.get('/api/health', async (req, res) => {
       }
     };
 
-    // Update port status file
+    // Update port status file with workflow information
     await writePortStatus(serverPort!, isServerReady, {
       database: true,
       vite: viteSetupComplete,
