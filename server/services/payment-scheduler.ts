@@ -336,25 +336,14 @@ class PaymentScheduler {
     }
 
     logger.info(`[PaymentScheduler] Updating payment schedule ${schedule.id}`, {
-      currentAmount: schedule.amount,
-      newFrequency: schedule.frequency,
+      amount: schedule.amount,
       nextPaymentDate: schedule.nextPaymentDate,
+      frequency: schedule.frequency,
       bowlerId: schedule.bowlerId,
       cardId: `${schedule.squareCardId?.substring(0, 10)}...`,
       updatedAt: new Date().toISOString()
     });
-
-    // Cancel existing job for this schedule
-    this.cancelJob(`payment-${schedule.id}`);
-
-    // Create new job with updated schedule
     this.schedulePayment(schedule);
-
-    logger.info(`[PaymentScheduler] Successfully updated schedule ${schedule.id}`, {
-      frequency: schedule.frequency,
-      amount: schedule.amount,
-      nextPaymentDate: schedule.nextPaymentDate
-    });
   }
 }
 
