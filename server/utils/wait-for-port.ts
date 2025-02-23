@@ -6,6 +6,13 @@ const TIMEOUT = 30000; // 30 seconds
 const POLL_INTERVAL = 100; // 100ms
 const MAX_RETRIES = 3; // Maximum number of retries for health checks
 
+const DEBUG = true;
+function debugLog(context: string, message: string, data?: any) {
+  if (DEBUG) {
+    console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  }
+}
+
 interface PortStatus {
   port: number;
   ready: boolean;
@@ -20,23 +27,25 @@ interface PortStatus {
 }
 
 async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
+  debugLog('PortCheck', `Reading port status (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+
   try {
-    console.log('[wait-for-port] Reading port status file...');
     const content = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
     const status = JSON.parse(content) as PortStatus;
-    console.log('[wait-for-port] Current port status:', status);
+    debugLog('PortCheck', 'Successfully read port status:', status);
     return status;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      debugLog('PortCheck', 'Port status file not found');
       if (retryCount < MAX_RETRIES) {
-        console.log(`[wait-for-port] Port status file not found, retrying (${retryCount + 1}/${MAX_RETRIES})...`);
+        debugLog('PortCheck', `Retrying in 1 second... (${retryCount + 1}/${MAX_RETRIES})`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return readPortStatus(retryCount + 1);
       }
-      console.log('[wait-for-port] Port status file not found after maximum retries');
+      debugLog('PortCheck', 'Max retries reached, giving up');
       return null;
     }
-    console.error('[wait-for-port] Error reading port status:', error);
+    debugLog('PortCheck', 'Error reading port status:', error);
     return null;
   }
 }
@@ -60,8 +69,8 @@ async function checkHealth(port: number, retryCount = 0): Promise<boolean> {
     console.log('[wait-for-port] Health check response:', data);
 
     // Verify all components are ready
-    const isHealthy = data.status === 'healthy' && 
-                     data.ready === true && 
+    const isHealthy = data.status === 'healthy' &&
+                     data.ready === true &&
                      data.database?.connected === true &&
                      (process.env.NODE_ENV === 'production' || data.vite?.setup === true);
 
@@ -84,9 +93,20 @@ async function checkHealth(port: number, retryCount = 0): Promise<boolean> {
   }
 }
 
-// Export the waitForPort function so it can be used by the workflow
+function getEnvironmentInfo() {
+  debugLog('Environment', 'Current environment:', {
+    NODE_ENV: process.env.NODE_ENV,
+    REPL_SLUG: process.env.REPL_SLUG,
+    REPL_OWNER: process.env.REPL_OWNER,
+    PWD: process.env.PWD,
+    PATH: process.env.PATH
+  });
+}
+
 export async function waitForPort() {
-  console.log('[wait-for-port] Starting server readiness check...');
+  debugLog('PortWait', 'Starting server readiness check');
+  getEnvironmentInfo();
+
   const startTime = Date.now();
   let lastLogTime = 0;
   const LOG_INTERVAL = 5000; // Log every 5 seconds
@@ -96,21 +116,18 @@ export async function waitForPort() {
       const currentTime = Date.now();
       const elapsedTime = currentTime - startTime;
 
-      // Log progress periodically
       if (currentTime - lastLogTime >= LOG_INTERVAL) {
-        console.log(`[wait-for-port] Waiting for server... (${Math.round(elapsedTime / 1000)}s elapsed)`);
+        debugLog('PortWait', `Still waiting... (${Math.round(elapsedTime / 1000)}s elapsed)`);
         lastLogTime = currentTime;
       }
 
       const status = await readPortStatus();
-
       if (status) {
-        console.log(`[wait-for-port] Found port ${status.port}, checking health...`);
-
+        debugLog('PortWait', `Found port ${status.port}, checking health...`);
         if (status.ready) {
           const isHealthy = await checkHealth(status.port);
           if (isHealthy) {
-            console.log(`[wait-for-port] Server is fully ready on port ${status.port}`);
+            debugLog('PortWait', `Server is ready on port ${status.port}`);
             return status.port;
           }
         }
@@ -121,7 +138,7 @@ export async function waitForPort() {
 
     throw new Error(`Timeout waiting for server after ${TIMEOUT/1000} seconds`);
   } catch (error) {
-    console.error('[wait-for-port] Error during port wait:', error);
+    debugLog('PortWait', 'Error during port wait:', error);
     throw error;
   }
 }

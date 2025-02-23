@@ -11,6 +11,14 @@ import fs from 'fs';
 import { setupAuth } from "./auth.js";
 import { paymentScheduler } from './services/payment-scheduler.js';
 
+// Enhanced debug logging
+const DEBUG = true;
+function debugLog(context: string, message: string, data?: any) {
+  if (DEBUG) {
+    console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  }
+}
+
 interface PortStatus {
   port: number;
   ready: boolean;
@@ -157,12 +165,82 @@ app.use((req, res, next) => {
   next();
 });
 
-// Update the writePortStatus function with better error handling and logging
+// Add workflow name detection improvement
+const getWorkflowName = () => {
+  // Check for active workflow name from environment
+  const workflowName = process.env.REPL_WORKFLOW_NAME || process.env.REPL_SLUG || 'Dev';
+  debugLog('Workflow', `Detected workflow name: ${workflowName}`, {
+    REPL_WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
+    REPL_SLUG: process.env.REPL_SLUG
+  });
+  return workflowName;
+};
+
+// Add instance management
+const INSTANCE_LOCK_FILE = '.server-instance.lock';
+
+async function acquireInstanceLock(): Promise<boolean> {
+  try {
+    const lockData = {
+      pid: process.pid,
+      timestamp: new Date().toISOString(),
+      workflow: getWorkflowName()
+    };
+
+    // Try to create lock file
+    await fs.promises.writeFile(
+      INSTANCE_LOCK_FILE,
+      JSON.stringify(lockData),
+      { flag: 'wx' } // Fail if file exists
+    );
+
+    debugLog('Instance', 'Acquired server instance lock', lockData);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      try {
+        // Check if existing lock is stale
+        const existing = JSON.parse(
+          await fs.promises.readFile(INSTANCE_LOCK_FILE, 'utf-8')
+        );
+
+        try {
+          process.kill(existing.pid, 0); // Check if process exists
+          debugLog('Instance', 'Another server instance is running', existing);
+          return false;
+        } catch {
+          // Process doesn't exist, safe to override
+          await fs.promises.unlink(INSTANCE_LOCK_FILE);
+          return acquireInstanceLock();
+        }
+      } catch {
+        // Lock file exists but is invalid/corrupted
+        await fs.promises.unlink(INSTANCE_LOCK_FILE);
+        return acquireInstanceLock();
+      }
+    }
+    debugLog('Instance', 'Failed to acquire lock', { error });
+    return false;
+  }
+}
+
+async function releaseInstanceLock() {
+  try {
+    await fs.promises.unlink(INSTANCE_LOCK_FILE);
+    debugLog('Instance', 'Released server instance lock');
+  } catch (error) {
+    debugLog('Instance', 'Error releasing lock', { error });
+  }
+}
+
+// Update writePortStatus to use correct workflow name
 async function writePortStatus(
   port: number,
   ready: boolean = false,
   health: Partial<PortStatus['health']> = {}
 ): Promise<void> {
+  debugLog('PortStatus', `Updating port status for port ${port}`, { ready, health });
+
   if (typeof port !== 'number') {
     console.error('[Server] Invalid port type:', typeof port);
     return;
@@ -175,7 +253,7 @@ async function writePortStatus(
       timestamp: new Date().toISOString(),
       pid: process.pid,
       mode: process.env.NODE_ENV || 'development',
-      workflow: 'Dev',
+      workflow: getWorkflowName(),
       health: {
         database: health.database || false,
         vite: health.vite || false,
@@ -183,10 +261,46 @@ async function writePortStatus(
       }
     };
 
+    // Log existing port status before writing
+    try {
+      const existingStatus = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
+      debugLog('PortStatus', 'Existing port status:', JSON.parse(existingStatus));
+    } catch (err) {
+      debugLog('PortStatus', 'No existing port status file');
+    }
+
     await fs.promises.writeFile(PORT_STATUS_FILE, JSON.stringify(status, null, 2));
-    console.log(`[Server] Updated port status:`, status);
+    debugLog('PortStatus', 'Successfully wrote port status:', status);
   } catch (error) {
     console.error('[Server] Error writing port status:', error);
+    debugLog('PortStatus', 'Error writing status:', error);
+  }
+}
+
+// Enhanced cleanup for port status
+async function cleanupPortStatus() {
+  debugLog('Cleanup', 'Starting port status cleanup');
+  try {
+    // Check for existing processes
+    const psCommand = process.platform === 'win32'
+      ? `tasklist /FI "IMAGENAME eq node.exe" /FO CSV /NH`
+      : `ps aux | grep node`;
+
+    try {
+      const processes = require('child_process').execSync(psCommand, { encoding: 'utf-8' });
+      debugLog('Cleanup', 'Running Node processes:', processes);
+    } catch (e) {
+      debugLog('Cleanup', 'Error checking processes:', e);
+    }
+
+    await fs.promises.unlink(PORT_STATUS_FILE).catch((err) => {
+      debugLog('Cleanup', 'Error removing port status file:', err);
+    });
+
+    debugLog('Cleanup', 'Port status cleanup completed');
+  } catch (error) {
+    console.error('[Server] Error during port status cleanup:', error);
+    debugLog('Cleanup', 'Cleanup error:', error);
   }
 }
 
@@ -213,27 +327,6 @@ const cleanupStalePortStatus = async () => {
     }
   } catch (error) {
     console.error('[Server] Error cleaning up stale port status:', error);
-  }
-};
-
-const cleanupPortStatus = async () => {
-  try {
-    await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
-
-    // Force kill any existing process on port 5000
-    const command = process.platform === 'win32'
-      ? `FOR /F "tokens=5" %P IN ('netstat -a -n -o ^| find ":5000" ^| find "LISTENING"') DO TaskKill /PID %P /F /T`
-      : `lsof -ti:5000 | xargs -r kill -9`;
-
-    try {
-      require('child_process').execSync(command);
-      console.log('[Server] Successfully cleaned up port 5000');
-    } catch (e) {
-      // Ignore errors as the process might not exist
-    }
-  } catch (error) {
-    console.error('[Server] Error during port status cleanup:', error);
-    throw error;
   }
 };
 
@@ -403,13 +496,31 @@ async function startServer() {
   try {
     console.log('[Server] Starting server...');
 
+    // Check for existing instance
+    const canStart = await acquireInstanceLock();
+    if (!canStart) {
+      console.log('[Server] Another server instance is already running');
+      process.exit(0);
+    }
+
+    // Setup cleanup handlers
+    process.on('SIGTERM', () => {
+      releaseInstanceLock();
+      shutdown();
+    });
+
+    process.on('SIGINT', () => {
+      releaseInstanceLock();
+      shutdown();
+    });
+
     // Phase 1: Quick cleanup
     await cleanupPortStatus();
     await validateStartupPhase('cleanup');
 
     // Phase 2: Database check with shorter timeout
     const dbConnected = await Promise.race([
-      testConnection(),
+      testDatabaseConnectionWithRetry(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Database connection timeout')), 5000))
     ]).catch(error => {
       console.warn('[Server] Database connection failed:', error);
@@ -477,6 +588,7 @@ async function startServer() {
 
   } catch (error) {
     console.error('[Server] Critical startup error:', error);
+    await releaseInstanceLock();
     if (serverPort) {
       await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
     }
