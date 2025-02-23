@@ -12,7 +12,7 @@ router.get("/", async (req, res) => {
     const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
     const ids = req.query.ids ? (req.query.ids as string).split(',').map(id => parseInt(id)) : undefined;
 
-    console.log('Fetching bowlers with params:', { teamId, ids });
+    console.log('[Bowlers] Fetching bowlers with params:', { teamId, ids });
 
     // Validate the teamId if provided
     if (teamId !== undefined && isNaN(teamId)) {
@@ -26,7 +26,7 @@ router.get("/", async (req, res) => {
 
     const bowlers = await storage.getBowlers(teamId);
     if (!bowlers) {
-      console.log('No bowlers found');
+      console.log('[Bowlers] No bowlers found');
       return sendSuccess(res, []);
     }
 
@@ -35,10 +35,10 @@ router.get("/", async (req, res) => {
       ? bowlers.filter(b => ids.includes(b.id))
       : bowlers;
 
-    console.log(`Retrieved ${filteredBowlers.length} bowlers`);
+    console.log(`[Bowlers] Retrieved ${filteredBowlers.length} bowlers`);
     sendSuccess(res, filteredBowlers);
   } catch (error) {
-    console.error('Error fetching bowlers:', error);
+    console.error('[Bowlers] Error fetching bowlers:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowlers');
   }
 });
@@ -52,52 +52,74 @@ router.get("/:id", async (req, res) => {
     }
     sendSuccess(res, bowler);
   } catch (error) {
-    console.error('Error fetching bowler:', error);
+    console.error('[Bowlers] Error fetching bowler:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler');
   }
 });
 
 router.post("/", async (req, res) => {
   try {
-    console.log('Creating new bowler:', req.body);
+    console.log('[Bowlers] Creating new bowler in sandbox mode:', {
+      ...req.body,
+      environment: 'sandbox'
+    });
+
     const bowler = insertBowlerSchema.parse(req.body);
 
-    // Check for existing bowler
-    const existingBowlers = await storage.getBowlers();
-    const existingBowler = (existingBowlers || []).find(b =>
-      b.email.toLowerCase() === bowler.email.toLowerCase()
-    );
+    // Check for existing bowler with same email if provided
+    if (bowler.email) {
+      const existingBowlers = await storage.getBowlers();
+      const existingBowler = existingBowlers.find(b =>
+        b.email && b.email.toLowerCase() === bowler.email.toLowerCase()
+      );
 
-    if (existingBowler) {
-      console.log('Duplicate email found:', bowler.email);
-      return sendError(res, "A bowler with this email already exists", 400, 'DUPLICATE_EMAIL');
+      if (existingBowler) {
+        console.log('[Bowlers] Duplicate email found:', bowler.email);
+        return sendError(res, "A bowler with this email already exists", 400, 'DUPLICATE_EMAIL');
+      }
     }
 
     // Create bowler in database first
     const created = await storage.createBowler(bowler);
-    console.log('Bowler created in database:', created);
+    console.log('[Bowlers] Bowler created in database:', created);
 
-    // Then create Square customer
-    try {
-      const squareCustomer = await createOrUpdateCustomer(created.name, created.email);
-      console.log('Square customer created:', squareCustomer);
-
-      if (squareCustomer) {
-        const updated = await storage.updateBowler(created.id, {
-          squareCustomerId: squareCustomer.id,
-          active: true // Ensure active status is set
+    // Then create Square customer in sandbox
+    if (created.email) {
+      try {
+        console.log('[Bowlers] Creating Square customer in sandbox for:', {
+          name: created.name,
+          email: created.email
         });
-        console.log('Bowler updated with Square ID:', updated);
-        return sendSuccess(res, updated, 201);
+
+        const squareCustomer = await createOrUpdateCustomer(created.name, created.email);
+        console.log('[Bowlers] Square sandbox customer created:', {
+          customerId: squareCustomer?.id,
+          status: 'success'
+        });
+
+        if (squareCustomer) {
+          const updated = await storage.updateBowler(created.id, {
+            ...created,
+            squareCustomerId: squareCustomer.id,
+            active: true
+          });
+          console.log('[Bowlers] Bowler updated with Square sandbox ID:', {
+            bowlerId: updated.id,
+            squareCustomerId: updated.squareCustomerId
+          });
+          return sendSuccess(res, updated, 201);
+        }
+      } catch (squareError) {
+        console.error('[Bowlers] Square sandbox API error:', squareError);
+        // Continue with the created bowler even if Square integration fails
       }
-    } catch (squareError) {
-      console.error('Square API error:', squareError);
-      // Continue with the created bowler even if Square integration fails
+    } else {
+      console.log('[Bowlers] Skipping Square customer creation - no email provided');
     }
 
     sendSuccess(res, created, 201);
   } catch (error) {
-    console.error('Error creating bowler:', error);
+    console.error('[Bowlers] Error creating bowler:', error);
     if (error instanceof z.ZodError) {
       sendError(res, error, 400);
     } else {
@@ -111,18 +133,21 @@ router.patch("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const update = partialBowlerSchema.parse(req.body);
 
-    console.log(`Updating bowler ${id}:`, update);
+    console.log(`[Bowlers] Updating bowler ${id}:`, update);
 
     const bowler = await storage.getBowler(id);
     if (!bowler) {
       return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
     }
 
-    const updated = await storage.updateBowler(id, update);
-    console.log('Bowler updated:', updated);
+    const updated = await storage.updateBowler(id, {
+      ...bowler,
+      ...update
+    });
+    console.log('[Bowlers] Bowler updated:', updated);
     sendSuccess(res, updated);
   } catch (error) {
-    console.error('Error updating bowler:', error);
+    console.error('[Bowlers] Error updating bowler:', error);
     if (error instanceof z.ZodError) {
       sendError(res, error, 400);
     } else {
@@ -134,7 +159,7 @@ router.patch("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    console.log(`Deleting bowler ${id}`);
+    console.log(`[Bowlers] Deleting bowler ${id}`);
 
     const bowler = await storage.getBowler(id);
     if (!bowler) {
@@ -142,10 +167,10 @@ router.delete("/:id", async (req, res) => {
     }
 
     await storage.deleteBowler(id);
-    console.log(`Bowler ${id} deleted`);
+    console.log(`[Bowlers] Bowler ${id} deleted`);
     sendSuccess(res, null, 204);
   } catch (error) {
-    console.error('Error deleting bowler:', error);
+    console.error('[Bowlers] Error deleting bowler:', error);
     sendError(res,
       error instanceof Error ?
         `Failed to delete bowler: ${error.message}` :
