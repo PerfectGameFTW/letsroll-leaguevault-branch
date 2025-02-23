@@ -8,6 +8,22 @@ console.log('Environment:', {
   PORT: process.env.PORT
 });
 
+// Add more detailed startup logging
+console.log('[Server] Starting server initialization...');
+debugLog('Startup', 'Beginning server initialization', {
+  time: new Date().toISOString(),
+  env: process.env.NODE_ENV,
+  workflow: process.env.REPL_WORKFLOW_NAME
+});
+
+// Update the DEBUG constant at the beginning of the file
+const DEBUG = process.env.DEBUG !== '0' || process.env.REPL_WORKFLOW_NAME === 'Dev';
+function debugLog(context: string, message: string, data?: any) {
+  if (DEBUG) {
+    console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  }
+}
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes.js";
 import { setupVite } from "./vite.js";
@@ -21,20 +37,11 @@ import fs from 'fs';
 import { setupAuth } from "./auth.js";
 import { paymentScheduler } from './services/payment-scheduler.js';
 
-// Update the DEBUG constant at the beginning of the file
-const DEBUG = process.env.DEBUG !== '0' || process.env.REPL_WORKFLOW_NAME === 'Dev';
-function debugLog(context: string, message: string, data?: any) {
-  if (DEBUG) {
-    console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
-  }
-}
-
 const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 const HOST = '0.0.0.0';
 const preferredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
 
-// Define phase tracking interfaces
 interface StartupPhases {
   cleanup: boolean;
   database: boolean;
@@ -52,7 +59,6 @@ interface ShutdownPhases {
   server_closed: boolean;
 }
 
-// Initialize phase tracking
 const startupPhases: StartupPhases = {
   cleanup: false,
   database: false,
@@ -76,13 +82,8 @@ let viteSetupComplete = false;
 let serverPort: number | null = null;
 let isServerReady = false;
 
-// Create a status file to communicate with the workflow
 const PORT_STATUS_FILE = '.port-status';
-
-// Add constant for port status cleanup
 const STALE_PORT_TIMEOUT = 60000; // 60 seconds
-
-// Track active requests for graceful shutdown
 let activeRequests = 0;
 const requestTracker = (req: Request, res: Response, next: NextFunction) => {
   activeRequests++;
@@ -93,15 +94,9 @@ const requestTracker = (req: Request, res: Response, next: NextFunction) => {
 };
 
 app.use(requestTracker);
-
-// Basic middleware setup
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-
-// Setup authentication
 setupAuth(app);
-
-// Update port status monitoring middleware
 app.use(async (req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
 
@@ -111,7 +106,6 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     workflow: process.env.REPL_WORKFLOW_NAME || 'unknown'
   });
 
-  // After response monitoring
   res.on('finish', async () => {
     const duration = Date.now() - start;
     debugLog('Response', `${req.method} ${req.path} completed in ${duration}ms`);
@@ -120,8 +114,6 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   next();
 });
 
-
-// Update the request logging to be more verbose
 app.use((req, res, next) => {
   if (req.path.includes('/@vite') || req.path.includes('vite-hmr')) {
     return next();
@@ -148,7 +140,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// Update the getWorkflowName function to match wait-for-port.ts
 const getWorkflowName = () => {
   const npmScript = process.env.npm_lifecycle_event;
   const replWorkflow = process.env.REPL_WORKFLOW_NAME;
@@ -165,19 +156,16 @@ const getWorkflowName = () => {
     path: process.env.PATH?.split(':')[0]
   });
 
-  // Priority 1: Development environment or dev script should always be "Dev" workflow
   if (isDev) {
     debugLog('Workflow', 'Detected Dev workflow from development environment');
     return 'Dev';
   }
 
-  // Priority 2: Explicit workflow name from environment
   if (replWorkflow) {
     debugLog('Workflow', `Using explicit workflow name: ${replWorkflow}`);
     return replWorkflow;
   }
 
-  // Priority 3: For backwards compatibility, map workspace to Dev in development
   if (replSlug === 'workspace' && process.env.NODE_ENV === 'development') {
     debugLog('Workflow', 'Mapped workspace to Dev workflow in development');
     return 'Dev';
@@ -187,7 +175,6 @@ const getWorkflowName = () => {
   return replSlug || 'Unknown';
 };
 
-// Add instance management with workflow awareness
 const INSTANCE_LOCK_FILE = '.server-instance.lock';
 
 async function acquireInstanceLock(): Promise<boolean> {
@@ -206,7 +193,6 @@ async function acquireInstanceLock(): Promise<boolean> {
 
     debugLog('Instance', 'Attempting to acquire lock', lockData);
 
-    // Try to create lock file
     await fs.promises.writeFile(
       INSTANCE_LOCK_FILE,
       JSON.stringify(lockData),
@@ -218,14 +204,12 @@ async function acquireInstanceLock(): Promise<boolean> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
       try {
-        // Check existing lock
         const existing = JSON.parse(
           await fs.promises.readFile(INSTANCE_LOCK_FILE, 'utf-8')
         );
 
         debugLog('Instance', 'Found existing lock', existing);
 
-        // Allow different workflows to run concurrently
         if (existing.workflow !== currentWorkflow) {
           debugLog('Instance', 'Lock belongs to different workflow, allowing concurrent execution', {
             current: currentWorkflow,
@@ -234,7 +218,6 @@ async function acquireInstanceLock(): Promise<boolean> {
           return true;
         }
 
-        // For same workflow, check if process is still running
         try {
           process.kill(existing.pid, 0);
           debugLog('Instance', 'Found running instance of same workflow', existing);
@@ -264,7 +247,6 @@ async function releaseInstanceLock() {
   }
 }
 
-// Update writePortStatus to use correct workflow name
 async function writePortStatus(
   port: number,
   ready: boolean = false,
@@ -292,7 +274,6 @@ async function writePortStatus(
       }
     };
 
-    // Log existing port status before writing
     try {
       const existingStatus = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
       debugLog('PortStatus', 'Existing port status:', JSON.parse(existingStatus));
@@ -308,11 +289,9 @@ async function writePortStatus(
   }
 }
 
-// Enhanced cleanup for port status
 async function cleanupPortStatus() {
   debugLog('Cleanup', 'Starting port status cleanup');
   try {
-    // Check for existing processes
     const psCommand = process.platform === 'win32'
       ? `tasklist /FI "IMAGENAME eq node.exe" /FO CSV /NH`
       : `ps aux | grep node`;
@@ -335,7 +314,6 @@ async function cleanupPortStatus() {
   }
 }
 
-// Enhanced port management functions
 const cleanupStalePortStatus = async () => {
   try {
     const status = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8')
@@ -345,14 +323,12 @@ const cleanupStalePortStatus = async () => {
     if (status) {
       const timestampAge = Date.now() - new Date(status.timestamp).getTime();
 
-      // Check if process is still running
       try {
-        process.kill(status.pid, 0); // Test if process exists
+        process.kill(status.pid, 0); 
         if (timestampAge < STALE_PORT_TIMEOUT) {
           throw new Error('Port is in use by another active process');
         }
       } catch (e) {
-        // Process doesn't exist or we own it, safe to cleanup
         await fs.promises.unlink(PORT_STATUS_FILE).catch(() => {});
       }
     }
@@ -372,7 +348,6 @@ async function isPortAvailable(port: number): Promise<boolean> {
       try {
         tester.close();
       } catch (err) {
-        // Ignore errors during cleanup
       }
     };
 
@@ -392,7 +367,6 @@ async function isPortAvailable(port: number): Promise<boolean> {
         resolve(true);
       });
 
-    // Set a shorter timeout for port check
     timeoutId = setTimeout(() => {
       cleanup();
       console.log(`[Server] Port ${port} check timed out`);
@@ -409,11 +383,9 @@ async function isPortAvailable(port: number): Promise<boolean> {
   });
 }
 
-// Update findAvailablePort to be more robust
 async function findAvailablePort(startPort: number, maxAttempts: number = 10): Promise<number> {
   console.log(`[Server] Looking for available port starting from ${startPort}...`);
 
-  // Clean up any stale port status before starting
   await cleanupStalePortStatus();
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -423,7 +395,6 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
       const isAvailable = await isPortAvailable(port);
       if (isAvailable) {
         console.log(`[Server] Found available port: ${port}`);
-        // Initial port status write
         await writePortStatus(port, false, {
           database: false,
           vite: false,
@@ -440,13 +411,12 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
   throw new Error(`No available ports found between ${startPort} and ${startPort + maxAttempts - 1}`);
 }
 
-// Update the waitForServerReady function
 function waitForServerReady(port: number): Promise<void> {
   return new Promise((resolve, reject) => {
     console.log(`[Server] Waiting for server readiness on port ${port}...`);
     let attempts = 0;
-    const maxAttempts = 30; // 30 attempts (3 seconds total)
-    const checkInterval = 100; // Check every 100ms
+    const maxAttempts = 30; 
+    const checkInterval = 100; 
 
     const check = async () => {
       try {
@@ -462,7 +432,7 @@ function waitForServerReady(port: number): Promise<void> {
         }
       } catch (error) {
         attempts++;
-        if (attempts % 5 === 0) { // Log every 5th attempt
+        if (attempts % 5 === 0) { 
           console.log(`[Server] Waiting for readiness (attempt ${attempts}/${maxAttempts})`);
         }
       }
@@ -471,16 +441,15 @@ function waitForServerReady(port: number): Promise<void> {
         clearInterval(interval);
         console.warn('[Server] Server readiness check timed out, but continuing...');
         isServerReady = true;
-        resolve(); // Resolve anyway to prevent hanging
+        resolve(); 
       }
     };
 
     const interval = setInterval(check, checkInterval);
-    check(); // Run first check immediately
+    check(); 
   });
 }
 
-// Add retry mechanism for database connection
 async function testDatabaseConnectionWithRetry(maxRetries = 3, backoffMs = 1000): Promise<void> {
   let attempt = 0;
 
@@ -497,7 +466,6 @@ async function testDatabaseConnectionWithRetry(maxRetries = 3, backoffMs = 1000)
         throw new Error(`Database connection failed after ${maxRetries} attempts`);
       }
 
-      // Exponential backoff
       const delay = backoffMs * Math.pow(2, attempt - 1);
       console.log(`[Server] Waiting ${delay}ms before next attempt...`);
       await new Promise(resolve => setTimeout(resolve, delay));
@@ -505,36 +473,29 @@ async function testDatabaseConnectionWithRetry(maxRetries = 3, backoffMs = 1000)
   }
 }
 
-// Enhanced port status validation
 async function validateStartupPhase(currentPhase: keyof typeof startupPhases, requiredPhases: (keyof typeof startupPhases)[] = []): Promise<void> {
-  // Verify required phases are complete
   const incompletePhases = requiredPhases.filter(phase => !startupPhases[phase]);
 
   if (incompletePhases.length > 0) {
     throw new Error(`Cannot proceed with ${currentPhase}: required phases not complete: ${incompletePhases.join(', ')}`);
   }
 
-  // Update current phase status
   startupPhases[currentPhase] = true;
 
-  // Log phase completion
   console.log(`[Server] Startup phase '${currentPhase}' completed successfully`);
 }
 
 
-// Update startServer function to better handle payment scheduler initialization
 async function startServer() {
   try {
     console.log('[Server] Starting server...');
 
-    // Check for existing instance
     const canStart = await acquireInstanceLock();
     if (!canStart) {
       console.log('[Server] Another server instance is already running');
       process.exit(0);
     }
 
-    // Setup cleanup handlers
     process.on('SIGTERM', () => {
       releaseInstanceLock();
       shutdown();
@@ -545,11 +506,9 @@ async function startServer() {
       shutdown();
     });
 
-    // Phase 1: Quick cleanup
     await cleanupPortStatus();
     await validateStartupPhase('cleanup');
 
-    // Phase 2: Database check with shorter timeout
     const dbConnected = await Promise.race([
       testDatabaseConnectionWithRetry(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Database connection timeout')), 5000))
@@ -559,18 +518,15 @@ async function startServer() {
     });
     await validateStartupPhase('database', ['cleanup']);
 
-    // Initialize payment scheduler after database connection
     if (dbConnected) {
       try {
         await paymentScheduler.initialize();
         console.log('[Server] Payment scheduler initialized successfully');
       } catch (error) {
         console.error('[Server] Error initializing payment scheduler:', error);
-        // Log error but don't fail startup - scheduler can be reinitialized later
       }
     }
 
-    // Phase 3: Port allocation
     try {
       serverPort = await findAvailablePort(preferredPort);
     } catch (error) {
@@ -579,14 +535,12 @@ async function startServer() {
     }
     await validateStartupPhase('port', ['cleanup', 'database']);
 
-    // Initial port status
     await writePortStatus(serverPort, false, {
-      database: !!dbConnected, // Cast to boolean
+      database: !!dbConnected, 
       vite: viteSetupComplete,
       server: false
     });
 
-    // Phase 4: Server startup with timeout
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         reject(new Error('Server startup timeout'));
@@ -606,13 +560,11 @@ async function startServer() {
 
     await validateStartupPhase('server', ['cleanup', 'database', 'port']);
 
-    // Wait for server to be ready with shorter timeout
     await waitForServerReady(serverPort);
     console.log(`[Server] Server is fully initialized and ready on port ${serverPort}`);
 
-    // Final status update
     await writePortStatus(serverPort, true, {
-      database: !!dbConnected, // Cast to boolean
+      database: !!dbConnected, 
       server: true,
       vite: viteSetupComplete
     });
@@ -627,7 +579,6 @@ async function startServer() {
   }
 }
 
-// Update the health check endpoint for better debugging
 app.get('/api/health', async (req, res) => {
   debugLog('Health', 'Health check requested', {
     port: serverPort,
@@ -665,7 +616,6 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// API-specific middleware
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -678,11 +628,9 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Register API routes
 console.log('[Server] Registering API routes...');
 registerRoutes(app);
 
-// Development mode setup with better error handling
 if (process.env.NODE_ENV !== "production") {
   console.log('[Server] Setting up Vite middleware for development...');
   setupVite(app, server)
@@ -703,7 +651,6 @@ if (process.env.NODE_ENV !== "production") {
       process.exit(1);
     });
 } else {
-  // Production mode setup
   app.use(express.static(path.join(process.cwd(), 'dist/public')));
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
@@ -714,7 +661,6 @@ if (process.env.NODE_ENV !== "production") {
   startServer();
 }
 
-// Global error handler
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[Error]', err);
   if (!res.headersSent) {
@@ -730,10 +676,8 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   next(err);
 });
 
-// Add cleanup handler with timeout
 let shutdownTimeoutId: NodeJS.Timeout | undefined;
 
-// Update shutdown function to properly cleanup payment scheduler
 async function shutdown() {
   console.log('[Server] Initiating graceful shutdown...');
   console.log(`[Server] Active requests: ${activeRequests}`);
@@ -742,21 +686,18 @@ async function shutdown() {
   shutdownPhases.initiated = true;
 
   try {
-    // Cancel all scheduled payments before shutdown
     if (paymentScheduler) {
       console.log('[Server] Cleaning up payment scheduler...');
       paymentScheduler.cancelAllJobs();
     }
 
-    // Set a maximum wait time for active requests
     const forceShutdown = new Promise((_, reject) => {
       shutdownTimeoutId = setTimeout(() => {
         const timeElapsed = Date.now() - startTime;
         reject(new Error(`Shutdown timeout after ${timeElapsed}ms with ${activeRequests} pending requests`));
-      }, 10000); // 10 second timeout
+      }, 10000); 
     });
 
-    // Wait for active requests to complete with progress logging
     const gracefulShutdown = new Promise<void>(async (resolve) => {
       console.log(`[Server] Waiting for ${activeRequests} active requests to complete...`);
 
@@ -771,11 +712,9 @@ async function shutdown() {
       resolve();
     });
 
-    // Wait for either graceful shutdown or timeout
     await Promise.race([gracefulShutdown, forceShutdown]);
 
 
-    // Remove port status file with retries
     let retries = 3;
     while (retries > 0) {
       try {
@@ -794,7 +733,6 @@ async function shutdown() {
       }
     }
 
-    // Cleanup database connections
     try {
       await dbCleanup();
       console.log('[Server] Database connections cleaned up successfully');
@@ -804,7 +742,6 @@ async function shutdown() {
       throw error;
     }
 
-    // Close the server with a timeout and detailed error handling
     await new Promise<void>((resolve, reject) => {
       const serverTimeout = setTimeout(() => {
         reject(new Error('Server close operation timed out after 5000ms'));
