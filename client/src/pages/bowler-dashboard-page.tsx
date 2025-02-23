@@ -395,22 +395,7 @@ export const BowlerDashboardPage: FC = () => {
                             <p className="font-medium">${(payments[0].amount / 100).toFixed(2)}</p>
                           </div>
                         )}
-
-                        {upcomingPayments.length > 0 && (
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium">Next Payment</p>
-                              <p className="text-sm text-muted-foreground">
-                                {format(upcomingPayments[0].dueDate, "MMMM d, yyyy")}
-                              </p>
-                            </div>
-                            <p className="font-medium">
-                              ${(upcomingPayments[0].amount / 100).toFixed(2)}
-                            </p>
-                          </div>
-                        )}
                       </div>
-
                       <div className="flex items-center gap-2 pt-4 border-t">
                         <Button
                           variant="outline"
@@ -424,34 +409,6 @@ export const BowlerDashboardPage: FC = () => {
                     </CardContent>
                   </Card>
 
-                  {upcomingPayments.length > 0 && (
-                    <div className="space-y-3">
-                      <h3 className="text-lg font-semibold">Upcoming Payments</h3>
-                      <div className="space-y-2">
-                        {upcomingPayments.map((payment, index) => (
-                          <div
-                            key={index}
-                            className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                          >
-                            <div className="flex items-center gap-3">
-                              <Calendar className="h-5 w-5 text-muted-foreground" />
-                              <div>
-                                <p className="font-medium">
-                                  {format(payment.dueDate, 'MMMM d, yyyy')}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  Automatic payment scheduled
-                                </p>
-                              </div>
-                            </div>
-                            <p className="font-semibold">
-                              ${(payment.amount / 100).toFixed(2)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
               </CardContent>
             </Card>
