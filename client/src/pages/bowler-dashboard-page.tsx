@@ -1,15 +1,3 @@
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-
 // Interface definitions remain unchanged at the top
 import { useState, useRef, useEffect, FC, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -356,72 +344,13 @@ export const BowlerDashboardPage: FC = () => {
     { label: "Full Season", weeks: totalWeeks }
   ], [totalWeeks]);
 
-  const queryClient = useQueryClient();
-
-  const cancelScheduleMutation = useMutation({
-    mutationFn: async (scheduleId: number) => {
-      try {
-        const response = await fetch(`/api/payments/schedules/${scheduleId}`, {
-          method: 'DELETE',
-        });
-
-        // First try to parse as JSON
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-          const data = await response.json();
-          if (!response.ok) {
-            throw new Error(data.message || 'Failed to cancel payment schedule');
-          }
-          return data;
-        } else {
-          // If not JSON, get text and throw error
-          const text = await response.text();
-          throw new Error(`Invalid server response: ${text}`);
-        }
-      } catch (error) {
-        console.error('[BowlerDashboard] Cancel schedule error:', error);
-        throw error;
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/dashboard-data'] });
-      toast({
-        title: "Success",
-        description: "Automatic payments have been cancelled",
-      });
-      // Reset state to show payment setup form
-      if (bowler) {
-        queryClient.setQueryData([`/api/bowlers/${bowler.id}`], {
-          ...bowler,
-          squareCustomerId: null,
-        });
-      }
-    },
-    onError: (error: Error) => {
-      console.error('[BowlerDashboard] Cancel schedule mutation error:', error);
-      toast({
-        title: "Error",
-        description: error.message || 'Failed to cancel payment schedule',
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleCancelSchedule = async (scheduleId: number) => {
-    try {
-      await cancelScheduleMutation.mutateAsync(scheduleId);
-    } catch (error) {
-      console.error('[BowlerDashboard] Error cancelling schedule:', error);
-    }
-  };
-
-  function ModifyScheduleDialog({
-    scheduleId,
+  function ModifyScheduleDialog({ 
+    scheduleId, 
     currentFrequency,
     currentAmount,
-    isOpen,
-    onClose
-  }: {
+    isOpen, 
+    onClose 
+  }: { 
     scheduleId: number;
     currentFrequency: PaymentSchedule;
     currentAmount: number;
@@ -575,7 +504,7 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-  const RenderPaymentStatus = () => {
+  const renderPaymentStatus = useMemo(() => {
     const [isModifyingSchedule, setIsModifyingSchedule] = useState(false);
 
     return (
@@ -646,35 +575,6 @@ export const BowlerDashboardPage: FC = () => {
                           Modify Payment Schedule
                           <ArrowRight className="ml-2 h-4 w-4" />
                         </Button>
-
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              variant="destructive"
-                              className="w-full"
-                            >
-                              Cancel Automatic Payments
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Cancel Automatic Payments?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will stop all future automatic payments for your league dues.
-                                You can set up a new payment schedule at any time.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Keep Payments</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => league && handleCancelSchedule(league.id)}
-                                className="bg-destructive hover:bg-destructive/90"
-                              >
-                                Yes, Cancel Payments
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
                       </div>
 
                       {league && (
@@ -940,12 +840,32 @@ export const BowlerDashboardPage: FC = () => {
               >
                 Set Up Payments Now
                 <ArrowRight className="ml-2 h-4 w-4" />
-              </Button            </div>
+              </Button>
+            </div>
           )
         )}
       </>
     );
-  };
+  }, [
+    bowler,
+    showPaymentSetup,
+    selectedSchedule,
+    weeklyFee,
+    totalWeeks,
+    selectedWeeks,
+    isDrawerOpen,
+    customHandleWeekChange,
+    calculateTotalAmount,
+    handleSubmitPayment,
+    isInitialized,
+    squareError,
+    payments,
+    upcomingPayments,
+    amountPastDue,
+    getPaymentFrequency,
+    league
+  ]);
+
 
   if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
     return (
@@ -1011,7 +931,7 @@ export const BowlerDashboardPage: FC = () => {
       bowlerName={bowler.name}
       leagueName={getBowlerFirstLeagueName(bowler)}
     >
-      <div className="container mx-auto py-6 space-y-6">
+      <div className="space-y-6">
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="text-3xl font-bold">{bowler.name}</CardTitle>
@@ -1023,7 +943,17 @@ export const BowlerDashboardPage: FC = () => {
             </div>
           </CardContent>
         </Card>
-        <RenderPaymentStatus />
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle>Payment Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {renderPaymentStatus}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </BowlerLayout>
   );
