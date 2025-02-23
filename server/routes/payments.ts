@@ -178,4 +178,35 @@ router.patch("/schedules/:id", async (req, res) => {
   }
 });
 
+// Add new route for cancelling payment schedules
+router.delete("/schedules/:id", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return sendError(res, "Invalid schedule ID", 400, "INVALID_ID");
+    }
+
+    console.log('[Payments Route] Cancelling payment schedule:', { scheduleId: id });
+
+    // Get the schedule before deletion to notify the scheduler
+    const schedule = await storage.getPaymentSchedule(id);
+    if (!schedule) {
+      return sendError(res, "Payment schedule not found", 404, "NOT_FOUND");
+    }
+
+    // Cancel the schedule in the database
+    await storage.cancelPaymentSchedule(id);
+
+    // Notify the payment scheduler to stop future payments
+    await paymentScheduler.cancelSchedule(schedule);
+
+    console.log('[Payments Route] Successfully cancelled payment schedule:', { scheduleId: id });
+
+    sendSuccess(res, { message: "Payment schedule cancelled successfully" });
+  } catch (error) {
+    console.error('[Payments Route] Cancel schedule error:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to cancel payment schedule');
+  }
+});
+
 export default router;

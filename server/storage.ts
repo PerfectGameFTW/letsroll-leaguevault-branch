@@ -2,8 +2,8 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
-  users, // Add users table import
-  paymentSchedules, // Add paymentSchedules table import
+  users, 
+  paymentSchedules, 
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
@@ -11,8 +11,8 @@ import {
   type Payment, type InsertPayment,
   type Game, type InsertGame,
   type Score, type InsertScore,
-  type User, type InsertUser, // Add User types
-  type PaymentSchedule, type InsertPaymentSchedule // Add PaymentSchedule types
+  type User, type InsertUser, 
+  type PaymentSchedule, type InsertPaymentSchedule 
 } from "@shared/schema.js";
 
 export interface IStorage {
@@ -80,6 +80,8 @@ export interface IStorage {
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
   updatePaymentSchedule(id: number, updates: Partial<InsertPaymentSchedule>): Promise<PaymentSchedule>;
+  getPaymentSchedule(id: number): Promise<PaymentSchedule | undefined>;
+  cancelPaymentSchedule(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -801,6 +803,40 @@ export class DatabaseStorage implements IStorage {
       return updatedSchedule;
     } catch (error) {
       console.error('[Storage] Error updating payment schedule:', {
+        error: error instanceof Error ? {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        } : error,
+        scheduleId: id
+      });
+      throw error;
+    }
+  }
+
+  async getPaymentSchedule(id: number): Promise<PaymentSchedule | undefined> {
+    const [schedule] = await db
+      .select()
+      .from(paymentSchedules)
+      .where(eq(paymentSchedules.id, id));
+    return schedule;
+  }
+
+  async cancelPaymentSchedule(id: number): Promise<void> {
+    try {
+      console.log('[Storage] Cancelling payment schedule:', { scheduleId: id });
+
+      await db
+        .update(paymentSchedules)
+        .set({
+          active: false,
+          squareCardId: null, // Clear the card association
+        })
+        .where(eq(paymentSchedules.id, id));
+
+      console.log('[Storage] Successfully cancelled payment schedule');
+    } catch (error) {
+      console.error('[Storage] Error cancelling payment schedule:', {
         error: error instanceof Error ? {
           name: error.name,
           message: error.message,
