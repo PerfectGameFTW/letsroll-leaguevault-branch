@@ -3,7 +3,7 @@ import { logger } from "../logger";
 
 const squareClient = new Client({
   accessToken: process.env.SQUARE_ACCESS_TOKEN,
-  environment: Environment.Sandbox, // Change to Production for live payments
+  environment: Environment.Sandbox, // Explicitly set sandbox environment
 });
 
 interface CreatePaymentParams {
@@ -22,17 +22,28 @@ export async function createSquarePayment({
   try {
     const idempotencyKey = `${bowlerId}-${leagueId}-${Date.now()}`;
 
+    logger.info("Creating Square payment in sandbox mode", {
+      amount,
+      bowlerId,
+      leagueId,
+      environment: 'sandbox'
+    });
+
     const payment = await squareClient.paymentsApi.createPayment({
       sourceId: cardId,
       idempotencyKey,
       amountMoney: {
-        amount: amount,
+        amount: BigInt(amount), // Convert to BigInt to fix type error
         currency: "USD",
       },
       autocomplete: true,
     });
 
     if (payment.result?.payment?.id) {
+      logger.info("Square payment created successfully", {
+        paymentId: payment.result.payment.id,
+        status: "success"
+      });
       return {
         status: "success" as const,
         paymentId: payment.result.payment.id,
@@ -42,7 +53,7 @@ export async function createSquarePayment({
     throw new Error("Payment creation failed");
   } catch (error) {
     logger.error("Square payment creation failed:", error);
-    
+
     if (error instanceof ApiError) {
       return {
         status: "error" as const,

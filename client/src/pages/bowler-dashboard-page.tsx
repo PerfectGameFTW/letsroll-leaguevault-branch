@@ -271,7 +271,14 @@ export const BowlerDashboardPage: FC = () => {
         throw new Error("Invalid payment amount calculated");
       }
 
-      const result = await createPayment(amount, card, bowler.id, league.id);
+      // Pass storeCard=true for weekly or monthly payments
+      const result = await createPayment(
+        amount, 
+        card, 
+        bowler.id, 
+        league.id,
+        selectedSchedule !== 'custom' // Set storeCard to true for recurring payments
+      );
 
       if (result.status === 'COMPLETED') {
         toast({
