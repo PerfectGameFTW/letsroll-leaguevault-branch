@@ -1,3 +1,13 @@
+// Add startup logging right at the beginning of the file
+console.log('=== Server Startup Diagnostics ===');
+console.log('Environment:', {
+  NODE_ENV: process.env.NODE_ENV,
+  REPL_WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
+  npm_lifecycle_event: process.env.npm_lifecycle_event,
+  DEBUG: process.env.DEBUG,
+  PORT: process.env.PORT
+});
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes.js";
 import { setupVite } from "./vite.js";
