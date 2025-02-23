@@ -28,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { apiRequest } from "@/lib/queryClient";
 
 // Add these type definitions before the component
 interface ModifyScheduleFormData {
@@ -351,19 +352,26 @@ export const BowlerDashboardPage: FC = () => {
         throw new Error("Missing bowler or league information");
       }
 
-      const response = await fetch(`/api/payment-schedules/${paymentScheduleResponse?.data?.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to cancel automatic payments');
+      if (!paymentScheduleResponse?.data?.id) {
+        throw new Error("No active payment schedule found");
       }
 
-      return response.json();
+      try {
+        const response = await apiRequest(
+          "DELETE",
+          `/api/payment-schedules/${paymentScheduleResponse.data.id}`
+        );
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.message || 'Failed to cancel automatic payments');
+        }
+
+        return data;
+      } catch (error) {
+        console.error('[BowlerDashboard] Cancel payments error:', error);
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/payment-schedules'] });
@@ -374,9 +382,10 @@ export const BowlerDashboardPage: FC = () => {
       setShowPaymentSetup(true);
     },
     onError: (error: Error) => {
+      console.error('[BowlerDashboard] Cancel payments mutation error:', error);
       toast({
         title: "Error",
-        description: error.message,
+        description: error.message || "Failed to cancel automatic payments. Please try again.",
         variant: "destructive",
       });
     },

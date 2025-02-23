@@ -254,7 +254,8 @@ router.delete("/schedules/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
-      return sendError(res, "Invalid schedule ID", 400, "INVALID_ID");
+      console.error('[Payments Route] Invalid schedule ID:', req.params.id);
+      return sendError(res, { message: "Invalid schedule ID" }, 400, "INVALID_ID");
     }
 
     console.log('[Payments Route] Deleting payment schedule:', id);
@@ -262,8 +263,16 @@ router.delete("/schedules/:id", async (req, res) => {
     // Get the schedule first to ensure it exists
     const schedule = await storage.getPaymentScheduleById(id);
     if (!schedule) {
-      return sendError(res, "Payment schedule not found", 404, "NOT_FOUND");
+      console.error('[Payments Route] Schedule not found:', id);
+      return sendError(res, { message: "Payment schedule not found" }, 404, "NOT_FOUND");
     }
+
+    console.log('[Payments Route] Found schedule to delete:', {
+      id: schedule.id,
+      bowlerId: schedule.bowlerId,
+      leagueId: schedule.leagueId,
+      frequency: schedule.frequency
+    });
 
     // Delete the schedule
     await storage.deletePaymentSchedule(id);
@@ -272,10 +281,13 @@ router.delete("/schedules/:id", async (req, res) => {
     await paymentScheduler.removeSchedule(id);
 
     console.log('[Payments Route] Successfully deleted payment schedule:', id);
-    sendSuccess(res, { message: "Payment schedule deleted successfully" });
+    return sendSuccess(res, { message: "Payment schedule deleted successfully" });
   } catch (error) {
     console.error('[Payments Route] Delete schedule error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to delete payment schedule');
+    return sendError(res, { 
+      message: error instanceof Error ? error.message : 'Failed to delete payment schedule',
+      code: "DELETION_ERROR" 
+    }, 500);
   }
 });
 

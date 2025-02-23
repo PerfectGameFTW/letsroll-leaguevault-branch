@@ -889,7 +889,7 @@ export class DatabaseStorage implements IStorage {
         );
 
       console.log('[Storage] Found payment schedule:', schedule ? {
-                id: schedule.id,
+        id: schedule.id,
         frequency: schedule.frequency,
         amount: schedule.amount,
         nextPaymentDate: schedule.nextPaymentDate

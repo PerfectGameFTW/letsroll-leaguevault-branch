@@ -12,6 +12,7 @@ export interface ApiResponse<T> {
 }
 
 export function sendSuccess<T>(res: Response, data: T, status = 200) {
+  res.setHeader('Content-Type', 'application/json');
   const response: ApiResponse<T> = {
     success: true,
     data
@@ -25,6 +26,7 @@ export function sendError(
   status = 500,
   code = 'INTERNAL_SERVER_ERROR'
 ) {
+  res.setHeader('Content-Type', 'application/json');
   const response: ApiResponse<null> = {
     success: false,
     error: {
