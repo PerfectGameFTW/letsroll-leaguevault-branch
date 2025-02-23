@@ -5,7 +5,8 @@ import { eq, isNull } from "drizzle-orm";
 
 const squareClient = new Client({
   accessToken: process.env.SQUARE_ACCESS_TOKEN,
-  environment: Environment.Production,
+  // Explicitly set sandbox environment
+  environment: Environment.Sandbox,
 });
 
 async function sleep(ms: number) {

@@ -31,6 +31,9 @@ declare global {
 let payments: any = null;
 let initializationPromise: Promise<any> | null = null;
 
+// Ensure we load the sandbox URL in development
+const SQUARE_SDK_URL = "https://sandbox.web.squarecdn.com/v1/square.js";
+
 export async function initializeSquare() {
   try {
     // Return existing initialization promise if it exists
@@ -50,8 +53,8 @@ export async function initializeSquare() {
         }
 
         try {
-          console.log('[Square] Loading Square SDK from CDN...');
-          await loadScript("https://sandbox.web.squarecdn.com/v1/square.js");
+          console.log('[Square] Loading Square SDK from sandbox CDN...');
+          await loadScript(SQUARE_SDK_URL);
           console.log('[Square] Square SDK loaded successfully');
         } catch (error) {
           console.error('[Square] Failed to load Square SDK:', error);
