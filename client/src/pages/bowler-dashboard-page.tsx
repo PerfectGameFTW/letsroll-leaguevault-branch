@@ -273,9 +273,9 @@ export const BowlerDashboardPage: FC = () => {
 
       // Pass storeCard=true for weekly or monthly payments
       const result = await createPayment(
-        amount, 
-        card, 
-        bowler.id, 
+        amount,
+        card,
+        bowler.id,
         league.id,
         selectedSchedule !== 'custom' // Set storeCard to true for recurring payments
       );
@@ -455,21 +455,6 @@ export const BowlerDashboardPage: FC = () => {
                 </div>
               </CardContent>
             </Card>
-
-            {amountPastDue > 0 && (
-              <div className="rounded-md bg-destructive/10 p-4">
-                <div className="flex items-start">
-                  <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
-                  <div className="ml-3">
-                    <h3 className="text-sm font-medium text-destructive">Payment Past Due</h3>
-                    <div className="mt-1 text-sm text-destructive">
-                      <p>You have an outstanding balance of ${(amountPastDue / 100).toFixed(2)}.</p>
-                      <p className="mt-2">Please make a payment to maintain your active status in the league.</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         ) : (
           showPaymentSetup ? (
@@ -700,7 +685,6 @@ export const BowlerDashboardPage: FC = () => {
     getPaymentFrequency
   ]);
 
-
   // Loading and error states
   if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
     return (
@@ -779,16 +763,7 @@ export const BowlerDashboardPage: FC = () => {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>Payment Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              {renderPaymentStatus}
-            </div>
-          </CardContent>
-        </Card>
+        {renderPaymentStatus}
       </div>
     </BowlerLayout>
   );
