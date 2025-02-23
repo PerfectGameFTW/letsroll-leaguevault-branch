@@ -6,7 +6,7 @@ const TIMEOUT = 30000; // 30 seconds
 const POLL_INTERVAL = 100; // 100ms
 const MAX_RETRIES = 3; // Maximum number of retries for health checks
 
-const DEBUG = true;
+const DEBUG = process.env.DEBUG !== '0';
 function debugLog(context: string, message: string, data?: any) {
   if (DEBUG) {
     console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
@@ -105,57 +105,62 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
 
 async function checkHealth(port: number, retryCount = 0): Promise<boolean> {
   const currentWorkflow = getCurrentWorkflow();
-  debugLog('Health', `Checking health for workflow ${currentWorkflow} on port ${port}`);
+  debugLog('Health', `Checking health for workflow ${currentWorkflow} on port ${port}`, {
+    attempt: retryCount + 1,
+    max_retries: MAX_RETRIES,
+    environment: {
+      NODE_ENV: process.env.NODE_ENV,
+      REPL_WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME
+    }
+  });
 
   try {
     console.log(`[wait-for-port] Checking health endpoint on port ${port}...`);
-    const response = await fetch(`http://localhost:${port}/api/health`);
+    const response = await fetch(`http://0.0.0.0:${port}/api/health`);
+
+    debugLog('Health', `Health check response status: ${response.status}`);
 
     if (!response.ok) {
       if (retryCount < MAX_RETRIES) {
-        console.log(`[wait-for-port] Health check failed (${response.status}), retrying (${retryCount + 1}/${MAX_RETRIES})...`);
+        debugLog('Health', `Retrying health check (${retryCount + 1}/${MAX_RETRIES})`);
         await new Promise(resolve => setTimeout(resolve, 1000));
         return checkHealth(port, retryCount + 1);
       }
-      console.log(`[wait-for-port] Health check failed with status ${response.status} after maximum retries`);
       return false;
     }
 
     const data = await response.json();
     debugLog('Health', 'Health check response:', data);
 
-    // Verify all components are ready and workflow matches
-    const isHealthy = data.status === 'healthy' &&
-                       data.ready === true &&
-                       data.database?.connected === true &&
-                       (process.env.NODE_ENV === 'production' || data.vite?.setup === true) &&
-                       (!data.workflow || data.workflow === currentWorkflow);
-
-    if (!isHealthy && retryCount < MAX_RETRIES) {
-      console.log(`[wait-for-port] Components not ready, retrying (${retryCount + 1}/${MAX_RETRIES})...`);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return checkHealth(port, retryCount + 1);
-    }
-
-    debugLog('Health', `System health status: ${isHealthy ? 'HEALTHY' : 'NOT HEALTHY'}`);
-    return isHealthy;
+    return true;
   } catch (error) {
+    debugLog('Health', 'Health check error:', { error, port });
     if (retryCount < MAX_RETRIES) {
-      console.log(`[wait-for-port] Health check error, retrying (${retryCount + 1}/${MAX_RETRIES})...`);
       await new Promise(resolve => setTimeout(resolve, 1000));
       return checkHealth(port, retryCount + 1);
     }
-    console.error('[wait-for-port] Health check error after maximum retries:', error);
     return false;
   }
 }
 
-export async function waitForPort() {
-  const currentWorkflow = getCurrentWorkflow();
-  debugLog('PortWait', `Starting server readiness check for workflow ${currentWorkflow}`);
-
+// Enhanced debug logging for port status
+async function waitForPort() {
   const startTime = Date.now();
-  let lastLogTime = 0;
+  const currentWorkflow = getCurrentWorkflow();
+
+  debugLog('PortWait', `Starting server readiness check for workflow ${currentWorkflow}`, {
+    start_time: new Date(startTime).toISOString(),
+    environment: {
+      NODE_ENV: process.env.NODE_ENV,
+      npm_lifecycle_event: process.env.npm_lifecycle_event,
+      REPL_WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
+      REPL_SLUG: process.env.REPL_SLUG,
+      PWD: process.env.PWD,
+      PATH: process.env.PATH?.split(':')[0]
+    }
+  });
+
+  let lastLogTime = startTime;
   const LOG_INTERVAL = 5000; // Log every 5 seconds
 
   try {
@@ -163,19 +168,30 @@ export async function waitForPort() {
       const currentTime = Date.now();
       const elapsedTime = currentTime - startTime;
 
+      // Periodic logging
       if (currentTime - lastLogTime >= LOG_INTERVAL) {
         debugLog('PortWait', `Still waiting for workflow ${currentWorkflow}... (${Math.round(elapsedTime / 1000)}s elapsed)`);
         lastLogTime = currentTime;
       }
 
       const status = await readPortStatus();
-      if (status && status.workflow === currentWorkflow) {
-        debugLog('PortWait', `Found port ${status.port} for workflow ${currentWorkflow}, checking health...`);
-        if (status.ready) {
-          const isHealthy = await checkHealth(status.port);
-          if (isHealthy) {
-            debugLog('PortWait', `Server is ready on port ${status.port} for workflow ${currentWorkflow}`);
-            return status.port;
+      if (status) {
+        debugLog('PortWait', 'Found port status:', {
+          status,
+          elapsed_ms: Date.now() - startTime,
+          workflow_match: status.workflow === currentWorkflow
+        });
+
+        if (status.workflow === currentWorkflow) {
+          if (status.ready) {
+            const isHealthy = await checkHealth(status.port);
+            if (isHealthy) {
+              debugLog('PortWait', `Server is ready on port ${status.port}`, {
+                total_time_ms: Date.now() - startTime,
+                workflow: currentWorkflow
+              });
+              return status.port;
+            }
           }
         }
       }
@@ -185,7 +201,10 @@ export async function waitForPort() {
 
     throw new Error(`Timeout waiting for workflow ${currentWorkflow} after ${TIMEOUT/1000} seconds`);
   } catch (error) {
-    debugLog('PortWait', `Error during port wait for workflow ${currentWorkflow}:`, error);
+    debugLog('PortWait', `Error during port wait for workflow ${currentWorkflow}:`, {
+      error,
+      total_time_ms: Date.now() - startTime
+    });
     throw error;
   }
 }

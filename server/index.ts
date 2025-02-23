@@ -11,27 +11,15 @@ import fs from 'fs';
 import { setupAuth } from "./auth.js";
 import { paymentScheduler } from './services/payment-scheduler.js';
 
-// Enhanced debug logging
-const DEBUG = true;
+// Update the DEBUG constant at the beginning of the file
+const DEBUG = process.env.DEBUG !== '0';
 function debugLog(context: string, message: string, data?: any) {
   if (DEBUG) {
     console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
   }
 }
 
-interface PortStatus {
-  port: number;
-  ready: boolean;
-  timestamp: string;
-  pid: number;
-  mode: string;
-  workflow: string;
-  health: {
-    database: boolean;
-    vite: boolean;
-    server: boolean;
-  };
-}
+// Rest of imports remain unchanged...
 
 const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
@@ -105,41 +93,27 @@ app.use(express.urlencoded({ extended: false }));
 // Setup authentication
 setupAuth(app);
 
-// Port status monitoring middleware
+// Update port status monitoring middleware
 app.use(async (req: Request, res: Response, next: NextFunction) => {
   const start = Date.now();
 
-  // Update port status on request start
-  if (serverPort) {
-    await writePortStatus(serverPort, isServerReady, {
-      database: true,
-      vite: viteSetupComplete,
-      server: true
-    });
-  }
+  debugLog('Request', `${req.method} ${req.path}`, {
+    headers: req.headers,
+    query: req.query,
+    workflow: process.env.REPL_WORKFLOW_NAME || 'unknown'
+  });
 
   // After response monitoring
   res.on('finish', async () => {
     const duration = Date.now() - start;
-    if (duration > 1000) { // Only log slow requests
-      console.log(`[Server] Slow request: ${req.method} ${req.path} took ${duration}ms`);
-    }
-
-    // Update port status after request completion
-    if (serverPort) {
-      await writePortStatus(serverPort, isServerReady, {
-        database: true,
-        vite: viteSetupComplete,
-        server: true
-      });
-    }
+    debugLog('Response', `${req.method} ${req.path} completed in ${duration}ms`);
   });
 
   next();
 });
 
 
-// Enhanced request logging with port information
+// Update the request logging to be more verbose
 app.use((req, res, next) => {
   if (req.path.includes('/@vite') || req.path.includes('vite-hmr')) {
     return next();
@@ -148,6 +122,7 @@ app.use((req, res, next) => {
   const start = Date.now();
   const requestId = Math.random().toString(36).substring(7);
   console.log(`[${requestId}] ${req.method} ${req.originalUrl} on port ${serverPort}`);
+  console.log(`[${requestId}] Request headers:`, req.headers);
 
   if (req.body && Object.keys(req.body).length > 0) {
     console.log(`[${requestId}] Request body:`, JSON.stringify(req.body, null, 2));
@@ -644,74 +619,40 @@ async function startServer() {
   }
 }
 
-// Update the health check endpoint for better error handling
+// Update the health check endpoint for better debugging
 app.get('/api/health', async (req, res) => {
+  debugLog('Health', 'Health check requested', {
+    port: serverPort,
+    workflow: process.env.REPL_WORKFLOW_NAME,
+    environment: process.env.NODE_ENV
+  });
+
   try {
     const dbStart = Date.now();
     await testConnection();
     const dbDuration = Date.now() - dbStart;
-
-    // Add detailed workflow information
-    const workflowInfo = {
-      detected: getWorkflowName(),
-      environment: {
-        NODE_ENV: process.env.NODE_ENV,
-        npm_lifecycle_event: process.env.npm_lifecycle_event,
-        REPL_WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
-        isDev: process.env.NODE_ENV === 'development' || process.env.npm_lifecycle_event === 'dev'
-      }
-    };
-
-    debugLog('Health', 'Workflow information:', workflowInfo);
 
     const status = {
       status: 'healthy',
       port: serverPort,
       ready: isServerReady,
       mode: process.env.NODE_ENV,
-      workflow: workflowInfo.detected,
-      workflow_info: workflowInfo,
+      workflow: getWorkflowName(),
       timestamp: new Date().toISOString(),
       diagnostics: {
         database_response_time: `${dbDuration}ms`,
         uptime: process.uptime(),
         memory: process.memoryUsage(),
-      },
-      phases: {
-        startup: startupPhases,
-        shutdown: shutdownPhases
-      },
-      database: {
-        connected: true,
-        url: process.env.DATABASE_URL ? 'configured' : 'missing'
-      },
-      vite: {
-        setup: viteSetupComplete
       }
     };
 
-    // Update port status file with workflow information
-    await writePortStatus(serverPort!, isServerReady, {
-      database: true,
-      vite: viteSetupComplete,
-      server: true
-    });
-
+    debugLog('Health', 'Health check successful', status);
     res.json(status);
   } catch (error) {
-    console.error('[Server] Health check error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    debugLog('Health', 'Health check failed', { error });
     res.status(503).json({
       status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      error: {
-        message: errorMessage,
-        code: error instanceof Error ? error.name : 'UnknownError'
-      },
-      phases: {
-        startup: startupPhases,
-        shutdown: shutdownPhases
-      }
+      error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -909,3 +850,17 @@ process.on('SIGINT', () => {
 
   shutdown().finally(() => clearTimeout(forceShutdownTimeout));
 });
+
+interface PortStatus {
+  port: number;
+  ready: boolean;
+  timestamp: string;
+  pid: number;
+  mode: string;
+  workflow: string;
+  health: {
+    database: boolean;
+    vite: boolean;
+    server: boolean;
+  };
+}
