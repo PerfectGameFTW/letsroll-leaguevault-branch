@@ -356,6 +356,50 @@ async function cleanupPortStatus() {
   }
 }
 
+async function cleanupStaleFiles() {
+  console.log('[Server] Checking for and cleaning up stale workflow files...');
+
+  try {
+    // Check instance lock
+    let instanceLock = null;
+    try {
+      const lockContent = await fs.promises.readFile(INSTANCE_LOCK_FILE, 'utf-8');
+      instanceLock = JSON.parse(lockContent);
+      console.log('[Server] Found instance lock:', instanceLock);
+
+      try {
+        process.kill(instanceLock.pid, 0);
+        console.log('[Server] Process from instance lock is still running');
+      } catch (e) {
+        console.log('[Server] Found stale instance lock, removing');
+        await fs.promises.unlink(INSTANCE_LOCK_FILE);
+      }
+    } catch (e) {
+      console.log('[Server] No instance lock found or error reading it');
+    }
+
+    // Check port status
+    let portStatus = null;
+    try {
+      const statusContent = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
+      portStatus = JSON.parse(statusContent);
+      console.log('[Server] Found port status:', portStatus);
+
+      try {
+        process.kill(portStatus.pid, 0);
+        console.log('[Server] Process from port status is still running');
+      } catch (e) {
+        console.log('[Server] Found stale port status, removing');
+        await fs.promises.unlink(PORT_STATUS_FILE);
+      }
+    } catch (e) {
+      console.log('[Server] No port status found or error reading it');
+    }
+  } catch (error) {
+    console.error('[Server] Error during stale file cleanup:', error);
+  }
+}
+
 const cleanupStalePortStatus = async () => {
   try {
     const status = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8')
@@ -532,6 +576,9 @@ async function startServer() {
     console.log('\n=== Server Startup Sequence ===');
     console.log('[Server] Checking for existing workflow instances...');
 
+    // Clean up any stale files first
+    await cleanupStaleFiles();
+
     // Check .port-status first
     let existingStatus = null;
     try {
@@ -543,6 +590,18 @@ async function startServer() {
         workflow: existingStatus.workflow,
         health: existingStatus.health
       });
+
+      // Verify if the process is actually running and responding
+      try {
+        process.kill(existingStatus.pid, 0);
+        const response = await fetch(`http://${HOST}:${existingStatus.port}/api/health`);
+        if (response.ok) {
+          console.log('[Server] Found healthy running workflow instance - exiting');
+          process.exit(0);
+        }
+      } catch (e) {
+        console.log('[Server] Existing workflow not responding, proceeding with startup');
+      }
     } catch (e) {
       console.log('[Server] No existing port status found');
     }
@@ -892,8 +951,8 @@ process.on('SIGTERM', () => {
   shutdown().finally(() => clearTimeout(forceShutdownTimeout));
 });
 
-process.on('SIGINT', () => {
-  console.log('[Server] Received SIGINT signal');
+process.on('SIGINT', () =>{
+  console.log('[Server]Received SIGINT signal');
   const forceShutdownTimeout = setTimeout(() => {
     console.error('[Server] Forced shutdown due to timeout');
     process.exit(1);
