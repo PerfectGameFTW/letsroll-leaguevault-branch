@@ -87,8 +87,8 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
           status.workflow === 'Dev'
         ))) {
       debugLog('PortCheck', 'Found matching workflow status', status);
-      // Only require server and vite to be healthy for development workflow
-      if (status.ready && (!status.health || (status.health.server && status.health.vite))) {
+      // For Dev workflow, consider it ready if either server or vite is healthy
+      if (status.ready && (!status.health || status.health.server || status.health.vite)) {
         return status;
       }
       debugLog('PortCheck', 'Workflow found but not ready', status);
