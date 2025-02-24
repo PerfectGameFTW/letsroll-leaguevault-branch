@@ -173,8 +173,9 @@ async function waitForPort() {
 
         // For Dev workflow, only require server and vite to be healthy
         if (status.ready && currentWorkflow === 'Dev') {
-          if (!status.health || (status.health.server && status.health.vite)) {
-            debugLog('PortWait', `Dev workflow is ready on port ${status.port}`);
+          // For Dev workflow, check server health on 5001 and vite on 3000
+          if (!status.health || status.health.server) {
+            debugLog('PortWait', `Dev workflow server is ready on port ${status.port}`);
             return status.port;
           }
         } else if (status.ready) {
