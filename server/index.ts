@@ -7,38 +7,34 @@ console.log('Process Info:', {
   argv: process.argv
 });
 
-// Debug configuration
-const DEBUG = process.env.DEBUG !== '0' || process.env.REPL_WORKFLOW_NAME === 'Dev';
+// Debug configuration with sensible defaults
+const DEBUG = process.env.DEBUG !== '0' || process.env.REPL_SLUG === 'workspace';
 function debugLog(context: string, message: string, data?: any) {
   if (DEBUG) {
     console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
   }
 }
 
-// Early environment logging
+// Early environment logging with defaults
+const NODE_ENV = process.env.NODE_ENV || 'development';
+const WORKFLOW_NAME = process.env.REPL_WORKFLOW_NAME || 'Dev';
 console.log('[Server] Environment:', {
-  NODE_ENV: process.env.NODE_ENV,
-  REPL_WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
+  NODE_ENV,
+  WORKFLOW_NAME,
   REPL_SLUG: process.env.REPL_SLUG,
   npm_lifecycle_event: process.env.npm_lifecycle_event,
-  DEBUG: DEBUG,
+  DEBUG,
   PORT: process.env.PORT
 });
 
-console.log('[Server] Will attempt to bind to ports in range:', {
-  preferredPort: process.env.PORT || 5001,
-  availablePorts: '5001-5010',
-  host: '0.0.0.0'
-});
-
-console.log('[Server] Starting server initialization...');
-debugLog('Startup', 'Beginning server initialization', {
-  time: new Date().toISOString()
-});
-
-// Add process event handlers early
+// Add process event handlers early with more informative logging
 process.on('SIGHUP', () => {
   console.log('[Server] Received SIGHUP signal, attempting graceful shutdown...');
+  console.log('[Server] Current process state:', {
+    pid: process.pid,
+    uptime: process.uptime(),
+    memory: process.memoryUsage()
+  });
   cleanup().then(() => {
     console.log('[Server] Cleanup complete after SIGHUP');
     process.exit(0);
@@ -188,41 +184,27 @@ app.use((req, res, next) => {
 });
 
 function getWorkflowName() {
-  const npmScript = process.env.npm_lifecycle_event;
-  const replWorkflow = process.env.REPL_WORKFLOW_NAME;
-  const replSlug = process.env.REPL_SLUG;
-  const isDev = process.env.NODE_ENV === 'development' || npmScript === 'dev' || replSlug === 'workspace';
-
-  debugLog('Workflow', 'Detecting current workflow', {
-    npm_lifecycle_event: npmScript,
-    REPL_WORKFLOW_NAME: replWorkflow,
-    REPL_SLUG: replSlug,
-    NODE_ENV: process.env.NODE_ENV,
-    isDev,
-    pwd: process.env.PWD,
-    path: process.env.PATH?.split(':')[0]
-  });
-
-  // Priority 1: Development environment or dev script should always be "Dev" workflow
-  if (isDev) {
-    debugLog('Workflow', 'Detected Dev workflow from development environment');
+  // Always treat workspace as Dev environment
+  if (process.env.REPL_SLUG === 'workspace') {
+    debugLog('Workflow', 'Detected workspace environment, using Dev workflow');
     return 'Dev';
   }
 
-  // Priority 2: Explicit workflow name from environment
-  if (replWorkflow) {
-    debugLog('Workflow', `Using explicit workflow name: ${replWorkflow}`);
-    return replWorkflow;
+  // Use explicit workflow name if available
+  if (process.env.REPL_WORKFLOW_NAME) {
+    debugLog('Workflow', `Using explicit workflow name: ${process.env.REPL_WORKFLOW_NAME}`);
+    return process.env.REPL_WORKFLOW_NAME;
   }
 
-  // Priority 3: For backwards compatibility, map workspace to Dev in development
-  if (replSlug === 'workspace' && process.env.NODE_ENV === 'development') {
-    debugLog('Workflow', 'Mapped workspace to Dev workflow in development');
+  // Default to Dev for development environment
+  if (NODE_ENV === 'development' || process.env.npm_lifecycle_event === 'dev') {
+    debugLog('Workflow', 'Detected development environment');
     return 'Dev';
   }
 
+  // Fallback to a default workflow name
   debugLog('Workflow', 'Using default workflow name');
-  return replSlug || 'Unknown';
+  return 'Dev';
 }
 
 const INSTANCE_LOCK_FILE = '.server-instance.lock';
@@ -848,3 +830,10 @@ interface PortStatus {
     server: boolean;
   };
 }
+console.log('[Server] Will attempt to bind to ports in range:', {
+  preferredPort,
+  availablePorts: '5001-5010',
+  host: HOST
+});
+
+console.log('[Server] Starting server initialization...');
