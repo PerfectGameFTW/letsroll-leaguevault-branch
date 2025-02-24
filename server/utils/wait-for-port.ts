@@ -80,12 +80,10 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
 
     debugLog('PortCheck', 'Read port status:', status);
 
-    // Consider any development mode instance as Dev workflow
-    if (status.workflow === currentWorkflow || 
-        (currentWorkflow === 'Dev' && (
-          status.mode === 'development' || 
-          status.workflow === 'Dev'
-        ))) {
+    // Consider all workspace instances as Dev workflow
+    if (process.env.REPL_SLUG === 'workspace' || 
+        status.workflow === 'Dev' || 
+        status.mode === 'development') {
       debugLog('PortCheck', 'Found matching workflow status', status);
       // For Dev workflow, consider it ready if either server or vite is healthy
       if (status.ready && (!status.health || status.health.server || status.health.vite)) {
