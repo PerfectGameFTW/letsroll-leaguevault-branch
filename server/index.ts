@@ -1,13 +1,38 @@
-// Very first logging to verify script execution
-console.log('[Server] Starting script execution...');
+// Very first logging to verify script execution and environment
+console.log('\n=== Server Initialization Starting ===');
+console.log('Process Info:', {
+  pid: process.pid,
+  ppid: process.ppid,
+  cwd: process.cwd(),
+  argv: process.argv
+});
 
-// Add startup logging right at the beginning of the file
+// Debug configuration
 const DEBUG = process.env.DEBUG !== '0' || process.env.REPL_WORKFLOW_NAME === 'Dev';
 function debugLog(context: string, message: string, data?: any) {
   if (DEBUG) {
     console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
   }
 }
+
+// Add process event handlers early
+process.on('SIGHUP', () => {
+  console.log('[Server] Received SIGHUP signal');
+  process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[Server] Uncaught exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server] Unhandled rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+// Very first logging to verify script execution
+console.log('[Server] Starting script execution...');
 
 // Early environment logging
 console.log('[Server] Initial environment check:', {
