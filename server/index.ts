@@ -55,6 +55,7 @@ interface PortStatus {
     vite: boolean;
     server: boolean;
   };
+  wait_for_port?: number; // Added for web feedback tool
 }
 
 interface StartupPhases {
@@ -689,11 +690,16 @@ app.get('/api/diagnostic', async (req, res) => {
     try {
       const statusContent = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
       portStatus = JSON.parse(statusContent);
+
+      // Update port status with wait_for_port configuration for web feedback tool
+      if (portStatus.workflow === 'Dev' && portStatus.port === 5001) {
+        portStatus.wait_for_port = 5001;
+      }
     } catch (e) {
       console.log('[Server] No port status file found');
     }
 
-    res.json({
+    const response = {
       current_process: {
         pid: process.pid,
         uptime: process.uptime(),
@@ -708,8 +714,12 @@ app.get('/api/diagnostic', async (req, res) => {
       instance_lock: instanceLock,
       port_status: portStatus,
       server_port: serverPort,
-      is_ready: isServerReady
-    });
+      is_ready: isServerReady,
+      wait_for_port: 5001 // Add this for web feedback tool detection
+    };
+
+    debugLog('Diagnostic', 'Endpoint response:', response);
+    res.json(response);
   } catch (error) {
     res.status(500).json({ error: 'Failed to get diagnostic data' });
   }

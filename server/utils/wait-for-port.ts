@@ -13,6 +13,12 @@ function debugLog(context: string, message: string, data?: any) {
   }
 }
 
+export interface WorkflowConfig {
+  name: string;
+  port: number;
+  ready: boolean;
+}
+
 interface PortStatus {
   port: number;
   ready: boolean;
@@ -55,8 +61,8 @@ function getCurrentWorkflow(): string {
   }
 
   // NPX or development environment indicates Dev workflow
-  if (process.env.npm_lifecycle_event === 'npx' || 
-      process.env.NODE_ENV === 'development' || 
+  if (process.env.npm_lifecycle_event === 'npx' ||
+      process.env.NODE_ENV === 'development' ||
       process.env.npm_lifecycle_event === 'dev') {
     debugLog('Workflow', 'Detected development environment');
     return 'Dev';
@@ -67,9 +73,18 @@ function getCurrentWorkflow(): string {
   return 'Dev';
 }
 
+// Update readPortStatus function with enhanced logging
 async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
   const currentWorkflow = getCurrentWorkflow();
-  debugLog('PortCheck', `Reading port status for workflow ${currentWorkflow} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+  debugLog('PortCheck', `Reading port status for workflow ${currentWorkflow} (attempt ${retryCount + 1}/${MAX_RETRIES})`, {
+    cwd: process.cwd(),
+    filepath: path.resolve(process.cwd(), PORT_STATUS_FILE),
+    env: {
+      REPL_SLUG: process.env.REPL_SLUG,
+      NODE_ENV: process.env.NODE_ENV,
+      npm_lifecycle_event: process.env.npm_lifecycle_event
+    }
+  });
 
   try {
     const filePath = path.resolve(process.cwd(), PORT_STATUS_FILE);
@@ -78,13 +93,23 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
     const content = await fs.promises.readFile(filePath, 'utf-8');
     const status = JSON.parse(content) as PortStatus;
 
-    debugLog('PortCheck', 'Read port status:', status);
+    debugLog('PortCheck', 'Read port status:', {
+      status,
+      currentWorkflow,
+      isWorkspace: process.env.REPL_SLUG === 'workspace',
+      matches: status.workflow === currentWorkflow
+    });
 
     // Consider all workspace instances as Dev workflow
-    if (process.env.REPL_SLUG === 'workspace' || 
-        status.workflow === 'Dev' || 
+    if (process.env.REPL_SLUG === 'workspace' ||
+        status.workflow === 'Dev' ||
         status.mode === 'development') {
-      debugLog('PortCheck', 'Found matching workflow status', status);
+      debugLog('PortCheck', 'Found matching workflow status', {
+        status,
+        ready: status.ready,
+        health: status.health
+      });
+
       // For Dev workflow, consider it ready if either server or vite is healthy
       if (status.ready && (!status.health || status.health.server || status.health.vite)) {
         return status;
@@ -94,18 +119,26 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
 
     debugLog('PortCheck', 'Found status for different workflow', {
       current: currentWorkflow,
-      found: status.workflow
+      found: status.workflow,
+      health: status.health
     });
     return null;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      debugLog('PortCheck', `Port status file not found at ${path.resolve(process.cwd(), PORT_STATUS_FILE)}`);
+      debugLog('PortCheck', `Port status file not found at ${path.resolve(process.cwd(), PORT_STATUS_FILE)}`, {
+        error,
+        retryCount
+      });
       if (retryCount < MAX_RETRIES) {
         await new Promise(resolve => setTimeout(resolve, 1000));
         return readPortStatus(retryCount + 1);
       }
     }
-    debugLog('PortCheck', 'Error reading port status:', error);
+    debugLog('PortCheck', 'Error reading port status:', {
+      error,
+      retryCount,
+      maxRetries: MAX_RETRIES
+    });
     return null;
   }
 }
@@ -129,7 +162,7 @@ async function checkHealth(port: number, retryCount = 0): Promise<boolean> {
     debugLog('Health', 'Health check response:', data);
     // For Dev workflow, consider healthy if server and vite are running
     if (getCurrentWorkflow() === 'Dev') {
-      return data.coordination?.port_status?.health?.server && 
+      return data.coordination?.port_status?.health?.server &&
              data.coordination?.port_status?.health?.vite;
     }
     return true;
@@ -143,13 +176,16 @@ async function checkHealth(port: number, retryCount = 0): Promise<boolean> {
   }
 }
 
-async function waitForPort() {
+// Enhanced waitForPort function to better support workflow detection
+export async function waitForPort(): Promise<number> {
   const startTime = Date.now();
   const currentWorkflow = getCurrentWorkflow();
 
   debugLog('PortWait', `Starting port wait for workflow ${currentWorkflow}`, {
     start_time: new Date(startTime).toISOString(),
-    environment: process.env
+    environment: process.env,
+    workflow_name: currentWorkflow,
+    expected_port: 5001 // Dev workflow always uses port 5001
   });
 
   let lastLogTime = startTime;
@@ -169,12 +205,13 @@ async function waitForPort() {
       if (status) {
         debugLog('PortWait', 'Found port status:', status);
 
-        // For Dev workflow, only require server and vite to be healthy
+        // For Dev workflow in workspace, server and vite must be healthy
         if (status.ready && currentWorkflow === 'Dev') {
-          // For Dev workflow, check server health on 5001 and vite on 3000
-          if (!status.health || status.health.server) {
-            debugLog('PortWait', `Dev workflow server is ready on port ${status.port}`);
+          if (status.health?.server && status.health?.vite) {
+            debugLog('PortWait', `Dev workflow is fully ready on port ${status.port}`);
             return status.port;
+          } else {
+            debugLog('PortWait', 'Waiting for all services to be healthy:', status.health);
           }
         } else if (status.ready) {
           const isHealthy = await checkHealth(status.port);
@@ -195,8 +232,8 @@ async function waitForPort() {
   }
 }
 
-// Export the function for direct use in other files
-export { waitForPort, getCurrentWorkflow, readPortStatus };
+// Export other functions
+export { getCurrentWorkflow, readPortStatus };
 
 // Start the wait-for-port process
 if (require.main === module) {
