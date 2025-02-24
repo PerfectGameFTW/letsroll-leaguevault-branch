@@ -1,3 +1,8 @@
+// Add Replit-specific port handling
+const REPLIT_WORKSPACE = process.env.REPL_SLUG === 'workspace';
+const HOST = '0.0.0.0';
+const preferredPort = REPLIT_WORKSPACE ? 5001 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 5001);
+
 // Very first logging to verify script execution and environment
 console.log('\n=== Server Initialization Starting ===');
 console.log('Process Info:', {
@@ -83,7 +88,7 @@ import { paymentScheduler } from './services/payment-scheduler.js';
 const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 const HOST = '0.0.0.0';
-const preferredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
+
 
 interface StartupPhases {
   cleanup: boolean;
@@ -289,7 +294,7 @@ async function releaseInstanceLock() {
   }
 }
 
-// Add retry logic and periodic check for port status file
+// Update writePortStatus to handle Replit workspace environment
 async function writePortStatus(
   port: number,
   ready: boolean = false,
@@ -300,13 +305,9 @@ async function writePortStatus(
     ready,
     health,
     cwd: process.cwd(),
-    path: path.resolve(PORT_STATUS_FILE)
+    path: path.resolve(PORT_STATUS_FILE),
+    is_workspace: REPLIT_WORKSPACE
   });
-
-  if (typeof port !== 'number') {
-    console.error('[Server] Invalid port type:', typeof port);
-    return;
-  }
 
   const maxRetries = 3;
   let retries = 0;
@@ -319,7 +320,7 @@ async function writePortStatus(
         timestamp: new Date().toISOString(),
         pid: process.pid,
         mode: process.env.NODE_ENV || 'development',
-        workflow: getWorkflowName(),
+        workflow: 'Dev', // Force Dev workflow in workspace
         health: {
           database: health.database || false,
           vite: health.vite || false,
@@ -327,34 +328,21 @@ async function writePortStatus(
         }
       };
 
-      // First check if we can read the existing file
-      try {
-        const existingStatus = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
-        console.log('[PortStatus] Existing port status:', JSON.parse(existingStatus));
-      } catch (err) {
-        console.log('[PortStatus] No existing port status file');
-      }
-
-      // Write the new status
-      await fs.promises.writeFile(PORT_STATUS_FILE, JSON.stringify(status, null, 2));
+      // Write the status file in the current working directory
+      const statusPath = path.resolve(process.cwd(), PORT_STATUS_FILE);
+      await fs.promises.writeFile(statusPath, JSON.stringify(status, null, 2));
       console.log('[PortStatus] Successfully wrote port status:', status);
 
       // Verify file was written correctly
-      const written = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
+      const written = await fs.promises.readFile(statusPath, 'utf-8');
       console.log('[PortStatus] Verified written status:', JSON.parse(written));
-
-      // Success - exit retry loop
       break;
     } catch (error) {
       console.error('[Server] Error writing port status:', error);
-      console.log(`[PortStatus] Error writing status (attempt ${retries + 1}/${maxRetries}):` , error);
-
       retries++;
       if (retries === maxRetries) {
         throw new Error(`Failed to write port status file after ${maxRetries} attempts`);
       }
-
-      // Wait before retrying
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
@@ -378,8 +366,8 @@ function startPortStatusCheck(port: number, health: PortStatus['health']) {
         const status = JSON.parse(content) as PortStatus;
 
         // Check if the file is stale or has incorrect information
-        if (status.pid !== process.pid || 
-            status.port !== port || 
+        if (status.pid !== process.pid ||
+            status.port !== port ||
             Date.now() - new Date(status.timestamp).getTime() > 30000) {
           needsUpdate = true;
         }
