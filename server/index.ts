@@ -1,4 +1,21 @@
+// Very first logging to verify script execution
+console.log('[Server] Starting script execution...');
+
 // Add startup logging right at the beginning of the file
+const DEBUG = process.env.DEBUG !== '0' || process.env.REPL_WORKFLOW_NAME === 'Dev';
+function debugLog(context: string, message: string, data?: any) {
+  if (DEBUG) {
+    console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  }
+}
+
+// Early environment logging
+console.log('[Server] Initial environment check:', {
+  NODE_ENV: process.env.NODE_ENV,
+  WORKFLOW: process.env.REPL_WORKFLOW_NAME,
+  DEBUG: DEBUG
+});
+
 console.log('=== Server Startup Diagnostics ===');
 console.log('Environment:', {
   NODE_ENV: process.env.NODE_ENV,
@@ -8,6 +25,13 @@ console.log('Environment:', {
   PORT: process.env.PORT
 });
 
+// Add explicit port information
+console.log('[Server] Will attempt to bind to ports in range:', {
+  preferredPort: process.env.PORT || 5001,
+  availablePorts: '5001-5010',
+  host: '0.0.0.0'
+});
+
 // Add more detailed startup logging
 console.log('[Server] Starting server initialization...');
 debugLog('Startup', 'Beginning server initialization', {
@@ -15,14 +39,6 @@ debugLog('Startup', 'Beginning server initialization', {
   env: process.env.NODE_ENV,
   workflow: process.env.REPL_WORKFLOW_NAME
 });
-
-// Update the DEBUG constant at the beginning of the file
-const DEBUG = process.env.DEBUG !== '0' || process.env.REPL_WORKFLOW_NAME === 'Dev';
-function debugLog(context: string, message: string, data?: any) {
-  if (DEBUG) {
-    console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
-  }
-}
 
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes.js";
