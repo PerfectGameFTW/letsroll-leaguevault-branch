@@ -956,7 +956,7 @@ async function shutdown() {
       } catch (error) {
         if (retries === 1) {
           console.error('[Server] Failed to remove port status file after all retries');
-        } else{
+        } else {
           console.log(`[Server] Retry ${4 - retries}/3 removing port status file`);
           await new Promise(resolve => setTimeout(resolve, 100));
         }
