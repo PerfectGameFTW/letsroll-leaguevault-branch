@@ -36,7 +36,11 @@ export async function setupVite(app: Express, server: Server) {
       ...viteLogger,
       error: (msg, options) => {
         viteLogger.error(msg, options);
-        process.exit(1);
+        console.error('[Vite] Transform error:', msg);
+        // Don't exit on transform errors during development
+        if (!msg.includes('Transform') && !msg.includes('Failed to load')) {
+          process.exit(1);
+        }
       },
     },
     server: serverOptions,
