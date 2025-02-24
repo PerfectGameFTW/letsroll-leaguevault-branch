@@ -893,6 +893,7 @@ if (process.env.NODE_ENV !== "production") {
       process.exit(1);
     });
 } else {
+  console.log('[Server] Running in production mode');
   app.use(express.static(path.join(process.cwd(), 'dist/public')));
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
