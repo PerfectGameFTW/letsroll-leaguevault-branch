@@ -58,11 +58,11 @@ function getCurrentWorkflow(): string {
   if (process.env.npm_lifecycle_event === 'npx' || 
       process.env.NODE_ENV === 'development' || 
       process.env.npm_lifecycle_event === 'dev') {
-    debugLog('Workflow', 'Detected Dev workflow from development environment');
+    debugLog('Workflow', 'Detected development environment');
     return 'Dev';
   }
 
-  // Default to Dev for development
+  // Default to Dev for development environment
   debugLog('Workflow', 'Using default Dev workflow');
   return 'Dev';
 }
