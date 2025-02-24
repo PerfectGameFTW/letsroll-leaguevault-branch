@@ -1,3 +1,16 @@
+import express, { type Request, Response, NextFunction } from "express";
+import { registerRoutes } from "./routes";
+import { setupVite } from "./vite";
+import { testConnection, cleanup as dbCleanup } from "./db";
+import { createServer } from 'http';
+import { ScoreSchedulerService } from './services/score-scheduler';
+import { storage } from './storage';
+import path from 'path';
+import net from 'net';
+import fs from 'fs';
+import { setupAuth } from "./auth";
+import { paymentScheduler } from './services/payment-scheduler';
+
 // Move PortStatus interface to the top with other interfaces
 interface PortStatus {
   port: number;
@@ -31,7 +44,10 @@ interface ShutdownPhases {
   server_closed: boolean;
 }
 
-// Add Replit-specific port handling
+// Constants and configuration
+const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
+const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
+const HOST = '0.0.0.0';
 const REPLIT_WORKSPACE = process.env.REPL_SLUG === 'workspace';
 const preferredPort = REPLIT_WORKSPACE ? 5001 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 5001);
 
@@ -45,7 +61,7 @@ console.log('Process Info:', {
 });
 
 // Debug configuration with sensible defaults
-const DEBUG = process.env.DEBUG !== '0' || process.env.REPL_SLUG === 'workspace';
+const DEBUG = process.env.DEBUG !== '0';
 function debugLog(context: string, message: string, data?: any) {
   if (DEBUG) {
     console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
@@ -102,24 +118,6 @@ async function cleanup() {
     throw error;
   }
 }
-
-
-import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes.js";
-import { setupVite } from "./vite.js";
-import { testConnection, cleanup as dbCleanup } from "./db.js";
-import { createServer } from 'http';
-import { ScoreSchedulerService } from './services/score-scheduler.js';
-import { storage } from './storage.js';
-import path from 'path';
-import net from 'net';
-import fs from 'fs';
-import { setupAuth } from "./auth.js";
-import { paymentScheduler } from './services/payment-scheduler.js';
-
-const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
-const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
-const HOST = '0.0.0.0';
 
 
 const startupPhases: StartupPhases = {
@@ -955,13 +953,12 @@ async function shutdown() {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      console.log('[Server] All active requests completed');
+      console.log('[Server] All active requestscompleted');
       shutdownPhases.requests_drained = true;
       resolve();
     });
 
     await Promise.race([gracefulShutdown, forceShutdown]);
-
 
     let retries = 3;
     while (retries > 0) {
@@ -1024,7 +1021,7 @@ async function shutdown() {
   }
 }
 
-// Restore proper signal handlers with timeouts
+// Update signal handlers with proper promise handling
 process.on('SIGTERM', () => {
   console.log('[Server] Received SIGTERM signal');
   const forceShutdownTimeout = setTimeout(() => {
@@ -1032,7 +1029,14 @@ process.on('SIGTERM', () => {
     process.exit(1);
   }, SHUTDOWN_TIMEOUT);
 
-  shutdown().finally(() => clearTimeout(forceShutdownTimeout));
+  shutdown()
+    .catch(error => {
+      console.error('[Server] Error during shutdown:', error);
+    })
+    .finally(() => {
+      clearTimeout(forceShutdownTimeout);
+      process.exit(0);
+    });
 });
 
 process.on('SIGINT', () => {
@@ -1042,14 +1046,21 @@ process.on('SIGINT', () => {
     process.exit(1);
   }, SHUTDOWN_TIMEOUT);
 
-  shutdown().finally(() => clearTimeout(forceShutdownTimeout));
+  shutdown()
+    .catch(error => {
+      console.error('[Server] Error during shutdown:', error);
+    })
+    .finally(() => {
+      clearTimeout(forceShutdownTimeout);
+      process.exit(0);
+    });
 });
 
+// Final startup logging
 console.log('[Server] Will attempt to bind to ports in range:', {
   preferredPort,
   availablePorts: '5001-5010',
-  host: HOST
+  NODE_ENV: process.env.NODE_ENV
 });
 
 console.log('[Server] Starting server initialization...');
-}
