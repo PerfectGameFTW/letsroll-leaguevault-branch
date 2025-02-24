@@ -27,6 +27,7 @@ interface PortStatus {
   };
 }
 
+// Enhanced getCurrentWorkflow with additional logging
 function getCurrentWorkflow(): string {
   // Add more detailed debug logging for workflow detection
   const env = {
@@ -71,7 +72,10 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
   debugLog('PortCheck', `Reading port status for workflow ${currentWorkflow} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
 
   try {
-    const content = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
+    const filePath = path.resolve(process.cwd(), PORT_STATUS_FILE);
+    debugLog('PortCheck', `Attempting to read port status from: ${filePath}`);
+
+    const content = await fs.promises.readFile(filePath, 'utf-8');
     const status = JSON.parse(content) as PortStatus;
 
     debugLog('PortCheck', 'Read port status:', status);
@@ -97,7 +101,7 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
     return null;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      debugLog('PortCheck', 'Port status file not found');
+      debugLog('PortCheck', `Port status file not found at ${path.resolve(process.cwd(), PORT_STATUS_FILE)}`);
       if (retryCount < MAX_RETRIES) {
         await new Promise(resolve => setTimeout(resolve, 1000));
         return readPortStatus(retryCount + 1);
@@ -191,6 +195,9 @@ async function waitForPort() {
     throw error;
   }
 }
+
+// Export the function for direct use in other files
+export { waitForPort, getCurrentWorkflow, readPortStatus };
 
 // Start the wait-for-port process
 if (require.main === module) {

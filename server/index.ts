@@ -289,46 +289,113 @@ async function releaseInstanceLock() {
   }
 }
 
+// Add retry logic and periodic check for port status file
 async function writePortStatus(
   port: number,
   ready: boolean = false,
   health: Partial<PortStatus['health']> = {}
 ): Promise<void> {
-  debugLog('PortStatus', `Updating port status for port ${port}`, { ready, health });
+  console.log('[PortStatus] Writing port status file...', {
+    port,
+    ready,
+    health,
+    cwd: process.cwd(),
+    path: path.resolve(PORT_STATUS_FILE)
+  });
 
   if (typeof port !== 'number') {
     console.error('[Server] Invalid port type:', typeof port);
     return;
   }
 
-  try {
-    const status: PortStatus = {
-      port,
-      ready,
-      timestamp: new Date().toISOString(),
-      pid: process.pid,
-      mode: process.env.NODE_ENV || 'development',
-      workflow: getWorkflowName(),
-      health: {
-        database: health.database || false,
-        vite: health.vite || false,
-        server: health.server || false
-      }
-    };
+  const maxRetries = 3;
+  let retries = 0;
 
+  while (retries < maxRetries) {
     try {
-      const existingStatus = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
-      debugLog('PortStatus', 'Existing port status:', JSON.parse(existingStatus));
-    } catch (err) {
-      debugLog('PortStatus', 'No existing port status file');
-    }
+      const status: PortStatus = {
+        port,
+        ready,
+        timestamp: new Date().toISOString(),
+        pid: process.pid,
+        mode: process.env.NODE_ENV || 'development',
+        workflow: getWorkflowName(),
+        health: {
+          database: health.database || false,
+          vite: health.vite || false,
+          server: health.server || false
+        }
+      };
 
-    await fs.promises.writeFile(PORT_STATUS_FILE, JSON.stringify(status, null, 2));
-    debugLog('PortStatus', 'Successfully wrote port status:', status);
-  } catch (error) {
-    console.error('[Server] Error writing port status:', error);
-    debugLog('PortStatus', 'Error writing status:', error);
+      // First check if we can read the existing file
+      try {
+        const existingStatus = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
+        console.log('[PortStatus] Existing port status:', JSON.parse(existingStatus));
+      } catch (err) {
+        console.log('[PortStatus] No existing port status file');
+      }
+
+      // Write the new status
+      await fs.promises.writeFile(PORT_STATUS_FILE, JSON.stringify(status, null, 2));
+      console.log('[PortStatus] Successfully wrote port status:', status);
+
+      // Verify file was written correctly
+      const written = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
+      console.log('[PortStatus] Verified written status:', JSON.parse(written));
+
+      // Success - exit retry loop
+      break;
+    } catch (error) {
+      console.error('[Server] Error writing port status:', error);
+      console.log(`[PortStatus] Error writing status (attempt ${retries + 1}/${maxRetries}):` , error);
+
+      retries++;
+      if (retries === maxRetries) {
+        throw new Error(`Failed to write port status file after ${maxRetries} attempts`);
+      }
+
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
   }
+}
+
+// Add periodic port status check
+let portStatusInterval: NodeJS.Timeout;
+
+function startPortStatusCheck(port: number, health: PortStatus['health']) {
+  if (portStatusInterval) {
+    clearInterval(portStatusInterval);
+  }
+
+  // Check every 5 seconds
+  portStatusInterval = setInterval(async () => {
+    try {
+      // First try to read the existing file
+      let needsUpdate = false;
+      try {
+        const content = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
+        const status = JSON.parse(content) as PortStatus;
+
+        // Check if the file is stale or has incorrect information
+        if (status.pid !== process.pid || 
+            status.port !== port || 
+            Date.now() - new Date(status.timestamp).getTime() > 30000) {
+          needsUpdate = true;
+        }
+      } catch (err) {
+        // File doesn't exist or is corrupted
+        needsUpdate = true;
+      }
+
+      if (needsUpdate) {
+        console.log('[PortStatus] Refreshing port status file');
+        await writePortStatus(port, true, health);
+      }
+    } catch (error) {
+      console.error('[PortStatus] Error during periodic check:', error);
+    }
+  }, 5000);
 }
 
 async function cleanupPortStatus() {
@@ -676,6 +743,13 @@ async function startServer() {
       vite: viteSetupComplete
     });
 
+    // Start periodic status check
+    startPortStatusCheck(serverPort, {
+      database: !!dbConnected,
+      server: true,
+      vite: viteSetupComplete
+    });
+
   } catch (error) {
     console.error('[Server] Critical startup error:', error);
     await releaseInstanceLock();
@@ -856,6 +930,11 @@ async function shutdown() {
       paymentScheduler.cancelAllJobs();
     }
 
+    if (portStatusInterval) {
+      clearInterval(portStatusInterval);
+    }
+
+
     const forceShutdown = new Promise((_, reject) => {
       shutdownTimeoutId = setTimeout(() => {
         const timeElapsed = Date.now() - startTime;
@@ -941,7 +1020,7 @@ async function shutdown() {
   }
 }
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', () =>{
   console.log('[Server] Received SIGTERM signal');
   const forceShutdownTimeout = setTimeout(() => {
     console.error('[Server] Forced shutdown due to timeout');
@@ -981,3 +1060,4 @@ console.log('[Server] Will attempt to bind to ports in range:', {
 });
 
 console.log('[Server] Starting server initialization...');
+}
