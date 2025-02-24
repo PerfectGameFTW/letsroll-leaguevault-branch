@@ -11,7 +11,38 @@ import fs from 'fs';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
 
-// Move PortStatus interface to the top with other interfaces
+// Initialize Express app first
+const app = express();
+const server = createServer(app);
+
+// Debug configuration
+const DEBUG = process.env.DEBUG !== '0';
+const WORKFLOW_DEBUG = true; // Force workflow debugging on
+
+function debugWorkflow(context: string, message: string, data?: any) {
+  if (WORKFLOW_DEBUG) {
+    console.log(`[WORKFLOW][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  }
+}
+
+// Constants and configuration
+const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
+const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
+const HOST = '0.0.0.0';
+const REPLIT_WORKSPACE = process.env.REPL_SLUG === 'workspace';
+const preferredPort = REPLIT_WORKSPACE ? 5001 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 5001);
+const PORT_STATUS_FILE = '.port-status';
+const STALE_PORT_TIMEOUT = 60000; // 60 seconds
+const INSTANCE_LOCK_FILE = '.server-instance.lock';
+
+// State variables
+let viteSetupComplete = false;
+let serverPort: number | null = null;
+let isServerReady = false;
+let portStatusInterval: NodeJS.Timeout;
+let activeRequests = 0;
+
+// Interfaces
 interface PortStatus {
   port: number;
   ready: boolean;
@@ -26,7 +57,6 @@ interface PortStatus {
   };
 }
 
-// Keep existing interfaces
 interface StartupPhases {
   cleanup: boolean;
   database: boolean;
@@ -44,14 +74,182 @@ interface ShutdownPhases {
   server_closed: boolean;
 }
 
-// Constants and configuration
-const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
-const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
-const HOST = '0.0.0.0';
-const REPLIT_WORKSPACE = process.env.REPL_SLUG === 'workspace';
-const preferredPort = REPLIT_WORKSPACE ? 5001 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 5001);
+const startupPhases: StartupPhases = {
+  cleanup: false,
+  database: false,
+  port: false,
+  server: false,
+  vite: false,
+  final: false
+};
 
-// Very first logging to verify script execution and environment
+const shutdownPhases: ShutdownPhases = {
+  initiated: false,
+  requests_drained: false,
+  port_status_cleaned: false,
+  database_cleaned: false,
+  server_closed: false
+};
+
+// Debug configuration with sensible defaults
+function debugLog(context: string, message: string, data?: any) {
+  if (DEBUG) {
+    console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
+  }
+}
+
+// Request tracking middleware
+const requestTracker = (req: Request, res: Response, next: NextFunction) => {
+  activeRequests++;
+  res.on('finish', () => {
+    activeRequests--;
+  });
+  next();
+};
+
+// Setup basic middleware
+app.use(requestTracker);
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+setupAuth(app);
+
+// Enhanced getWorkflowName function
+function getWorkflowName() {
+  debugWorkflow('Detection', 'Starting workflow name detection', {
+    REPL_SLUG: process.env.REPL_SLUG,
+    REPL_WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
+    NODE_ENV: process.env.NODE_ENV,
+    npm_lifecycle_event: process.env.npm_lifecycle_event
+  });
+
+  // Always treat workspace as Dev environment
+  if (process.env.REPL_SLUG === 'workspace') {
+    debugWorkflow('Detection', 'Detected workspace environment, using Dev workflow');
+    return 'Dev';
+  }
+
+  // Use explicit workflow name if available
+  if (process.env.REPL_WORKFLOW_NAME) {
+    debugWorkflow('Detection', `Using explicit workflow name: ${process.env.REPL_WORKFLOW_NAME}`);
+    return process.env.REPL_WORKFLOW_NAME;
+  }
+
+  // Default to Dev for development environment
+  if (process.env.NODE_ENV === 'development' || process.env.npm_lifecycle_event === 'dev') {
+    debugWorkflow('Detection', 'Detected development environment');
+    return 'Dev';
+  }
+
+  // Fallback to a default workflow name
+  debugWorkflow('Detection', 'Using default workflow name');
+  return 'Dev';
+}
+
+// Enhanced writePortStatus function
+async function writePortStatus(
+  port: number,
+  ready: boolean = false,
+  health: Partial<PortStatus['health']> = {}
+): Promise<void> {
+  debugWorkflow('PortStatus', 'Writing port status file...', {
+    port,
+    ready,
+    health,
+    cwd: process.cwd(),
+    path: path.resolve(PORT_STATUS_FILE),
+    is_workspace: REPLIT_WORKSPACE
+  });
+
+  const maxRetries = 3;
+  let retries = 0;
+
+  while (retries < maxRetries) {
+    try {
+      const status: PortStatus = {
+        port,
+        ready,
+        timestamp: new Date().toISOString(),
+        pid: process.pid,
+        mode: process.env.NODE_ENV || 'development',
+        workflow: getWorkflowName(),
+        health: {
+          database: health.database || false,
+          vite: health.vite || false,
+          server: health.server || false
+        }
+      };
+
+      // Write the status file in the current working directory
+      const statusPath = path.resolve(process.cwd(), PORT_STATUS_FILE);
+      await fs.promises.writeFile(statusPath, JSON.stringify(status, null, 2));
+      debugWorkflow('PortStatus', 'Successfully wrote port status:', status);
+
+      // Verify file was written correctly
+      const written = await fs.promises.readFile(statusPath, 'utf-8');
+      debugWorkflow('PortStatus', 'Verified written status:', JSON.parse(written));
+      break;
+    } catch (error) {
+      console.error('[Server] Error writing port status:', error);
+      retries++;
+      if (retries === maxRetries) {
+        throw new Error(`Failed to write port status file after ${maxRetries} attempts`);
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+}
+
+// Enhanced startPortStatusCheck function
+function startPortStatusCheck(port: number, health: PortStatus['health']) {
+  if (portStatusInterval) {
+    clearInterval(portStatusInterval);
+  }
+
+  debugWorkflow('PortStatus', 'Starting periodic status check', { port, health });
+
+  // Check every 5 seconds
+  portStatusInterval = setInterval(async () => {
+    try {
+      // First try to read the existing file
+      let needsUpdate = false;
+      try {
+        const content = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
+        const status = JSON.parse(content) as PortStatus;
+        debugWorkflow('PortStatus', 'Current status:', status);
+
+        // Check if the file is stale or has incorrect information
+        if (status.pid !== process.pid ||
+            status.port !== port ||
+            status.workflow !== getWorkflowName() ||
+            Date.now() - new Date(status.timestamp).getTime() > 30000) {
+          debugWorkflow('PortStatus', 'Status needs update', {
+            currentPid: process.pid,
+            statusPid: status.pid,
+            currentPort: port,
+            statusPort: status.port,
+            currentWorkflow: getWorkflowName(),
+            statusWorkflow: status.workflow,
+            age: Date.now() - new Date(status.timestamp).getTime()
+          });
+          needsUpdate = true;
+        }
+      } catch (err) {
+        // File doesn't exist or is corrupted
+        debugWorkflow('PortStatus', 'Status file error:', err);
+        needsUpdate = true;
+      }
+
+      if (needsUpdate) {
+        debugWorkflow('PortStatus', 'Refreshing port status file');
+        await writePortStatus(port, true, health);
+      }
+    } catch (error) {
+      console.error('[PortStatus] Error during periodic check:', error);
+    }
+  }, 5000);
+}
+
+// Add startup logging
 console.log('\n=== Server Initialization Starting ===');
 console.log('Process Info:', {
   pid: process.pid,
@@ -59,14 +257,6 @@ console.log('Process Info:', {
   cwd: process.cwd(),
   argv: process.argv
 });
-
-// Debug configuration with sensible defaults
-const DEBUG = process.env.DEBUG !== '0';
-function debugLog(context: string, message: string, data?: any) {
-  if (DEBUG) {
-    console.log(`[DEBUG][${context}] ${message}`, data ? JSON.stringify(data, null, 2) : '');
-  }
-}
 
 // Early environment logging with defaults
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -119,285 +309,6 @@ async function cleanup() {
   }
 }
 
-
-const startupPhases: StartupPhases = {
-  cleanup: false,
-  database: false,
-  port: false,
-  server: false,
-  vite: false,
-  final: false
-};
-
-const shutdownPhases: ShutdownPhases = {
-  initiated: false,
-  requests_drained: false,
-  port_status_cleaned: false,
-  database_cleaned: false,
-  server_closed: false
-};
-
-const app = express();
-const server = createServer(app);
-let viteSetupComplete = false;
-let serverPort: number | null = null;
-let isServerReady = false;
-
-const PORT_STATUS_FILE = '.port-status';
-const STALE_PORT_TIMEOUT = 60000; // 60 seconds
-let activeRequests = 0;
-const requestTracker = (req: Request, res: Response, next: NextFunction) => {
-  activeRequests++;
-  res.on('finish', () => {
-    activeRequests--;
-  });
-  next();
-};
-
-app.use(requestTracker);
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
-setupAuth(app);
-app.use(async (req: Request, res: Response, next: NextFunction) => {
-  const start = Date.now();
-
-  debugLog('Request', `${req.method} ${req.path}`, {
-    headers: req.headers,
-    query: req.query,
-    workflow: process.env.REPL_WORKFLOW_NAME || 'unknown'
-  });
-
-  res.on('finish', async () => {
-    const duration = Date.now() - start;
-    debugLog('Response', `${req.method} ${req.path} completed in ${duration}ms`);
-  });
-
-  next();
-});
-
-app.use((req, res, next) => {
-  if (req.path.includes('/@vite') || req.path.includes('vite-hmr')) {
-    return next();
-  }
-
-  const start = Date.now();
-  const requestId = Math.random().toString(36).substring(7);
-  console.log(`[${requestId}] ${req.method} ${req.originalUrl} on port ${serverPort}`);
-  console.log(`[${requestId}] Request headers:`, req.headers);
-
-  if (req.body && Object.keys(req.body).length > 0) {
-    console.log(`[${requestId}] Request body:`, JSON.stringify(req.body, null, 2));
-  }
-
-  const oldJson = res.json;
-  res.json = function(body) {
-    console.log(`[${requestId}] Response body:`, JSON.stringify(body));
-    return oldJson.call(this, body);
-  };
-
-  res.on('finish', () => {
-    console.log(`[${requestId}] ${req.method} ${req.originalUrl} ${res.statusCode} (${Date.now() - start}ms)`);
-  });
-  next();
-});
-
-function getWorkflowName() {
-  // Always treat workspace as Dev environment
-  if (process.env.REPL_SLUG === 'workspace') {
-    debugLog('Workflow', 'Detected workspace environment, using Dev workflow');
-    return 'Dev';
-  }
-
-  // Use explicit workflow name if available
-  if (process.env.REPL_WORKFLOW_NAME) {
-    debugLog('Workflow', `Using explicit workflow name: ${process.env.REPL_WORKFLOW_NAME}`);
-    return process.env.REPL_WORKFLOW_NAME;
-  }
-
-  // Default to Dev for development environment
-  if (NODE_ENV === 'development' || process.env.npm_lifecycle_event === 'dev') {
-    debugLog('Workflow', 'Detected development environment');
-    return 'Dev';
-  }
-
-  // Fallback to a default workflow name
-  debugLog('Workflow', 'Using default workflow name');
-  return 'Dev';
-}
-
-const INSTANCE_LOCK_FILE = '.server-instance.lock';
-
-// Update the acquireInstanceLock function to be more verbose and handle concurrent setup
-async function acquireInstanceLock(): Promise<boolean> {
-  const currentWorkflow = getWorkflowName();
-
-  try {
-    const lockData = {
-      pid: process.pid,
-      timestamp: new Date().toISOString(),
-      workflow: currentWorkflow,
-      environment: {
-        NODE_ENV: process.env.NODE_ENV,
-        npm_lifecycle_event: process.env.npm_lifecycle_event,
-        concurrent: process.env.npm_lifecycle_event === 'npx'
-      }
-    };
-
-    debugLog('Instance', 'Attempting to acquire lock', lockData);
-
-    await fs.promises.writeFile(
-      INSTANCE_LOCK_FILE,
-      JSON.stringify(lockData),
-      { flag: 'wx' } // Fail if file exists
-    );
-
-    debugLog('Instance', 'Successfully acquired lock', lockData);
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
-      try {
-        const existing = JSON.parse(
-          await fs.promises.readFile(INSTANCE_LOCK_FILE, 'utf-8')
-        );
-
-        debugLog('Instance', 'Found existing lock', existing);
-
-        // Handle concurrent setup - if the existing lock is from the same workflow
-        // but running via concurrent (npx), consider it the same workflow
-        if (existing.workflow === currentWorkflow ||
-            (existing.environment?.concurrent && currentWorkflow === 'Dev')) {
-          try {
-            process.kill(existing.pid, 0);
-            debugLog('Instance', 'Found running instance of same workflow', existing);
-            console.log('[Server] Found existing Dev workflow instance:', {
-              pid: existing.pid,
-              workflow: existing.workflow,
-              concurrent: existing.environment?.concurrent
-            });
-            return false;
-          } catch {
-            debugLog('Instance', 'Found stale lock, cleaning up', existing);
-            await fs.promises.unlink(INSTANCE_LOCK_FILE);
-            return acquireInstanceLock();
-          }
-        }
-
-        debugLog('Instance', 'Lock belongs to different workflow, allowing concurrent execution', {
-          current: currentWorkflow,
-          existing: existing.workflow
-        });
-        return true;
-      } catch (err) {
-        debugLog('Instance', 'Found invalid lock file, cleaning up');
-        await fs.promises.unlink(INSTANCE_LOCK_FILE);
-        return acquireInstanceLock();
-      }
-    }
-    debugLog('Instance', 'Failed to acquire lock', { error });
-    return false;
-  }
-}
-
-async function releaseInstanceLock() {
-  try {
-    await fs.promises.unlink(INSTANCE_LOCK_FILE);
-    debugLog('Instance', 'Released server instance lock');
-  } catch (error) {
-    debugLog('Instance', 'Error releasing lock', { error });
-  }
-}
-
-// Update writePortStatus to handle Replit workspace environment
-async function writePortStatus(
-  port: number,
-  ready: boolean = false,
-  health: Partial<PortStatus['health']> = {}
-): Promise<void> {
-  console.log('[PortStatus] Writing port status file...', {
-    port,
-    ready,
-    health,
-    cwd: process.cwd(),
-    path: path.resolve(PORT_STATUS_FILE),
-    is_workspace: REPLIT_WORKSPACE
-  });
-
-  const maxRetries = 3;
-  let retries = 0;
-
-  while (retries < maxRetries) {
-    try {
-      const status: PortStatus = {
-        port,
-        ready,
-        timestamp: new Date().toISOString(),
-        pid: process.pid,
-        mode: process.env.NODE_ENV || 'development',
-        workflow: 'Dev', // Force Dev workflow in workspace
-        health: {
-          database: health.database || false,
-          vite: health.vite || false,
-          server: health.server || false
-        }
-      };
-
-      // Write the status file in the current working directory
-      const statusPath = path.resolve(process.cwd(), PORT_STATUS_FILE);
-      await fs.promises.writeFile(statusPath, JSON.stringify(status, null, 2));
-      console.log('[PortStatus] Successfully wrote port status:', status);
-
-      // Verify file was written correctly
-      const written = await fs.promises.readFile(statusPath, 'utf-8');
-      console.log('[PortStatus] Verified written status:', JSON.parse(written));
-      break;
-    } catch (error) {
-      console.error('[Server] Error writing port status:', error);
-      retries++;
-      if (retries === maxRetries) {
-        throw new Error(`Failed to write port status file after ${maxRetries} attempts`);
-      }
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-}
-
-// Add periodic port status check
-let portStatusInterval: NodeJS.Timeout;
-
-function startPortStatusCheck(port: number, health: PortStatus['health']) {
-  if (portStatusInterval) {
-    clearInterval(portStatusInterval);
-  }
-
-  // Check every 5 seconds
-  portStatusInterval = setInterval(async () => {
-    try {
-      // First try to read the existing file
-      let needsUpdate = false;
-      try {
-        const content = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
-        const status = JSON.parse(content) as PortStatus;
-
-        // Check if the file is stale or has incorrect information
-        if (status.pid !== process.pid ||
-            status.port !== port ||
-            Date.now() - new Date(status.timestamp).getTime() > 30000) {
-          needsUpdate = true;
-        }
-      } catch (err) {
-        // File doesn't exist or is corrupted
-        needsUpdate = true;
-      }
-
-      if (needsUpdate) {
-        console.log('[PortStatus] Refreshing port status file');
-        await writePortStatus(port, true, health);
-      }
-    } catch (error) {
-      console.error('[PortStatus] Error during periodic check:', error);
-    }
-  }, 5000);
-}
 
 async function cleanupPortStatus() {
   debugLog('Cleanup', 'Starting port status cleanup');
@@ -806,7 +717,7 @@ app.get('/api/diagnostic', async (req, res) => {
 
 // Enhance health endpoint to include workflow info
 app.get('/api/health', async (req, res) => {
-  debugLog('Health', 'Health check requested', {
+  debugWorkflow('Health', 'Health check requested', {
     port: serverPort,
     workflow: getWorkflowName(),
     environment: process.env.NODE_ENV
@@ -824,7 +735,7 @@ app.get('/api/health', async (req, res) => {
       instanceLock = JSON.parse(await fs.promises.readFile(INSTANCE_LOCK_FILE, 'utf-8'));
       portStatus = JSON.parse(await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8'));
     } catch (e) {
-      debugLog('Health', 'Could not read coordination files', e);
+      debugWorkflow('Health', 'Could not read coordination files', e);
     }
 
     const status = {
@@ -845,10 +756,10 @@ app.get('/api/health', async (req, res) => {
       }
     };
 
-    debugLog('Health', 'Health check successful', status);
+    debugWorkflow('Health', 'Health check successful', status);
     res.json(status);
   } catch (error) {
-    debugLog('Health', 'Health check failed', { error });
+    debugWorkflow('Health', 'Health check failed', { error });
     res.status(503).json({
       status: 'unhealthy',
       error: error instanceof Error ? error.message : 'Unknown error'
@@ -1052,8 +963,7 @@ process.on('SIGINT', () => {
     })
     .finally(() => {
       clearTimeout(forceShutdownTimeout);
-      process.exit(0);
-    });
+      process.exit(0);    });
 });
 
 // Final startup logging
@@ -1064,3 +974,126 @@ console.log('[Server] Will attempt to bind to ports in range:', {
 });
 
 console.log('[Server] Starting server initialization...');
+
+// Update the acquireInstanceLock function to be more verbose and handle concurrent setup
+async function acquireInstanceLock(): Promise<boolean> {
+  const currentWorkflow = getWorkflowName();
+
+  try {
+    const lockData = {
+      pid: process.pid,
+      timestamp: new Date().toISOString(),
+      workflow: currentWorkflow,
+      environment: {
+        NODE_ENV: process.env.NODE_ENV,
+        npm_lifecycle_event: process.env.npm_lifecycle_event,
+        concurrent: process.env.npm_lifecycle_event === 'npx'
+      }
+    };
+
+    debugLog('Instance', 'Attempting to acquire lock', lockData);
+
+    await fs.promises.writeFile(
+      INSTANCE_LOCK_FILE,
+      JSON.stringify(lockData),
+      { flag: 'wx' } // Fail if file exists
+    );
+
+    debugLog('Instance', 'Successfully acquired lock', lockData);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+      try {
+        const existing = JSON.parse(
+          await fs.promises.readFile(INSTANCE_LOCK_FILE, 'utf-8')
+        );
+
+        debugLog('Instance', 'Found existing lock', existing);
+
+        // Handle concurrent setup - if the existing lock is from the same workflow
+        // but running via concurrent (npx), consider it the same workflow
+        if (existing.workflow === currentWorkflow ||
+            (existing.environment?.concurrent && currentWorkflow === 'Dev')) {
+          try {
+            process.kill(existing.pid, 0);
+            debugLog('Instance', 'Found running instance of same workflow', existing);
+            console.log('[Server] Found existing Dev workflow instance:', {
+              pid: existing.pid,
+              workflow: existing.workflow,
+              concurrent: existing.environment?.concurrent
+            });
+            return false;
+          } catch {
+            debugLog('Instance', 'Found stale lock, cleaning up', existing);
+            await fs.promises.unlink(INSTANCE_LOCK_FILE);
+            return acquireInstanceLock();
+          }
+        }
+
+        debugLog('Instance', 'Lock belongs to different workflow, allowing concurrent execution', {
+          current: currentWorkflow,
+          existing: existing.workflow
+        });
+        return true;
+      } catch (err) {
+        debugLog('Instance', 'Found invalid lock file, cleaning up');
+        await fs.promises.unlink(INSTANCE_LOCK_FILE);
+        return acquireInstanceLock();
+      }
+    }
+    debugLog('Instance', 'Failed to acquire lock', { error });
+    return false;
+  }
+}
+
+async function releaseInstanceLock() {
+  try {
+    await fs.promises.unlink(INSTANCE_LOCK_FILE);
+    debugLog('Instance', 'Released server instance lock');
+  } catch (error) {
+    debugLog('Instance', 'Error releasing lock', { error });
+  }
+}
+
+app.use(async (req: Request, res: Response, next: NextFunction) => {
+  const start = Date.now();
+
+  debugLog('Request', `${req.method} ${req.path}`, {
+    headers: req.headers,
+    query: req.query,
+    workflow: process.env.REPL_WORKFLOW_NAME || 'unknown'
+  });
+
+  res.on('finish', async () => {
+    const duration = Date.now() - start;
+    debugLog('Response', `${req.method} ${req.path} completed in ${duration}ms`);
+  });
+
+  next();
+});
+
+app.use((req, res, next) => {
+  if (req.path.includes('/@vite') || req.path.includes('vite-hmr')) {
+    return next();
+  }
+
+  const start = Date.now();
+  const requestId = Math.random().toString(36).substring(7);
+  console.log(`[${requestId}] ${req.method} ${req.originalUrl} on port ${serverPort}`);
+  console.log(`[${requestId}] Request headers:`, req.headers);
+
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log(`[${requestId}] Request body:`, JSON.stringify(req.body, null, 2));
+  }
+
+  const oldJson = res.json;
+  res.json = function(body) {
+    console.log(`[${requestId}] Response body:`, JSON.stringify(body));
+    return oldJson.call(this, body);
+  };
+
+  res.on('finish', () => {
+    console.log(`[${requestId}] ${req.method} ${req.originalUrl} ${res.statusCode} (${Date.now() - start}ms)`);
+  });
+  next();
+});
