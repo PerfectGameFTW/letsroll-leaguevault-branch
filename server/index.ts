@@ -1,3 +1,36 @@
+// Move PortStatus interface to the top with other interfaces
+interface PortStatus {
+  port: number;
+  ready: boolean;
+  timestamp: string;
+  pid?: number;
+  mode?: string;
+  workflow?: string;
+  health?: {
+    database: boolean;
+    vite: boolean;
+    server: boolean;
+  };
+}
+
+// Keep existing interfaces
+interface StartupPhases {
+  cleanup: boolean;
+  database: boolean;
+  port: boolean;
+  server: boolean;
+  vite: boolean;
+  final: boolean;
+}
+
+interface ShutdownPhases {
+  initiated: boolean;
+  requests_drained: boolean;
+  port_status_cleaned: boolean;
+  database_cleaned: boolean;
+  server_closed: boolean;
+}
+
 // Add Replit-specific port handling
 const REPLIT_WORKSPACE = process.env.REPL_SLUG === 'workspace';
 const preferredPort = REPLIT_WORKSPACE ? 5001 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 5001);
@@ -88,23 +121,6 @@ const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 const HOST = '0.0.0.0';
 
-
-interface StartupPhases {
-  cleanup: boolean;
-  database: boolean;
-  port: boolean;
-  server: boolean;
-  vite: boolean;
-  final: boolean;
-}
-
-interface ShutdownPhases {
-  initiated: boolean;
-  requests_drained: boolean;
-  port_status_cleaned: boolean;
-  database_cleaned: boolean;
-  server_closed: boolean;
-}
 
 const startupPhases: StartupPhases = {
   cleanup: false,
@@ -1007,7 +1023,8 @@ async function shutdown() {
   }
 }
 
-process.on('SIGTERM', () =>{
+// Restore proper signal handlers with timeouts
+process.on('SIGTERM', () => {
   console.log('[Server] Received SIGTERM signal');
   const forceShutdownTimeout = setTimeout(() => {
     console.error('[Server] Forced shutdown due to timeout');
@@ -1017,8 +1034,8 @@ process.on('SIGTERM', () =>{
   shutdown().finally(() => clearTimeout(forceShutdownTimeout));
 });
 
-process.on('SIGINT', () =>{
-  console.log('[Server]Received SIGINT signal');
+process.on('SIGINT', () => {
+  console.log('[Server] Received SIGINT signal');
   const forceShutdownTimeout = setTimeout(() => {
     console.error('[Server] Forced shutdown due to timeout');
     process.exit(1);
@@ -1027,19 +1044,6 @@ process.on('SIGINT', () =>{
   shutdown().finally(() => clearTimeout(forceShutdownTimeout));
 });
 
-interface PortStatus {
-  port: number;
-  ready: boolean;
-  timestamp: string;
-  pid: number;
-  mode: string;
-  workflow: string;
-  health: {
-    database: boolean;
-    vite: boolean;
-    server: boolean;
-  };
-}
 console.log('[Server] Will attempt to bind to ports in range:', {
   preferredPort,
   availablePorts: '5001-5010',
