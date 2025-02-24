@@ -887,7 +887,7 @@ if (process.env.NODE_ENV !== "production") {
         });
       }
       startServer();
-    })
+    });
     .catch((error) => {
       console.error('[Server] Critical error setting up Vite:', error);
       process.exit(1);
