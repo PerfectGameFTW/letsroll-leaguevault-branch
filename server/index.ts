@@ -15,55 +15,61 @@ function debugLog(context: string, message: string, data?: any) {
   }
 }
 
-// Add process event handlers early
-process.on('SIGHUP', () => {
-  console.log('[Server] Received SIGHUP signal');
-  process.exit(0);
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('[Server] Uncaught exception:', error);
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[Server] Unhandled rejection at:', promise, 'reason:', reason);
-  process.exit(1);
-});
-
-// Very first logging to verify script execution
-console.log('[Server] Starting script execution...');
-
 // Early environment logging
-console.log('[Server] Initial environment check:', {
-  NODE_ENV: process.env.NODE_ENV,
-  WORKFLOW: process.env.REPL_WORKFLOW_NAME,
-  DEBUG: DEBUG
-});
-
-console.log('=== Server Startup Diagnostics ===');
-console.log('Environment:', {
+console.log('[Server] Environment:', {
   NODE_ENV: process.env.NODE_ENV,
   REPL_WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
+  REPL_SLUG: process.env.REPL_SLUG,
   npm_lifecycle_event: process.env.npm_lifecycle_event,
-  DEBUG: process.env.DEBUG,
+  DEBUG: DEBUG,
   PORT: process.env.PORT
 });
 
-// Add explicit port information
 console.log('[Server] Will attempt to bind to ports in range:', {
   preferredPort: process.env.PORT || 5001,
   availablePorts: '5001-5010',
   host: '0.0.0.0'
 });
 
-// Add more detailed startup logging
 console.log('[Server] Starting server initialization...');
 debugLog('Startup', 'Beginning server initialization', {
-  time: new Date().toISOString(),
-  env: process.env.NODE_ENV,
-  workflow: process.env.REPL_WORKFLOW_NAME
+  time: new Date().toISOString()
 });
+
+// Add process event handlers early
+process.on('SIGHUP', () => {
+  console.log('[Server] Received SIGHUP signal, attempting graceful shutdown...');
+  cleanup().then(() => {
+    console.log('[Server] Cleanup complete after SIGHUP');
+    process.exit(0);
+  }).catch(error => {
+    console.error('[Server] Error during cleanup after SIGHUP:', error);
+    process.exit(1);
+  });
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[Server] Uncaught exception:', error);
+  cleanup().finally(() => process.exit(1));
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Server] Unhandled rejection at:', promise, 'reason:', reason);
+  cleanup().finally(() => process.exit(1));
+});
+
+// Cleanup function to handle graceful shutdown
+async function cleanup() {
+  try {
+    await cleanupPortStatus();
+    await releaseInstanceLock();
+    console.log('[Server] Cleanup completed successfully');
+  } catch (error) {
+    console.error('[Server] Error during cleanup:', error);
+    throw error;
+  }
+}
+
 
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes.js";
@@ -181,11 +187,11 @@ app.use((req, res, next) => {
   next();
 });
 
-const getWorkflowName = () => {
+function getWorkflowName() {
   const npmScript = process.env.npm_lifecycle_event;
   const replWorkflow = process.env.REPL_WORKFLOW_NAME;
   const replSlug = process.env.REPL_SLUG;
-  const isDev = process.env.NODE_ENV === 'development' || npmScript === 'dev';
+  const isDev = process.env.NODE_ENV === 'development' || npmScript === 'dev' || replSlug === 'workspace';
 
   debugLog('Workflow', 'Detecting current workflow', {
     npm_lifecycle_event: npmScript,
@@ -197,16 +203,19 @@ const getWorkflowName = () => {
     path: process.env.PATH?.split(':')[0]
   });
 
+  // Priority 1: Development environment or dev script should always be "Dev" workflow
   if (isDev) {
     debugLog('Workflow', 'Detected Dev workflow from development environment');
     return 'Dev';
   }
 
+  // Priority 2: Explicit workflow name from environment
   if (replWorkflow) {
     debugLog('Workflow', `Using explicit workflow name: ${replWorkflow}`);
     return replWorkflow;
   }
 
+  // Priority 3: For backwards compatibility, map workspace to Dev in development
   if (replSlug === 'workspace' && process.env.NODE_ENV === 'development') {
     debugLog('Workflow', 'Mapped workspace to Dev workflow in development');
     return 'Dev';
@@ -214,7 +223,7 @@ const getWorkflowName = () => {
 
   debugLog('Workflow', 'Using default workflow name');
   return replSlug || 'Unknown';
-};
+}
 
 const INSTANCE_LOCK_FILE = '.server-instance.lock';
 
@@ -559,15 +568,6 @@ async function startServer() {
     });
     await validateStartupPhase('database', ['cleanup']);
 
-    if (dbConnected) {
-      try {
-        await paymentScheduler.initialize();
-        console.log('[Server] Payment scheduler initialized successfully');
-      } catch (error) {
-        console.error('[Server] Error initializing payment scheduler:', error);
-      }
-    }
-
     try {
       serverPort = await findAvailablePort(preferredPort);
     } catch (error) {
@@ -600,8 +600,6 @@ async function startServer() {
     });
 
     await validateStartupPhase('server', ['cleanup', 'database', 'port']);
-
-    await waitForServerReady(serverPort);
     console.log(`[Server] Server is fully initialized and ready on port ${serverPort}`);
 
     await writePortStatus(serverPort, true, {
