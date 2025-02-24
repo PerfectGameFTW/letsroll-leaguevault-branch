@@ -1,6 +1,5 @@
 // Add Replit-specific port handling
 const REPLIT_WORKSPACE = process.env.REPL_SLUG === 'workspace';
-const HOST = '0.0.0.0';
 const preferredPort = REPLIT_WORKSPACE ? 5001 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 5001);
 
 // Very first logging to verify script execution and environment
@@ -957,7 +956,7 @@ async function shutdown() {
       } catch (error) {
         if (retries === 1) {
           console.error('[Server] Failed to remove port status file after all retries');
-        } else {
+        } else{
           console.log(`[Server] Retry ${4 - retries}/3 removing port status file`);
           await new Promise(resolve => setTimeout(resolve, 100));
         }
