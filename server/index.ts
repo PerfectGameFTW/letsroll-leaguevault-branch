@@ -48,8 +48,39 @@ interface ShutdownPhases {
 const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 const HOST = '0.0.0.0';
+const PORT = 5000; // Always use port 5000 for consistent workflow detection
 const REPLIT_WORKSPACE = process.env.REPL_SLUG === 'workspace';
-const preferredPort = REPLIT_WORKSPACE ? 5001 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 5001);
+
+// Function to determine the workflow name
+function getWorkflowName() {
+  const env = {
+    NODE_ENV: process.env.NODE_ENV,
+    WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
+    npm_lifecycle_event: process.env.npm_lifecycle_event,
+    REPL_SLUG: process.env.REPL_SLUG
+  };
+
+  console.log('[Server] Determining workflow name from environment:', env);
+
+  // For development environment, always use 'Start application' workflow
+  if (process.env.NODE_ENV === 'development' || process.env.npm_lifecycle_event === 'dev') {
+    console.log('[Server] Using Start application workflow based on development environment');
+    return 'Start application';
+  }
+
+  // Use explicit workflow name if available
+  if (process.env.REPL_WORKFLOW_NAME) {
+    console.log(`[Server] Using explicit workflow name: ${process.env.REPL_WORKFLOW_NAME}`);
+    return process.env.REPL_WORKFLOW_NAME;
+  }
+
+  // Default to Start application workflow
+  console.log('[Server] No specific workflow detected, defaulting to Start application');
+  return 'Start application';
+}
+
+const preferredPort = PORT;
+
 
 // Very first logging to verify script execution and environment
 console.log('\n=== Server Initialization Starting ===');
@@ -202,27 +233,30 @@ app.use((req, res, next) => {
 });
 
 function getWorkflowName() {
-  // Always treat workspace as Dev environment
-  if (process.env.REPL_SLUG === 'workspace') {
-    debugLog('Workflow', 'Detected workspace environment, using Dev workflow');
-    return 'Dev';
+  const env = {
+    NODE_ENV: process.env.NODE_ENV,
+    WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
+    npm_lifecycle_event: process.env.npm_lifecycle_event,
+    REPL_SLUG: process.env.REPL_SLUG
+  };
+
+  console.log('[Server] Determining workflow name from environment:', env);
+
+  // For development environment, always use 'Start application' workflow
+  if (process.env.NODE_ENV === 'development' || process.env.npm_lifecycle_event === 'dev') {
+    console.log('[Server] Using Start application workflow based on development environment');
+    return 'Start application';
   }
 
   // Use explicit workflow name if available
   if (process.env.REPL_WORKFLOW_NAME) {
-    debugLog('Workflow', `Using explicit workflow name: ${process.env.REPL_WORKFLOW_NAME}`);
+    console.log(`[Server] Using explicit workflow name: ${process.env.REPL_WORKFLOW_NAME}`);
     return process.env.REPL_WORKFLOW_NAME;
   }
 
-  // Default to Dev for development environment
-  if (NODE_ENV === 'development' || process.env.npm_lifecycle_event === 'dev') {
-    debugLog('Workflow', 'Detected development environment');
-    return 'Dev';
-  }
-
-  // Fallback to a default workflow name
-  debugLog('Workflow', 'Using default workflow name');
-  return 'Dev';
+  // Default to Start application workflow
+  console.log('[Server] No specific workflow detected, defaulting to Start application');
+  return 'Start application';
 }
 
 const INSTANCE_LOCK_FILE = '.server-instance.lock';
@@ -265,11 +299,11 @@ async function acquireInstanceLock(): Promise<boolean> {
         // Handle concurrent setup - if the existing lock is from the same workflow
         // but running via concurrent (npx), consider it the same workflow
         if (existing.workflow === currentWorkflow ||
-            (existing.environment?.concurrent && currentWorkflow === 'Dev')) {
+            (existing.environment?.concurrent && currentWorkflow === 'Start application')) {
           try {
             process.kill(existing.pid, 0);
             debugLog('Instance', 'Found running instance of same workflow', existing);
-            console.log('[Server] Found existing Dev workflow instance:', {
+            console.log('[Server] Found existing Start application workflow instance:', {
               pid: existing.pid,
               workflow: existing.workflow,
               concurrent: existing.environment?.concurrent
@@ -317,9 +351,8 @@ async function writePortStatus(
     port,
     ready,
     health,
-    cwd: process.cwd(),
-    path: path.resolve(PORT_STATUS_FILE),
-    is_workspace: REPLIT_WORKSPACE
+    workflow: getWorkflowName(),
+    cwd: process.cwd()
   });
 
   const maxRetries = 3;
@@ -333,7 +366,7 @@ async function writePortStatus(
         timestamp: new Date().toISOString(),
         pid: process.pid,
         mode: process.env.NODE_ENV || 'development',
-        workflow: 'Dev', // Force Dev workflow in workspace
+        workflow: getWorkflowName(), // Always use getWorkflowName()
         health: {
           database: health.database || false,
           vite: health.vite || false,
@@ -676,7 +709,7 @@ async function startServer() {
 
     const canStart = await acquireInstanceLock();
     if (!canStart) {
-      console.log('[Server] Detected running Dev workflow instance - exiting');
+      console.log('[Server] Detected running Start application workflow instance - exiting');
       process.exit(0);
     }
 
@@ -943,7 +976,6 @@ async function shutdown() {
         reject(new Error(`Shutdown timeout after ${timeElapsed}ms with ${activeRequests} pending requests`));
       }, 10000);
     });
-
     const gracefulShutdown = new Promise<void>(async (resolve) => {
       console.log(`[Server] Waiting for ${activeRequests} active requests to complete...`);
 
@@ -953,7 +985,7 @@ async function shutdown() {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      console.log('[Server] All active requestscompleted');
+      console.log('[Server] All active requests completed');
       shutdownPhases.requests_drained = true;
       resolve();
     });
