@@ -891,7 +891,6 @@ if (process.env.NODE_ENV !== "production") {
     .catch((error) => {
       console.error('[Server] Critical error setting up Vite:', error);
       process.exit(1);
-    })
     });
 } else {
   app.use(express.static(path.join(process.cwd(), 'dist/public')));
