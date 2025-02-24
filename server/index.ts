@@ -527,16 +527,33 @@ async function validateStartupPhase(currentPhase: keyof typeof startupPhases, re
   console.log(`[Server] Startup phase '${currentPhase}' completed successfully`);
 }
 
-
 async function startServer() {
   try {
-    console.log('[Server] Starting server...');
+    console.log('\n=== Server Startup Sequence ===');
+    console.log('[Server] Checking for existing workflow instances...');
+
+    // Check .port-status first
+    let existingStatus = null;
+    try {
+      const statusContent = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
+      existingStatus = JSON.parse(statusContent);
+      console.log('[Server] Found existing port status:', {
+        port: existingStatus.port,
+        pid: existingStatus.pid,
+        workflow: existingStatus.workflow,
+        health: existingStatus.health
+      });
+    } catch (e) {
+      console.log('[Server] No existing port status found');
+    }
 
     const canStart = await acquireInstanceLock();
     if (!canStart) {
-      console.log('[Server] Another server instance is already running');
+      console.log('[Server] Detected running Dev workflow instance - exiting');
       process.exit(0);
     }
+
+    console.log('[Server] Starting server...');
 
     process.on('SIGTERM', () => {
       releaseInstanceLock();
