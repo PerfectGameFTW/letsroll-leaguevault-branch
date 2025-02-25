@@ -1,15 +1,15 @@
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { Loader2, ArrowUp, ArrowDown } from "lucide-react";
 import type { Bowler, BowlerLeague } from "@shared/schema";
-import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface ReorderBowlersDialogProps {
   open: boolean;
@@ -30,85 +30,42 @@ export function ReorderBowlersDialog({
 }: ReorderBowlersDialogProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderedBowlerLeagues, setOrderedBowlerLeagues] = useState<BowlerLeague[]>([]);
+  const [orderedLeagues, setOrderedLeagues] = useState<BowlerLeague[]>([]);
 
-  // Get active bowler leagues for this team
-  const teamBowlerLeagues = bowlerLeagues.filter(bl => 
-    bl.teamId === teamId && 
-    bl.leagueId === leagueId && 
-    bl.active
-  );
-
-  console.log("[ReorderBowlers] Active team bowler leagues:", teamBowlerLeagues);
-
-  // Get bowlers that are on this team
-  const teamBowlers = bowlers.filter(bowler => 
-    teamBowlerLeagues.some(bl => bl.bowlerId === bowler.id)
-  );
-
-  console.log("[ReorderBowlers] Team bowlers:", teamBowlers);
-
-  // Reset the ordered list when dialog opens or team data changes
+  // Initialize order when dialog opens
   useEffect(() => {
     if (open) {
-      const sortedLeagues = [...teamBowlerLeagues]
+      const initialLeagues = [...bowlerLeagues]
+        .filter(bl => bl.teamId === teamId && bl.leagueId === leagueId && bl.active)
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
         .map((bl, index) => ({
           ...bl,
-          order: index,
-          position: index + 1
+          order: index
         }));
-      console.log("[ReorderBowlers] Initializing ordered leagues:", sortedLeagues);
-      setOrderedBowlerLeagues(sortedLeagues);
+      setOrderedLeagues(initialLeagues);
     }
-  }, [open, teamBowlerLeagues]);
+  }, [open, bowlerLeagues, teamId, leagueId]);
 
   const moveItem = (index: number, direction: "up" | "down") => {
-    console.log(`[ReorderBowlers] Moving item at index ${index} ${direction}`);
-
-    setOrderedBowlerLeagues(prevLeagues => {
-      // Create a new array to ensure state update
-      const newOrder = [...prevLeagues];
+    setOrderedLeagues(prevLeagues => {
       const newIndex = direction === "up" ? index - 1 : index + 1;
 
-      if (newIndex >= 0 && newIndex < newOrder.length) {
-        console.log("[ReorderBowlers] Before swap:", 
-          newOrder.map(bl => ({ 
-            id: bl.id, 
-            bowlerId: bl.bowlerId,
-            name: teamBowlers.find(b => b.id === bl.bowlerId)?.name,
-            order: bl.order,
-            position: bl.position
-          }))
-        );
-
-        // Create deep copies of both items
-        const tempItem = { ...newOrder[index] };
-        const swapItem = { ...newOrder[newIndex] };
-
-        // Update order and position values
-        tempItem.order = newIndex;
-        tempItem.position = newIndex + 1;
-        swapItem.order = index;
-        swapItem.position = index + 1;
-
-        // Perform the swap with updated values
-        newOrder[index] = swapItem;
-        newOrder[newIndex] = tempItem;
-
-        console.log("[ReorderBowlers] After swap:", 
-          newOrder.map(bl => ({ 
-            id: bl.id, 
-            bowlerId: bl.bowlerId,
-            name: teamBowlers.find(b => b.id === bl.bowlerId)?.name,
-            order: bl.order,
-            position: bl.position
-          }))
-        );
-
-        return newOrder;
+      if (newIndex < 0 || newIndex >= prevLeagues.length) {
+        return prevLeagues;
       }
-      return prevLeagues;
+
+      // Create deep copies with new order values
+      const newLeagues = prevLeagues.map(bl => ({ ...bl }));
+
+      // Update orders
+      const movingLeague = { ...newLeagues[index], order: newIndex };
+      const swappingLeague = { ...newLeagues[newIndex], order: index };
+
+      // Update array
+      newLeagues[newIndex] = movingLeague;
+      newLeagues[index] = swappingLeague;
+
+      return newLeagues;
     });
   };
 
@@ -116,33 +73,21 @@ export function ReorderBowlersDialog({
     try {
       setIsSubmitting(true);
 
-      // Create array of updates with new order values
-      const updates = orderedBowlerLeagues.map((bl, index) => {
-        const payload = {
-          order: index,
-          active: bl.active,
+      const updates = orderedLeagues.map((bl, index) => 
+        apiRequest("PATCH", `/api/bowler-leagues/${bl.id}`, {
           bowlerId: bl.bowlerId,
           leagueId: bl.leagueId,
           teamId: bl.teamId,
-          position: index + 1
-        };
+          active: bl.active,
+          order: index
+        })
+      );
 
-        console.log(`[ReorderBowlers] Preparing update for bowler league ${bl.id}:`, {
-          ...payload,
-          bowlerName: teamBowlers.find(b => b.id === bl.bowlerId)?.name
-        });
+      await Promise.all(updates);
 
-        return apiRequest("PATCH", `/api/bowler-leagues/${bl.id}`, payload);
-      });
-
-      // Execute all updates
-      const results = await Promise.all(updates);
-      console.log("[ReorderBowlers] Update results:", results);
-
-      // Invalidate queries to refresh data
-      await queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
-      await queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
-      await queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}`] });
 
       toast({
         title: "Success",
@@ -164,23 +109,20 @@ export function ReorderBowlersDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Reorder Bowlers</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="border rounded-md divide-y">
-            {orderedBowlerLeagues.map((bl, index) => {
-              const bowler = teamBowlers.find(b => b.id === bl.bowlerId);
-              if (!bowler) {
-                console.warn(`[ReorderBowlers] Could not find bowler for league ${bl.id}`);
-                return null;
-              }
+            {orderedLeagues.map((bl, index) => {
+              const bowler = bowlers.find(b => b.id === bl.bowlerId);
+              if (!bowler) return null;
 
               return (
                 <div
-                  key={`${bl.id}-${index}-${bl.order}-${bl.position}`}
+                  key={`${bl.id}-${index}`}
                   className="flex items-center justify-between p-3"
                 >
                   <span className="font-medium">{bowler.name}</span>
@@ -198,7 +140,7 @@ export function ReorderBowlersDialog({
                       variant="outline"
                       size="sm"
                       onClick={() => moveItem(index, "down")}
-                      disabled={index === orderedBowlerLeagues.length - 1 || isSubmitting}
+                      disabled={index === orderedLeagues.length - 1 || isSubmitting}
                     >
                       <ArrowDown className="h-4 w-4" />
                       <span className="sr-only">Move down</span>
