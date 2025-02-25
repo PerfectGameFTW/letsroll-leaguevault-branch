@@ -306,7 +306,6 @@ export default function TeamViewPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Qubica ID</TableHead>
               <TableHead>Weekly Fee</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
@@ -320,9 +319,6 @@ export default function TeamViewPage() {
                     <Link href={`/bowlers/${bowler.id}`} className="hover:underline">
                       {bowler.name}
                     </Link>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm text-muted-foreground">
-                    {bowler.qubicaId || 'N/A'}
                   </TableCell>
                   <TableCell>${((league?.weeklyFee || 0) / 100).toFixed(2)}</TableCell>
                   <TableCell>
@@ -357,7 +353,7 @@ export default function TeamViewPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className="text-center">
+                <TableCell colSpan={4} className="text-center">
                   No bowlers assigned to this team
                 </TableCell>
               </TableRow>
