@@ -235,23 +235,6 @@ export const paymentSchedules = pgTable("payment_schedules", {
   activeIdx: index("active_schedule_idx").on(table.active),
 }));
 
-// Add after the users table definition
-export const authenticators = pgTable("authenticators", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  credentialId: text("credential_id").notNull(),
-  credentialPublicKey: text("credential_public_key").notNull(),
-  counter: integer("counter").notNull(),
-  credentialDeviceType: text("credential_device_type").notNull(),
-  credentialBackedUp: boolean("credential_backed_up").notNull(),
-  transports: text("transports").array(),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-}, (table) => ({
-  userCredentialIdx: index("user_credential_idx").on(table.userId, table.credentialId),
-}));
-
 // Relations
 export const leagueRelations = relations(leagues, ({ many }) => ({
   teams: many(teams),
@@ -331,14 +314,6 @@ export const weeklyStatsRelations = relations(weeklyStats, ({ one }) => ({
   }),
 }));
 
-// Add to relations section
-export const authenticatorRelations = relations(authenticators, ({ one }) => ({
-  user: one(users, {
-    fields: [authenticators.userId],
-    references: [users.id],
-  }),
-}));
-
 // Add to relations
 export const paymentScheduleRelations = relations(paymentSchedules, ({ one }) => ({
   bowler: one(bowlers, {
@@ -351,15 +326,14 @@ export const paymentScheduleRelations = relations(paymentSchedules, ({ one }) =>
   }),
 }));
 
-// Add to relations
-export const userRelations = relations(users, ({ one, many }) => ({
+
+// Add user relations after existing relations
+export const userRelations = relations(users, ({ one }) => ({
   bowler: one(bowlers, {
     fields: [users.bowlerId],
     references: [bowlers.id],
   }),
-  authenticators: many(authenticators),
 }));
-
 
 // Validation schemas
 // Base schemas using drizzle-zod
@@ -378,7 +352,6 @@ const baseUserSchema = createInsertSchema(users);
 
 // Add validation schemas
 const basePaymentScheduleSchema = createInsertSchema(paymentSchedules);
-const baseAuthenticatorSchema = createInsertSchema(authenticators);
 
 // Enhanced insert schemas with additional validation
 export const insertBowlerSchema = baseBowlerSchema.extend({
@@ -533,16 +506,6 @@ export const insertPaymentScheduleSchema = basePaymentScheduleSchema.extend({
   squareCardId: z.string(),
 }).omit({ id: true, createdAt: true, lastPaymentDate: true });
 
-export const insertAuthenticatorSchema = baseAuthenticatorSchema.extend({
-  userId: positiveIntSchema,
-  credentialId: z.string(),
-  credentialPublicKey: z.string(),
-  counter: z.number().int().min(0),
-  credentialDeviceType: z.string(),
-  credentialBackedUp: z.boolean(),
-  transports: z.array(z.string()).optional(),
-}).omit({ id: true, createdAt: true });
-
 
 // Export partial schemas for updates
 export const partialBowlerSchema = z.object(baseBowlerSchema.shape).partial();
@@ -574,7 +537,6 @@ export const partialScoreSchema = z.object(baseScoreSchema.shape).partial();
 export const partialSeriesSchema = z.object(baseSeriesSchema.shape).partial();
 export const partialWeeklyStatsSchema = z.object(baseWeeklyStatsSchema.shape).partial();
 export const partialPaymentScheduleSchema = z.object(basePaymentScheduleSchema.shape).partial();
-export const partialAuthenticatorSchema = z.object(baseAuthenticatorSchema.shape).partial();
 
 // Type exports
 export type League = typeof leagues.$inferSelect;
@@ -612,9 +574,6 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type PaymentSchedule = typeof paymentSchedules.$inferSelect;
 export type InsertPaymentSchedule = z.infer<typeof insertPaymentScheduleSchema>;
 
-// Add type exports
-export type Authenticator = typeof authenticators.$inferSelect;
-export type InsertAuthenticator = typeof authenticators.$inferInsert;
 
 // API response types
 export interface ApiResponse<T> {

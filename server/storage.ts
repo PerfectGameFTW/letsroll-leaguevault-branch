@@ -2,8 +2,8 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
-  users, authenticators,
-  paymentSchedules,
+  users, // Add users table import
+  paymentSchedules, // Add paymentSchedules table import
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
@@ -11,8 +11,7 @@ import {
   type Payment, type InsertPayment,
   type Game, type InsertGame,
   type Score, type InsertScore,
-  type User, type InsertUser,
-  type Authenticator, type InsertAuthenticator,
+  type User, type InsertUser, // Add User types
 } from "@shared/schema.js";
 
 export interface IStorage {
@@ -66,16 +65,19 @@ export interface IStorage {
   updateScore(id: number, score: Partial<InsertScore>): Promise<Score>;
   deleteScore(id: number): Promise<void>;
 
+  // Add new method to interface
   getBowlerByQubicaId(qubicaId: string): Promise<Bowler | undefined>;
   createBatchScores(scores: InsertScore[]): Promise<Score[]>;
   getGameScores(gameId: number): Promise<Score[]>;
   getTeamByNumber(leagueId: number, teamNumber: number): Promise<Team | undefined>;
   getScoresByLeagueAndWeek(leagueId: number, weekNumber: number): Promise<Score[]>;
 
-  // Add new authenticator methods
-  getAuthenticatorsByUserId(userId: number): Promise<Authenticator[]>;
-  createAuthenticator(authenticator: InsertAuthenticator): Promise<Authenticator>;
-  updateAuthenticatorCounter(userId: number, credentialId: string, newCounter: number): Promise<void>;
+  // Add new user methods to interface
+  getUser(id: number): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: InsertUser): Promise<User>;
+  linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
+  updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -548,6 +550,7 @@ export class DatabaseStorage implements IStorage {
     await db.delete(scores).where(eq(scores.id, id));
   }
 
+  // Add new method implementation
   async getBowlerByQubicaId(qubicaId: string): Promise<Bowler | undefined> {
     const [result] = await db
       .select()
@@ -696,74 +699,6 @@ export class DatabaseStorage implements IStorage {
     console.log('[Storage] Found scores:', scoresWithDetails.length);
     return scoresWithDetails;
   }
-
-  // Implement new authenticator methods
-  async getAuthenticatorsByUserId(userId: number): Promise<Authenticator[]> {
-    try {
-      console.log('[Storage] Getting authenticators for user:', userId);
-      const results = await db
-        .select()
-        .from(authenticators)
-        .where(eq(authenticators.userId, userId));
-
-      console.log('[Storage] Found authenticators:', results.length);
-      return results;
-    } catch (error) {
-      console.error('[Storage] Error getting authenticators:', error);
-      throw error;
-    }
-  }
-
-  async createAuthenticator(authenticator: InsertAuthenticator): Promise<Authenticator> {
-    try {
-      console.log('[Storage] Creating authenticator for user:', authenticator.userId);
-      const [result] = await db
-        .insert(authenticators)
-        .values(authenticator)
-        .returning();
-
-      console.log('[Storage] Created authenticator:', {
-        id: result.id,
-        userId: result.userId,
-        credentialId: result.credentialId.substring(0, 10) + '...'
-      });
-
-      return result;
-    } catch (error) {
-      console.error('[Storage] Error creating authenticator:', error);
-      throw error;
-    }
-  }
-
-  async updateAuthenticatorCounter(
-    userId: number,
-    credentialId: string,
-    newCounter: number
-  ): Promise<void> {
-    try {
-      console.log('[Storage] Updating authenticator counter:', {
-        userId,
-        credentialId: credentialId.substring(0, 10) + '...',
-        newCounter
-      });
-
-      await db
-        .update(authenticators)
-        .set({ counter: newCounter })
-        .where(
-          and(
-            eq(authenticators.userId, userId),
-            eq(authenticators.credentialId, credentialId)
-          )
-        );
-
-      console.log('[Storage] Successfully updated authenticator counter');
-    } catch (error) {
-      console.error('[Storage] Error updating authenticator counter:', error);
-      throw error;
-    }
-  }
-
 
   // Implement new user methods
   async getUser(id: number): Promise<User | undefined> {

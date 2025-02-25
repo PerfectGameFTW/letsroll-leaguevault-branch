@@ -1,4 +1,4 @@
-import { FC, useState } from "react";
+import { FC } from "react";
 import {
   Card,
   CardContent,
@@ -22,12 +22,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
-import { startAuthentication } from "@simplewebauthn/browser";
-import { Fingerprint } from "lucide-react";
 
 const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(1, "Password is required"),
+  email: z
+    .string()
+    .email("Please enter a valid email address"),
+  password: z
+    .string()
+    .min(1, "Password is required"),
 });
 
 type LoginFormData = z.infer<typeof loginSchema>;
@@ -35,8 +37,6 @@ type LoginFormData = z.infer<typeof loginSchema>;
 const LoginPage: FC = () => {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
-  const [isLoading, setIsLoading] = useState(false);
-  const [biometricEmail, setBiometricEmail] = useState("");
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -46,64 +46,10 @@ const LoginPage: FC = () => {
     },
   });
 
-  const handleBiometricAuth = async (email: string) => {
-    try {
-      setIsLoading(true);
-
-      // Get authentication options
-      const optionsRes = await fetch("/api/webauthn/authenticate/options", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-
-      if (!optionsRes.ok) {
-        const error = await optionsRes.json();
-        throw new Error(error.error?.message || "Failed to start biometric authentication");
-      }
-
-      const options = await optionsRes.json();
-
-      // Start the authentication process
-      const authResponse = await startAuthentication(options.data);
-
-      // Verify the authentication
-      const verificationRes = await fetch("/api/webauthn/authenticate/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(authResponse),
-      });
-
-      if (!verificationRes.ok) {
-        const error = await verificationRes.json();
-        throw new Error(error.error?.message || "Failed to verify biometric authentication");
-      }
-
-      const verification = await verificationRes.json();
-
-      toast({
-        title: "Login successful!",
-        description: "Welcome back to the bowling league management system.",
-      });
-
-      setLocation("/bowler-dashboard");
-    } catch (error) {
-      console.error("[Login] Biometric auth error:", error);
-      toast({
-        title: "Biometric authentication failed",
-        description: error instanceof Error ? error.message : "Failed to authenticate. Please try again or use password.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const onSubmit = async (data: LoginFormData) => {
     try {
-      setIsLoading(true);
       console.log("[Login] Attempting login with email:", data.email);
-
+      
       const response = await fetch("/api/login", {
         method: "POST",
         headers: {
@@ -136,8 +82,6 @@ const LoginPage: FC = () => {
         description: error instanceof Error ? error.message : "Failed to login. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -152,40 +96,7 @@ const LoginPage: FC = () => {
             Sign in to your bowling league account
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Biometric Authentication Section */}
-          <div className="space-y-2">
-            <div className="flex gap-2">
-              <Input
-                type="email"
-                placeholder="Enter email for biometric login"
-                value={biometricEmail}
-                onChange={(e) => setBiometricEmail(e.target.value)}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!biometricEmail || isLoading}
-                onClick={() => handleBiometricAuth(biometricEmail)}
-              >
-                <Fingerprint className="h-4 w-4 mr-2" />
-                Face ID
-              </Button>
-            </div>
-          </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">
-                Or continue with password
-              </span>
-            </div>
-          </div>
-
+        <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
@@ -222,7 +133,7 @@ const LoginPage: FC = () => {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full" disabled={isLoading}>
+              <Button type="submit" className="w-full">
                 Sign In
               </Button>
             </form>
