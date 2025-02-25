@@ -45,6 +45,7 @@ const STARTUP_PHASE_TIMEOUT = 30000; // 30 seconds
 const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 const HOST = '0.0.0.0';
 const REPLIT_WORKSPACE = process.env.REPL_SLUG === 'workspace';
+const WORKFLOW_NAME = getWorkflowName();
 const preferredPort = REPLIT_WORKSPACE ? 5001 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 5001);
 const PORT_STATUS_FILE = '.port-status';
 const STALE_PORT_TIMEOUT = 60000; // 60 seconds
@@ -171,48 +172,35 @@ async function writePortStatus(
     port,
     ready,
     health,
-    cwd: process.cwd(),
-    path: path.resolve(PORT_STATUS_FILE),
-    is_workspace: REPLIT_WORKSPACE
+    workflow: WORKFLOW_NAME
   });
 
-  const maxRetries = 3;
-  let retries = 0;
-
-  while (retries < maxRetries) {
-    try {
-      const status: PortStatus = {
-        port,
-        ready,
-        timestamp: new Date().toISOString(),
-        pid: process.pid,
-        mode: process.env.NODE_ENV || 'development',
-        workflow: getWorkflowName(),
-        wait_for_port: 5001, // Always set this for Dev workflow
-        health: {
-          database: health.database || false,
-          vite: health.vite || false,
-          server: health.server || false
-        }
-      };
-
-      // Write the status file in the current working directory
-      const statusPath = path.resolve(process.cwd(), PORT_STATUS_FILE);
-      await fs.promises.writeFile(statusPath, JSON.stringify(status, null, 2));
-      debugWorkflow('PortStatus', 'Successfully wrote port status:', status);
-
-      // Verify file was written correctly
-      const written = await fs.promises.readFile(statusPath, 'utf-8');
-      debugWorkflow('PortStatus', 'Verified written status:', JSON.parse(written));
-      break;
-    } catch (error) {
-      console.error('[Server] Error writing port status:', error);
-      retries++;
-      if (retries === maxRetries) {
-        throw new Error(`Failed to write port status file after ${maxRetries} attempts`);
-      }
-      await new Promise(resolve => setTimeout(resolve, 1000));
+  const status: PortStatus = {
+    port,
+    ready,
+    timestamp: new Date().toISOString(),
+    pid: process.pid,
+    mode: process.env.NODE_ENV || 'development',
+    workflow: WORKFLOW_NAME,
+    wait_for_port: 5001, // Always set for Dev workflow
+    health: {
+      database: health.database || false,
+      vite: health.vite || false,
+      server: health.server || false
     }
+  };
+
+  try {
+    const statusPath = path.resolve(process.cwd(), PORT_STATUS_FILE);
+    await fs.promises.writeFile(statusPath, JSON.stringify(status, null, 2));
+
+    // Verify the written status
+    const written = await fs.promises.readFile(statusPath, 'utf-8');
+    const parsedStatus = JSON.parse(written);
+    debugWorkflow('PortStatus', 'Successfully wrote and verified port status:', parsedStatus);
+  } catch (error) {
+    console.error('[Server] Error writing port status:', error);
+    throw error;
   }
 }
 
@@ -277,10 +265,10 @@ console.log('Process Info:', {
 
 // Early environment logging with defaults
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const WORKFLOW_NAME = process.env.REPL_WORKFLOW_NAME || 'Dev';
+const WORKFLOW_NAME_EARLY = process.env.REPL_WORKFLOW_NAME || 'Dev';
 console.log('[Server] Environment:', {
   NODE_ENV,
-  WORKFLOW_NAME,
+  WORKFLOW_NAME_EARLY,
   REPL_SLUG: process.env.REPL_SLUG,
   npm_lifecycle_event: process.env.npm_lifecycle_event,
   DEBUG,
@@ -477,11 +465,26 @@ async function findAvailablePort(startPort: number, maxAttempts: number = 10): P
       const isAvailable = await isPortAvailable(port);
       if (isAvailable) {
         console.log(`[Server] Found available port: ${port}`);
-        await writePortStatus(port, false, {
-          database: false,
-          vite: false,
-          server: false
-        });
+        // Write initial port status with wait_for_port set
+        const initialStatus: PortStatus = {
+          port,
+          ready: false,
+          timestamp: new Date().toISOString(),
+          pid: process.pid,
+          mode: process.env.NODE_ENV || 'development',
+          workflow: WORKFLOW_NAME,
+          wait_for_port: 5001, // Always set for Dev workflow
+          health: {
+            database: false,
+            vite: false,
+            server: false
+          }
+        };
+
+        const statusPath = path.resolve(process.cwd(), PORT_STATUS_FILE);
+        await fs.promises.writeFile(statusPath, JSON.stringify(initialStatus, null, 2));
+        debugWorkflow('PortStatus', 'Wrote initial port status with wait_for_port:', initialStatus);
+
         return port;
       }
       console.log(`[Server] Port ${port} is in use, trying next port...`);
@@ -689,76 +692,6 @@ async function startServer() {
   }
 }
 
-// Add these routes after the /api/health endpoint
-app.get('/api/diagnostic', async (req, res) => {
-  try {
-    // Read instance lock file
-    let instanceLock = null;
-    try {
-      const lockContent = await fs.promises.readFile(INSTANCE_LOCK_FILE, 'utf-8');
-      instanceLock = JSON.parse(lockContent);
-    } catch (e) {
-      console.log('[Server] No instance lock file found');
-    }
-
-    // Read port status file
-    let portStatus = null;
-    try {
-      const statusContent = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
-      portStatus = JSON.parse(statusContent);
-
-      // Update port status with wait_for_port configuration for web feedback tool
-      if (portStatus.workflow === 'Dev' && portStatus.port === 5001) {
-        portStatus.wait_for_port = 5001;
-      }
-    } catch (e) {
-      console.log('[Server] No port status file found');
-    }
-
-    // Always include web feedback status when in Dev workflow
-    const webFeedbackStatus = {
-      workflow: 'Dev',
-      port: 5001,
-      ready: true,
-      webview_console_logs: consoleBuffer.read()?.toString() || '',
-      workflow_logs: {
-        timestamp: new Date().toISOString(),
-        output: consoleBuffer.read()?.toString() || ''
-      },
-      status: {
-        port: 5001,
-        ready: true,
-        workflow: 'Dev'
-      }
-    };
-
-    const response = {
-      current_process: {
-        pid: process.pid,
-        uptime: process.uptime(),
-        env: {
-          NODE_ENV: process.env.NODE_ENV,
-          WORKFLOW_NAME: process.env.REPL_WORKFLOW_NAME,
-          npm_lifecycle_event: process.env.npm_lifecycle_event,
-          REPL_SLUG: process.env.REPL_SLUG
-        }
-      },
-      detected_workflow: getWorkflowName(),
-      instance_lock: instanceLock,
-      port_status: portStatus,
-      server_port: serverPort,
-      is_ready: isServerReady,
-      wait_for_port: 5001,
-      web_feedback: webFeedbackStatus
-    };
-
-    debugLog('Diagnostic', 'Endpoint response:', response);
-    res.json(response);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to get diagnostic data' });
-  }
-});
-
 // Enhance health endpoint to include workflow info
 app.get('/api/health', async (req, res) => {
   debugWorkflow('Health', 'Health check requested', {
@@ -874,7 +807,7 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 
 let shutdownTimeoutId: NodeJS.Timeout | undefined;
 
-async function shutdown() {
+const shutdown = async () => {
   console.log('[Server] Initiating graceful shutdown...');
   console.log(`[Server] Active requests: ${activeRequests}`);
 
@@ -908,7 +841,7 @@ async function shutdown() {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      console.log('[Server] All active requestscompleted');
+      console.log('[Server] All active requests completed');
       shutdownPhases.requests_drained = true;
       resolve();
     });
@@ -965,7 +898,7 @@ async function shutdown() {
     console.log('[Server] Final shutdown phase status:', shutdownPhases);
     process.exit(0);
   } catch (error) {
-        const totalTime = Date.now() - startTime;
+    const totalTime = Date.now() - startTime;
     console.error(`[Server] Error during shutdown after ${totalTime}ms:`, error);
     console.error('[Server] Shutdown phases at error:', shutdownPhases);
     process.exit(1);
@@ -974,9 +907,8 @@ async function shutdown() {
       clearTimeout(shutdownTimeoutId);
     }
   }
-}
+};
 
-// Update signal handlers with proper promise handling
 process.on('SIGTERM', () => {
   console.log('[Server] Received SIGTERM signal');
   const forceShutdownTimeout = setTimeout(() => {
