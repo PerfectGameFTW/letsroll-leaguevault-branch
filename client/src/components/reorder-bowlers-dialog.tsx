@@ -31,27 +31,26 @@ export function ReorderBowlersDialog({
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Filter bowlerLeagues to only include active bowlers from this team
+  // Get active bowler leagues for this team
   const teamBowlerLeagues = bowlerLeagues.filter(bl => 
     bl.teamId === teamId && 
     bl.leagueId === leagueId && 
     bl.active
   );
 
-  // Get list of bowler IDs that are on this team
-  const teamBowlerIds = teamBowlerLeagues.map(bl => bl.bowlerId);
-
-  // Filter bowlers to only include those on this team
-  const teamBowlers = bowlers.filter(b => teamBowlerIds.includes(b.id));
-
-  const [orderedBowlerLeagues, setOrderedBowlerLeagues] = useState<BowlerLeague[]>(
-    () => [...teamBowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  // Get bowlers that are on this team
+  const teamBowlers = bowlers.filter(bowler => 
+    teamBowlerLeagues.some(bl => bl.bowlerId === bowler.id)
   );
 
-  // Reset the ordered list when the dialog opens with new data
+  // State for ordered bowler leagues
+  const [orderedBowlerLeagues, setOrderedBowlerLeagues] = useState<BowlerLeague[]>([]);
+
+  // Reset the ordered list when dialog opens or team data changes
   useEffect(() => {
     if (open) {
-      setOrderedBowlerLeagues([...teamBowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+      const sortedLeagues = [...teamBowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      setOrderedBowlerLeagues(sortedLeagues);
     }
   }, [open, teamBowlerLeagues]);
 
@@ -60,6 +59,7 @@ export function ReorderBowlersDialog({
     const newIndex = direction === "up" ? index - 1 : index + 1;
 
     if (newIndex >= 0 && newIndex < newOrder.length) {
+      // Swap items
       [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]];
       setOrderedBowlerLeagues(newOrder);
     }
@@ -70,30 +70,22 @@ export function ReorderBowlersDialog({
       setIsSubmitting(true);
 
       // Update each bowler league with its new order
-      const updates = orderedBowlerLeagues.map((bl, index) =>
-        apiRequest("PATCH", `/api/bowler-leagues/${bl.id}`, { order: index })
+      const updates = orderedBowlerLeagues.map((bl, index) => 
+        apiRequest("PATCH", `/api/bowler-leagues/${bl.id}`, { 
+          order: index,
+          active: bl.active,
+          bowlerId: bl.bowlerId,
+          leagueId: bl.leagueId,
+          teamId: bl.teamId 
+        })
       );
 
       await Promise.all(updates);
 
-      // Invalidate all relevant queries to ensure proper refresh
-      await Promise.all([
-        // Invalidate the specific team's bowler leagues
-        queryClient.invalidateQueries({
-          queryKey: ["/api/bowler-leagues", { teamId, leagueId }],
-          exact: true
-        }),
-        // Invalidate the bowlers query that depends on the order
-        queryClient.invalidateQueries({
-          queryKey: ["/api/bowlers"],
-          refetchType: 'all'
-        }),
-        // Invalidate any other bowler leagues queries
-        queryClient.invalidateQueries({
-          queryKey: ["/api/bowler-leagues"],
-          refetchType: 'all'
-        })
-      ]);
+      // Invalidate queries to refresh data
+      await queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
+      await queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}`] });
 
       toast({
         title: "Success",
@@ -102,6 +94,7 @@ export function ReorderBowlersDialog({
 
       onClose();
     } catch (error) {
+      console.error("[ReorderBowlers] Error updating order:", error);
       toast({
         title: "Error updating order",
         description: error instanceof Error ? error.message : "Failed to update order",
@@ -120,7 +113,7 @@ export function ReorderBowlersDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="border rounded-md">
+          <div className="border rounded-md divide-y">
             {orderedBowlerLeagues.map((bl, index) => {
               const bowler = teamBowlers.find(b => b.id === bl.bowlerId);
               if (!bowler) return null;
@@ -128,15 +121,15 @@ export function ReorderBowlersDialog({
               return (
                 <div
                   key={bl.id}
-                  className="flex items-center justify-between p-3 border-b last:border-b-0"
+                  className="flex items-center justify-between p-3"
                 >
-                  <span>{bowler.name}</span>
+                  <span className="font-medium">{bowler.name}</span>
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => moveItem(index, "up")}
-                      disabled={index === 0}
+                      disabled={index === 0 || isSubmitting}
                     >
                       <ArrowUp className="h-4 w-4" />
                       <span className="sr-only">Move up</span>
@@ -145,7 +138,7 @@ export function ReorderBowlersDialog({
                       variant="outline"
                       size="sm"
                       onClick={() => moveItem(index, "down")}
-                      disabled={index === orderedBowlerLeagues.length - 1}
+                      disabled={index === orderedBowlerLeagues.length - 1 || isSubmitting}
                     >
                       <ArrowDown className="h-4 w-4" />
                       <span className="sr-only">Move down</span>
@@ -157,12 +150,22 @@ export function ReorderBowlersDialog({
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
               Cancel
             </Button>
-            <Button onClick={handleSave} disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Order
+            <Button 
+              onClick={handleSave} 
+              disabled={isSubmitting}
+              className="min-w-[80px]"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Order'
+              )}
             </Button>
           </div>
         </div>
