@@ -1,1 +1,1 @@
-{"pid":3517,"timestamp":"2025-02-25T05:29:35.619Z","workflow":"Dev","environment":{"NODE_ENV":"development","npm_lifecycle_event":"dev","concurrent":false}}
+{"pid":417,"timestamp":"2025-02-25T05:44:23.716Z","workflow":"Dev","environment":{"NODE_ENV":"development","npm_lifecycle_event":"npx","concurrent":true}}
