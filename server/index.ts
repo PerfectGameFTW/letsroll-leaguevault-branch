@@ -173,6 +173,7 @@ async function writePortStatus(
         pid: process.pid,
         mode: process.env.NODE_ENV || 'development',
         workflow: getWorkflowName(),
+        wait_for_port: 5001,
         health: {
           database: health.database || false,
           vite: health.vite || false,
