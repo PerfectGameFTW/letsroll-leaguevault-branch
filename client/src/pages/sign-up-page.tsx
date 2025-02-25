@@ -31,6 +31,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { startRegistration } from '@simplewebauthn/browser';
+import { Fingerprint } from "lucide-react";
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 100;
@@ -72,7 +74,7 @@ const signUpSchema = z.object({
       (password) => {
         // Check for common patterns
         const commonPatterns = ['123', 'abc', 'qwerty', 'password'];
-        return !commonPatterns.some(pattern => 
+        return !commonPatterns.some(pattern =>
           password.toLowerCase().includes(pattern)
         );
       },
@@ -144,10 +146,10 @@ const SignUpPage: FC = () => {
 
   const onSubmit = async (data: SignUpFormData) => {
     try {
-      console.log("[SignUp] Starting registration process:", { 
+      console.log("[SignUp] Starting registration process:", {
         email: data.email,
         name: data.name,
-        leagueId: data.leagueId 
+        leagueId: data.leagueId
       });
 
       const existingUsersResponse = await fetch(`/api/users/check-email/${encodeURIComponent(data.email)}`);
@@ -202,10 +204,10 @@ const SignUpPage: FC = () => {
       }
 
       const userData = await response.json();
-      console.log("[SignUp] Registration successful:", { 
+      console.log("[SignUp] Registration successful:", {
         userId: userData.data.id,
         bowlerId: userData.data.bowlerId,
-        success: userData.success 
+        success: userData.success
       });
 
       // Verify the user data includes the bowler ID
@@ -222,6 +224,41 @@ const SignUpPage: FC = () => {
           description: "Welcome to the bowling league management system.",
           variant: "default",
         });
+        try {
+          // Get registration options
+          const optionsRes = await fetch("/api/webauthn/register/options");
+          if (!optionsRes.ok) {
+            throw new Error("Failed to get biometric registration options");
+          }
+
+          const options = await optionsRes.json();
+
+          // Start the registration process
+          const regResponse = await startRegistration(options.data);
+
+          // Verify the registration
+          const verificationRes = await fetch("/api/webauthn/register/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(regResponse),
+          });
+
+          if (!verificationRes.ok) {
+            throw new Error("Failed to verify biometric registration");
+          }
+
+          toast({
+            title: "Biometric authentication enabled",
+            description: "You can now use Face ID to log in.",
+          });
+        } catch (error) {
+          console.error('[SignUp] Biometric registration error:', error);
+          toast({
+            title: "Biometric setup failed",
+            description: "Account created successfully, but biometric authentication couldn't be enabled. You can set it up later.",
+            variant: "default",
+          });
+        }
       }
 
       setLocation("/bowler-dashboard");

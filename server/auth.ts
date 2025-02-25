@@ -5,10 +5,30 @@ import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
-import { User as SelectUser, insertUserSchema } from "@shared/schema";
+import { User as SelectUser, insertUserSchema, Authenticator } from "@shared/schema";
 import { z } from "zod";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
+import { 
+  generateAuthenticationOptions, 
+  generateRegistrationOptions, 
+  verifyAuthenticationResponse, 
+  verifyRegistrationResponse 
+} from "@simplewebauthn/server";
+import type { 
+  AuthenticationResponseJSON,
+  AuthenticatorTransport,
+  RegistrationResponseJSON 
+} from "@simplewebauthn/types";
+
+interface AuthenticatorDevice {
+  credentialID: Buffer;
+  credentialPublicKey: Buffer;
+  counter: number;
+  credentialDeviceType: "singleDevice" | "multiDevice";
+  credentialBackedUp: boolean;
+  transports: AuthenticatorTransport[];
+}
 
 const PostgresSessionStore = connectPg(session);
 
@@ -58,6 +78,26 @@ function isValidUser(user: any): user is SelectUser {
     typeof user.name === 'string' &&
     user.createdAt instanceof Date
   );
+}
+
+const rpName = "Bowling League Management";
+const rpID = process.env.NODE_ENV === "production" 
+  ? process.env.DOMAIN || "your-domain.com"
+  : "localhost";
+const origin = process.env.NODE_ENV === "production"
+  ? `https://${rpID}`
+  : `http://${rpID}:5001`;
+
+async function getUserAuthenticators(userId: number): Promise<AuthenticatorDevice[]> {
+  const authenticators = await storage.getAuthenticatorsByUserId(userId);
+  return authenticators.map(auth => ({
+    credentialID: Buffer.from(auth.credentialId, 'base64url'),
+    credentialPublicKey: Buffer.from(auth.credentialPublicKey, 'base64url'),
+    counter: auth.counter,
+    credentialDeviceType: auth.credentialDeviceType as "singleDevice" | "multiDevice",
+    credentialBackedUp: auth.credentialBackedUp,
+    transports: (auth.transports || []) as AuthenticatorTransport[],
+  }));
 }
 
 export function setupAuth(app: Express) {
@@ -353,6 +393,221 @@ export function setupAuth(app: Express) {
     }
   });
 
+
+  authRouter.post("/webauthn/register/options", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: { message: "Must be logged in to register biometric authentication" }
+      });
+    }
+
+    try {
+      const user = req.user;
+      const authenticators = await getUserAuthenticators(user.id);
+
+      const options = await generateRegistrationOptions({
+        rpName,
+        rpID,
+        userID: user.id.toString(),
+        userName: user.email,
+        attestationType: "none",
+        authenticatorSelection: {
+          residentKey: "preferred",
+          userVerification: "preferred",
+          authenticatorAttachment: "platform"
+        },
+        excludeCredentials: authenticators.map(authenticator => ({
+          id: authenticator.credentialID,
+          type: "public-key",
+          transports: authenticator.transports,
+        })),
+      });
+
+      req.session.currentChallenge = options.challenge;
+      res.json({ success: true, data: options });
+    } catch (error) {
+      console.error("[Auth] WebAuthn registration options error:", error);
+      res.status(500).json({
+        success: false,
+        error: { message: "Failed to generate registration options" }
+      });
+    }
+  });
+
+  authRouter.post("/webauthn/register/verify", async (req, res) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: { message: "Must be logged in to verify registration" }
+      });
+    }
+
+    try {
+      const user = req.user;
+      const verification = await verifyRegistrationResponse({
+        response: req.body as RegistrationResponseJSON,
+        expectedChallenge: req.session.currentChallenge,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+      });
+
+      const { verified, registrationInfo } = verification;
+      if (!verified || !registrationInfo) {
+        throw new Error("Failed to verify registration");
+      }
+
+      const { credentialID, credentialPublicKey, counter } = registrationInfo;
+
+      await storage.createAuthenticator({
+        userId: user.id,
+        credentialId: Buffer.from(credentialID).toString('base64url'),
+        credentialPublicKey: Buffer.from(credentialPublicKey).toString('base64url'),
+        counter,
+        credentialDeviceType: registrationInfo.credentialDeviceType,
+        credentialBackedUp: registrationInfo.credentialBackedUp,
+        transports: req.body.response.transports || [],
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[Auth] WebAuthn registration verification error:", error);
+      res.status(500).json({
+        success: false,
+        error: { message: "Failed to verify registration" }
+      });
+    }
+  });
+
+  authRouter.post("/webauthn/authenticate/options", async (req, res) => {
+    try {
+      const email = req.body.email;
+      if (!email) {
+        return res.status(400).json({
+          success: false,
+          error: { message: "Email is required" }
+        });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(400).json({
+          success: false,
+          error: { message: "User not found" }
+        });
+      }
+
+      const authenticators = await getUserAuthenticators(user.id);
+      if (authenticators.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: { message: "No biometric credentials found" }
+        });
+      }
+
+      const options = await generateAuthenticationOptions({
+        rpID,
+        allowCredentials: authenticators.map(authenticator => ({
+          id: authenticator.credentialID,
+          type: "public-key",
+          transports: authenticator.transports,
+        })),
+        userVerification: "preferred",
+      });
+
+      req.session.currentChallenge = options.challenge;
+      req.session.authEmail = email;
+
+      res.json({ success: true, data: options });
+    } catch (error) {
+      console.error("[Auth] WebAuthn authentication options error:", error);
+      res.status(500).json({
+        success: false,
+        error: { message: "Failed to generate authentication options" }
+      });
+    }
+  });
+
+  authRouter.post("/webauthn/authenticate/verify", async (req, res) => {
+    try {
+      const email = req.session.authEmail;
+      if (!email) {
+        return res.status(400).json({
+          success: false,
+          error: { message: "Authentication session expired" }
+        });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(400).json({
+          success: false,
+          error: { message: "User not found" }
+        });
+      }
+
+      const authenticators = await getUserAuthenticators(user.id);
+      const bodyCredIDBuffer = base64URLStringToBuffer(req.body.id);
+      const authenticator = authenticators.find(auth => 
+        bufferEqual(auth.credentialID, bodyCredIDBuffer)
+      );
+
+      if (!authenticator) {
+        throw new Error("Authenticator not found");
+      }
+
+      const verification = await verifyAuthenticationResponse({
+        response: req.body as AuthenticationResponseJSON,
+        expectedChallenge: req.session.currentChallenge,
+        expectedOrigin: origin,
+        expectedRPID: rpID,
+        authenticator,
+      });
+
+      const { verified, authenticationInfo } = verification;
+      if (!verified) {
+        throw new Error("Failed to verify authentication");
+      }
+
+      await storage.updateAuthenticatorCounter(
+        user.id,
+        Buffer.from(bodyCredIDBuffer).toString('base64url'),
+        authenticationInfo.newCounter
+      );
+
+      // Login the user
+      await new Promise<void>((resolve, reject) => {
+        req.login(user, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      delete req.session.authEmail;
+      delete req.session.currentChallenge;
+
+      res.json({
+        success: true,
+        data: { ...user, password: undefined }
+      });
+    } catch (error) {
+      console.error("[Auth] WebAuthn authentication verification error:", error);
+      res.status(500).json({
+        success: false,
+        error: { message: "Failed to verify authentication" }
+      });
+    }
+  });
+
   // Mount auth routes before any other routes
   app.use('/api', authRouter);
+}
+
+function bufferEqual(a: Buffer, b: Buffer): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
+function base64URLStringToBuffer(base64URLString: string): Buffer {
+  return Buffer.from(base64URLString, 'base64url');
 }
