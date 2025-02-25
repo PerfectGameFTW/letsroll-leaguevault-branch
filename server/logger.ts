@@ -10,13 +10,15 @@ class ConsoleBuffer extends Writable {
   }
 
   _write(chunk: any, encoding: string, callback: (error?: Error) => void) {
-    this.buffer.push(chunk.toString());
-    process.stdout.write(chunk, encoding);
+    const timestamp = new Date().toISOString();
+    const formattedLog = `[${timestamp}] ${chunk.toString()}`;
+    this.buffer.push(formattedLog);
+    process.stdout.write(formattedLog, encoding);
     callback();
   }
 
   toString() {
-    return this.buffer.join('');
+    return this.buffer.slice(-100).join('\n');
   }
 
   clear() {
