@@ -704,7 +704,8 @@ app.get('/api/diagnostic', async (req, res) => {
       workflow: 'Dev',
       port: 5001,
       ready: true,
-      workflow_status: {
+      webview_console_logs: process.stdout,
+      status: {
         port: 5001,
         ready: true,
         workflow: 'Dev'
