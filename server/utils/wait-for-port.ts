@@ -31,6 +31,7 @@ interface PortStatus {
     vite: boolean;
     server: boolean;
   };
+  wait_for_port?: number;
 }
 
 // Enhanced getCurrentWorkflow with additional logging
@@ -97,7 +98,8 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
       status,
       currentWorkflow,
       isWorkspace: process.env.REPL_SLUG === 'workspace',
-      matches: status.workflow === currentWorkflow
+      matches: status.workflow === currentWorkflow,
+      wait_for_port: status.wait_for_port
     });
 
     // Consider all workspace instances as Dev workflow
@@ -107,8 +109,14 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
       debugLog('PortCheck', 'Found matching workflow status', {
         status,
         ready: status.ready,
-        health: status.health
+        health: status.health,
+        wait_for_port: status.wait_for_port
       });
+
+      // For Dev workflow, set explicit wait_for_port
+      if (!status.wait_for_port && status.port) {
+        status.wait_for_port = status.port;
+      }
 
       // For Dev workflow, consider it ready if either server or vite is healthy
       if (status.ready && (!status.health || status.health.server || status.health.vite)) {
@@ -120,7 +128,8 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
     debugLog('PortCheck', 'Found status for different workflow', {
       current: currentWorkflow,
       found: status.workflow,
-      health: status.health
+      health: status.health,
+      wait_for_port: status.wait_for_port
     });
     return null;
   } catch (error) {

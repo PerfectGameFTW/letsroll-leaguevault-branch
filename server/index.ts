@@ -10,6 +10,7 @@ import net from 'net';
 import fs from 'fs';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
+import { Transform } from 'stream';
 
 // Initialize Express app first
 const app = express();
@@ -18,6 +19,20 @@ const server = createServer(app);
 // Debug configuration
 const DEBUG = process.env.DEBUG !== '0';
 const WORKFLOW_DEBUG = true; // Force workflow debugging on
+
+const consoleBuffer = new Transform({
+  transform(chunk, encoding, callback) {
+    this.push(chunk);
+    callback();
+  }
+});
+
+const originalStdoutWrite = process.stdout.write.bind(process.stdout);
+process.stdout.write = (chunk: any, encoding?: any, callback?: any) => {
+  consoleBuffer.write(chunk);
+  return originalStdoutWrite(chunk, encoding, callback);
+};
+
 
 function debugWorkflow(context: string, message: string, data?: any) {
   if (WORKFLOW_DEBUG) {
@@ -173,7 +188,7 @@ async function writePortStatus(
         pid: process.pid,
         mode: process.env.NODE_ENV || 'development',
         workflow: getWorkflowName(),
-        wait_for_port: 5001,
+        wait_for_port: 5001, // Always set this for Dev workflow
         health: {
           database: health.database || false,
           vite: health.vite || false,
@@ -705,10 +720,10 @@ app.get('/api/diagnostic', async (req, res) => {
       workflow: 'Dev',
       port: 5001,
       ready: true,
-      webview_console_logs: consoleBuffer.toString(),
+      webview_console_logs: consoleBuffer.read()?.toString() || '',
       workflow_logs: {
         timestamp: new Date().toISOString(),
-        output: consoleBuffer.toString()
+        output: consoleBuffer.read()?.toString() || ''
       },
       status: {
         port: 5001,
@@ -950,7 +965,7 @@ async function shutdown() {
     console.log('[Server] Final shutdown phase status:', shutdownPhases);
     process.exit(0);
   } catch (error) {
-    const totalTime = Date.now() - startTime;
+        const totalTime = Date.now() - startTime;
     console.error(`[Server] Error during shutdown after ${totalTime}ms:`, error);
     console.error('[Server] Shutdown phases at error:', shutdownPhases);
     process.exit(1);
