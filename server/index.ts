@@ -704,16 +704,10 @@ app.get('/api/diagnostic', async (req, res) => {
       workflow: 'Dev',
       port: 5001,
       ready: true,
-      status: {
+      workflow_status: {
         port: 5001,
         ready: true,
-        timestamp: new Date().toISOString(),
-        workflow: 'Dev',
-        health: {
-          database: portStatus?.health?.database || false,
-          vite: portStatus?.health?.vite || false,
-          server: portStatus?.health?.server || false
-        }
+        workflow: 'Dev'
       }
     };
 
@@ -734,8 +728,7 @@ app.get('/api/diagnostic', async (req, res) => {
       server_port: serverPort,
       is_ready: isServerReady,
       wait_for_port: 5001,
-      web_feedback: webFeedbackStatus,
-      workflow_status: webFeedbackStatus // Include in both locations for compatibility
+      web_feedback: webFeedbackStatus
     };
 
     debugLog('Diagnostic', 'Endpoint response:', response);
