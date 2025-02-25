@@ -30,16 +30,30 @@ export function ReorderBowlersDialog({
 }: ReorderBowlersDialogProps) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Filter bowlerLeagues to only include active bowlers from this team
+  const teamBowlerLeagues = bowlerLeagues.filter(bl => 
+    bl.teamId === teamId && 
+    bl.leagueId === leagueId && 
+    bl.active
+  );
+
+  // Get list of bowler IDs that are on this team
+  const teamBowlerIds = teamBowlerLeagues.map(bl => bl.bowlerId);
+
+  // Filter bowlers to only include those on this team
+  const teamBowlers = bowlers.filter(b => teamBowlerIds.includes(b.id));
+
   const [orderedBowlerLeagues, setOrderedBowlerLeagues] = useState<BowlerLeague[]>(
-    () => [...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    () => [...teamBowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
   );
 
   // Reset the ordered list when the dialog opens with new data
   useEffect(() => {
     if (open) {
-      setOrderedBowlerLeagues([...bowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
+      setOrderedBowlerLeagues([...teamBowlerLeagues].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
     }
-  }, [open, bowlerLeagues]);
+  }, [open, teamBowlerLeagues]);
 
   const moveItem = (index: number, direction: "up" | "down") => {
     const newOrder = [...orderedBowlerLeagues];
@@ -108,7 +122,7 @@ export function ReorderBowlersDialog({
         <div className="space-y-4">
           <div className="border rounded-md">
             {orderedBowlerLeagues.map((bl, index) => {
-              const bowler = bowlers.find(b => b.id === bl.bowlerId);
+              const bowler = teamBowlers.find(b => b.id === bl.bowlerId);
               if (!bowler) return null;
 
               return (
