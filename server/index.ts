@@ -715,7 +715,12 @@ app.get('/api/diagnostic', async (req, res) => {
       port_status: portStatus,
       server_port: serverPort,
       is_ready: isServerReady,
-      wait_for_port: 5001 // Add this for web feedback tool detection
+      wait_for_port: 5001,
+      web_feedback: {
+        workflow: 'Dev',
+        port: 5001,
+        ready: true
+      } // Add this for web feedback tool detection
     };
 
     debugLog('Diagnostic', 'Endpoint response:', response);
