@@ -131,6 +131,17 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 setupAuth(app);
 
+// Add a simple test endpoint for organization API testing
+app.get('/api/test', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      message: 'API test endpoint is working',
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
 // Enhanced getWorkflowName function
 function getWorkflowName() {
   debugWorkflow('Detection', 'Starting workflow name detection', {
@@ -779,9 +790,35 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Add a test endpoint to verify API routing works
+app.get('/api/auth-test', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      message: 'Authentication API test endpoint is working',
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
 console.log('[Server] Registering API routes...');
 registerRoutes(app);
 
+// Add a special catchall route for /api/* to handle 404s properly
+// This must be registered BEFORE Vite middleware to prevent Vite from serving the SPA for API routes
+app.all('/api/*', (req, res) => {
+  console.log(`[Server] API 404 - Route not found: ${req.method} ${req.path}`);
+  res.status(404).json({
+    success: false,
+    error: {
+      message: 'API endpoint not found',
+      path: req.path,
+      method: req.method
+    }
+  });
+});
+
+// Only set up Vite middleware AFTER all API routes are registered
 if (process.env.NODE_ENV !== "production") {
   console.log('[Server] Setting up Vite middleware for development...');
   setupVite(app, server)

@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { Router } from "express";
 import leaguesRouter from './leagues.js';
 import teamsRouter from './teams.js';
 import bowlersRouter from './bowlers.js';
@@ -12,6 +13,9 @@ import squareRouter from './square.js';  // Add Square router import
 import adminRouter from './admin.js';    // Add Admin router import
 import organizationsRouter from './organizations.js'; // Add Organizations router import
 import orgAdminRouter from './organization-admin.js'; // Add Organization Admin router import
+import userBowlersRouter from './user-bowlers.js';    // Add User-Bowlers router import
+import setupAdminRouter from './setup-admin.js';      // Add Setup Admin router import
+import { setupAuth } from '../auth.js';  // Import the authentication setup function
 import { testConnection } from '../db.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 
@@ -31,7 +35,15 @@ export function registerRoutes(app: Express): Server {
     }
   });
 
-  // Register route modules
+  // Setup authentication for the application (this includes auth routes)
+  // This should be called before registering other routes
+  // as it sets up the auth middleware and routes
+  setupAuth(app);
+
+  // NOTE: setupAuth already adds the /api/[login,register,logout,user] routes
+  // so there's no need to register auth routes separately here
+
+  // Register all API routes
   app.use('/api/leagues', leaguesRouter);
   app.use('/api/teams', teamsRouter);
   app.use('/api/bowlers', bowlersRouter);
@@ -40,10 +52,12 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/payments', paymentsRouter);
   app.use('/api/scores', scoresRouter);
   app.use('/api/games', gamesRouter);
-  app.use('/api/square', squareRouter);  // Register Square routes
-  app.use('/api/admin', adminRouter);    // Register Admin routes
+  app.use('/api/square', squareRouter);   // Register Square routes
+  app.use('/api/admin', adminRouter);     // Register Admin routes
   app.use('/api/organizations', organizationsRouter); // Register Organizations routes
   app.use('/api/org-admin', orgAdminRouter); // Register Organization Admin routes
+  app.use('/api/user-bowlers', userBowlersRouter); // Register User-Bowlers routes
+  app.use('/api/setup', setupAdminRouter); // Register Setup Admin routes
 
   console.log('[Routes] API routes registered');
   return server;

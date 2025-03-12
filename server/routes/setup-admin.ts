@@ -1,0 +1,100 @@
+import { Router, Request, Response } from 'express';
+import { z } from 'zod';
+import { sendSuccess, sendError } from '../utils/api.js';
+import { storage } from '../storage.js';
+import { hashPassword } from '../auth.js';
+
+const router = Router();
+
+// Endpoint to create the first admin user
+// This can only be used if there are no admin users in the system
+router.post('/create-first-admin', async (req: Request, res: Response) => {
+  try {
+    // Check if there are existing admin users
+    const users = await storage.getUsers();
+    const adminUsers = users.filter(user => user.isAdmin);
+    
+    if (adminUsers.length > 0) {
+      return sendError(
+        res, 
+        'ADMIN_EXISTS',
+        'Admin users already exist. Use the regular admin invitation process.',
+        403
+      );
+    }
+
+    // Define schema for admin user data
+    const adminSchema = z.object({
+      email: z.string().email('Invalid email address'),
+      password: z.string()
+        .min(8, 'Password must be at least 8 characters')
+        .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+        .regex(/[!@#$%^&*]/, 'Password must contain at least one special character (!@#$%^&*)'),
+      name: z.string().min(2, 'Name must be at least 2 characters'),
+      phone: z.string().optional(),
+    });
+
+    // Validate request data
+    const validationResult = adminSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      const errorMessages = validationResult.error.errors.map(err => ({
+        field: err.path.join('.'),
+        message: err.message
+      }));
+      
+      return sendError(
+        res,
+        'VALIDATION_ERROR',
+        'Validation failed',
+        400,
+        { details: errorMessages }
+      );
+    }
+
+    const userData = validationResult.data;
+    
+    // Check if user with this email already exists
+    const existingUser = await storage.getUserByEmail(userData.email);
+    if (existingUser) {
+      return sendError(
+        res,
+        'EMAIL_EXISTS',
+        'A user with this email already exists',
+        409
+      );
+    }
+
+    // Hash the password
+    const hashedPassword = await hashPassword(userData.password);
+
+    // Create the admin user
+    const newAdminUser = await storage.createUser({
+      email: userData.email,
+      password: hashedPassword,
+      name: userData.name,
+      phone: userData.phone ?? undefined,
+      isAdmin: true, // This is the key difference - setting isAdmin to true
+      isOrganizationAdmin: false,
+      organizationId: null
+    });
+
+    console.log(`[Setup] First admin user created successfully with ID: ${newAdminUser.id}`);
+
+    // Return the created user without password
+    sendSuccess(
+      res,
+      { ...newAdminUser, password: undefined },
+      201
+    );
+  } catch (error) {
+    console.error('[Setup] Error creating first admin user:', error);
+    sendError(
+      res,
+      'SERVER_ERROR',
+      'Failed to create admin user',
+      500
+    );
+  }
+});
+
+export default router;

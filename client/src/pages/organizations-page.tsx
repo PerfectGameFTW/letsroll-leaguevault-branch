@@ -1,18 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Building2, Plus, Edit, Trash } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Plus, Edit, Trash } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import { ApiResponse } from '@/lib/types/api';
-import type { Organization, InsertOrganization, User } from '@shared/schema.js';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
+import type { Organization, InsertOrganization } from '@shared/schema.js';
 
 export default function OrganizationsPage() {
   const [open, setOpen] = useState(false);
@@ -25,14 +23,13 @@ export default function OrganizationsPage() {
   const [zipCode, setZipCode] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  // Admin User selection (existing user)
-  const [adminUserId, setAdminUserId] = useState<number | null>(null);
-  // New admin user details
-  const [createNewAdmin, setCreateNewAdmin] = useState(false);
+  
+  // New admin user details (always create a new admin for a new organization)
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPhone, setAdminPhone] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -41,17 +38,12 @@ export default function OrganizationsPage() {
     queryKey: ['/api/organizations'],
     retry: 1,
   });
-  
-  const { data: usersData, isLoading: isLoadingUsers } = useQuery<{data: User[]}>({
-    queryKey: ['/api/admin/users'],
-    retry: 1,
-  });
 
   const createMutation = useMutation<
-    any, // The return type 
-    Error, // Error type
-    InsertOrganization, // Variables type
-    unknown // Context type
+    any,
+    Error,
+    InsertOrganization,
+    unknown
   >({
     mutationFn: async (org: InsertOrganization) => {
       return apiRequest('/api/organizations', 'POST', org);
@@ -126,8 +118,6 @@ export default function OrganizationsPage() {
     setZipCode('');
     setPhone('');
     setEmail('');
-    setAdminUserId(null);
-    setCreateNewAdmin(false);
     setAdminName('');
     setAdminEmail('');
     setAdminPhone('');
@@ -148,42 +138,11 @@ export default function OrganizationsPage() {
     setOpen(true);
   };
 
-  // Add a new mutation for setting a user as organization admin
-  const setOrgAdminMutation = useMutation({
-    mutationFn: async ({ userId, organizationId }: { userId: number, organizationId: number }) => {
-      return apiRequest(`/api/organizations/user/${userId}/set`, 'POST', { organizationId });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
-      toast({
-        title: 'Administrator Set',
-        description: 'Account administrator has been successfully assigned to the organization.',
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: 'Error',
-        description: `Failed to set account administrator: ${error.message}`,
-        variant: 'destructive',
-      });
-    }
-  });
-
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate that either an existing admin is selected or a new admin is being created
-    if (!editId && !adminUserId && !createNewAdmin) {
-      toast({
-        title: 'Missing Information',
-        description: 'Please select or create an Account Administrator.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // If creating a new admin, validate the admin information
-    if (createNewAdmin) {
+    if (!editId) {
+      // For new organizations, validate admin information
       if (!adminName || !adminEmail || !adminPassword) {
         toast({
           title: 'Missing Administrator Information',
@@ -229,34 +188,22 @@ export default function OrganizationsPage() {
     if (editId) {
       updateMutation.mutate({ id: editId, org: orgData });
     } else {
-      // Prepare admin data if creating a new admin
-      const adminData = createNewAdmin ? {
+      // Always prepare admin data for new organizations
+      const adminData = {
         name: adminName,
         email: adminEmail,
         password: adminPassword,
-        phone: adminPhone
-      } : undefined;
+        phone: adminPhone || null
+      };
 
-      // Create the organization with admin data if needed
-      const dataToSend = adminData ? { 
-        ...orgData, 
+      // Create the organization with admin data and set active status
+      const dataToSend = { 
+        ...orgData,
+        active: true, 
         adminData
-      } : orgData;
+      };
 
-      // Create the organization
-      createMutation.mutate(dataToSend as InsertOrganization, {
-        onSuccess: (response: any) => {
-          // If using an existing admin user, set them as the organization admin
-          if (adminUserId && response?.data?.id && !createNewAdmin) {
-            setOrgAdminMutation.mutate({
-              userId: adminUserId,
-              organizationId: response.data.id
-            });
-          }
-
-          queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
-        }
-      });
+      createMutation.mutate(dataToSend as unknown as InsertOrganization);
     }
   };
 
@@ -281,10 +228,33 @@ export default function OrganizationsPage() {
   }
 
   if (error) {
+    // Check if it's an auth error - if so, show a more user-friendly message
+    const errorMessage = (error as Error).message;
+    const isAuthError = errorMessage.includes('not_authenticated') || 
+                        errorMessage.includes('not authenticated') ||
+                        errorMessage.includes('unauthorized');
+    
     return (
       <div className="container mx-auto py-10">
         <h1 className="text-3xl font-bold mb-6">Organizations</h1>
-        <p className="text-red-500">Error loading organizations: {(error as Error).message}</p>
+        <div className="bg-destructive/10 border border-destructive p-4 rounded-md mb-6">
+          <h3 className="text-lg font-semibold text-destructive mb-2">
+            {isAuthError ? 'Authentication Required' : 'Error Loading Organizations'}
+          </h3>
+          <p className="text-muted-foreground">
+            {isAuthError 
+              ? 'You must be logged in to view organizations. Please log in and try again.'
+              : `Failed to load organizations: ${errorMessage}`
+            }
+          </p>
+          {isAuthError && (
+            <div className="mt-4">
+              <Button variant="default" onClick={() => window.location.href = '/login'}>
+                Log In
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -362,7 +332,7 @@ export default function OrganizationsPage() {
             <DialogDescription>
               {editId 
                 ? 'Update the organization details below.' 
-                : 'Add a new organization to the system.'}
+                : 'Add a new organization to the system with an administrator account.'}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleFormSubmit}>
@@ -393,57 +363,15 @@ export default function OrganizationsPage() {
                   placeholder="org-name"
                 />
               </div>
+              
               {!editId && (
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="createNewAdmin" className="text-right">
-                    Administrator
-                  </Label>
-                  <div className="col-span-3 flex items-center space-x-2">
-                    <Checkbox 
-                      id="createNewAdmin" 
-                      checked={createNewAdmin} 
-                      onCheckedChange={(checked: boolean | "indeterminate") => {
-                        setCreateNewAdmin(!!checked);
-                        if (!!checked) {
-                          setAdminUserId(null);
-                        }
-                      }} 
-                    />
-                    <Label htmlFor="createNewAdmin">Create new administrator</Label>
-                  </div>
-                </div>
-              )}
-              
-              {!createNewAdmin && !editId && (
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="adminUserId" className="text-right">
-                    Existing Administrator
-                  </Label>
-                  <Select
-                    value={adminUserId?.toString() || ""}
-                    onValueChange={value => setAdminUserId(value ? parseInt(value) : null)}
-                    disabled={createNewAdmin}
-                  >
-                    <SelectTrigger className="col-span-3">
-                      <SelectValue placeholder="Select an administrator" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {isLoadingUsers ? (
-                        <div className="p-2 text-center">Loading users...</div>
-                      ) : (
-                        (usersData?.data || []).map(user => (
-                          <SelectItem key={user.id} value={user.id.toString()}>
-                            {user.name || user.email}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              
-              {createNewAdmin && !editId && (
                 <>
+                  <div className="mt-4 mb-2">
+                    <h3 className="text-lg font-medium">Administrator Account</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Create an administrator account for this organization
+                    </p>
+                  </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="adminName" className="text-right">
                       Admin Name
@@ -453,7 +381,7 @@ export default function OrganizationsPage() {
                       value={adminName}
                       onChange={(e) => setAdminName(e.target.value)}
                       className="col-span-3"
-                      required={createNewAdmin}
+                      required={!editId}
                     />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
@@ -466,7 +394,7 @@ export default function OrganizationsPage() {
                       value={adminEmail}
                       onChange={(e) => setAdminEmail(e.target.value)}
                       className="col-span-3"
-                      required={createNewAdmin}
+                      required={!editId}
                     />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
@@ -479,7 +407,7 @@ export default function OrganizationsPage() {
                       value={adminPassword}
                       onChange={(e) => setAdminPassword(e.target.value)}
                       className="col-span-3"
-                      required={createNewAdmin}
+                      required={!editId}
                     />
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
@@ -495,6 +423,13 @@ export default function OrganizationsPage() {
                   </div>
                 </>
               )}
+              
+              <div className="mt-4 mb-2">
+                <h3 className="text-lg font-medium">Organization Details</h3>
+                <p className="text-sm text-muted-foreground">
+                  Additional organization information
+                </p>
+              </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="email" className="text-right">
                   Email
@@ -576,28 +511,27 @@ export default function OrganizationsPage() {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteConfirmId} onOpenChange={() => setDeleteConfirmId(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Confirm Deletion</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this organization? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>
-              Cancel
-            </Button>
-            <Button 
-              variant="destructive" 
+      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action will permanently delete the organization and cannot be undone.
+              This will also remove all data associated with this organization including leagues, teams, and bowlers.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)}
               disabled={deleteMutation.isPending}
             >
-              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete Organization'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

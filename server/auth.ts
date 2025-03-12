@@ -161,6 +161,7 @@ export function setupAuth(app: Express) {
   // Auth routes - ensure these are mounted before any other routes
   const authRouter = Router();
 
+  // Register auth endpoints
   authRouter.post("/register", async (req, res) => {
     try {
       console.log('[Auth] Processing registration request:', { 

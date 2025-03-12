@@ -7,7 +7,8 @@ import {
   insertOrganizationSchema, 
   partialOrganizationSchema, 
   users,
-  type InsertOrganization 
+  type InsertOrganization,
+  type Organization
 } from '@shared/schema.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { hashPassword } from '../auth.js';
@@ -42,6 +43,31 @@ router.get('/:id', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error(`Error fetching organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to fetch organization', 500, 'ServerError');
+  }
+});
+
+// Check if a slug is available
+router.get('/check-slug/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    
+    // Validate slug format
+    const slugRegex = /^[a-z0-9-]+$/;
+    if (!slugRegex.test(slug)) {
+      return sendError(res, 'Invalid slug format. Use only lowercase letters, numbers, and hyphens.', 400, 'INVALID_FORMAT');
+    }
+    
+    const organization = await storage.getOrganizationBySlug(slug);
+    
+    // Return the availability status
+    sendSuccess(res, { 
+      slug,
+      available: !organization,
+      message: organization ? 'Slug is already in use' : 'Slug is available'
+    });
+  } catch (error) {
+    console.error(`[Organizations] Error checking slug availability for ${req.params.slug}:`, error);
+    sendError(res, 'Failed to check slug availability', 500, 'SERVER_ERROR');
   }
 });
 

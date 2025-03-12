@@ -47,7 +47,7 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
     return sendSuccess(res, users);
   } catch (error) {
     console.error('[Org Admin Route] Error getting organization users:', error);
-    return sendError(res, 'internal_error', 'Failed to get organization users');
+    return sendError(res, 'internal_error', 'Failed to get organization users', 500);
   }
 });
 
@@ -89,7 +89,7 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, async (req
     return sendSuccess(res, updatedUser);
   } catch (error) {
     console.error('[Org Admin Route] Error updating organization admin status:', error);
-    return sendError(res, 'internal_error', 'Failed to update organization admin status');
+    return sendError(res, 'internal_error', 'Failed to update organization admin status', 500);
   }
 });
 
@@ -143,7 +143,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, async (req: any, res
     return sendSuccess(res, refreshedUser);
   } catch (error) {
     console.error('[Org Admin Route] Error adding user to organization:', error);
-    return sendError(res, 'internal_error', 'Failed to add user to organization');
+    return sendError(res, 'internal_error', 'Failed to add user to organization', 500);
   }
 });
 
@@ -183,7 +183,7 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, async (req: any
     return sendSuccess(res, updatedUser);
   } catch (error) {
     console.error('[Org Admin Route] Error removing user from organization:', error);
-    return sendError(res, 'internal_error', 'Failed to remove user from organization');
+    return sendError(res, 'internal_error', 'Failed to remove user from organization', 500);
   }
 });
 

@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Layout } from '@/components/layout';
 import { AdminRouteGuard } from '@/components/admin-route-guard';
+import { OrganizationUsersOnly } from '@/components/organization-users-only';
 import { 
   AlertCircle, 
   Building, 
@@ -89,16 +90,34 @@ function ErrorState({ error }: { error: Error }) {
 
 
 
-// User management component
+// User management component - filtered by organization
 function UserManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [adminStatuses, setAdminStatuses] = useState<Record<number, boolean>>({});
   
-  // Query to fetch users
+  // Query to fetch current user
+  const { data: userResponse } = useQuery<{ success: boolean; data: User }>({
+    queryKey: ['/api/user'],
+  });
+  
+  const currentUser = userResponse?.data;
+  const organizationId = currentUser?.organizationId;
+  
+  // Query to fetch users from the same organization
   const { data: usersResponse, isLoading, error } = useQuery<{ success: boolean; data: User[] }>({
     queryKey: ['/api/admin/users'],
     enabled: true,
+    select: (data) => {
+      // Filter users to only show those from the same organization
+      if (data.success && data.data && organizationId) {
+        return {
+          success: data.success,
+          data: data.data.filter(user => user.organizationId === organizationId)
+        };
+      }
+      return data;
+    }
   });
 
   // Mutation to update user admin status
@@ -152,13 +171,17 @@ function UserManagement() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold tracking-tight">User Management</h2>
+      <h2 className="text-3xl font-bold tracking-tight">
+        {currentUser?.organizationId ? "Organization Members" : "User Management"}
+      </h2>
       
       <Card>
         <CardHeader>
-          <CardTitle>Users</CardTitle>
+          <CardTitle>{currentUser?.organizationId ? "Organization Members" : "System Users"}</CardTitle>
           <CardDescription>
-            Manage user accounts and admin privileges
+            {currentUser?.organizationId 
+              ? "Manage members within your organization" 
+              : "Manage user accounts and admin privileges"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -213,15 +236,42 @@ function UserManagement() {
 function OrganizationUserManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [selectedOrganization, setSelectedOrganization] = useState<number | null>(null);
   const [orgAdminStatuses, setOrgAdminStatuses] = useState<Record<number, boolean>>({});
   const [addUserDialogOpen, setAddUserDialogOpen] = useState(false);
   const [userToAdd, setUserToAdd] = useState<number | null>(null);
   
-  // Query to fetch organizations
-  const { data: orgsResponse, isLoading: orgsLoading } = useQuery<{ success: boolean; data: Organization[] }>({
+  // Query to fetch current user
+  const { data: userResponse } = useQuery<{ success: boolean; data: User }>({
+    queryKey: ['/api/user'],
+  });
+  
+  const currentUser = userResponse?.data;
+  const organizationId = currentUser?.organizationId;
+  
+  // Set organization ID from current user
+  const [selectedOrganization, setSelectedOrganization] = useState<number | null>(null);
+  
+  // Auto-select user's organization when it loads
+  useEffect(() => {
+    if (organizationId) {
+      setSelectedOrganization(organizationId);
+    }
+  }, [organizationId]);
+  
+  // Query to fetch organizations - filtered for system admins to see only specific orgs
+  const { data: orgsResponse, isLoading: orgsLoading, error: orgsError } = useQuery<{ success: boolean; data: Organization[] }>({
     queryKey: ['/api/organizations'],
     enabled: true,
+    select: (data) => {
+      // If user is system admin but in an organization, only show their organization
+      if (currentUser?.isAdmin && currentUser?.organizationId) {
+        return {
+          success: data.success,
+          data: data.data.filter(org => org.id === currentUser.organizationId)
+        };
+      }
+      return data;
+    }
   });
 
   // Query to fetch all users for adding to organization
@@ -340,10 +390,15 @@ function OrganizationUserManagement() {
   };
   
   if (orgsLoading) return <LoadingState />;
+  if (orgsError) return <ErrorState error={orgsError as Error} />;
   
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold tracking-tight">Organization User Management</h2>
+      <h2 className="text-3xl font-bold tracking-tight">
+        {currentUser?.organizationId 
+          ? "Organization Admin Management" 
+          : "Organization User Management"}
+      </h2>
       
       <Card>
         <CardHeader>
@@ -352,21 +407,36 @@ function OrganizationUserManagement() {
               <Building2 className="h-5 w-5" />
               <span>Organization Users</span>
             </div>
-            <Select
-              value={selectedOrganization?.toString() || ""}
-              onValueChange={(value) => setSelectedOrganization(parseInt(value, 10))}
-            >
-              <SelectTrigger className="w-[250px]">
-                <SelectValue placeholder="Select an organization" />
-              </SelectTrigger>
-              <SelectContent>
-                {orgsResponse?.data?.map((org) => (
-                  <SelectItem key={org.id} value={org.id.toString()}>
-                    {org.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Only show organization dropdown for system admins without an organization */}
+            {currentUser?.isAdmin && !currentUser?.organizationId && (
+              <Select
+                value={selectedOrganization?.toString() || ""}
+                onValueChange={(value) => setSelectedOrganization(parseInt(value, 10))}
+              >
+                <SelectTrigger className="w-[250px]">
+                  <SelectValue placeholder="Select an organization" />
+                </SelectTrigger>
+                <SelectContent>
+                  {orgsResponse?.data && orgsResponse.data.length > 0 ? (
+                    orgsResponse.data.map((org) => (
+                      <SelectItem key={org.id} value={org.id.toString()}>
+                        {org.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="none" disabled>
+                      No organizations available
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            )}
+            {/* Show organization name if user is in an organization */}
+            {currentUser?.organizationId && orgsResponse?.data && (
+              <div className="text-sm font-medium bg-secondary text-secondary-foreground px-4 py-2 rounded-md">
+                {orgsResponse.data.find(org => org.id === currentUser.organizationId)?.name || "Your Organization"}
+              </div>
+            )}
           </CardTitle>
           <CardDescription>
             Manage users and admin privileges within organizations
@@ -375,7 +445,9 @@ function OrganizationUserManagement() {
         <CardContent>
           {!selectedOrganization ? (
             <div className="text-center py-8 text-muted-foreground">
-              Please select an organization to manage its users
+              {currentUser?.isAdmin && !currentUser?.organizationId 
+                ? "Please select an organization to manage its users" 
+                : "Loading organization data..."}
             </div>
           ) : orgUsersLoading ? (
             <LoadingState />
@@ -503,35 +575,63 @@ function OrganizationUserManagement() {
 
 // Main admin page component
 export default function AdminPage() {
+  // Query to fetch current user
+  const { data: userResponse } = useQuery<{ success: boolean; data: User }>({
+    queryKey: ['/api/user'],
+  });
+  
+  const currentUser = userResponse?.data;
+  
   return (
     <Layout>
       <AdminRouteGuard>
         <div className="container py-6">
           <div className="mb-6">
-            <h1 className="text-4xl font-bold">Admin Panel</h1>
-            <p className="text-muted-foreground">Manage user accounts and organization privileges</p>
+            <h1 className="text-4xl font-bold">Organization Admin Panel</h1>
+            <p className="text-muted-foreground">
+              Manage users for {currentUser?.organizationId ? "your organization" : "organizations"}
+            </p>
           </div>
           
-          <Tabs defaultValue="users" className="w-full">
-            <TabsList className="mb-4">
-              <TabsTrigger value="users">
-                <Users className="h-4 w-4 mr-2" />
-                System Users
-              </TabsTrigger>
-              <TabsTrigger value="organizations">
-                <Building className="h-4 w-4 mr-2" />
-                Organization Users
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="users">
-              <UserManagement />
-            </TabsContent>
-            
-            <TabsContent value="organizations">
-              <OrganizationUserManagement />
-            </TabsContent>
-          </Tabs>
+          {/* Show only organization users management for organization admins */}
+          {currentUser?.isAdmin ? (
+            <Tabs defaultValue="users" className="w-full">
+              <TabsList className="mb-4">
+                <TabsTrigger value="users">
+                  <Users className="h-4 w-4 mr-2" />
+                  {currentUser?.organizationId ? "Organization Members" : "System Users"}
+                </TabsTrigger>
+                <TabsTrigger value="organizations">
+                  <Building className="h-4 w-4 mr-2" />
+                  {currentUser?.organizationId ? "Admin Management" : "Organization Management"}
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="users">
+                <UserManagement />
+              </TabsContent>
+              
+              <TabsContent value="organizations">
+                <OrganizationUserManagement />
+              </TabsContent>
+            </Tabs>
+          ) : (
+            // For organization admins, show only their organization management
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  <span>Organization Users</span>
+                </CardTitle>
+                <CardDescription>
+                  Manage users and admin privileges within your organization
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <OrganizationUsersOnly />
+              </CardContent>
+            </Card>
+          )}
         </div>
       </AdminRouteGuard>
     </Layout>

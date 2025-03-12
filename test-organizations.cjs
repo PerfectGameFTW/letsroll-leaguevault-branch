@@ -1,70 +1,60 @@
-// Test script for organization functionality
-// @ts-check
-import fetch from 'node-fetch';
-import { promisify } from 'util';
-import { writeFile, readFile } from 'fs';
-import { execSync } from 'child_process';
+// Test script for organization functionality using CommonJS
+const { promisify } = require('util');
+const { writeFile, readFile } = require('fs');
+const { execSync } = require('child_process');
+
+// Use Node.js built-in fetch API (available in newer Node.js versions)
+// Use either dynamic import or the global fetch from Node 18+
+const fetch = globalThis.fetch;
 
 const writeFileAsync = promisify(writeFile);
 const readFileAsync = promisify(readFile);
 
+// Always use localhost since the Express server is running there directly
+// This avoids the Vite middleware that serves HTML for all routes when accessed via the Replit domain
 const BASE_URL = 'http://localhost:5001';
 
-/**
- * @typedef {Object} ApiResponse
- * @property {boolean} success - Whether the operation was successful
- * @property {any} data - The data if successful
- * @property {Object} [error] - Error information if unsuccessful
- * @property {string} [error.message] - Error message
- * @property {string} [error.code] - Error code
- */
+console.log(`Using server URL: ${BASE_URL}`);
 
-/**
- * @typedef {Object} User
- * @property {number} id - User ID
- * @property {string} email - User email
- * @property {string} name - User name
- * @property {boolean} isAdmin - Admin status
- * @property {boolean} isOrganizationAdmin - Organization admin status
- * @property {number|null} organizationId - Organization ID
- */
-
-/**
- * @typedef {Object} Organization
- * @property {number} id - Organization ID
- * @property {string} name - Organization name
- * @property {string} slug - Organization slug
- * @property {string|null} address - Organization address
- * @property {string|null} city - Organization city
- * @property {string|null} state - Organization state
- * @property {string|null} zipCode - Organization zip code
- * @property {string|null} phone - Organization phone
- * @property {string|null} email - Organization email
- * @property {string|null} logo - Organization logo URL
- * @property {boolean} active - Organization active status
- * @property {string} createdAt - Organization creation date
- */
-
-/**
- * @typedef {Object} LoginResult
- * @property {boolean} success - Whether login was successful
- * @property {number} userId - ID of the logged-in user
- * @property {User} user - User object
- */
+// Test if the server is responsive
+(async function testServerConnection() {
+  try {
+    console.log('Testing server connection to API test endpoint...');
+    const response = await fetch(`${BASE_URL}/api/test`);
+    console.log('Server response status:', response.status);
+    
+    if (response.status >= 200 && response.status < 300) {
+      // Try to parse the response as JSON
+      const responseText = await response.text();
+      try {
+        const data = JSON.parse(responseText);
+        console.log('API test successful! Response:', data);
+        if (data.success) {
+          console.log('API test endpoint is working properly');
+        }
+      } catch (parseError) {
+        console.error('Failed to parse test endpoint response as JSON:', parseError);
+        console.log('Raw response:', responseText.substring(0, 200));
+      }
+    } else {
+      console.log('Server returned error status:', response.status);
+    }
+  } catch (error) {
+    console.error('Server connection failed:', error.message);
+    console.log('Will try to proceed anyway...');
+  }
+})();
 
 // Helper to capture cookies
 let cookieJar = '';
-/** @type {User|null} */
 let loggedInUser = null;
 
 /**
  * Log in a user with email and password
- * @param {string} email - User email
- * @param {string} password - User password
- * @returns {Promise<LoginResult>} - Login result
  */
 async function login(email, password) {
   try {
+    console.log(`Logging in at ${BASE_URL}/api/auth/login`);
     const response = await fetch(`${BASE_URL}/api/auth/login`, {
       method: 'POST',
       headers: {
@@ -73,20 +63,34 @@ async function login(email, password) {
       body: JSON.stringify({ email, password }),
     });
     
+    // Log response details
+    console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+    
     // Extract cookies
     const cookies = response.headers.get('set-cookie');
     if (cookies) {
-      console.log('Received cookies');
+      console.log('Received cookies after login:', cookies);
       // Save cookies for future requests
       cookieJar = cookies;
     }
     
-    /** @type {ApiResponse} */
-    const data = await response.json();
+    // Get raw response text first for debugging
+    const responseText = await response.text();
+    console.log('Raw response:', responseText.substring(0, 200) + (responseText.length > 200 ? '...' : ''));
+    
+    // Try to parse the response as JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse response as JSON:', parseError);
+      throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
+    }
     
     if (response.ok && data.success) {
       // Save user information
-      loggedInUser = /** @type {User} */ (data.data);
+      loggedInUser = data.data;
       console.log('Login successful for user:', loggedInUser.email);
       return { success: true, userId: loggedInUser.id, user: loggedInUser };
     } else {
@@ -99,8 +103,12 @@ async function login(email, password) {
   }
 }
 
+/**
+ * Register a new user
+ */
 async function register(email, password, name) {
   try {
+    console.log(`Registering user at ${BASE_URL}/api/auth/register`);
     const response = await fetch(`${BASE_URL}/api/auth/register`, {
       method: 'POST',
       headers: {
@@ -109,14 +117,29 @@ async function register(email, password, name) {
       body: JSON.stringify({ email, password, name }),
     });
     
+    // Log response details
+    console.log('Response status:', response.status);
+    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+    
     // Extract cookies if available (user gets auto-logged in after registration)
     const cookies = response.headers.get('set-cookie');
     if (cookies) {
-      console.log('Received cookies after registration');
+      console.log('Received cookies after registration:', cookies);
       cookieJar = cookies;
     }
     
-    const data = await response.json();
+    // Get raw response text first for debugging
+    const responseText = await response.text();
+    console.log('Raw response:', responseText.substring(0, 200) + (responseText.length > 200 ? '...' : ''));
+    
+    // Try to parse the response as JSON
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse response as JSON:', parseError);
+      throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`);
+    }
     
     if (response.ok && data.success) {
       // If registration succeeded and login was automatic
@@ -137,6 +160,9 @@ async function register(email, password, name) {
   }
 }
 
+/**
+ * Get all organizations
+ */
 async function getOrganizations() {
   try {
     const headers = {
@@ -150,8 +176,7 @@ async function getOrganizations() {
     
     const response = await fetch(`${BASE_URL}/api/organizations`, {
       method: 'GET',
-      headers,
-      credentials: 'include'
+      headers
     });
     
     // Update cookies if provided
@@ -176,6 +201,9 @@ async function getOrganizations() {
   }
 }
 
+/**
+ * Create a new organization
+ */
 async function createOrganization(name, slug, adminEmail, adminPassword, adminName) {
   try {
     const headers = {
@@ -198,8 +226,7 @@ async function createOrganization(name, slug, adminEmail, adminPassword, adminNa
           password: adminPassword,
           name: adminName
         }
-      }),
-      credentials: 'include'
+      })
     });
     
     // Update cookies if provided
@@ -224,6 +251,9 @@ async function createOrganization(name, slug, adminEmail, adminPassword, adminNa
   }
 }
 
+/**
+ * Run all tests
+ */
 async function runTests() {
   try {
     // Step 1: Register as admin
@@ -287,4 +317,5 @@ async function runTests() {
   }
 }
 
+// Run the test suite
 runTests();

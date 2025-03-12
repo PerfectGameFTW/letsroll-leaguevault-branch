@@ -21,18 +21,21 @@ export function sendSuccess<T>(res: Response, data: T, status = 200) {
 
 export function sendError(
   res: Response, 
-  error: Error | ZodError | string, 
-  status = 500,
-  code = 'INTERNAL_SERVER_ERROR'
+  code: string,
+  message: string,
+  status: number | string = 500,
+  details?: any
 ) {
+  // Convert status to number if it's a string
+  const statusCode = typeof status === 'string' ? parseInt(status, 10) : status;
   const response: ApiResponse<null> = {
     success: false,
     error: {
       code,
-      message: error instanceof Error ? error.message : error,
-      details: error instanceof ZodError ? error.issues : undefined
+      message,
+      details
     }
   };
 
-  res.status(status).json(response);
+  res.status(statusCode).json(response);
 }
