@@ -10,6 +10,7 @@ import {
   type InsertOrganization 
 } from '@shared/schema.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { hashPassword } from '../auth.js';
 
 const router = Router();
 
@@ -64,7 +65,8 @@ router.get('/slug/:slug', async (req, res) => {
 // Create a new organization (admin only)
 router.post('/', requireAdmin, async (req, res) => {
   try {
-    const validatedData = insertOrganizationSchema.parse(req.body);
+    const { adminData, ...orgData } = req.body;
+    const validatedData = insertOrganizationSchema.parse(orgData);
     
     // Check if organization with slug already exists
     const existingOrg = await storage.getOrganizationBySlug(validatedData.slug);
@@ -73,6 +75,55 @@ router.post('/', requireAdmin, async (req, res) => {
     }
 
     const organization = await storage.createOrganization(validatedData);
+    
+    // If admin user data is provided, create the admin user
+    if (adminData && adminData.email && adminData.password && adminData.name) {
+      try {
+        console.log('[Organizations] Creating admin user for new organization');
+        
+        // Check if user already exists
+        const existingUser = await storage.getUserByEmail(adminData.email);
+        if (existingUser) {
+          console.log(`[Organizations] Admin user already exists with email: ${adminData.email}`);
+          
+          // If user exists but is not an organization admin, update them
+          if (!existingUser.isOrganizationAdmin) {
+            await storage.updateUserOrganizationAdminStatus(existingUser.id, true);
+          }
+          
+          // Set the user's organization
+          await storage.setUserOrganization(existingUser.id, organization.id);
+          
+          // Include user info in the response
+          return sendSuccess(res, { organization, adminUser: { ...existingUser, password: undefined } }, 201);
+        }
+        
+        // Hash password and create new admin user
+        const hashedPassword = await hashPassword(adminData.password);
+        const newAdminUser = await storage.createUser({
+          email: adminData.email,
+          name: adminData.name,
+          password: hashedPassword,
+          phone: adminData.phone || null,
+          isAdmin: false,
+          isOrganizationAdmin: true,
+          organizationId: organization.id
+        });
+        
+        console.log(`[Organizations] Admin user created successfully, ID: ${newAdminUser.id}`);
+        
+        // Include user info in the response
+        return sendSuccess(res, { organization, adminUser: { ...newAdminUser, password: undefined } }, 201);
+      } catch (adminError) {
+        console.error('[Organizations] Error creating admin user:', adminError);
+        // Even if admin user creation fails, the organization was created
+        return sendSuccess(res, { 
+          organization, 
+          warning: 'Organization created but there was an error creating the admin user'
+        }, 201);
+      }
+    }
+
     sendSuccess(res, organization, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {

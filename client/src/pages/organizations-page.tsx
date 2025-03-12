@@ -12,6 +12,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { ApiResponse } from '@/lib/types/api';
 import type { Organization, InsertOrganization, User } from '@shared/schema.js';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export default function OrganizationsPage() {
   const [open, setOpen] = useState(false);
@@ -24,7 +25,14 @@ export default function OrganizationsPage() {
   const [zipCode, setZipCode] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  // Admin User selection (existing user)
   const [adminUserId, setAdminUserId] = useState<number | null>(null);
+  // New admin user details
+  const [createNewAdmin, setCreateNewAdmin] = useState(false);
+  const [adminName, setAdminName] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminPhone, setAdminPhone] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -119,6 +127,11 @@ export default function OrganizationsPage() {
     setPhone('');
     setEmail('');
     setAdminUserId(null);
+    setCreateNewAdmin(false);
+    setAdminName('');
+    setAdminEmail('');
+    setAdminPhone('');
+    setAdminPassword('');
     setEditId(null);
   };
 
@@ -159,14 +172,47 @@ export default function OrganizationsPage() {
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate that Administrator is selected for new organizations
-    if (!editId && !adminUserId) {
+    // Validate that either an existing admin is selected or a new admin is being created
+    if (!editId && !adminUserId && !createNewAdmin) {
       toast({
         title: 'Missing Information',
-        description: 'Please select an Account Administrator.',
+        description: 'Please select or create an Account Administrator.',
         variant: 'destructive',
       });
       return;
+    }
+
+    // If creating a new admin, validate the admin information
+    if (createNewAdmin) {
+      if (!adminName || !adminEmail || !adminPassword) {
+        toast({
+          title: 'Missing Administrator Information',
+          description: 'Please fill out all required administrator fields.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Simple email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(adminEmail)) {
+        toast({
+          title: 'Invalid Email',
+          description: 'Please enter a valid email address for the administrator.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Simple password validation
+      if (adminPassword.length < 8) {
+        toast({
+          title: 'Password Too Short',
+          description: 'Administrator password must be at least 8 characters long.',
+          variant: 'destructive',
+        });
+        return;
+      }
     }
     
     const orgData = {
@@ -183,16 +229,32 @@ export default function OrganizationsPage() {
     if (editId) {
       updateMutation.mutate({ id: editId, org: orgData });
     } else {
-      // Create the organization first, then set the admin user
-      createMutation.mutate(orgData as InsertOrganization, {
+      // Prepare admin data if creating a new admin
+      const adminData = createNewAdmin ? {
+        name: adminName,
+        email: adminEmail,
+        password: adminPassword,
+        phone: adminPhone
+      } : undefined;
+
+      // Create the organization with admin data if needed
+      const dataToSend = adminData ? { 
+        ...orgData, 
+        adminData
+      } : orgData;
+
+      // Create the organization
+      createMutation.mutate(dataToSend as InsertOrganization, {
         onSuccess: (response: any) => {
-          // If we have an admin user selected, set them as the organization admin
-          if (adminUserId && response?.data?.id) {
+          // If using an existing admin user, set them as the organization admin
+          if (adminUserId && response?.data?.id && !createNewAdmin) {
             setOrgAdminMutation.mutate({
               userId: adminUserId,
               organizationId: response.data.id
             });
           }
+
+          queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
         }
       });
     }
@@ -331,30 +393,108 @@ export default function OrganizationsPage() {
                   placeholder="org-name"
                 />
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="adminUserId" className="text-right">
-                  Account Administrator
-                </Label>
-                <Select
-                  value={adminUserId?.toString() || ""}
-                  onValueChange={value => setAdminUserId(value ? parseInt(value) : null)}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select an administrator" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isLoadingUsers ? (
-                      <div className="p-2 text-center">Loading users...</div>
-                    ) : (
-                      (usersData?.data || []).map(user => (
-                        <SelectItem key={user.id} value={user.id.toString()}>
-                          {user.name || user.email}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+              {!editId && (
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="createNewAdmin" className="text-right">
+                    Administrator
+                  </Label>
+                  <div className="col-span-3 flex items-center space-x-2">
+                    <Checkbox 
+                      id="createNewAdmin" 
+                      checked={createNewAdmin} 
+                      onCheckedChange={(checked: boolean | "indeterminate") => {
+                        setCreateNewAdmin(!!checked);
+                        if (!!checked) {
+                          setAdminUserId(null);
+                        }
+                      }} 
+                    />
+                    <Label htmlFor="createNewAdmin">Create new administrator</Label>
+                  </div>
+                </div>
+              )}
+              
+              {!createNewAdmin && !editId && (
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="adminUserId" className="text-right">
+                    Existing Administrator
+                  </Label>
+                  <Select
+                    value={adminUserId?.toString() || ""}
+                    onValueChange={value => setAdminUserId(value ? parseInt(value) : null)}
+                    disabled={createNewAdmin}
+                  >
+                    <SelectTrigger className="col-span-3">
+                      <SelectValue placeholder="Select an administrator" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {isLoadingUsers ? (
+                        <div className="p-2 text-center">Loading users...</div>
+                      ) : (
+                        (usersData?.data || []).map(user => (
+                          <SelectItem key={user.id} value={user.id.toString()}>
+                            {user.name || user.email}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              
+              {createNewAdmin && !editId && (
+                <>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="adminName" className="text-right">
+                      Admin Name
+                    </Label>
+                    <Input
+                      id="adminName"
+                      value={adminName}
+                      onChange={(e) => setAdminName(e.target.value)}
+                      className="col-span-3"
+                      required={createNewAdmin}
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="adminEmail" className="text-right">
+                      Admin Email
+                    </Label>
+                    <Input
+                      id="adminEmail"
+                      type="email"
+                      value={adminEmail}
+                      onChange={(e) => setAdminEmail(e.target.value)}
+                      className="col-span-3"
+                      required={createNewAdmin}
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="adminPassword" className="text-right">
+                      Admin Password
+                    </Label>
+                    <Input
+                      id="adminPassword"
+                      type="password"
+                      value={adminPassword}
+                      onChange={(e) => setAdminPassword(e.target.value)}
+                      className="col-span-3"
+                      required={createNewAdmin}
+                    />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="adminPhone" className="text-right">
+                      Admin Phone
+                    </Label>
+                    <Input
+                      id="adminPhone"
+                      value={adminPhone}
+                      onChange={(e) => setAdminPhone(e.target.value)}
+                      className="col-span-3"
+                    />
+                  </div>
+                </>
+              )}
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="email" className="text-right">
                   Email
