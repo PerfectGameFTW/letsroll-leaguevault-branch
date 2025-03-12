@@ -3,23 +3,23 @@ import { storage } from '../storage';
 import { insertLeagueSchema, partialLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
+import { getOrganizationFilter, filterByOrganization } from '../middleware/organization';
 
 const router = Router();
 
-router.get("/", async (req, res) => {
+// Apply organization filtering to all league routes
+router.use(filterByOrganization);
+
+router.get("/", async (req: any, res) => {
   try {
-    // Filter leagues by user's organization if they're not an admin
-    let leagues;
-    if (req.user?.isAdmin) {
-      // Admins can see all leagues
-      leagues = await storage.getLeagues();
-    } else if (req.user?.organizationId) {
-      // Organization users can only see their org's leagues
-      leagues = await storage.getLeagues(req.user.organizationId);
-    } else {
-      // Regular users can only see leagues not assigned to any organization
-      leagues = await storage.getLeagues(null);
-    }
+    // Get the organization filter from the middleware
+    const organizationId = getOrganizationFilter(req);
+    
+    // Fetch leagues with the organization filter
+    const leagues = await storage.getLeagues(organizationId);
+    
+    // Log for debugging
+    console.log(`[Leagues] Fetching leagues with organizationFilter: ${organizationId}`);
     
     sendSuccess(res, leagues);
   } catch (error) {
@@ -27,7 +27,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
     const league = await storage.getLeague(id);
@@ -36,13 +36,20 @@ router.get("/:id", async (req, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
+    // Use the organization middleware's filter logic
+    const organizationId = getOrganizationFilter(req);
+    
     // Check if user has access to this league's organization
     const userHasAccess = 
+      // System admins can access all leagues
       req.user?.isAdmin || 
+      // Users can access leagues with no organization
       league.organizationId === null || 
-      (req.user?.organizationId === league.organizationId);
+      // Users can access leagues in their own organization
+      (organizationId !== null && league.organizationId === organizationId);
     
     if (!userHasAccess) {
+      console.log(`[Leagues] Access denied to league ${id} for user with organizationId: ${organizationId}`);
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -52,7 +59,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", async (req: any, res) => {
   try {
     // Parse league data
     const league = insertLeagueSchema.parse({
@@ -61,32 +68,41 @@ router.post("/", async (req, res) => {
       seasonEnd: new Date(req.body.seasonEnd)
     });
     
+    // Get organization filter from middleware
+    const organizationId = getOrganizationFilter(req);
+    
     // Non-admin users can only create leagues for their organization
     if (!req.user?.isAdmin) {
       // If user belongs to an organization, set the organization ID
-      if (req.user?.organizationId) {
-        league.organizationId = req.user.organizationId;
+      // This overrides any organizationId provided in the request body
+      if (organizationId !== null) {
+        league.organizationId = organizationId;
+        console.log(`[Leagues] Setting organizationId to ${organizationId} for league creation`);
       } else {
         // Non-admin users without an organization can only create unassigned leagues
         league.organizationId = null;
+        console.log(`[Leagues] Setting organizationId to null for league creation (no organization user)`);
       }
+    } else if (req.body.organizationId) {
+      // Admin users can create leagues for any organization
+      console.log(`[Leagues] Admin user creating league for organizationId: ${req.body.organizationId}`);
+    } else {
+      // Admin creating league with no specific organization
+      console.log(`[Leagues] Admin user creating unassigned league`);
     }
-    
-    // Admin users can create leagues for any organization
-    // The organization ID is already set in the league object from the request body
     
     const created = await storage.createLeague(league);
     sendSuccess(res, created, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
+      sendError(res, 'Validation error', 400, 'VALIDATION_ERROR', error.format());
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to create league');
     }
   }
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
     
@@ -97,13 +113,20 @@ router.patch("/:id", async (req, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
+    // Use the organization middleware's filter logic
+    const organizationId = getOrganizationFilter(req);
+    
     // Check if user has access to this league's organization
     const userHasAccess = 
+      // System admins can access all leagues
       req.user?.isAdmin || 
+      // Users can access leagues with no organization
       league.organizationId === null || 
-      (req.user?.organizationId === league.organizationId);
+      // Users can access leagues in their own organization
+      (organizationId !== null && league.organizationId === organizationId);
     
     if (!userHasAccess) {
+      console.log(`[Leagues] Update access denied to league ${id} for user with organizationId: ${organizationId}`);
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -122,14 +145,14 @@ router.patch("/:id", async (req, res) => {
     sendSuccess(res, updated);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
+      sendError(res, 'Validation error', 400, 'VALIDATION_ERROR', error.format());
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to update league');
     }
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
     
@@ -140,13 +163,20 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
+    // Use the organization middleware's filter logic
+    const organizationId = getOrganizationFilter(req);
+    
     // Check if user has access to this league's organization
     const userHasAccess = 
+      // System admins can access all leagues
       req.user?.isAdmin || 
+      // Users can access leagues with no organization
       league.organizationId === null || 
-      (req.user?.organizationId === league.organizationId);
+      // Users can access leagues in their own organization
+      (organizationId !== null && league.organizationId === organizationId);
     
     if (!userHasAccess) {
+      console.log(`[Leagues] Delete access denied to league ${id} for user with organizationId: ${organizationId}`);
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     

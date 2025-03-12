@@ -229,7 +229,7 @@ async function runTests() {
     // Step 1: Register as admin
     console.log('Step 1: Registering admin user...');
     const adminEmail = 'admin@example.com';
-    const adminPassword = 'password123';
+    const adminPassword = 'Password123!';
     const adminName = 'System Admin';
     
     try {
@@ -264,7 +264,7 @@ async function runTests() {
         'Test Organization',
         'test-org',
         'org-admin@example.com',
-        'password123',
+        'Password123!',
         'Organization Admin'
       );
       console.log('Organization created successfully:', newOrg);
