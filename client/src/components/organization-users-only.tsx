@@ -82,6 +82,23 @@ export function OrganizationUsersOnly() {
   // Query to fetch organization users
   const { data: orgUsersResponse, isLoading: orgUsersLoading, error: orgUsersError } = useQuery<{ success: boolean; data: User[] }>({
     queryKey: ['/api/org-admin/users', organizationId],
+    queryFn: async () => {
+      if (!organizationId) throw new Error("Organization ID is required");
+      
+      // Log the API request for debugging
+      console.log(`[API] Fetching organization users for organizationId: ${organizationId}`);
+      
+      try {
+        // Use the apiRequest utility which handles auth properly
+        const response = await apiRequest('GET', `/api/org-admin/users?organizationId=${organizationId}`);
+        const data = await response.json();
+        console.log('[API] Organization users response:', data);
+        return data;
+      } catch (error) {
+        console.error('[API] Failed to fetch organization users:', error);
+        throw error;
+      }
+    },
     enabled: !!organizationId,
   });
 

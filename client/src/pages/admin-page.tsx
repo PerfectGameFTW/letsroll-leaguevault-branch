@@ -171,10 +171,6 @@ function UserManagement() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold tracking-tight">
-        {currentUser?.organizationId ? "Organization Members" : "User Management"}
-      </h2>
-      
       <Card>
         <CardHeader>
           <CardTitle>{currentUser?.organizationId ? "Organization Members" : "System Users"}</CardTitle>
@@ -283,6 +279,35 @@ function OrganizationUserManagement() {
   // Query to fetch organization users
   const { data: orgUsersResponse, isLoading: orgUsersLoading, error: orgUsersError } = useQuery<{ success: boolean; data: User[] }>({
     queryKey: ['/api/org-admin/users', selectedOrganization],
+    queryFn: async ({ queryKey }) => {
+      const orgId = queryKey[1];
+      if (!orgId) throw new Error("Organization ID is required");
+      
+      // Log the API request for debugging
+      console.log(`[API] Fetching organization users for organizationId: ${orgId}`);
+      
+      try {
+        const response = await fetch(`/api/org-admin/users?organizationId=${orgId}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          console.error(`[API] Error fetching organization users: ${response.status} ${response.statusText}`);
+          throw new Error(`Failed to fetch organization users: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('[API] Organization users response:', data);
+        return data;
+      } catch (error) {
+        console.error('[API] Failed to fetch organization users:', error);
+        throw error;
+      }
+    },
     enabled: !!selectedOrganization,
   });
   
@@ -394,12 +419,6 @@ function OrganizationUserManagement() {
   
   return (
     <div className="space-y-6">
-      <h2 className="text-3xl font-bold tracking-tight">
-        {currentUser?.organizationId 
-          ? "Organization Admin Management" 
-          : "Organization User Management"}
-      </h2>
-      
       <Card>
         <CardHeader>
           <CardTitle className="flex justify-between items-center">
@@ -589,49 +608,18 @@ export default function AdminPage() {
           <div className="mb-6">
             <h1 className="text-4xl font-bold">Organization Admin Panel</h1>
             <p className="text-muted-foreground">
-              Manage users for {currentUser?.organizationId ? "your organization" : "organizations"}
+              Manage users for your organization
             </p>
           </div>
           
-          {/* Show only organization users management for organization admins */}
-          {currentUser?.isAdmin ? (
-            <Tabs defaultValue="users" className="w-full">
-              <TabsList className="mb-4">
-                <TabsTrigger value="users">
-                  <Users className="h-4 w-4 mr-2" />
-                  {currentUser?.organizationId ? "Organization Members" : "System Users"}
-                </TabsTrigger>
-                <TabsTrigger value="organizations">
-                  <Building className="h-4 w-4 mr-2" />
-                  {currentUser?.organizationId ? "Admin Management" : "Organization Management"}
-                </TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="users">
-                <UserManagement />
-              </TabsContent>
-              
-              <TabsContent value="organizations">
-                <OrganizationUserManagement />
-              </TabsContent>
-            </Tabs>
-          ) : (
-            // For organization admins, show only their organization management
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5" />
-                  <span>Organization Users</span>
-                </CardTitle>
-                <CardDescription>
-                  Manage users and admin privileges within your organization
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <OrganizationUsersOnly />
-              </CardContent>
-            </Card>
-          )}
+          {/* Show only organization users management */}
+          <div className="mt-6">
+            {currentUser?.isAdmin && currentUser?.organizationId ? (
+              <OrganizationUserManagement />
+            ) : (
+              <OrganizationUsersOnly />
+            )}
+          </div>
         </div>
       </AdminRouteGuard>
     </Layout>

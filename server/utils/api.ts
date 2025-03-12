@@ -21,13 +21,17 @@ export function sendSuccess<T>(res: Response, data: T, status = 200) {
 
 export function sendError(
   res: Response, 
-  code: string,
-  message: string,
-  status: number | string = 500,
+  message: string, 
+  status: number | string = 500, 
+  code: string = 'ServerError',
   details?: any
 ) {
   // Convert status to number if it's a string
   const statusCode = typeof status === 'string' ? parseInt(status, 10) : status;
+  
+  // Ensure statusCode is a valid HTTP status
+  const finalStatusCode = isNaN(statusCode) ? 500 : statusCode;
+  
   const response: ApiResponse<null> = {
     success: false,
     error: {
@@ -37,5 +41,5 @@ export function sendError(
     }
   };
 
-  res.status(statusCode).json(response);
+  res.status(finalStatusCode).json(response);
 }

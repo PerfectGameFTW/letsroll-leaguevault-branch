@@ -60,7 +60,10 @@ export function filterByOrganization(req: any, res: Response, next: NextFunction
 
   // Regular users can only see resources from their organization
   if (req.user.organizationId) {
-    req.organizationFilter = req.user.organizationId;
+    // Convert to number to ensure consistent type
+    req.organizationFilter = typeof req.user.organizationId === 'string' 
+      ? parseInt(req.user.organizationId, 10) 
+      : req.user.organizationId;
   }
 
   next();
@@ -115,5 +118,10 @@ export function getOrganizationFilter(req: any): number | null {
   }
 
   // For regular users, use their organization ID
-  return req.user.organizationId || null;
+  if (!req.user.organizationId) return null;
+  
+  // Convert string organizationId to number if needed
+  return typeof req.user.organizationId === 'string'
+    ? parseInt(req.user.organizationId, 10)
+    : req.user.organizationId;
 }

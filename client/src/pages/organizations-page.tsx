@@ -34,9 +34,12 @@ export default function OrganizationsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data, isLoading, error } = useQuery<{data: Organization[]}>({
+  const { data, isLoading, error } = useQuery<{success: boolean, data: Organization[]}>({
     queryKey: ['/api/organizations'],
     retry: 1,
+    staleTime: 60000, // 1 minute
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
   });
 
   const createMutation = useMutation<
