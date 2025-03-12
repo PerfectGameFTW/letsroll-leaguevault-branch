@@ -4,6 +4,7 @@ import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
   users, // Add users table import
   paymentSchedules, // Add paymentSchedules table import
+  organizations, // Add organizations table import
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
@@ -12,6 +13,7 @@ import {
   type Game, type InsertGame,
   type Score, type InsertScore,
   type User, type InsertUser, // Add User types
+  type Organization, type InsertOrganization, // Add Organization types
 } from "@shared/schema.js";
 
 export interface IStorage {
@@ -80,6 +82,17 @@ export interface IStorage {
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
+  
+  // Organization methods
+  getOrganizations(): Promise<Organization[]>;
+  getOrganization(id: number): Promise<Organization | undefined>;
+  getOrganizationBySlug(slug: string): Promise<Organization | undefined>;
+  createOrganization(organization: InsertOrganization): Promise<Organization>;
+  updateOrganization(id: number, organization: Partial<InsertOrganization>): Promise<Organization>;
+  deleteOrganization(id: number): Promise<void>;
+  getUserOrganizations(userId: number): Promise<Organization[]>;
+  setUserOrganization(userId: number, organizationId: number | null): Promise<User>;
+  getOrganizationLeagues(organizationId: number): Promise<League[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -796,6 +809,71 @@ export class DatabaseStorage implements IStorage {
     });
     
     return updatedUser;
+  }
+
+  // Organization methods
+  async getOrganizations(): Promise<Organization[]> {
+    return db.select().from(organizations).orderBy(organizations.name);
+  }
+
+  async getOrganization(id: number): Promise<Organization | undefined> {
+    const [result] = await db.select().from(organizations).where(eq(organizations.id, id));
+    return result;
+  }
+
+  async getOrganizationBySlug(slug: string): Promise<Organization | undefined> {
+    const [result] = await db.select().from(organizations).where(eq(organizations.slug, slug));
+    return result;
+  }
+
+  async createOrganization(organization: InsertOrganization): Promise<Organization> {
+    const [result] = await db.insert(organizations).values(organization).returning();
+    return result;
+  }
+
+  async updateOrganization(id: number, organization: Partial<InsertOrganization>): Promise<Organization> {
+    const [result] = await db.update(organizations).set(organization).where(eq(organizations.id, id)).returning();
+    return result;
+  }
+
+  async deleteOrganization(id: number): Promise<void> {
+    await db.delete(organizations).where(eq(organizations.id, id));
+  }
+
+  async getUserOrganizations(userId: number): Promise<Organization[]> {
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    
+    if (user && user.organizationId) {
+      const [organization] = await db.select().from(organizations).where(eq(organizations.id, user.organizationId));
+      return organization ? [organization] : [];
+    }
+    
+    // If user is admin, return all organizations
+    if (user && user.isAdmin) {
+      return db.select().from(organizations).orderBy(organizations.name);
+    }
+    
+    return [];
+  }
+
+  async setUserOrganization(userId: number, organizationId: number | null): Promise<User> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ 
+        organizationId: organizationId,
+        isOrganizationAdmin: organizationId ? true : false 
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return updatedUser;
+  }
+
+  async getOrganizationLeagues(organizationId: number): Promise<League[]> {
+    return db
+      .select()
+      .from(leagues)
+      .where(eq(leagues.organizationId, organizationId))
+      .orderBy(leagues.name);
   }
 }
 

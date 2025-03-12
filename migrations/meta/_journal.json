@@ -8,6 +8,13 @@
       "when": 1740160369856,
       "tag": "0000_useful_energizer",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1741748807618,
+      "tag": "0001_fuzzy_gorilla_man",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, ShieldCheck } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, ShieldCheck, Building2 } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -258,26 +258,47 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       );
                     })}
                     
-                    {/* Admin navigation link - only visible to admin users */}
+                    {/* Admin navigation links - only visible to admin users */}
                     {isAdmin && (
-                      <Link href="/admin">
-                        <button
-                          className={cn(
-                            "flex w-full items-center gap-3 rounded-lg transition-all hover:bg-accent",
-                            isCollapsed ? "justify-center p-2" : "px-3 py-2",
-                            location === "/admin" && "bg-accent"
-                          )}
-                          title={isCollapsed ? "Admin" : undefined}
-                        >
-                          <ShieldCheck className="h-4 w-4" />
-                          {!isCollapsed && (
-                            <>
-                              <span className="text-sm">Admin</span>
-                              {location === "/admin" && <ChevronRight className="ml-auto h-4 w-4" />}
-                            </>
-                          )}
-                        </button>
-                      </Link>
+                      <>
+                        <Link href="/admin">
+                          <button
+                            className={cn(
+                              "flex w-full items-center gap-3 rounded-lg transition-all hover:bg-accent",
+                              isCollapsed ? "justify-center p-2" : "px-3 py-2",
+                              location === "/admin" && "bg-accent"
+                            )}
+                            title={isCollapsed ? "Admin" : undefined}
+                          >
+                            <ShieldCheck className="h-4 w-4" />
+                            {!isCollapsed && (
+                              <>
+                                <span className="text-sm">Admin</span>
+                                {location === "/admin" && <ChevronRight className="ml-auto h-4 w-4" />}
+                              </>
+                            )}
+                          </button>
+                        </Link>
+                        
+                        <Link href="/organizations">
+                          <button
+                            className={cn(
+                              "flex w-full items-center gap-3 rounded-lg transition-all hover:bg-accent",
+                              isCollapsed ? "justify-center p-2" : "px-3 py-2",
+                              location === "/organizations" && "bg-accent"
+                            )}
+                            title={isCollapsed ? "Organizations" : undefined}
+                          >
+                            <Building2 className="h-4 w-4" />
+                            {!isCollapsed && (
+                              <>
+                                <span className="text-sm">Organizations</span>
+                                {location === "/organizations" && <ChevronRight className="ml-auto h-4 w-4" />}
+                              </>
+                            )}
+                          </button>
+                        </Link>
+                      </>
                     )}
                   </div>
                 </nav>

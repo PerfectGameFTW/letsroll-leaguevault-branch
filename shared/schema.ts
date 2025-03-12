@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -58,9 +58,11 @@ export const leagues = pgTable("leagues", {
   practiceStartTime: text("practice_start_time"),
   competitionStartTime: text("competition_start_time"),
   qubicaId: text("qubica_id").unique(),
+  organizationId: integer("organization_id").references(() => organizations.id),
 }, (table) => ({
   activeNameIdx: index("leagues_active_name_idx").on(table.active, table.name),
-  seasonIdx: index("leagues_season_idx").on(table.seasonStart, table.seasonEnd)
+  seasonIdx: index("leagues_season_idx").on(table.seasonStart, table.seasonEnd),
+  organizationIdx: index("leagues_organization_idx").on(table.organizationId)
 }));
 
 export const teams = pgTable("teams", {
@@ -202,7 +204,7 @@ export const weeklyStats = pgTable("weekly_stats", {
   bowlerStatsIdx: index("bowler_stats_idx").on(table.bowlerLeagueId),
 }));
 
-// Update user schema to include name, phone fields, and admin flag
+// Update user schema to include name, phone fields, admin flag, and organization
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
@@ -211,8 +213,30 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   phone: text("phone"),
   isAdmin: boolean("is_admin").notNull().default(false),
+  isOrganizationAdmin: boolean("is_organization_admin").notNull().default(false),
+  organizationId: integer("organization_id").references(() => organizations.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  organizationIdx: index("users_organization_idx").on(table.organizationId),
+}));
+
+// Organization table
+export const organizations = pgTable("organizations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zipCode: text("zip_code"),
+  phone: text("phone"),
+  email: text("email"),
+  logo: text("logo"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  slugIdx: uniqueIndex("organization_slug_idx").on(table.slug),
+}));
 
 // Add after the existing payment table definition
 export const paymentSchedules = pgTable("payment_schedules", {
@@ -237,7 +261,16 @@ export const paymentSchedules = pgTable("payment_schedules", {
 }));
 
 // Relations
-export const leagueRelations = relations(leagues, ({ many }) => ({
+export const organizationRelations = relations(organizations, ({ many }) => ({
+  leagues: many(leagues),
+  users: many(users),
+}));
+
+export const leagueRelations = relations(leagues, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [leagues.organizationId],
+    references: [organizations.id],
+  }),
   teams: many(teams),
   bowlerLeagues: many(bowlerLeagues),
   payments: many(payments),
@@ -334,6 +367,10 @@ export const userRelations = relations(users, ({ one }) => ({
     fields: [users.bowlerId],
     references: [bowlers.id],
   }),
+  organization: one(organizations, {
+    fields: [users.organizationId],
+    references: [organizations.id],
+  }),
 }));
 
 // Validation schemas
@@ -350,6 +387,7 @@ const baseWeeklyStatsSchema = createInsertSchema(weeklyStats);
 
 // Add validation schemas after existing schemas
 const baseUserSchema = createInsertSchema(users);
+const baseOrganizationSchema = createInsertSchema(organizations);
 
 // Add validation schemas
 const basePaymentScheduleSchema = createInsertSchema(paymentSchedules);
@@ -539,6 +577,21 @@ export const partialScoreSchema = z.object(baseScoreSchema.shape).partial();
 export const partialSeriesSchema = z.object(baseSeriesSchema.shape).partial();
 export const partialWeeklyStatsSchema = z.object(baseWeeklyStatsSchema.shape).partial();
 export const partialPaymentScheduleSchema = z.object(basePaymentScheduleSchema.shape).partial();
+export const partialOrganizationSchema = z.object(baseOrganizationSchema.shape).partial();
+
+// Organization schema with validation
+export const insertOrganizationSchema = baseOrganizationSchema.extend({
+  name: nameSchema,
+  slug: z.string().min(2, "Slug must be at least 2 characters").regex(/^[a-z0-9-]+$/, "Slug must contain only lowercase letters, numbers, and hyphens"),
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  phone: z.string().optional(),
+  email: emailSchema.optional(),
+  logo: z.string().optional(),
+  active: z.boolean().default(true),
+}).omit({ id: true, createdAt: true });
 
 // Type exports
 export type League = typeof leagues.$inferSelect;
@@ -575,6 +628,9 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 
 export type PaymentSchedule = typeof paymentSchedules.$inferSelect;
 export type InsertPaymentSchedule = z.infer<typeof insertPaymentScheduleSchema>;
+
+export type Organization = typeof organizations.$inferSelect;
+export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 
 
 // API response types

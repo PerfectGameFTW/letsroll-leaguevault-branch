@@ -1,0 +1,212 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { sendSuccess, sendError } from '../utils/api.js';
+import { storage } from '../storage.js';
+import { insertOrganizationSchema, partialOrganizationSchema } from '@shared/schema.js';
+import { requireAdmin } from '../middleware/admin.js';
+
+const router = Router();
+
+// Get all organizations (admin only)
+router.get('/', requireAdmin, async (req, res) => {
+  try {
+    const organizations = await storage.getOrganizations();
+    sendSuccess(res, organizations);
+  } catch (error) {
+    console.error('Error fetching organizations:', error);
+    sendError(res, 'Failed to fetch organizations', 500, 'ServerError');
+  }
+});
+
+// Get an organization by ID (admin only)
+router.get('/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid organization ID', 400, 'InvalidRequest');
+    }
+
+    const organization = await storage.getOrganization(id);
+    if (!organization) {
+      return sendError(res, 'Organization not found', 404, 'NotFound');
+    }
+
+    sendSuccess(res, organization);
+  } catch (error) {
+    console.error(`Error fetching organization with ID ${req.params.id}:`, error);
+    sendError(res, 'Failed to fetch organization', 500, 'ServerError');
+  }
+});
+
+// Get organization by slug
+router.get('/slug/:slug', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const organization = await storage.getOrganizationBySlug(slug);
+    
+    if (!organization) {
+      return sendError(res, 'Organization not found', 404, 'NotFound');
+    }
+
+    sendSuccess(res, organization);
+  } catch (error) {
+    console.error(`Error fetching organization with slug ${req.params.slug}:`, error);
+    sendError(res, 'Failed to fetch organization', 500, 'ServerError');
+  }
+});
+
+// Create a new organization (admin only)
+router.post('/', requireAdmin, async (req, res) => {
+  try {
+    const validatedData = insertOrganizationSchema.parse(req.body);
+    
+    // Check if organization with slug already exists
+    const existingOrg = await storage.getOrganizationBySlug(validatedData.slug);
+    if (existingOrg) {
+      return sendError(res, 'An organization with this slug already exists', 409, 'Conflict');
+    }
+
+    const organization = await storage.createOrganization(validatedData);
+    sendSuccess(res, organization, 201);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return sendError(res, 'Invalid organization data', 400, 'ValidationError');
+    }
+    console.error('Error creating organization:', error);
+    sendError(res, 'Failed to create organization', 500, 'ServerError');
+  }
+});
+
+// Update an organization (admin only)
+router.patch('/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid organization ID', 400, 'InvalidRequest');
+    }
+
+    const organization = await storage.getOrganization(id);
+    if (!organization) {
+      return sendError(res, 'Organization not found', 404, 'NotFound');
+    }
+
+    const validatedData = partialOrganizationSchema.parse(req.body);
+    
+    // If slug is being updated, check if it's already in use
+    if (validatedData.slug && validatedData.slug !== organization.slug) {
+      const existingOrg = await storage.getOrganizationBySlug(validatedData.slug);
+      if (existingOrg && existingOrg.id !== id) {
+        return sendError(res, 'An organization with this slug already exists', 409, 'Conflict');
+      }
+    }
+
+    const updatedOrganization = await storage.updateOrganization(id, validatedData);
+    sendSuccess(res, updatedOrganization);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return sendError(res, 'Invalid organization data', 400, 'ValidationError');
+    }
+    console.error(`Error updating organization with ID ${req.params.id}:`, error);
+    sendError(res, 'Failed to update organization', 500, 'ServerError');
+  }
+});
+
+// Delete an organization (admin only)
+router.delete('/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid organization ID', 400, 'InvalidRequest');
+    }
+
+    const organization = await storage.getOrganization(id);
+    if (!organization) {
+      return sendError(res, 'Organization not found', 404, 'NotFound');
+    }
+
+    await storage.deleteOrganization(id);
+    sendSuccess(res, { message: 'Organization deleted successfully' });
+  } catch (error) {
+    console.error(`Error deleting organization with ID ${req.params.id}:`, error);
+    sendError(res, 'Failed to delete organization', 500, 'ServerError');
+  }
+});
+
+// Get current user's organizations
+router.get('/user/me', async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) {
+      return sendError(res, 'Authentication required', 401, 'Unauthorized');
+    }
+
+    const organizations = await storage.getUserOrganizations(req.user.id);
+    sendSuccess(res, organizations);
+  } catch (error) {
+    console.error('Error fetching user organizations:', error);
+    sendError(res, 'Failed to fetch user organizations', 500, 'ServerError');
+  }
+});
+
+// Set user's organization (admin only)
+router.post('/user/:userId/set', requireAdmin, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (isNaN(userId)) {
+      return sendError(res, 'Invalid user ID', 400, 'InvalidRequest');
+    }
+
+    const schema = z.object({
+      organizationId: z.number().nullable(),
+    });
+
+    const { organizationId } = schema.parse(req.body);
+
+    // If organizationId is provided, verify it exists
+    if (organizationId !== null) {
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return sendError(res, 'Organization not found', 404, 'NotFound');
+      }
+    }
+
+    const updatedUser = await storage.setUserOrganization(userId, organizationId);
+    sendSuccess(res, updatedUser);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return sendError(res, 'Invalid data', 400, 'ValidationError');
+    }
+    console.error(`Error setting organization for user ${req.params.userId}:`, error);
+    sendError(res, 'Failed to set user organization', 500, 'ServerError');
+  }
+});
+
+// Get organization leagues
+router.get('/:id/leagues', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid organization ID', 400, 'InvalidRequest');
+    }
+
+    const organization = await storage.getOrganization(id);
+    if (!organization) {
+      return sendError(res, 'Organization not found', 404, 'NotFound');
+    }
+
+    // Check if user has access to this organization
+    if (
+      !req.user?.isAdmin && 
+      req.user?.organizationId !== id
+    ) {
+      return sendError(res, 'You do not have access to this organization', 403, 'Forbidden');
+    }
+
+    const leagues = await storage.getOrganizationLeagues(id);
+    sendSuccess(res, leagues);
+  } catch (error) {
+    console.error(`Error fetching leagues for organization ${req.params.id}:`, error);
+    sendError(res, 'Failed to fetch organization leagues', 500, 'ServerError');
+  }
+});
+
+export default router;
