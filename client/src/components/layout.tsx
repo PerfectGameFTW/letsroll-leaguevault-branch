@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2 } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, ShieldCheck } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -141,6 +141,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
     getStoredValue("sidebarCollapsed", false)
   );
 
+  // Fetch current user to check for admin status
+  const { data: currentUserResponse } = useQuery<ApiResponse<any>>({
+    queryKey: ["/api/user"],
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  const isAdmin = currentUserResponse?.data?.isAdmin || false;
+
   const toggleSidebar = useCallback(() => {
     setIsCollapsed((prev: boolean) => !prev);
   }, []);
@@ -249,6 +257,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         </Link>
                       );
                     })}
+                    
+                    {/* Admin navigation link - only visible to admin users */}
+                    {isAdmin && (
+                      <Link href="/admin">
+                        <button
+                          className={cn(
+                            "flex w-full items-center gap-3 rounded-lg transition-all hover:bg-accent",
+                            isCollapsed ? "justify-center p-2" : "px-3 py-2",
+                            location === "/admin" && "bg-accent"
+                          )}
+                          title={isCollapsed ? "Admin" : undefined}
+                        >
+                          <ShieldCheck className="h-4 w-4" />
+                          {!isCollapsed && (
+                            <>
+                              <span className="text-sm">Admin</span>
+                              {location === "/admin" && <ChevronRight className="ml-auto h-4 w-4" />}
+                            </>
+                          )}
+                        </button>
+                      </Link>
+                    )}
                   </div>
                 </nav>
               </Suspense>
