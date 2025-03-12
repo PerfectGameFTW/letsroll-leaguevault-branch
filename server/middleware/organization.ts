@@ -1,40 +1,31 @@
 import { Request, Response, NextFunction } from 'express';
-import { storage } from '../storage';
-import { sendError } from '../utils/api';
+import { storage } from '../storage.js';
+import { sendError } from '../utils/api.js';
 
 /**
  * Middleware to ensure a user can only access resources from their organization
  * This middleware should be used after the authentication middleware
  */
 export function requireOrganizationAccess(req: any, res: Response, next: NextFunction) {
-  // Check if user is authenticated
-  if (!req.isAuthenticated() || !req.user) {
-    return sendError(res, 'Authentication required', 401, 'Unauthorized');
+  // If the user is not authenticated, deny access
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    return sendError(
+      res,
+      'Authentication required',
+      401,
+      'AUTH_REQUIRED'
+    );
   }
 
-  // System admins can access all organizations
-  if (req.user.isAdmin) {
+  // If the user doesn't have an organization, they can only access unassigned resources
+  if (!req.user.organizationId) {
+    // Set a flag indicating this user can only access unassigned resources
+    req.organizationFilter = null;
     return next();
   }
 
-  // Get the requested organization ID from the URL parameters
-  const organizationId = req.params.organizationId || req.query.organizationId;
-  
-  // If no organization ID is provided, pass through (the route handler will handle filtering)
-  if (!organizationId) {
-    return next();
-  }
-
-  const orgId = parseInt(organizationId.toString(), 10);
-  
-  // Check if the user belongs to the requested organization
-  // Convert organizationId to string for comparison to avoid type mismatch
-  const userOrgId = req.user.organizationId ? req.user.organizationId.toString() : null;
-  if (userOrgId !== orgId.toString()) {
-    return sendError(res, 'You do not have access to this organization', 403, 'Forbidden');
-  }
-
-  // User belongs to the organization, proceed
+  // The user has an organization, set the filter to their organization
+  req.organizationFilter = req.user.organizationId;
   next();
 }
 
@@ -43,29 +34,45 @@ export function requireOrganizationAccess(req: any, res: Response, next: NextFun
  * This automatically adds the organization filter to the request
  */
 export function filterByOrganization(req: any, res: Response, next: NextFunction) {
-  // If user is not logged in, proceed without filtering (public access)
-  if (!req.isAuthenticated() || !req.user) {
+  // If the user is not authenticated, don't apply any filter
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    req.organizationFilter = null;
     return next();
   }
 
-  // System admins can see all resources by default
-  if (req.user.isAdmin) {
-    // If a specific organization filter is requested, honor it
-    const requestedOrgId = req.query.organizationId;
-    if (requestedOrgId) {
-      req.organizationFilter = parseInt(requestedOrgId.toString(), 10);
+  // System admins can see all organizations unless they specifically request one
+  if (req.user.isAdmin && !req.query.organizationId) {
+    req.organizationFilter = null;
+    return next();
+  }
+
+  // If a specific organization is requested in the query string
+  if (req.query.organizationId) {
+    const orgId = parseInt(req.query.organizationId);
+
+    // System admins can access any organization
+    if (req.user.isAdmin) {
+      req.organizationFilter = orgId;
+      return next();
     }
-    return next();
+
+    // Organization admins can only access their own organization
+    if (req.user.organizationId === orgId) {
+      req.organizationFilter = orgId;
+      return next();
+    }
+
+    // User requested an organization they don't have access to
+    return sendError(
+      res,
+      'You do not have access to this organization',
+      403,
+      'ORG_ACCESS_DENIED'
+    );
   }
 
-  // Regular users can only see resources from their organization
-  if (req.user.organizationId) {
-    // Convert to number to ensure consistent type
-    req.organizationFilter = typeof req.user.organizationId === 'string' 
-      ? parseInt(req.user.organizationId, 10) 
-      : req.user.organizationId;
-  }
-
+  // Default to the user's organization
+  req.organizationFilter = req.user.organizationId;
   next();
 }
 
@@ -73,12 +80,8 @@ export function filterByOrganization(req: any, res: Response, next: NextFunction
  * Middleware to check if a league belongs to the user's organization
  */
 export async function hasAccessToLeague(req: any, leagueId: number): Promise<boolean> {
-  if (!req.isAuthenticated() || !req.user) {
-    return false;
-  }
-
-  // System admins can access all leagues
-  if (req.user.isAdmin) {
+  // System admins have access to all leagues
+  if (req.user && req.user.isAdmin) {
     return true;
   }
 
@@ -88,11 +91,13 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
     return false;
   }
 
-  // Check if the league belongs to the user's organization
-  // Convert both to strings for comparison to avoid type mismatch
-  const leagueOrgId = league.organizationId ? league.organizationId.toString() : null;
-  const userOrgId = req.user.organizationId ? req.user.organizationId.toString() : null;
-  return leagueOrgId === userOrgId;
+  // If the league doesn't belong to any organization, anyone can access it
+  if (league.organizationId === null) {
+    return true;
+  }
+
+  // User can access leagues from their organization
+  return req.user && league.organizationId === req.user.organizationId;
 }
 
 /**
@@ -101,27 +106,35 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
  * accounting for user permissions and query parameters
  */
 export function getOrganizationFilter(req: any): number | null {
-  // If not authenticated, no organization filter
-  if (!req.isAuthenticated() || !req.user) {
+  // If organization filter was already determined, use it
+  if (req.organizationFilter !== undefined) {
+    return req.organizationFilter;
+  }
+
+  // System admins without specific organization in query see all
+  if (req.user && req.user.isAdmin && !req.query.organizationId) {
     return null;
   }
 
-  // If system admin and no specific organization requested, return null (all orgs)
-  if (req.user.isAdmin && !req.query.organizationId) {
-    return null;
+  // If query has organization ID, validate access
+  if (req.query.organizationId) {
+    const orgId = parseInt(req.query.organizationId);
+    
+    // System admins can access any organization
+    if (req.user && req.user.isAdmin) {
+      return orgId;
+    }
+    
+    // Organization admins can only access their own organization
+    if (req.user && req.user.organizationId === orgId) {
+      return orgId;
+    }
+    
+    // User doesn't have access to requested organization
+    // Default to their own
+    return req.user ? req.user.organizationId : null;
   }
 
-  // If system admin and specific organization requested, use that
-  if (req.user.isAdmin && req.query.organizationId) {
-    const orgId = parseInt(req.query.organizationId.toString(), 10);
-    return isNaN(orgId) ? null : orgId;
-  }
-
-  // For regular users, use their organization ID
-  if (!req.user.organizationId) return null;
-  
-  // Convert string organizationId to number if needed
-  return typeof req.user.organizationId === 'string'
-    ? parseInt(req.user.organizationId, 10)
-    : req.user.organizationId;
+  // Default to user's organization if authenticated
+  return req.user ? req.user.organizationId : null;
 }

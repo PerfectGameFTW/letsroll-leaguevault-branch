@@ -3,6 +3,9 @@ import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api';
 import { z } from 'zod';
 
+// Define error code type for type safety
+type ErrorCode = string;
+
 const router = Router();
 
 // Middleware to check if the user is an organization admin or a system admin
@@ -62,7 +65,7 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
     
     // A system admin can specify any organization
     let organizationId: number | null = req.query.organizationId 
-      ? parseInt(req.query.organizationId as string, 10) 
+      ? parseInt(String(req.query.organizationId), 10) 
       : null;
     
     // For organization admins, force their own organization

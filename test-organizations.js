@@ -150,8 +150,7 @@ async function getOrganizations() {
     
     const response = await fetch(`${BASE_URL}/api/organizations`, {
       method: 'GET',
-      headers,
-      credentials: 'include'
+      headers
     });
     
     // Update cookies if provided
@@ -198,8 +197,7 @@ async function createOrganization(name, slug, adminEmail, adminPassword, adminNa
           password: adminPassword,
           name: adminName
         }
-      }),
-      credentials: 'include'
+      })
     });
     
     // Update cookies if provided
@@ -229,7 +227,7 @@ async function runTests() {
     // Step 1: Register as admin
     console.log('Step 1: Registering admin user...');
     const adminEmail = 'admin@example.com';
-    const adminPassword = 'Password123!';
+    const adminPassword = 'fJ8#kL2@pQ5$rT9&';  // Using a more complex and unique password
     const adminName = 'System Admin';
     
     try {
@@ -264,7 +262,7 @@ async function runTests() {
         'Test Organization',
         'test-org',
         'org-admin@example.com',
-        'Password123!',
+        'xM7&tN3!zP9$vB1#',  // Using a more complex and unique password
         'Organization Admin'
       );
       console.log('Organization created successfully:', newOrg);

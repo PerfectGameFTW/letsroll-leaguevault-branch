@@ -11,6 +11,7 @@ import scoresRouter from './scores.js';
 import gamesRouter from './games.js';
 import squareRouter from './square.js';  // Add Square router import
 import adminRouter from './admin.js';    // Add Admin router import
+import adminUpdateRouter from './admin-update.js'; // Add Admin Update router import
 import organizationsRouter from './organizations.js'; // Add Organizations router import
 import orgAdminRouter from './organization-admin.js'; // Add Organization Admin router import
 import userBowlersRouter from './user-bowlers.js';    // Add User-Bowlers router import
@@ -40,8 +41,16 @@ export function registerRoutes(app: Express): Server {
   // as it sets up the auth middleware and routes
   setupAuth(app);
 
-  // NOTE: setupAuth already adds the /api/[login,register,logout,user] routes
+  // NOTE: setupAuth already adds the /api/auth/[login,register,logout,user] routes
   // so there's no need to register auth routes separately here
+  
+  // Add compatibility route for /api/user that forwards to /api/auth/user
+  app.get('/api/user', (req, res) => {
+    console.log('[Routes] Forwarding /api/user request to /api/auth/user');
+    // Forward the request to the auth/user endpoint handler
+    req.url = '/api/auth/user';
+    app._router.handle(req, res);
+  });
 
   // Register all API routes
   app.use('/api/leagues', leaguesRouter);
@@ -54,6 +63,7 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/games', gamesRouter);
   app.use('/api/square', squareRouter);   // Register Square routes
   app.use('/api/admin', adminRouter);     // Register Admin routes
+  app.use('/api/admin-update', adminUpdateRouter); // Register Admin Update routes
   app.use('/api/organizations', organizationsRouter); // Register Organizations routes
   app.use('/api/org-admin', orgAdminRouter); // Register Organization Admin routes
   app.use('/api/user-bowlers', userBowlersRouter); // Register User-Bowlers routes

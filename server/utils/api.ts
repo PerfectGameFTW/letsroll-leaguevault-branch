@@ -21,9 +21,9 @@ export function sendSuccess<T>(res: Response, data: T, status = 200) {
 
 export function sendError(
   res: Response, 
+  code: string, 
   message: string, 
-  status: number | string = 500, 
-  code: string = 'ServerError',
+  status: number = 500,
   details?: any
 ) {
   // Convert status to number if it's a string

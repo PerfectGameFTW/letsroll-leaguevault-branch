@@ -17,9 +17,9 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
     if (adminUsers.length > 0) {
       return sendError(
         res, 
-        'ADMIN_EXISTS',
         'Admin users already exist. Use the regular admin invitation process.',
-        403
+        403,
+        'ADMIN_EXISTS'
       );
     }
 
@@ -44,9 +44,9 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
       
       return sendError(
         res,
-        'VALIDATION_ERROR',
         'Validation failed',
         400,
+        'VALIDATION_ERROR',
         { details: errorMessages }
       );
     }
@@ -58,9 +58,9 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
     if (existingUser) {
       return sendError(
         res,
-        'EMAIL_EXISTS',
         'A user with this email already exists',
-        409
+        409,
+        'EMAIL_EXISTS'
       );
     }
 
@@ -90,9 +90,9 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
     console.error('[Setup] Error creating first admin user:', error);
     sendError(
       res,
-      'SERVER_ERROR',
       'Failed to create admin user',
-      500
+      500,
+      'SERVER_ERROR'
     );
   }
 });

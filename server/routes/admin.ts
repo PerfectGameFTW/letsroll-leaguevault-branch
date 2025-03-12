@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api';
 import { z } from 'zod';
@@ -7,18 +7,6 @@ import { requireAdmin } from '../middleware/admin';
 
 const router = Router();
 
-// Need to be authenticated before checking admin role
-function requireAuth(req: any, res: any, next: any) {
-  if (!req.isAuthenticated()) {
-    return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
-  }
-  const user = req.user as SelectUser;
-  if (!user) {
-    return sendError(res, 'Invalid session', 401, 'INVALID_SESSION');
-  }
-  next();
-}
-
 // Schema for making a user an admin
 const setAdminStatusSchema = z.object({
   userId: z.number().int().positive('User ID must be a positive number'),
@@ -26,7 +14,7 @@ const setAdminStatusSchema = z.object({
 });
 
 // Get all users (admin only)
-router.get('/users', requireAuth, requireAdmin, async (req, res) => {
+router.get('/users', requireAdmin, async (req, res) => {
   try {
     console.log('[Admin Routes] Fetching all users');
     const users = await storage.getUsers();
@@ -39,7 +27,7 @@ router.get('/users', requireAuth, requireAdmin, async (req, res) => {
 });
 
 // Make a user an admin (admin only)
-router.patch('/users/:userId/admin-status', requireAuth, requireAdmin, async (req, res) => {
+router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
   try {
     const { userId } = req.params;
     const parsedData = setAdminStatusSchema.parse({ 
@@ -69,7 +57,9 @@ router.patch('/users/:userId/admin-status', requireAuth, requireAdmin, async (re
   } catch (error) {
     console.error('[Admin Routes] Error updating admin status:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
+      // Convert Zod validation error to a readable format
+      const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
+      sendError(res, validationErrors, 400);
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to update admin status');
     }
@@ -77,7 +67,7 @@ router.patch('/users/:userId/admin-status', requireAuth, requireAdmin, async (re
 });
 
 // Get admin dashboard stats (admin only)
-router.get('/dashboard', requireAuth, requireAdmin, async (req, res) => {
+router.get('/dashboard', requireAdmin, async (req, res) => {
   try {
     console.log('[Admin Routes] Fetching admin dashboard stats');
     

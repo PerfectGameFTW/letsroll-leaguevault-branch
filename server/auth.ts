@@ -357,5 +357,5 @@ export function setupAuth(app: Express) {
   });
 
   // Mount auth routes before any other routes
-  app.use('/api', authRouter);
+  app.use('/api/auth', authRouter);
 }
