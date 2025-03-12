@@ -56,6 +56,7 @@ function isValidUser(user: any): user is SelectUser {
     typeof user.email === 'string' &&
     typeof user.password === 'string' &&
     typeof user.name === 'string' &&
+    typeof user.isAdmin === 'boolean' &&
     user.createdAt instanceof Date
   );
 }
@@ -211,6 +212,7 @@ export function setupAuth(app: Express) {
       const user = await storage.createUser({
         ...result.data,
         password: hashedPassword,
+        isAdmin: false, // Ensure new users are not admins by default
       });
 
       console.log(`[Auth] User registered successfully, ID: ${user.id}`);
@@ -258,7 +260,7 @@ export function setupAuth(app: Express) {
       hasPassword: !!req.body.password
     });
 
-    passport.authenticate("local", (err, user, info) => {
+    passport.authenticate("local", (err: any, user: any, info: any) => {
       if (err) {
         console.error('[Auth] Login error:', err);
         return res.status(500).json({

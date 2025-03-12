@@ -202,7 +202,7 @@ export const weeklyStats = pgTable("weekly_stats", {
   bowlerStatsIdx: index("bowler_stats_idx").on(table.bowlerLeagueId),
 }));
 
-// Update user schema to include name and phone fields
+// Update user schema to include name, phone fields, and admin flag
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
@@ -210,6 +210,7 @@ export const users = pgTable("users", {
   bowlerId: integer("bowler_id").references(() => bowlers.id),
   name: text("name").notNull(),
   phone: text("phone"),
+  isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -463,6 +464,7 @@ export const insertUserSchema = baseUserSchema.extend({
   email: emailSchema,
   name: nameSchema,
   phone: z.string().optional(),
+  isAdmin: z.boolean().optional().default(false),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")

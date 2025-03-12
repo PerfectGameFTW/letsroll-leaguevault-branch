@@ -75,8 +75,10 @@ export interface IStorage {
   // Add new user methods to interface
   getUser(id: number): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
+  updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
 }
 
@@ -756,6 +758,44 @@ export class DatabaseStorage implements IStorage {
       });
       throw error;
     }
+  }
+  
+  async getUsers(): Promise<User[]> {
+    console.log('[Storage] Getting all users');
+    return db.select().from(users).orderBy(users.id);
+  }
+  
+  async updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User> {
+    console.log('[Storage] Updating admin status for user:', {
+      userId,
+      isAdmin
+    });
+    
+    // Verify user exists
+    const user = await this.getUser(userId);
+    if (!user) {
+      console.error('[Storage] User not found for admin status update:', userId);
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    
+    // Update user's admin status
+    const [updatedUser] = await db
+      .update(users)
+      .set({ isAdmin })
+      .where(eq(users.id, userId))
+      .returning();
+      
+    if (!updatedUser) {
+      console.error('[Storage] Failed to update admin status for user:', userId);
+      throw new Error(`Failed to update admin status for user with ID ${userId}`);
+    }
+    
+    console.log('[Storage] Successfully updated admin status for user:', {
+      userId,
+      isAdmin: updatedUser.isAdmin
+    });
+    
+    return updatedUser;
   }
 }
 

@@ -8,6 +8,7 @@ import bowlerLeaguesRouter from './bowler-leagues.js';
 import scoresRouter from './scores.js';
 import gamesRouter from './games.js';
 import squareRouter from './square.js';  // Add Square router import
+import adminRouter from './admin.js';    // Add Admin router import
 import { testConnection } from '../db.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 
@@ -36,6 +37,7 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/scores', scoresRouter);
   app.use('/api/games', gamesRouter);
   app.use('/api/square', squareRouter);  // Register Square routes
+  app.use('/api/admin', adminRouter);    // Register Admin routes
 
   console.log('[Routes] API routes registered');
   return server;
