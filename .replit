@@ -71,3 +71,4 @@ args = "npm run dev"
 
 [deployment]
 run = ["sh", "-c", "npm run dev"]
+deploymentTarget = "cloudrun"

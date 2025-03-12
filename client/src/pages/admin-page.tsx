@@ -173,12 +173,7 @@ function UserManagement() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>{currentUser?.organizationId ? "Organization Members" : "System Users"}</CardTitle>
-          <CardDescription>
-            {currentUser?.organizationId 
-              ? "Manage members within your organization" 
-              : "Manage user accounts and admin privileges"}
-          </CardDescription>
+          <CardTitle>Users</CardTitle>
         </CardHeader>
         <CardContent>
           <table className="w-full">
@@ -423,8 +418,8 @@ function OrganizationUserManagement() {
         <CardHeader>
           <CardTitle className="flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              <span>Organization Users</span>
+              <Users className="h-5 w-5" />
+              <span>Users</span>
             </div>
             {/* Only show organization dropdown for system admins without an organization */}
             {currentUser?.isAdmin && !currentUser?.organizationId && (
@@ -450,16 +445,9 @@ function OrganizationUserManagement() {
                 </SelectContent>
               </Select>
             )}
-            {/* Show organization name if user is in an organization */}
-            {currentUser?.organizationId && orgsResponse?.data && (
-              <div className="text-sm font-medium bg-secondary text-secondary-foreground px-4 py-2 rounded-md">
-                {orgsResponse.data.find(org => org.id === currentUser.organizationId)?.name || "Your Organization"}
-              </div>
-            )}
+
           </CardTitle>
-          <CardDescription>
-            Manage users and admin privileges within organizations
-          </CardDescription>
+
         </CardHeader>
         <CardContent>
           {!selectedOrganization ? (
@@ -474,7 +462,7 @@ function OrganizationUserManagement() {
             <ErrorState error={orgUsersError as Error} />
           ) : (
             <div className="space-y-4">
-              <div className="flex justify-end">
+              <div className="flex justify-start mb-4 pt-2">
                 <Dialog open={addUserDialogOpen} onOpenChange={setAddUserDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm">
@@ -536,7 +524,6 @@ function OrganizationUserManagement() {
               <table className="w-full">
                 <thead>
                   <tr className="text-left">
-                    <th className="pb-2">ID</th>
                     <th className="pb-2">Name</th>
                     <th className="pb-2">Email</th>
                     <th className="pb-2">Admin Status</th>
@@ -546,7 +533,6 @@ function OrganizationUserManagement() {
                 <tbody>
                   {orgUsersResponse?.data?.map((user) => (
                     <tr key={user.id} className="border-t">
-                      <td className="py-2">{user.id}</td>
                       <td className="py-2">{user.name || 'N/A'}</td>
                       <td className="py-2">{user.email}</td>
                       <td className="py-2">
@@ -564,20 +550,19 @@ function OrganizationUserManagement() {
                       </td>
                       <td className="py-2">
                         <Button
-                          variant="outline"
-                          size="sm"
+                          variant="ghost"
+                          size="icon"
                           onClick={() => removeUserFromOrg.mutate(user.id)}
                           disabled={removeUserFromOrg.isPending}
                         >
-                          <Trash2 className="h-4 w-4 mr-1" />
-                          Remove
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </td>
                     </tr>
                   ))}
                   {!orgUsersResponse?.data?.length && (
                     <tr>
-                      <td colSpan={5} className="py-3 text-center text-muted-foreground">
+                      <td colSpan={4} className="py-3 text-center text-muted-foreground">
                         No users found in this organization
                       </td>
                     </tr>
@@ -606,10 +591,7 @@ export default function AdminPage() {
       <AdminRouteGuard>
         <div className="container py-6">
           <div className="mb-6">
-            <h1 className="text-4xl font-bold">Organization Admin Panel</h1>
-            <p className="text-muted-foreground">
-              Manage users for your organization
-            </p>
+            <h1 className="text-4xl font-bold">User Management</h1>
           </div>
           
           {/* Show only organization users management */}

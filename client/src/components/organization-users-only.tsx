@@ -63,24 +63,53 @@ export function OrganizationUsersOnly() {
   const [orgAdminStatuses, setOrgAdminStatuses] = useState<Record<number, boolean>>({});
   const [addUserDialogOpen, setAddUserDialogOpen] = useState(false);
   const [userToAdd, setUserToAdd] = useState<number | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { toast } = useToast();
   
   // Query to fetch the current user
-  const { data: userResponse } = useQuery<{ success: boolean; data: User }>({
+  const { data: userResponse, error: userError } = useQuery({
     queryKey: ['/api/user'],
+    gcTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60, // 1 minute
+    meta: {
+      errorMessage: 'Failed to load current user information'
+    },
   });
+  
+  useEffect(() => {
+    if (userResponse && !userResponse.success) {
+      setErrorMessage('Failed to load user data');
+    }
+    if (userError) {
+      setErrorMessage(userError instanceof Error ? userError.message : 'Failed to load current user information');
+    }
+  }, [userResponse, userError]);
   
   const currentUser = userResponse?.data;
   const organizationId = currentUser?.organizationId;
   
   // Query to fetch all users for adding to organization
-  const { data: allUsersResponse, isLoading: allUsersLoading } = useQuery<{ success: boolean; data: User[] }>({
+  const { data: allUsersResponse, isLoading: allUsersLoading, error: allUsersError } = useQuery({
     queryKey: ['/api/admin/users'],
-    enabled: true,
+    enabled: !!currentUser?.isAdmin || !!currentUser?.isOrganizationAdmin,
+    gcTime: 1000 * 60 * 5, // 5 minutes
+    meta: {
+      errorMessage: 'Failed to load available users'
+    },
   });
   
+  useEffect(() => {
+    if (allUsersResponse && !allUsersResponse.success) {
+      setErrorMessage('Failed to load users list');
+    }
+    if (allUsersError) {
+      console.error('[API] Failed to fetch all users:', allUsersError);
+      setErrorMessage(allUsersError instanceof Error ? allUsersError.message : 'Failed to load available users');
+    }
+  }, [allUsersResponse, allUsersError]);
+  
   // Query to fetch organization users
-  const { data: orgUsersResponse, isLoading: orgUsersLoading, error: orgUsersError } = useQuery<{ success: boolean; data: User[] }>({
+  const { data: orgUsersResponse, isLoading: orgUsersLoading, error: orgUsersError } = useQuery({
     queryKey: ['/api/org-admin/users', organizationId],
     queryFn: async () => {
       if (!organizationId) throw new Error("Organization ID is required");
@@ -91,15 +120,29 @@ export function OrganizationUsersOnly() {
       try {
         // Use the apiRequest utility which handles auth properly
         const response = await apiRequest('GET', `/api/org-admin/users?organizationId=${organizationId}`);
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error?.message || `Failed to fetch organization users: ${response.status}`);
+        }
+        
         const data = await response.json();
         console.log('[API] Organization users response:', data);
+        
+        if (!data.success) {
+          throw new Error(data.error?.message || 'Failed to fetch organization users');
+        }
+        
         return data;
       } catch (error) {
         console.error('[API] Failed to fetch organization users:', error);
+        setErrorMessage(error instanceof Error ? error.message : 'Unknown error fetching organization users');
         throw error;
       }
     },
     enabled: !!organizationId,
+    gcTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60, // 1 minute
   });
 
   // Mutation to update organization admin status
@@ -176,7 +219,7 @@ export function OrganizationUsersOnly() {
   useEffect(() => {
     if (orgUsersResponse?.data) {
       const initialStatuses: Record<number, boolean> = {};
-      orgUsersResponse.data.forEach(user => {
+      orgUsersResponse.data.forEach((user: User) => {
         initialStatuses[user.id] = user.isOrganizationAdmin;
       });
       setOrgAdminStatuses(initialStatuses);
@@ -184,7 +227,7 @@ export function OrganizationUsersOnly() {
   }, [orgUsersResponse?.data]);
   
   // Filter users that are not in an organization
-  const availableUsers = allUsersResponse?.data?.filter(user => !user.organizationId) || [];
+  const availableUsers = allUsersResponse?.data?.filter((user: User) => !user.organizationId) || [];
   
   // Handle toggle change for organization admin status
   const handleOrgAdminToggle = (userId: number, newStatus: boolean) => {
@@ -205,6 +248,17 @@ export function OrganizationUsersOnly() {
     }
   };
   
+  // Display custom error message if set
+  if (errorMessage) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{errorMessage}</AlertDescription>
+      </Alert>
+    );
+  }
+  
   if (!organizationId) {
     return (
       <div className="text-center py-8 text-muted-foreground">
@@ -213,74 +267,77 @@ export function OrganizationUsersOnly() {
     );
   }
   
+  if (userError) return <ErrorState error={userError as Error} />;
   if (orgUsersLoading) return <LoadingState />;
   if (orgUsersError) return <ErrorState error={orgUsersError as Error} />;
   
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Dialog open={addUserDialogOpen} onOpenChange={setAddUserDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline" size="sm">
-              <Plus className="h-4 w-4 mr-1" />
-              Add User
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add User to Organization</DialogTitle>
-              <DialogDescription>
-                Select a user to add to this organization
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <Select
-                value={userToAdd?.toString() || ""}
-                onValueChange={(value) => setUserToAdd(parseInt(value, 10))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select user" />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableUsers.map((user) => (
-                    <SelectItem key={user.id} value={user.id.toString()}>
-                      {user.name || user.email}
-                    </SelectItem>
-                  ))}
-                  {availableUsers.length === 0 && (
-                    <SelectItem value="none" disabled>
-                      No available users
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setAddUserDialogOpen(false)}>
-                Cancel
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold mb-2">Organization Users</h2>
+        <div className="flex justify-start pt-2 mb-4">
+          <Dialog open={addUserDialogOpen} onOpenChange={setAddUserDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Plus className="h-4 w-4 mr-1" />
+                Add User
               </Button>
-              <Button
-                onClick={() => handleAddUser(false)}
-                disabled={!userToAdd || addUserToOrg.isPending}
-              >
-                Add as Member
-              </Button>
-              <Button 
-                onClick={() => handleAddUser(true)} 
-                disabled={!userToAdd || addUserToOrg.isPending}
-                variant="default"
-              >
-                Add as Admin
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add User to Organization</DialogTitle>
+                <DialogDescription>
+                  Select a user to add to this organization
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <Select
+                  value={userToAdd?.toString() || ""}
+                  onValueChange={(value) => setUserToAdd(parseInt(value, 10))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select user" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableUsers.map((user: User) => (
+                      <SelectItem key={user.id} value={user.id.toString()}>
+                        {user.name || user.email}
+                      </SelectItem>
+                    ))}
+                    {availableUsers.length === 0 && (
+                      <SelectItem value="none" disabled>
+                        No available users
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAddUserDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => handleAddUser(false)}
+                  disabled={!userToAdd || addUserToOrg.isPending}
+                >
+                  Add as Member
+                </Button>
+                <Button 
+                  onClick={() => handleAddUser(true)} 
+                  disabled={!userToAdd || addUserToOrg.isPending}
+                  variant="default"
+                >
+                  Add as Admin
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
       
       <table className="w-full">
         <thead>
           <tr className="text-left">
-            <th className="pb-2">ID</th>
             <th className="pb-2">Name</th>
             <th className="pb-2">Email</th>
             <th className="pb-2">Admin Status</th>
@@ -288,9 +345,8 @@ export function OrganizationUsersOnly() {
           </tr>
         </thead>
         <tbody>
-          {orgUsersResponse?.data?.map((user) => (
+          {orgUsersResponse?.data?.map((user: User) => (
             <tr key={user.id} className="border-t">
-              <td className="py-2">{user.id}</td>
               <td className="py-2">{user.name || 'N/A'}</td>
               <td className="py-2">{user.email}</td>
               <td className="py-2">
@@ -308,20 +364,19 @@ export function OrganizationUsersOnly() {
               </td>
               <td className="py-2">
                 <Button
-                  variant="outline"
-                  size="sm"
+                  variant="ghost"
+                  size="icon"
                   onClick={() => removeUserFromOrg.mutate(user.id)}
                   disabled={removeUserFromOrg.isPending}
                 >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  Remove
+                  <Trash2 className="h-4 w-4" />
                 </Button>
               </td>
             </tr>
           ))}
           {!orgUsersResponse?.data?.length && (
             <tr>
-              <td colSpan={5} className="py-3 text-center text-muted-foreground">
+              <td colSpan={4} className="py-3 text-center text-muted-foreground">
                 No users found in this organization
               </td>
             </tr>

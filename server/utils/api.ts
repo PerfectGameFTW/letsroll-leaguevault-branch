@@ -21,16 +21,33 @@ export function sendSuccess<T>(res: Response, data: T, status = 200) {
 
 export function sendError(
   res: Response, 
-  code: string, 
-  message: string, 
-  status: number = 500,
+  codeOrMessage: string, 
+  messageOrStatus?: string | number, 
+  statusOrCode: number | string = 500,
   details?: any
 ) {
-  // Convert status to number if it's a string
-  const statusCode = typeof status === 'string' ? parseInt(status, 10) : status;
-  
-  // Ensure statusCode is a valid HTTP status
-  const finalStatusCode = isNaN(statusCode) ? 500 : statusCode;
+  let code: string;
+  let message: string;
+  let status: number;
+
+  // Handle different call patterns
+  if (typeof messageOrStatus === 'number') {
+    // Called as: sendError(res, code, status)
+    code = codeOrMessage;
+    message = code; // Use code as message
+    status = messageOrStatus;
+  } else if (typeof statusOrCode === 'number') {
+    // Called as: sendError(res, code, message, status)
+    code = codeOrMessage;
+    message = messageOrStatus as string || code;
+    status = statusOrCode as number;
+  } else {
+    // Called as: sendError(res, message, status, code)
+    // Legacy pattern
+    message = codeOrMessage;
+    status = typeof messageOrStatus === 'number' ? messageOrStatus : parseInt(messageOrStatus as string, 10) || 500;
+    code = typeof statusOrCode === 'string' ? statusOrCode : 'ServerError';
+  }
   
   const response: ApiResponse<null> = {
     success: false,
@@ -41,5 +58,5 @@ export function sendError(
     }
   };
 
-  res.status(finalStatusCode).json(response);
+  res.status(status).json(response);
 }

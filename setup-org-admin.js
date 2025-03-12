@@ -98,11 +98,18 @@ async function createOrganizationAdmin() {
     // This will work if there are no existing admins
     console.log('\n2. Setting the user as system admin...');
     
-    const userId = adminRegisterResult.success ? adminRegisterResult.data.id : null;
+    // Get user ID either from registration or login
+    let userId = adminRegisterResult.success ? adminRegisterResult.data.id : null;
     if (!userId) {
-      console.error('Could not determine user ID');
-      return;
+      // If login was successful but we don't have user ID, get it from the user list
+      const adminLoginResult = await login(adminData.email, adminData.password);
+      userId = await getUserId(adminData.email, adminLoginResult.cookies);
+      if (!userId) {
+        console.error('Could not determine user ID');
+        return;
+      }
     }
+    console.log('Got user ID:', userId);
     
     const makeAdminResponse = await fetch(`${BASE_URL}/api/admin-update/first-system-admin/${userId}`, {
       method: 'POST',
@@ -120,14 +127,17 @@ async function createOrganizationAdmin() {
       console.log('User successfully set as system admin');
     }
     
-    // Now log in as the admin user
+    // Log in again as the admin user with updated permissions
     console.log('\n3. Logging in as system admin...');
-    const adminLogin = await login(adminData.email, adminData.password);
+    const adminLoginRefresh = await login(adminData.email, adminData.password);
     
-    if (!adminLogin.success) {
-      console.error('Failed to login as system admin:', adminLogin.error);
+    if (!adminLoginRefresh.success) {
+      console.error('Failed to login as system admin:', adminLoginRefresh.error);
       return;
     }
+    
+    // Store the admin login cookies for later use
+    const adminCookies = adminLoginRefresh.cookies;
     
     console.log('Login successful as system admin');
     
@@ -154,16 +164,45 @@ async function createOrganizationAdmin() {
       }
       
       console.log('Login successful for existing user');
+      
+      // Store the login result in a variable accessible in the outer scope
+      registerResult.loginResult = loginResult;
     } else {
       console.log('User registration successful');
     }
     
     // 3. Get the user ID (either from registration or login)
-    const newUserId = registerResult.success ? registerResult.data.id : await getUserId(newUserData.email, adminLogin.cookies);
+    let newUserId = registerResult.success ? registerResult.data.id : null;
     
     if (!newUserId) {
-      console.error('Could not determine user ID');
-      return;
+      // Try to get user ID with admin cookies
+      newUserId = await getUserId(newUserData.email, adminCookies);
+      
+      if (!newUserId) {
+        // If we still can't find the ID, try with the login result cookies
+        if (registerResult.loginResult && registerResult.loginResult.success) {
+          console.log('Attempting to get user ID from login cookies');
+          // When a user logs in, they get a cookie that identifies them, so we can use that
+          // to determine their own user ID
+          const userResponse = await fetch(`${BASE_URL}/api/user`, {
+            headers: {
+              'Cookie': registerResult.loginResult.cookies,
+            },
+          });
+          
+          const userData = await userResponse.json();
+          
+          if (userResponse.ok && userData.success) {
+            console.log('Found user ID from login session:', userData.data.id);
+            newUserId = userData.data.id;
+          }
+        }
+        
+        if (!newUserId) {
+          console.error('Could not determine user ID');
+          return;
+        }
+      }
     }
     
     console.log(`User ID: ${newUserId}`);
@@ -172,7 +211,7 @@ async function createOrganizationAdmin() {
     console.log('\n3. Adding user to Organization B as an admin...');
     const organizationId = 2; // Organization B ID
     
-    const addResult = await addUserToOrganization(newUserId, organizationId, true, adminLogin.cookies);
+    const addResult = await addUserToOrganization(newUserId, organizationId, true, adminCookies);
     
     if (!addResult.success) {
       console.error('Failed to add user to organization:', addResult.error);
@@ -195,21 +234,72 @@ async function createOrganizationAdmin() {
 
 // Helper function to get user ID from email
 async function getUserId(email, cookies) {
-  const response = await fetch(`${BASE_URL}/api/admin/users`, {
-    headers: {
-      'Cookie': cookies,
-    },
-  });
+  try {
+    console.log(`Attempting to get user ID for email: ${email}`);
 
-  const data = await response.json();
-  
-  if (!response.ok || !data.success) {
-    console.error('Failed to get users list');
+    // First try using the normal admin route
+    console.log('Trying to access /api/admin/users');
+    const adminResponse = await fetch(`${BASE_URL}/api/admin/users`, {
+      headers: {
+        'Cookie': cookies,
+      },
+    });
+
+    const adminData = await adminResponse.json();
+    console.log('Admin users response status:', adminResponse.status);
+    
+    if (adminResponse.ok && adminData.success) {
+      console.log(`Found ${adminData.data.length} users from admin endpoint`);
+      const user = adminData.data.find(u => u.email === email);
+      if (user) {
+        console.log(`Found user with ID ${user.id}`);
+        return user.id;
+      }
+    } else {
+      console.log('Admin users request failed, trying organization admin route');
+    }
+    
+    // Try using the organization admin route as a fallback
+    const orgResponse = await fetch(`${BASE_URL}/api/organization-admin/users`, {
+      headers: {
+        'Cookie': cookies,
+      },
+    });
+    
+    const orgData = await orgResponse.json();
+    console.log('Organization admin users response status:', orgResponse.status);
+    
+    if (orgResponse.ok && orgData.success) {
+      console.log(`Found ${orgData.data.length} users from organization admin endpoint`);
+      const user = orgData.data.find(u => u.email === email);
+      if (user) {
+        console.log(`Found user with ID ${user.id}`);
+        return user.id;
+      }
+    } else {
+      console.log('Organization admin users request failed');
+    }
+    
+    // If we still can't find the user, try to get current user info
+    const userResponse = await fetch(`${BASE_URL}/api/user`, {
+      headers: {
+        'Cookie': cookies,
+      },
+    });
+    
+    const userData = await userResponse.json();
+    
+    if (userResponse.ok && userData.success && userData.data.email === email) {
+      console.log(`Found own user with ID ${userData.data.id}`);
+      return userData.data.id;
+    }
+    
+    console.log('Failed to find user ID through all available methods');
+    return null;
+  } catch (error) {
+    console.error('Error getting user ID:', error);
     return null;
   }
-  
-  const user = data.data.find(u => u.email === email);
-  return user ? user.id : null;
 }
 
 // Run the setup

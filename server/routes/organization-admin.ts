@@ -135,45 +135,95 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, async (req
 // Add a user to the organization
 router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
   try {
+    console.log('[Org Admin Route] Add user to organization request:', {
+      userId: req.params.id,
+      requestBody: req.body,
+      requestUser: {
+        id: req.user?.id,
+        isAdmin: req.user?.isAdmin,
+        isOrgAdmin: req.user?.isOrganizationAdmin,
+        orgId: req.user?.organizationId
+      }
+    });
+    
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
       return sendError(res, 'bad_request', 'Invalid user ID', 400);
     }
     
+    // Validate request body
+    const schema = z.object({
+      organizationId: z.number().optional(),
+      isOrganizationAdmin: z.boolean().optional().default(false),
+    });
+    
+    const parseResult = schema.safeParse(req.body);
+    if (!parseResult.success) {
+      return sendError(res, 'validation_error', parseResult.error.message, 400);
+    }
+    
+    const { isOrganizationAdmin } = parseResult.data;
+    
     // Get the organization ID (for org admins, it must be their own org)
     let organizationId: number;
-    if (req.user.isAdmin && req.body.organizationId) {
-      organizationId = parseInt(req.body.organizationId, 10);
+    
+    // System admins can specify any org ID
+    if (req.user.isAdmin && req.body.organizationId !== undefined) {
+      organizationId = parseInt(String(req.body.organizationId), 10);
       if (isNaN(organizationId)) {
         return sendError(res, 'bad_request', 'Invalid organization ID', 400);
       }
+      console.log('[Org Admin Route] System admin specified organization ID:', organizationId);
     } else {
+      // Organization admins must use their own organization
       organizationId = req.user.organizationId;
+      console.log('[Org Admin Route] Using organization admin\'s organization:', organizationId);
     }
     
     if (!organizationId) {
+      console.log('[Org Admin Route] No organization ID available');
       return sendError(res, 'bad_request', 'Organization ID is required', 400);
     }
     
     // Get the user
     const user = await storage.getUser(userId);
     if (!user) {
+      console.log('[Org Admin Route] User not found:', userId);
       return sendError(res, 'not_found', 'User not found', 404);
     }
     
+    console.log('[Org Admin Route] Found user:', {
+      id: user.id,
+      email: user.email,
+      currentOrgId: user.organizationId
+    });
+    
     // Check if user is already in an organization
     if (user.organizationId) {
-      return sendError(res, 'conflict', 'User is already in an organization', 409);
+      // If they're in the same org we're trying to add them to, just update admin status
+      if (user.organizationId === organizationId) {
+        console.log('[Org Admin Route] User already in this organization, updating admin status only');
+        
+        // Update org admin status if needed
+        if (isOrganizationAdmin !== user.isOrganizationAdmin) {
+          const updatedUser = await storage.updateUserOrganizationAdminStatus(userId, isOrganizationAdmin);
+          return sendSuccess(res, updatedUser);
+        }
+        
+        return sendSuccess(res, user);
+      }
+      
+      console.log('[Org Admin Route] User already in different organization:', user.organizationId);
+      return sendError(res, 'conflict', 'User is already in another organization', 409);
     }
     
-    // Set user's organization and optionally make them an org admin
-    const isOrgAdmin = req.body.isOrganizationAdmin === true;
-    
     // Use setUserOrganization to set the user's organization
+    console.log(`[Org Admin Route] Adding user ${userId} to organization ${organizationId}`);
     const updatedUser = await storage.setUserOrganization(userId, organizationId);
     
     // If requested to make user an org admin and they aren't already
-    if (isOrgAdmin && !updatedUser.isOrganizationAdmin) {
+    if (isOrganizationAdmin && !updatedUser.isOrganizationAdmin) {
+      console.log(`[Org Admin Route] Setting user ${userId} as organization admin`);
       await storage.updateUserOrganizationAdminStatus(userId, true);
     }
     
