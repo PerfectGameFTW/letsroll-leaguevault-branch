@@ -1,8 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { eq } from 'drizzle-orm';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { storage } from '../storage.js';
-import { insertOrganizationSchema, partialOrganizationSchema } from '@shared/schema.js';
+import { 
+  insertOrganizationSchema, 
+  partialOrganizationSchema, 
+  users,
+  type InsertOrganization 
+} from '@shared/schema.js';
 import { requireAdmin } from '../middleware/admin.js';
 
 const router = Router();
@@ -100,7 +106,27 @@ router.patch('/:id', requireAdmin, async (req, res) => {
       }
     }
 
-    const updatedOrganization = await storage.updateOrganization(id, validatedData);
+    // Create a strongly typed object with the correct fields
+    // This ensures null fields are converted to undefined for the storage interface
+    const formattedData: Partial<InsertOrganization> = {
+      name: validatedData.name,
+      slug: validatedData.slug,
+      active: validatedData.active,
+      address: validatedData.address === null ? undefined : validatedData.address,
+      city: validatedData.city === null ? undefined : validatedData.city,
+      state: validatedData.state === null ? undefined : validatedData.state,
+      zipCode: validatedData.zipCode === null ? undefined : validatedData.zipCode,
+      phone: validatedData.phone === null ? undefined : validatedData.phone,
+      email: validatedData.email === null ? undefined : validatedData.email,
+      logo: validatedData.logo === null ? undefined : validatedData.logo
+    };
+
+    // Filter out undefined values to avoid sending unnecessary fields
+    const cleanedData = Object.fromEntries(
+      Object.entries(formattedData).filter(([_, value]) => value !== undefined)
+    ) as Partial<InsertOrganization>;
+
+    const updatedOrganization = await storage.updateOrganization(id, cleanedData);
     sendSuccess(res, updatedOrganization);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -167,8 +193,15 @@ router.post('/user/:userId/set', requireAdmin, async (req, res) => {
       if (!organization) {
         return sendError(res, 'Organization not found', 404, 'NotFound');
       }
+      
+      // Get the current user to update organization admin status
+      const currentUser = await storage.getUser(userId);
+      if (!currentUser) {
+        return sendError(res, 'User not found', 404, 'NotFound');
+      }
     }
-
+    
+    // setUserOrganization method handles setting isOrganizationAdmin
     const updatedUser = await storage.setUserOrganization(userId, organizationId);
     sendSuccess(res, updatedUser);
   } catch (error) {

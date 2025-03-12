@@ -503,6 +503,8 @@ export const insertUserSchema = baseUserSchema.extend({
   name: nameSchema,
   phone: z.string().optional(),
   isAdmin: z.boolean().optional().default(false),
+  isOrganizationAdmin: z.boolean().optional().default(false),
+  organizationId: z.number().nullable().optional(),
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")

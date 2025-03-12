@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,7 +9,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Building2, Plus, Edit, Trash } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import type { Organization, InsertOrganization } from '@shared/schema.js';
+import { ApiResponse } from '@/lib/types/api';
+import type { Organization, InsertOrganization, User } from '@shared/schema.js';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function OrganizationsPage() {
   const [open, setOpen] = useState(false);
@@ -22,6 +24,7 @@ export default function OrganizationsPage() {
   const [zipCode, setZipCode] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [adminUserId, setAdminUserId] = useState<number | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -30,8 +33,18 @@ export default function OrganizationsPage() {
     queryKey: ['/api/organizations'],
     retry: 1,
   });
+  
+  const { data: usersData, isLoading: isLoadingUsers } = useQuery<{data: User[]}>({
+    queryKey: ['/api/admin/users'],
+    retry: 1,
+  });
 
-  const createMutation = useMutation({
+  const createMutation = useMutation<
+    any, // The return type 
+    Error, // Error type
+    InsertOrganization, // Variables type
+    unknown // Context type
+  >({
     mutationFn: async (org: InsertOrganization) => {
       return apiRequest('/api/organizations', 'POST', org);
     },
@@ -105,6 +118,7 @@ export default function OrganizationsPage() {
     setZipCode('');
     setPhone('');
     setEmail('');
+    setAdminUserId(null);
     setEditId(null);
   };
 
@@ -121,8 +135,39 @@ export default function OrganizationsPage() {
     setOpen(true);
   };
 
+  // Add a new mutation for setting a user as organization admin
+  const setOrgAdminMutation = useMutation({
+    mutationFn: async ({ userId, organizationId }: { userId: number, organizationId: number }) => {
+      return apiRequest(`/api/organizations/user/${userId}/set`, 'POST', { organizationId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/users'] });
+      toast({
+        title: 'Administrator Set',
+        description: 'Account administrator has been successfully assigned to the organization.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: `Failed to set account administrator: ${error.message}`,
+        variant: 'destructive',
+      });
+    }
+  });
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate that Administrator is selected for new organizations
+    if (!editId && !adminUserId) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please select an Account Administrator.',
+        variant: 'destructive',
+      });
+      return;
+    }
     
     const orgData = {
       name,
@@ -138,7 +183,18 @@ export default function OrganizationsPage() {
     if (editId) {
       updateMutation.mutate({ id: editId, org: orgData });
     } else {
-      createMutation.mutate(orgData as InsertOrganization);
+      // Create the organization first, then set the admin user
+      createMutation.mutate(orgData as InsertOrganization, {
+        onSuccess: (response: any) => {
+          // If we have an admin user selected, set them as the organization admin
+          if (adminUserId && response?.data?.id) {
+            setOrgAdminMutation.mutate({
+              userId: adminUserId,
+              organizationId: response.data.id
+            });
+          }
+        }
+      });
     }
   };
 
@@ -274,6 +330,30 @@ export default function OrganizationsPage() {
                   className="col-span-3"
                   placeholder="org-name"
                 />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="adminUserId" className="text-right">
+                  Account Administrator
+                </Label>
+                <Select
+                  value={adminUserId?.toString() || ""}
+                  onValueChange={value => setAdminUserId(value ? parseInt(value) : null)}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select an administrator" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {isLoadingUsers ? (
+                      <div className="p-2 text-center">Loading users...</div>
+                    ) : (
+                      (usersData?.data || []).map(user => (
+                        <SelectItem key={user.id} value={user.id.toString()}>
+                          {user.name || user.email}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="email" className="text-right">

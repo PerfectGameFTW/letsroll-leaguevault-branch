@@ -1,7 +1,7 @@
 import schedule from "node-schedule";
 import { db } from "../db";
-import { eq, and, lte } from "drizzle-orm";
-import { paymentSchedules, payments } from "@shared/schema";
+import { eq, and, lte, isNull, or } from "drizzle-orm";
+import { paymentSchedules, payments, leagues } from "@shared/schema";
 import { addWeeks, addMonths } from "date-fns";
 import { createSquarePayment } from "../lib/square";
 import { logger } from "../logger";
@@ -9,33 +9,58 @@ import { logger } from "../logger";
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
 
-  async initialize() {
+  async initialize(organizationId?: number | null) {
     try {
       // Cancel any existing jobs
       this.cancelAllJobs();
       logger.info('[PaymentScheduler] Initializing payment scheduler...', {
         activeJobs: this.jobs.size,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        organizationId: organizationId ?? 'all'
       });
 
-      // Get all active payment schedules
-      logger.info('[PaymentScheduler] Querying active payment schedules...');
-      const activeSchedules = await db
-        .select()
+      // Build the query for active payment schedules
+      let query = db
+        .select({
+          schedule: paymentSchedules,
+          leagueOrganizationId: leagues.organizationId
+        })
         .from(paymentSchedules)
+        .innerJoin(leagues, eq(paymentSchedules.leagueId, leagues.id))
         .where(and(
           eq(paymentSchedules.active, true),
           lte(paymentSchedules.nextPaymentDate, new Date())
         ));
 
+      // Add organization filter if specified
+      if (organizationId !== undefined) {
+        if (organizationId === null) {
+          // For null organizationId, get only leagues with null organizationId
+          query = query.where(isNull(leagues.organizationId));
+          logger.info('[PaymentScheduler] Filtering for leagues with no organization');
+        } else {
+          // Filter by the specific organizationId
+          query = query.where(eq(leagues.organizationId, organizationId));
+          logger.info(`[PaymentScheduler] Filtering for organization ID: ${organizationId}`);
+        }
+      }
+
+      // Execute the query
+      const organizationFilteredSchedules = await query;
+
+      // Extract the schedule objects from the result
+      const activeSchedules = organizationFilteredSchedules.map(item => item.schedule);
+
       logger.info(`[PaymentScheduler] Found ${activeSchedules.length} active schedules to process`, {
         schedules: activeSchedules.map(s => ({
           id: s.id,
           bowlerId: s.bowlerId,
+          leagueId: s.leagueId,
           nextPaymentDate: s.nextPaymentDate,
           amount: s.amount,
           cardId: s.squareCardId ? `${s.squareCardId.substring(0, 10)}...` : 'none',
-          isValidCard: s.squareCardId?.startsWith('ccof:')
+          isValidCard: s.squareCardId?.startsWith('ccof:'),
+          organizationId: organizationFilteredSchedules.find(item => item.schedule.id === s.id)?.leagueOrganizationId ?? null
         }))
       });
 
@@ -292,7 +317,7 @@ class PaymentScheduler {
     }
   }
 
-  async addSchedule(schedule: typeof paymentSchedules.$inferSelect) {
+  async addSchedule(schedule: typeof paymentSchedules.$inferSelect, organizationId?: number | null) {
     // Validate card ID before adding schedule
     if (!this.validateCardId(schedule.squareCardId)) {
       logger.error(`[PaymentScheduler] Cannot add schedule with invalid card ID`, {
@@ -302,6 +327,45 @@ class PaymentScheduler {
         validationTime: new Date().toISOString()
       });
       return;
+    }
+    
+    // Check if the schedule is for a league in the specified organization
+    if (organizationId !== undefined) {
+      // Get the league to check its organization
+      const league = await db
+        .select()
+        .from(leagues)
+        .where(eq(leagues.id, schedule.leagueId))
+        .limit(1);
+      
+      if (league.length === 0) {
+        logger.error(`[PaymentScheduler] Cannot add schedule for non-existent league`, {
+          scheduleId: schedule.id,
+          leagueId: schedule.leagueId,
+        });
+        return;
+      }
+      
+      const leagueOrganizationId = league[0].organizationId;
+      
+      // Skip if organization ID doesn't match
+      if (organizationId === null && leagueOrganizationId !== null) {
+        logger.info(`[PaymentScheduler] Skipping schedule for league in different organization`, {
+          scheduleId: schedule.id,
+          leagueId: schedule.leagueId,
+          leagueOrganizationId,
+          requestedOrganizationId: 'null'
+        });
+        return;
+      } else if (organizationId !== null && leagueOrganizationId !== organizationId) {
+        logger.info(`[PaymentScheduler] Skipping schedule for league in different organization`, {
+          scheduleId: schedule.id,
+          leagueId: schedule.leagueId,
+          leagueOrganizationId,
+          requestedOrganizationId: organizationId
+        });
+        return;
+      }
     }
 
     logger.info(`[PaymentScheduler] Adding new payment schedule`, {
@@ -316,14 +380,57 @@ class PaymentScheduler {
     this.schedulePayment(schedule);
   }
 
-  async removeSchedule(scheduleId: number) {
+  async removeSchedule(scheduleId: number, organizationId?: number | null) {
     logger.info(`[PaymentScheduler] Removing payment schedule ${scheduleId}`, {
-      removalTime: new Date().toISOString()
+      removalTime: new Date().toISOString(),
+      organizationId: organizationId ?? 'not specified'
     });
+    
+    // If organization filtering is requested, verify the schedule belongs to the right organization
+    if (organizationId !== undefined) {
+      // Get schedule with its league info to check organization access
+      const scheduleWithLeague = await db
+        .select({
+          schedule: paymentSchedules,
+          leagueOrganizationId: leagues.organizationId
+        })
+        .from(paymentSchedules)
+        .innerJoin(leagues, eq(paymentSchedules.leagueId, leagues.id))
+        .where(eq(paymentSchedules.id, scheduleId))
+        .limit(1);
+      
+      if (scheduleWithLeague.length === 0) {
+        logger.info(`[PaymentScheduler] Schedule not found, cannot remove: ${scheduleId}`);
+        return;
+      }
+      
+      const leagueOrganizationId = scheduleWithLeague[0].leagueOrganizationId;
+      
+      // Skip removal if organization doesn't match
+      if (organizationId === null && leagueOrganizationId !== null) {
+        logger.info(`[PaymentScheduler] Skipping removal for league in different organization`, {
+          scheduleId,
+          leagueOrganizationId,
+          requestedOrganizationId: 'null'
+        });
+        return;
+      } else if (organizationId !== null && leagueOrganizationId !== organizationId) {
+        logger.info(`[PaymentScheduler] Skipping removal for league in different organization`, {
+          scheduleId,
+          leagueOrganizationId,
+          requestedOrganizationId: organizationId
+        });
+        return;
+      }
+      
+      logger.info(`[PaymentScheduler] Organization check passed, proceeding with schedule removal: ${scheduleId}`);
+    }
+    
+    // Cancel the job
     this.cancelJob(`payment-${scheduleId}`);
   }
 
-  async updateSchedule(schedule: typeof paymentSchedules.$inferSelect) {
+  async updateSchedule(schedule: typeof paymentSchedules.$inferSelect, organizationId?: number | null) {
     // Validate card ID before updating schedule
     if (!this.validateCardId(schedule.squareCardId)) {
       logger.error(`[PaymentScheduler] Cannot update schedule with invalid card ID`, {
@@ -333,6 +440,45 @@ class PaymentScheduler {
         validationTime: new Date().toISOString()
       });
       return;
+    }
+    
+    // Check if the schedule is for a league in the specified organization
+    if (organizationId !== undefined) {
+      // Get the league to check its organization
+      const league = await db
+        .select()
+        .from(leagues)
+        .where(eq(leagues.id, schedule.leagueId))
+        .limit(1);
+      
+      if (league.length === 0) {
+        logger.error(`[PaymentScheduler] Cannot update schedule for non-existent league`, {
+          scheduleId: schedule.id,
+          leagueId: schedule.leagueId,
+        });
+        return;
+      }
+      
+      const leagueOrganizationId = league[0].organizationId;
+      
+      // Skip if organization ID doesn't match
+      if (organizationId === null && leagueOrganizationId !== null) {
+        logger.info(`[PaymentScheduler] Skipping update for league in different organization`, {
+          scheduleId: schedule.id,
+          leagueId: schedule.leagueId,
+          leagueOrganizationId,
+          requestedOrganizationId: 'null'
+        });
+        return;
+      } else if (organizationId !== null && leagueOrganizationId !== organizationId) {
+        logger.info(`[PaymentScheduler] Skipping update for league in different organization`, {
+          scheduleId: schedule.id,
+          leagueId: schedule.leagueId,
+          leagueOrganizationId,
+          requestedOrganizationId: organizationId
+        });
+        return;
+      }
     }
 
     logger.info(`[PaymentScheduler] Updating payment schedule ${schedule.id}`, {

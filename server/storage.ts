@@ -1,4 +1,4 @@
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, isNull } from "drizzle-orm";
 import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
@@ -18,7 +18,7 @@ import {
 
 export interface IStorage {
   // League methods
-  getLeagues(): Promise<League[]>;
+  getLeagues(organizationId?: number | null): Promise<League[]>;
   getLeague(id: number): Promise<League | undefined>;
   createLeague(league: InsertLeague): Promise<League>;
   updateLeague(id: number, league: Partial<InsertLeague>): Promise<League>;
@@ -93,12 +93,29 @@ export interface IStorage {
   getUserOrganizations(userId: number): Promise<Organization[]>;
   setUserOrganization(userId: number, organizationId: number | null): Promise<User>;
   getOrganizationLeagues(organizationId: number): Promise<League[]>;
+  
+  // Organization admin methods
+  getOrganizationUsers(organizationId: number): Promise<User[]>;
+  updateUserOrganizationAdminStatus(userId: number, isOrganizationAdmin: boolean): Promise<User>;
 }
 
 export class DatabaseStorage implements IStorage {
   // League methods
-  async getLeagues(): Promise<League[]> {
-    return db.select().from(leagues).orderBy(leagues.id);
+  async getLeagues(organizationId?: number | null): Promise<League[]> {
+    const query = db.select().from(leagues);
+    
+    // If organizationId is specified (including null), filter by it
+    if (organizationId !== undefined) {
+      // For null organizationId, get leagues not assigned to any organization
+      if (organizationId === null) {
+        return query.where(isNull(leagues.organizationId)).orderBy(leagues.id);
+      }
+      // Otherwise, get leagues for the specified organization
+      return query.where(eq(leagues.organizationId, organizationId)).orderBy(leagues.id);
+    }
+    
+    // If no organizationId specified, return all leagues
+    return query.orderBy(leagues.id);
   }
 
   async getLeague(id: number): Promise<League | undefined> {
@@ -874,6 +891,56 @@ export class DatabaseStorage implements IStorage {
       .from(leagues)
       .where(eq(leagues.organizationId, organizationId))
       .orderBy(leagues.name);
+  }
+
+  // Organization admin methods
+  async getOrganizationUsers(organizationId: number): Promise<User[]> {
+    console.log('[Storage] Getting users for organization:', organizationId);
+    
+    return db
+      .select()
+      .from(users)
+      .where(eq(users.organizationId, organizationId))
+      .orderBy(users.name);
+  }
+
+  async updateUserOrganizationAdminStatus(userId: number, isOrganizationAdmin: boolean): Promise<User> {
+    console.log('[Storage] Updating organization admin status for user:', {
+      userId,
+      isOrganizationAdmin
+    });
+    
+    // Verify user exists
+    const user = await this.getUser(userId);
+    if (!user) {
+      console.error('[Storage] User not found for organization admin status update:', userId);
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    
+    // Verify user belongs to an organization
+    if (!user.organizationId) {
+      console.error('[Storage] Cannot set organization admin status for user without organization:', userId);
+      throw new Error(`User with ID ${userId} does not belong to any organization`);
+    }
+    
+    // Update user's organization admin status
+    const [updatedUser] = await db
+      .update(users)
+      .set({ isOrganizationAdmin })
+      .where(eq(users.id, userId))
+      .returning();
+      
+    if (!updatedUser) {
+      console.error('[Storage] Failed to update organization admin status for user:', userId);
+      throw new Error(`Failed to update organization admin status for user with ID ${userId}`);
+    }
+    
+    console.log('[Storage] Updated organization admin status:', {
+      userId: updatedUser.id,
+      isOrganizationAdmin: updatedUser.isOrganizationAdmin
+    });
+    
+    return updatedUser;
   }
 }
 

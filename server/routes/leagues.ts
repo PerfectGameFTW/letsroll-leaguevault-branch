@@ -6,9 +6,21 @@ import { sendSuccess, sendError } from '../utils/api';
 
 const router = Router();
 
-router.get("/", async (_req, res) => {
+router.get("/", async (req, res) => {
   try {
-    const leagues = await storage.getLeagues();
+    // Filter leagues by user's organization if they're not an admin
+    let leagues;
+    if (req.user?.isAdmin) {
+      // Admins can see all leagues
+      leagues = await storage.getLeagues();
+    } else if (req.user?.organizationId) {
+      // Organization users can only see their org's leagues
+      leagues = await storage.getLeagues(req.user.organizationId);
+    } else {
+      // Regular users can only see leagues not assigned to any organization
+      leagues = await storage.getLeagues(null);
+    }
+    
     sendSuccess(res, leagues);
   } catch (error) {
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch leagues');
@@ -19,9 +31,21 @@ router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const league = await storage.getLeague(id);
+    
     if (!league) {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
+    
+    // Check if user has access to this league's organization
+    const userHasAccess = 
+      req.user?.isAdmin || 
+      league.organizationId === null || 
+      (req.user?.organizationId === league.organizationId);
+    
+    if (!userHasAccess) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+    
     sendSuccess(res, league);
   } catch (error) {
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch league');
@@ -30,11 +54,27 @@ router.get("/:id", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
+    // Parse league data
     const league = insertLeagueSchema.parse({
       ...req.body,
       seasonStart: new Date(req.body.seasonStart),
       seasonEnd: new Date(req.body.seasonEnd)
     });
+    
+    // Non-admin users can only create leagues for their organization
+    if (!req.user?.isAdmin) {
+      // If user belongs to an organization, set the organization ID
+      if (req.user?.organizationId) {
+        league.organizationId = req.user.organizationId;
+      } else {
+        // Non-admin users without an organization can only create unassigned leagues
+        league.organizationId = null;
+      }
+    }
+    
+    // Admin users can create leagues for any organization
+    // The organization ID is already set in the league object from the request body
+    
     const created = await storage.createLeague(league);
     sendSuccess(res, created, 201);
   } catch (error) {
@@ -49,11 +89,35 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    
+    // Get the league to verify organization access
+    const league = await storage.getLeague(id);
+    
+    if (!league) {
+      return sendError(res, "League not found", 404, 'NOT_FOUND');
+    }
+    
+    // Check if user has access to this league's organization
+    const userHasAccess = 
+      req.user?.isAdmin || 
+      league.organizationId === null || 
+      (req.user?.organizationId === league.organizationId);
+    
+    if (!userHasAccess) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+    
+    // Non-admin users cannot change the organization of a league
+    if (!req.user?.isAdmin && req.body.organizationId !== undefined) {
+      return sendError(res, "You don't have permission to change the organization of this league", 403, 'FORBIDDEN');
+    }
+    
     const update = partialLeagueSchema.parse({
       ...req.body,
       seasonStart: req.body.seasonStart ? new Date(req.body.seasonStart) : undefined,
       seasonEnd: req.body.seasonEnd ? new Date(req.body.seasonEnd) : undefined
     });
+    
     const updated = await storage.updateLeague(id, update);
     sendSuccess(res, updated);
   } catch (error) {
@@ -68,6 +132,24 @@ router.patch("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    
+    // Get the league to verify organization access
+    const league = await storage.getLeague(id);
+    
+    if (!league) {
+      return sendError(res, "League not found", 404, 'NOT_FOUND');
+    }
+    
+    // Check if user has access to this league's organization
+    const userHasAccess = 
+      req.user?.isAdmin || 
+      league.organizationId === null || 
+      (req.user?.organizationId === league.organizationId);
+    
+    if (!userHasAccess) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+    
     const teams = await storage.getTeams(id);
 
     for (const team of teams) {

@@ -10,6 +10,7 @@ import gamesRouter from './games.js';
 import squareRouter from './square.js';  // Add Square router import
 import adminRouter from './admin.js';    // Add Admin router import
 import organizationsRouter from './organizations.js'; // Add Organizations router import
+import orgAdminRouter from './organization-admin.js'; // Add Organization Admin router import
 import { testConnection } from '../db.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 
@@ -40,6 +41,7 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/square', squareRouter);  // Register Square routes
   app.use('/api/admin', adminRouter);    // Register Admin routes
   app.use('/api/organizations', organizationsRouter); // Register Organizations routes
+  app.use('/api/org-admin', orgAdminRouter); // Register Organization Admin routes
 
   console.log('[Routes] API routes registered');
   return server;

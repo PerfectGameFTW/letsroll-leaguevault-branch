@@ -10,6 +10,7 @@ import net from 'net';
 import fs from 'fs';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
+import { scoreScheduler } from './services/score-scheduler';
 import { Transform } from 'stream';
 
 // Initialize Express app first
@@ -681,6 +682,28 @@ async function startServer() {
       server: true,
       vite: viteSetupComplete
     });
+    
+    // Initialize schedulers
+    if (dbConnected) {
+      try {
+        // Get user's organization context from request (if any)
+        // For now, we'll initialize schedulers for all organizations (null = no filtering)
+        // In a real multi-tenant environment, you might want to specify the org ID
+        console.log('[Server] Initializing payment and score schedulers...');
+        
+        // Initialize payment scheduler with organization awareness
+        await paymentScheduler.initialize();
+        console.log('[Server] Payment scheduler initialized successfully');
+        
+        // Initialize score scheduler with organization awareness
+        await scoreScheduler.initialize();
+        console.log('[Server] Score scheduler initialized successfully');
+      } catch (error) {
+        console.error('[Server] Error initializing schedulers:', error);
+      }
+    } else {
+      console.warn('[Server] Database not connected, skipping scheduler initialization');
+    }
 
   } catch (error) {
     console.error('[Server] Critical startup error:', error);
@@ -815,9 +838,15 @@ const shutdown = async () => {
   shutdownPhases.initiated = true;
 
   try {
+    // Clean up both schedulers during shutdown
     if (paymentScheduler) {
       console.log('[Server] Cleaning up payment scheduler...');
       paymentScheduler.cancelAllJobs();
+    }
+
+    if (scoreScheduler) {
+      console.log('[Server] Cleaning up score scheduler...');
+      scoreScheduler.cancelAllJobs();
     }
 
     if (portStatusInterval) {

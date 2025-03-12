@@ -1,16 +1,69 @@
 import { Router } from 'express';
 import { processPayment, createOrUpdateCustomer } from '../services/square.js';
 import { storage } from '../storage.js';
+import { sendSuccess, sendError } from '../utils/api.js';
 
 const router = Router();
+
+// Helper function to check if user has access to a league's organization
+async function hasAccessToLeague(req: any, leagueId: number): Promise<boolean> {
+  const league = await storage.getLeague(leagueId);
+  
+  if (!league) {
+    return false;
+  }
+  
+  return (
+    req.user?.isAdmin || 
+    league.organizationId === null || 
+    (req.user?.organizationId === league.organizationId)
+  );
+}
+
+// Helper function to check if user has access to a bowler
+async function hasAccessToBowler(req: any, bowlerId: number): Promise<boolean> {
+  // Admin users have access to all bowlers
+  if (req.user?.isAdmin) {
+    return true;
+  }
+  
+  // Get bowler's leagues
+  const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
+  
+  // If bowler isn't in any leagues, they're considered publicly accessible
+  if (bowlerLeagues.length === 0) {
+    return true;
+  }
+  
+  // Check if the user has access to at least one of the bowler's leagues
+  for (const bl of bowlerLeagues) {
+    if (await hasAccessToLeague(req, bl.leagueId)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
 
 router.post('/payments', async (req, res) => {
   try {
     console.log('[Square Routes] Processing payment request:', {
       amount: req.body.amount,
+      bowlerId: req.body.bowlerId,
+      leagueId: req.body.leagueId,
       sourceIdPresent: !!req.body.sourceId,
       storeCard: req.body.storeCard
     });
+
+    // Verify that the user has access to the league
+    if (!await hasAccessToLeague(req, req.body.leagueId)) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+
+    // Verify that the user has access to the bowler
+    if (!await hasAccessToBowler(req, req.body.bowlerId)) {
+      return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+    }
 
     const payment = await processPayment(
       req.body.sourceId,
@@ -83,6 +136,31 @@ router.post('/customers', async (req, res) => {
       email: req.body.email,
       teamId: req.body.teamId
     });
+
+    // If a team ID is provided, verify the user has access to it
+    if (req.body.teamId) {
+      const team = await storage.getTeam(req.body.teamId);
+      
+      if (!team) {
+        return sendError(res, "Team not found", 404, 'NOT_FOUND');
+      }
+      
+      // Check if user has access to this team's league
+      const league = await storage.getLeague(team.leagueId);
+      
+      if (!league) {
+        return sendError(res, "League not found", 404, 'NOT_FOUND');
+      }
+      
+      const userHasAccess = 
+        req.user?.isAdmin || 
+        league.organizationId === null || 
+        (req.user?.organizationId === league.organizationId);
+      
+      if (!userHasAccess) {
+        return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
+      }
+    }
 
     const customer = await createOrUpdateCustomer(
       req.body.name,

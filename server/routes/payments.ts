@@ -5,6 +5,70 @@ import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { processPayment } from '../services/square.js';
 
+// Helper function to check if user has access to a payment
+async function hasAccessToPayment(req: any, paymentId: number): Promise<boolean> {
+  // Admin users have access to all payments
+  if (req.user?.isAdmin) {
+    return true;
+  }
+  
+  // If the user has no organization, they can't access organization-specific data
+  if (!req.user?.organizationId) {
+    return false;
+  }
+  
+  try {
+    // Get the payment
+    const payments = await storage.getPayments(undefined, undefined, undefined, undefined);
+    const payment = payments.find(p => p.id === paymentId);
+    if (!payment) {
+      return false;
+    }
+    
+    // Get the league
+    const league = await storage.getLeague(payment.leagueId);
+    if (!league) {
+      return false;
+    }
+    
+    // If league has no organization, it's accessible to all
+    if (league.organizationId === null) {
+      return true;
+    }
+    
+    // Check if user belongs to the same organization as the league
+    return req.user.organizationId === league.organizationId;
+  } catch (error) {
+    console.error(`[Payments Route] Error checking payment access:`, error);
+    return false;
+  }
+}
+
+// Helper function to filter payments by user's organization
+async function filterPaymentsByOrganization(req: any, payments: any[]): Promise<any[]> {
+  // Admin users can see all payments
+  if (req.user?.isAdmin) {
+    return payments;
+  }
+  
+  // If the user has no organization, return empty array
+  if (!req.user?.organizationId) {
+    return [];
+  }
+  
+  // Get all leagues in user's organization
+  const leagues = await storage.getLeagues(req.user.organizationId);
+  if (!leagues || leagues.length === 0) {
+    return [];
+  }
+  
+  // Get league IDs in user's organization
+  const leagueIds = leagues.map(l => l.id);
+  
+  // Filter payments by league IDs
+  return payments.filter(payment => leagueIds.includes(payment.leagueId));
+}
+
 const router = Router();
 
 // Add Square payment endpoint
@@ -37,14 +101,39 @@ router.get("/", async (req, res) => {
       leagueId,
       teamId,
       weekOf: weekOf?.toISOString(),
-      rawQuery: req.query
+      rawQuery: req.query,
+      user: req.user ? { 
+        id: req.user.id, 
+        isAdmin: req.user.isAdmin,
+        organizationId: req.user.organizationId
+      } : null
     });
 
+    // If leagueId is provided and user is not admin, check organization access
+    if (leagueId && !req.user?.isAdmin && req.user?.organizationId) {
+      const league = await storage.getLeague(leagueId);
+      
+      if (!league) {
+        return sendError(res, "League not found", 404, 'NOT_FOUND');
+      }
+      
+      if (league.organizationId !== null && league.organizationId !== req.user.organizationId) {
+        return sendError(res, "You don't have access to this league's payments", 403, 'FORBIDDEN');
+      }
+    }
+
     const payments = await storage.getPayments(bowlerId, leagueId, teamId, weekOf);
+    
+    // Filter payments by organization if needed
+    let accessiblePayments = payments;
+    if (!req.user?.isAdmin) {
+      accessiblePayments = await filterPaymentsByOrganization(req, payments);
+    }
+    
     console.log('[Payments Route] Retrieved payments:', {
       filters: { bowlerId, leagueId, teamId, weekOf },
-      count: payments.length,
-      samples: payments.slice(0, 2).map(p => ({
+      count: accessiblePayments.length,
+      samples: accessiblePayments.slice(0, 2).map(p => ({
         id: p.id,
         amount: p.amount,
         bowlerId: p.bowlerId,
@@ -52,7 +141,8 @@ router.get("/", async (req, res) => {
         status: p.status
       }))
     });
-    sendSuccess(res, payments);
+    
+    sendSuccess(res, accessiblePayments);
   } catch (error) {
     console.error('[Payments Route] Get error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch payments');
@@ -68,6 +158,20 @@ router.post("/", async (req, res) => {
     // Validate check number if payment type is check
     if (payment.type === 'check' && !payment.checkNumber) {
       return sendError(res, 'Check number is required for check payments', 400, 'VALIDATION_ERROR');
+    }
+    
+    // If user is not admin, check league organization access
+    if (!req.user?.isAdmin && req.user?.organizationId) {
+      const league = await storage.getLeague(payment.leagueId);
+      
+      if (!league) {
+        return sendError(res, "League not found", 404, 'NOT_FOUND');
+      }
+      
+      // If league belongs to an organization, check if user has access
+      if (league.organizationId !== null && league.organizationId !== req.user.organizationId) {
+        return sendError(res, "You don't have access to create payments for this league", 403, 'FORBIDDEN');
+      }
     }
 
     const created = await storage.createPayment(payment);
@@ -98,6 +202,14 @@ router.patch("/:id", async (req, res) => {
     if (update.type === 'check' && !update.checkNumber) {
       return sendError(res, 'Check number is required for check payments', 400, 'VALIDATION_ERROR');
     }
+    
+    // Check if user has access to this payment
+    if (!req.user?.isAdmin) {
+      const hasAccess = await hasAccessToPayment(req, id);
+      if (!hasAccess) {
+        return sendError(res, "You don't have access to update this payment", 403, 'FORBIDDEN');
+      }
+    }
 
     const updated = await storage.updatePayment(id, update);
     if (!updated) {
@@ -122,6 +234,14 @@ router.delete("/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
       return sendError(res, "Invalid payment ID", 400, "INVALID_ID");
+    }
+    
+    // Check if user has access to this payment
+    if (!req.user?.isAdmin) {
+      const hasAccess = await hasAccessToPayment(req, id);
+      if (!hasAccess) {
+        return sendError(res, "You don't have access to delete this payment", 403, 'FORBIDDEN');
+      }
     }
 
     console.log('[Payments Route] Deleting payment:', id);

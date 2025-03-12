@@ -18,6 +18,36 @@ function requireAuth(req: any, res: any, next: any) {
   next();
 }
 
+// Helper function to check if user has access to a bowler
+async function hasAccessToBowler(req: any, bowlerId: number): Promise<boolean> {
+  // Admin users have access to all bowlers
+  if (req.user?.isAdmin) {
+    return true;
+  }
+  
+  // Get bowler's leagues
+  const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
+  
+  // If bowler isn't in any leagues, they're considered publicly accessible
+  if (bowlerLeagues.length === 0) {
+    return true;
+  }
+  
+  // For each league the bowler is in, check if it's in the user's organization
+  for (const bl of bowlerLeagues) {
+    const league = await storage.getLeague(bl.leagueId);
+    
+    if (league && (
+      league.organizationId === null || 
+      league.organizationId === req.user?.organizationId
+    )) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 // Schema for linking bowler to user
 const linkBowlerSchema = z.object({
   bowlerId: z.number().int().positive('Bowler ID must be a positive number'),
@@ -33,6 +63,11 @@ router.post('/link-bowler', requireAuth, async (req, res) => {
     const bowler = await storage.getBowler(bowlerId);
     if (!bowler) {
       return sendError(res, 'Bowler not found', 404, 'NOT_FOUND');
+    }
+
+    // Check if user has access to this bowler based on organization
+    if (!(await hasAccessToBowler(req, bowlerId))) {
+      return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
     // Link bowler to user
@@ -56,6 +91,15 @@ router.get('/bowler', requireAuth, async (req, res) => {
     }
 
     const bowler = await storage.getBowler(user.bowlerId);
+    
+    // Verify the user still has access to this bowler 
+    // (in case organization access changed after linking)
+    if (bowler && !(await hasAccessToBowler(req, bowler.id))) {
+      // If the user no longer has access, unlink the bowler
+      await storage.linkUserToBowler(user.id, undefined);
+      return sendError(res, "You no longer have access to this bowler", 403, 'FORBIDDEN');
+    }
+    
     sendSuccess(res, bowler);
   } catch (error) {
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler');
@@ -66,6 +110,12 @@ router.get('/bowler', requireAuth, async (req, res) => {
 router.delete('/unlink-bowler', requireAuth, async (req, res) => {
   try {
     const user = req.user as SelectUser;
+    
+    // If the user has a linked bowler, verify they still have access
+    if (user.bowlerId && !(await hasAccessToBowler(req, user.bowlerId))) {
+      return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+    }
+    
     // Update the user's bowlerId to undefined instead of null
     await storage.linkUserToBowler(user.id, undefined);
     sendSuccess(res, { message: 'Bowler unlinked successfully' });
