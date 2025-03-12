@@ -127,20 +127,22 @@ const SignUpPage: FC = () => {
     mode: "onChange", // Enable real-time validation
   });
 
-  const { data: leagues } = useQuery({
+  // Define types for API response
+  interface League {
+    id: number;
+    name: string;
+    description: string | null;
+    active: boolean;
+    // Add other fields as needed
+  }
+
+  // Using the built-in getQueryFn for fetching
+  const { data: leaguesResponse } = useQuery<{success: boolean; data: League[]}>({
     queryKey: ["/api/leagues"],
-    queryFn: async () => {
-      try {
-        const response = await fetch("/api/leagues");
-        if (!response.ok) throw new Error("Failed to fetch leagues");
-        const data = await response.json();
-        return data.data;
-      } catch (error) {
-        console.error('[SignUp] Failed to fetch leagues:', error);
-        throw error;
-      }
-    },
   });
+  
+  // Extract leagues data from response safely
+  const leagues = leaguesResponse?.data ?? [];
 
   const onSubmit = async (data: SignUpFormData) => {
     try {
@@ -236,9 +238,9 @@ const SignUpPage: FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
+    <div className="min-h-screen bg-background flex items-start sm:items-center justify-center p-4 pt-6 sm:pt-4">
+      <Card className="w-full max-w-md mt-4 sm:mt-0">
+        <CardHeader className="space-y-1 pb-4 sm:pb-6">
           <CardTitle className="text-2xl font-bold text-center">
             Join Your Bowling League
           </CardTitle>
@@ -246,14 +248,14 @@ const SignUpPage: FC = () => {
             Sign up to track your scores and manage your league participation
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pb-4 sm:pb-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4">
               <FormField
                 control={form.control}
                 name="name"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="space-y-1 sm:space-y-2">
                     <FormLabel>Full Name</FormLabel>
                     <FormControl>
                       <Input placeholder="John Doe" {...field} />
@@ -266,7 +268,7 @@ const SignUpPage: FC = () => {
                 control={form.control}
                 name="email"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="space-y-1 sm:space-y-2">
                     <FormLabel>Email Address</FormLabel>
                     <FormControl>
                       <Input
@@ -283,7 +285,7 @@ const SignUpPage: FC = () => {
                 control={form.control}
                 name="phone"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="space-y-1 sm:space-y-2">
                     <FormLabel>Phone Number</FormLabel>
                     <FormControl>
                       <Input
@@ -300,7 +302,7 @@ const SignUpPage: FC = () => {
                 control={form.control}
                 name="leagueId"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="space-y-1 sm:space-y-2">
                     <FormLabel>League</FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
@@ -309,11 +311,11 @@ const SignUpPage: FC = () => {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {leagues?.map((league: { id: number; name: string }) => (
+                        {Array.isArray(leagues) ? leagues.map((league: { id: number; name: string }) => (
                           <SelectItem key={league.id} value={league.id.toString()}>
                             {league.name}
                           </SelectItem>
-                        ))}
+                        )) : null}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -324,7 +326,7 @@ const SignUpPage: FC = () => {
                 control={form.control}
                 name="password"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="space-y-1 sm:space-y-2">
                     <FormLabel>Password</FormLabel>
                     <FormControl>
                       <Input
@@ -338,13 +340,13 @@ const SignUpPage: FC = () => {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full mt-2">
                 Create Account
               </Button>
             </form>
           </Form>
         </CardContent>
-        <CardFooter className="flex justify-center">
+        <CardFooter className="flex justify-center pt-0">
           <p className="text-sm text-muted-foreground">
             Already have an account?{" "}
             <Link href="/login" className="text-primary hover:underline">

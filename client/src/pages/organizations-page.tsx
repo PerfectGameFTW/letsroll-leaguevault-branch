@@ -49,7 +49,7 @@ export default function OrganizationsPage() {
     unknown
   >({
     mutationFn: async (org: InsertOrganization) => {
-      return apiRequest('/api/organizations', 'POST', org);
+      return apiRequest('POST', '/api/organizations', org);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
@@ -71,7 +71,7 @@ export default function OrganizationsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, org }: { id: number; org: Partial<InsertOrganization> }) => {
-      return apiRequest(`/api/organizations/${id}`, 'PATCH', org);
+      return apiRequest('PATCH', `/api/organizations/${id}`, org);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
@@ -93,7 +93,7 @@ export default function OrganizationsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest(`/api/organizations/${id}`, 'DELETE');
+      return apiRequest('DELETE', `/api/organizations/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
@@ -327,7 +327,7 @@ export default function OrganizationsPage() {
 
       {/* Create/Edit Organization Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[525px]">
+        <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editId ? 'Edit Organization' : 'Create Organization'}
@@ -515,7 +515,7 @@ export default function OrganizationsPage() {
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>

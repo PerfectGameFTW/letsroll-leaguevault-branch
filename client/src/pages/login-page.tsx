@@ -86,9 +86,9 @@ const LoginPage: FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
+    <div className="min-h-screen bg-background flex items-start sm:items-center justify-center p-4 pt-6 sm:pt-4">
+      <Card className="w-full max-w-md mt-4 sm:mt-0">
+        <CardHeader className="space-y-1 pb-4 sm:pb-6">
           <CardTitle className="text-2xl font-bold text-center">
             Welcome Back
           </CardTitle>
@@ -96,14 +96,14 @@ const LoginPage: FC = () => {
             Sign in to your bowling league account
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pb-4 sm:pb-6">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3 sm:space-y-4">
               <FormField
                 control={form.control}
                 name="email"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="space-y-1 sm:space-y-2">
                     <FormLabel>Email Address</FormLabel>
                     <FormControl>
                       <Input
@@ -120,7 +120,7 @@ const LoginPage: FC = () => {
                 control={form.control}
                 name="password"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="space-y-1 sm:space-y-2">
                     <FormLabel>Password</FormLabel>
                     <FormControl>
                       <Input
@@ -133,13 +133,13 @@ const LoginPage: FC = () => {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full">
+              <Button type="submit" className="w-full mt-2">
                 Sign In
               </Button>
             </form>
           </Form>
         </CardContent>
-        <CardFooter className="flex justify-center">
+        <CardFooter className="flex justify-center pt-0">
           <p className="text-sm text-muted-foreground">
             Don't have an account?{" "}
             <Link href="/sign-up" className="text-primary hover:underline">
