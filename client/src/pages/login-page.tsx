@@ -50,7 +50,7 @@ const LoginPage: FC = () => {
     try {
       console.log("[Login] Attempting login with email:", data.email);
       
-      const response = await fetch("/api/login", {
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

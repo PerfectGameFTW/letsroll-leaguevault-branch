@@ -1,4 +1,4 @@
-import { Switch, Route } from "wouter";
+import { Switch, Route, Redirect } from "wouter";
 import { queryClient, prefetchQueries } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -24,9 +24,57 @@ import LoginPage from "@/pages/login-page";
 import BowlerDashboardPage from "@/pages/bowler-dashboard-page";
 import AdminPage from "@/pages/admin-page";
 import OrganizationsPage from "@/pages/organizations-page";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, FC } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
+import { AdminRouteGuard } from "@/components/admin-route-guard";
+import { OrganizationRouteGuard } from "@/components/organization-route-guard";
+import { OrganizationAdminRouteGuard } from "@/components/organization-admin-route-guard";
+import { AuthRouteGuard } from "@/components/auth-route-guard";
+import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+import type { ApiResponse } from "@shared/schema";
+
+// Root redirect handler component
+const RootRedirectHandler: FC = () => {
+  const [, navigate] = useLocation();
+  
+  // Fetch current user to check authentication status
+  const { data: currentUserResponse, isLoading, error } = useQuery<ApiResponse<any>>({
+    queryKey: ['/api/user'],
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  useEffect(() => {
+    if (!isLoading) {
+      if (error || !currentUserResponse?.data) {
+        // If not authenticated, redirect to login
+        console.log("[Router] User not authenticated, redirecting to login");
+        navigate('/login');
+      } else if (currentUserResponse?.data?.organizationId) {
+        // If authenticated and has organization, go to home
+        console.log("[Router] User authenticated with organization, redirecting to home");
+        navigate('/leagues');
+      } else {
+        // If authenticated but no organization, go to bowler dashboard
+        console.log("[Router] User authenticated without organization, redirecting to bowler dashboard");
+        navigate('/bowler-dashboard');
+      }
+    }
+  }, [isLoading, error, currentUserResponse, navigate]);
+
+  // Show loading state while checking authentication
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return null;
+};
 
 function Router() {
   useEffect(() => {
@@ -36,30 +84,133 @@ function Router() {
 
   return (
     <Switch>
-      {/* Authentication routes */}
+      {/* Public routes */}
       <Route path="/sign-up" component={SignUpPage} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/not-found" component={NotFound} />
 
-      {/* Protected routes */}
-      <Route path="/bowler-dashboard" component={BowlerDashboardPage} />
-      <Route path="/bowlers/:bowlerId/payment-setup" component={BowlerPaymentSetupPage} />
-      <Route path="/" component={HomePage} />
-      <Route path="/leagues" component={LeaguesPage} />
-      <Route path="/leagues/:leagueId" component={LeagueViewPage} />
-      <Route path="/leagues/:leagueId/teams" component={TeamsPage} />
-      <Route path="/leagues/:leagueId/scores" component={LeagueScoresPage} />
-      <Route path="/leagues/:leagueId/weekly-payments" component={WeeklyPaymentsPage} />
-      <Route path="/teams/:teamId" component={TeamViewPage} />
-      <Route path="/bowlers" component={BowlersPage} />
-      <Route path="/bowlers/:bowlerId" component={BowlerViewPage} />
-      <Route path="/bowlers/:bowlerId/scores" component={BowlerScoresPage} />
-      <Route path="/payment-history" component={PaymentHistoryPage} />
-      <Route path="/payments" component={PaymentsPage} />
-      <Route path="/reports" component={ReportsPage} />
-      <Route path="/reports/leagues/:leagueId/past-due" component={LeaguePastDuePage} />
-      <Route path="/reports/past-due" component={PastDuePage} />
-      <Route path="/admin" component={AdminPage} />
-      <Route path="/organizations" component={OrganizationsPage} />
+      {/* Root route with redirect handler */}
+      <Route path="/" component={RootRedirectHandler} />
+
+      {/* User-specific routes (requires authentication) */}
+      <Route path="/bowler-dashboard">
+        <AuthRouteGuard>
+          <BowlerDashboardPage />
+        </AuthRouteGuard>
+      </Route>
+      
+      <Route path="/bowlers/:bowlerId/payment-setup">
+        <AuthRouteGuard>
+          <BowlerPaymentSetupPage />
+        </AuthRouteGuard>
+      </Route>
+      
+      <Route path="/payment-history">
+        <AuthRouteGuard>
+          <PaymentHistoryPage />
+        </AuthRouteGuard>
+      </Route>
+
+      {/* Organization-specific routes */}
+      <Route path="/home">
+        <OrganizationRouteGuard>
+          <HomePage />
+        </OrganizationRouteGuard>
+      </Route>
+      
+      <Route path="/leagues">
+        <OrganizationRouteGuard>
+          <LeaguesPage />
+        </OrganizationRouteGuard>
+      </Route>
+      
+      <Route path="/leagues/:leagueId">
+        <OrganizationRouteGuard>
+          <LeagueViewPage />
+        </OrganizationRouteGuard>
+      </Route>
+      
+      <Route path="/leagues/:leagueId/teams">
+        <OrganizationRouteGuard>
+          <TeamsPage />
+        </OrganizationRouteGuard>
+      </Route>
+      
+      <Route path="/leagues/:leagueId/scores">
+        <OrganizationRouteGuard>
+          <LeagueScoresPage />
+        </OrganizationRouteGuard>
+      </Route>
+      
+      <Route path="/teams/:teamId">
+        <OrganizationRouteGuard>
+          <TeamViewPage />
+        </OrganizationRouteGuard>
+      </Route>
+      
+      <Route path="/bowlers">
+        <OrganizationRouteGuard>
+          <BowlersPage />
+        </OrganizationRouteGuard>
+      </Route>
+      
+      <Route path="/bowlers/:bowlerId">
+        <OrganizationRouteGuard>
+          <BowlerViewPage />
+        </OrganizationRouteGuard>
+      </Route>
+      
+      <Route path="/bowlers/:bowlerId/scores">
+        <OrganizationRouteGuard>
+          <BowlerScoresPage />
+        </OrganizationRouteGuard>
+      </Route>
+
+      {/* Organization Admin routes */}
+      <Route path="/leagues/:leagueId/weekly-payments">
+        <OrganizationAdminRouteGuard>
+          <WeeklyPaymentsPage />
+        </OrganizationAdminRouteGuard>
+      </Route>
+      
+      <Route path="/payments">
+        <OrganizationAdminRouteGuard>
+          <PaymentsPage />
+        </OrganizationAdminRouteGuard>
+      </Route>
+      
+      <Route path="/reports">
+        <OrganizationAdminRouteGuard>
+          <ReportsPage />
+        </OrganizationAdminRouteGuard>
+      </Route>
+      
+      <Route path="/reports/leagues/:leagueId/past-due">
+        <OrganizationAdminRouteGuard>
+          <LeaguePastDuePage />
+        </OrganizationAdminRouteGuard>
+      </Route>
+      
+      <Route path="/reports/past-due">
+        <OrganizationAdminRouteGuard>
+          <PastDuePage />
+        </OrganizationAdminRouteGuard>
+      </Route>
+
+      {/* System Admin routes */}
+      <Route path="/admin">
+        <AdminRouteGuard>
+          <AdminPage />
+        </AdminRouteGuard>
+      </Route>
+      
+      <Route path="/organizations">
+        <AdminRouteGuard>
+          <OrganizationsPage />
+        </AdminRouteGuard>
+      </Route>
+      
+      {/* Fallback route */}
       <Route component={NotFound} />
     </Switch>
   );
