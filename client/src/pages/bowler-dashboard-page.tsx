@@ -135,14 +135,24 @@ export const BowlerDashboardPage: FC = () => {
     getBowlerLeagueId,
     getWeeklyFee,
   } = useBowlers({
-    isEnabled: !!currentUser?.bowlerId,
+    isEnabled: !!currentUser?.bowlerId || (currentUser?.isAdmin && currentUser?.isOrganizationAdmin),
   });
 
   // Memoize derived values
-  const bowler = useMemo(() =>
-    currentUser?.bowlerId ? bowlers.find((b: Bowler) => b.id === currentUser.bowlerId) : null,
-    [currentUser?.bowlerId, bowlers]
-  );
+  const bowler = useMemo(() => {
+    // If user is system admin (both isAdmin and isOrganizationAdmin are true), show Dudo Kroppa's information
+    if (currentUser?.isAdmin && currentUser?.isOrganizationAdmin) {
+      // Check if we already have the bowler with ID 31 (Dudo Kroppa) in the bowlers array
+      const specificBowler = bowlers.find((b: Bowler) => b.id === 31);
+      if (specificBowler) {
+        console.log('[BowlerDashboard] System admin viewing specific bowler:', specificBowler);
+        return specificBowler;
+      }
+    }
+    
+    // For regular users, show their own bowler information
+    return currentUser?.bowlerId ? bowlers.find((b: Bowler) => b.id === currentUser.bowlerId) : null;
+  }, [currentUser?.bowlerId, currentUser?.isAdmin, currentUser?.isOrganizationAdmin, bowlers]);
 
   const leagueId = useMemo(() =>
     bowler ? getBowlerLeagueId(bowler) : null,
@@ -702,15 +712,35 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
+  // Check if user is a system admin
+  const isSystemAdmin = currentUser?.isAdmin && currentUser?.isOrganizationAdmin;
+
   return (
     <BowlerLayout
       bowlerName={bowler.name}
       leagueName={getBowlerFirstLeagueName(bowler)}
     >
+      {/* Admin navigation link - only visible to system administrators */}
+      {isSystemAdmin && (
+        <div className="mb-6">
+          <Link href="/">
+            <Button variant="outline" className="flex items-center gap-2">
+              <ArrowRight className="h-4 w-4 rotate-180" />
+              Back to Dashboard
+            </Button>
+          </Link>
+        </div>
+      )}
+      
       <div className="space-y-6">
         <Card>
           <CardHeader className="pb-4">
             <CardTitle className="text-3xl font-bold">{bowler.name}</CardTitle>
+            {isSystemAdmin && (
+              <p className="text-sm text-muted-foreground mt-1">
+                You are viewing this account as a System Administrator
+              </p>
+            )}
           </CardHeader>
           <CardContent>
             <div className="space-y-0.5">

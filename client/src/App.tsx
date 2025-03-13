@@ -31,6 +31,7 @@ import { AdminRouteGuard } from "@/components/admin-route-guard";
 import { OrganizationRouteGuard } from "@/components/organization-route-guard";
 import { OrganizationAdminRouteGuard } from "@/components/organization-admin-route-guard";
 import { AuthRouteGuard } from "@/components/auth-route-guard";
+import { SystemAdminRouteGuard } from "@/components/system-admin-route-guard";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
@@ -64,9 +65,16 @@ const RootRedirectHandler: FC = () => {
           navigate('/leagues');
         }
       } else {
-        // If authenticated but no organization, go to bowler dashboard
-        console.log("[Router] User authenticated without organization, redirecting to bowler dashboard");
-        navigate('/bowler-dashboard');
+        // For non-organization users, only system admins can access bowler dashboard
+        if (currentUserResponse?.data?.isAdmin && currentUserResponse?.data?.isOrganizationAdmin) {
+          // System admin (both flags set to true) goes to bowler dashboard
+          console.log("[Router] System admin without organization, redirecting to bowler dashboard");
+          navigate('/bowler-dashboard');
+        } else {
+          // Other users without organization go to leagues or home
+          console.log("[Router] Non-system admin without organization, redirecting to leagues");
+          navigate('/leagues');
+        }
       }
     }
   }, [isLoading, error, currentUserResponse, navigate]);
@@ -99,11 +107,11 @@ function Router() {
       {/* Root route with redirect handler */}
       <Route path="/" component={RootRedirectHandler} />
 
-      {/* User-specific routes (requires authentication) */}
+      {/* System Admin specific routes */}
       <Route path="/bowler-dashboard">
-        <AuthRouteGuard>
+        <SystemAdminRouteGuard>
           <BowlerDashboardPage />
-        </AuthRouteGuard>
+        </SystemAdminRouteGuard>
       </Route>
       
       <Route path="/bowlers/:bowlerId/payment-setup">

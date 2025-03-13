@@ -16,6 +16,7 @@ import organizationsRouter from './organizations.js'; // Add Organizations route
 import orgAdminRouter from './organization-admin.js'; // Add Organization Admin router import
 import userBowlersRouter from './user-bowlers.js';    // Add User-Bowlers router import
 import setupAdminRouter from './setup-admin.js';      // Add Setup Admin router import
+import systemAdminRouter from './system-admin.js';    // Add System Admin router import
 import { setupAuth } from '../auth.js';  // Import the authentication setup function
 import { testConnection } from '../db.js';
 import { sendSuccess, sendError } from '../utils/api.js';
@@ -76,6 +77,7 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/org-admin', orgAdminRouter); // Register Organization Admin routes
   app.use('/api/user-bowlers', userBowlersRouter); // Register User-Bowlers routes
   app.use('/api/setup', setupAdminRouter); // Register Setup Admin routes
+  app.use('/api/system-admin', systemAdminRouter); // Register System Admin routes
 
   console.log('[Routes] API routes registered');
   return server;

@@ -151,6 +151,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isAdmin = currentUserResponse?.data?.isAdmin || false;
   const isOrganizationAdmin = currentUserResponse?.data?.isOrganizationAdmin || false;
   const hasOrganization = !!currentUserResponse?.data?.organizationId;
+  // System admin is someone who has both admin and organization admin privileges
+  const isSystemAdmin = isAdmin && isOrganizationAdmin;
 
   const toggleSidebar = useCallback(() => {
     setIsCollapsed((prev: boolean) => !prev);
@@ -213,8 +215,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <nav className="mt-8 flex-1 space-y-1 px-2">
                   <div className="space-y-2">
                     {navItems.map((item) => {
-                      // Skip Bowler Dashboard menu item for users with organization
-                      if (item.href === '/bowler-dashboard' && hasOrganization) {
+                      // Show Bowler Dashboard only for system admins
+                      if (item.href === '/bowler-dashboard' && !isSystemAdmin) {
                         return null;
                       }
                       
