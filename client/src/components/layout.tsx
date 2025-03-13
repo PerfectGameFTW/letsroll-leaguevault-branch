@@ -13,6 +13,7 @@ import {
   NavigationMenuList,
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
+import { UserProfileMenu } from "@/components/user-profile-menu";
 
 // Safe localStorage access function with memoization
 const getStoredValue = (key: string, defaultValue: any) => {
@@ -141,13 +142,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
     getStoredValue("sidebarCollapsed", false)
   );
 
-  // Fetch current user to check for admin status
+  // Fetch current user to check for admin status and organization
   const { data: currentUserResponse } = useQuery<ApiResponse<any>>({
     queryKey: ["/api/user"],
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
   const isAdmin = currentUserResponse?.data?.isAdmin || false;
+  const isOrganizationAdmin = currentUserResponse?.data?.isOrganizationAdmin || false;
+  const hasOrganization = !!currentUserResponse?.data?.organizationId;
 
   const toggleSidebar = useCallback(() => {
     setIsCollapsed((prev: boolean) => !prev);
@@ -210,6 +213,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <nav className="mt-8 flex-1 space-y-1 px-2">
                   <div className="space-y-2">
                     {navItems.map((item) => {
+                      // Skip Bowler Dashboard menu item for users with organization
+                      if (item.href === '/bowler-dashboard' && hasOrganization) {
+                        return null;
+                      }
+                      
                       const isActive = location === item.href;
                       if (item.hasDropdown && !isCollapsed) {
                         return (
@@ -309,7 +317,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className={cn("transition-all duration-300", mainContentPadding)}>
-        <main className="py-6 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
+        <header className="py-4 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto flex justify-end items-center">
+          {currentUserResponse?.data && (
+            <UserProfileMenu
+              user={currentUserResponse.data}
+            />
+          )}
+        </header>
+        <main className="py-2 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <ErrorBoundary
             FallbackComponent={ErrorFallback}
             onReset={() => {

@@ -53,9 +53,16 @@ const RootRedirectHandler: FC = () => {
         console.log("[Router] User not authenticated, redirecting to login");
         navigate('/login');
       } else if (currentUserResponse?.data?.organizationId) {
-        // If authenticated and has organization, go to home
-        console.log("[Router] User authenticated with organization, redirecting to home");
-        navigate('/leagues');
+        // Check if user is an organization admin
+        if (currentUserResponse?.data?.isOrganizationAdmin || currentUserResponse?.data?.isAdmin) {
+          // If user is an org admin or system admin, go to home
+          console.log("[Router] User is organization admin, redirecting to home");
+          navigate('/home');
+        } else {
+          // Regular organization user goes to leagues
+          console.log("[Router] User authenticated with organization, redirecting to leagues");
+          navigate('/leagues');
+        }
       } else {
         // If authenticated but no organization, go to bowler dashboard
         console.log("[Router] User authenticated without organization, redirecting to bowler dashboard");

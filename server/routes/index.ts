@@ -51,6 +51,14 @@ export function registerRoutes(app: Express): Server {
     req.url = '/api/auth/user';
     app._router.handle(req, res);
   });
+  
+  // Add compatibility route for /api/logout that forwards to /api/auth/logout
+  app.post('/api/logout', (req, res) => {
+    console.log('[Routes] Forwarding /api/logout request to /api/auth/logout');
+    // Forward the request to the auth/logout endpoint handler
+    req.url = '/api/auth/logout';
+    app._router.handle(req, res);
+  });
 
   // Register all API routes
   app.use('/api/leagues', leaguesRouter);
