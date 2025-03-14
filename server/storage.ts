@@ -330,6 +330,19 @@ export class DatabaseStorage implements IStorage {
       if (leagueId !== undefined) {
         conditions.push(eq(payments.leagueId, leagueId));
       }
+      if (teamId !== undefined) {
+        // If teamId is provided, we need to lookup bowlers via bowler_leagues who are on this team
+        const bowlerLeaguesSubquery = db
+          .select({ bowler_id: bowlerLeagues.bowlerId })
+          .from(bowlerLeagues)
+          .where(and(
+            eq(bowlerLeagues.teamId, teamId),
+            leagueId !== undefined ? eq(bowlerLeagues.leagueId, leagueId) : undefined
+          ))
+          .as('bl');
+
+        conditions.push(sql`${payments.bowlerId} IN (SELECT "bowler_id" FROM ${bowlerLeaguesSubquery})`);
+      }
       if (weekOf !== undefined) {
         const startDate = new Date(weekOf);
         startDate.setHours(0, 0, 0, 0);
