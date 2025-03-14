@@ -18,6 +18,7 @@ import userBowlersRouter from './user-bowlers.js';    // Add User-Bowlers router
 import setupAdminRouter from './setup-admin.js';      // Add Setup Admin router import
 import systemAdminRouter from './system-admin.js';    // Add System Admin router import
 import userAvatarRouter from './user-avatar.js';      // Add User Avatar router import
+import userUpdateRouter from './user-update.js';    // Add User Update router import
 import { setupAuth } from '../auth.js';  // Import the authentication setup function
 import { testConnection } from '../db.js';
 import { sendSuccess, sendError } from '../utils/api.js';
@@ -80,6 +81,7 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/setup', setupAdminRouter); // Register Setup Admin routes
   app.use('/api/system-admin', systemAdminRouter); // Register System Admin routes
   app.use('/api/user', userAvatarRouter); // Register User Avatar routes for profile management
+  app.use('/api/user-update', userUpdateRouter); // Register User Update routes
 
   console.log('[Routes] API routes registered');
   return server;

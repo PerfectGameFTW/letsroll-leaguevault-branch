@@ -8,6 +8,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Layout } from '@/components/layout';
 import { AdminRouteGuard } from '@/components/admin-route-guard';
 import { OrganizationUsersOnly } from '@/components/organization-users-only';
+import { UserEditDialog } from '@/components/user-edit-dialog';
 import { 
   AlertCircle, 
   Building, 
@@ -183,34 +184,38 @@ function UserManagement() {
                 <th className="pb-2">Name</th>
                 <th className="pb-2">Email</th>
                 <th className="pb-2">Bowler ID</th>
-                <th className="pb-2">Admin Status</th>
               </tr>
             </thead>
             <tbody>
               {usersResponse.data.map((user) => (
                 <tr key={user.id} className="border-t">
                   <td className="py-2">{user.id}</td>
-                  <td className="py-2">{user.name || 'N/A'}</td>
+                  <td className="py-2">
+                    <UserEditDialog 
+                      user={user} 
+                      onUpdate={(updatedUser) => {
+                        // Update the user data in the list
+                        const allUsers = queryClient.getQueryData<{success: boolean, data: User[]}>(['/api/admin/users']);
+                        if (allUsers) {
+                          const updatedUsers = allUsers.data.map((u: User) => 
+                            u.id === updatedUser.id ? updatedUser : u
+                          );
+                          queryClient.setQueryData(['/api/admin/users'], {
+                            success: true,
+                            data: updatedUsers
+                          });
+                        }
+                      }}
+                      currentUserIsAdmin={!!currentUser?.isAdmin}
+                    />
+                  </td>
                   <td className="py-2">{user.email}</td>
                   <td className="py-2">{user.bowlerId || 'N/A'}</td>
-                  <td className="py-2">
-                    <div className="flex items-center space-x-2">
-                      <Switch 
-                        id={`admin-status-${user.id}`}
-                        checked={adminStatuses[user.id] || false}
-                        onCheckedChange={(checked) => handleToggleChange(user.id, checked)}
-                        disabled={updateAdminStatus.isPending}
-                      />
-                      <span className="text-sm">
-                        {adminStatuses[user.id] ? 'Admin' : 'User'}
-                      </span>
-                    </div>
-                  </td>
                 </tr>
               ))}
               {usersResponse.data.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-3 text-center text-muted-foreground">
+                  <td colSpan={4} className="py-3 text-center text-muted-foreground">
                     No users found
                   </td>
                 </tr>
@@ -416,53 +421,15 @@ function OrganizationUserManagement() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
+          <div className="flex justify-between items-center">
+            <CardTitle className="flex items-center gap-2">
               <Users className="h-5 w-5" />
               <span>Users</span>
-            </div>
-            {/* Only show organization dropdown for system admins without an organization */}
-            {currentUser?.isAdmin && !currentUser?.organizationId && (
-              <Select
-                value={selectedOrganization?.toString() || ""}
-                onValueChange={(value) => setSelectedOrganization(parseInt(value, 10))}
-              >
-                <SelectTrigger className="w-[250px]">
-                  <SelectValue placeholder="Select an organization" />
-                </SelectTrigger>
-                <SelectContent>
-                  {orgsResponse?.data && orgsResponse.data.length > 0 ? (
-                    orgsResponse.data.map((org) => (
-                      <SelectItem key={org.id} value={org.id.toString()}>
-                        {org.name}
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="none" disabled>
-                      No organizations available
-                    </SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            )}
-
-          </CardTitle>
-
-        </CardHeader>
-        <CardContent>
-          {!selectedOrganization ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {currentUser?.isAdmin && !currentUser?.organizationId 
-                ? "Please select an organization to manage its users" 
-                : "Loading organization data..."}
-            </div>
-          ) : orgUsersLoading ? (
-            <LoadingState />
-          ) : orgUsersError ? (
-            <ErrorState error={orgUsersError as Error} />
-          ) : (
-            <div className="space-y-4">
-              <div className="flex justify-start mb-4 pt-2">
+            </CardTitle>
+            
+            <div className="flex items-center gap-4">
+              {/* Add User Button - Moved to header */}
+              {selectedOrganization && (
                 <Dialog open={addUserDialogOpen} onOpenChange={setAddUserDialogOpen}>
                   <DialogTrigger asChild>
                     <Button variant="outline" size="sm">
@@ -519,35 +486,85 @@ function OrganizationUserManagement() {
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
-              </div>
+              )}
+              
+              {/* Only show organization dropdown for system admins without an organization */}
+              {currentUser?.isAdmin && !currentUser?.organizationId && (
+                <Select
+                  value={selectedOrganization?.toString() || ""}
+                  onValueChange={(value) => setSelectedOrganization(parseInt(value, 10))}
+                >
+                  <SelectTrigger className="w-[250px]">
+                    <SelectValue placeholder="Select an organization" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {orgsResponse?.data && orgsResponse.data.length > 0 ? (
+                      orgsResponse.data.map((org) => (
+                        <SelectItem key={org.id} value={org.id.toString()}>
+                          {org.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="none" disabled>
+                        No organizations available
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+          </div>
+
+        </CardHeader>
+        <CardContent>
+          {!selectedOrganization ? (
+            <div className="text-center py-10 text-muted-foreground">
+              {currentUser?.isAdmin && !currentUser?.organizationId 
+                ? "Please select an organization to manage its users" 
+                : "Loading organization data..."}
+            </div>
+          ) : orgUsersLoading ? (
+            <div className="pt-6">
+              <LoadingState />
+            </div>
+          ) : orgUsersError ? (
+            <div className="pt-6">
+              <ErrorState error={orgUsersError as Error} />
+            </div>
+          ) : (
+            <div className="space-y-4 pt-6">
               
               <table className="w-full">
                 <thead>
                   <tr className="text-left">
                     <th className="pb-2">Name</th>
                     <th className="pb-2">Email</th>
-                    <th className="pb-2">Admin Status</th>
                     <th className="pb-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {orgUsersResponse?.data?.map((user) => (
                     <tr key={user.id} className="border-t">
-                      <td className="py-2">{user.name || 'N/A'}</td>
-                      <td className="py-2">{user.email}</td>
                       <td className="py-2">
-                        <div className="flex items-center space-x-2">
-                          <Switch 
-                            id={`org-admin-status-${user.id}`}
-                            checked={orgAdminStatuses[user.id] || false}
-                            onCheckedChange={(checked) => handleOrgAdminToggle(user.id, checked)}
-                            disabled={updateOrgAdminStatus.isPending}
-                          />
-                          <span className="text-sm">
-                            {orgAdminStatuses[user.id] ? 'Admin' : 'Member'}
-                          </span>
-                        </div>
+                        <UserEditDialog 
+                          user={user} 
+                          onUpdate={(updatedUser) => {
+                            // Update the user data in the list
+                            const allUsers = queryClient.getQueryData<{success: boolean, data: User[]}>(['/api/admin/users']);
+                            if (allUsers) {
+                              const updatedUsers = allUsers.data.map((u: User) => 
+                                u.id === updatedUser.id ? updatedUser : u
+                              );
+                              queryClient.setQueryData(['/api/admin/users'], {
+                                success: true,
+                                data: updatedUsers
+                              });
+                            }
+                          }}
+                          currentUserIsAdmin={!!currentUser?.isAdmin}
+                        />
                       </td>
+                      <td className="py-2">{user.email}</td>
                       <td className="py-2">
                         <Button
                           variant="ghost"
@@ -562,7 +579,7 @@ function OrganizationUserManagement() {
                   ))}
                   {!orgUsersResponse?.data?.length && (
                     <tr>
-                      <td colSpan={4} className="py-3 text-center text-muted-foreground">
+                      <td colSpan={3} className="py-6 text-center text-muted-foreground">
                         No users found in this organization
                       </td>
                     </tr>
@@ -591,7 +608,7 @@ export default function AdminPage() {
       <AdminRouteGuard>
         <div className="container py-6">
           <div className="mb-6">
-            <h1 className="text-4xl font-bold">User Management</h1>
+            <h1 className="text-4xl font-bold">Admin</h1>
           </div>
           
           {/* Show only organization users management */}

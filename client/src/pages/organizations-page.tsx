@@ -11,6 +11,7 @@ import { Plus, Edit, Trash, Upload, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import type { Organization, InsertOrganization } from '@shared/schema.js';
+import { Layout } from "@/components/layout";
 
 export default function OrganizationsPage() {
   const [open, setOpen] = useState(false);
@@ -74,7 +75,7 @@ export default function OrganizationsPage() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, org }: { id: number; org: Partial<InsertOrganization> }) => {
-      return apiRequest('PATCH', `/api/organizations/${id}`, org);
+      return apiRequest(`/api/organizations/${id}`, 'PATCH', org);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
@@ -96,7 +97,7 @@ export default function OrganizationsPage() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      return apiRequest('DELETE', `/api/organizations/${id}`);
+      return apiRequest(`/api/organizations/${id}`, 'DELETE');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
@@ -231,10 +232,12 @@ export default function OrganizationsPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto py-10">
-        <h1 className="text-3xl font-bold mb-6">Organizations</h1>
-        <p>Loading organizations...</p>
-      </div>
+      <Layout>
+        <div className="container mx-auto py-10">
+          <h1 className="text-3xl font-bold mb-6">Organizations</h1>
+          <p>Loading organizations...</p>
+        </div>
+      </Layout>
     );
   }
 
@@ -246,373 +249,377 @@ export default function OrganizationsPage() {
                         errorMessage.includes('unauthorized');
     
     return (
-      <div className="container mx-auto py-10">
-        <h1 className="text-3xl font-bold mb-6">Organizations</h1>
-        <div className="bg-destructive/10 border border-destructive p-4 rounded-md mb-6">
-          <h3 className="text-lg font-semibold text-destructive mb-2">
-            {isAuthError ? 'Authentication Required' : 'Error Loading Organizations'}
-          </h3>
-          <p className="text-muted-foreground">
-            {isAuthError 
-              ? 'You must be logged in to view organizations. Please log in and try again.'
-              : `Failed to load organizations: ${errorMessage}`
-            }
-          </p>
-          {isAuthError && (
-            <div className="mt-4">
-              <Button variant="default" onClick={() => window.location.href = '/login'}>
-                Log In
-              </Button>
-            </div>
-          )}
+      <Layout>
+        <div className="container mx-auto py-10">
+          <h1 className="text-3xl font-bold mb-6">Organizations</h1>
+          <div className="bg-destructive/10 border border-destructive p-4 rounded-md mb-6">
+            <h3 className="text-lg font-semibold text-destructive mb-2">
+              {isAuthError ? 'Authentication Required' : 'Error Loading Organizations'}
+            </h3>
+            <p className="text-muted-foreground">
+              {isAuthError 
+                ? 'You must be logged in to view organizations. Please log in and try again.'
+                : `Failed to load organizations: ${errorMessage}`
+              }
+            </p>
+            {isAuthError && (
+              <div className="mt-4">
+                <Button variant="default" onClick={() => window.location.href = '/login'}>
+                  Log In
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </Layout>
     );
   }
 
   const organizations = data?.data || [];
 
   return (
-    <div className="container mx-auto py-10">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Organizations</h1>
-        <Button onClick={() => { resetForm(); setOpen(true); }}>
-          <Plus className="mr-2 h-4 w-4" /> Add Organization
-        </Button>
-      </div>
+    <Layout>
+      <div className="container mx-auto py-10">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-3xl font-bold">Organizations</h1>
+          <Button onClick={() => { resetForm(); setOpen(true); }}>
+            <Plus className="mr-2 h-4 w-4" /> Add Organization
+          </Button>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Organizations</CardTitle>
-          <CardDescription>Manage all organizations in the system</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Slug</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {organizations.length === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Organizations</CardTitle>
+            <CardDescription>Manage all organizations in the system</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center">
-                    No organizations found
-                  </TableCell>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Slug</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Phone</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ) : (
-                organizations.map((org: Organization) => (
-                  <TableRow key={org.id}>
-                    <TableCell className="font-medium">{org.name}</TableCell>
-                    <TableCell>{org.slug}</TableCell>
-                    <TableCell>{org.email || '—'}</TableCell>
-                    <TableCell>{org.phone || '—'}</TableCell>
-                    <TableCell>
-                      <div className="flex space-x-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEditClick(org)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button 
-                          variant="destructive" 
-                          size="sm"
-                          onClick={() => setDeleteConfirmId(org.id)}
-                        >
-                          <Trash className="h-4 w-4" />
-                        </Button>
-                      </div>
+              </TableHeader>
+              <TableBody>
+                {organizations.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center">
+                      No organizations found
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                ) : (
+                  organizations.map((org: Organization) => (
+                    <TableRow key={org.id}>
+                      <TableCell className="font-medium">{org.name}</TableCell>
+                      <TableCell>{org.slug}</TableCell>
+                      <TableCell>{org.email || '—'}</TableCell>
+                      <TableCell>{org.phone || '—'}</TableCell>
+                      <TableCell>
+                        <div className="flex space-x-2">
+                          <Button variant="outline" size="sm" onClick={() => handleEditClick(org)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="destructive" 
+                            size="sm"
+                            onClick={() => setDeleteConfirmId(org.id)}
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
 
-      {/* Create/Edit Organization Dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editId ? 'Edit Organization' : 'Create Organization'}
-            </DialogTitle>
-            <DialogDescription>
-              {editId 
-                ? 'Update the organization details below.' 
-                : 'Add a new organization to the system with an administrator account.'}
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleFormSubmit}>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="name" className="text-right">
-                  Name
-                </Label>
-                <Input
-                  id="name"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  onBlur={generateSlug}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="slug" className="text-right">
-                  Slug
-                </Label>
-                <Input
-                  id="slug"
-                  required
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  className="col-span-3"
-                  placeholder="org-name"
-                />
-              </div>
-              
-              {!editId && (
-                <>
-                  <div className="mt-4 mb-2">
-                    <h3 className="text-lg font-medium">Administrator Account</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Create an administrator account for this organization
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="adminName" className="text-right">
-                      Admin Name
-                    </Label>
-                    <Input
-                      id="adminName"
-                      value={adminName}
-                      onChange={(e) => setAdminName(e.target.value)}
-                      className="col-span-3"
-                      required={!editId}
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="adminEmail" className="text-right">
-                      Admin Email
-                    </Label>
-                    <Input
-                      id="adminEmail"
-                      type="email"
-                      value={adminEmail}
-                      onChange={(e) => setAdminEmail(e.target.value)}
-                      className="col-span-3"
-                      required={!editId}
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="adminPassword" className="text-right">
-                      Admin Password
-                    </Label>
-                    <Input
-                      id="adminPassword"
-                      type="password"
-                      value={adminPassword}
-                      onChange={(e) => setAdminPassword(e.target.value)}
-                      className="col-span-3"
-                      required={!editId}
-                    />
-                  </div>
-                  <div className="grid grid-cols-4 items-center gap-4">
-                    <Label htmlFor="adminPhone" className="text-right">
-                      Admin Phone
-                    </Label>
-                    <Input
-                      id="adminPhone"
-                      value={adminPhone}
-                      onChange={(e) => setAdminPhone(e.target.value)}
-                      className="col-span-3"
-                    />
-                  </div>
-                </>
-              )}
-              
-              <div className="mt-4 mb-2">
-                <h3 className="text-lg font-medium">Organization Details</h3>
-                <p className="text-sm text-muted-foreground">
-                  Additional organization information
-                </p>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="email" className="text-right">
-                  Email
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="phone" className="text-right">
-                  Phone
-                </Label>
-                <Input
-                  id="phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="address" className="text-right">
-                  Address
-                </Label>
-                <Input
-                  id="address"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="city" className="text-right">
-                  City
-                </Label>
-                <Input
-                  id="city"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="state" className="text-right">
-                  State
-                </Label>
-                <Input
-                  id="state"
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="zipCode" className="text-right">
-                  ZIP Code
-                </Label>
-                <Input
-                  id="zipCode"
-                  value={zipCode}
-                  onChange={(e) => setZipCode(e.target.value)}
-                  className="col-span-3"
-                />
-              </div>
-              
-              <div className="grid grid-cols-4 items-start gap-4 mt-4">
-                <Label htmlFor="logo" className="text-right pt-2">
-                  Logo
-                </Label>
-                <div className="col-span-3 space-y-2">
-                  {logoPreview ? (
-                    <div className="relative w-40 h-40 rounded-md overflow-hidden border">
-                      <img 
-                        src={logoPreview} 
-                        alt="Organization logo" 
-                        className="w-full h-full object-contain"
-                      />
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        className="absolute top-1 right-1 h-6 w-6 rounded-full"
-                        onClick={() => {
-                          setLogo(null);
-                          setLogoPreview(null);
-                          if (fileInputRef.current) {
-                            fileInputRef.current.value = '';
-                          }
-                        }}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="w-full">
-                      <div className="flex items-center gap-2">
-                        <Input
-                          ref={fileInputRef}
-                          type="file"
-                          id="logo"
-                          accept="image/*"
-                          className="flex-1"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (!file) return;
-                            
-                            // Check file size (max 2MB)
-                            if (file.size > 2 * 1024 * 1024) {
-                              toast({
-                                title: "File too large",
-                                description: "The logo file must be less than 2MB.",
-                                variant: "destructive",
-                              });
-                              return;
-                            }
-                            
-                            // Read file as base64
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              const base64 = event.target?.result as string;
-                              setLogo(base64);
-                              setLogoPreview(base64);
-                            };
-                            reader.readAsDataURL(file);
-                          }}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Upload your organization logo (PNG, JPG, SVG - max 2MB).
+        {/* Create/Edit Organization Dialog */}
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogContent className="sm:max-w-[525px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                {editId ? 'Edit Organization' : 'Create Organization'}
+              </DialogTitle>
+              <DialogDescription>
+                {editId 
+                  ? 'Update the organization details below.' 
+                  : 'Add a new organization to the system with an administrator account.'}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleFormSubmit}>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="name" className="text-right">
+                    Name
+                  </Label>
+                  <Input
+                    id="name"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onBlur={generateSlug}
+                    className="col-span-3"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="slug" className="text-right">
+                    Slug
+                  </Label>
+                  <Input
+                    id="slug"
+                    required
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    className="col-span-3"
+                    placeholder="org-name"
+                  />
+                </div>
+                
+                {!editId && (
+                  <>
+                    <div className="mt-4 mb-2">
+                      <h3 className="text-lg font-medium">Administrator Account</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Create an administrator account for this organization
                       </p>
                     </div>
-                  )}
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="adminName" className="text-right">
+                        Admin Name
+                      </Label>
+                      <Input
+                        id="adminName"
+                        value={adminName}
+                        onChange={(e) => setAdminName(e.target.value)}
+                        className="col-span-3"
+                        required={!editId}
+                      />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="adminEmail" className="text-right">
+                        Admin Email
+                      </Label>
+                      <Input
+                        id="adminEmail"
+                        type="email"
+                        value={adminEmail}
+                        onChange={(e) => setAdminEmail(e.target.value)}
+                        className="col-span-3"
+                        required={!editId}
+                      />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="adminPassword" className="text-right">
+                        Admin Password
+                      </Label>
+                      <Input
+                        id="adminPassword"
+                        type="password"
+                        value={adminPassword}
+                        onChange={(e) => setAdminPassword(e.target.value)}
+                        className="col-span-3"
+                        required={!editId}
+                      />
+                    </div>
+                    <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="adminPhone" className="text-right">
+                        Admin Phone
+                      </Label>
+                      <Input
+                        id="adminPhone"
+                        value={adminPhone}
+                        onChange={(e) => setAdminPhone(e.target.value)}
+                        className="col-span-3"
+                      />
+                    </div>
+                  </>
+                )}
+                
+                <div className="mt-4 mb-2">
+                  <h3 className="text-lg font-medium">Organization Details</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Additional organization information
+                  </p>
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="email" className="text-right">
+                    Email
+                  </Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="col-span-3"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="phone" className="text-right">
+                    Phone
+                  </Label>
+                  <Input
+                    id="phone"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="col-span-3"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="address" className="text-right">
+                    Address
+                  </Label>
+                  <Input
+                    id="address"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="col-span-3"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="city" className="text-right">
+                    City
+                  </Label>
+                  <Input
+                    id="city"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                    className="col-span-3"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="state" className="text-right">
+                    State
+                  </Label>
+                  <Input
+                    id="state"
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                    className="col-span-3"
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="zipCode" className="text-right">
+                    ZIP Code
+                  </Label>
+                  <Input
+                    id="zipCode"
+                    value={zipCode}
+                    onChange={(e) => setZipCode(e.target.value)}
+                    className="col-span-3"
+                  />
+                </div>
+                
+                <div className="grid grid-cols-4 items-start gap-4 mt-4">
+                  <Label htmlFor="logo" className="text-right pt-2">
+                    Logo
+                  </Label>
+                  <div className="col-span-3 space-y-2">
+                    {logoPreview ? (
+                      <div className="relative w-40 h-40 rounded-md overflow-hidden border">
+                        <img 
+                          src={logoPreview} 
+                          alt="Organization logo" 
+                          className="w-full h-full object-contain"
+                        />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute top-1 right-1 h-6 w-6 rounded-full"
+                          onClick={() => {
+                            setLogo(null);
+                            setLogoPreview(null);
+                            if (fileInputRef.current) {
+                              fileInputRef.current.value = '';
+                            }
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="w-full">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            ref={fileInputRef}
+                            type="file"
+                            id="logo"
+                            accept="image/*"
+                            className="flex-1"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              
+                              // Check file size (max 2MB)
+                              if (file.size > 2 * 1024 * 1024) {
+                                toast({
+                                  title: "File too large",
+                                  description: "The logo file must be less than 2MB.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              
+                              // Read file as base64
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                const base64 = event.target?.result as string;
+                                setLogo(base64);
+                                setLogoPreview(base64);
+                              };
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Upload your organization logo (PNG, JPG, SVG - max 2MB).
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-                {editId ? 'Update' : 'Create'}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
+                  {editId ? 'Update' : 'Create'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
-        <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action will permanently delete the organization and cannot be undone.
-              This will also remove all data associated with this organization including leagues, teams, and bowlers.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)}
-              disabled={deleteMutation.isPending}
-            >
-              {deleteMutation.isPending ? 'Deleting...' : 'Delete Organization'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+          <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action will permanently delete the organization and cannot be undone.
+                This will also remove all data associated with this organization including leagues, teams, and bowlers.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? 'Deleting...' : 'Delete Organization'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </Layout>
   );
 }

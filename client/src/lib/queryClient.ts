@@ -26,11 +26,11 @@ function ensureApiPrefix(url: string): string {
   return url;
 }
 
-export async function apiRequest(
-  method: string,
+export async function apiRequest<T = any>(
   url: string,
+  method: string,
   data?: unknown | undefined,
-): Promise<Response> {
+): Promise<{success: boolean; data: T; error?: {message: string; code?: string}}> {
   try {
     const apiUrl = ensureApiPrefix(url);
     console.log(`[API] ${method} request to ${apiUrl}`, data ? { data } : '');
@@ -52,7 +52,8 @@ export async function apiRequest(
     });
 
     const validatedRes = await throwIfResNotOk(res);
-    return validatedRes;
+    const jsonData = await validatedRes.json();
+    return jsonData;
   } catch (error) {
     console.error(`[API] ${method} request failed:`, error);
     throw error;
@@ -91,7 +92,7 @@ export const queryClient = new QueryClient({
       refetchOnReconnect: false,
       staleTime: 5000, // Consider data stale after 5 seconds
       gcTime: 1000 * 60 * 5, // Keep unused data in cache for 5 minutes
-      suspense: false,
+      // suspense: false, // Removed due to compatibility with TanStack Query v5
     },
     mutations: {
       retry: false,

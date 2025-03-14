@@ -10,8 +10,11 @@ import {
 import { Link } from "wouter";
 import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema";
 import { startOfToday } from "date-fns";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 
 export function PastDueBowlersSection() {
+  const isMobile = useIsMobile();
   const { data: leaguesResponse } = useQuery<{ success: true, data: League[] }>({
     queryKey: ["/api/leagues"],
   });
@@ -95,15 +98,15 @@ export function PastDueBowlersSection() {
             <TableRow>
               <TableHead>Bowler Name</TableHead>
               <TableHead>League</TableHead>
-              <TableHead>Team</TableHead>
-              <TableHead>Weeks Past Due</TableHead>
+              <TableHead className={cn("hidden md:table-cell")}>Team</TableHead>
+              <TableHead className={cn("hidden md:table-cell")}>Weeks Past Due</TableHead>
               <TableHead>Past Due Amount</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {pastDueBowlers.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-4">
+                <TableCell colSpan={isMobile ? 3 : 5} className="text-center py-4">
                   No past due balances found
                 </TableCell>
               </TableRow>
@@ -116,8 +119,8 @@ export function PastDueBowlersSection() {
                     </Link>
                   </TableCell>
                   <TableCell>{item.league.name}</TableCell>
-                  <TableCell>{item.team.name}</TableCell>
-                  <TableCell>{item.weeksPastDue}</TableCell>
+                  <TableCell className={cn("hidden md:table-cell")}>{item.team.name}</TableCell>
+                  <TableCell className={cn("hidden md:table-cell")}>{item.weeksPastDue}</TableCell>
                   <TableCell className="text-destructive">
                     ${(item.pastDueAmount / 100).toFixed(2)}
                   </TableCell>

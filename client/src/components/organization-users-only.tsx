@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { UserEditDialog } from '@/components/user-edit-dialog';
 import {
   Dialog,
   DialogContent,
@@ -67,7 +68,7 @@ export function OrganizationUsersOnly() {
   const { toast } = useToast();
   
   // Query to fetch the current user
-  const { data: userResponse, error: userError } = useQuery({
+  const { data: userResponse, error: userError } = useQuery<{ success: boolean; data: User }>({
     queryKey: ['/api/user'],
     gcTime: 1000 * 60 * 5, // 5 minutes
     staleTime: 1000 * 60, // 1 minute
@@ -89,7 +90,7 @@ export function OrganizationUsersOnly() {
   const organizationId = currentUser?.organizationId;
   
   // Query to fetch all users for adding to organization
-  const { data: allUsersResponse, isLoading: allUsersLoading, error: allUsersError } = useQuery({
+  const { data: allUsersResponse, isLoading: allUsersLoading, error: allUsersError } = useQuery<{ success: boolean; data: User[] }>({
     queryKey: ['/api/admin/users'],
     enabled: !!currentUser?.isAdmin || !!currentUser?.isOrganizationAdmin,
     gcTime: 1000 * 60 * 5, // 5 minutes
@@ -109,7 +110,7 @@ export function OrganizationUsersOnly() {
   }, [allUsersResponse, allUsersError]);
   
   // Query to fetch organization users
-  const { data: orgUsersResponse, isLoading: orgUsersLoading, error: orgUsersError } = useQuery({
+  const { data: orgUsersResponse, isLoading: orgUsersLoading, error: orgUsersError } = useQuery<{ success: boolean; data: User[] }>({
     queryKey: ['/api/org-admin/users', organizationId],
     queryFn: async () => {
       if (!organizationId) throw new Error("Organization ID is required");
@@ -118,15 +119,8 @@ export function OrganizationUsersOnly() {
       console.log(`[API] Fetching organization users for organizationId: ${organizationId}`);
       
       try {
-        // Use the apiRequest utility which handles auth properly
-        const response = await apiRequest('GET', `/api/org-admin/users?organizationId=${organizationId}`);
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error?.message || `Failed to fetch organization users: ${response.status}`);
-        }
-        
-        const data = await response.json();
+        // Use the apiRequest utility which returns the JSON data directly
+        const data = await apiRequest<User[]>(`/api/org-admin/users?organizationId=${organizationId}`, 'GET');
         console.log('[API] Organization users response:', data);
         
         if (!data.success) {
@@ -148,7 +142,7 @@ export function OrganizationUsersOnly() {
   // Mutation to update organization admin status
   const updateOrgAdminStatus = useMutation({
     mutationFn: async ({ userId, isOrganizationAdmin }: { userId: number; isOrganizationAdmin: boolean }) => {
-      return apiRequest(`/api/org-admin/users/${userId}/admin-status`, 'PATCH', { isOrganizationAdmin });
+      return apiRequest<User>(`/api/org-admin/users/${userId}/admin-status`, 'PATCH', { isOrganizationAdmin });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/org-admin/users', organizationId] });
@@ -170,7 +164,7 @@ export function OrganizationUsersOnly() {
   // Mutation to add user to organization
   const addUserToOrg = useMutation({
     mutationFn: async ({ userId, isOrganizationAdmin }: { userId: number; isOrganizationAdmin: boolean }) => {
-      return apiRequest(`/api/org-admin/users/${userId}/add`, 'POST', { 
+      return apiRequest<User>(`/api/org-admin/users/${userId}/add`, 'POST', { 
         organizationId: organizationId,
         isOrganizationAdmin
       });
@@ -196,7 +190,7 @@ export function OrganizationUsersOnly() {
   // Mutation to remove user from organization
   const removeUserFromOrg = useMutation({
     mutationFn: async (userId: number) => {
-      return apiRequest(`/api/org-admin/users/${userId}/remove`, 'DELETE');
+      return apiRequest<{ success: boolean }>(`/api/org-admin/users/${userId}/remove`, 'DELETE');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/org-admin/users', organizationId] });
@@ -347,7 +341,24 @@ export function OrganizationUsersOnly() {
         <tbody>
           {orgUsersResponse?.data?.map((user: User) => (
             <tr key={user.id} className="border-t">
-              <td className="py-2">{user.name || 'N/A'}</td>
+              <td className="py-2">
+                <UserEditDialog 
+                  user={user} 
+                  onUpdate={(updatedUser) => {
+                    // Update the user data in the list
+                    const orgUsers = queryClient.getQueryData<{success: boolean, data: User[]}>(['/api/org-admin/users', organizationId]);
+                    if (orgUsers) {
+                      queryClient.setQueryData(['/api/org-admin/users', organizationId], {
+                        ...orgUsers,
+                        data: orgUsers.data.map((u: User) => 
+                          u.id === updatedUser.id ? updatedUser : u
+                        )
+                      });
+                    }
+                  }}
+                  currentUserIsAdmin={currentUser?.isAdmin || false}
+                />
+              </td>
               <td className="py-2">{user.email}</td>
               <td className="py-2">
                 <div className="flex items-center space-x-2">
