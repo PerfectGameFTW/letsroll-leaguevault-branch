@@ -1,14 +1,17 @@
-import { UserCircle, LogOut } from "lucide-react";
+import { UserCircle, LogOut, Settings, User, Bookmark, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "wouter";
 
 interface UserProfileMenuProps {
   user: {
@@ -17,6 +20,7 @@ interface UserProfileMenuProps {
     email: string;
     isAdmin: boolean;
     isOrganizationAdmin: boolean;
+    bowlerId?: number | null;
   };
 }
 
@@ -53,16 +57,50 @@ export function UserProfileMenu({ user }: UserProfileMenuProps) {
           </span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-[200px]">
-        <div className="px-2 py-1.5 text-sm font-medium">
-          <div className="truncate">{user.name}</div>
-          <div className="truncate text-xs text-muted-foreground">{user.email}</div>
-        </div>
-        <DropdownMenuItem className="cursor-pointer" onClick={handleLogout}>
-          <div className="flex items-center gap-2 text-destructive">
-            <LogOut className="h-4 w-4" />
-            <span>Logout</span>
+      <DropdownMenuContent align="end" className="w-[220px]">
+        <DropdownMenuLabel className="font-normal">
+          <div className="flex flex-col space-y-1">
+            <p className="text-sm font-medium leading-none">{user.name}</p>
+            <p className="text-xs leading-none text-muted-foreground">{user.email}</p>
           </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        
+        {user.bowlerId && (
+          <Link href="/bowler-dashboard">
+            <DropdownMenuItem className="cursor-pointer">
+              <User className="mr-2 h-4 w-4" />
+              <span>Bowler Dashboard</span>
+            </DropdownMenuItem>
+          </Link>
+        )}
+        
+        <Link href="/payment-history">
+          <DropdownMenuItem className="cursor-pointer">
+            <CreditCard className="mr-2 h-4 w-4" />
+            <span>Payment History</span>
+          </DropdownMenuItem>
+        </Link>
+        
+        <Link href="/scores">
+          <DropdownMenuItem className="cursor-pointer">
+            <Bookmark className="mr-2 h-4 w-4" />
+            <span>My Scores</span>
+          </DropdownMenuItem>
+        </Link>
+        
+        <Link href="/settings">
+          <DropdownMenuItem className="cursor-pointer">
+            <Settings className="mr-2 h-4 w-4" />
+            <span>Account Settings</span>
+          </DropdownMenuItem>
+        </Link>
+        
+        <DropdownMenuSeparator />
+        
+        <DropdownMenuItem className="cursor-pointer text-destructive" onClick={handleLogout}>
+          <LogOut className="mr-2 h-4 w-4" />
+          <span>Logout</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
