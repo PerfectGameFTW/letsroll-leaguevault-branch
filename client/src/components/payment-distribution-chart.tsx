@@ -111,7 +111,7 @@ export function PaymentDistributionChart({ payments, activeBowlersCount }: Payme
       <CardContent className="flex-1 pb-0">
         <ChartContainer
           config={chartConfig}
-          className="mx-auto w-full h-[300px]"
+          className="mx-auto w-full h-[250px] sm:h-[300px]"
         >
           <PieChart>
             <ChartTooltip
@@ -122,9 +122,9 @@ export function PaymentDistributionChart({ payments, activeBowlersCount }: Payme
               data={chartData}
               dataKey="count"
               nameKey="type"
-              innerRadius={65}
+              innerRadius="40%"
               strokeWidth={0}
-              outerRadius={110}
+              outerRadius="80%"
               label={({ type, percentage }) => {
                 return percentage > 0 ? (
                   <text 
@@ -162,8 +162,8 @@ export function PaymentDistributionChart({ payments, activeBowlersCount }: Payme
                         </tspan>
                         <tspan
                           x={viewBox.cx}
-                          y={(viewBox.cy || 0) + 24}
-                          className="fill-muted-foreground text-sm"
+                          y={(viewBox.cy || 0) + 18}
+                          className="fill-muted-foreground text-xs"
                         >
                           Active Bowlers
                         </tspan>

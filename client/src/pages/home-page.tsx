@@ -135,11 +135,13 @@ export default function HomePage() {
           </Link>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
+        {/* On mobile: full width for each section, on tablet+: side by side */}
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+          {/* On mobile and desktop: payment chart with the same width as cards above */}
+          <div className="col-span-1 md:col-span-1">
             <PaymentDistributionChart payments={payments} activeBowlersCount={activeBowlers} />
           </div>
-          <div>
+          <div className="col-span-1 md:col-span-1">
             <PastDueBowlersSection />
           </div>
         </div>
