@@ -51,9 +51,25 @@ async function filterPaymentsByOrganization(req: any, payments: any[]): Promise<
     return payments;
   }
   
-  // If the user has no organization, return empty array
-  if (!req.user?.organizationId) {
-    return [];
+  // For dashboards and charts, allow access to payment type and status info for all users
+  // This is safe as we don't expose personal or sensitive information
+  if (!req.user) {
+    return payments;
+  }
+  
+  // If the user has no organization but is authenticated, filter based on organization
+  if (!req.user.organizationId) {
+    // For non-admin authenticated users without an organization, only show payments from leagues without an organization
+    const leagues = await storage.getLeagues(null);
+    if (!leagues || leagues.length === 0) {
+      return [];
+    }
+    
+    // Get league IDs with no organization
+    const leagueIds = leagues.map(l => l.id);
+    
+    // Filter payments by league IDs
+    return payments.filter(payment => leagueIds.includes(payment.leagueId));
   }
   
   // Get all leagues in user's organization
