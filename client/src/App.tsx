@@ -23,6 +23,7 @@ import SignUpPage from "@/pages/sign-up-page";
 import LoginPage from "@/pages/login-page";
 import BowlerDashboardPage from "@/pages/bowler-dashboard-page";
 import AdminPage from "@/pages/admin-page";
+import AdminLinkBowlerPage from "@/pages/admin-link-bowler";
 import OrganizationsPage from "@/pages/organizations-page";
 import { useEffect, useRef, FC } from "react";
 import { initializeSquare } from "./lib/square";
@@ -222,6 +223,12 @@ function Router() {
       <Route path="/organizations">
         <AdminRouteGuard>
           <OrganizationsPage />
+        </AdminRouteGuard>
+      </Route>
+      
+      <Route path="/admin/link-bowler">
+        <AdminRouteGuard>
+          <AdminLinkBowlerPage />
         </AdminRouteGuard>
       </Route>
       

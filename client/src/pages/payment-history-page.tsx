@@ -24,26 +24,39 @@ interface ApiResponse<T> {
   };
 }
 
+interface User {
+  id: number;
+  bowlerId: number | null;
+  name: string | null;
+  email: string;
+  isAdmin: boolean;
+  isOrganizationAdmin: boolean;
+}
+
 export default function PaymentHistoryPage() {
   // Get current user and their bowler ID
-  const { data: currentUser } = useQuery<ApiResponse<{ bowlerId: number }>>({
+  const { data: currentUser, isLoading: loadingUser, error: userError } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
   });
 
   const bowlerId = currentUser?.data?.bowlerId;
 
   // Get bowler details
-  const { data: bowlerResponse } = useQuery<ApiResponse<{ name: string }>>({
+  const { data: bowlerResponse, isLoading: loadingBowler, error: bowlerError } = useQuery<ApiResponse<{ name: string }>>({
     queryKey: [`/api/bowlers/${bowlerId}`],
     enabled: !!bowlerId,
   });
 
   // Get league information for the bowler
-  const { data: bowlerLeaguesResponse } = useQuery<ApiResponse<{ leagueId: number }[]>>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<ApiResponse<{ leagueId: number }[]>>({
     queryKey: ["/api/bowler-leagues", bowlerId],
     enabled: !!bowlerId,
   });
 
+  console.log('[PaymentHistory] Current user bowlerId:', bowlerId);
+  console.log('[PaymentHistory] BowlerLeagues response:', bowlerLeaguesResponse);
+
+  // Find the first active league for the bowler
   const leagueId = bowlerLeaguesResponse?.data?.[0]?.leagueId;
 
   // Get league details
@@ -93,11 +106,69 @@ export default function PaymentHistoryPage() {
     remainingBalance = fullSeasonAmount - totalPaidAmount;
   }
 
-  if (loadingLeague || loadingPayments) {
+  if (loadingUser || loadingBowler || loadingBowlerLeagues || loadingLeague || loadingPayments) {
     return (
-      <BowlerLayout bowlerName={bowlerName} leagueName={league?.name || 'Loading...'}>
+      <BowlerLayout bowlerName={bowlerName || 'Loading...'} leagueName={league?.name || 'Loading...'}>
         <div className="flex items-center justify-center h-[50vh]">
           <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      </BowlerLayout>
+    );
+  }
+
+  // Show error if user is not authenticated
+  if (userError) {
+    return (
+      <BowlerLayout bowlerName="Authentication Error" leagueName="Error">
+        <div className="text-center space-y-4">
+          <p className="text-destructive">Please log in to view payment history</p>
+          <Link href="/login" className="inline-flex items-center px-4 py-2 rounded-md bg-primary text-white">
+            Log In
+          </Link>
+        </div>
+      </BowlerLayout>
+    );
+  }
+  
+  // Show message if user has no associated bowler
+  if (currentUser?.data && !currentUser.data.bowlerId) {
+    return (
+      <BowlerLayout bowlerName={currentUser.data.name || "Administrator"} leagueName="No Bowler Account">
+        <div className="text-center space-y-4">
+          <p>You don't have a bowler account linked to your user profile.</p>
+          {currentUser.data.isAdmin && (
+            <div className="p-4 border rounded-md bg-amber-50 max-w-md mx-auto">
+              <p className="text-amber-800">As an administrator, you can view payment history by selecting a specific bowler.</p>
+            </div>
+          )}
+          <Link href="/" className="inline-flex items-center px-4 py-2 rounded-md bg-primary text-white">
+            Return to Dashboard
+          </Link>
+        </div>
+      </BowlerLayout>
+    );
+  }
+
+  // Show error if bowler is not found
+  if (bowlerId && bowlerError) {
+    return (
+      <BowlerLayout bowlerName="Error" leagueName="Error">
+        <div className="text-center text-destructive">
+          Failed to load bowler information
+        </div>
+      </BowlerLayout>
+    );
+  }
+
+  // Show error if bowler has no associated leagues
+  if (!bowlerLeaguesResponse?.data?.length) {
+    return (
+      <BowlerLayout bowlerName={bowlerName || 'Bowler'} leagueName="No League">
+        <div className="text-center space-y-4">
+          <p>You are not registered in any leagues</p>
+          <Link href="/bowler-dashboard" className="inline-flex items-center px-4 py-2 rounded-md bg-primary text-white">
+            Return to Dashboard
+          </Link>
         </div>
       </BowlerLayout>
     );
@@ -106,7 +177,16 @@ export default function PaymentHistoryPage() {
   if (!league) {
     return (
       <BowlerLayout bowlerName={bowlerName} leagueName="League not found">
-        <div className="text-center">League not found</div>
+        <div className="text-center space-y-4">
+          <p>League information cannot be loaded for this bowler</p>
+          <div className="text-left border p-4 rounded-md bg-muted/30">
+            <p className="font-mono text-sm">BowlerId: {bowlerId}</p>
+            <p className="font-mono text-sm">LeagueId: {leagueId}</p>
+          </div>
+          <Link href="/bowler-dashboard" className="inline-flex items-center px-4 py-2 rounded-md bg-primary text-white">
+            Return to Dashboard
+          </Link>
+        </div>
       </BowlerLayout>
     );
   }
