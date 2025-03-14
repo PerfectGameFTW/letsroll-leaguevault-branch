@@ -72,11 +72,21 @@ export default function HomePage() {
 
   // Calculate lineage and prize fund totals
   const paidPayments = payments.filter(p => p.status === 'paid');
-  const totalLineagePaid = paidPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
   
-  // For this example, we're using half of total payments for prize fund
-  // In a real app, this would be calculated based on specific payment types or categories
-  const totalPrizeFundPaid = Math.floor(totalLineagePaid * 0.5);
+  // Calculate totals using the payment categorization fields
+  const totalLineagePaid = paidPayments.reduce((sum, p) => {
+    // If lineageAmount is set, use it; otherwise use the fixed $12 (1200 cents)
+    const lineage = p.lineageAmount !== null ? p.lineageAmount : 1200;
+    return sum + lineage;
+  }, 0);
+  
+  const totalPrizeFundPaid = paidPayments.reduce((sum, p) => {
+    // If prizeFundAmount is set, use it; otherwise calculate it (amount - 1200)
+    const prizeFund = p.prizeFundAmount !== null 
+      ? p.prizeFundAmount 
+      : Math.max(0, (p.amount || 0) - 1200);
+    return sum + prizeFund;
+  }, 0);
 
   return (
     <Layout>

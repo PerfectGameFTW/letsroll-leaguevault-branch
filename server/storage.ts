@@ -365,11 +365,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPayment(payment: InsertPayment): Promise<Payment> {
-    const [result] = await db.insert(payments).values(payment).returning();
+    // Calculate lineage amount ($12 fixed) and prize fund amount (remainder)
+    const lineageAmount = 1200; // $12.00 in cents
+    const prizeFundAmount = payment.amount - lineageAmount;
+    
+    // Merge the payment with the calculated amounts
+    const paymentWithCategories = {
+      ...payment,
+      lineageAmount,
+      prizeFundAmount: prizeFundAmount > 0 ? prizeFundAmount : 0
+    };
+    
+    const [result] = await db.insert(payments).values(paymentWithCategories).returning();
     return result;
   }
 
   async updatePayment(id: number, payment: Partial<InsertPayment>): Promise<Payment> {
+    // If amount is being updated, recalculate lineage and prize fund amounts
+    if (payment.amount !== undefined) {
+      const lineageAmount = 1200; // $12.00 in cents
+      const prizeFundAmount = payment.amount - lineageAmount;
+      
+      // Add calculated fields to the update
+      payment = {
+        ...payment,
+        lineageAmount,
+        prizeFundAmount: prizeFundAmount > 0 ? prizeFundAmount : 0
+      };
+    }
+    
     const [result] = await db
       .update(payments)
       .set(payment)
