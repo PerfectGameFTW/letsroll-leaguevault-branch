@@ -152,11 +152,11 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
             size={showName ? "sm" : "icon"}
             className={showName ? "flex items-center gap-2 px-2" : "rounded-full"}
           >
-            <Avatar className="h-8 w-8 flex-shrink-0 border border-muted">
+            <Avatar className="h-10 w-10 flex-shrink-0 border border-muted">
               {user.avatar ? (
                 <AvatarImage src={user.avatar} alt={user.name || user.email} />
               ) : null}
-              <AvatarFallback>{getInitials()}</AvatarFallback>
+              <AvatarFallback className="text-base">{getInitials()}</AvatarFallback>
             </Avatar>
             {showName && (
               <span className="ml-2 text-sm font-medium max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">

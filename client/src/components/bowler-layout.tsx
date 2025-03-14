@@ -110,7 +110,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
               <img 
                 src={orgLogo}
                 alt={`${orgName} Logo`}
-                className="h-10 w-auto mb-4 object-contain" 
+                className="h-14 md:h-14 lg:h-16 w-auto mb-4 object-contain" 
                 onError={(e) => {
                   console.error("[BowlerLayout] Failed to load organization logo:", e);
                   e.currentTarget.src = leagueVaultLogo;
@@ -120,7 +120,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
               <img 
                 src={leagueVaultLogo} 
                 alt="LeagueVault Logo" 
-                className="h-10 w-auto mb-4" 
+                className="h-14 md:h-14 lg:h-16 w-auto mb-4 object-contain" 
               />
             )}
           </Link>
@@ -170,7 +170,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
               <img 
                 src={orgLogo}
                 alt={`${orgName} Logo`}
-                className="h-8 w-auto object-contain" 
+                className="h-10 w-auto object-contain" 
                 onError={(e) => {
                   console.error("[BowlerLayout] Failed to load organization logo in mobile header:", e);
                   e.currentTarget.src = leagueVaultLogo;
@@ -180,7 +180,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
               <img 
                 src={leagueVaultLogo} 
                 alt="LeagueVault Logo" 
-                className="h-8 w-auto" 
+                className="h-10 w-auto object-contain" 
               />
             )}
           </Link>

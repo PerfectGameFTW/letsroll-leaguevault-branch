@@ -361,14 +361,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className={cn("transition-all duration-300", mainContentPadding)}>
-        <header className="py-4 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto flex justify-center items-center">
+        <header className="py-4 md:py-5 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto flex justify-center items-center">
           {/* Organization logo centered in header */}
           <div className="flex items-center">
             {(organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo) ? (
               <img
                 src={organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo || ''}
                 alt={(organizationResponse?.data?.name || perfectGameOrgResponse?.data?.name || "Organization") + " Logo"}
-                className="h-10 w-auto object-contain"
+                className="h-14 md:h-14 lg:h-16 w-auto object-contain"
                 onError={(e) => {
                   console.error("[Layout] Failed to load organization logo in header:", e);
                   e.currentTarget.src = leagueVaultLogo;
@@ -378,7 +378,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <img
                 src={leagueVaultLogo}
                 alt="LeagueVault Logo"
-                className="h-10 w-auto object-contain"
+                className="h-14 md:h-14 lg:h-16 w-auto object-contain"
               />
             )}
           </div>
