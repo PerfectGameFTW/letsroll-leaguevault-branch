@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Plus, Edit, Trash } from 'lucide-react';
+import { Plus, Edit, Trash, Upload, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import type { Organization, InsertOrganization } from '@shared/schema.js';
@@ -23,6 +23,9 @@ export default function OrganizationsPage() {
   const [zipCode, setZipCode] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [logo, setLogo] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // New admin user details (always create a new admin for a new organization)
   const [adminName, setAdminName] = useState('');
@@ -125,6 +128,8 @@ export default function OrganizationsPage() {
     setAdminEmail('');
     setAdminPhone('');
     setAdminPassword('');
+    setLogo(null);
+    setLogoPreview(null);
     setEditId(null);
   };
 
@@ -138,6 +143,8 @@ export default function OrganizationsPage() {
     setZipCode(org.zipCode || '');
     setPhone(org.phone || '');
     setEmail(org.email || '');
+    setLogo(org.logo || null);
+    setLogoPreview(org.logo || null);
     setOpen(true);
   };
 
@@ -186,6 +193,7 @@ export default function OrganizationsPage() {
       zipCode,
       phone,
       email,
+      logo: logo || undefined, // Convert null to undefined for API compatibility
     };
 
     if (editId) {
@@ -499,6 +507,76 @@ export default function OrganizationsPage() {
                   onChange={(e) => setZipCode(e.target.value)}
                   className="col-span-3"
                 />
+              </div>
+              
+              <div className="grid grid-cols-4 items-start gap-4 mt-4">
+                <Label htmlFor="logo" className="text-right pt-2">
+                  Logo
+                </Label>
+                <div className="col-span-3 space-y-2">
+                  {logoPreview ? (
+                    <div className="relative w-40 h-40 rounded-md overflow-hidden border">
+                      <img 
+                        src={logoPreview} 
+                        alt="Organization logo" 
+                        className="w-full h-full object-contain"
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-1 right-1 h-6 w-6 rounded-full"
+                        onClick={() => {
+                          setLogo(null);
+                          setLogoPreview(null);
+                          if (fileInputRef.current) {
+                            fileInputRef.current.value = '';
+                          }
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="w-full">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          ref={fileInputRef}
+                          type="file"
+                          id="logo"
+                          accept="image/*"
+                          className="flex-1"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            
+                            // Check file size (max 2MB)
+                            if (file.size > 2 * 1024 * 1024) {
+                              toast({
+                                title: "File too large",
+                                description: "The logo file must be less than 2MB.",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
+                            
+                            // Read file as base64
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const base64 = event.target?.result as string;
+                              setLogo(base64);
+                              setLogoPreview(base64);
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Upload your organization logo (PNG, JPG, SVG - max 2MB).
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <DialogFooter>

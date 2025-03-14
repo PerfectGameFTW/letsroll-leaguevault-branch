@@ -4,7 +4,7 @@ import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPl
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import type { League, ApiResponse } from "@shared/schema";
+import type { League, ApiResponse, Organization, User } from "@shared/schema";
 import { ErrorBoundary } from "react-error-boundary";
 import {
   NavigationMenu,
@@ -14,6 +14,7 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
 import { UserProfileMenu } from "@/components/user-profile-menu";
+import leagueVaultLogo from "../assets/images/league-vault-logo.png";
 
 // Safe localStorage access function with memoization
 const getStoredValue = (key: string, defaultValue: any) => {
@@ -143,10 +144,41 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 
   // Fetch current user to check for admin status and organization
-  const { data: currentUserResponse } = useQuery<ApiResponse<any>>({
+  const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
+  
+  // Get user's organization ID
+  const userOrgId = currentUserResponse?.data?.organizationId;
+  
+  // Fetch organization details if user has an organization
+  const { data: organizationResponse } = useQuery<ApiResponse<Organization>>({
+    queryKey: ["/api/organizations", userOrgId],
+    enabled: !!userOrgId,
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+  
+  // Fallback to fetch Perfect Game organization for testing logo
+  const { data: perfectGameOrgResponse } = useQuery<ApiResponse<Organization>>({
+    queryKey: ["/api/organizations/slug/perfect-game"],
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+  
+  // Log organization data when it changes
+  useEffect(() => {
+    if (organizationResponse?.data) {
+      console.log("[Layout] User organization data:", 
+                  organizationResponse.data.name, 
+                  organizationResponse.data.logo ? "Logo exists" : "No logo");
+    }
+    
+    if (perfectGameOrgResponse?.data) {
+      console.log("[Layout] Perfect Game organization data:", 
+                  perfectGameOrgResponse.data.name, 
+                  perfectGameOrgResponse.data.logo ? "Logo exists" : "No logo");
+    }
+  }, [organizationResponse, perfectGameOrgResponse]);
 
   const isAdmin = currentUserResponse?.data?.isAdmin || false;
   const isOrganizationAdmin = currentUserResponse?.data?.isOrganizationAdmin || false;
@@ -184,17 +216,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex-1 flex flex-col pt-5 pb-4">
             <div className={cn(
               "flex items-center px-4",
-              isCollapsed ? "justify-center" : "justify-between"
+              isCollapsed ? "justify-center" : "justify-end"
             )}>
-              {!isCollapsed && (
-                <h1 className="text-xl font-bold text-gray-900">
-                  LeagueVault
-                </h1>
-              )}
               <Button
                 variant="ghost"
                 size="sm"
-                className="p-0 w-8 h-8"
+                className={cn("p-0 w-8 h-8", isCollapsed && "absolute right-2 top-5")}
                 onClick={toggleSidebar}
                 aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
               >
@@ -319,7 +346,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className={cn("transition-all duration-300", mainContentPadding)}>
-        <header className="py-4 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto flex justify-end items-center">
+        <header className="py-4 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto flex justify-between items-center">
+          {/* Organization logo in the top left */}
+          <div className="flex items-center">
+            {(organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo) ? (
+              <img
+                src={organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo}
+                alt={(organizationResponse?.data?.name || perfectGameOrgResponse?.data?.name || "Organization") + " Logo"}
+                className="h-10 w-auto object-contain"
+                onError={(e) => {
+                  console.error("[Layout] Failed to load organization logo in header:", e);
+                  e.currentTarget.src = leagueVaultLogo;
+                }}
+              />
+            ) : (
+              <img
+                src={leagueVaultLogo}
+                alt="LeagueVault Logo"
+                className="h-10 w-auto object-contain"
+              />
+            )}
+          </div>
+          
+          {/* User profile in the top right */}
           {currentUserResponse?.data && (
             <UserProfileMenu
               user={currentUserResponse.data}

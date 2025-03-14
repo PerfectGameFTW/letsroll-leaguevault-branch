@@ -3,10 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
 import { Loader2, AlertCircle, Trophy, Users, TrendingUp, DollarSign } from "lucide-react";
 import { Link } from "wouter";
-import type { Bowler, League, Payment, ApiResponse } from "@shared/schema";
+import type { Bowler, League, Payment, ApiResponse, Organization } from "@shared/schema";
 import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
 import { PaymentDistributionChart } from "@/components/payment-distribution-chart";
 import { formatCurrency } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 // Cache time constants
 const CACHE_TIME = 1000 * 30; // 30 seconds
@@ -50,14 +51,21 @@ export default function HomePage() {
     staleTime: CACHE_TIME,
     retry: false,
   });
+  
+  // Fetch the Perfect Game organization for its logo
+  const { data: perfectGameOrgResponse, isLoading: loadingOrg, error: orgError } = useQuery<ApiResponse<Organization>>({
+    queryKey: ["/api/organizations/slug/perfect-game"],
+    staleTime: CACHE_TIME * 10, // Cache for longer since organization data rarely changes
+    retry: false,
+  });
 
   // Show loading state only when initial data is loading
-  if (loadingBowlers || loadingLeagues || loadingPayments) {
+  if (loadingBowlers || loadingLeagues || loadingPayments || loadingOrg) {
     return <LoadingState />;
   }
 
   // Handle errors
-  const error = bowlersError || leaguesError || paymentsError;
+  const error = bowlersError || leaguesError || paymentsError || orgError;
   if (error) {
     console.error('Home page error:', error);
     return <ErrorState error={error as Error} />;
@@ -78,9 +86,14 @@ export default function HomePage() {
   // In a real app, this would be calculated based on specific payment types or categories
   const totalPrizeFundPaid = Math.floor(totalLineagePaid * 0.5);
 
+  // Get the organization data with the logo
+  const organization = perfectGameOrgResponse?.data;
+
   return (
     <Layout>
       <div className="space-y-8">
+        {/* Organization Logo on top left (will be added to Layout component) */}
+        
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {/* League Card */}
           <Link href="/leagues" className="block transition-transform hover:scale-105">
