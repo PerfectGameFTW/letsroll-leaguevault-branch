@@ -17,6 +17,7 @@ import orgAdminRouter from './organization-admin.js'; // Add Organization Admin 
 import userBowlersRouter from './user-bowlers.js';    // Add User-Bowlers router import
 import setupAdminRouter from './setup-admin.js';      // Add Setup Admin router import
 import systemAdminRouter from './system-admin.js';    // Add System Admin router import
+import userAvatarRouter from './user-avatar.js';      // Add User Avatar router import
 import { setupAuth } from '../auth.js';  // Import the authentication setup function
 import { testConnection } from '../db.js';
 import { sendSuccess, sendError } from '../utils/api.js';
@@ -78,6 +79,7 @@ export function registerRoutes(app: Express): Server {
   app.use('/api/user-bowlers', userBowlersRouter); // Register User-Bowlers routes
   app.use('/api/setup', setupAdminRouter); // Register Setup Admin routes
   app.use('/api/system-admin', systemAdminRouter); // Register System Admin routes
+  app.use('/api/user', userAvatarRouter); // Register User Avatar routes for profile management
 
   console.log('[Routes] API routes registered');
   return server;

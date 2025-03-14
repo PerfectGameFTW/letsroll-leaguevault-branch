@@ -79,6 +79,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, userData: Partial<InsertUser>): Promise<User>;
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
@@ -746,6 +747,28 @@ export class DatabaseStorage implements IStorage {
   async createUser(user: InsertUser): Promise<User> {
     const [result] = await db.insert(users).values(user).returning();
     return result;
+  }
+  
+  async updateUser(id: number, userData: Partial<InsertUser>): Promise<User> {
+    console.log('[Storage] Updating user:', { id, userData });
+    
+    const [updatedUser] = await db
+      .update(users)
+      .set(userData)
+      .where(eq(users.id, id))
+      .returning();
+      
+    if (!updatedUser) {
+      console.error('[Storage] Failed to update user:', id);
+      throw new Error(`Failed to update user with ID ${id}`);
+    }
+    
+    console.log('[Storage] Updated user successfully:', {
+      id: updatedUser.id,
+      email: updatedUser.email,
+    });
+    
+    return updatedUser;
   }
 
   async linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User> {

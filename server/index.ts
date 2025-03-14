@@ -790,6 +790,15 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+// Serve static files from uploads directory for avatars
+const uploadsDir = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('[Server] Created uploads directory:', uploadsDir);
+}
+app.use('/uploads', express.static(uploadsDir));
+console.log('[Server] Serving static files from:', uploadsDir);
+
 // Add a test endpoint to verify API routing works
 app.get('/api/auth-test', (req, res) => {
   res.json({
