@@ -79,7 +79,7 @@ router.post('/payments', async (req, res) => {
 
     // If this is for a recurring payment schedule and we have a card on file,
     // update the schedule with the new card token
-    if (req.body.storeCard && payment.cardOnFile && payment.cardOnFile.id) {
+    if (req.body.storeCard && payment.cardOnFile) {
       try {
         await storage.updatePaymentScheduleCard(
           req.body.bowlerId,
@@ -98,7 +98,6 @@ router.post('/payments', async (req, res) => {
     }
 
     // Save payment record to database
-    // The lineageAmount and prizeFundAmount will be calculated automatically in storage.createPayment
     const dbPayment = await storage.createPayment({
       bowlerId: req.body.bowlerId,
       leagueId: req.body.leagueId,

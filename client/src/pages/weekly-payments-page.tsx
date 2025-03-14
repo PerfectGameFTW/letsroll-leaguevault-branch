@@ -578,16 +578,14 @@ export default function WeeklyPaymentsPage() {
                         <TableRow>
                           <TableHead>Bowler</TableHead>
                           <TableHead>Payment Type</TableHead>
-                          <TableHead className="text-right">Total</TableHead>
-                          <TableHead className="text-right">Lineage</TableHead>
-                          <TableHead className="text-right">Prize Fund</TableHead>
+                          <TableHead className="text-right">Amount</TableHead>
                           <TableHead className="w-[100px]">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {payments?.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={6} className="text-center">
+                            <TableCell colSpan={4} className="text-center">
                               No payment history
                             </TableCell>
                           </TableRow>
@@ -607,12 +605,6 @@ export default function WeeklyPaymentsPage() {
                                 </TableCell>
                                 <TableCell className="text-right">
                                   ${(payment.amount / 100).toFixed(2)}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  ${((payment.lineageAmount ?? 1200) / 100).toFixed(2)}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  ${((payment.prizeFundAmount ?? (payment.amount - 1200 > 0 ? payment.amount - 1200 : 0)) / 100).toFixed(2)}
                                 </TableCell>
                                 <TableCell>
                                   <Button

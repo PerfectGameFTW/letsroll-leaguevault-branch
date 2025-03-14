@@ -125,8 +125,6 @@ export const payments = pgTable("payments", {
     .notNull()
     .references(() => leagues.id, { onDelete: 'cascade' }),
   amount: integer("amount").notNull(), // Store in cents
-  lineageAmount: integer("lineage_amount"), // Store in cents
-  prizeFundAmount: integer("prize_fund_amount"), // Store in cents
   weekOf: timestamp("week_of").notNull(),
   status: text("status", { enum: PAYMENT_STATUSES }).notNull().default('paid'),
   type: text("type", { enum: PAYMENT_TYPES }).notNull(),
@@ -440,8 +438,6 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   bowlerId: positiveIntSchema,
   leagueId: positiveIntSchema,
   amount: positiveIntSchema,
-  lineageAmount: z.number().int().optional(),
-  prizeFundAmount: z.number().int().optional(),
   weekOf: dateSchema,
   status: z.enum(PAYMENT_STATUSES).default("paid"),
   type: z.enum(PAYMENT_TYPES),
@@ -577,11 +573,7 @@ export const partialLeagueSchema = z.object({
 );
 export const partialTeamSchema = z.object(baseTeamSchema.shape).partial();
 export const partialBowlerLeagueSchema = z.object(baseBowlerLeagueSchema.shape).partial();
-export const partialPaymentSchema = z.object({
-  ...basePaymentSchema.shape,
-  lineageAmount: z.number().int().optional(),
-  prizeFundAmount: z.number().int().optional(),
-}).partial();
+export const partialPaymentSchema = z.object(basePaymentSchema.shape).partial();
 export const partialGameSchema = z.object(baseGameSchema.shape).partial();
 export const partialScoreSchema = z.object(baseScoreSchema.shape).partial();
 export const partialSeriesSchema = z.object(baseSeriesSchema.shape).partial();
