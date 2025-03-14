@@ -214,24 +214,39 @@ export function Layout({ children }: { children: React.ReactNode }) {
       >
         <div className="flex flex-col h-full">
           <div className="flex-1 flex flex-col pt-5 pb-4">
-            <div className={cn(
-              "flex items-center px-4",
-              isCollapsed ? "justify-center" : "justify-end"
-            )}>
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn("p-0 w-8 h-8", isCollapsed && "absolute right-2 top-5")}
-                onClick={toggleSidebar}
-                aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              >
-                {isCollapsed ? (
-                  <ChevronRight className="h-4 w-4" />
-                ) : (
-                  <ChevronLeft className="h-4 w-4" />
+            {!isCollapsed ? (
+              <div className="flex items-center px-4 mb-2 justify-between">
+                {currentUserResponse?.data && (
+                  <UserProfileMenu user={currentUserResponse.data} />
                 )}
-              </Button>
-            </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="p-0 w-8 h-8"
+                  onClick={toggleSidebar}
+                  aria-label="Collapse sidebar"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="px-4 mb-2 flex flex-col items-center">
+                {currentUserResponse?.data && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-2 mb-1"
+                      onClick={toggleSidebar}
+                      aria-label="Expand sidebar"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <UserProfileMenu user={currentUserResponse.data} />
+                  </>
+                )}
+              </div>
+            )}
             <ErrorBoundary
               FallbackComponent={ErrorFallback}
               onReset={() => {
@@ -239,7 +254,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               }}
             >
               <Suspense fallback={<LoadingFallback />}>
-                <nav className="mt-8 flex-1 space-y-1 px-2">
+                <nav className="mt-4 flex-1 space-y-1 px-2">
                   <div className="space-y-2">
                     {navItems.map((item) => {
                       // Show Bowler Dashboard only for system admins
@@ -346,12 +361,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className={cn("transition-all duration-300", mainContentPadding)}>
-        <header className="py-4 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto flex justify-between items-center">
-          {/* Organization logo in the top left */}
+        <header className="py-4 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto flex justify-center items-center">
+          {/* Organization logo centered in header */}
           <div className="flex items-center">
             {(organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo) ? (
               <img
-                src={organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo}
+                src={organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo || ''}
                 alt={(organizationResponse?.data?.name || perfectGameOrgResponse?.data?.name || "Organization") + " Logo"}
                 className="h-10 w-auto object-contain"
                 onError={(e) => {
@@ -367,13 +382,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
               />
             )}
           </div>
-          
-          {/* User profile in the top right */}
-          {currentUserResponse?.data && (
-            <UserProfileMenu
-              user={currentUserResponse.data}
-            />
-          )}
         </header>
         <main className="py-2 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
           <ErrorBoundary

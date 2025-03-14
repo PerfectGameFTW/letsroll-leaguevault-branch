@@ -212,6 +212,7 @@ export const users = pgTable("users", {
   bowlerId: integer("bowler_id").references(() => bowlers.id),
   name: text("name").notNull(),
   phone: text("phone"),
+  avatar: text("avatar"),
   isAdmin: boolean("is_admin").notNull().default(false),
   isOrganizationAdmin: boolean("is_organization_admin").notNull().default(false),
   organizationId: integer("organization_id").references(() => organizations.id),

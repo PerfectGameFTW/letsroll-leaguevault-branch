@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,9 +19,10 @@ interface UserProfileMenuProps {
     isAdmin: boolean;
     isOrganizationAdmin: boolean;
   };
+  showName?: boolean;
 }
 
-export function UserProfileMenu({ user }: UserProfileMenuProps) {
+export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   
@@ -43,14 +45,34 @@ export function UserProfileMenu({ user }: UserProfileMenuProps) {
     }
   };
 
+  // Get initials for the avatar fallback
+  const getInitials = () => {
+    if (user.name) {
+      const nameParts = user.name.split(' ');
+      if (nameParts.length > 1) {
+        return `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase();
+      }
+      return user.name[0].toUpperCase();
+    }
+    return user.email[0].toUpperCase();
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="flex items-center gap-2">
-          <UserCircle className="h-4 w-4" />
-          <span className="max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">
-            {user.name || user.email}
-          </span>
+        <Button 
+          variant="ghost" 
+          size={showName ? "sm" : "icon"}
+          className={showName ? "flex items-center gap-2 px-2" : "rounded-full"}
+        >
+          <Avatar className="h-8 w-8 flex-shrink-0">
+            <AvatarFallback>{getInitials()}</AvatarFallback>
+          </Avatar>
+          {showName && (
+            <span className="ml-2 text-sm font-medium max-w-[120px] overflow-hidden text-ellipsis whitespace-nowrap">
+              {user.name || user.email}
+            </span>
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[200px]">
