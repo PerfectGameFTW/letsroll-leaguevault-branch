@@ -349,15 +349,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <header className="py-4 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto flex justify-between items-center">
           {/* Organization logo in the top left */}
           <div className="flex items-center">
-            <img
-              src={organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo || leagueVaultLogo}
-              alt={(organizationResponse?.data?.name || perfectGameOrgResponse?.data?.name || "Organization") + " Logo"}
-              className="h-10 w-auto object-contain"
-              onError={(e) => {
-                console.error("[Layout] Failed to load organization logo in header:", e);
-                e.currentTarget.src = leagueVaultLogo;
-              }}
-            />
+            {(organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo) ? (
+              <img
+                src={organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo}
+                alt={(organizationResponse?.data?.name || perfectGameOrgResponse?.data?.name || "Organization") + " Logo"}
+                className="h-10 w-auto object-contain"
+                onError={(e) => {
+                  console.error("[Layout] Failed to load organization logo in header:", e);
+                  e.currentTarget.src = leagueVaultLogo;
+                }}
+              />
+            ) : (
+              <img
+                src={leagueVaultLogo}
+                alt="LeagueVault Logo"
+                className="h-10 w-auto object-contain"
+              />
+            )}
           </div>
           
           {/* User profile in the top right */}
