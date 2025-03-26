@@ -11,12 +11,14 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Drawer } from "vaul";
-import { Loader2, AlertCircle, ArrowRight, CreditCard, Calendar, Plus, Minus } from "lucide-react";
+import { Loader2, AlertCircle, ArrowRight, CreditCard, Calendar, Plus, Minus, CalendarDays, Settings } from "lucide-react";
 import { Link } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
 import type { League, Payment, User, Bowler as SchemaBoswler } from "@shared/schema";
 import { useBowlers } from "@/hooks/use-bowlers";
+import { formatCurrency } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 // Extended Bowler type with the leagues property we need
 interface Bowler extends SchemaBoswler {
@@ -120,13 +122,18 @@ export const BowlerDashboardPage: FC = () => {
 
   // User and Bowler data hooks
   const { data: userResponse } = useQuery<{ success: boolean; data: User }>({
-    queryKey: ['currentUser'],
+    queryKey: ['/api/user'],
     enabled: true,
   });
 
   const currentUser = userResponse?.data;
-  const { bowlers } = useBowlers();
-  const isLoadingBowlers = false; // Set directly since the hook doesn't expose this
+  const { 
+    bowlers, 
+    isInitialLoading: isLoadingBowlers, 
+    getBowlerFirstLeagueName: getBowlerLeagueName, 
+    getBowlerTeamName: getTeamName, 
+    getBowlerLeagueId 
+  } = useBowlers();
   
   // Find the current bowler for this user
   const bowler = useMemo(() => {
@@ -138,22 +145,73 @@ export const BowlerDashboardPage: FC = () => {
     return currentUser?.bowlerId ? bowlers.find((b: Bowler) => b.id === currentUser.bowlerId) : null;
   }, [bowlers, currentUser]);
 
-  // Get league ID (handle properly even if leagues property doesn't exist)
-  const leagueId = bowler && 
-                  (bowler as any).leagues && 
-                  (bowler as any).leagues[0] && 
-                  (bowler as any).leagues[0].leagueId;
+  // Define our own function to get the league ID
+  const getLeagueId = useCallback((bowler: Bowler) => {
+    // First try to use the built-in leagues property if it exists
+    if (bowler?.leagues && bowler.leagues.length > 0) {
+      return bowler.leagues[0].leagueId;
+    }
+    
+    // Otherwise fall back to the hook method
+    return getBowlerLeagueId ? getBowlerLeagueId(bowler) : undefined;
+  }, [getBowlerLeagueId]);
+  
+  const leagueId = bowler ? getLeagueId(bowler) : undefined;
+  console.log('[BowlerDashboard] Detected leagueId:', leagueId);
               
-  // Query data for the league
-  const { data: leagueResponse, isLoading: isLoadingLeague } = useQuery<{ success: boolean; data: League }>({
-    queryKey: ['api', 'leagues', leagueId],
-    enabled: !!leagueId,
+  // Query data for the league - if we have a leagueId, use the specific endpoint
+  const { data: leagueResponse, isLoading: isLoadingLeague } = useQuery<{ success: boolean; data: League | League[] }>({
+    queryKey: leagueId ? ['/api/leagues', leagueId] : ['/api/leagues'],
+    enabled: true, // Enable this query even without leagueId to see if we can load any leagues
   });
 
-  const league = leagueResponse?.data;
+  console.log('[BowlerDashboard] League API response:', leagueResponse);
+  
+  // Handle both single league and league list responses
+  const league = useMemo(() => {
+    if (!leagueResponse?.data) {
+      return undefined;
+    }
+    
+    // If we got a specific league (has an 'id' property directly)
+    if ('id' in leagueResponse.data) {
+      return leagueResponse.data as League;
+    }
+    
+    // If we got a list of leagues, find the one matching our leagueId
+    if (Array.isArray(leagueResponse.data)) {
+      if (leagueId) {
+        // Find the specific league if we have a leagueId
+        return leagueResponse.data.find(l => l.id === leagueId);
+      } else if (leagueResponse.data.length > 0) {
+        // Otherwise just use the first available league
+        return leagueResponse.data[0];
+      }
+    }
+    
+    return undefined;
+  }, [leagueResponse, leagueId]);
   
   // Calculate the total weeks in the season
-  const totalWeeks = useMemo(() => getSeasonLength(league), [league]);
+  const totalWeeks = useMemo(() => {
+    // Define the season length calculation function
+    const getSeasonLength = (league?: League): number => {
+      if (!league?.seasonStart || !league?.seasonEnd) {
+        return 30; // Default to 30 weeks if no dates are set
+      }
+      
+      const start = new Date(league.seasonStart);
+      const end = new Date(league.seasonEnd);
+      
+      // Calculate the total days between start and end
+      const dayDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Calculate number of weeks assuming weekly games
+      return Math.ceil(dayDiff / 7);
+    };
+    
+    return getSeasonLength(league);
+  }, [league]);
   
   // Calculate the weekly fee
   const weeklyFee = useMemo(() => {
@@ -162,7 +220,7 @@ export const BowlerDashboardPage: FC = () => {
 
   // Query payments data
   const { data: paymentsResponse, isLoading: isLoadingPayments } = useQuery<ApiResponse<Payment[]>>({
-    queryKey: ['api', 'payments', bowler?.id],
+    queryKey: ['/api/payments', bowler?.id],
     enabled: !!bowler?.id,
   });
 
@@ -279,7 +337,7 @@ export const BowlerDashboardPage: FC = () => {
     }
   };
 
-  // Memoize renderPaymentStatus - simplified version that focuses just on the button functionality
+  // Memoize renderPaymentStatus - enhanced version with payment form
   const renderPaymentStatus = useMemo(() => {
     console.log('[BowlerDashboard] renderPaymentStatus called, showPaymentSetup:', showPaymentSetup);
     
@@ -287,19 +345,194 @@ export const BowlerDashboardPage: FC = () => {
     if (showPaymentSetup) {
       console.log('[BowlerDashboard] Showing payment setup form');
       return (
-        <Card>
+        <Card className="w-full">
           <CardHeader>
-            <CardTitle>Set Up Payments</CardTitle>
+            <CardTitle>Set Up Automatic Payments</CardTitle>
+            <CardDescription>Configure your payment schedule for the league</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button 
-              onClick={() => {
-                console.log('[BowlerDashboard] Returning to dashboard from payment setup');
-                setShowPaymentSetup(false);
-              }}
-            >
-              Return to Dashboard
-            </Button>
+            <div className="space-y-6">
+              {/* Payment Frequency Section */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-medium">Payment Schedule</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Choose how often you want to be charged
+                  </p>
+                </div>
+                
+                <RadioGroup
+                  value={selectedSchedule}
+                  onValueChange={(value) => setSelectedSchedule(value as PaymentSchedule)}
+                  className="grid grid-cols-1 md:grid-cols-3 gap-4"
+                >
+                  <div>
+                    <RadioGroupItem value="weekly" id="weekly" className="sr-only" />
+                    <Label
+                      htmlFor="weekly"
+                      className={`flex flex-col items-center justify-between rounded-md border-2 border-muted p-4 cursor-pointer ${
+                        selectedSchedule === 'weekly' 
+                          ? 'border-primary bg-primary/5' 
+                          : 'hover:border-primary/50 hover:bg-primary/5'
+                      }`}
+                    >
+                      <CalendarDays className="h-6 w-6 mb-2" />
+                      <span className="text-sm font-medium">Weekly</span>
+                      <span className="text-xs text-muted-foreground mt-1">
+                        {formatCurrency(weeklyFee)} per week
+                      </span>
+                    </Label>
+                  </div>
+                  
+                  <div>
+                    <RadioGroupItem value="monthly" id="monthly" className="sr-only" />
+                    <Label
+                      htmlFor="monthly"
+                      className={`flex flex-col items-center justify-between rounded-md border-2 border-muted p-4 cursor-pointer ${
+                        selectedSchedule === 'monthly' 
+                          ? 'border-primary bg-primary/5' 
+                          : 'hover:border-primary/50 hover:bg-primary/5'
+                      }`}
+                    >
+                      <Calendar className="h-6 w-6 mb-2" />
+                      <span className="text-sm font-medium">Monthly</span>
+                      <span className="text-xs text-muted-foreground mt-1">
+                        {formatCurrency(weeklyFee * 4)} per month
+                      </span>
+                    </Label>
+                  </div>
+                  
+                  <div>
+                    <RadioGroupItem value="custom" id="custom" className="sr-only" />
+                    <Label
+                      htmlFor="custom"
+                      className={`flex flex-col items-center justify-between rounded-md border-2 border-muted p-4 cursor-pointer ${
+                        selectedSchedule === 'custom' 
+                          ? 'border-primary bg-primary/5' 
+                          : 'hover:border-primary/50 hover:bg-primary/5'
+                      }`}
+                    >
+                      <Settings className="h-6 w-6 mb-2" />
+                      <span className="text-sm font-medium">Custom</span>
+                      <span className="text-xs text-muted-foreground mt-1">
+                        Choose number of weeks
+                      </span>
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+              
+              {/* Custom Weeks Selector */}
+              {selectedSchedule === 'custom' && (
+                <div className="space-y-4 p-4 rounded-md border bg-background">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label htmlFor="custom-weeks">Number of Weeks</Label>
+                      <span className="text-sm font-medium">
+                        {formatCurrency(weeklyFee * selectedWeeks)} total
+                      </span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={decrementWeeks}
+                        disabled={selectedWeeks <= 1}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <input
+                        id="custom-weeks"
+                        type="number"
+                        min="1"
+                        max={totalWeeks}
+                        value={selectedWeeks}
+                        onChange={(e) => handleWeekChangeWrapper(parseInt(e.target.value, 10))}
+                        className="flex h-10 w-16 rounded-md border border-input bg-background px-3 py-2 text-sm text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={incrementWeeks}
+                        disabled={selectedWeeks >= totalWeeks}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  {/* Season presets */}
+                  <div>
+                    <Label className="text-sm text-muted-foreground mb-2 block">
+                      Quick Select
+                    </Label>
+                    <div className="flex flex-wrap gap-2">
+                      {seasonPresets.map((preset) => (
+                        <Button
+                          key={preset.label}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleWeekChangeWrapper(preset.weeks)}
+                        >
+                          {preset.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Payment Form */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-medium">Payment Information</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Enter your card details (securely processed by Square)
+                  </p>
+                </div>
+                
+                <div ref={cardContainerRef} id="card-container" className="p-4 border rounded-md"></div>
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="store-card" defaultChecked />
+                  <Label htmlFor="store-card">Save card for future payments</Label>
+                </div>
+              </div>
+              
+              {/* Total Amount */}
+              <div className="pt-4 border-t">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium">Total Amount</span>
+                  <span className="text-lg font-bold">{formatCurrency(calculateTotalAmount())}</span>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {selectedSchedule === 'weekly' && 'Charged weekly'}
+                  {selectedSchedule === 'monthly' && 'Charged monthly (every 4 weeks)'}
+                  {selectedSchedule === 'custom' && `One-time payment for ${selectedWeeks} weeks`}
+                </p>
+              </div>
+              
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row sm:justify-between gap-2">
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    console.log('[BowlerDashboard] Returning to dashboard from payment setup');
+                    setShowPaymentSetup(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleSubmitPayment}
+                  disabled={!isInitialized}
+                >
+                  Setup Automatic Payments
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       );
@@ -327,7 +560,19 @@ export const BowlerDashboardPage: FC = () => {
     );
   }, [
     showPaymentSetup, 
-    setShowPaymentSetup
+    setShowPaymentSetup,
+    selectedSchedule,
+    selectedWeeks,
+    weeklyFee,
+    totalWeeks,
+    seasonPresets,
+    cardContainerRef,
+    isInitialized,
+    incrementWeeks,
+    decrementWeeks,
+    handleWeekChangeWrapper,
+    calculateTotalAmount,
+    handleSubmitPayment
   ]);
 
   // Loading states combined
@@ -335,11 +580,20 @@ export const BowlerDashboardPage: FC = () => {
   const isInitialLoading = !userResponse;
   const isCombinedLoading = isInitialLoading || isLoadingRelatedData;
 
+  // Debug banner while developing
+  console.log('[BowlerDashboard] Loading states:', { isInitialLoading, isLoadingRelatedData, isCombinedLoading });
+  console.log('[BowlerDashboard] User and bowler:', { currentUser, bowler });
+  console.log('[BowlerDashboard] League:', { leagueId, league });
+
   // Loading and error states
   if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <div className="text-center">
+          <h3 className="text-lg font-medium">Loading dashboard data...</h3>
+          <p className="text-sm text-muted-foreground mt-1">Please wait while we retrieve your information.</p>
+        </div>
       </div>
     );
   }
