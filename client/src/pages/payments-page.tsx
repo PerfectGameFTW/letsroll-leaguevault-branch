@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
@@ -12,7 +12,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Loader2, Plus, Search, Trash2 } from "lucide-react";
 import type { Payment, Bowler, League } from "@shared/schema";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -30,6 +31,7 @@ import { useMutation } from "@tanstack/react-query";
 export default function PaymentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>("");
   const { toast } = useToast();
 
 
@@ -54,9 +56,8 @@ export default function PaymentsPage() {
   const deletePaymentMutation = useMutation({
     mutationFn: async (id: number) => {
       const response = await apiRequest("DELETE", `/api/payments/${id}`);
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to delete payment: ${errorText}`);
+      if (!response.success) {
+        throw new Error(`Failed to delete payment: ${response.error?.message || "Unknown error"}`);
       }
       return id;
     },
@@ -90,6 +91,19 @@ export default function PaymentsPage() {
   const leagues = leaguesResponse?.data || [];
   const defaultLeagueId = leagues.length > 0 ? leagues[0].id : undefined;
 
+  // Filter payments based on bowler name search
+  const filteredPayments = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return payments;
+    }
+    
+    const searchLower = searchQuery.toLowerCase();
+    return payments.filter((payment) => {
+      const bowler = bowlers.find((b) => b.id === payment.bowlerId);
+      return bowler?.name?.toLowerCase().includes(searchLower);
+    });
+  }, [payments, bowlers, searchQuery]);
+
   // Show loading state only when initial data is loading
   if ((loadingPayments || loadingBowlers) && !payments.length) {
     return (
@@ -112,6 +126,28 @@ export default function PaymentsPage() {
           </Button>
         </div>
 
+        <div className="flex items-center space-x-2 mb-6">
+          <div className="relative w-full max-w-sm">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search by bowler name..."
+              className="pl-8"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          {searchQuery && (
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setSearchQuery("")}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+        
         <div className="rounded-md border">
           <Table>
             <TableHeader>
@@ -131,8 +167,14 @@ export default function PaymentsPage() {
                     No payments found
                   </TableCell>
                 </TableRow>
+              ) : filteredPayments.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center">
+                    No payments match your search
+                  </TableCell>
+                </TableRow>
               ) : (
-                payments.map((payment) => {
+                filteredPayments.map((payment) => {
                   const bowler = bowlers.find((b) => b.id === payment.bowlerId);
                   return (
                     <TableRow key={payment.id}>
