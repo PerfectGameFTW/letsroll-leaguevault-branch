@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { InsertPayment, Bowler } from "@shared/schema";
 import { insertPaymentSchema } from "@shared/schema";
 import { useQueryClient } from "@tanstack/react-query";
@@ -49,6 +50,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       status: "paid",
       type: "cash",
       leagueId: leagueId,
+      storeCard: false, // Default value for the store card option
     },
   });
 
@@ -79,8 +81,10 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const paymentType = form.watch("type");
 
   useEffect(() => {
+    // Handle form closing or payment type change
     if (!open || paymentType !== "credit_card") {
       if (isInitialized) {
+        console.log('[PaymentForm] Cleaning up card form due to close or payment type change');
         cleanupCard();
         setIsSquareReady(false);
         initializationAttempted.current = false;
@@ -88,29 +92,78 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       return;
     }
 
-    if (!cardContainerRef.current || isInitialized || initializationAttempted.current) {
+    // Prevent reinitializing an already initialized or in-progress initialization
+    if (!cardContainerRef.current) {
+      console.log('[PaymentForm] Card container not ready');
+      return;
+    }
+    
+    if (isInitialized) {
+      console.log('[PaymentForm] Card already initialized');
+      setIsSquareReady(true);
+      return;
+    }
+    
+    // Allow retrying if previous initialization failed
+    // Only check initializationAttempted if the form is already marked as ready
+    if (initializationAttempted.current && isSquareReady) {
+      console.log('[PaymentForm] Card initialization already successful');
       return;
     }
 
+    // Set initialization flag to prevent multiple attempts
     initializationAttempted.current = true;
+    console.log('[PaymentForm] Starting card initialization...');
+    setPaymentError(null);
+    
     const container = cardContainerRef.current;
-
-    initializeCard(container)
-      .then(() => {
-        console.log('[PaymentForm] Card form initialized successfully');
-        setIsSquareReady(true);
-      })
-      .catch((error) => {
-        console.error('[PaymentForm] Failed to initialize card form:', error);
-        setIsSquareReady(false);
+    
+    // Create a timeout to detect if initialization gets stuck
+    const initTimeout = setTimeout(() => {
+      if (!isSquareReady) {
+        console.warn('[PaymentForm] Card initialization timed out after 5 seconds');
+        setPaymentError('Failed to initialize payment form in a timely manner');
+        // Fall back to cash payment
         form.setValue("type", "cash", { shouldDirty: false });
+        initializationAttempted.current = false; // Allow retry on next attempt
         toast({
-          title: "Payment Form Notice",
-          description: "Credit card form unavailable. Please try another payment method.",
+          title: "Payment Option Changed",
+          description: "Credit card processing unavailable at this time. Switched to cash payment.",
           variant: "default",
         });
-      });
-  }, [open, paymentType]);
+      }
+    }, 5000);
+    
+    // Start initialization after a slight delay to ensure DOM is ready
+    setTimeout(() => {
+      initializeCard(container)
+        .then(() => {
+          console.log('[PaymentForm] Card form initialized successfully');
+          setIsSquareReady(true);
+          clearTimeout(initTimeout);
+        })
+        .catch((error) => {
+          console.error('[PaymentForm] Failed to initialize card form:', error);
+          setIsSquareReady(false);
+          setPaymentError(error instanceof Error ? error.message : 'Failed to initialize payment form');
+          initializationAttempted.current = false; // Reset to allow retries
+          clearTimeout(initTimeout);
+          
+          // Fall back to cash payment
+          form.setValue("type", "cash", { shouldDirty: false });
+          toast({
+            title: "Payment Form Notice",
+            description: "Credit card form unavailable. Please try another payment method.",
+            variant: "default",
+          });
+        });
+    }, 300);
+    
+    // Cleanup function
+    return () => {
+      clearTimeout(initTimeout);
+    };
+  }, [open, paymentType, isInitialized, isSquareReady, cleanupCard, initializeCard, toast, form]);
 
   useEffect(() => {
     if (!open) {
@@ -132,7 +185,23 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         }
 
         console.log('[PaymentForm] Tokenizing card...');
-        const result = await card.tokenize();
+        
+        // Configure tokenization options if storing card
+        const tokenizationOptions = data.storeCard ? {
+          cardOnFile: true,
+          verificationMethod: 'EXTERNAL',
+          verificationDetails: {
+            amount: data.amount.toString(),
+            currencyCode: 'USD',
+            intent: 'STORE'
+          }
+        } : undefined;
+        
+        console.log('[PaymentForm] Tokenization options:', 
+          data.storeCard ? 'Storing card for future use' : 'One-time payment'
+        );
+        
+        const result = await card.tokenize(tokenizationOptions);
 
         if (result.status !== 'OK' || !result.token) {
           const errors = result.errors || [];
@@ -322,16 +391,49 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
             )}
 
             {paymentType === "credit_card" && (
-              <div className="min-h-[200px] border rounded-lg bg-card">
-                <div ref={cardContainerRef} className="p-4" />
-                {!isSquareReady && (
-                  <div className="flex items-center justify-center p-4">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    <p className="ml-2 text-sm text-muted-foreground">
-                      Loading credit card form...
-                    </p>
+              <div className="space-y-4">
+                <div className="min-h-[200px] border rounded-lg bg-card">
+                  <div ref={cardContainerRef} className="p-4" />
+                  {!isSquareReady && (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <p className="ml-2 text-sm text-muted-foreground">
+                        Loading credit card form...
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                {squareError && (
+                  <div className="p-3 text-sm border border-destructive bg-destructive/10 text-destructive rounded-md">
+                    <p><strong>Credit Card Form Error:</strong> {squareError}</p>
+                    <p className="mt-1 text-xs">Consider using Cash or Check payment instead.</p>
                   </div>
                 )}
+                
+                <div className="flex items-center space-x-2">
+                  <FormField
+                    control={form.control}
+                    name="storeCard"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                        <FormControl>
+                          <Checkbox
+                            id="storeCard"
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                        </FormControl>
+                        <label 
+                          htmlFor="storeCard" 
+                          className="text-sm font-medium leading-none cursor-pointer"
+                        >
+                          Save card for future payments
+                        </label>
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
             )}
 

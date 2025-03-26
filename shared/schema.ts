@@ -445,6 +445,7 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   checkNumber: z.string().optional(),
   squarePaymentId: z.string().optional(),
   notes: z.string().optional(),
+  storeCard: z.boolean().optional(), // For client-side storage of card details (not stored in DB)
 }).omit({ id: true, createdAt: true });
 
 // Update the insert schemas with stronger validation
