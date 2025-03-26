@@ -365,25 +365,56 @@ export const BowlerDashboardPage: FC = () => {
     { label: "Full Season", weeks: totalWeeks }
   ], [totalWeeks]);
 
-  // Memoize renderPaymentStatus after seasonPresets is defined
+  // Memoize renderPaymentStatus - simplified version that focuses just on the button functionality
   const renderPaymentStatus = useMemo(() => {
-    // If showPaymentSetup is true, always show the payment setup form regardless of other conditions
+    console.log('[BowlerDashboard] renderPaymentStatus called, showPaymentSetup:', showPaymentSetup);
+    
+    // If showPaymentSetup is true, show the payment setup form
     if (showPaymentSetup) {
+      console.log('[BowlerDashboard] Showing payment setup form');
       return (
-        <div className="space-y-6">
-          <div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold">Choose Payment Schedule</h3>
-                <RadioGroup
-                  value={selectedSchedule}
-                  onValueChange={(value) => {
-                    console.log('[BowlerDashboard] Selected payment schedule:', value);
-                    setSelectedSchedule(value as PaymentSchedule);
-                  }}
-                  className="space-y-4"
-                >
-                  {PAYMENT_OPTIONS.map((option) => {
+        <Card>
+          <CardHeader>
+            <CardTitle>Set Up Payments</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Button 
+              onClick={() => {
+                console.log('[BowlerDashboard] Returning to dashboard from payment setup');
+                setShowPaymentSetup(false);
+              }}
+            >
+              Return to Dashboard
+            </Button>
+          </CardContent>
+        </Card>
+      );
+    }
+    
+    // Otherwise show the regular payment status/setup buttons
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Settings</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Button
+            onClick={() => {
+              console.log('[BowlerDashboard] Update Payment Settings button clicked');
+              setShowPaymentSetup(true);
+            }}
+            className="w-full"
+          >
+            Update Payment Settings
+            <CreditCard className="ml-2 h-4 w-4" />
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }, [
+    showPaymentSetup, 
+    setShowPaymentSetup
+  ]);
                     const amount = option.id === 'custom'
                       ? option.calculateAmount(weeklyFee, totalWeeks, selectedWeeks)
                       : option.calculateAmount(weeklyFee, totalWeeks);
@@ -554,77 +585,79 @@ export const BowlerDashboardPage: FC = () => {
       );
     }
     
-    // Standard view based on whether user has Square customer ID
-    return (
-      <>
-        {bowler?.squareCustomerId ? (
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Status</CardTitle>
-                <CardDescription>Your automatic payment configuration</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6">
-                  <Card className="bg-secondary/10">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-lg">Automatic Payment Schedule</CardTitle>
-                      <CardDescription>
-                        Your league dues are automatically charged according to your selected schedule
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-4">
+    // Show payment status if bowler has a Square customer ID
+    if (bowler?.squareCustomerId) {
+      return (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Status</CardTitle>
+              <CardDescription>Your automatic payment configuration</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <Card className="bg-secondary/10">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-lg">Automatic Payment Schedule</CardTitle>
+                    <CardDescription>
+                      Your league dues are automatically charged according to your selected schedule
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">Payment Frequency</p>
+                          <p className="text-sm text-muted-foreground">
+                            {getPaymentFrequency() === 'weekly' ? 'Weekly Payments' : 'Monthly Payments (every 4 weeks)'}
+                          </p>
+                        </div>
+                        <Badge variant="outline">
+                          {getPaymentFrequency() === 'weekly' ? 'Weekly' : 'Monthly'}
+                        </Badge>
+                      </div>
+
+                      {payments?.length > 0 && (
                         <div className="flex items-center justify-between">
                           <div className="space-y-1">
-                            <p className="text-sm font-medium">Payment Frequency</p>
+                            <p className="text-sm font-medium">Last Payment</p>
                             <p className="text-sm text-muted-foreground">
-                              {getPaymentFrequency() === 'weekly' ? 'Weekly Payments' : 'Monthly Payments (every 4 weeks)'}
+                              {format(new Date(payments[0].weekOf), "MMMM d, yyyy")}
                             </p>
                           </div>
-                          <Badge variant="outline">
-                            {getPaymentFrequency() === 'weekly' ? 'Weekly' : 'Monthly'}
-                          </Badge>
+                          <p className="font-medium">${(payments[0].amount / 100).toFixed(2)}</p>
                         </div>
-
-                        {payments?.length > 0 && (
-                          <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                              <p className="text-sm font-medium">Last Payment</p>
-                              <p className="text-sm text-muted-foreground">
-                                {format(new Date(payments[0].weekOf), "MMMM d, yyyy")}
-                              </p>
-                            </div>
-                            <p className="font-medium">${(payments[0].amount / 100).toFixed(2)}</p>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 pt-4 border-t">
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            console.log('[BowlerDashboard] Update Payment Settings button clicked');
-                            setShowPaymentSetup(true);
-                            console.log('[BowlerDashboard] showPaymentSetup set to:', true);
-                          }}
-                          className="w-full"
-                        >
-                          Update Payment Settings
-                          <ArrowRight className="ml-2 h-4 w-4" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        ) : (
-            <div className="space-y-6">
-              <div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 pt-4 border-t">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          console.log('[BowlerDashboard] Update Payment Settings button clicked');
+                          setShowPaymentSetup(true);
+                          console.log('[BowlerDashboard] showPaymentSetup set to:', true);
+                        }}
+                        className="w-full"
+                      >
+                        Update Payment Settings
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+    
+    // Show setup option if bowler doesn't have a Square customer ID
+    return (
+      <div className="space-y-6">
+        <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
                     <h3 className="text-lg font-semibold">Choose Payment Schedule</h3>
                     <RadioGroup
                       value={selectedSchedule}
@@ -802,50 +835,69 @@ export const BowlerDashboardPage: FC = () => {
                 </Button>
               </div>
             </div>
-          ) : (
-            <div className="space-y-4 pt-2">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <CreditCard className="h-5 w-5" />
-                <p>Set up your payment method to enable automatic payments</p>
+          </div>
+        </div>
+      );
+    }
+    
+    // Original content for non-setup state follows
+    // Return payment status card for bowlers who have data
+    if (bowler && payments && upcomingPayments) {
+      return (
+        <Card>
+          <CardHeader>
+            <CardTitle>Payment Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {/* Payment stats and actions */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Button
+                  onClick={() => {
+                    console.log('[BowlerDashboard] Update Payment Settings button clicked');
+                    setShowPaymentSetup(true);
+                  }}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Update Payment Settings
+                  <CreditCard className="ml-2 h-4 w-4" />
+                </Button>
               </div>
-              <div className="rounded-md bg-secondary/50 p-4">
-                <h3 className="font-semibold mb-2">Why set up automatic payments?</h3>
-                <ul className="space-y-2 text-sm text-muted-foreground">
-                  <li>• Never miss a payment deadline</li>
-                  <li>• Choose flexible payment schedules</li>
-                  <li>• Secure and hassle-free transactions</li>
-                  <li>• Special discounts for full season payments</li>
-                </ul>
-              </div>
-              <Button
-                className="w-full"
-                onClick={() => setShowPaymentSetup(true)}
-              >
-                Set Up Payments Now
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
             </div>
-          )
-        )}
-      </>
+          </CardContent>
+        </Card>
+      );
+    }
+    
+    // Fallback for bowlers without payment data
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment Setup</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <Button
+              onClick={() => {
+                console.log('[BowlerDashboard] Set Up Payments Now button clicked');
+                setShowPaymentSetup(true);
+              }}
+              className="w-full"
+            >
+              Set Up Payments Now
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     );
   }, [
-    bowler,
-    showPaymentSetup,
-    selectedSchedule,
-    weeklyFee,
-    totalWeeks,
-    selectedWeeks,
-    isDrawerOpen,
-    customHandleWeekChange,
-    calculateTotalAmount,
-    handleSubmitPayment,
-    isInitialized,
-    squareError,
-    payments,
-    upcomingPayments,
-    amountPastDue,
-    getPaymentFrequency
+    showPaymentSetup, selectedSchedule, weeklyFee, totalWeeks, selectedWeeks,
+    isDrawerOpen, seasonPresets, handleWeekChangeWrapper, decrementWeeks, incrementWeeks,
+    calculateTotalAmount, setIsDrawerOpen, cardContainerRef, squareError, setShowPaymentSetup,
+    handleSubmitPayment, isInitialized, bowler, getPaymentFrequency, payments,
+    customHandleWeekChange, upcomingPayments, amountPastDue
   ]);
 
   // Loading and error states
@@ -946,7 +998,8 @@ export const BowlerDashboardPage: FC = () => {
           </CardContent>
         </Card>
 
-        {renderPaymentStatus}
+        {/* Use the renderPaymentStatus as a function to get the component */}
+        {renderPaymentStatus()}
       </div>
     </BowlerLayout>
   );
