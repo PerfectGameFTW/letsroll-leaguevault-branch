@@ -109,6 +109,11 @@ export const BowlerDashboardPage: FC = () => {
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
+  
+  // Debug logging for state changes
+  useEffect(() => {
+    console.log('[BowlerDashboard] showPaymentSetup changed to:', showPaymentSetup);
+  }, [showPaymentSetup]);
 
   // Use custom drawer hook
   const { isDrawerOpen, setIsDrawerOpen, selectedWeeks, handleWeekChange: customHandleWeekChange } = usePaymentDrawer();
@@ -362,6 +367,194 @@ export const BowlerDashboardPage: FC = () => {
 
   // Memoize renderPaymentStatus after seasonPresets is defined
   const renderPaymentStatus = useMemo(() => {
+    // If showPaymentSetup is true, always show the payment setup form regardless of other conditions
+    if (showPaymentSetup) {
+      return (
+        <div className="space-y-6">
+          <div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Choose Payment Schedule</h3>
+                <RadioGroup
+                  value={selectedSchedule}
+                  onValueChange={(value) => {
+                    console.log('[BowlerDashboard] Selected payment schedule:', value);
+                    setSelectedSchedule(value as PaymentSchedule);
+                  }}
+                  className="space-y-4"
+                >
+                  {PAYMENT_OPTIONS.map((option) => {
+                    const amount = option.id === 'custom'
+                      ? option.calculateAmount(weeklyFee, totalWeeks, selectedWeeks)
+                      : option.calculateAmount(weeklyFee, totalWeeks);
+
+                    return (
+                      <div key={option.id} className="flex items-center space-x-2">
+                        <RadioGroupItem value={option.id} id={option.id} />
+                        <Label htmlFor={option.id} className="flex flex-col">
+                          <span className="font-medium">{option.label}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {option.description}
+                          </span>
+                          <span className="text-sm font-semibold">
+                            ${(amount / 100).toFixed(2)}
+                          </span>
+                        </Label>
+                      </div>
+                    );
+                  })}
+                </RadioGroup>
+
+                {selectedSchedule === 'custom' && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsDrawerOpen(true)}
+                      className="w-full mt-4"
+                    >
+                      Select Number of Weeks
+                    </Button>
+
+                    <Drawer.Root
+                      open={isDrawerOpen}
+                      onOpenChange={setIsDrawerOpen}
+                    >
+                      <Drawer.Portal>
+                        <Drawer.Overlay className="fixed inset-0 bg-black/40" />
+                        <Drawer.Content className="bg-background flex flex-col fixed bottom-0 left-0 right-0 max-h-[85vh] rounded-t-[10px]">
+                          <div className="p-4 bg-muted/40 rounded-t-[10px] flex-1">
+                            <div className="mx-auto w-12 h-1.5 flex-shrink-0 rounded-full bg-muted mb-8" />
+
+                            <div className="max-w-md mx-auto">
+                              <h3 className="font-semibold mb-4">Select Number of Weeks</h3>
+                              
+                              <div className="grid grid-cols-3 gap-4 mb-6">
+                                {seasonPresets.map(preset => (
+                                  <Button
+                                    key={preset.label}
+                                    variant={selectedWeeks === preset.weeks ? "default" : "outline"}
+                                    onClick={() => handleWeekChangeWrapper(preset.weeks)}
+                                    className="w-full"
+                                    disabled={!league || preset.weeks === 0}
+                                  >
+                                    {preset.label}
+                                  </Button>
+                                ))}
+                              </div>
+
+                              <div className="flex items-center space-x-4 mb-6">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={decrementWeeks}
+                                  disabled={selectedWeeks <= 1}
+                                >
+                                  <Minus className="h-4 w-4" />
+                                </Button>
+
+                                <div className="flex-1">
+                                  <Input
+                                    type="number"
+                                    value={selectedWeeks}
+                                    onChange={(e) => handleWeekChangeWrapper(parseInt(e.target.value) || 1)}
+                                    min={1}
+                                    max={totalWeeks}
+                                    className="text-center"
+                                  />
+                                </div>
+
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={incrementWeeks}
+                                  disabled={selectedWeeks >= totalWeeks}
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              </div>
+
+                              <div className="rounded-lg border bg-card p-4">
+                                <div className="flex justify-between items-center mb-2">
+                                  <span className="text-sm text-muted-foreground">Weekly Fee</span>
+                                  <span>${(weeklyFee / 100).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between items-center mb-2">
+                                  <span className="text-sm text-muted-foreground">Number of Weeks</span>
+                                  <span>{selectedWeeks}</span>
+                                </div>
+                                <div className="flex justify-between items-center pt-2 border-t">
+                                  <span className="font-semibold">Total Amount</span>
+                                  <span className="text-lg font-bold">
+                                    ${(calculateTotalAmount() / 100).toFixed(2)}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <Button
+                                className="w-full mt-6"
+                                onClick={() => setIsDrawerOpen(false)}
+                              >
+                                Confirm Selection
+                              </Button>
+                            </div>
+                          </div>
+                        </Drawer.Content>
+                      </Drawer.Portal>
+                    </Drawer.Root>
+                  </>
+                )}
+
+                <div className="mt-6 p-4 rounded-lg border bg-secondary/50">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold">Total Amount:</span>
+                    <span className="text-lg font-bold">
+                      ${(calculateTotalAmount() / 100).toFixed(2)}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    {selectedSchedule === 'weekly' && 'Billed weekly'}
+                    {selectedSchedule === 'monthly' && 'Billed monthly (every 4 weeks)'}
+                    {selectedSchedule === 'custom' && `One-time payment for ${selectedWeeks} week${selectedWeeks > 1 ? 's' : ''}`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Payment Information</h3>
+                <div
+                  ref={cardContainerRef}
+                  className="min-h-[250px] p-4 border rounded-lg bg-card"
+                  style={{ minHeight: '250px' }}
+                />
+                {squareError && (
+                  <p className="text-sm text-destructive">{squareError}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2 pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => {
+                console.log('[BowlerDashboard] Canceling payment setup');
+                setShowPaymentSetup(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmitPayment}
+              disabled={!isInitialized || !!squareError}
+            >
+              Set Up Payment Schedule
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    
+    // Standard view based on whether user has Square customer ID
     return (
       <>
         {bowler?.squareCustomerId ? (
@@ -409,7 +602,11 @@ export const BowlerDashboardPage: FC = () => {
                       <div className="flex items-center gap-2 pt-4 border-t">
                         <Button
                           variant="outline"
-                          onClick={() => setShowPaymentSetup(true)}
+                          onClick={() => {
+                            console.log('[BowlerDashboard] Update Payment Settings button clicked');
+                            setShowPaymentSetup(true);
+                            console.log('[BowlerDashboard] showPaymentSetup set to:', true);
+                          }}
                           className="w-full"
                         >
                           Update Payment Settings
@@ -424,7 +621,6 @@ export const BowlerDashboardPage: FC = () => {
             </Card>
           </div>
         ) : (
-          showPaymentSetup ? (
             <div className="space-y-6">
               <div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
