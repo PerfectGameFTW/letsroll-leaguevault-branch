@@ -1,7 +1,7 @@
 import { FC, ReactNode } from "react";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Menu, LayoutDashboard, History, Trophy, Medal, UserCircle, ChevronRight } from "lucide-react";
+import { Menu, LayoutDashboard, History, UserCircle, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Organization, User, ApiResponse } from "@shared/schema";
@@ -29,16 +29,6 @@ const navItems: NavItem[] = [
     icon: History,
     label: "Payment History",
     href: "/payment-history"
-  },
-  {
-    icon: Trophy,
-    label: "My Scores",
-    href: "/scores"
-  },
-  {
-    icon: Medal,
-    label: "League Standings",
-    href: "/standings"
   },
   {
     icon: UserCircle,

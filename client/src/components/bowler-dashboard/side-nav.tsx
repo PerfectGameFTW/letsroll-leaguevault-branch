@@ -3,8 +3,6 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   History,
-  Trophy,
-  Medal,
   UserCircle,
   ChevronRight
 } from "lucide-react";
@@ -25,16 +23,6 @@ const navItems: NavItem[] = [
     icon: History,
     label: "Payment History",
     href: "/payment-history"
-  },
-  {
-    icon: Trophy,
-    label: "My Scores",
-    href: "/scores"
-  },
-  {
-    icon: Medal,
-    label: "League Standings",
-    href: "/standings"
   },
   {
     icon: UserCircle,
