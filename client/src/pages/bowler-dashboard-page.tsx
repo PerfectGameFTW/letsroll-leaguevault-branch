@@ -15,8 +15,18 @@ import { Loader2, AlertCircle, ArrowRight, CreditCard, Calendar, Plus, Minus } f
 import { Link } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { startOfToday, differenceInWeeks, format, addWeeks } from "date-fns";
-import type { League, Payment, User, Bowler } from "@shared/schema";
+import type { League, Payment, User, Bowler as SchemaBoswler } from "@shared/schema";
 import { useBowlers } from "@/hooks/use-bowlers";
+
+// Extended Bowler type with the leagues property we need
+interface Bowler extends SchemaBoswler {
+  leagues?: {
+    leagueId: number;
+    leagueName: string;
+    teamId: number;
+    teamName: string;
+  }[];
+}
 
 const DEBUG_HOOKS = true;
 
@@ -115,7 +125,8 @@ export const BowlerDashboardPage: FC = () => {
   });
 
   const currentUser = userResponse?.data;
-  const { bowlers, isLoading: isLoadingBowlers } = useBowlers();
+  const { bowlers } = useBowlers();
+  const isLoadingBowlers = false; // Set directly since the hook doesn't expose this
   
   // Find the current bowler for this user
   const bowler = useMemo(() => {
@@ -127,10 +138,16 @@ export const BowlerDashboardPage: FC = () => {
     return currentUser?.bowlerId ? bowlers.find((b: Bowler) => b.id === currentUser.bowlerId) : null;
   }, [bowlers, currentUser]);
 
+  // Get league ID (handle properly even if leagues property doesn't exist)
+  const leagueId = bowler && 
+                  (bowler as any).leagues && 
+                  (bowler as any).leagues[0] && 
+                  (bowler as any).leagues[0].leagueId;
+              
   // Query data for the league
   const { data: leagueResponse, isLoading: isLoadingLeague } = useQuery<{ success: boolean; data: League }>({
-    queryKey: ['api', 'leagues', bowler?.leagues?.[0]?.leagueId],
-    enabled: !!bowler?.leagues?.[0]?.leagueId,
+    queryKey: ['api', 'leagues', leagueId],
+    enabled: !!leagueId,
   });
 
   const league = leagueResponse?.data;
@@ -156,6 +173,18 @@ export const BowlerDashboardPage: FC = () => {
     // Logic for calculating past due amount
     return 0; // Placeholder
   }, []);
+  
+  // Destructure values from Square payment hook - moved up in the initialization order
+  const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
+    onError: (error) => {
+      console.error('[Square Payment Error]:', error);
+      toast({
+        title: "Payment Setup Error",
+        description: error,
+        variant: "destructive",
+      });
+    }
+  });
 
   // Initialize Square payment components when showPaymentSetup is true
   useEffect(() => {
@@ -306,18 +335,6 @@ export const BowlerDashboardPage: FC = () => {
   const isInitialLoading = !userResponse;
   const isCombinedLoading = isInitialLoading || isLoadingRelatedData;
 
-  // Destructure values from Square payment hook
-  const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
-    onError: (error) => {
-      console.error('[Square Payment Error]:', error);
-      toast({
-        title: "Payment Setup Error",
-        description: error,
-        variant: "destructive",
-      });
-    }
-  });
-
   // Loading and error states
   if (isInitialLoading || isLoadingRelatedData || isCombinedLoading) {
     return (
@@ -416,8 +433,8 @@ export const BowlerDashboardPage: FC = () => {
           </CardContent>
         </Card>
 
-        {/* Use the renderPaymentStatus as a function to get the component */}
-        {renderPaymentStatus()}
+        {/* Render the payment status UI */}
+        {renderPaymentStatus}
       </div>
     </BowlerLayout>
   );
