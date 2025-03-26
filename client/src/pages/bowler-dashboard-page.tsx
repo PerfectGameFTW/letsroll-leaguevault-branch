@@ -111,6 +111,8 @@ export const BowlerDashboardPage: FC = () => {
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
+  const [storeCard, setStoreCard] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Debug logging for state changes
   useEffect(() => {
@@ -312,20 +314,27 @@ export const BowlerDashboardPage: FC = () => {
     }
 
     try {
+      setIsSubmitting(true);
+      console.log('[BowlerDashboard] Processing payment with Square...');
+      
       const amount = calculateTotalAmount();
       const result = await createPayment(
         amount,
         card,
         bowler.id, 
         league.id,
-        true // Store card for future payments
+        storeCard // Use the store card state value
       );
 
+      console.log('[BowlerDashboard] Payment successful:', result);
+      
+      // Show success message
       toast({
         title: "Payment Setup Successful",
-        description: `Your payment schedule has been set up.`,
+        description: `Your ${selectedSchedule} payment schedule has been set up.`,
       });
       
+      // Reset form and close payment setup
       setShowPaymentSetup(false);
     } catch (error) {
       console.error('[Payment Error]:', error);
@@ -334,6 +343,8 @@ export const BowlerDashboardPage: FC = () => {
         description: typeof error === 'string' ? error : "Unable to process payment. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -493,10 +504,38 @@ export const BowlerDashboardPage: FC = () => {
                   </p>
                 </div>
                 
-                <div ref={cardContainerRef} id="card-container" className="p-4 border rounded-md"></div>
+                <div className="rounded-md border overflow-hidden relative">
+                  {/* Square Card Form Container */}
+                  <div 
+                    ref={cardContainerRef} 
+                    id="card-container" 
+                    className="p-4 min-h-[150px] bg-background"
+                  ></div>
+                  
+                  {/* Card Form Status Overlay */}
+                  {!isInitialized && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+                      <div className="text-center">
+                        <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-primary" />
+                        <p className="text-sm">Loading payment form...</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {squareError && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-start">
+                    <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
+                    <span>{squareError}</span>
+                  </div>
+                )}
                 
                 <div className="flex items-center space-x-2">
-                  <Checkbox id="store-card" defaultChecked />
+                  <Checkbox 
+                    id="store-card" 
+                    checked={storeCard}
+                    onCheckedChange={(checked) => setStoreCard(checked === true)} 
+                  />
                   <Label htmlFor="store-card">Save card for future payments</Label>
                 </div>
               </div>
@@ -527,9 +566,17 @@ export const BowlerDashboardPage: FC = () => {
                 </Button>
                 <Button 
                   onClick={handleSubmitPayment}
-                  disabled={!isInitialized}
+                  disabled={!isInitialized || isSubmitting}
+                  className="min-w-[200px]"
                 >
-                  Setup Automatic Payments
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>Setup Automatic Payments</>
+                  )}
                 </Button>
               </div>
             </div>
@@ -568,6 +615,9 @@ export const BowlerDashboardPage: FC = () => {
     seasonPresets,
     cardContainerRef,
     isInitialized,
+    isSubmitting, 
+    squareError,
+    storeCard,
     incrementWeeks,
     decrementWeeks,
     handleWeekChangeWrapper,
