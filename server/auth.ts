@@ -63,7 +63,7 @@ function isValidUser(user: any): user is SelectUser {
 
 export function setupAuth(app: Express) {
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || 'your-secret-key',
+    secret: process.env.SESSION_SECRET || '',
     resave: false,
     saveUninitialized: false,
     store: new PostgresSessionStore({
