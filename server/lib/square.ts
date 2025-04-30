@@ -3,7 +3,7 @@ import { logger } from "../logger";
 
 const squareClient = new Client({
   accessToken: process.env.SQUARE_ACCESS_TOKEN,
-  environment: Environment.Sandbox, // Explicitly set sandbox environment
+  environment: process.env.NODE_ENV === 'production' ? Environment.Production : Environment.Sandbox
 });
 
 interface CreatePaymentParams {

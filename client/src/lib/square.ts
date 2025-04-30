@@ -31,8 +31,9 @@ declare global {
 let payments: any = null;
 let initializationPromise: Promise<any> | null = null;
 
-// Ensure we load the sandbox URL in development
-const SQUARE_SDK_URL = "https://sandbox.web.squarecdn.com/v1/square.js";
+const SQUARE_SDK_URL = process.env.NODE_ENV === 'production'
+  ? "https://web.squarecdn.com/v1/square.js"
+  : "https://sandbox.web.squarecdn.com/v1/square.js";
 
 export async function initializeSquare() {
   try {
