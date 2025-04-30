@@ -575,7 +575,7 @@ export const BowlerDashboardPage: FC = () => {
                       Processing...
                     </>
                   ) : (
-                    <>Setup Automatic Payments</>
+                    <>{selectedSchedule === 'custom' ? 'Make One-Time Payment' : 'Set Up Automatic Payments'}</>
                   )}
                 </Button>
               </div>
