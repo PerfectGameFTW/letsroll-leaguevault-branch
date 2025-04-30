@@ -495,50 +495,8 @@ export const BowlerDashboardPage: FC = () => {
                 </div>
               )}
               
-              {/* Payment Form */}
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-lg font-medium">Payment Information</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Enter your card details (securely processed by Square)
-                  </p>
-                </div>
-                
-                <div className="rounded-md border overflow-hidden relative">
-                  {/* Square Card Form Container */}
-                  <div 
-                    ref={cardContainerRef} 
-                    id="card-container" 
-                    className="p-4 min-h-[150px] bg-background"
-                  ></div>
-                  
-                  {/* Card Form Status Overlay */}
-                  {!isInitialized && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-                      <div className="text-center">
-                        <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 text-primary" />
-                        <p className="text-sm">Loading payment form...</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                {squareError && (
-                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive flex items-start">
-                    <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
-                    <span>{squareError}</span>
-                  </div>
-                )}
-                
-                <div className="flex items-center space-x-2">
-                  <Checkbox 
-                    id="store-card" 
-                    checked={storeCard}
-                    onCheckedChange={(checked) => setStoreCard(checked === true)} 
-                  />
-                  <Label htmlFor="store-card">Save card for future payments</Label>
-                </div>
-              </div>
+              {/* We're using the PaymentForm component which includes the card container
+                  so we don't need to include a separate container here */}
               
               {/* Total Amount */}
               <div className="pt-4 border-t">
