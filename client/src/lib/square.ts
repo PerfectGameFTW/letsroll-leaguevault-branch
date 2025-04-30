@@ -39,6 +39,10 @@ const locationId = import.meta.env.VITE_SQUARE_LOCATION_ID || '';
 // Production app IDs don't have 'sandbox-' prefix
 const isProduction = !appId.includes('sandbox-');
 
+// Additional debug information
+console.log('[Square] Application ID:', appId ? (appId.substring(0, 5) + '...') : 'not set');
+console.log('[Square] Location ID:', locationId ? (locationId.substring(0, 5) + '...') : 'not set');
+
 // Always use production SDK for production credentials
 const SQUARE_SDK_URL = isProduction
   ? "https://web.squarecdn.com/v1/square.js" // Production SDK

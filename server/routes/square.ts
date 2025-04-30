@@ -198,7 +198,7 @@ router.get('/config', (req, res) => {
     const locationId = process.env.VITE_SQUARE_LOCATION_ID || '';
     
     // Determine environment based on token format 
-    const isProductionToken = accessToken.startsWith('EAAAEv');
+    const isProductionToken = accessToken.startsWith('EAAAEv') || accessToken.startsWith('EAAAI7');
     const isProductionAppId = !appId.includes('sandbox-');
     
     console.log('[Square Routes] Environment check requested');

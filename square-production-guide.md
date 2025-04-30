@@ -17,7 +17,7 @@ Before transitioning to production, ensure you have:
 Three Square credentials must be consistent across your application:
 
 1. **Access Token** (Server-side): `SQUARE_ACCESS_TOKEN`
-   - Production format: Starts with `EAAAEv...`
+   - Production format: Starts with `EAAAI7...` or `EAAAEv...`
    - Sandbox format: Starts with different pattern
 
 2. **Application ID** (Client-side): `VITE_SQUARE_APP_ID` 
