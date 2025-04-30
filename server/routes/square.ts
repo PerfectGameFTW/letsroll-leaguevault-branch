@@ -79,7 +79,7 @@ router.post('/payments', async (req, res) => {
 
     // If this is for a recurring payment schedule and we have a card on file,
     // update the schedule with the new card token
-    if (req.body.storeCard && payment.cardOnFile) {
+    if (req.body.storeCard && payment.cardOnFile && payment.cardOnFile.id) {
       try {
         await storage.updatePaymentScheduleCard(
           req.body.bowlerId,

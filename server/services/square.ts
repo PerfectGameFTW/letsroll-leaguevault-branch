@@ -20,12 +20,20 @@ async function initializeSquareClient() {
       }
 
       // Check if we're using a production access token
-      // Production tokens typically start with 'EAAAExxxxxxx'
-      const isProductionToken = process.env.SQUARE_ACCESS_TOKEN.startsWith('EAAAE');
-      const environment = isProductionToken ? Environment.Production : Environment.Sandbox;
+      // Production tokens typically start with 'EAAAEv'
+      const isProductionToken = process.env.SQUARE_ACCESS_TOKEN.startsWith('EAAAEv');
       
-      console.log('[Square Service] Using Square environment:', environment === Environment.Production ? 'Production' : 'Sandbox',
-        `(detected ${isProductionToken ? 'production' : 'sandbox'} token)`);
+      // Check app ID format from environment variables
+      const appId = process.env.VITE_SQUARE_APP_ID || '';
+      const isProductionAppId = !appId.includes('sandbox-');
+      
+      // Always use production environment when app ID is production
+      // This ensures consistency between client and server
+      const environment = isProductionAppId ? Environment.Production : Environment.Sandbox;
+      
+      console.log('[Square Service] Token format:', isProductionToken ? 'PRODUCTION' : 'SANDBOX');
+      console.log('[Square Service] App ID format:', isProductionAppId ? 'PRODUCTION' : 'SANDBOX');
+      console.log('[Square Service] Using Square environment:', environment === Environment.Production ? 'Production' : 'Sandbox');
       squareClient = new Client({
         accessToken: process.env.SQUARE_ACCESS_TOKEN,
         environment
