@@ -591,7 +591,7 @@ export const BowlerDashboardPage: FC = () => {
         <CardHeader>
           <CardTitle>Payment Settings</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-3">
           <Button
             onClick={() => {
               console.log('[BowlerDashboard] Update Payment Settings button clicked');
