@@ -19,7 +19,13 @@ async function initializeSquareClient() {
         throw new Error('Square access token is not configured');
       }
 
-      const environment = process.env.NODE_ENV === 'production' ? Environment.Production : Environment.Sandbox;
+      // Check if we're using a production access token
+      // Production tokens typically start with 'EAAAExxxxxxx'
+      const isProductionToken = process.env.SQUARE_ACCESS_TOKEN.startsWith('EAAAE');
+      const environment = isProductionToken ? Environment.Production : Environment.Sandbox;
+      
+      console.log('[Square Service] Using Square environment:', environment === Environment.Production ? 'Production' : 'Sandbox',
+        `(detected ${isProductionToken ? 'production' : 'sandbox'} token)`);
       squareClient = new Client({
         accessToken: process.env.SQUARE_ACCESS_TOKEN,
         environment

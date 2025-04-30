@@ -31,105 +31,74 @@ declare global {
 let payments: any = null;
 let initializationPromise: Promise<any> | null = null;
 
-// Note: Square updated their CDN pattern for production and sandbox SDKs
-const SQUARE_SDK_URL = import.meta.env.MODE === 'production'
-  ? "https://web.squarecdn.com/v1/square.js"
-  : "https://sandbox.web.squarecdn.com/v1/square.js";
+// Get the application credentials
+const appId = import.meta.env.VITE_SQUARE_APP_ID || '';
+const locationId = import.meta.env.VITE_SQUARE_LOCATION_ID || '';
+
+// Determine environment based on App ID format
+// Production app IDs don't have 'sandbox-' prefix
+const isProduction = !appId.includes('sandbox-');
+
+// Always use production SDK for production credentials
+const SQUARE_SDK_URL = isProduction
+  ? "https://web.squarecdn.com/v1/square.js" // Production SDK
+  : "https://sandbox.web.squarecdn.com/v1/square.js"; // Sandbox SDK
+
+// Log environment details for debugging
+console.log(`[Square] App ID detected as ${isProduction ? 'PRODUCTION' : 'SANDBOX'} format`);
+console.log(`[Square] Using ${isProduction ? 'PRODUCTION' : 'SANDBOX'} SDK URL: ${SQUARE_SDK_URL}`);
 
 export async function initializeSquare() {
   try {
-    // Check if we already have a successfully initialized payments instance
-    if (payments) {
-      console.log('[Square] Using existing payments instance');
-      return payments;
-    }
+    // Start fresh each time
+    payments = null;
+    initializationPromise = null;
     
-    // If there's an existing initialization in progress, return that promise
-    if (initializationPromise) {
-      console.log('[Square] Using existing initialization promise');
-      return initializationPromise;
+    // Clear any previously loaded Square SDK
+    if (window.Square) {
+      console.log('[Square] Removing existing Square SDK to ensure clean environment');
+      document.querySelectorAll('script[src*="square.js"]').forEach(script => script.remove());
+      (window as any).Square = undefined;
     }
 
-    // Create new initialization promise with timeout protection
+    // Create initialization with timeout protection
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => {
-        reject(new Error("Square initialization timed out after 10 seconds"));
-      }, 10000);
+      setTimeout(() => reject(new Error("Square initialization timed out after 10 seconds")), 10000);
     });
     
-    // Main initialization function
+    // Initialization function
     const initializeFunction = async () => {
-      try {
-        console.log('[Square] Starting Square SDK initialization...');
-
-        // Validate environment variables
-        console.log('[Square] Checking environment variables:');
-        const appId = import.meta.env.VITE_SQUARE_APP_ID;
-        const locationId = import.meta.env.VITE_SQUARE_LOCATION_ID;
-        
-        console.log('[Square] VITE_SQUARE_APP_ID:', appId ? 'Available' : 'Missing');
-        console.log('[Square] VITE_SQUARE_LOCATION_ID:', locationId ? 'Available' : 'Missing');
-        
-        if (!appId || !locationId) {
-          const missing = [];
-          if (!appId) missing.push('VITE_SQUARE_APP_ID');
-          if (!locationId) missing.push('VITE_SQUARE_LOCATION_ID');
-          
-          console.error('[Square] Missing required Square credentials:', missing.join(', '));
-          throw new Error(`Square credentials are not properly configured. Missing: ${missing.join(', ')}`);
-        }
-
-        // Check if Square SDK is already loaded
-        if (!window.Square) {
-          console.log('[Square] Loading Square SDK from sandbox CDN...');
-          try {
-            await loadScript(SQUARE_SDK_URL);
-            console.log('[Square] Square SDK loaded successfully');
-          } catch (error) {
-            console.error('[Square] Failed to load Square SDK:', error);
-            throw new Error("Failed to load Square SDK: " + (error instanceof Error ? error.message : String(error)));
-          }
-        } else {
-          console.log('[Square] Square SDK already loaded');
-        }
-
-        // Verify Square SDK is available
-        if (!window.Square || !window.Square.payments) {
-          console.error('[Square] Square SDK not properly loaded - Square.payments is not available');
-          throw new Error("Square SDK not properly loaded");
-        }
-
-        console.log('[Square] Initializing Square payments with provided credentials');
-        try {
-          payments = await window.Square.payments(appId, locationId);
-          console.log('[Square] Square payments initialized successfully');
-          return payments;
-        } catch (error) {
-          console.error('[Square] Failed to initialize Square payments:', error);
-          throw new Error("Failed to initialize Square payments: " + (error instanceof Error ? error.message : String(error)));
-        }
-      } catch (error) {
-        console.error('[Square] Error during initialization:', error);
-        // Reset shared state to allow future retry attempts
-        payments = null;
-        initializationPromise = null;
-        throw error;
+      console.log('[Square] Starting Square SDK initialization...');
+      
+      // First load the SDK
+      console.log(`[Square] Loading Square SDK from ${isProduction ? 'production' : 'sandbox'} environment...`);
+      await loadScript(SQUARE_SDK_URL);
+      console.log('[Square] Square SDK loaded successfully');
+      
+      // Check if SDK is properly loaded
+      if (!window.Square?.payments) {
+        console.error('[Square] Square SDK not properly loaded');
+        throw new Error("Square SDK failed to load properly");
       }
+      
+      // Initialize payments with credentials
+      console.log('[Square] Initializing Square payments with credentials');
+      payments = await window.Square.payments(appId, locationId);
+      console.log('[Square] Square payments initialized successfully');
+      return payments;
     };
 
-    // Create the initialization promise with timeout protection
+    // Execute with timeout protection
     initializationPromise = Promise.race([
       initializeFunction(),
       timeoutPromise
     ]);
-
-    // Return the promise
+    
     return initializationPromise;
   } catch (error) {
     console.error('[Square] Critical error during Square initialization:', error);
-    // Reset for retry
-    initializationPromise = null;
     payments = null;
+    initializationPromise = null;
     throw error;
   }
 }

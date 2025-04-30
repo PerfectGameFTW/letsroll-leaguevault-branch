@@ -13,7 +13,7 @@ class ConsoleBuffer extends Writable {
     const timestamp = new Date().toISOString();
     const formattedLog = `[${timestamp}] ${chunk.toString()}`;
     this.buffer.push(formattedLog);
-    process.stdout.write(formattedLog, encoding);
+    process.stdout.write(formattedLog + '\n');
     callback();
   }
 
@@ -31,18 +31,18 @@ export const consoleBuffer = new ConsoleBuffer();
 export const logger = {
   info: (message: string, ...args: any[]) => {
     const log = `[INFO] ${message} ${args.length ? JSON.stringify(args) : ''}`;
-    consoleBuffer.write(`${log}\n`);
+    consoleBuffer.write(Buffer.from(`${log}\n`));
   },
   error: (message: string, ...args: any[]) => {
     const log = `[ERROR] ${message} ${args.length ? JSON.stringify(args) : ''}`;
-    consoleBuffer.write(`${log}\n`);
+    consoleBuffer.write(Buffer.from(`${log}\n`));
   },
   warn: (message: string, ...args: any[]) => {
     const log = `[WARN] ${message} ${args.length ? JSON.stringify(args) : ''}`;
-    consoleBuffer.write(`${log}\n`);
+    consoleBuffer.write(Buffer.from(`${log}\n`));
   },
   debug: (message: string, ...args: any[]) => {
     const log = `[DEBUG] ${message} ${args.length ? JSON.stringify(args) : ''}`;
-    consoleBuffer.write(`${log}\n`);
+    consoleBuffer.write(Buffer.from(`${log}\n`));
   }
 };

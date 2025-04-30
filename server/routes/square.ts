@@ -189,4 +189,40 @@ router.post('/customers', async (req, res) => {
   }
 });
 
+// Add a debugging route to check Square environment
+router.get('/config', (req, res) => {
+  try {
+    // Don't expose actual tokens, just show detection results
+    const accessToken = process.env.SQUARE_ACCESS_TOKEN || '';
+    const appId = process.env.VITE_SQUARE_APP_ID || '';
+    const locationId = process.env.VITE_SQUARE_LOCATION_ID || '';
+    
+    // Determine environment based on token format 
+    const isProductionToken = accessToken.startsWith('EAAAEv');
+    const isProductionAppId = !appId.includes('sandbox-');
+    
+    console.log('[Square Routes] Environment check requested');
+    console.log(`[Square Routes] Token format: ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'}`);
+    console.log(`[Square Routes] App ID format: ${isProductionAppId ? 'PRODUCTION' : 'SANDBOX'}`);
+    
+    // Send back environment details without revealing secrets
+    sendSuccess(res, {
+      environment: {
+        tokenFormat: isProductionToken ? 'PRODUCTION' : 'SANDBOX',
+        appIdFormat: isProductionAppId ? 'PRODUCTION' : 'SANDBOX', 
+        nodeEnv: process.env.NODE_ENV || 'development'
+      },
+      credentials: {
+        hasAccessToken: !!accessToken,
+        hasAppId: !!appId,
+        hasLocationId: !!locationId
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('[Square Routes] Error checking environment:', error);
+    sendError(res, 'Error checking Square environment');
+  }
+});
+
 export default router;
