@@ -31,7 +31,8 @@ declare global {
 let payments: any = null;
 let initializationPromise: Promise<any> | null = null;
 
-const SQUARE_SDK_URL = process.env.NODE_ENV === 'production'
+// Note: Square updated their CDN pattern for production and sandbox SDKs
+const SQUARE_SDK_URL = import.meta.env.MODE === 'production'
   ? "https://web.squarecdn.com/v1/square.js"
   : "https://sandbox.web.squarecdn.com/v1/square.js";
 
@@ -166,9 +167,35 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
       verificationDetails: {
         amount: amount.toString(),
         currencyCode: 'USD',
-        intent: 'STORE'
+        intent: 'STORE',
+        billingContact: {
+          familyName: 'Customer',
+          givenName: 'Store',
+          email: 'customer@example.com',
+          country: 'US',
+          city: 'City',
+          addressLines: ['Address Line 1'],
+          postalCode: '12345'
+        },
+        customerInitiated: true,
+        sellerKeyedIn: false
       }
-    } : undefined;
+    } : {
+      verificationDetails: {
+        billingContact: {
+          familyName: 'Customer',
+          givenName: 'Store',
+          email: 'customer@example.com',
+          country: 'US',
+          city: 'City',
+          addressLines: ['Address Line 1'],
+          postalCode: '12345'
+        },
+        intent: 'CHARGE',
+        customerInitiated: true,
+        sellerKeyedIn: false
+      }
+    };
 
     const result = await cardInstance.tokenize(tokenizationOptions);
     console.log('[Square] Tokenization result:', {

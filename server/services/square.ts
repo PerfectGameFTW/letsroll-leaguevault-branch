@@ -85,8 +85,9 @@ export async function processPayment(sourceId: string, amount: number, storeCard
     };
 
     // If storing card is requested, add the card_on_file parameter
+    // In production, use type assertion to add property to the request
     if (storeCard) {
-      paymentRequest.card_on_file = true;
+      (paymentRequest as any).card_on_file = true;
     }
 
     const response = await client.paymentsApi.createPayment(paymentRequest);
@@ -127,9 +128,9 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       cardBrand: cardDetails?.cardBrand ?? 'UNKNOWN',
       amount: payment.amountMoney?.amount?.toString(),
       cardOnFile: cardOnFile ? {
-        id: `${cardOnFile.id.substring(0, 10)}...`,
-        last4: cardOnFile.last4,
-        brand: cardOnFile.brand
+        id: cardOnFile.id ? `${cardOnFile.id.substring(0, 10)}...` : 'unknown',
+        last4: cardOnFile.last4 || '****',
+        brand: cardOnFile.brand || 'UNKNOWN'
       } : 'not-created'
     });
 
