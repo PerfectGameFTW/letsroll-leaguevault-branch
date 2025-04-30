@@ -70,5 +70,6 @@ task = "shell.exec"
 args = "npm run dev"
 
 [deployment]
-run = ["sh", "-c", "npm run dev"]
+run = ["sh", "-c", "NODE_ENV=production node dist/index.js"]
 deploymentTarget = "cloudrun"
+build = ["sh", "-c", "npm run build"]
