@@ -159,11 +159,20 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
           // Reset attempts and notify of failure
           initializationAttempts.current = 0;
           onError?.(errorMessage);
-          toast({
-            title: "Payment Form Notice",
-            description: "Credit card payment form unavailable. Please try again or choose a different payment method.",
-            variant: "default",
-          });
+          // Check for common environment mismatch error
+          if (errorMessage.includes('failed to load') || errorMessage.includes('not properly loaded')) {
+            toast({
+              title: "Square Environment Mismatch",
+              description: "The payment form couldn't initialize due to a configuration mismatch. Please contact support for assistance.",
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "Payment Form Notice",
+              description: "Credit card payment form unavailable. Please try again or choose a different payment method.",
+              variant: "default",
+            });
+          }
         }
       }
     }
