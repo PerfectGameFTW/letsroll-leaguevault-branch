@@ -204,17 +204,57 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
     }
 
     console.log('[Square] Starting payment process for amount:', amount);
-    console.log('[Square] Tokenizing card...');
-
-    // Square in production has different tokenization requirements than sandbox
-    // We'll simplify our tokenization options to ensure compatibility
-
-    // Use simplest tokenization options for production to avoid validation errors
-    const tokenizationOptions = storeCard ? 
-      { cardOnFile: true } : 
-      undefined;
-
-    const result = await cardInstance.tokenize(tokenizationOptions);
+    console.log('[Square] Attempting to tokenize card without options...');
+    
+    // Try to tokenize with no options first (simplest approach)
+    let result;
+    
+    try {
+      // First attempt with no options - production often works with this approach
+      result = await cardInstance.tokenize();
+    } catch (tokenError) {
+      console.error('[Square] First tokenization attempt failed:', tokenError);
+      
+      try {
+        // Try with explicit verificationDetails if first attempt failed
+        console.log('[Square] Trying with explicit verificationDetails...');
+        result = await cardInstance.tokenize({
+          verificationDetails: {
+            amount: amount.toString(),
+            currencyCode: 'USD',
+            intent: 'CHARGE',
+            billingContact: {
+              familyName: 'Bowler',
+              givenName: 'League',
+              email: 'bowler@example.com',
+              country: 'US',
+              city: 'City',
+              addressLines: ['Address Line 1'],
+              postalCode: '12345'
+            },
+            customerInitiated: true,
+            sellerKeyedIn: false
+          }
+        });
+      } catch (secondTokenError) {
+        console.error('[Square] Second tokenization attempt failed:', secondTokenError);
+        
+        // If we're trying to store the card
+        if (storeCard) {
+          try {
+            // Last attempt with just cardOnFile flag
+            console.log('[Square] Trying with cardOnFile flag only...');
+            result = await cardInstance.tokenize({ cardOnFile: true });
+          } catch (finalError) {
+            console.error('[Square] Final tokenization attempt failed:', finalError);
+            throw finalError;
+          }
+        } else {
+          throw secondTokenError;
+        }
+      }
+    }
+    
     console.log('[Square] Tokenization result:', {
       status: result.status,
       hasErrors: !!result.errors,
