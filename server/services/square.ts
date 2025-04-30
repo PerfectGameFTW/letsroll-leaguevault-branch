@@ -20,9 +20,9 @@ async function initializeSquareClient() {
       }
 
       // Check if we're using a production access token
-      // Production tokens can start with various patterns including 'EAAAEv' or 'EAAAI7'
+      // Production tokens can start with various patterns including 'EAAAEv' or 'EAAAl7'
       const token = process.env.SQUARE_ACCESS_TOKEN;
-      const isProductionToken = token.startsWith('EAAAEv') || token.startsWith('EAAAI7');
+      const isProductionToken = token.startsWith('EAAAEv') || token.startsWith('EAAAl7');
       
       // Check app ID format from environment variables
       const appId = process.env.VITE_SQUARE_APP_ID || '';
