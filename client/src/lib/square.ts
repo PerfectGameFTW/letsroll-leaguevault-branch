@@ -58,47 +58,120 @@ export async function initializeSquare() {
     payments = null;
     initializationPromise = null;
     
-    // Clear any previously loaded Square SDK
-    if (window.Square) {
-      console.log('[Square] Removing existing Square SDK to ensure clean environment');
+    // Clear any previously loaded Square SDK if it wasn't properly initialized
+    if (window.Square && !window.Square.payments) {
+      console.log('[Square] Removing partially loaded Square SDK to ensure clean environment');
       document.querySelectorAll('script[src*="square.js"]').forEach(script => script.remove());
       (window as any).Square = undefined;
     }
 
-    // Create initialization with timeout protection
+    // If already fully initialized, reuse it
+    if (window.Square?.payments) {
+      console.log('[Square] Reusing existing Square SDK that is already initialized');
+      try {
+        payments = await window.Square.payments(appId, locationId);
+        console.log('[Square] Square payments reinitialized successfully with existing SDK');
+        return payments;
+      } catch (initError) {
+        console.error('[Square] Failed to initialize with existing SDK, will reload:', initError);
+        document.querySelectorAll('script[src*="square.js"]').forEach(script => script.remove());
+        (window as any).Square = undefined;
+      }
+    }
+
+    // Create initialization with extended timeout for production
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("Square initialization timed out after 10 seconds")), 10000);
+      const timeoutMs = isProduction ? 15000 : 10000; // Longer timeout for production
+      setTimeout(() => reject(new Error(`Square initialization timed out after ${timeoutMs/1000} seconds`)), timeoutMs);
     });
     
-    // Initialization function
+    // Enhanced initialization function
     const initializeFunction = async () => {
       console.log('[Square] Starting Square SDK initialization...');
       
-      // First load the SDK
-      console.log(`[Square] Loading Square SDK from ${isProduction ? 'production' : 'sandbox'} environment...`);
-      await loadScript(SQUARE_SDK_URL);
-      console.log('[Square] Square SDK loaded successfully');
+      // First load the SDK with multiple attempts if needed
+      console.log(`[Square] Loading Square SDK from ${isProduction ? 'production' : 'sandbox'} environment: ${SQUARE_SDK_URL}`);
       
-      // Check if SDK is properly loaded
+      // Try up to 3 times to load the script
+      let scriptLoaded = false;
+      let attempts = 0;
+      let lastError;
+      
+      while (!scriptLoaded && attempts < 3) {
+        attempts++;
+        try {
+          await loadScript(SQUARE_SDK_URL);
+          scriptLoaded = true;
+          console.log(`[Square] Square SDK loaded successfully after ${attempts} attempt(s)`);
+        } catch (err) {
+          lastError = err;
+          console.error(`[Square] Failed to load SDK on attempt ${attempts}/3:`, err);
+          // Small delay before retry
+          if (attempts < 3) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+      }
+      
+      if (!scriptLoaded) {
+        throw lastError || new Error("Failed to load Square SDK after multiple attempts");
+      }
+      
+      // Double-check if SDK is properly loaded
       if (!window.Square?.payments) {
-        console.error('[Square] Square SDK not properly loaded');
-        throw new Error("Square SDK failed to load properly");
+        console.error('[Square] Square SDK not properly loaded - window.Square.payments is missing');
+        throw new Error("Square SDK failed to initialize properly");
       }
       
       // Initialize payments with credentials
-      console.log('[Square] Initializing Square payments with credentials');
-      payments = await window.Square.payments(appId, locationId);
-      console.log('[Square] Square payments initialized successfully');
-      return payments;
+      console.log('[Square] Initializing Square payments with app ID and location ID');
+      try {
+        payments = await window.Square.payments(appId, locationId);
+        console.log('[Square] Square payments initialized successfully');
+        return payments;
+      } catch (initError) {
+        console.error('[Square] Failed to initialize payments with credentials:', initError);
+        // Check for common errors related to credentials
+        const errorMessage = initError instanceof Error ? initError.message : String(initError);
+        if (errorMessage.includes('location_id') || errorMessage.includes('invalid location')) {
+          throw new Error(`Square location ID issue: ${errorMessage}`);
+        } else if (errorMessage.includes('application_id') || errorMessage.includes('app_id')) {
+          throw new Error(`Square application ID issue: ${errorMessage}`);
+        } else if (errorMessage.includes('unauthorized') || errorMessage.includes('not authorized')) {
+          throw new Error(`Square authorization issue: ${errorMessage}`);
+        }
+        throw initError;
+      }
     };
 
-    // Execute with timeout protection
-    initializationPromise = Promise.race([
-      initializeFunction(),
-      timeoutPromise
-    ]);
+    // Execute with timeout protection and retry logic
+    let attemptCount = 0;
+    const maxRetries = 2;
     
-    return initializationPromise;
+    while (attemptCount <= maxRetries) {
+      try {
+        initializationPromise = Promise.race([
+          initializeFunction(),
+          timeoutPromise
+        ]);
+        
+        const result = await initializationPromise;
+        return result;
+      } catch (error) {
+        attemptCount++;
+        console.error(`[Square] Initialization attempt ${attemptCount} failed:`, error);
+        
+        if (attemptCount <= maxRetries) {
+          console.log(`[Square] Retrying initialization (${attemptCount}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait before retry
+        } else {
+          console.error('[Square] All initialization attempts failed');
+          throw error;
+        }
+      }
+    }
+    
+    throw new Error("Square initialization failed after multiple attempts");
   } catch (error) {
     console.error('[Square] Critical error during Square initialization:', error);
     payments = null;
@@ -133,42 +206,13 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
     console.log('[Square] Starting payment process for amount:', amount);
     console.log('[Square] Tokenizing card...');
 
-    // If storeCard is true, request a card-on-file token
-    const tokenizationOptions = storeCard ? {
-      cardOnFile: true,
-      verificationMethod: 'EXTERNAL',
-      verificationDetails: {
-        amount: amount.toString(),
-        currencyCode: 'USD',
-        intent: 'STORE',
-        billingContact: {
-          familyName: 'Customer',
-          givenName: 'Store',
-          email: 'customer@example.com',
-          country: 'US',
-          city: 'City',
-          addressLines: ['Address Line 1'],
-          postalCode: '12345'
-        },
-        customerInitiated: true,
-        sellerKeyedIn: false
-      }
-    } : {
-      verificationDetails: {
-        billingContact: {
-          familyName: 'Customer',
-          givenName: 'Store',
-          email: 'customer@example.com',
-          country: 'US',
-          city: 'City',
-          addressLines: ['Address Line 1'],
-          postalCode: '12345'
-        },
-        intent: 'CHARGE',
-        customerInitiated: true,
-        sellerKeyedIn: false
-      }
-    };
+    // Square in production has different tokenization requirements than sandbox
+    // We'll simplify our tokenization options to ensure compatibility
+
+    // Use simplest tokenization options for production to avoid validation errors
+    const tokenizationOptions = storeCard ? 
+      { cardOnFile: true } : 
+      undefined;
 
     const result = await cardInstance.tokenize(tokenizationOptions);
     console.log('[Square] Tokenization result:', {

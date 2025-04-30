@@ -24,8 +24,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { InsertPayment, Bowler } from "@shared/schema";
 import { insertPaymentSchema } from "@shared/schema";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, AlertCircle } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, AlertCircle, CreditCard, Info, AlertTriangle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface PaymentFormProps {
   open: boolean;
@@ -39,6 +40,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [isSquareReady, setIsSquareReady] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [activePaymentMethod, setActivePaymentMethod] = useState<'credit' | 'cash' | 'check'>('credit');
+  const [squareLoadFailed, setSquareLoadFailed] = useState(false);
   const initializationAttempted = useRef(false);
   const queryClient = useQueryClient();
 
@@ -343,33 +346,93 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               )}
             />
 
+            {/* Replace Radio Buttons with Tabs for better UX */}
+            <div className="mb-4">
+              <Tabs 
+                value={paymentType === "credit_card" ? "credit" : (paymentType === "check" ? "check" : "cash")}
+                onValueChange={(value) => {
+                  if (value === "credit") {
+                    form.setValue("type", "credit_card");
+                  } else if (value === "check") {
+                    form.setValue("type", "check");
+                  } else {
+                    form.setValue("type", "cash");
+                  }
+                }}
+                className="w-full"
+              >
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger 
+                    value="cash" 
+                    className="flex items-center gap-2"
+                  >
+                    Cash
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="check" 
+                    className="flex items-center gap-2"
+                  >
+                    Check
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    disabled={squareLoadFailed}
+                    value="credit" 
+                    className="flex items-center gap-2"
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    Credit Card
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="credit">
+                  {squareLoadFailed ? (
+                    <Alert variant="destructive" className="mb-4">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Credit Card Processing Unavailable</AlertTitle>
+                      <AlertDescription>
+                        Credit card processing is temporarily unavailable. Please use cash or check payment methods instead.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                </TabsContent>
+                
+                <TabsContent value="cash">
+                  <Alert className="mb-4">
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      Recording a cash payment. The payment will be marked as paid immediately.
+                    </AlertDescription>
+                  </Alert>
+                </TabsContent>
+                
+                <TabsContent value="check">
+                  <Alert className="mb-4">
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      Recording a check payment. Don't forget to add the check number below.
+                    </AlertDescription>
+                  </Alert>
+                </TabsContent>
+              </Tabs>
+            </div>
+            
+            {/* Hidden field for the form validation */}
             <FormField
               control={form.control}
               name="type"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Payment Type</FormLabel>
+                <FormItem className="hidden">
                   <FormControl>
                     <RadioGroup
                       onValueChange={field.onChange}
                       value={field.value}
-                      className="flex flex-col space-y-1"
+                      className="hidden"
                     >
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="cash" id="cash" />
-                        <label htmlFor="cash">Cash</label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="check" id="check" />
-                        <label htmlFor="check">Check</label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="credit_card" id="credit_card" />
-                        <label htmlFor="credit_card">Credit Card</label>
-                      </div>
+                      <RadioGroupItem value="cash" id="cash" />
+                      <RadioGroupItem value="check" id="check" />
+                      <RadioGroupItem value="credit_card" id="credit_card" />
                     </RadioGroup>
                   </FormControl>
-                  <FormMessage />
                 </FormItem>
               )}
             />
