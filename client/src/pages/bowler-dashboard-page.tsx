@@ -495,8 +495,43 @@ export const BowlerDashboardPage: FC = () => {
                 </div>
               )}
               
-              {/* We're using the PaymentForm component which includes the card container
-                  so we don't need to include a separate container here */}
+              {/* Payment Form */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-medium">Payment Information</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Enter your card details (securely processed by Square)
+                  </p>
+                </div>
+                
+                {/* Use the PaymentForm component */}
+                <div ref={cardContainerRef} className="min-h-[200px] border rounded-lg bg-card p-4">
+                  {!isInitialized && (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <p className="ml-2 text-sm text-muted-foreground">
+                        Loading credit card form...
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                {squareError && (
+                  <div className="p-3 text-sm border border-destructive bg-destructive/10 text-destructive rounded-md">
+                    <p><strong>Credit Card Form Error:</strong> {squareError}</p>
+                    <p className="mt-1 text-xs">Consider using Cash or Check payment instead.</p>
+                  </div>
+                )}
+                
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="store-card" 
+                    checked={storeCard}
+                    onCheckedChange={(checked) => setStoreCard(checked === true)} 
+                  />
+                  <Label htmlFor="store-card">Save card for future payments</Label>
+                </div>
+              </div>
               
               {/* Total Amount */}
               <div className="pt-4 border-t">

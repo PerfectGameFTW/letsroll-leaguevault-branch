@@ -2,6 +2,14 @@
 
 This guide documents the changes made to the application to support Square integration in production mode. The goal was to ensure a reliable and robust integration with proper error handling and fallback mechanisms.
 
+## Key Improvements
+
+1. **Production Token Detection**: Properly detects production tokens with the 'EAAAl7' format (lowercase L)
+2. **Multi-Step Card Tokenization**: Implements multiple approaches to tokenize cards reliably in production
+3. **Enhanced Error Handling**: Robust handling of initialization errors and payment processing failures
+4. **Automatic Retries**: Multiple retry attempts for both SDK loading and card tokenization
+5. **UI Improvements**: Better feedback about card processing state and errors
+
 ## Environment Detection
 
 The system now properly detects production credentials by checking:
@@ -52,6 +60,32 @@ router.get('/config', (req, res) => {
 ```
 
 ## Client-Side Integration
+
+### Multi-Step Card Tokenization
+
+The system uses a progressive approach for card tokenization:
+
+1. First attempt: Simple tokenization (no options) - works in most production cases
+   ```javascript
+   result = await cardInstance.tokenize();
+   ```
+
+2. Second attempt: With detailed verification details - for cases requiring more info
+   ```javascript
+   result = await cardInstance.tokenize({
+     verificationDetails: {
+       amount: amount.toString(),
+       currencyCode: 'USD',
+       intent: 'CHARGE',
+       billingContact: { /* ... */ }
+     }
+   });
+   ```
+
+3. Final attempt: Card-on-file only approach (if storing card for future use)
+   ```javascript
+   result = await cardInstance.tokenize({ cardOnFile: true });
+   ```
 
 ### Improvements to Square SDK Loading
 
@@ -105,6 +139,10 @@ Changes in `client/src/components/payment-form.tsx`:
    }
    ```
 
+3. Test the payment form with a test card:
+   - For sandbox: Use `4111 1111 1111 1111` with any future expiration and CVV
+   - For production: Use a real card
+
 ## Troubleshooting
 
 If you encounter issues:
@@ -113,3 +151,20 @@ If you encounter issues:
 2. Verify your credentials are properly set in `.env`
 3. Ensure your Square account is properly configured for production mode
 4. Test with the payment form's alternative payment methods (cash or check) to ensure the backup works
+
+## Common Error Messages and Solutions
+
+1. **"Failed to load Square SDK after multiple attempts"**
+   - Check network connectivity
+   - Verify your Square credentials
+   - Try disabling browser extensions that might block scripts
+
+2. **"Square tokenization attempt failed"**
+   - Check if the card information is valid
+   - Ensure your Square account is properly configured
+   - Review browser console logs for detailed error messages
+
+3. **"Payment processing failed"**
+   - Verify the card has sufficient funds
+   - Ensure your Square account is set up for taking payments
+   - Check server logs for detailed Square API errors
