@@ -1,13 +1,13 @@
 {
   "port": 5001,
   "ready": true,
-  "timestamp": "2026-03-01T19:33:06.093Z",
-  "pid": 4770,
+  "timestamp": "2026-03-01T19:35:25.081Z",
+  "pid": 6592,
   "mode": "development",
   "workflow": "Dev",
   "wait_for_port": 5001,
   "health": {
-    "database": false,
+    "database": true,
     "vite": true,
     "server": true
   }

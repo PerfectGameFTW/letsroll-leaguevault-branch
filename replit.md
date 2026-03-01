@@ -22,13 +22,18 @@ A full-stack bowling league management application with multi-tenant support for
 - `client/src/hooks/` - Custom React hooks
 
 ## Database
-- Uses Replit's built-in PostgreSQL database
+- Uses Neon PostgreSQL (managed via Replit's DATABASE_URL environment variable)
 - Connection via `DATABASE_URL` environment variable (runtime-managed)
 - Schema changes: modify `shared/schema.ts`, then run `npm run db:push`
 - Driver: standard `pg` Pool (previously used `@neondatabase/serverless`, switched on 2026-03-01)
 
 ## Workflows
 - **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5001)
+
+## Port Configuration
+- Development: defaults to port 5001
+- Deployment: uses `process.env.PORT` (assigned by Replit's deployment platform)
+- The server respects `PORT` env var when set, falls back to 5001
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection string (runtime-managed)

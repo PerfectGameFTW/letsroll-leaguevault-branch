@@ -47,7 +47,7 @@ const SHUTDOWN_TIMEOUT = 60000; // 60 seconds
 const HOST = '0.0.0.0';
 const REPLIT_WORKSPACE = process.env.REPL_SLUG === 'workspace';
 const WORKFLOW_NAME = getWorkflowName();
-const preferredPort = REPLIT_WORKSPACE ? 5001 : (process.env.PORT ? parseInt(process.env.PORT, 10) : 5001);
+const preferredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
 const PORT_STATUS_FILE = '.port-status';
 const STALE_PORT_TIMEOUT = 60000; // 60 seconds
 const INSTANCE_LOCK_FILE = '.server-instance.lock';
@@ -216,49 +216,39 @@ async function writePortStatus(
   }
 }
 
-// Enhanced startPortStatusCheck function
-function startPortStatusCheck(port: number, health: PortStatus['health']) {
+function startPortStatusCheck(port: number) {
   if (portStatusInterval) {
     clearInterval(portStatusInterval);
   }
 
-  debugWorkflow('PortStatus', 'Starting periodic status check', { port, health });
-
-  // Check every 5 seconds
   portStatusInterval = setInterval(async () => {
     try {
-      // First try to read the existing file
       let needsUpdate = false;
       try {
         const content = await fs.promises.readFile(PORT_STATUS_FILE, 'utf-8');
         const status = JSON.parse(content) as PortStatus;
-        debugWorkflow('PortStatus', 'Current status:', status);
 
-        // Check if the file is stale or has incorrect information
         if (status.pid !== process.pid ||
             status.port !== port ||
             status.workflow !== getWorkflowName() ||
             Date.now() - new Date(status.timestamp).getTime() > 30000) {
-          debugWorkflow('PortStatus', 'Status needs update', {
-            currentPid: process.pid,
-            statusPid: status.pid,
-            currentPort: port,
-            statusPort: status.port,
-            currentWorkflow: getWorkflowName(),
-            statusWorkflow: status.workflow,
-            age: Date.now() - new Date(status.timestamp).getTime()
-          });
           needsUpdate = true;
         }
       } catch (err) {
-        // File doesn't exist or is corrupted
-        debugWorkflow('PortStatus', 'Status file error:', err);
         needsUpdate = true;
       }
 
       if (needsUpdate) {
-        debugWorkflow('PortStatus', 'Refreshing port status file');
-        await writePortStatus(port, true, health);
+        let dbHealthy = false;
+        try {
+          dbHealthy = await testConnection(1, 500);
+        } catch {}
+
+        await writePortStatus(port, true, {
+          database: dbHealthy,
+          server: true,
+          vite: viteSetupComplete
+        });
       }
     } catch (error) {
       console.error('[PortStatus] Error during periodic check:', error);
@@ -687,12 +677,7 @@ async function startServer() {
       vite: viteSetupComplete
     });
 
-    // Start periodic status check
-    startPortStatusCheck(serverPort, {
-      database: !!dbConnected,
-      server: true,
-      vite: viteSetupComplete
-    });
+    startPortStatusCheck(serverPort);
     
     // Initialize schedulers
     if (dbConnected) {
