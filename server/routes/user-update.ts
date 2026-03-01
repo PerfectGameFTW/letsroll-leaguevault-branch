@@ -100,7 +100,6 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
     // Update the user
     const updatedUser = await storage.updateUser(userId, updateData);
     
-    console.log(`[User] User ID ${userId} updated by ${user.id}`);
 
     return sendSuccess(res, { ...updatedUser, password: undefined });
   } catch (error) {

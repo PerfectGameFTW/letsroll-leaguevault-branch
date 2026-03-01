@@ -12,12 +12,9 @@ export function loadScript(src: string): Promise<void> {
     if (existingScript) {
       // If script is already in DOM but not fully loaded
       if (typeof window.Square !== 'undefined' && window.Square && typeof window.Square.payments === 'function') {
-        console.log(`[loadScript] Script ${src} already loaded and initialized`);
         resolve();
         return;
       } else {
-        // Remove it to try loading again
-        console.log(`[loadScript] Removing existing script ${src} to reload it`);
         existingScript.remove();
       }
     }
@@ -31,22 +28,12 @@ export function loadScript(src: string): Promise<void> {
     
     // Attach handlers
     script.onload = () => {
-      console.log(`[loadScript] Script ${src} loaded successfully`);
       // Give a small delay to ensure script is fully initialized
       setTimeout(() => {
         // Safer window.Square check
         if (typeof window.Square !== 'undefined' && window.Square && typeof window.Square.payments === 'function') {
-          console.log('[loadScript] Square global object successfully initialized');
           resolve();
         } else {
-          console.error('[loadScript] Script loaded but Square object not properly initialized');
-          // For debugging
-          console.log('[loadScript] window.Square status:', {
-            isDefined: typeof window.Square !== 'undefined',
-            value: typeof window.Square !== 'undefined' ? 'exists' : 'undefined',
-            hasPayments: typeof window.Square !== 'undefined' && window.Square ? 
-              (typeof window.Square.payments === 'function' ? 'is function' : typeof window.Square.payments) : 'N/A'
-          });
           reject(new Error('Script loaded but Square object not properly initialized'));
         }
       }, 1000); // Increased delay for better initialization chance
@@ -57,9 +44,7 @@ export function loadScript(src: string): Promise<void> {
       reject(new Error(`Failed to load script: ${src}`));
     };
     
-    // Add to document
     document.head.appendChild(script);
-    console.log(`[loadScript] Script ${src} appended to document head`);
   });
 }
 

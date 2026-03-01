@@ -53,9 +53,6 @@ export default function PaymentHistoryPage() {
     enabled: !!bowlerId,
   });
 
-  console.log('[PaymentHistory] Current user bowlerId:', bowlerId);
-  console.log('[PaymentHistory] BowlerLeagues response:', bowlerLeaguesResponse);
-
   // Find the first active league for the bowler
   const leagueId = bowlerLeaguesResponse?.data?.[0]?.leagueId;
 

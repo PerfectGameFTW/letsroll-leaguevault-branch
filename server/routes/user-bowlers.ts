@@ -3,10 +3,10 @@ import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api';
 import { z } from 'zod';
 import { User as SelectUser } from '@shared/schema';
+import { hasAccessToBowler } from '../utils/access-control.js';
 
 const router = Router();
 
-// Middleware to ensure user is authenticated
 function requireAuth(req: any, res: any, next: any) {
   if (!req.isAuthenticated()) {
     return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
@@ -16,36 +16,6 @@ function requireAuth(req: any, res: any, next: any) {
     return sendError(res, 'Invalid session', 401, 'INVALID_SESSION');
   }
   next();
-}
-
-// Helper function to check if user has access to a bowler
-async function hasAccessToBowler(req: any, bowlerId: number): Promise<boolean> {
-  // Admin users have access to all bowlers
-  if (req.user?.isAdmin) {
-    return true;
-  }
-  
-  // Get bowler's leagues
-  const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
-  
-  // If bowler isn't in any leagues, they're considered publicly accessible
-  if (bowlerLeagues.length === 0) {
-    return true;
-  }
-  
-  // For each league the bowler is in, check if it's in the user's organization
-  for (const bl of bowlerLeagues) {
-    const league = await storage.getLeague(bl.leagueId);
-    
-    if (league && (
-      league.organizationId === null || 
-      league.organizationId === req.user?.organizationId
-    )) {
-      return true;
-    }
-  }
-  
-  return false;
 }
 
 // Schema for linking bowler to user

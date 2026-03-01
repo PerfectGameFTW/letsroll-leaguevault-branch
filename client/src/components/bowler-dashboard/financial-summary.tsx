@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import type { Bowler, League, Payment } from "@shared/schema";
-import { differenceInWeeks, startOfToday } from "date-fns";
+import { calculateFinancials } from "@/lib/financial-utils";
 
 interface FinancialSummaryProps {
   bowler: Bowler;
@@ -11,30 +11,15 @@ interface FinancialSummaryProps {
 }
 
 const FinancialSummary = ({ bowler, league, payments, teamName, leagueName }: FinancialSummaryProps) => {
-  const totalPaidPayments = payments.filter(p => p.status === 'paid') || [];
-  const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
-
-  let weeksDue = 0;
-  let totalSeasonDues = 0;
-  let totalWeeksInSeason = 0;
-  let fullSeasonAmount = 0;
-  let amountPastDue = 0;
-
-  if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
-    const seasonStartDate = new Date(league.seasonStart);
-    const seasonEndDate = new Date(league.seasonEnd);
-    const today = startOfToday();
-
-    if (seasonStartDate && seasonEndDate && today) {
-      weeksDue = Math.max(0, differenceInWeeks(today < seasonStartDate ? seasonStartDate : today > seasonEndDate ? seasonEndDate : today, seasonStartDate));
-      totalSeasonDues = league.weeklyFee * weeksDue;
-      totalWeeksInSeason = differenceInWeeks(seasonEndDate, seasonStartDate);
-      fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
-      amountPastDue = totalSeasonDues - totalPaidAmount;
-    }
-  }
-
-  const remainingBalance = fullSeasonAmount - totalPaidAmount;
+  const {
+    weeksPassed: weeksDue,
+    totalWeeksInSeason,
+    totalDueToDate: totalSeasonDues,
+    totalPaid: totalPaidAmount,
+    amountPastDue,
+    fullSeasonAmount,
+    remainingBalance,
+  } = calculateFinancials(league, payments);
 
   return (
     <>

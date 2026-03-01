@@ -78,7 +78,6 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
       organizationId: null
     });
 
-    console.log(`[Setup] First admin user created successfully with ID: ${newAdminUser.id}`);
 
     // Return the created user without password
     sendSuccess(

@@ -145,21 +145,15 @@ export default function BowlerScoresPage() {
   }
 
   // Calculate current average from all historical games
-  console.log('[BowlerScores] Total scores:', scores.length);
   const validScores = scores.filter(s => !s.isAbsent && !s.isVacant && s.score !== null);
-  console.log('[BowlerScores] Valid scores:', validScores.length);
 
   const totalPinfall = validScores.reduce((sum, score) => {
-    console.log('[BowlerScores] Adding score:', score.score);
     return sum + (score.score || 0);
   }, 0);
-  console.log('[BowlerScores] Total pinfall:', totalPinfall);
 
   const gamesPlayed = validScores.length;
-  console.log('[BowlerScores] Games played:', gamesPlayed);
 
   const currentAverage = gamesPlayed > 0 ? Math.round(totalPinfall / gamesPlayed) : 0;
-  console.log('[BowlerScores] Calculated average:', currentAverage);
 
   return (
     <Layout>

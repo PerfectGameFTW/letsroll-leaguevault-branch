@@ -7,10 +7,6 @@ import type { Bowler, League, Payment, ApiResponse, Organization } from "@shared
 import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
 import { PaymentDistributionChart } from "@/components/payment-distribution-chart";
 import { formatCurrency } from "@/lib/utils";
-import { cn } from "@/lib/utils";
-
-// Cache time constants
-const CACHE_TIME = 1000 * 30; // 30 seconds
 
 function LoadingState() {
   return (
@@ -36,26 +32,25 @@ function ErrorState({ error }: { error: Error }) {
 export default function HomePage() {
   const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<ApiResponse<Bowler[]>>({
     queryKey: ["/api/bowlers"],
-    staleTime: CACHE_TIME,
+    staleTime: 1000 * 30,
     retry: false,
   });
 
   const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
-    staleTime: CACHE_TIME,
+    staleTime: 1000 * 30,
     retry: false,
   });
   
   const { data: paymentsResponse, isLoading: loadingPayments, error: paymentsError } = useQuery<ApiResponse<Payment[]>>({
     queryKey: ["/api/payments"],
-    staleTime: CACHE_TIME,
+    staleTime: 1000 * 30,
     retry: false,
   });
   
-  // Fetch the Perfect Game organization for its logo
   const { data: perfectGameOrgResponse, isLoading: loadingOrg, error: orgError } = useQuery<ApiResponse<Organization>>({
     queryKey: ["/api/organizations/slug/perfect-game"],
-    staleTime: CACHE_TIME * 10, // Cache for longer since organization data rarely changes
+    staleTime: 1000 * 60 * 5,
     retry: false,
   });
 
@@ -67,7 +62,6 @@ export default function HomePage() {
   // Handle errors
   const error = bowlersError || leaguesError || paymentsError || orgError;
   if (error) {
-    console.error('Home page error:', error);
     return <ErrorState error={error as Error} />;
   }
 

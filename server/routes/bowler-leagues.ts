@@ -3,64 +3,13 @@ import { storage } from '../storage';
 import { insertBowlerLeagueSchema, partialBowlerLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
+import { hasAccessToLeague, hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
 
 const router = Router();
 
-// Helper function to check if user has access to a league's organization
-async function hasAccessToLeague(req: any, leagueId: number): Promise<boolean> {
-  const league = await storage.getLeague(leagueId);
-  
-  if (!league) {
-    return false;
-  }
-  
-  return (
-    req.user?.isAdmin || 
-    league.organizationId === null || 
-    (req.user?.organizationId === league.organizationId)
-  );
-}
-
-// Helper function to check if user has access to a team's league organization
-async function hasAccessToTeam(req: any, teamId: number): Promise<boolean> {
-  const team = await storage.getTeam(teamId);
-  
-  if (!team) {
-    return false;
-  }
-  
-  return hasAccessToLeague(req, team.leagueId);
-}
-
-// Helper function to check if user has access to a bowler's teams/leagues
-async function hasAccessToBowler(req: any, bowlerId: number): Promise<boolean> {
-  // If user is admin, they have access to all bowlers
-  if (req.user?.isAdmin) {
-    return true;
-  }
-  
-  // Get the bowler's leagues
-  const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
-  
-  // If bowler isn't in any leagues, they're considered public for now
-  if (bowlerLeagues.length === 0) {
-    return true;
-  }
-  
-  // Check if the user has access to any of the bowler's leagues
-  for (const bl of bowlerLeagues) {
-    if (await hasAccessToLeague(req, bl.leagueId)) {
-      return true;
-    }
-  }
-  
-  return false;
-}
-
 router.get("/", async (req, res) => {
   try {
-    const { bowlerId, leagueId, teamId } = req.query;
-    console.log('[BowlerLeagues] Fetching with params:', { bowlerId, leagueId, teamId });
+    const { bowlerId, leagueId, teamId, enriched } = req.query;
 
     const filters = {
       bowlerId: bowlerId ? parseInt(bowlerId as string) : undefined,
@@ -68,14 +17,12 @@ router.get("/", async (req, res) => {
       teamId: teamId ? parseInt(teamId as string) : undefined
     };
 
-    // Validate that all provided IDs are valid numbers
     if ((bowlerId && isNaN(filters.bowlerId!)) || 
         (leagueId && isNaN(filters.leagueId!)) || 
         (teamId && isNaN(filters.teamId!))) {
       return sendError(res, "Invalid ID parameters provided", 400);
     }
 
-    // Check organization access
     if (filters.leagueId && !(await hasAccessToLeague(req, filters.leagueId))) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
@@ -88,30 +35,54 @@ router.get("/", async (req, res) => {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
-    // Get bowler leagues
     let bowlerLeagues = await storage.getBowlerLeagues(filters);
 
-    // If no specific filters were provided, filter by organization
     if (!filters.bowlerId && !filters.leagueId && !filters.teamId && !req.user?.isAdmin) {
-      // Filter bowler leagues by organization
       const leagueIds = new Set<number>();
       for (const bl of bowlerLeagues) {
         leagueIds.add(bl.leagueId);
       }
 
-      // Check which leagues the user has access to
       const accessibleLeagueIds = new Set<number>();
-      for (const leagueId of leagueIds) {
-        if (await hasAccessToLeague(req, leagueId)) {
-          accessibleLeagueIds.add(leagueId);
+      for (const lid of leagueIds) {
+        if (await hasAccessToLeague(req, lid)) {
+          accessibleLeagueIds.add(lid);
         }
       }
 
-      // Only include bowler leagues from accessible leagues
       bowlerLeagues = bowlerLeagues.filter(bl => accessibleLeagueIds.has(bl.leagueId));
     }
 
-    console.log(`[BowlerLeagues] Found ${bowlerLeagues.length} bowler leagues for filters:`, filters);
+    if (enriched === 'true') {
+      const uniqueBowlerIds = [...new Set(bowlerLeagues.map(bl => bl.bowlerId))];
+      const uniqueTeamIds = [...new Set(bowlerLeagues.map(bl => bl.teamId))];
+      const uniqueLeagueIds = [...new Set(bowlerLeagues.map(bl => bl.leagueId))];
+
+      const [bowlers, teams, leagues] = await Promise.all([
+        Promise.all(uniqueBowlerIds.map(id => storage.getBowler(id))),
+        Promise.all(uniqueTeamIds.map(id => storage.getTeam(id))),
+        Promise.all(uniqueLeagueIds.map(id => storage.getLeague(id))),
+      ]);
+
+      const bowlerMap = new Map(bowlers.filter(Boolean).map(b => [b!.id, b!]));
+      const teamMap = new Map(teams.filter(Boolean).map(t => [t!.id, t!]));
+      const leagueMap = new Map(leagues.filter(Boolean).map(l => [l!.id, l!]));
+
+      const enrichedData = bowlerLeagues.map(bl => {
+        const bowler = bowlerMap.get(bl.bowlerId);
+        const team = teamMap.get(bl.teamId);
+        const league = leagueMap.get(bl.leagueId);
+        return {
+          ...bl,
+          bowler: bowler ? { id: bowler.id, name: bowler.name, email: bowler.email, active: bowler.active } : null,
+          team: team ? { id: team.id, name: team.name, number: team.number, leagueId: team.leagueId } : null,
+          league: league ? { id: league.id, name: league.name, description: league.description, active: league.active } : null,
+        };
+      });
+
+      return sendSuccess(res, enrichedData);
+    }
+
     sendSuccess(res, bowlerLeagues);
   } catch (error) {
     console.error('[BowlerLeagues] Error:', error);
@@ -121,20 +92,16 @@ router.get("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-    console.log('[BowlerLeagues] Creating new bowler league with body:', req.body);
     const data = insertBowlerLeagueSchema.parse(req.body);
 
-    // Check if the user has access to the league
     if (!(await hasAccessToLeague(req, data.leagueId))) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    // Check if the user has access to the team
     if (!(await hasAccessToTeam(req, data.teamId))) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
 
-    // Check if the user has access to the bowler
     if (!(await hasAccessToBowler(req, data.bowlerId))) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
@@ -149,7 +116,6 @@ router.post("/", async (req, res) => {
     }
 
     const created = await storage.createBowlerLeague(data);
-    console.log('[BowlerLeagues] Created bowler league:', created);
     sendSuccess(res, created, 201);
   } catch (error) {
     console.error('[BowlerLeagues] Error:', error);
@@ -168,31 +134,25 @@ router.patch("/:id", async (req, res) => {
       return sendError(res, "Invalid ID provided");
     }
 
-    // Get the bowler league to verify organization access
     const bowlerLeague = await storage.getBowlerLeague(id);
     if (!bowlerLeague) {
       return sendError(res, "Bowler league not found", 404);
     }
 
-    // Check if user has access to the league
     if (!(await hasAccessToLeague(req, bowlerLeague.leagueId))) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    // Check if user has access to the team
     if (!(await hasAccessToTeam(req, bowlerLeague.teamId))) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
 
-    // Check if user has access to the bowler
     if (!(await hasAccessToBowler(req, bowlerLeague.bowlerId))) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
     const update = partialBowlerLeagueSchema.parse(req.body);
-    console.log(`[BowlerLeagues] Updating bowler league ${id}:`, update);
 
-    // If updating team, verify access to the new team
     if (update.teamId && !(await hasAccessToTeam(req, update.teamId))) {
       return sendError(res, "You don't have access to the target team", 403, 'FORBIDDEN');
     }
@@ -219,38 +179,31 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "Invalid ID provided", 400);
     }
 
-    // Get the bowler league to verify organization access
     const bowlerLeague = await storage.getBowlerLeague(id);
     if (!bowlerLeague) {
       return sendError(res, "Bowler league not found", 404);
     }
 
-    // Check if user has access to the league
     if (!(await hasAccessToLeague(req, bowlerLeague.leagueId))) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    // Check if user has access to the team
     if (!(await hasAccessToTeam(req, bowlerLeague.teamId))) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
 
-    // Check if user has access to the bowler
     if (!(await hasAccessToBowler(req, bowlerLeague.bowlerId))) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
-    console.log(`[BowlerLeagues] Deleting bowler league ${id}`);
     const deleted = await storage.deleteBowlerLeague(id);
-
     if (!deleted) {
       return sendError(res, "Bowler league not found", 404);
     }
 
-    console.log(`[BowlerLeagues] Successfully deleted bowler league ${id}`);
     sendSuccess(res, { message: "Bowler league deleted successfully" }, 200);
   } catch (error) {
-    console.error('[BowlerLeagues] Error deleting bowler league:', error);
+    console.error('[BowlerLeagues] Error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to delete bowler league');
   }
 });
@@ -268,18 +221,15 @@ router.patch("/:id/order", async (req, res) => {
       return sendError(res, "New order must be a number", 400);
     }
 
-    // Get the bowler league to verify organization access
     const bowlerLeague = await storage.getBowlerLeague(id);
     if (!bowlerLeague) {
       return sendError(res, "Bowler league not found", 404);
     }
 
-    // Check if user has access to the league
     if (!(await hasAccessToLeague(req, bowlerLeague.leagueId))) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    // Check if user has access to the team
     if (!(await hasAccessToTeam(req, bowlerLeague.teamId))) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }

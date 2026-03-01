@@ -31,7 +31,12 @@ export function PastDueBowlersSection() {
   const bowlers = bowlersResponse?.data || [];
 
   const { data: bowlerLeaguesResponse } = useQuery<{ success: true, data: BowlerLeague[] }>({
-    queryKey: ["/api/bowler-leagues-new"],
+    queryKey: ["/api/bowler-leagues", { enriched: true }],
+    queryFn: async () => {
+      const response = await fetch('/api/bowler-leagues?enriched=true');
+      if (!response.ok) throw new Error('Failed to fetch bowler leagues');
+      return response.json();
+    }
   });
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 

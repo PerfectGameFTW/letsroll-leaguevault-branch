@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import {
   Select,
@@ -12,10 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, ArrowLeft, Calendar as CalendarIcon, Trash2 } from "lucide-react";
-import { format, differenceInWeeks, startOfToday, subDays } from "date-fns";
+import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
+import { startOfToday } from "date-fns";
 import type { League, Team, Payment, Bowler, BowlerLeague } from "@shared/schema";
 import { useParams, Link } from "wouter";
+import { PaymentEntryRow } from "@/components/payment-entry-row";
+import { PaymentHistoryTable } from "@/components/payment-history-table";
+import { useWeeklyPayments, getNearestBowlingDay, getWeekNumber, isDateDisabled } from "@/hooks/use-weekly-payments";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -25,15 +28,11 @@ import {
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -43,54 +42,56 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
-interface PaymentEntry {
-  bowlerId: number;
-  type: string;
-  amount: string;
-  checkNumber?: string;
-}
-
 export default function WeeklyPaymentsPage() {
   const params = useParams();
-  const { toast } = useToast();
   const leagueId = parseInt(params.leagueId!);
-  const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [selectedTeam, setSelectedTeam] = useState<string>();
-  const [paymentEntries, setPaymentEntries] = useState<{ [key: number]: PaymentEntry }>({});
-  const [editingPayment, setEditingPayment] = useState<{id: number, amount: string} | null>(null);
 
-  // Fetch league details with longer stale time
+  const {
+    paymentEntries,
+    paymentToDelete,
+    setPaymentToDelete,
+    editingPayment,
+    setEditingPayment,
+    handlePaymentTypeChange,
+    handleAmountChange,
+    handleCheckNumberChange,
+    handleSubmitPayment,
+    handleDelete,
+    handleStartEdit,
+    handleSaveEdit,
+    submitPaymentMutation,
+    deletePaymentMutation,
+    updatePaymentMutation,
+  } = useWeeklyPayments(leagueId);
+
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
-    staleTime: 1000 * 60 * 30, // 30 minutes
+    staleTime: 1000 * 60 * 30,
   });
 
-  // Fetch teams for this league
   const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams", leagueId],
-    staleTime: 1000 * 60 * 15, // 15 minutes
+    staleTime: 1000 * 60 * 15,
   });
 
-  // Update the payments query to include all relevant parameters
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments", { teamId: selectedTeam, weekOf: selectedDate?.toISOString(), leagueId }],
     enabled: !!selectedTeam && !!selectedDate,
-    staleTime: 1000 * 60, // 1 minute
+    staleTime: 1000 * 60,
   });
 
-  // Fetch bowlers for the selected team - only if we have teams and a selected team
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", selectedTeam, leagueId],
     enabled: !!selectedTeam,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 
-  // Only fetch bowler details if we have bowler leagues
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers", bowlerLeaguesResponse?.data],
     enabled: !!bowlerLeaguesResponse?.data?.length,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 
   const league = leagueResponse?.data;
@@ -99,203 +100,13 @@ export default function WeeklyPaymentsPage() {
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
   const allBowlers = bowlersResponse?.data || [];
 
-  // Debug logs for incoming data
-  console.log('Selected Team ID:', selectedTeam);
-  console.log('Bowler Leagues:', bowlerLeagues);
-  console.log('All Bowlers:', allBowlers);
-  console.log('League ID:', leagueId);
-
-  // Filter bowlers for the selected team
   const bowlers = allBowlers.filter(bowler => {
-    const isAssigned = bowlerLeagues.some(bl => 
+    return bowlerLeagues.some(bl => 
       bl.bowlerId === bowler.id && 
       bl.teamId === parseInt(selectedTeam || '0', 10) &&
       bl.leagueId === leagueId
     );
-    console.log(`Bowler ${bowler.name} (${bowler.id}) assigned to team ${selectedTeam}: ${isAssigned}`);
-    return isAssigned;
   });
-
-  console.log('Filtered Bowlers:', bowlers);
-
-  // Handle payment input changes
-  const handlePaymentTypeChange = (bowlerId: number, type: string) => {
-    setPaymentEntries(prev => ({
-      ...prev,
-      [bowlerId]: {
-        ...prev[bowlerId],
-        bowlerId,
-        type,
-      }
-    }));
-  };
-
-  const handleAmountChange = (bowlerId: number, amount: string) => {
-    setPaymentEntries(prev => ({
-      ...prev,
-      [bowlerId]: {
-        ...prev[bowlerId],
-        bowlerId,
-        amount: amount.replace(/[^0-9.]/g, ''),
-      }
-    }));
-  };
-
-  const handleCheckNumberChange = (bowlerId: number, checkNumber: string) => {
-    setPaymentEntries(prev => ({
-      ...prev,
-      [bowlerId]: {
-        ...prev[bowlerId],
-        bowlerId,
-        checkNumber,
-      }
-    }));
-  };
-
-  // Payment submission mutation
-  const submitPaymentMutation = useMutation({
-    mutationFn: async (payment: {
-      bowlerId: number;
-      type: string;
-      amount: number;
-      weekOf: Date;
-      leagueId: number;
-      status: string;
-      checkNumber?: string;
-    }) => {
-      const response = await apiRequest("POST", "/api/payments", {
-        ...payment,
-        weekOf: payment.weekOf.toISOString(),
-      });
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      toast({
-        title: "Payment recorded",
-        description: "The payment has been successfully recorded.",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error recording payment",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleSubmitPayment = async (bowlerId: number) => {
-    const entry = paymentEntries[bowlerId];
-    if (!entry?.type || !entry?.amount || !selectedDate) return;
-
-    const amountInCents = Math.round(parseFloat(entry.amount) * 100);
-    if (isNaN(amountInCents)) return;
-
-    await submitPaymentMutation.mutate({
-      bowlerId,
-      leagueId,
-      type: entry.type,
-      amount: amountInCents,
-      weekOf: selectedDate,
-      status: 'paid',
-      checkNumber: entry.type === 'check' ? entry.checkNumber : undefined,
-    });
-
-    // Clear the entry after successful submission
-    setPaymentEntries(prev => {
-      const newEntries = { ...prev };
-      delete newEntries[bowlerId];
-      return newEntries;
-    });
-  };
-
-  // Delete payment mutation
-  const deletePaymentMutation = useMutation({
-    mutationFn: async (id: number) => {
-      console.log('[Frontend] Deleting payment:', id);
-      const response = await apiRequest("DELETE", `/api/payments/${id}`);
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
-      }
-      return id;
-    },
-    onMutate: async (deletedId) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/payments"] });
-      const previousPayments = queryClient.getQueryData<{ data: Payment[] }>(["/api/payments"]);
-
-      if (previousPayments?.data) {
-        queryClient.setQueryData<{ data: Payment[] }>(["/api/payments"], {
-          data: previousPayments.data.filter(payment => payment.id !== deletedId)
-        });
-      }
-      return { previousPayments };
-    },
-    onError: (error: Error, _, context) => {
-      if (context?.previousPayments) {
-        queryClient.setQueryData(["/api/payments"], context.previousPayments);
-      }
-      toast({
-        title: "Error deleting payment",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      setPaymentToDelete(null);
-      toast({
-        title: "Payment deleted",
-        description: "The payment has been successfully deleted.",
-      });
-    },
-  });
-
-  const handleDelete = async (id: number) => {
-    try {
-      await deletePaymentMutation.mutateAsync(id);
-    } catch (error) {
-      console.error('[Frontend] Error in handleDelete:', error);
-    }
-  };
-
-  const getNearestBowlingDay = (date: Date, weekDay: string): Date => {
-    const weekDayMap: { [key: string]: number } = {
-      'sunday': 0,
-      'monday': 1,
-      'tuesday': 2,
-      'wednesday': 3,
-      'thursday': 4,
-      'friday': 5,
-      'saturday': 6
-    };
-
-    const targetDay = weekDayMap[weekDay.toLowerCase()];
-    const currentDay = date.getDay();
-
-    if (currentDay === targetDay) {
-      return date;
-    }
-
-    let daysToSubtract = currentDay - targetDay;
-    if (daysToSubtract <= 0) {
-      daysToSubtract += 7;
-    }
-
-    return subDays(date, daysToSubtract);
-  };
-
-  const getWeekNumber = (date: Date): number => {
-    if (!league?.seasonStart) return 0;
-    const seasonStart = new Date(league.seasonStart);
-    const weeksDiff = differenceInWeeks(date, seasonStart);
-    return weeksDiff + 1;
-  };
 
   useEffect(() => {
     if (league?.weekDay && !selectedDate) {
@@ -318,87 +129,6 @@ export default function WeeklyPaymentsPage() {
     };
   }
 
-  const isDateDisabled = (date: Date) => {
-    if (!league?.weekDay) return false;
-
-    const weekDayMap: { [key: string]: number } = {
-      'sunday': 0,
-      'monday': 1,
-      'tuesday': 2,
-      'wednesday': 3,
-      'thursday': 4,
-      'friday': 5,
-      'saturday': 6
-    };
-
-    const bowlingDayNumber = weekDayMap[league.weekDay.toLowerCase()];
-    return date.getDay() !== bowlingDayNumber;
-  };
-
-  // Add update payment mutation
-  const updatePaymentMutation = useMutation({
-    mutationFn: async ({ id, amount }: { id: number; amount: number }) => {
-      const response = await apiRequest("PATCH", `/api/payments/${id}`, {
-        amount,
-      });
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-      toast({
-        title: "Success",
-        description: "Payment amount has been updated.",
-      });
-      setEditingPayment(null);
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Error updating payment",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleStartEdit = (payment: Payment) => {
-    setEditingPayment({
-      id: payment.id,
-      amount: (payment.amount / 100).toFixed(2),
-    });
-  };
-
-  const handleCancelEdit = () => {
-    setEditingPayment(null);
-  };
-
-  const handleSaveEdit = async (id: number) => {
-    if (!editingPayment) return;
-
-    const amount = editingPayment.amount.trim();
-    if (!amount || isNaN(parseFloat(amount))) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter a valid number",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Convert amount to cents as integer
-    const amountInCents = Math.round(parseFloat(amount) * 100);
-
-    await updatePaymentMutation.mutate({
-      id,
-      amount: amountInCents,
-    });
-  };
-
-
-  // Show loading state only for initial league and team data
   if ((loadingLeague || loadingTeams) && !league) {
     return (
       <Layout>
@@ -446,7 +176,7 @@ export default function WeeklyPaymentsPage() {
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {selectedDate ? (
-                      `Week ${getWeekNumber(selectedDate)}`
+                      `Week ${getWeekNumber(selectedDate, league)}`
                     ) : (
                       <span>Select a week</span>
                     )}
@@ -461,7 +191,7 @@ export default function WeeklyPaymentsPage() {
                       if (disabledDates) {
                         const beforeDisabled = date < disabledDates.before;
                         const afterDisabled = date > disabledDates.after;
-                        const dayDisabled = isDateDisabled(date);
+                        const dayDisabled = isDateDisabled(date, league);
                         return beforeDisabled || afterDisabled || dayDisabled;
                       }
                       return false;
@@ -493,7 +223,7 @@ export default function WeeklyPaymentsPage() {
           <Card>
             <CardHeader>
               <CardTitle>
-                {selectedTeamData.name} - Week {getWeekNumber(selectedDate)}
+                {selectedTeamData.name} - Week {getWeekNumber(selectedDate, league)}
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
@@ -503,7 +233,6 @@ export default function WeeklyPaymentsPage() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  {/* Payment Entry Interface */}
                   <div className="rounded-md border">
                     <Table>
                       <TableHeader>
@@ -516,133 +245,34 @@ export default function WeeklyPaymentsPage() {
                       </TableHeader>
                       <TableBody>
                         {bowlers.map((bowler) => (
-                          <TableRow key={bowler.id}>
-                            <TableCell>{bowler.name}</TableCell>
-                            <TableCell>
-                              <Select
-                                value={paymentEntries[bowler.id]?.type || ""}
-                                onValueChange={(value) => handlePaymentTypeChange(bowler.id, value)}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select type" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="cash">Cash</SelectItem>
-                                  <SelectItem value="check">Check</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              {paymentEntries[bowler.id]?.type === 'check' && (
-                                <Input
-                                  className="mt-2"
-                                  placeholder="Check number"
-                                  value={paymentEntries[bowler.id]?.checkNumber || ""}
-                                  onChange={(e) => handleCheckNumberChange(bowler.id, e.target.value)}
-                                />
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Input
-                                type="text"
-                                placeholder="0.00"
-                                value={paymentEntries[bowler.id]?.amount || ""}
-                                onChange={(e) => handleAmountChange(bowler.id, e.target.value)}
-                              />
-                            </TableCell>
-                            <TableCell>
-                              <Button
-                                onClick={() => handleSubmitPayment(bowler.id)}
-                                disabled={
-                                  !paymentEntries[bowler.id]?.type ||
-                                  !paymentEntries[bowler.id]?.amount ||
-                                  (paymentEntries[bowler.id]?.type === 'check' && !paymentEntries[bowler.id]?.checkNumber) ||
-                                  submitPaymentMutation.isPending
-                                }
-                                size="sm"
-                              >
-                                {submitPaymentMutation.isPending && (
-                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                )}
-                                Record Payment
-                              </Button>
-                            </TableCell>
-                          </TableRow>
+                          <PaymentEntryRow
+                            key={bowler.id}
+                            bowler={bowler}
+                            entry={paymentEntries[bowler.id]}
+                            onPaymentTypeChange={handlePaymentTypeChange}
+                            onAmountChange={handleAmountChange}
+                            onCheckNumberChange={handleCheckNumberChange}
+                            onSubmit={(bowlerId) => handleSubmitPayment(bowlerId, selectedDate)}
+                            isSubmitting={submitPaymentMutation.isPending}
+                          />
                         ))}
                       </TableBody>
                     </Table>
                   </div>
 
-                  {/* Payment History */}
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Bowler</TableHead>
-                          <TableHead>Payment Type</TableHead>
-                          <TableHead className="text-right">Amount</TableHead>
-                          <TableHead className="w-[100px]">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {payments?.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={4} className="text-center">
-                              No payment history
-                            </TableCell>
-                          </TableRow>
-                        ) : (
-                          payments?.map((payment) => {
-                            const bowler = bowlers.find(b => b.id === payment.bowlerId);
-
-                            return (
-                              <TableRow key={payment.id}>
-                                <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
-                                <TableCell>
-                                  <Badge variant="outline">
-                                    {payment.type === 'cash' ? 'Cash' :
-                                      payment.type === 'check' ? `Check #${payment.checkNumber}` :
-                                      payment.type}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  ${(payment.amount / 100).toFixed(2)}
-                                </TableCell>
-                                <TableCell>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() => handleStartEdit(payment)}
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-4 w-4 text-primary">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
-                                    </svg>
-                                  </Button>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() => setPaymentToDelete(payment.id)}
-                                    disabled={deletePaymentMutation.isPending}
-                                  >
-                                    {deletePaymentMutation.isPending ? (
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                    ) : (
-                                      <Trash2 className="h-4 w-4 text-destructive" />
-                                    )}
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })
-                        )}
-                      </TableBody>
-                    </Table>
-                  </div>
+                  <PaymentHistoryTable
+                    payments={payments}
+                    bowlers={bowlers}
+                    onStartEdit={handleStartEdit}
+                    onDelete={setPaymentToDelete}
+                    isDeletePending={deletePaymentMutation.isPending}
+                  />
                 </div>
               )}
             </CardContent>
           </Card>
         )}
 
-        {/* Payment Edit Dialog */}
         <Dialog open={editingPayment !== null} onOpenChange={(open) => !open && setEditingPayment(null)}>
           <DialogContent>
             <DialogHeader>
@@ -683,7 +313,6 @@ export default function WeeklyPaymentsPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Delete Confirmation Dialog */}
         <Dialog open={paymentToDelete !== null} onOpenChange={() => setPaymentToDelete(null)}>
           <DialogContent>
             <DialogHeader>

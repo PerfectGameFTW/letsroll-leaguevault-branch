@@ -4,86 +4,7 @@ import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema.js";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { processPayment } from '../services/square.js';
-
-// Helper function to check if user has access to a payment
-async function hasAccessToPayment(req: any, paymentId: number): Promise<boolean> {
-  // Admin users have access to all payments
-  if (req.user?.isAdmin) {
-    return true;
-  }
-  
-  // If the user has no organization, they can't access organization-specific data
-  if (!req.user?.organizationId) {
-    return false;
-  }
-  
-  try {
-    // Get the payment
-    const payments = await storage.getPayments(undefined, undefined, undefined, undefined);
-    const payment = payments.find(p => p.id === paymentId);
-    if (!payment) {
-      return false;
-    }
-    
-    // Get the league
-    const league = await storage.getLeague(payment.leagueId);
-    if (!league) {
-      return false;
-    }
-    
-    // If league has no organization, it's accessible to all
-    if (league.organizationId === null) {
-      return true;
-    }
-    
-    // Check if user belongs to the same organization as the league
-    return req.user.organizationId === league.organizationId;
-  } catch (error) {
-    console.error(`[Payments Route] Error checking payment access:`, error);
-    return false;
-  }
-}
-
-// Helper function to filter payments by user's organization
-async function filterPaymentsByOrganization(req: any, payments: any[]): Promise<any[]> {
-  // Admin users can see all payments
-  if (req.user?.isAdmin) {
-    return payments;
-  }
-  
-  // For dashboards and charts, allow access to payment type and status info for all users
-  // This is safe as we don't expose personal or sensitive information
-  if (!req.user) {
-    return payments;
-  }
-  
-  // If the user has no organization but is authenticated, filter based on organization
-  if (!req.user.organizationId) {
-    // For non-admin authenticated users without an organization, only show payments from leagues without an organization
-    const leagues = await storage.getLeagues(null);
-    if (!leagues || leagues.length === 0) {
-      return [];
-    }
-    
-    // Get league IDs with no organization
-    const leagueIds = leagues.map(l => l.id);
-    
-    // Filter payments by league IDs
-    return payments.filter(payment => leagueIds.includes(payment.leagueId));
-  }
-  
-  // Get all leagues in user's organization
-  const leagues = await storage.getLeagues(req.user.organizationId);
-  if (!leagues || leagues.length === 0) {
-    return [];
-  }
-  
-  // Get league IDs in user's organization
-  const leagueIds = leagues.map(l => l.id);
-  
-  // Filter payments by league IDs
-  return payments.filter(payment => leagueIds.includes(payment.leagueId));
-}
+import { hasAccessToPayment, filterPaymentsByOrganization } from '../utils/access-control.js';
 
 const router = Router();
 
@@ -112,19 +33,6 @@ router.get("/", async (req, res) => {
     const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
     const weekOf = req.query.weekOf ? new Date(req.query.weekOf as string) : undefined;
 
-    console.log('[Payments Route] GET request with filters:', {
-      bowlerId,
-      leagueId,
-      teamId,
-      weekOf: weekOf?.toISOString(),
-      rawQuery: req.query,
-      user: req.user ? { 
-        id: req.user.id, 
-        isAdmin: req.user.isAdmin,
-        organizationId: req.user.organizationId
-      } : null
-    });
-
     // If leagueId is provided and user is not admin, check organization access
     if (leagueId && !req.user?.isAdmin && req.user?.organizationId) {
       const league = await storage.getLeague(leagueId);
@@ -146,18 +54,6 @@ router.get("/", async (req, res) => {
       accessiblePayments = await filterPaymentsByOrganization(req, payments);
     }
     
-    console.log('[Payments Route] Retrieved payments:', {
-      filters: { bowlerId, leagueId, teamId, weekOf },
-      count: accessiblePayments.length,
-      samples: accessiblePayments.slice(0, 2).map(p => ({
-        id: p.id,
-        amount: p.amount,
-        bowlerId: p.bowlerId,
-        type: p.type,
-        status: p.status
-      }))
-    });
-    
     sendSuccess(res, accessiblePayments);
   } catch (error) {
     console.error('[Payments Route] Get error:', error);
@@ -168,7 +64,6 @@ router.get("/", async (req, res) => {
 // Create new payment
 router.post("/", async (req, res) => {
   try {
-    console.log('[Payments Route] Creating payment with body:', req.body);
     const payment = insertPaymentSchema.parse(req.body);
 
     // Validate check number if payment type is check
@@ -191,7 +86,6 @@ router.post("/", async (req, res) => {
     }
 
     const created = await storage.createPayment(payment);
-    console.log('[Payments Route] Created payment:', created);
     sendSuccess(res, created, 201);
   } catch (error) {
     console.error('[Payments Route] Create error:', error);
@@ -232,7 +126,6 @@ router.patch("/:id", async (req, res) => {
       return sendError(res, "Payment not found", 404, "NOT_FOUND");
     }
 
-    console.log('[Payments Route] Updated payment:', updated);
     sendSuccess(res, updated);
   } catch (error) {
     console.error('[Payments Route] Update error:', error);
@@ -260,7 +153,6 @@ router.delete("/:id", async (req, res) => {
       }
     }
 
-    console.log('[Payments Route] Deleting payment:', id);
     await storage.deletePayment(id);
 
     // Return a JSON response with success status

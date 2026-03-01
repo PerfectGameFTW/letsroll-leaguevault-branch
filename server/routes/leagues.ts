@@ -18,9 +18,6 @@ router.get("/", async (req: any, res) => {
     // Fetch leagues with the organization filter
     const leagues = await storage.getLeagues(organizationId);
     
-    // Log for debugging
-    console.log(`[Leagues] Fetching leagues with organizationFilter: ${organizationId}`);
-    
     sendSuccess(res, leagues);
   } catch (error) {
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch leagues');
@@ -49,7 +46,6 @@ router.get("/:id", async (req: any, res) => {
       (organizationId !== null && league.organizationId === organizationId);
     
     if (!userHasAccess) {
-      console.log(`[Leagues] Access denied to league ${id} for user with organizationId: ${organizationId}`);
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -77,18 +73,9 @@ router.post("/", async (req: any, res) => {
       // This overrides any organizationId provided in the request body
       if (organizationId !== null) {
         league.organizationId = organizationId;
-        console.log(`[Leagues] Setting organizationId to ${organizationId} for league creation`);
       } else {
-        // Non-admin users without an organization can only create unassigned leagues
         league.organizationId = null;
-        console.log(`[Leagues] Setting organizationId to null for league creation (no organization user)`);
       }
-    } else if (req.body.organizationId) {
-      // Admin users can create leagues for any organization
-      console.log(`[Leagues] Admin user creating league for organizationId: ${req.body.organizationId}`);
-    } else {
-      // Admin creating league with no specific organization
-      console.log(`[Leagues] Admin user creating unassigned league`);
     }
     
     const created = await storage.createLeague(league);
@@ -126,7 +113,6 @@ router.patch("/:id", async (req: any, res) => {
       (organizationId !== null && league.organizationId === organizationId);
     
     if (!userHasAccess) {
-      console.log(`[Leagues] Update access denied to league ${id} for user with organizationId: ${organizationId}`);
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -176,7 +162,6 @@ router.delete("/:id", async (req: any, res) => {
       (organizationId !== null && league.organizationId === organizationId);
     
     if (!userHasAccess) {
-      console.log(`[Leagues] Delete access denied to league ${id} for user with organizationId: ${organizationId}`);
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     

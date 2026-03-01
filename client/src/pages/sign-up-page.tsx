@@ -146,12 +146,6 @@ const SignUpPage: FC = () => {
 
   const onSubmit = async (data: SignUpFormData) => {
     try {
-      console.log("[SignUp] Starting registration process:", { 
-        email: data.email,
-        name: data.name,
-        leagueId: data.leagueId 
-      });
-
       const existingUsersResponse = await fetch(`/api/users/check-email/${encodeURIComponent(data.email)}`);
       if (!existingUsersResponse.ok) {
         throw new Error("Failed to verify email availability");
@@ -167,8 +161,6 @@ const SignUpPage: FC = () => {
         return;
       }
 
-      // Check for existing bowler
-      console.log("[SignUp] Checking for existing bowler profile");
       const bowlersResponse = await fetch("/api/bowlers");
       if (!bowlersResponse.ok) {
         throw new Error("Failed to check existing bowlers");
@@ -181,7 +173,6 @@ const SignUpPage: FC = () => {
       );
 
       if (existingBowler) {
-        console.log("[SignUp] Found existing bowler:", existingBowler);
         toast({
           title: "Existing Bowler Found",
           description: "We've matched your information with an existing bowler profile.",
@@ -189,7 +180,6 @@ const SignUpPage: FC = () => {
         });
       }
 
-      console.log("[SignUp] Submitting registration data");
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: {
@@ -204,11 +194,6 @@ const SignUpPage: FC = () => {
       }
 
       const userData = await response.json();
-      console.log("[SignUp] Registration successful:", { 
-        userId: userData.data.id,
-        bowlerId: userData.data.bowlerId,
-        success: userData.success 
-      });
 
       // Verify the user data includes the bowler ID
       if (!userData.data.bowlerId) {

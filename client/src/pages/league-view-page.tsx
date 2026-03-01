@@ -15,22 +15,17 @@ export default function LeagueViewPage() {
   const { data: leagueResponse, isLoading, error } = useQuery<{ success: true; data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
     queryFn: async () => {
-      console.log('[LeagueViewPage] Fetching league:', leagueId);
       const response = await fetch(`/api/leagues/${leagueId}`);
       if (!response.ok) {
-        console.error('[LeagueViewPage] Failed to fetch league:', await response.text());
         throw new Error('Failed to fetch league');
       }
-      const data = await response.json();
-      console.log('[LeagueViewPage] League response:', data);
-      return data;
+      return response.json();
     },
     retry: false
   });
 
   // Access the league data from the nested structure
   const league = leagueResponse?.data;
-  console.log('[LeagueViewPage] Processed league data:', league);
 
   if (isLoading) {
     return (

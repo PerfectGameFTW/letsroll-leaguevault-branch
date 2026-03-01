@@ -104,7 +104,6 @@ export function OrganizationUsersOnly() {
       setErrorMessage('Failed to load users list');
     }
     if (allUsersError) {
-      console.error('[API] Failed to fetch all users:', allUsersError);
       setErrorMessage(allUsersError instanceof Error ? allUsersError.message : 'Failed to load available users');
     }
   }, [allUsersResponse, allUsersError]);
@@ -115,13 +114,9 @@ export function OrganizationUsersOnly() {
     queryFn: async () => {
       if (!organizationId) throw new Error("Organization ID is required");
       
-      // Log the API request for debugging
-      console.log(`[API] Fetching organization users for organizationId: ${organizationId}`);
-      
       try {
         // Use the apiRequest utility which returns the JSON data directly
         const data = await apiRequest<User[]>(`/api/org-admin/users?organizationId=${organizationId}`, 'GET');
-        console.log('[API] Organization users response:', data);
         
         if (!data.success) {
           throw new Error(data.error?.message || 'Failed to fetch organization users');

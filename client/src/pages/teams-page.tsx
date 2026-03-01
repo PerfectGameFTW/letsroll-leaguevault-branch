@@ -33,19 +33,11 @@ export default function TeamsPage() {
   const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
     queryKey: ["/api/teams", leagueId],
     queryFn: async () => {
-      try {
-        console.log('[TeamsPage] Fetching teams for league:', leagueId);
-        const response = await fetch(`/api/teams?leagueId=${leagueId}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch teams');
-        }
-        const data = await response.json();
-        console.log('[TeamsPage] Teams data:', data);
-        return data;
-      } catch (error) {
-        console.error('[TeamsPage] Error fetching teams:', error);
-        throw error;
+      const response = await fetch(`/api/teams?leagueId=${leagueId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch teams');
       }
+      return response.json();
     },
     enabled: !!leagueId,
     retry: false,

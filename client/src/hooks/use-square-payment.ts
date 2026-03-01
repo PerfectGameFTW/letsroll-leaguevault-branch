@@ -27,12 +27,10 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
   const cleanupCard = () => {
     if (card) {
       try {
-        console.log('[useSquarePayment] Cleaning up card instance');
         card.destroy();
         setCard(null);
         setIsInitialized(false);
         setError(null);
-        console.log('[useSquarePayment] Card cleanup completed');
       } catch (error) {
         console.error('[useSquarePayment] Error during cleanup:', error);
       }
@@ -42,31 +40,25 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
   // Initialize card function with improved reliability
   const initializeCard = async (container: HTMLDivElement) => {
     if (!container || !mountedRef.current) {
-      console.error('[useSquarePayment] Container element is required or component unmounted');
       return;
     }
 
     // Protection against initialization when already initialized
     if (card && isInitialized) {
-      console.log('[useSquarePayment] Card already initialized, skipping initialization');
       return;
     }
 
     try {
       // Clean up existing card instance if any
       cleanupCard();
-
-      console.log('[useSquarePayment] Initializing Square payments...');
       
       // Set a timeout to automatically fail if initialization takes too long
       const initTimeout = setTimeout(() => {
         if (mountedRef.current && !isInitialized) {
-          console.error('[useSquarePayment] Card initialization timed out after 8 seconds');
           setError('Card initialization timed out');
           
           if (initializationAttempts.current < maxAttempts) {
             initializationAttempts.current++;
-            console.log(`[useSquarePayment] Will retry initialization (attempt ${initializationAttempts.current}/${maxAttempts})`);
           } else {
             // Max retries reached
             initializationAttempts.current = 0;
@@ -81,20 +73,12 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
         }
       }, 8000);
       
-      console.log('[useSquarePayment] Checking environment variables...');
-      console.log('[useSquarePayment] App ID present:', !!import.meta.env.VITE_SQUARE_APP_ID);
-      console.log('[useSquarePayment] Location ID present:', !!import.meta.env.VITE_SQUARE_LOCATION_ID);
-      
       const payments = await initializeSquare();
 
       if (!mountedRef.current) {
-        console.log('[useSquarePayment] Component unmounted during initialization');
         clearTimeout(initTimeout);
         return;
       }
-
-      console.log('[useSquarePayment] Square payments initialized successfully');
-      console.log('[useSquarePayment] Creating new card form...');
       
       // Create card payment form
       const newCard = await payments.card({
@@ -120,7 +104,6 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
         }
       });
 
-      console.log('[useSquarePayment] Attaching card to container...');
       await newCard.attach(container);
       clearTimeout(initTimeout);
 
@@ -129,9 +112,7 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
         setIsInitialized(true);
         setError(null);
         initializationAttempts.current = 0;
-        console.log('[useSquarePayment] Card form initialized successfully');
       } else {
-        console.log('[useSquarePayment] Component unmounted during initialization, cleaning up');
         newCard.destroy();
       }
     } catch (error) {
@@ -147,7 +128,6 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
         if (initializationAttempts.current < maxAttempts) {
           initializationAttempts.current++;
           const delay = Math.min(1000 * Math.pow(2, initializationAttempts.current), 5000);
-          console.log(`[useSquarePayment] Retrying initialization in ${delay}ms (attempt ${initializationAttempts.current}/${maxAttempts})`);
 
           // Schedule retry
           setTimeout(() => {

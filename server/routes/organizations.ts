@@ -105,12 +105,10 @@ router.post('/', requireAdmin, async (req, res) => {
     // If admin user data is provided, create the admin user
     if (adminData && adminData.email && adminData.password && adminData.name) {
       try {
-        console.log('[Organizations] Creating admin user for new organization');
         
         // Check if user already exists
         const existingUser = await storage.getUserByEmail(adminData.email);
         if (existingUser) {
-          console.log(`[Organizations] Admin user already exists with email: ${adminData.email}`);
           
           // If user exists but is not an organization admin, update them
           if (!existingUser.isOrganizationAdmin) {
@@ -136,7 +134,6 @@ router.post('/', requireAdmin, async (req, res) => {
           organizationId: organization.id
         });
         
-        console.log(`[Organizations] Admin user created successfully, ID: ${newAdminUser.id}`);
         
         // Include user info in the response
         return sendSuccess(res, { organization, adminUser: { ...newAdminUser, password: undefined } }, 201);

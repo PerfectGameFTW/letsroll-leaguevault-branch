@@ -33,7 +33,6 @@ export async function apiRequest<T = any>(
 ): Promise<{success: boolean; data: T; error?: {message: string; code?: string}}> {
   try {
     const apiUrl = ensureApiPrefix(url);
-    console.log(`[API] ${method} request to ${apiUrl}`, data ? { data } : '');
 
     const res = await fetch(apiUrl, {
       method,
@@ -43,12 +42,6 @@ export async function apiRequest<T = any>(
       },
       body: data ? JSON.stringify(data) : undefined,
       credentials: "include",
-    });
-
-    console.log(`[API] Response from ${apiUrl}:`, {
-      status: res.status,
-      ok: res.ok,
-      statusText: res.statusText
     });
 
     const validatedRes = await throwIfResNotOk(res);
@@ -63,7 +56,6 @@ export async function apiRequest<T = any>(
 export const getQueryFn: QueryFunction = async ({ queryKey }) => {
   try {
     const url = ensureApiPrefix(queryKey[0] as string);
-    console.log(`[Query] Fetching ${url}`);
 
     const res = await fetch(url, {
       credentials: "include",
@@ -74,7 +66,6 @@ export const getQueryFn: QueryFunction = async ({ queryKey }) => {
 
     const validatedRes = await throwIfResNotOk(res);
     const data = await validatedRes.json();
-    console.log(`[Query] Successfully fetched ${url}:`, data);
     return data;
   } catch (error) {
     console.error(`[Query] Error fetching ${queryKey[0]}:`, error);
@@ -115,13 +106,11 @@ export const resetQueries = async (queryKeys: string[]) => {
 // Prefetch initial data
 export const prefetchQueries = async () => {
   try {
-    console.log('[Query] Prefetching initial data...');
     await Promise.all([
       queryClient.prefetchQuery({ queryKey: ['/api/leagues'] }),
       queryClient.prefetchQuery({ queryKey: ['/api/teams'] }),
       queryClient.prefetchQuery({ queryKey: ['/api/bowlers'] }),
     ]);
-    console.log('[Query] Initial data prefetch complete');
   } catch (error) {
     console.error('[Query] Error prefetching initial data:', error);
   }
@@ -129,7 +118,6 @@ export const prefetchQueries = async () => {
 
 // Invalidate multiple queries at once
 export const invalidateQueries = async (keys: string[]) => {
-  console.log('[Query] Invalidating queries:', keys);
   await Promise.all(
     keys.map(key => queryClient.invalidateQueries({ queryKey: [key] }))
   );

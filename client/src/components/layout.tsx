@@ -165,24 +165,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
   
-  // Log organization data when it changes
-  useEffect(() => {
-    if (organizationResponse?.data) {
-      console.log("[Layout] User organization data:", 
-                  organizationResponse.data.name, 
-                  organizationResponse.data.logo ? "Logo exists" : "No logo");
-    }
-    
-    if (perfectGameOrgResponse?.data) {
-      console.log("[Layout] Perfect Game organization data:", 
-                  perfectGameOrgResponse.data.name, 
-                  perfectGameOrgResponse.data.logo ? "Logo exists" : "No logo");
-    }
-  }, [organizationResponse, perfectGameOrgResponse]);
-
   const isAdmin = currentUserResponse?.data?.isAdmin || false;
   const isOrganizationAdmin = currentUserResponse?.data?.isOrganizationAdmin || false;
-  const hasOrganization = !!currentUserResponse?.data?.organizationId;
   // System admin is someone who has both admin and organization admin privileges
   const isSystemAdmin = isAdmin && isOrganizationAdmin;
 
@@ -370,7 +354,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 alt={(organizationResponse?.data?.name || perfectGameOrgResponse?.data?.name || "Organization") + " Logo"}
                 className="h-14 md:h-14 lg:h-16 w-auto object-contain"
                 onError={(e) => {
-                  console.error("[Layout] Failed to load organization logo in header:", e);
                   e.currentTarget.src = leagueVaultLogo;
                 }}
               />

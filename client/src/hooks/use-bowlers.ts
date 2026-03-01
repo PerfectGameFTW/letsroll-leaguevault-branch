@@ -9,8 +9,6 @@ interface UseBowlersOptions {
 }
 
 export function useBowlers({ showInactive = false, searchQuery = "", isEnabled = true }: UseBowlersOptions = {}) {
-  console.log('[useBowlers] Hook called with:', { showInactive, searchQuery, isEnabled }); // Debug log
-
   // Query for bowlers with proper error handling and longer cache time
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<ApiResponse<Bowler[]>>({
     queryKey: ["/api/bowlers"],
@@ -43,13 +41,6 @@ export function useBowlers({ showInactive = false, searchQuery = "", isEnabled =
   const bowlerLeagues = bowlerLeaguesResponse?.data ?? [];
   const teams = teamsResponse?.data ?? [];
   const leagues = leaguesResponse?.data ?? [];
-
-  console.log('[useBowlers] Data loaded:', { 
-    bowlersCount: bowlers.length,
-    bowlerLeaguesCount: bowlerLeagues.length,
-    teamsCount: teams.length,
-    leaguesCount: leagues.length
-  }); // Debug log
 
   // Memoize filtered bowlers to avoid unnecessary recalculations
   const filteredBowlers = useMemo(() => {
@@ -113,11 +104,6 @@ export function useBowlers({ showInactive = false, searchQuery = "", isEnabled =
   // Show loading skeleton while initial data is being fetched
   const isInitialLoading = loadingBowlers && !bowlers.length;
   const isLoadingRelatedData = (loadingBowlerLeagues || loadingTeams || loadingLeagues) && bowlers.length > 0;
-
-  console.log('[useBowlers] Hook returning with loading states:', {
-    isInitialLoading,
-    isLoadingRelatedData
-  }); // Debug log
 
   return {
     bowlers: filteredBowlers,

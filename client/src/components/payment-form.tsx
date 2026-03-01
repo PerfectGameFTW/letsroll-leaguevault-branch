@@ -65,7 +65,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     cleanupCard,
   } = useSquarePayment({
     onError: (error) => {
-      console.error('[PaymentForm] Square payment error:', error);
       form.setValue("type", "cash");
       toast({
         title: "Payment Form Notice",
@@ -87,7 +86,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     // Handle form closing or payment type change
     if (!open || paymentType !== "credit_card") {
       if (isInitialized) {
-        console.log('[PaymentForm] Cleaning up card form due to close or payment type change');
         cleanupCard();
         setIsSquareReady(false);
         initializationAttempted.current = false;
@@ -97,26 +95,19 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
     // Prevent reinitializing an already initialized or in-progress initialization
     if (!cardContainerRef.current) {
-      console.log('[PaymentForm] Card container not ready');
       return;
     }
     
     if (isInitialized) {
-      console.log('[PaymentForm] Card already initialized');
       setIsSquareReady(true);
       return;
     }
     
-    // Allow retrying if previous initialization failed
-    // Only check initializationAttempted if the form is already marked as ready
     if (initializationAttempted.current && isSquareReady) {
-      console.log('[PaymentForm] Card initialization already successful');
       return;
     }
 
-    // Set initialization flag to prevent multiple attempts
     initializationAttempted.current = true;
-    console.log('[PaymentForm] Starting card initialization...');
     setPaymentError(null);
     
     const container = cardContainerRef.current;
@@ -124,7 +115,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     // Create a timeout to detect if initialization gets stuck
     const initTimeout = setTimeout(() => {
       if (!isSquareReady) {
-        console.warn('[PaymentForm] Card initialization timed out after 5 seconds');
         setPaymentError('Failed to initialize payment form in a timely manner');
         // Fall back to cash payment
         form.setValue("type", "cash", { shouldDirty: false });
@@ -137,16 +127,13 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       }
     }, 5000);
     
-    // Start initialization after a slight delay to ensure DOM is ready
     setTimeout(() => {
       initializeCard(container)
         .then(() => {
-          console.log('[PaymentForm] Card form initialized successfully');
           setIsSquareReady(true);
           clearTimeout(initTimeout);
         })
         .catch((error) => {
-          console.error('[PaymentForm] Failed to initialize card form:', error);
           setIsSquareReady(false);
           setPaymentError(error instanceof Error ? error.message : 'Failed to initialize payment form');
           initializationAttempted.current = false; // Reset to allow retries
@@ -177,18 +164,12 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const onSubmit = async (data: InsertPayment) => {
     try {
       setPaymentError(null);
-      console.log('[PaymentForm] Submitting payment:', {
-        ...data,
-        amount: data.amount / 100,
-      });
 
       if (data.type === 'credit_card') {
         if (!card) {
           throw new Error('Credit card form not initialized');
         }
 
-        console.log('[PaymentForm] Tokenizing card...');
-        
         // Configure tokenization options if storing card
         const tokenizationOptions = data.storeCard ? {
           cardOnFile: true,
@@ -200,23 +181,14 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           }
         } : undefined;
         
-        console.log('[PaymentForm] Tokenization options:', 
-          data.storeCard ? 'Storing card for future use' : 'One-time payment'
-        );
-        
         const result = await card.tokenize(tokenizationOptions);
 
         if (result.status !== 'OK' || !result.token) {
           const errors = result.errors || [];
           const errorMessage = errors.map((e: { message: string }) => e.message).join(', ') || 'Card validation failed';
-          console.error('[PaymentForm] Card tokenization failed:', {
-            errors,
-            firstError: errorMessage
-          });
           throw new Error(errorMessage);
         }
 
-        console.log('[PaymentForm] Card tokenized successfully');
         data.squarePaymentId = result.token;
       }
 
@@ -231,11 +203,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       const responseData = await response.json();
 
       if (!response.ok) {
-        console.error('[PaymentForm] Payment API error:', responseData);
         throw new Error(responseData.error?.message || 'Failed to process payment');
       }
-
-      console.log('[PaymentForm] Payment processed successfully:', responseData);
 
       toast({
         title: "Success",
@@ -245,7 +214,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       onClose();
     } catch (error) {
-      console.error('[PaymentForm] Payment submission error:', error);
       const errorMessage = error instanceof Error ? error.message : "Failed to process payment";
       setPaymentError(errorMessage);
       toast({

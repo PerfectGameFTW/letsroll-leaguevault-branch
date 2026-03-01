@@ -63,10 +63,8 @@ router.post('/create/:id', requireAdmin, async (req: Request, res: Response) => 
           .set({ isOrganizationAdmin: true })
           .where(eq(users.id, userId));
           
-        console.log(`[System Admin] Updated user ${userId} directly in database (no organization)`);
       }
       
-      console.log(`[System Admin] User ID ${userId} (${user.email}) was promoted to system admin by ${req.user?.email}`);
 
       // Return the updated user without password
       sendSuccess(
@@ -185,13 +183,11 @@ router.post('/revoke/:id', requireAdmin, async (req: Request, res: Response) => 
           .set({ isOrganizationAdmin: false })
           .where(eq(users.id, userId));
           
-        console.log(`[System Admin] Revoked system admin for user ${userId} directly in database (no organization)`);
         
         // Re-fetch the user to get updated info
         updatedUser = await storage.getUser(userId);
       }
       
-      console.log(`[System Admin] System admin privileges revoked for user ID ${userId} (${user.email}) by ${req.user?.email}`);
 
       // Return the updated user without password
       sendSuccess(

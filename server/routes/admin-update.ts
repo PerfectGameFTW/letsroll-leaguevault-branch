@@ -58,7 +58,6 @@ router.patch('/users/:id/admin-status', requireAdmin, async (req: Request, res: 
     // Update the user's admin status
     const updatedUser = await storage.updateUserAdminStatus(userId, isAdmin);
 
-    console.log(`[Admin] User ID ${userId} admin status updated to ${isAdmin}`);
 
     // Return the updated user without password
     sendSuccess(
@@ -117,7 +116,6 @@ router.post('/first-system-admin/:id', async (req: Request, res: Response) => {
     // Update the user's admin status
     const updatedUser = await storage.updateUserAdminStatus(userId, true);
 
-    console.log(`[Admin] First system admin created: User ID ${userId} (${updatedUser.email})`);
 
     // Return the updated user without password
     sendSuccess(

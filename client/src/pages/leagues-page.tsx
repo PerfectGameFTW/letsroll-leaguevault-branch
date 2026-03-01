@@ -41,15 +41,6 @@ export default function LeaguesPage() {
   const firstLeague = leagues?.[0];
   const currentWeek = firstLeague ? Math.ceil(differenceInWeeks(new Date(), new Date(firstLeague.seasonStart))) : 0;
 
-  console.log('[LeaguesPage] First league and current week:', {
-    firstLeague: firstLeague ? { 
-      id: firstLeague.id, 
-      name: firstLeague.name,
-      seasonStart: firstLeague.seasonStart 
-    } : null,
-    currentWeek
-  });
-
   const { data: scoresResponse, isLoading: loadingScores } = useQuery<{ data: ScoreWithRelations[] }>({
     queryKey: ["/api/scores/history", firstLeague?.id],
     queryFn: async () => {
@@ -65,11 +56,6 @@ export default function LeaguesPage() {
   });
 
   const weeklyScores = scoresResponse?.data || [];
-
-  console.log('[LeaguesPage] Weekly scores:', {
-    responseData: scoresResponse?.data,
-    scoresCount: weeklyScores.length
-  });
 
   // Create a map of league ID to team count
   const teamCounts = allTeams.reduce((acc, team) => {

@@ -16,9 +16,7 @@ const setAdminStatusSchema = z.object({
 // Get all users (admin only)
 router.get('/users', requireAdmin, async (req, res) => {
   try {
-    console.log('[Admin Routes] Fetching all users');
     const users = await storage.getUsers();
-    console.log(`[Admin Routes] Found ${users.length} users`);
     sendSuccess(res, users);
   } catch (error) {
     console.error('[Admin Routes] Error fetching users:', error);
@@ -34,12 +32,7 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
       userId: parseInt(userId), 
       isAdmin: req.body.isAdmin 
     });
-    
-    console.log('[Admin Routes] Updating admin status:', {
-      userId: parsedData.userId,
-      isAdmin: parsedData.isAdmin
-    });
-    
+
     // Make sure the user isn't toggling their own admin status
     const requestingUser = req.user as SelectUser;
     if (requestingUser.id === parsedData.userId) {
@@ -48,11 +41,6 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
     }
     
     const updatedUser = await storage.updateUserAdminStatus(parsedData.userId, parsedData.isAdmin);
-    console.log('[Admin Routes] Successfully updated admin status for user:', {
-      userId: updatedUser.id,
-      isAdmin: updatedUser.isAdmin
-    });
-    
     sendSuccess(res, updatedUser);
   } catch (error) {
     console.error('[Admin Routes] Error updating admin status:', error);
@@ -69,7 +57,6 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
 // Get admin dashboard stats (admin only)
 router.get('/dashboard', requireAdmin, async (req, res) => {
   try {
-    console.log('[Admin Routes] Fetching admin dashboard stats');
     
     // Fetch data for dashboard
     const [bowlers, leagues, teams, payments] = await Promise.all([
@@ -120,14 +107,6 @@ router.get('/dashboard', requireAdmin, async (req, res) => {
       recentPayments
     };
 
-    console.log('[Admin Routes] Dashboard stats:', {
-      bowlersCount: bowlers.length,
-      leaguesCount: leagues.length,
-      teamsCount: teams.length,
-      paymentsCount: payments.length,
-      recentPaymentsCount: recentPayments.length
-    });
-    
     sendSuccess(res, stats);
   } catch (error) {
     console.error('[Admin Routes] Error fetching admin dashboard stats:', error);

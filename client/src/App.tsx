@@ -52,28 +52,17 @@ const RootRedirectHandler: FC = () => {
     if (!isLoading) {
       if (error || !currentUserResponse?.data) {
         // If not authenticated, redirect to login
-        console.log("[Router] User not authenticated, redirecting to login");
         navigate('/login');
       } else if (currentUserResponse?.data?.organizationId) {
-        // Check if user is an organization admin
         if (currentUserResponse?.data?.isOrganizationAdmin || currentUserResponse?.data?.isAdmin) {
-          // If user is an org admin or system admin, go to home
-          console.log("[Router] User is organization admin, redirecting to home");
           navigate('/home');
         } else {
-          // Regular organization user goes to leagues
-          console.log("[Router] User authenticated with organization, redirecting to leagues");
           navigate('/leagues');
         }
       } else {
-        // For non-organization users, only system admins can access bowler dashboard
         if (currentUserResponse?.data?.isAdmin && currentUserResponse?.data?.isOrganizationAdmin) {
-          // System admin (both flags set to true) goes to bowler dashboard
-          console.log("[Router] System admin without organization, redirecting to bowler dashboard");
           navigate('/bowler-dashboard');
         } else {
-          // Other users without organization go to leagues or home
-          console.log("[Router] Non-system admin without organization, redirecting to leagues");
           navigate('/leagues');
         }
       }
@@ -255,7 +244,6 @@ function App() {
         await initializeSquare();
         initialized.current = true;
         initializationAttempts.current = 0;
-        console.log('[App] Square initialized successfully');
       } catch (error) {
         console.error('[App] Square initialization attempt failed:', error);
         initializationAttempts.current++;
@@ -263,7 +251,6 @@ function App() {
         if (initializationAttempts.current < maxAttempts) {
           // Retry with exponential backoff
           const delay = Math.min(1000 * Math.pow(2, initializationAttempts.current), 5000);
-          console.log(`[App] Retrying Square initialization in ${delay}ms (attempt ${initializationAttempts.current}/${maxAttempts})`);
           setTimeout(initSquare, delay);
         } else {
           // Only show error toast if all retries fail

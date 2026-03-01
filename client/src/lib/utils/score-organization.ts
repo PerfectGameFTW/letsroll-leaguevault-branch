@@ -10,18 +10,8 @@ interface TeamScoreMap {
 }
 
 export function organizeBowlerScores(scoresData: ScoreWithRelations[]): WeeklyScores {
-  console.log('[organizeBowlerScores] Processing scores:', {
-    totalScores: scoresData.length,
-    firstScore: scoresData[0] ? {
-      bowler: scoresData[0].bowler.name,
-      team: scoresData[0].team.name,
-      game: scoresData[0].game.weekNumber
-    } : null
-  });
-
   // Early return for empty data
   if (!scoresData.length) {
-    console.log('[organizeBowlerScores] No scores to process');
     return {
       weekNumber: 0,
       date: "",
@@ -89,16 +79,6 @@ export function organizeBowlerScores(scoresData: ScoreWithRelations[]): WeeklySc
     .sort((a, b) => a.teamNumber - b.teamNumber),
   };
 
-  console.log('[organizeBowlerScores] Processed data:', {
-    weekNumber: result.weekNumber,
-    date: result.date,
-    teamCount: result.teams.length,
-    teamsProcessed: result.teams.map(t => ({
-      name: t.teamName,
-      bowlerCount: t.bowlers.length
-    }))
-  });
-
   return result;
 }
 
@@ -118,11 +98,6 @@ export function calculateSeriesTotal(games: Array<{ score: number | null }>): nu
 
   // Cache the result
   seriesCache.set(games, total);
-
-  console.log('[calculateSeriesTotal] Calculated total:', {
-    gamesCount: games.length,
-    total
-  });
 
   return total;
 }

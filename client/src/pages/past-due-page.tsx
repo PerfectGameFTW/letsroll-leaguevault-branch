@@ -24,7 +24,6 @@ export default function PastDuePage() {
       return response.json();
     }
   });
-  console.log('Past Due - Leagues Response:', leaguesResponse);
   const leagues = leaguesResponse?.data || [];
 
   const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ success: true, data: Team[] }>({
@@ -37,7 +36,6 @@ export default function PastDuePage() {
       return response.json();
     }
   });
-  console.log('Past Due - Teams Response:', teamsResponse);
   const teams = teamsResponse?.data || [];
 
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true, data: Bowler[] }>({
@@ -50,20 +48,18 @@ export default function PastDuePage() {
       return response.json();
     }
   });
-  console.log('Past Due - Bowlers Response:', bowlersResponse);
   const bowlers = bowlersResponse?.data || [];
 
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ success: true, data: BowlerLeague[] }>({
-    queryKey: ["/api/bowler-leagues-new"],
+    queryKey: ["/api/bowler-leagues", { enriched: true }],
     queryFn: async () => {
-      const response = await fetch('/api/bowler-leagues-new');
+      const response = await fetch('/api/bowler-leagues?enriched=true');
       if (!response.ok) {
         throw new Error('Failed to fetch bowler leagues');
       }
       return response.json();
     }
   });
-  console.log('Past Due - Bowler Leagues Response:', bowlerLeaguesResponse);
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
@@ -88,34 +84,22 @@ export default function PastDuePage() {
     );
   }
 
-  // Debug logs for incoming data
-  console.log('Active Bowlers:', bowlers.filter(bowler => bowler.active));
-  console.log('Bowler Leagues:', bowlerLeagues);
-  console.log('Leagues:', leagues);
-  console.log('Teams:', teams);
-  console.log('Payments:', payments);
-
   // Calculate past due details for each bowler in each league
   const pastDueBowlers = bowlers
     .filter(bowler => bowler.active)
     .flatMap(bowler => {
       // Get all league associations for this bowler
       const bowlerAssociations = bowlerLeagues.filter(bl => bl.bowlerId === bowler.id);
-      console.log(`Associations for bowler ${bowler.name}:`, bowlerAssociations);
 
       return bowlerAssociations.map(association => {
         const league = leagues.find(l => l.id === association.leagueId);
         const team = teams.find(t => t.id === association.teamId);
 
-        console.log(`League and team for ${bowler.name}:`, { league, team });
-
         if (!league || !team) {
-          console.log(`Skipping ${bowler.name} - missing league or team`);
           return null;
         }
 
         if (!league.seasonStart) {
-          console.log(`Skipping ${bowler.name} - league ${league.name} has no season start date`);
           return null;
         }
 
@@ -125,8 +109,6 @@ export default function PastDuePage() {
           p.leagueId === league.id &&
           p.status === 'paid'
         );
-
-        console.log(`Payments for ${bowler.name} in league ${league.name}:`, leaguePayments);
 
         const totalPaid = leaguePayments.reduce((sum, p) => sum + p.amount, 0);
         const today = startOfToday();
@@ -139,15 +121,6 @@ export default function PastDuePage() {
         const pastDueAmount = Math.max(0, dueToDate - totalPaid);
         const weeksPastDue = Math.floor(pastDueAmount / league.weeklyFee);
 
-        console.log(`Calculations for ${bowler.name} in ${league.name}:`, {
-          totalPaid,
-          weeksPassed,
-          dueToDate,
-          pastDueAmount,
-          weeksPastDue,
-          seasonStart: league.seasonStart,
-        });
-
         return pastDueAmount > 0 ? {
           bowler,
           team,
@@ -159,8 +132,6 @@ export default function PastDuePage() {
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
     .sort((a, b) => b.pastDueAmount - a.pastDueAmount);
-
-  console.log('Final pastDueBowlers:', pastDueBowlers);
 
   return (
     <Layout>

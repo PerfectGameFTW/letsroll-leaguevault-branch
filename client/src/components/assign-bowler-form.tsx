@@ -36,13 +36,9 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
     queryFn: async () => {
       const response = await fetch("/api/bowlers");
       if (!response.ok) {
-        const text = await response.text();
-        console.error("[AssignBowler] Bowlers fetch error response:", text);
         throw new Error("Failed to fetch bowlers");
       }
-      const data = await response.json();
-      console.log("[AssignBowler] Bowlers fetch successful:", data);
-      return data;
+      return response.json();
     },
   });
 
@@ -52,13 +48,9 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
     queryFn: async () => {
       const response = await fetch(`/api/bowler-leagues?leagueId=${leagueId}`);
       if (!response.ok) {
-        const text = await response.text();
-        console.error("[AssignBowler] BowlerLeagues fetch error response:", text);
         throw new Error("Failed to fetch bowler leagues");
       }
-      const data = await response.json();
-      console.log("[AssignBowler] BowlerLeagues fetch successful:", data);
-      return data;
+      return response.json();
     },
   });
 
@@ -78,12 +70,6 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   // Mutation for assigning bowler to team
   const mutation = useMutation({
     mutationFn: async (bowlerId: number) => {
-      console.log("[AssignBowler] Starting assignment with payload:", {
-        bowlerId,
-        leagueId,
-        teamId
-      });
-
       try {
         const response = await fetch("/api/bowler-leagues", {
           method: "POST",
@@ -98,7 +84,6 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
         });
 
         const text = await response.text();
-        console.log("[AssignBowler] Raw response:", text);
 
         let data;
         try {
@@ -112,7 +97,6 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
           throw new Error(data.error || "Failed to assign bowler");
         }
 
-        console.log("[AssignBowler] Assignment successful:", data);
         return data;
       } catch (error) {
         console.error("[AssignBowler] Assignment failed:", error);

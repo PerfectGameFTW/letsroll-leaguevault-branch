@@ -74,8 +74,7 @@ export const teams = pgTable("teams", {
     .references(() => leagues.id, { onDelete: 'cascade' }),
   active: boolean("active").notNull().default(true),
 }, (table) => ({
-  // Unique index for league_id + number combination
-  leagueNumberIdx: index("teams_league_number_idx").on(table.leagueId, table.number),
+  leagueNumberIdx: uniqueIndex("teams_league_number_idx").on(table.leagueId, table.number),
 }));
 
 export const bowlers = pgTable("bowlers", {
@@ -132,7 +131,11 @@ export const payments = pgTable("payments", {
   squarePaymentId: text("square_payment_id"),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  bowlerIdx: index("payments_bowler_idx").on(table.bowlerId),
+  leagueIdx: index("payments_league_idx").on(table.leagueId),
+  weekOfIdx: index("payments_week_of_idx").on(table.weekOf),
+}));
 
 // Add new tables after the existing scores table
 export const games = pgTable("games", {
@@ -176,34 +179,6 @@ export const scores = pgTable("scores", {
   laneNumberIdx: index("lane_number_idx").on(table.laneNumber),
 }));
 
-export const series = pgTable("series", {
-  id: serial("id").primaryKey(),
-  leagueId: integer("league_id")
-    .notNull()
-    .references(() => leagues.id, { onDelete: 'cascade' }),
-  weekNumber: integer("week_number").notNull(),
-  seriesDate: timestamp("series_date", { mode: "date" }).notNull(),
-  isComplete: boolean("is_complete").notNull().default(false),
-}, (table) => ({
-  leagueSeriesIdx: index("league_series_idx").on(table.leagueId, table.weekNumber),
-}));
-
-export const weeklyStats = pgTable("weekly_stats", {
-  id: serial("id").primaryKey(),
-  seriesId: integer("series_id")
-    .notNull()
-    .references(() => series.id, { onDelete: 'cascade' }),
-  bowlerLeagueId: integer("bowler_league_id")
-    .notNull()
-    .references(() => bowlerLeagues.id, { onDelete: 'cascade' }),
-  average: integer("average").notNull(),
-  handicap: integer("handicap").notNull(),
-  gamesPlayed: integer("games_played").notNull(),
-}, (table) => ({
-  seriesStatsIdx: index("series_stats_idx").on(table.seriesId),
-  bowlerStatsIdx: index("bowler_stats_idx").on(table.bowlerLeagueId),
-}));
-
 // Update user schema to include name, phone fields, admin flag, and organization
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -219,6 +194,7 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   organizationIdx: index("users_organization_idx").on(table.organizationId),
+  bowlerIdx: index("users_bowler_idx").on(table.bowlerId),
 }));
 
 // Organization table
@@ -330,25 +306,6 @@ export const scoreRelations = relations(scores, ({ one }) => ({
   }),
 }));
 
-export const seriesRelations = relations(series, ({ one, many }) => ({
-  league: one(leagues, {
-    fields: [series.leagueId],
-    references: [leagues.id],
-  }),
-  weeklyStats: many(weeklyStats),
-}));
-
-export const weeklyStatsRelations = relations(weeklyStats, ({ one }) => ({
-  series: one(series, {
-    fields: [weeklyStats.seriesId],
-    references: [series.id],
-  }),
-  bowlerLeague: one(bowlerLeagues, {
-    fields: [weeklyStats.bowlerLeagueId],
-    references: [bowlerLeagues.id],
-  }),
-}));
-
 // Add to relations
 export const paymentScheduleRelations = relations(paymentSchedules, ({ one }) => ({
   bowler: one(bowlers, {
@@ -383,9 +340,6 @@ const baseBowlerLeagueSchema = createInsertSchema(bowlerLeagues);
 const basePaymentSchema = createInsertSchema(payments);
 const baseGameSchema = createInsertSchema(games);
 const baseScoreSchema = createInsertSchema(scores);
-const baseSeriesSchema = createInsertSchema(series);
-const baseWeeklyStatsSchema = createInsertSchema(weeklyStats);
-
 // Add validation schemas after existing schemas
 const baseUserSchema = createInsertSchema(users);
 const baseOrganizationSchema = createInsertSchema(organizations);
@@ -476,29 +430,6 @@ export const insertScoreSchema = baseScoreSchema.extend({
   notes: z.array(z.string().max(500)).default([]),
 }).omit({ id: true });
 
-// Add insert schemas for new tables
-export const insertSeriesSchema = baseSeriesSchema.extend({
-  leagueId: positiveIntSchema,
-  weekNumber: positiveIntSchema,
-  seriesDate: dateSchema,
-  isComplete: z.boolean().default(false),
-}).omit({ id: true })
-  .refine(
-    (data) => {
-      const today = new Date();
-      return data.seriesDate <= today;
-    },
-    "Series date cannot be in the future"
-  );
-
-export const insertWeeklyStatsSchema = baseWeeklyStatsSchema.extend({
-  seriesId: positiveIntSchema,
-  bowlerLeagueId: positiveIntSchema,
-  average: z.number().int().min(0).max(300),
-  handicap: z.number().int().min(0).max(300),
-  gamesPlayed: z.number().int().min(1).max(4),
-}).omit({ id: true });
-
 // Update the insertUserSchema definition
 export const insertUserSchema = baseUserSchema.extend({
   email: emailSchema,
@@ -578,8 +509,6 @@ export const partialBowlerLeagueSchema = z.object(baseBowlerLeagueSchema.shape).
 export const partialPaymentSchema = z.object(basePaymentSchema.shape).partial();
 export const partialGameSchema = z.object(baseGameSchema.shape).partial();
 export const partialScoreSchema = z.object(baseScoreSchema.shape).partial();
-export const partialSeriesSchema = z.object(baseSeriesSchema.shape).partial();
-export const partialWeeklyStatsSchema = z.object(baseWeeklyStatsSchema.shape).partial();
 export const partialPaymentScheduleSchema = z.object(basePaymentScheduleSchema.shape).partial();
 export const partialOrganizationSchema = z.object(baseOrganizationSchema.shape).partial();
 
@@ -619,12 +548,6 @@ export type InsertGame = z.infer<typeof insertGameSchema>;
 
 export type Score = typeof scores.$inferSelect;
 export type InsertScore = z.infer<typeof insertScoreSchema>;
-
-export type Series = typeof series.$inferSelect;
-export type InsertSeries = z.infer<typeof insertSeriesSchema>;
-
-export type WeeklyStat = typeof weeklyStats.$inferSelect;
-export type InsertWeeklyStat = z.infer<typeof insertWeeklyStatsSchema>;
 
 // Add type exports after existing types
 export type User = typeof users.$inferSelect;

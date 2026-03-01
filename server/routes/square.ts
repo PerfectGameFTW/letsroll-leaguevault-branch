@@ -2,59 +2,12 @@ import { Router } from 'express';
 import { processPayment, createOrUpdateCustomer } from '../services/square.js';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
+import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 
 const router = Router();
 
-// Helper function to check if user has access to a league's organization
-async function hasAccessToLeague(req: any, leagueId: number): Promise<boolean> {
-  const league = await storage.getLeague(leagueId);
-  
-  if (!league) {
-    return false;
-  }
-  
-  return (
-    req.user?.isAdmin || 
-    league.organizationId === null || 
-    (req.user?.organizationId === league.organizationId)
-  );
-}
-
-// Helper function to check if user has access to a bowler
-async function hasAccessToBowler(req: any, bowlerId: number): Promise<boolean> {
-  // Admin users have access to all bowlers
-  if (req.user?.isAdmin) {
-    return true;
-  }
-  
-  // Get bowler's leagues
-  const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
-  
-  // If bowler isn't in any leagues, they're considered publicly accessible
-  if (bowlerLeagues.length === 0) {
-    return true;
-  }
-  
-  // Check if the user has access to at least one of the bowler's leagues
-  for (const bl of bowlerLeagues) {
-    if (await hasAccessToLeague(req, bl.leagueId)) {
-      return true;
-    }
-  }
-  
-  return false;
-}
-
 router.post('/payments', async (req, res) => {
   try {
-    console.log('[Square Routes] Processing payment request:', {
-      amount: req.body.amount,
-      bowlerId: req.body.bowlerId,
-      leagueId: req.body.leagueId,
-      sourceIdPresent: !!req.body.sourceId,
-      storeCard: req.body.storeCard
-    });
-
     // Verify that the user has access to the league
     if (!await hasAccessToLeague(req, req.body.leagueId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
@@ -71,12 +24,6 @@ router.post('/payments', async (req, res) => {
       req.body.storeCard
     );
 
-    console.log('[Square Routes] Payment processed successfully:', {
-      paymentId: payment.id,
-      status: payment.status,
-      cardOnFileCreated: !!payment.cardOnFile
-    });
-
     // If this is for a recurring payment schedule and we have a card on file,
     // update the schedule with the new card token
     if (req.body.storeCard && payment.cardOnFile && payment.cardOnFile.id) {
@@ -86,11 +33,6 @@ router.post('/payments', async (req, res) => {
           req.body.leagueId,
           payment.cardOnFile.id
         );
-        console.log('[Square Routes] Updated payment schedule with new card token:', {
-          bowlerId: req.body.bowlerId,
-          leagueId: req.body.leagueId,
-          cardToken: payment.cardOnFile.id
-        });
       } catch (error) {
         console.error('[Square Routes] Failed to update payment schedule card:', error);
         // Don't throw here, as the payment was still successful
@@ -105,11 +47,6 @@ router.post('/payments', async (req, res) => {
       weekOf: new Date(),
       status: 'paid',
       type: 'credit_card',
-      squarePaymentId: payment.id
-    });
-
-    console.log('[Square Routes] Payment record created in database:', {
-      paymentId: dbPayment.id,
       squarePaymentId: payment.id
     });
 
@@ -131,12 +68,6 @@ router.post('/payments', async (req, res) => {
 
 router.post('/customers', async (req, res) => {
   try {
-    console.log('[Square Routes] Creating/updating customer:', {
-      name: req.body.name,
-      email: req.body.email,
-      teamId: req.body.teamId
-    });
-
     // If a team ID is provided, verify the user has access to it
     if (req.body.teamId) {
       const team = await storage.getTeam(req.body.teamId);
@@ -171,11 +102,6 @@ router.post('/customers', async (req, res) => {
       throw new Error('Failed to create/update customer');
     }
 
-    console.log('[Square Routes] Customer operation successful:', {
-      customerId: customer.id,
-      name: customer.name
-    });
-
     res.json(customer);
   } catch (error) {
     console.error('[Square Routes] Customer operation error:', {
@@ -200,10 +126,6 @@ router.get('/config', (req, res) => {
     // Determine environment based on token format 
     const isProductionToken = accessToken.startsWith('EAAAEv') || accessToken.startsWith('EAAAl7');
     const isProductionAppId = !appId.includes('sandbox-');
-    
-    console.log('[Square Routes] Environment check requested');
-    console.log(`[Square Routes] Token format: ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'}`);
-    console.log(`[Square Routes] App ID format: ${isProductionAppId ? 'PRODUCTION' : 'SANDBOX'}`);
     
     // Send back environment details without revealing secrets
     sendSuccess(res, {

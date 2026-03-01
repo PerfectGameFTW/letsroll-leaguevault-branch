@@ -31,15 +31,6 @@ async function comparePasswords(supplied: string, stored: string) {
     const [hashed, salt] = stored.split(".");
     const hashedBuf = Buffer.from(hashed, "hex");
     const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-
-    // Add debug logging
-    console.log('[Auth Debug] Password comparison:', {
-      suppliedLength: suppliedBuf.length,
-      storedLength: hashedBuf.length,
-      salt,
-      match: timingSafeEqual(hashedBuf, suppliedBuf)
-    });
-
     return timingSafeEqual(hashedBuf, suppliedBuf);
   } catch (error) {
     console.error('[Auth] Error comparing passwords:', error);
@@ -91,40 +82,26 @@ export function setupAuth(app: Express) {
       passwordField: 'password'
     }, async (email: string, password: string, done) => {
       try {
-        console.log(`[Auth Debug] Login attempt:`, {
-          email,
-          hasPassword: !!password,
-          timestamp: new Date().toISOString()
-        });
-
         const user = await storage.getUserByEmail(email);
 
         if (!user) {
-          console.log(`[Auth Debug] No user found with email: ${email}`);
           return done(null, false, { message: "Invalid email or password" });
         }
 
         if (!isValidUser(user)) {
-          console.error('[Auth Debug] Invalid user object structure:', user);
+          console.error('[Auth] Invalid user object structure for ID:', user?.id);
           return done(null, false, { message: "Invalid user data structure" });
         }
 
         const isValidPassword = await comparePasswords(password, user.password);
-        console.log(`[Auth Debug] Password validation:`, {
-          userId: user.id,
-          isValid: isValidPassword,
-          timestamp: new Date().toISOString()
-        });
 
         if (!isValidPassword) {
-          console.log(`[Auth Debug] Invalid password for email: ${email}`);
           return done(null, false, { message: "Invalid email or password" });
         }
 
-        console.log(`[Auth Debug] Login successful for user ID: ${user.id}`);
         return done(null, user);
       } catch (error) {
-        console.error('[Auth Debug] Login error:', error);
+        console.error('[Auth] Login error:', error);
         return done(error);
       }
     }),
@@ -140,17 +117,9 @@ export function setupAuth(app: Express) {
   passport.deserializeUser(async (id: number, done) => {
     try {
       const user = await storage.getUser(id);
-      if (!user) {
-        console.log(`[Auth] No user found for ID: ${id}, clearing session`);
+      if (!user || !isValidUser(user)) {
         return done(null, null);
       }
-
-      if (!isValidUser(user)) {
-        console.error(`[Auth] Invalid user object for ID: ${id}`, user);
-        return done(null, null);
-      }
-
-      console.log(`[Auth] Successfully deserialized user ID: ${id}`);
       done(null, user);
     } catch (error) {
       console.error('[Auth] Deserialization error:', error);
@@ -164,12 +133,6 @@ export function setupAuth(app: Express) {
   // Register auth endpoints
   authRouter.post("/register", async (req, res) => {
     try {
-      console.log('[Auth] Processing registration request:', { 
-        email: req.body.email,
-        hasPassword: !!req.body.password,
-        validation: 'starting'
-      });
-
       const registrationData = {
         email: req.body.email,
         password: req.body.password,
@@ -177,11 +140,9 @@ export function setupAuth(app: Express) {
         phone: req.body.phone,
       };
 
-      console.log('[Auth] Validating registration data');
       const result = insertUserSchema.safeParse(registrationData);
 
       if (!result.success) {
-        console.log('[Auth] Validation errors:', result.error.errors);
         const validationErrors = result.error.errors.map(error => ({
           field: error.path.join('.'),
           message: error.message
@@ -196,32 +157,26 @@ export function setupAuth(app: Express) {
         });
       }
 
-      // Check if user already exists
       const existingUser = await storage.getUserByEmail(result.data.email);
       if (existingUser) {
-        console.log(`[Auth] Registration failed - email already exists: ${result.data.email}`);
         return res.status(400).json({
           success: false,
           error: { message: "Email already registered" }
         });
       }
 
-      // Hash password and create user
       const hashedPassword = await hashPassword(result.data.password);
-      console.log('[Auth] Creating user with validated data');
 
       const user = await storage.createUser({
         ...result.data,
         password: hashedPassword,
-        isAdmin: false, // Ensure new users are not admins by default
+        isAdmin: false,
       });
-
-      console.log(`[Auth] User registered successfully, ID: ${user.id}`);
 
       // Log the user in after registration
       req.login(user, (err) => {
         if (err) {
-          console.error('[Auth] Login after registration failed:', err);
+          console.error('[Auth] Session creation after registration failed:', err);
           return res.status(500).json({
             success: false,
             error: { message: "Failed to login after registration" }
@@ -256,11 +211,6 @@ export function setupAuth(app: Express) {
   });
 
   authRouter.post("/login", (req, res, next) => {
-    console.log('[Auth] Login request received:', {
-      email: req.body.email,
-      hasPassword: !!req.body.password
-    });
-
     passport.authenticate("local", (err: any, user: any, info: any) => {
       if (err) {
         console.error('[Auth] Login error:', err);
@@ -270,7 +220,6 @@ export function setupAuth(app: Express) {
         });
       }
       if (!user) {
-        console.log('[Auth] Login failed:', info?.message);
         return res.status(401).json({
           success: false,
           error: { message: info?.message || "Invalid credentials" }
@@ -284,7 +233,6 @@ export function setupAuth(app: Express) {
             error: { message: "Failed to create session" }
           });
         }
-        console.log(`[Auth] Login successful for user ID: ${user.id}`);
         res.json({
           success: true,
           data: { ...user, password: undefined }
@@ -294,29 +242,18 @@ export function setupAuth(app: Express) {
   });
 
   authRouter.post("/logout", (req, res, next) => {
-    if (req.user) {
-      console.log(`[Auth] Logging out user ID: ${(req.user as SelectUser).id}`);
-    }
     req.logout((err) => {
       if (err) {
         console.error('[Auth] Logout error:', err);
         return next(err);
       }
-      console.log('[Auth] Logout successful');
       res.json({ success: true });
     });
   });
 
   authRouter.get("/user", (req, res) => {
     try {
-      console.log('[Auth] /api/user request:', { 
-        isAuthenticated: req.isAuthenticated(),
-        hasSession: !!req.session,
-        sessionID: req.sessionID,
-      });
-
-      if (!req.isAuthenticated()) {
-        console.log('[Auth] User not authenticated');
+      if (!req.isAuthenticated() || !req.user) {
         return res.status(401).json({
           success: false,
           error: { 
@@ -326,19 +263,7 @@ export function setupAuth(app: Express) {
         });
       }
 
-      if (!req.user) {
-        console.log('[Auth] No user object in authenticated session');
-        return res.status(401).json({
-          success: false,
-          error: { 
-            message: "Session invalid",
-            code: "INVALID_SESSION"
-          }
-        });
-      }
-
       const user = req.user as SelectUser;
-      console.log(`[Auth] Successfully retrieved user data for ID: ${user.id}`);
       res.json({
         success: true,
         data: { ...user, password: undefined }
@@ -349,8 +274,7 @@ export function setupAuth(app: Express) {
         success: false,
         error: { 
           message: "Internal server error",
-          code: "SERVER_ERROR",
-          details: error instanceof Error ? error.message : undefined
+          code: "SERVER_ERROR"
         }
       });
     }

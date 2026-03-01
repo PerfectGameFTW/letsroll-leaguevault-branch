@@ -48,8 +48,6 @@ const LoginPage: FC = () => {
 
   const onSubmit = async (data: LoginFormData) => {
     try {
-      console.log("[Login] Attempting login with email:", data.email);
-      
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -64,10 +62,6 @@ const LoginPage: FC = () => {
       }
 
       const userData = await response.json();
-      console.log("[Login] Login successful:", {
-        userId: userData.data.id,
-        bowlerId: userData.data.bowlerId,
-      });
 
       toast({
         title: "Login successful!",

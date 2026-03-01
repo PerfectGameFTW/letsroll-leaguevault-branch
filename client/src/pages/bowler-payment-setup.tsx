@@ -19,6 +19,7 @@ import { createPayment } from "@/lib/square";
 import { useParams, useLocation } from "wouter";
 import type { League, BowlerLeague } from "@shared/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { getSeasonLengthWeeks } from "@/lib/financial-utils";
 
 type PaymentSchedule = "weekly" | "monthly" | "custom";
 
@@ -96,10 +97,7 @@ export default function BowlerPaymentSetupPage() {
     const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule);
     if (!selectedOption) return 0;
 
-    const totalWeeks = Math.ceil(
-      (new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) /
-      (7 * 24 * 60 * 60 * 1000)
-    );
+    const totalWeeks = getSeasonLengthWeeks(league);
 
     return selectedOption.calculateAmount(league.weeklyFee, totalWeeks, customWeeks);
   };
