@@ -84,6 +84,9 @@ export interface IStorage {
   updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
   
+  archiveLeague(id: number): Promise<League>;
+  restoreLeague(id: number): Promise<League>;
+
   // Organization methods
   getOrganizations(): Promise<Organization[]>;
   getOrganization(id: number): Promise<Organization | undefined>;
@@ -136,6 +139,16 @@ export class DatabaseStorage implements IStorage {
 
   async deleteLeague(id: number): Promise<void> {
     await db.delete(leagues).where(eq(leagues.id, id));
+  }
+
+  async archiveLeague(id: number): Promise<League> {
+    const [result] = await db.update(leagues).set({ active: false }).where(eq(leagues.id, id)).returning();
+    return result;
+  }
+
+  async restoreLeague(id: number): Promise<League> {
+    const [result] = await db.update(leagues).set({ active: true }).where(eq(leagues.id, id)).returning();
+    return result;
   }
 
   // Team methods

@@ -138,6 +138,46 @@ router.patch("/:id", async (req: any, res) => {
   }
 });
 
+// Archive a league
+router.patch("/:id/archive", async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const league = await storage.getLeague(id);
+    if (!league) {
+      return sendError(res, "League not found", 404, 'NOT_FOUND');
+    }
+    const organizationId = getOrganizationFilter(req);
+    const userHasAccess = req.user?.isAdmin || league.organizationId === null || (organizationId !== null && league.organizationId === organizationId);
+    if (!userHasAccess) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+    const archived = await storage.archiveLeague(id);
+    sendSuccess(res, archived);
+  } catch (error) {
+    sendError(res, error instanceof Error ? error.message : 'Failed to archive league');
+  }
+});
+
+// Restore an archived league
+router.patch("/:id/restore", async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const league = await storage.getLeague(id);
+    if (!league) {
+      return sendError(res, "League not found", 404, 'NOT_FOUND');
+    }
+    const organizationId = getOrganizationFilter(req);
+    const userHasAccess = req.user?.isAdmin || league.organizationId === null || (organizationId !== null && league.organizationId === organizationId);
+    if (!userHasAccess) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+    const restored = await storage.restoreLeague(id);
+    sendSuccess(res, restored);
+  } catch (error) {
+    sendError(res, error instanceof Error ? error.message : 'Failed to restore league');
+  }
+});
+
 router.delete("/:id", async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
