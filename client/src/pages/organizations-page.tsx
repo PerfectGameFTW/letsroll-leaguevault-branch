@@ -7,11 +7,12 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Plus, Edit, Trash, Upload, X } from 'lucide-react';
+import { Plus, Edit, Trash, Upload, X, Archive, RotateCcw, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import type { Organization, InsertOrganization } from '@shared/schema.js';
 import { Layout } from "@/components/layout";
+import { Badge } from '@/components/ui/badge';
 
 export default function OrganizationsPage() {
   const [open, setOpen] = useState(false);
@@ -35,6 +36,8 @@ export default function OrganizationsPage() {
   const [adminPassword, setAdminPassword] = useState('');
   
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  const [archiveConfirmId, setArchiveConfirmId] = useState<number | null>(null);
+  const [deleteConfirmName, setDeleteConfirmName] = useState('');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -103,14 +106,56 @@ export default function OrganizationsPage() {
       queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
       toast({
         title: 'Organization Deleted',
-        description: 'The organization has been successfully deleted.',
+        description: 'The organization and all its data have been permanently deleted.',
       });
       setDeleteConfirmId(null);
+      setDeleteConfirmName('');
     },
     onError: (error: Error) => {
       toast({
         title: 'Error',
         description: `Failed to delete organization: ${error.message}`,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest(`/api/organizations/${id}/archive`, 'PATCH');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
+      toast({
+        title: 'Organization Archived',
+        description: 'The organization has been archived and hidden from normal views.',
+      });
+      setArchiveConfirmId(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: `Failed to archive organization: ${error.message}`,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return apiRequest(`/api/organizations/${id}/restore`, 'PATCH');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
+      toast({
+        title: 'Organization Restored',
+        description: 'The organization has been restored and is now active again.',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: `Failed to restore organization: ${error.message}`,
         variant: 'destructive',
       });
     },
@@ -298,6 +343,7 @@ export default function OrganizationsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Slug</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Actions</TableHead>
@@ -306,15 +352,22 @@ export default function OrganizationsPage() {
               <TableBody>
                 {organizations.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center">
+                    <TableCell colSpan={6} className="text-center">
                       No organizations found
                     </TableCell>
                   </TableRow>
                 ) : (
                   organizations.map((org: Organization) => (
-                    <TableRow key={org.id}>
+                    <TableRow key={org.id} className={org.active === false ? 'opacity-60' : ''}>
                       <TableCell className="font-medium">{org.name}</TableCell>
                       <TableCell>{org.slug}</TableCell>
+                      <TableCell>
+                        {org.active === false ? (
+                          <Badge variant="secondary">Archived</Badge>
+                        ) : (
+                          <Badge variant="default">Active</Badge>
+                        )}
+                      </TableCell>
                       <TableCell>{org.email || '—'}</TableCell>
                       <TableCell>{org.phone || '—'}</TableCell>
                       <TableCell>
@@ -322,6 +375,24 @@ export default function OrganizationsPage() {
                           <Button variant="outline" size="sm" onClick={() => handleEditClick(org)}>
                             <Edit className="h-4 w-4" />
                           </Button>
+                          {org.active === false ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => restoreMutation.mutate(org.id)}
+                              disabled={restoreMutation.isPending}
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setArchiveConfirmId(org.id)}
+                            >
+                              <Archive className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button 
                             variant="destructive" 
                             size="sm"
@@ -597,24 +668,80 @@ export default function OrganizationsPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Delete Confirmation Dialog */}
-        <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
-          <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
+        {/* Archive Confirmation Dialog */}
+        <AlertDialog open={!!archiveConfirmId} onOpenChange={(open) => { if (!open) setArchiveConfirmId(null); }}>
+          <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogTitle>Archive Organization</AlertDialogTitle>
               <AlertDialogDescription>
-                This action will permanently delete the organization and cannot be undone.
-                This will also remove all data associated with this organization including leagues, teams, and bowlers.
+                This will hide the organization from normal views. The organization and all its data will be preserved and can be restored at any time.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
+                onClick={() => archiveConfirmId && archiveMutation.mutate(archiveConfirmId)}
+                disabled={archiveMutation.isPending}
+              >
+                {archiveMutation.isPending ? 'Archiving...' : 'Archive Organization'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Permanent Delete Confirmation Dialog */}
+        <AlertDialog open={!!deleteConfirmId} onOpenChange={(open) => { if (!open) { setDeleteConfirmId(null); setDeleteConfirmName(''); } }}>
+          <AlertDialogContent className="max-h-[90vh] overflow-y-auto">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+                <AlertTriangle className="h-5 w-5" />
+                Permanently Delete Organization
+              </AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-3">
+                  <p className="font-semibold text-destructive">
+                    This action is irreversible and cannot be undone.
+                  </p>
+                  <p>
+                    Permanently deleting this organization will also delete:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-1">
+                    <li>All leagues belonging to this organization</li>
+                    <li>All teams within those leagues</li>
+                    <li>All bowler-league memberships</li>
+                    <li>All payment records</li>
+                    <li>All game and score history</li>
+                    <li>All payment schedules</li>
+                  </ul>
+                  <p className="text-sm">
+                    Consider archiving instead if you may need this data in the future.
+                  </p>
+                  <div className="pt-2">
+                    <Label htmlFor="confirm-name" className="text-sm font-medium">
+                      Type the organization name to confirm: <span className="font-bold">{organizations.find(o => o.id === deleteConfirmId)?.name}</span>
+                    </Label>
+                    <Input
+                      id="confirm-name"
+                      className="mt-1.5"
+                      placeholder="Type organization name here"
+                      value={deleteConfirmName}
+                      onChange={(e) => setDeleteConfirmName(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setDeleteConfirmName('')}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)}
-                disabled={deleteMutation.isPending}
+                disabled={
+                  deleteMutation.isPending || 
+                  deleteConfirmName !== organizations.find(o => o.id === deleteConfirmId)?.name
+                }
               >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete Organization'}
+                {deleteMutation.isPending ? 'Deleting...' : 'Permanently Delete'}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

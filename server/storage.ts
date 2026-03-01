@@ -890,7 +890,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteOrganization(id: number): Promise<void> {
+    const orgLeagues = await db.select({ id: leagues.id }).from(leagues).where(eq(leagues.organizationId, id));
+    const leagueIds = orgLeagues.map(l => l.id);
+    if (leagueIds.length > 0) {
+      for (const leagueId of leagueIds) {
+        await db.delete(leagues).where(eq(leagues.id, leagueId));
+      }
+    }
+    await db.update(users).set({ organizationId: null, isOrganizationAdmin: false }).where(eq(users.organizationId, id));
     await db.delete(organizations).where(eq(organizations.id, id));
+  }
+
+  async archiveOrganization(id: number): Promise<Organization> {
+    const [result] = await db.update(organizations).set({ active: false }).where(eq(organizations.id, id)).returning();
+    return result;
+  }
+
+  async restoreOrganization(id: number): Promise<Organization> {
+    const [result] = await db.update(organizations).set({ active: true }).where(eq(organizations.id, id)).returning();
+    return result;
   }
 
   async getUserOrganizations(userId: number): Promise<Organization[]> {

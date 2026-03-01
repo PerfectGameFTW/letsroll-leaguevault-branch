@@ -211,7 +211,49 @@ router.patch('/:id', requireAdmin, async (req, res) => {
   }
 });
 
-// Delete an organization (admin only)
+// Archive an organization (admin only)
+router.patch('/:id/archive', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid organization ID', 400, 'InvalidRequest');
+    }
+
+    const organization = await storage.getOrganization(id);
+    if (!organization) {
+      return sendError(res, 'Organization not found', 404, 'NotFound');
+    }
+
+    const archived = await storage.archiveOrganization(id);
+    sendSuccess(res, archived);
+  } catch (error) {
+    console.error(`Error archiving organization with ID ${req.params.id}:`, error);
+    sendError(res, 'Failed to archive organization', 500, 'ServerError');
+  }
+});
+
+// Restore an archived organization (admin only)
+router.patch('/:id/restore', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid organization ID', 400, 'InvalidRequest');
+    }
+
+    const organization = await storage.getOrganization(id);
+    if (!organization) {
+      return sendError(res, 'Organization not found', 404, 'NotFound');
+    }
+
+    const restored = await storage.restoreOrganization(id);
+    sendSuccess(res, restored);
+  } catch (error) {
+    console.error(`Error restoring organization with ID ${req.params.id}:`, error);
+    sendError(res, 'Failed to restore organization', 500, 'ServerError');
+  }
+});
+
+// Delete an organization permanently (admin only)
 router.delete('/:id', requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
