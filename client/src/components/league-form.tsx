@@ -102,6 +102,17 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     return 0;
   }, [form.watch('seasonStart'), form.watch('seasonEnd')]);
 
+  const watchedStart = form.watch('seasonStart');
+  useEffect(() => {
+    if (watchedStart) {
+      const date = new Date(watchedStart);
+      if (!isNaN(date.getTime())) {
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        form.setValue('weekDay', dayNames[date.getDay()]);
+      }
+    }
+  }, [watchedStart]);
+
   useEffect(() => {
     if (open && league) {
       // When editing, ensure dates are set to noon
