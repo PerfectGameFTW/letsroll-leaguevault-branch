@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -7,11 +8,11 @@ import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Plus, Edit, Trash, Upload, X, Archive, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Plus, Edit, Trash, Upload, X, Archive, RotateCcw, AlertTriangle, ExternalLink } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import type { Organization, InsertOrganization } from '@shared/schema.js';
+import type { Organization, InsertOrganization, User } from '@shared/schema.js';
 import { Layout } from "@/components/layout";
 import { Badge } from '@/components/ui/badge';
 
@@ -42,6 +43,30 @@ export default function OrganizationsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
+
+  const { data: userData } = useQuery<{success: boolean, data: User}>({
+    queryKey: ['/api/user'],
+  });
+  const currentUser = userData?.data;
+
+  const switchOrgMutation = useMutation({
+    mutationFn: async (orgId: number) => {
+      if (!currentUser) return;
+      return apiRequest(`/api/organizations/user/${currentUser.id}/set`, 'POST', { organizationId: orgId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/user'] });
+      setLocation('/home');
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Error',
+        description: `Failed to switch organization: ${error.message}`,
+        variant: 'destructive',
+      });
+    },
+  });
 
   const { data, isLoading, error } = useQuery<{success: boolean, data: Organization[]}>({
     queryKey: ['/api/organizations'],
@@ -379,7 +404,20 @@ export default function OrganizationsPage() {
                 ) : (
                   organizations.map((org: Organization) => (
                     <TableRow key={org.id} className={org.active === false ? 'opacity-60' : ''}>
-                      <TableCell className="font-medium">{org.name}</TableCell>
+                      <TableCell className="font-medium">
+                        {org.active !== false ? (
+                          <button
+                            className="inline-flex items-center gap-1.5 text-left hover:text-primary hover:underline transition-colors cursor-pointer"
+                            onClick={() => switchOrgMutation.mutate(org.id)}
+                            disabled={switchOrgMutation.isPending}
+                          >
+                            {org.name}
+                            <ExternalLink className="h-3.5 w-3.5 opacity-50" />
+                          </button>
+                        ) : (
+                          org.name
+                        )}
+                      </TableCell>
                       <TableCell>{org.slug}</TableCell>
                       <TableCell>
                         {org.active === false ? (
