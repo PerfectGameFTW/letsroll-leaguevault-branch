@@ -1,9 +1,6 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
-import ws from "ws";
+import pg from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
-
-neonConfig.webSocketConstructor = ws;
 
 if (!process.env.DATABASE_URL) {
   throw new Error(
@@ -11,22 +8,13 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle({ client: pool, schema });
 
-
-// Improved error handling with connection state tracking
 let isShuttingDown = false;
 
 pool.on('error', (err, client) => {
   console.error('[Database] Unexpected error on idle client', err);
-  if (!isShuttingDown && client) {
-    try {
-      client.release(true);
-    } catch (releaseError) {
-      console.error('[Database] Error releasing client:', releaseError);
-    }
-  }
 });
 
 pool.on('connect', (client) => {
@@ -36,7 +24,6 @@ pool.on('connect', (client) => {
   });
 });
 
-// Improved connection testing with better state management
 export async function testConnection(retries = 3, delay = 1000): Promise<boolean> {
   let client = null;
   let lastError = null;
@@ -55,14 +42,13 @@ export async function testConnection(retries = 3, delay = 1000): Promise<boolean
         throw lastError;
       }
 
-      await new Promise(resolve => setTimeout(resolve, delay * attempt)); // Exponential backoff
+      await new Promise(resolve => setTimeout(resolve, delay * attempt));
     } finally {
       if (client) {
         try {
-          await client.release(false);
+          client.release();
         } catch (releaseError) {
           console.error('[Database] Error releasing test connection:', releaseError);
-          // Don't throw here - we want to continue cleanup
         }
       }
     }
@@ -73,25 +59,20 @@ export async function testConnection(retries = 3, delay = 1000): Promise<boolean
 export async function testCleanup(): Promise<void> {
   console.log('[Database] Starting cleanup test...');
 
-  // Get a client from the pool
   const client = await pool.connect();
 
   try {
-    // Run a test query
     await client.query('SELECT 1');
     console.log('[Database] Test query executed successfully');
   } finally {
-    // Release the client back to the pool
     client.release();
     console.log('[Database] Client released successfully');
   }
 
-  // Test the cleanup function
   await cleanup();
   console.log('[Database] Cleanup test completed');
 }
 
-// Improved cleanup with better state management
 export async function cleanup(): Promise<void> {
   if (isShuttingDown) {
     console.log('[Database] Cleanup already in progress');
@@ -102,7 +83,6 @@ export async function cleanup(): Promise<void> {
   console.log('[Database] Starting pool cleanup...');
 
   try {
-    // Wait for any in-progress queries to complete (up to 5 seconds)
     await Promise.race([
       pool.end(),
       new Promise((_, reject) =>
@@ -113,7 +93,6 @@ export async function cleanup(): Promise<void> {
     console.log('[Database] Pool cleanup completed');
   } catch (error) {
     console.error('[Database] Error during pool cleanup:', error);
-    // Continue despite errors - best effort cleanup
   } finally {
     isShuttingDown = false;
   }

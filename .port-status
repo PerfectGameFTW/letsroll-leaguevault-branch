@@ -1,8 +1,8 @@
 {
   "port": 5001,
   "ready": true,
-  "timestamp": "2026-03-01T19:03:28.862Z",
-  "pid": 2834,
+  "timestamp": "2026-03-01T19:05:31.911Z",
+  "pid": 3375,
   "mode": "development",
   "workflow": "Dev",
   "wait_for_port": 5001,
