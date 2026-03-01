@@ -40,9 +40,10 @@ export function filterByOrganization(req: any, res: Response, next: NextFunction
     return next();
   }
 
-  // System admins can see all organizations unless they specifically request one
+  // System admins without an organization see all data
+  // System admins with an organization default to their org's data
   if (req.user.isAdmin && !req.query.organizationId) {
-    req.organizationFilter = null;
+    req.organizationFilter = req.user.organizationId || null;
     return next();
   }
 
@@ -111,9 +112,9 @@ export function getOrganizationFilter(req: any): number | null {
     return req.organizationFilter;
   }
 
-  // System admins without specific organization in query see all
+  // System admins default to their org, or all if unassigned
   if (req.user && req.user.isAdmin && !req.query.organizationId) {
-    return null;
+    return req.user.organizationId || null;
   }
 
   // If query has organization ID, validate access
