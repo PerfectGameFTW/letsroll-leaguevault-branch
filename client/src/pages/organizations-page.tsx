@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Plus, Edit, Trash, Upload, X, Archive, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import type { Organization, InsertOrganization } from '@shared/schema.js';
@@ -38,6 +39,7 @@ export default function OrganizationsPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [archiveConfirmId, setArchiveConfirmId] = useState<number | null>(null);
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -320,7 +322,9 @@ export default function OrganizationsPage() {
     );
   }
 
-  const organizations = data?.data || [];
+  const allOrganizations = data?.data || [];
+  const organizations = showArchived ? allOrganizations : allOrganizations.filter(o => o.active !== false);
+  const archivedCount = allOrganizations.filter(o => o.active === false).length;
 
   return (
     <Layout>
@@ -334,8 +338,24 @@ export default function OrganizationsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Organizations</CardTitle>
-            <CardDescription>Manage all organizations in the system</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Organizations</CardTitle>
+                <CardDescription>Manage all organizations in the system</CardDescription>
+              </div>
+              {archivedCount > 0 && (
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="show-archived" className="text-sm text-muted-foreground cursor-pointer">
+                    Show archived ({archivedCount})
+                  </Label>
+                  <Switch
+                    id="show-archived"
+                    checked={showArchived}
+                    onCheckedChange={setShowArchived}
+                  />
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <Table>
