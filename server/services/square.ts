@@ -313,12 +313,33 @@ export async function listCatalogItems(categoryId?: string) {
   }
 
   try {
-    const response = await client.catalogApi.listCatalog(undefined, 'ITEM');
-    let objects = response.result.objects || [];
-
     if (categoryId) {
-      objects = objects.filter((item) => item.itemData?.categoryId === categoryId);
+      const response = await client.catalogApi.searchCatalogItems({
+        categoryIds: [categoryId],
+      });
+      const items = response.result.items || [];
+
+      return items.map((item) => {
+        const variations = (item.itemData?.variations || []).map((v) => ({
+          id: v.id,
+          name: v.itemVariationData?.name || 'Default',
+          price: v.itemVariationData?.priceMoney?.amount
+            ? Number(v.itemVariationData.priceMoney.amount)
+            : null,
+          currency: v.itemVariationData?.priceMoney?.currency || 'USD',
+        }));
+
+        return {
+          id: item.id,
+          name: item.itemData?.name || 'Unnamed Item',
+          description: item.itemData?.description || '',
+          variations,
+        };
+      });
     }
+
+    const response = await client.catalogApi.listCatalog(undefined, 'ITEM');
+    const objects = response.result.objects || [];
 
     return objects.map((item) => {
       const variations = (item.itemData?.variations || []).map((v) => ({
