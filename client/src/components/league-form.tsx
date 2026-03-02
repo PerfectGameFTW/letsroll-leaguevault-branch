@@ -200,11 +200,13 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
 
   useEffect(() => {
     if (open && league) {
-      // When editing, ensure dates are set to noon
       const startDate = new Date(league.seasonStart);
       startDate.setHours(12, 0, 0, 0);
       const endDate = new Date(league.seasonEnd);
       endDate.setHours(12, 0, 0, 0);
+
+      const weeks = differenceInWeeks(endDate, startDate);
+      if (weeks > 0) setSeasonLength(weeks);
 
       form.reset({
         name: league.name,
