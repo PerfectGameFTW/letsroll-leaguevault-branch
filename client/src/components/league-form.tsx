@@ -369,26 +369,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   />
                 </div>
 
-                {/* Practice and Competition Start Times */}
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="practiceStartTime"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Practice Start Time</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="time"
-                            {...field}
-                            value={field.value || ''}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
+                {/* Competition Start Time */}
+                <div className="grid grid-cols-1 gap-4">
                   <FormField
                     control={form.control}
                     name="competitionStartTime"
