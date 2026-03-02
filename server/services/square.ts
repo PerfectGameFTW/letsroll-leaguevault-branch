@@ -317,10 +317,7 @@ export async function listCatalogItems(categoryId?: string) {
     let objects = response.result.objects || [];
 
     if (categoryId) {
-      objects = objects.filter((item) => {
-        const categories = item.itemData?.categories || [];
-        return categories.some((c: any) => c.id === categoryId);
-      });
+      objects = objects.filter((item) => item.itemData?.categoryId === categoryId);
     }
 
     return objects.map((item) => {
