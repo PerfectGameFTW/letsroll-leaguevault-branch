@@ -44,6 +44,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const { toast } = useToast();
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [showPaymentSetup, setShowPaymentSetup] = useState(false);
+  const [paymentMode, setPaymentMode] = useState<'autopay' | 'onetime'>('autopay');
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
   const [storeCard, setStoreCard] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -172,11 +173,12 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     return (
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>Set Up Automatic Payments</CardTitle>
-          <CardDescription>Configure your payment schedule for the league</CardDescription>
+          <CardTitle>{paymentMode === 'onetime' ? 'Make One-Time Payment' : 'Set Up Automatic Payments'}</CardTitle>
+          <CardDescription>{paymentMode === 'onetime' ? 'Enter your card to make a payment' : 'Configure your payment schedule for the league'}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
+            {paymentMode === 'autopay' && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-medium">Payment Schedule</h3>
@@ -245,6 +247,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                 </div>
               </RadioGroup>
             </div>
+            )}
             
             {selectedSchedule === 'custom' && (
               <div className="space-y-4 p-4 rounded-md border bg-background">
@@ -485,13 +488,23 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         )}
 
         {!activeSchedule && (
-          <Button
-            onClick={() => setShowPaymentSetup(true)}
-            className="w-full"
-          >
-            Set Up Auto-Pay
-            <CreditCard className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="space-y-2">
+            <Button
+              onClick={() => { setPaymentMode('autopay'); setSelectedSchedule('weekly'); setShowPaymentSetup(true); }}
+              className="w-full"
+            >
+              Set Up Auto-Pay
+              <CreditCard className="ml-2 h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => { setPaymentMode('onetime'); setSelectedSchedule('custom'); setShowPaymentSetup(true); }}
+              className="w-full"
+            >
+              Make One-Time Payment
+              <DollarSign className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>
