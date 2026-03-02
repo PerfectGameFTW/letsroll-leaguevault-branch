@@ -8,12 +8,10 @@ const router = Router();
 
 router.post('/payments', async (req, res) => {
   try {
-    // Verify that the user has access to the league
     if (!await hasAccessToLeague(req, req.body.leagueId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    // Verify that the user has access to the bowler
     if (!await hasAccessToBowler(req, req.body.bowlerId)) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
@@ -21,6 +19,13 @@ router.post('/payments', async (req, res) => {
     let payment;
     const league = await storage.getLeague(req.body.leagueId);
     const squareLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
+
+    const bowler = await storage.getBowler(req.body.bowlerId);
+    const customerId = bowler?.squareCustomerId || undefined;
+
+    if (req.body.storeCard && !customerId) {
+      console.warn('[Square Routes] Cannot store card — bowler has no Square customer ID:', req.body.bowlerId);
+    }
 
     const lineItems: { catalogObjectId: string; quantity: string }[] = [];
     if (league?.squareLineageItemVariationId) {
@@ -36,13 +41,15 @@ router.post('/payments', async (req, res) => {
         req.body.amount,
         lineItems,
         squareLocationId,
-        req.body.storeCard
+        req.body.storeCard,
+        customerId
       );
     } else {
       payment = await processPayment(
         req.body.sourceId,
         req.body.amount,
-        req.body.storeCard
+        req.body.storeCard,
+        customerId
       );
     }
 
@@ -55,7 +62,6 @@ router.post('/payments', async (req, res) => {
         );
       } catch (error) {
         console.error('[Square Routes] Failed to update payment schedule card:', error);
-        // Don't throw here, as the payment was still successful
       }
     }
 

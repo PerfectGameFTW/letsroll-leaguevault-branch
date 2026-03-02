@@ -46,6 +46,14 @@ A full-stack bowling league management application with multi-tenant support for
 - `SESSION_SECRET` - Express session secret
 
 ## Recent Changes (2026-03-02)
+- Fixed Square card-on-file: uses `cardsApi.createCard` (correct API) instead of invalid `card_on_file` payment param
+  - Card is saved first, then used as payment source; requires bowler to have a Square customer ID
+  - Both `processPayment` and `createOrderWithPayment` now accept `customerId` parameter
+  - Payment route looks up bowler's `squareCustomerId` and passes it through
+- Fixed bowler dashboard: independent queries with staleTime, error states with retry, multi-league support
+- Fixed login redirect: routes to `/` for `RootRedirectHandler` to decide admin vs bowler destination
+- Fixed bowler dashboard route guard: `AuthRouteGuard` instead of `SystemAdminRouteGuard`
+- Fixed logout: corrected `apiRequest` argument order (URL first, method second)
 - Square Catalog integration: dual-item model with Lineage + Prize Fund items per league
   - Category filtering on catalog item endpoint (`GET /api/square/catalog/items?categoryId=...`)
   - Categories endpoint (`GET /api/square/catalog/categories`)

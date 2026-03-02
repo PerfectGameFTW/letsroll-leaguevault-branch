@@ -50,7 +50,41 @@ async function initializeSquareClient() {
   return squareClient;
 }
 
-export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false) {
+export async function saveCardOnFile(sourceId: string, customerId: string) {
+  const client = await initializeSquareClient();
+  if (!client) return null;
+
+  try {
+    console.log('[Square Service] Saving card on file for customer:', customerId.substring(0, 10) + '...');
+    const response = await client.cardsApi.createCard({
+      idempotencyKey: `card-${Date.now()}-${Math.random()}`,
+      sourceId,
+      card: {
+        customerId,
+      },
+    });
+
+    const card = response.result.card;
+    if (card) {
+      console.log('[Square Service] Card saved on file:', {
+        cardId: card.id ? card.id.substring(0, 15) + '...' : 'unknown',
+        last4: card.last4 || '****',
+        brand: card.cardBrand || 'UNKNOWN',
+      });
+      return {
+        id: card.id,
+        last4: card.last4,
+        brand: card.cardBrand,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('[Square Service] Failed to save card on file:', error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false, customerId?: string) {
   const client = await initializeSquareClient();
   if (!client) {
     throw new Error(JSON.stringify({
@@ -66,10 +100,10 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       amount,
       sourceIdPrefix: sourceId.substring(0, 5),
       mode: process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox',
-      storeCard
+      storeCard,
+      hasCustomerId: !!customerId
     });
 
-    // Validate inputs
     if (!sourceId || !amount) {
       throw new Error(JSON.stringify({
         error: {
@@ -79,7 +113,6 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       }));
     }
 
-    // Ensure amount is a positive integer
     if (amount <= 0 || !Number.isInteger(amount)) {
       throw new Error(JSON.stringify({
         error: {
@@ -89,8 +122,19 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       }));
     }
 
-    const paymentRequest = {
-      sourceId,
+    let cardOnFile;
+    let paymentSourceId = sourceId;
+
+    if (storeCard && customerId) {
+      const savedCard = await saveCardOnFile(sourceId, customerId);
+      if (savedCard?.id) {
+        cardOnFile = savedCard;
+        paymentSourceId = savedCard.id;
+      }
+    }
+
+    const paymentRequest: any = {
+      sourceId: paymentSourceId,
       idempotencyKey: `${Date.now()}-${Math.random()}`,
       amountMoney: {
         amount: BigInt(amount),
@@ -99,10 +143,8 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       autocomplete: true
     };
 
-    // If storing card is requested, add the card_on_file parameter
-    // In production, use type assertion to add property to the request
-    if (storeCard) {
-      (paymentRequest as any).card_on_file = true;
+    if (customerId) {
+      paymentRequest.customerId = customerId;
     }
 
     const response = await client.paymentsApi.createPayment(paymentRequest);
@@ -119,23 +161,6 @@ export async function processPayment(sourceId: string, amount: number, storeCard
     const payment = response.result.payment;
     const cardDetails = payment.cardDetails?.card;
 
-    // If storing card was requested, get the card on file details
-    let cardOnFile;
-    if (storeCard && payment.cardDetails?.status === 'CAPTURED') {
-      try {
-        const cardResponse = await client.cardsApi.retrieveCard(payment.cardDetails.card?.id || '');
-        if (cardResponse?.result?.card) {
-          cardOnFile = {
-            id: cardResponse.result.card.id,
-            last4: cardResponse.result.card.last4,
-            brand: cardResponse.result.card.cardBrand
-          };
-        }
-      } catch (error) {
-        console.error('[Square Service] Error retrieving stored card:', error);
-      }
-    }
-
     console.log('[Square Service] Payment processed successfully:', {
       paymentId: payment.id,
       status: payment.status,
@@ -143,10 +168,10 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       cardBrand: cardDetails?.cardBrand ?? 'UNKNOWN',
       amount: payment.amountMoney?.amount?.toString(),
       cardOnFile: cardOnFile ? {
-        id: cardOnFile.id ? `${cardOnFile.id.substring(0, 10)}...` : 'unknown',
+        id: cardOnFile.id ? `${String(cardOnFile.id).substring(0, 10)}...` : 'unknown',
         last4: cardOnFile.last4 || '****',
         brand: cardOnFile.brand || 'UNKNOWN'
-      } : 'not-created'
+      } : 'not-saved'
     });
 
     return {
@@ -172,7 +197,6 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       }
     });
 
-    // Handle Square API specific errors
     if ((error as ApiError)?.statusCode === 400) {
       throw new Error(JSON.stringify({
         error: {
@@ -200,7 +224,6 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       }));
     }
 
-    // For all other errors, return a user-friendly message
     throw new Error(JSON.stringify({
       error: {
         message: 'Unable to process your payment. Please try again later.',
@@ -392,7 +415,8 @@ export async function createOrderWithPayment(
   amount: number,
   lineItems: OrderLineItem[],
   locationId: string,
-  storeCard: boolean = false
+  storeCard: boolean = false,
+  customerId?: string
 ) {
   const client = await initializeSquareClient();
   if (!client) {
@@ -407,7 +431,20 @@ export async function createOrderWithPayment(
       lineItemCount: lineItems.length,
       locationId,
       sourceIdPrefix: sourceId.substring(0, 5),
+      storeCard,
+      hasCustomerId: !!customerId,
     });
+
+    let cardOnFile;
+    let paymentSourceId = sourceId;
+
+    if (storeCard && customerId) {
+      const savedCard = await saveCardOnFile(sourceId, customerId);
+      if (savedCard?.id) {
+        cardOnFile = savedCard;
+        paymentSourceId = savedCard.id;
+      }
+    }
 
     const orderResponse = await client.ordersApi.createOrder({
       order: {
@@ -425,7 +462,7 @@ export async function createOrderWithPayment(
     console.log('[Square Service] Order created:', order.id);
 
     const paymentRequest: any = {
-      sourceId,
+      sourceId: paymentSourceId,
       idempotencyKey: `pay-${Date.now()}-${Math.random()}`,
       amountMoney: {
         amount: BigInt(amount),
@@ -436,8 +473,8 @@ export async function createOrderWithPayment(
       autocomplete: true,
     };
 
-    if (storeCard) {
-      paymentRequest.card_on_file = true;
+    if (customerId) {
+      paymentRequest.customerId = customerId;
     }
 
     const paymentResponse = await client.paymentsApi.createPayment(paymentRequest);
@@ -450,22 +487,6 @@ export async function createOrderWithPayment(
 
     const payment = paymentResponse.result.payment;
     const cardDetails = payment.cardDetails?.card;
-
-    let cardOnFile;
-    if (storeCard && payment.cardDetails?.status === 'CAPTURED') {
-      try {
-        const cardResponse = await client.cardsApi.retrieveCard(payment.cardDetails.card?.id || '');
-        if (cardResponse?.result?.card) {
-          cardOnFile = {
-            id: cardResponse.result.card.id,
-            last4: cardResponse.result.card.last4,
-            brand: cardResponse.result.card.cardBrand,
-          };
-        }
-      } catch (error) {
-        console.error('[Square Service] Error retrieving stored card:', error);
-      }
-    }
 
     return {
       id: payment.id,
@@ -486,6 +507,7 @@ export async function createOrderWithPayment(
 export default {
   createOrUpdateCustomer,
   processPayment,
+  saveCardOnFile,
   listCatalogItems,
   listCatalogCategories,
   createOrderWithPayment,
