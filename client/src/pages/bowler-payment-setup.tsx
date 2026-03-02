@@ -12,7 +12,7 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, CreditCard } from "lucide-react";
+import { Loader2, AlertCircle, AlertTriangle, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
@@ -20,6 +20,7 @@ import { useParams, useLocation } from "wouter";
 import type { League, BowlerLeague, Payment } from "@shared/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getSeasonLengthWeeks, calculateFinancials } from "@/lib/financial-utils";
+import { formatCurrency } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 
 type PaymentSchedule = "weekly" | "monthly" | "custom";
@@ -63,6 +64,7 @@ export default function BowlerPaymentSetupPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [customWeeks, setCustomWeeks] = useState(1);
   const [includeFinalTwoWeeks, setIncludeFinalTwoWeeks] = useState(false);
+  const [showFinalTwoWeeksWarning, setShowFinalTwoWeeksWarning] = useState(false);
 
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
@@ -126,9 +128,18 @@ export default function BowlerPaymentSetupPage() {
       return;
     }
 
+    const isAutoPay = selectedSchedule !== 'custom';
+    const finalTwoWeeksUnpaid = !financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0;
+
+    if (isAutoPay && finalTwoWeeksUnpaid && !includeFinalTwoWeeks && !showFinalTwoWeeksWarning) {
+      setShowFinalTwoWeeksWarning(true);
+      return;
+    }
+
     try {
       setPaymentError(null);
       setIsProcessing(true);
+      setShowFinalTwoWeeksWarning(false);
 
       const amount = calculatePaymentAmount();
       if (amount <= 0) {
@@ -311,6 +322,44 @@ export default function BowlerPaymentSetupPage() {
               <div className="flex-1 border-t" />
             </div>
           </CardContent>
+          {showFinalTwoWeeksWarning && (
+            <CardContent className="pt-0">
+              <div className="rounded-md border border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20 p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                      Final 2 Weeks Not Included
+                    </p>
+                    <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                      You haven't included the Final 2 Weeks payment ({formatCurrency(financials.finalTwoWeeks.amount)}) due by Week {financials.finalTwoWeeks.dueByWeek}. 
+                      If not paid now, it will be automatically charged to your card on the week it's due.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIncludeFinalTwoWeeks(true);
+                      setShowFinalTwoWeeksWarning(false);
+                    }}
+                  >
+                    Add Final 2 Weeks Now
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleSubmit}
+                    disabled={isProcessing}
+                  >
+                    Continue Without
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          )}
           <CardFooter>
             <Button
               onClick={handleSubmit}

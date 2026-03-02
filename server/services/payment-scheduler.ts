@@ -1,8 +1,8 @@
 import schedule from "node-schedule";
 import { db } from "../db";
-import { eq, and, lte, isNull, or } from "drizzle-orm";
+import { eq, and, lte, isNull, or, sql } from "drizzle-orm";
 import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
-import { addWeeks, addMonths, nextDay, setHours, setMinutes, setSeconds, setMilliseconds, isAfter } from "date-fns";
+import { addWeeks, addMonths, nextDay, setHours, setMinutes, setSeconds, setMilliseconds, isAfter, differenceInWeeks } from "date-fns";
 import { createSquarePayment } from "../lib/square";
 import { createOrderWithPayment } from "./square";
 import { logger } from "../logger";
@@ -318,6 +318,11 @@ class PaymentScheduler {
             });
           });
 
+          // Check if final 2 weeks need to be auto-charged this week
+          if (league) {
+            await this.checkAndChargeFinalTwoWeeks(scheduleRecord, league, jobId);
+          }
+
           // Schedule next payment
           logger.info(`[PaymentScheduler] Scheduling next payment for ${jobId}`, {
             nextPaymentDate: nextDate,
@@ -371,6 +376,130 @@ class PaymentScheduler {
     });
 
     this.jobs.set(jobId, job);
+  }
+
+  private async checkAndChargeFinalTwoWeeks(
+    scheduleRecord: typeof paymentSchedules.$inferSelect,
+    league: typeof leagues.$inferSelect,
+    jobId: string
+  ) {
+    try {
+      const dueByWeek = league.finalTwoWeeksDueWeek ?? 6;
+      const finalTwoWeeksAmount = league.weeklyFee * 2;
+      if (finalTwoWeeksAmount <= 0) return;
+
+      const seasonStart = new Date(league.seasonStart);
+      const now = new Date();
+      const currentWeek = Math.max(0, differenceInWeeks(now, seasonStart));
+
+      if (currentWeek < dueByWeek) {
+        return;
+      }
+
+      const totalPaidResult = await db
+        .select({ total: sql<number>`COALESCE(SUM(${payments.amount}), 0)` })
+        .from(payments)
+        .where(and(
+          eq(payments.bowlerId, scheduleRecord.bowlerId),
+          eq(payments.leagueId, scheduleRecord.leagueId),
+          eq(payments.status, 'paid')
+        ));
+      const totalPaid = Number(totalPaidResult[0]?.total || 0);
+
+      if (totalPaid >= finalTwoWeeksAmount) {
+        logger.info(`[PaymentScheduler] Final 2 weeks already paid for ${jobId}`, {
+          totalPaid,
+          finalTwoWeeksAmount,
+          currentWeek,
+          dueByWeek,
+        });
+        return;
+      }
+
+      logger.info(`[PaymentScheduler] Auto-charging final 2 weeks for ${jobId}`, {
+        finalTwoWeeksAmount,
+        currentWeek,
+        dueByWeek,
+        bowlerId: scheduleRecord.bowlerId,
+        leagueId: scheduleRecord.leagueId,
+      });
+
+      const bowler = await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]);
+      const buyerEmail = bowler?.email || undefined;
+      const squareLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
+
+      let finalPaymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string };
+
+      const lineItems: { catalogObjectId: string; quantity: string }[] = [];
+      if (league.squareLineageItemVariationId) {
+        lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity: '1' });
+      }
+      if (league.squarePrizeFundItemVariationId) {
+        lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '1' });
+      }
+
+      if (lineItems.length > 0 && squareLocationId) {
+        try {
+          const orderResult = await createOrderWithPayment(
+            scheduleRecord.squareCardId!,
+            finalTwoWeeksAmount,
+            lineItems,
+            squareLocationId,
+            false,
+            undefined,
+            buyerEmail
+          );
+          finalPaymentResult = { status: 'success', paymentId: orderResult.id };
+        } catch (error) {
+          finalPaymentResult = { status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
+        }
+      } else {
+        finalPaymentResult = await createSquarePayment({
+          amount: finalTwoWeeksAmount,
+          cardId: scheduleRecord.squareCardId,
+          bowlerId: scheduleRecord.bowlerId,
+          leagueId: scheduleRecord.leagueId,
+          buyerEmail,
+        });
+      }
+
+      if (finalPaymentResult.status === 'success') {
+        await db.insert(payments).values({
+          bowlerId: scheduleRecord.bowlerId,
+          leagueId: scheduleRecord.leagueId,
+          amount: finalTwoWeeksAmount,
+          status: 'paid',
+          type: 'credit_card',
+          weekOf: new Date(),
+          squarePaymentId: finalPaymentResult.paymentId,
+          notes: 'Auto-charged: Final 2 Weeks',
+        });
+
+        logger.info(`[PaymentScheduler] Final 2 weeks auto-charge successful for ${jobId}`, {
+          amount: finalTwoWeeksAmount,
+          paymentId: finalPaymentResult.paymentId,
+        });
+      } else {
+        await db.insert(payments).values({
+          bowlerId: scheduleRecord.bowlerId,
+          leagueId: scheduleRecord.leagueId,
+          amount: finalTwoWeeksAmount,
+          status: 'failed',
+          type: 'credit_card',
+          weekOf: new Date(),
+          notes: `Auto-charge failed: Final 2 Weeks - ${finalPaymentResult.error}`,
+        });
+
+        logger.error(`[PaymentScheduler] Final 2 weeks auto-charge failed for ${jobId}`, {
+          error: finalPaymentResult.error,
+          amount: finalTwoWeeksAmount,
+        });
+      }
+    } catch (error) {
+      logger.error(`[PaymentScheduler] Error checking final 2 weeks for ${jobId}`, {
+        error: error instanceof Error ? error.message : error,
+      });
+    }
   }
 
   public cancelAllJobs() {

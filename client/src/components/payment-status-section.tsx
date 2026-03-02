@@ -52,6 +52,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [fixedAmount, setFixedAmount] = useState<number | null>(null);
   const [fixedAmountType, setFixedAmountType] = useState<'remaining' | 'pastDue' | null>(null);
   const [includeFinalTwoWeeks, setIncludeFinalTwoWeeks] = useState(false);
+  const [showFinalTwoWeeksWarning, setShowFinalTwoWeeksWarning] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
@@ -114,8 +115,17 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       return;
     }
 
+    const isAutoPay = selectedSchedule !== 'custom';
+    const finalTwoWeeksUnpaid = !financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0;
+
+    if (isAutoPay && finalTwoWeeksUnpaid && !includeFinalTwoWeeks && !showFinalTwoWeeksWarning) {
+      setShowFinalTwoWeeksWarning(true);
+      return;
+    }
+
     try {
       setIsSubmitting(true);
+      setShowFinalTwoWeeksWarning(false);
       
       const amount = calculateTotalAmount();
       const result = await createPayment(
@@ -410,10 +420,50 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               </p>
             </div>
             
+            {showFinalTwoWeeksWarning && (
+              <div className="rounded-md border border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20 p-4 space-y-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
+                      Final 2 Weeks Not Included
+                    </p>
+                    <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                      You haven't included the Final 2 Weeks payment ({formatCurrency(financials.finalTwoWeeks.amount)}) due by Week {financials.finalTwoWeeks.dueByWeek}. 
+                      If not paid now, it will be automatically charged to your card on the week it's due.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIncludeFinalTwoWeeks(true);
+                      setShowFinalTwoWeeksWarning(false);
+                    }}
+                  >
+                    Add Final 2 Weeks Now
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleSubmitPayment}
+                    disabled={isSubmitting}
+                  >
+                    Continue Without
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col sm:flex-row sm:justify-between gap-2">
               <Button 
                 variant="outline"
-                onClick={() => setShowPaymentSetup(false)}
+                onClick={() => {
+                  setShowPaymentSetup(false);
+                  setShowFinalTwoWeeksWarning(false);
+                }}
               >
                 Cancel
               </Button>
