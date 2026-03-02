@@ -274,7 +274,7 @@ export default function BowlerPaymentSetupPage() {
                 />
                 <div className="space-y-1">
                   <Label htmlFor="include-final-two-weeks-setup" className="text-sm font-medium cursor-pointer">
-                    Include Final 2 Weeks (${(financials.finalTwoWeeks.amount / 100).toFixed(2)})
+                    Add Final 2 Weeks (${(financials.finalTwoWeeks.amount / 100).toFixed(2)})
                   </Label>
                   <p className="text-xs text-muted-foreground">
                     Pay the final 2 weeks upfront with your first payment. Due by Week {financials.finalTwoWeeks.dueByWeek}.

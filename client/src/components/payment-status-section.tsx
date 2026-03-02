@@ -366,7 +366,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                 />
                 <div className="space-y-1">
                   <Label htmlFor="include-final-two-weeks" className="text-sm font-medium cursor-pointer">
-                    Include Final 2 Weeks ({formatCurrency(financials.finalTwoWeeks.amount)})
+                    Add Final 2 Weeks ({formatCurrency(financials.finalTwoWeeks.amount)})
                   </Label>
                   <p className="text-xs text-muted-foreground">
                     Add the final 2 weeks payment to this transaction. Due by Week {financials.finalTwoWeeks.dueByWeek}.
