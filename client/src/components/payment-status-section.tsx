@@ -403,7 +403,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
             </span>
             <span className="text-sm font-medium">
               {activeSchedule
-                ? `Auto-pay: ${activeSchedule.frequency === 'weekly' ? 'Weekly' : 'Monthly'}`
+                ? `Auto-pay: ${activeSchedule.frequency === 'weekly' ? 'Weekly' : 'Monthly'} — ${formatDollars(activeSchedule.amount)}`
                 : 'No auto-pay'}
             </span>
           </div>
