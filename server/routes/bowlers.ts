@@ -193,10 +193,29 @@ router.patch("/:id", async (req, res) => {
       }
     }
 
-    const updated = await storage.updateBowler(id, {
-      ...bowler,
-      ...update
-    });
+    const merged = { ...bowler, ...update };
+    let updated = await storage.updateBowler(id, merged);
+
+    if (updated.email) {
+      const emailChanged = bowler.email?.toLowerCase() !== updated.email.toLowerCase();
+      const nameChanged = bowler.name !== updated.name;
+      const needsSquareSync = !updated.squareCustomerId || emailChanged || nameChanged;
+
+      if (needsSquareSync) {
+        try {
+          const squareCustomer = await createOrUpdateCustomer(updated.name, updated.email);
+          if (squareCustomer && squareCustomer.id !== updated.squareCustomerId) {
+            updated = await storage.updateBowler(id, {
+              ...updated,
+              squareCustomerId: squareCustomer.id,
+            });
+          }
+        } catch (squareError) {
+          console.error('[Bowlers] Square customer sync error on update:', squareError);
+        }
+      }
+    }
+
     sendSuccess(res, updated);
   } catch (error) {
     console.error('[Bowlers] Error updating bowler:', error);
