@@ -8,7 +8,6 @@ A full-stack bowling league management application with multi-tenant support for
 - **Backend**: Express + Passport.js + Drizzle ORM
 - **Database**: Neon PostgreSQL (via `pg` driver + `drizzle-orm/node-postgres`)
 - **Payments**: Square SDK integration
-- **Scoring**: QubicaAMF integration for automated score imports
 
 ## Key Files
 - `shared/schema.ts` - Database schema and Zod validation types
@@ -46,7 +45,15 @@ A full-stack bowling league management application with multi-tenant support for
 - `SQUARE_LOCATION_ID` / `VITE_SQUARE_LOCATION_ID` - Square location
 - `SESSION_SECRET` - Express session secret
 
-## Recent Changes (2026-03-01)
+## Recent Changes (2026-03-02)
+- Removed all QubicaAMF scoring integration (parser, API service, score scheduler, schema fields, UI references)
+- Added league archive/delete system with cascade delete and type-to-confirm UI
+- League form: auto-fills Bowling Day from Season Start, editable Season Length auto-calculates Season End
+- Renamed "Competition Start Time" to "League Start Time", removed Practice Start Time field
+- Fixed apiRequest argument order in league form mutations
+- Filtered archived leagues from navigation dropdown
+
+## Previous Changes (2026-03-01)
 - Removed dead code: deprecated `server/routes.ts`, `client/src/pages/App.tsx`, unused `series`/`weeklyStats` tables
 - Consolidated authorization: all access control functions in `server/utils/access-control.ts`
 - Merged `bowler-leagues-new.ts` into `bowler-leagues.ts` (use `?enriched=true` for detailed data)

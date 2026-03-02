@@ -67,8 +67,6 @@ export interface IStorage {
   updateScore(id: number, score: Partial<InsertScore>): Promise<Score>;
   deleteScore(id: number): Promise<void>;
 
-  // Add new method to interface
-  getBowlerByQubicaId(qubicaId: string): Promise<Bowler | undefined>;
   createBatchScores(scores: InsertScore[]): Promise<Score[]>;
   getGameScores(gameId: number): Promise<Score[]>;
   getTeamByNumber(leagueId: number, teamNumber: number): Promise<Team | undefined>;
@@ -190,7 +188,6 @@ export class DatabaseStorage implements IStorage {
           active: bowlers.active,
           order: bowlers.order,
           squareCustomerId: bowlers.squareCustomerId,
-          qubicaId: bowlers.qubicaId,
         })
         .from(bowlers)
         .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
@@ -609,14 +606,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(scores).where(eq(scores.id, id));
   }
 
-  // Add new method implementation
-  async getBowlerByQubicaId(qubicaId: string): Promise<Bowler | undefined> {
-    const [result] = await db
-      .select()
-      .from(bowlers)
-      .where(eq(bowlers.qubicaId, qubicaId));
-    return result;
-  }
   async createBatchScores(batchScores: InsertScore[]): Promise<Score[]> {
     try {
       if (batchScores.length === 0) {

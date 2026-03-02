@@ -57,7 +57,6 @@ export const leagues = pgTable("leagues", {
   weeklyFee: integer("weekly_fee").notNull().default(2000),
   practiceStartTime: text("practice_start_time"),
   competitionStartTime: text("competition_start_time"),
-  qubicaId: text("qubica_id").unique(),
   organizationId: integer("organization_id").references(() => organizations.id),
 }, (table) => ({
   activeNameIdx: index("leagues_active_name_idx").on(table.active, table.name),
@@ -84,7 +83,6 @@ export const bowlers = pgTable("bowlers", {
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
   squareCustomerId: text("square_customer_id"),
-  qubicaId: text("qubica_id").unique(),
 });
 
 export const bowlerLeagues = pgTable("bowler_leagues", {
@@ -354,7 +352,6 @@ export const insertBowlerSchema = baseBowlerSchema.extend({
   active: z.boolean().default(true),
   order: z.number().min(0).default(0),
   squareCustomerId: z.string().nullable().optional(),
-  qubicaId: z.string().nullable().optional(),
 }).omit({ id: true });
 
 export const insertLeagueSchema = baseLeagueSchema.extend({
@@ -367,7 +364,6 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   weeklyFee: positiveIntSchema.default(2000),
   practiceStartTime: timeSchema.optional(),
   competitionStartTime: timeSchema.optional(),
-  qubicaId: z.string().nullable().optional(),
 }).omit({ id: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
@@ -494,7 +490,6 @@ export const partialLeagueSchema = z.object({
   weeklyFee: positiveIntSchema,
   practiceStartTime: timeSchema,
   competitionStartTime: timeSchema,
-  qubicaId: z.string().nullable(),
 }).partial().refine(
   (data) => {
     if (data.seasonStart && data.seasonEnd) {
@@ -600,54 +595,6 @@ export interface WeeklyStatWithBowler extends WeeklyStat {
     team: Team;
   };
 }
-
-// Keep the QubicaAMF Score Import Types but remove import-specific schemas
-export interface QubicaScoreFileHeader {
-  date: Date;
-  centerName: string;
-  leagueName: string;
-  weekNumber: number;
-  sessionTime: string;
-  leagueId: string;
-  description: string;
-}
-
-export interface QubicaBowlerScore {
-  teamNumber: string;
-  gameNumber: number;
-  position: number;
-  recordNumber: number;
-  bowlerId: string;
-  status: {
-    isVacant: boolean;
-    isAbsent: boolean;
-    isSub: boolean;
-  };
-  score: number;
-  laneNumber: number;
-  bowlerName: string;
-  scoreSheet: string;
-  handicap: number;
-  average: number;
-  hasBumpers: boolean;
-  frames: string[];
-  splits: string[];
-  notes: string[];
-}
-
-export interface QubicaTeamGame {
-  teamNumber: string;
-  gameNumber: number;
-  teamName: string;
-  laneNumber: number;
-  bowlers: QubicaBowlerScore[];
-}
-
-export interface QubicaScoreImport {
-  header: QubicaScoreFileHeader;
-  games: QubicaTeamGame[];
-}
-
 
 // Add new interface for detailed score information
 export interface DetailedScore extends Score {

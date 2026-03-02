@@ -8,7 +8,6 @@ import path from 'path';
 import fs from 'fs';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
-import { scoreScheduler } from './services/score-scheduler';
 
 const app = express();
 const server = createServer(app);
@@ -150,7 +149,6 @@ async function startServer() {
     if (dbConnected) {
       try {
         await paymentScheduler.initialize();
-        await scoreScheduler.initialize();
         console.log('[Server] Schedulers initialized');
       } catch (error) {
         console.error('[Server] Error initializing schedulers:', error);
@@ -168,7 +166,6 @@ async function shutdown() {
 
   try {
     paymentScheduler?.cancelAllJobs();
-    scoreScheduler?.cancelAllJobs();
 
     await new Promise<void>((resolve) => {
       const timeout = setTimeout(() => {

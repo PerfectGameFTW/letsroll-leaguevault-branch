@@ -1,6 +1,3 @@
-// This file will be removed as we transition to live scoring with QubicaAMF API.
-// Temporarily keeping a simplified version for backward compatibility.
-
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { AlertCircle } from "lucide-react";

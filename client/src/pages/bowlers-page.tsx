@@ -28,7 +28,6 @@ function BowlerTableSkeleton() {
           <TableHead>Name</TableHead>
           <TableHead>League Name</TableHead>
           <TableHead>Team Name</TableHead>
-          <TableHead>Qubica ID</TableHead>
           <TableHead>Square Customer ID</TableHead>
           <TableHead>Status</TableHead>
         </TableRow>
@@ -122,7 +121,6 @@ export default function BowlersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>League Name</TableHead>
                 <TableHead>Team Name</TableHead>
-                <TableHead>Qubica ID</TableHead>
                 <TableHead>Square Customer ID</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
@@ -130,7 +128,7 @@ export default function BowlersPage() {
             <TableBody>
               {filteredBowlers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-4">
+                  <TableCell colSpan={5} className="text-center py-4">
                     {isLoadingRelatedData ? (
                       <div className="flex items-center justify-center">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -170,9 +168,6 @@ export default function BowlersPage() {
                         ) : (
                           teamName
                         )}
-                      </TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">
-                        {bowler.qubicaId || '—'}
                       </TableCell>
                       <TableCell className="font-mono text-sm text-muted-foreground">
                         {bowler.squareCustomerId || '—'}
