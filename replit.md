@@ -51,6 +51,8 @@ A full-stack bowling league management application with multi-tenant support for
   - Payment Overview card: Final 2 Weeks status (paid/due/past due) with due date
   - Payment History page: Final 2 Weeks card with color-coded status
   - `calculateFinancials` returns `finalTwoWeeks` status object
+  - "Include Final 2 Weeks" checkbox on one-time payment form and auto-pay setup page
+  - When checked: adds 2× weekly fee to current payment; for auto-pay, schedule amount excludes the final 2 weeks
 - Quick Select payment buttons: 1 Month, Half Season, Full Season, Past Due Balance, Season Remaining Balance
   - Past Due/Remaining Balance use exact amounts (not rounded to weeks)
   - Half Season/Full Season hide when bowler has already paid enough to make them irrelevant

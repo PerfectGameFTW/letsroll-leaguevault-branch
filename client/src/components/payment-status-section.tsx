@@ -51,6 +51,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
   const [fixedAmount, setFixedAmount] = useState<number | null>(null);
   const [fixedAmountType, setFixedAmountType] = useState<'remaining' | 'pastDue' | null>(null);
+  const [includeFinalTwoWeeks, setIncludeFinalTwoWeeks] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
@@ -87,17 +88,21 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   }, [handleWeekChangeWrapper, selectedWeeks]);
 
   const calculateTotalAmount = useCallback(() => {
+    let base = 0;
     if (fixedAmount !== null) {
-      return fixedAmount;
-    }
-    if (selectedSchedule === 'custom') {
-      return weeklyFee * selectedWeeks;
+      base = fixedAmount;
+    } else if (selectedSchedule === 'custom') {
+      base = weeklyFee * selectedWeeks;
     } else if (selectedSchedule === 'monthly') {
-      return weeklyFee * 4;
+      base = weeklyFee * 4;
     } else {
-      return weeklyFee;
+      base = weeklyFee;
     }
-  }, [selectedSchedule, weeklyFee, selectedWeeks, fixedAmount]);
+    if (includeFinalTwoWeeks) {
+      base += weeklyFee * 2;
+    }
+    return base;
+  }, [selectedSchedule, weeklyFee, selectedWeeks, fixedAmount, includeFinalTwoWeeks]);
 
   const handleSubmitPayment = async () => {
     if (!card) {
@@ -122,11 +127,15 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       );
 
       toast({
-        title: "Payment Setup Successful",
-        description: `Your ${selectedSchedule} payment schedule has been set up.`,
+        title: "Payment Successful",
+        description: includeFinalTwoWeeks
+          ? `Payment of ${formatCurrency(amount)} processed (includes Final 2 Weeks).`
+          : `Your payment of ${formatCurrency(amount)} has been processed.`,
       });
       
+      setIncludeFinalTwoWeeks(false);
       setShowPaymentSetup(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
     } catch (error) {
       console.error('[Payment Error]:', error);
       toast({
@@ -334,6 +343,24 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               </div>
             )}
             
+            {!financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0 && (
+              <div className="flex items-start space-x-3 rounded-md border p-4 bg-muted/50">
+                <Checkbox
+                  id="include-final-two-weeks"
+                  checked={includeFinalTwoWeeks}
+                  onCheckedChange={(checked) => setIncludeFinalTwoWeeks(checked === true)}
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="include-final-two-weeks" className="text-sm font-medium cursor-pointer">
+                    Include Final 2 Weeks ({formatCurrency(financials.finalTwoWeeks.amount)})
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Add the final 2 weeks payment to this transaction. Due by Week {financials.finalTwoWeeks.dueByWeek}.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-medium">Payment Information</h3>
@@ -379,6 +406,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                 {selectedSchedule === 'weekly' && 'Charged weekly'}
                 {selectedSchedule === 'monthly' && 'Charged monthly (every 4 weeks)'}
                 {selectedSchedule === 'custom' && `One-time payment for ${selectedWeeks} weeks`}
+                {includeFinalTwoWeeks && ` + Final 2 Weeks (${formatCurrency(financials.finalTwoWeeks.amount)})`}
               </p>
             </div>
             

@@ -17,9 +17,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useParams, useLocation } from "wouter";
-import type { League, BowlerLeague } from "@shared/schema";
+import type { League, BowlerLeague, Payment } from "@shared/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { getSeasonLengthWeeks } from "@/lib/financial-utils";
+import { getSeasonLengthWeeks, calculateFinancials } from "@/lib/financial-utils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type PaymentSchedule = "weekly" | "monthly" | "custom";
 
@@ -61,6 +62,7 @@ export default function BowlerPaymentSetupPage() {
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [customWeeks, setCustomWeeks] = useState(1);
+  const [includeFinalTwoWeeks, setIncludeFinalTwoWeeks] = useState(false);
 
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
@@ -85,6 +87,14 @@ export default function BowlerPaymentSetupPage() {
   });
   const league = leagueResponse?.data;
 
+  const { data: paymentsResponse } = useQuery<{ data: Payment[] }>({
+    queryKey: ["/api/payments"],
+  });
+  const bowlerPayments = (paymentsResponse?.data || []).filter(
+    p => p.bowlerId === bowlerId && league && p.leagueId === league.id
+  );
+  const financials = calculateFinancials(league || null, bowlerPayments);
+
   useEffect(() => {
     if (cardContainerRef.current && !isInitialized) {
       initializeCard(cardContainerRef.current);
@@ -99,7 +109,11 @@ export default function BowlerPaymentSetupPage() {
 
     const totalWeeks = getSeasonLengthWeeks(league);
 
-    return selectedOption.calculateAmount(league.weeklyFee, totalWeeks, customWeeks);
+    let amount = selectedOption.calculateAmount(league.weeklyFee, totalWeeks, customWeeks);
+    if (includeFinalTwoWeeks) {
+      amount += league.weeklyFee * 2;
+    }
+    return amount;
   };
 
   const handleSubmit = async () => {
@@ -124,6 +138,9 @@ export default function BowlerPaymentSetupPage() {
       // Process payment and set up recurring schedule if needed
       if (selectedSchedule !== "custom") {
         // Create payment schedule
+        const scheduleAmount = includeFinalTwoWeeks
+          ? amount - league.weeklyFee * 2
+          : amount;
         const scheduleResponse = await fetch("/api/payment-schedules", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -131,9 +148,10 @@ export default function BowlerPaymentSetupPage() {
             bowlerId,
             leagueId: league.id,
             frequency: selectedSchedule,
-            amount,
+            amount: scheduleAmount,
             nextPaymentDate: new Date(),
             squareCardId: card.id,
+            includeFinalTwoWeeks,
           }),
         });
 
@@ -233,6 +251,29 @@ export default function BowlerPaymentSetupPage() {
             </RadioGroup>
           </CardContent>
         </Card>
+
+        {!financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0 && (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-start space-x-3">
+                <Checkbox
+                  id="include-final-two-weeks-setup"
+                  checked={includeFinalTwoWeeks}
+                  onCheckedChange={(checked) => setIncludeFinalTwoWeeks(checked === true)}
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="include-final-two-weeks-setup" className="text-sm font-medium cursor-pointer">
+                    Include Final 2 Weeks (${(financials.finalTwoWeeks.amount / 100).toFixed(2)})
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Pay the final 2 weeks upfront with your first payment. Due by Week {financials.finalTwoWeeks.dueByWeek}.
+                    {selectedSchedule !== 'custom' && ' Your auto-pay schedule will be reduced by 2 weeks.'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>
