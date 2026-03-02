@@ -44,7 +44,6 @@ export default function PaymentHistoryPage() {
   const { toast } = useToast();
   const [showPayDialog, setShowPayDialog] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const cardContainerRef = useRef<HTMLDivElement>(null);
   const { card, isInitialized, initializeCard, cleanupCard } = useSquarePayment({
     onError: (error) => {
       console.error('[Square Payment Error]:', error);
@@ -52,10 +51,14 @@ export default function PaymentHistoryPage() {
     }
   });
 
-  useEffect(() => {
-    if (showPayDialog && cardContainerRef.current) {
-      initializeCard(cardContainerRef.current);
+  const cardCallbackRef = useRef<(el: HTMLDivElement | null) => void>(() => {});
+  cardCallbackRef.current = (el: HTMLDivElement | null) => {
+    if (el && showPayDialog) {
+      initializeCard(el);
     }
+  };
+
+  useEffect(() => {
     if (!showPayDialog) {
       cleanupCard();
     }
@@ -319,7 +322,7 @@ export default function PaymentHistoryPage() {
                 <div>
                   <label className="text-sm font-medium mb-2 block">Card Details</label>
                   <div
-                    ref={cardContainerRef}
+                    ref={(el) => cardCallbackRef.current(el)}
                     className="min-h-[80px] rounded-md border p-3"
                   />
                 </div>
