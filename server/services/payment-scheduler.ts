@@ -2,10 +2,43 @@ import schedule from "node-schedule";
 import { db } from "../db";
 import { eq, and, lte, isNull, or } from "drizzle-orm";
 import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
-import { addWeeks, addMonths } from "date-fns";
+import { addWeeks, addMonths, nextDay, setHours, setMinutes, setSeconds, setMilliseconds, isAfter } from "date-fns";
 import { createSquarePayment } from "../lib/square";
 import { createOrderWithPayment } from "./square";
 import { logger } from "../logger";
+
+const WEEKDAY_MAP: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
+  Sunday: 0,
+  Monday: 1,
+  Tuesday: 2,
+  Wednesday: 3,
+  Thursday: 4,
+  Friday: 5,
+  Saturday: 6,
+};
+
+function getNextLeagueDateTime(
+  afterDate: Date,
+  weekDay: string,
+  competitionStartTime: string | null | undefined
+): Date {
+  const [hours, minutes] = competitionStartTime
+    ? competitionStartTime.split(':').map(Number)
+    : [12, 0];
+
+  const dayIndex = WEEKDAY_MAP[weekDay];
+  if (dayIndex === undefined) {
+    return addWeeks(afterDate, 1);
+  }
+
+  let target = nextDay(afterDate, dayIndex);
+  target = setHours(target, hours);
+  target = setMinutes(target, minutes);
+  target = setSeconds(target, 0);
+  target = setMilliseconds(target, 0);
+
+  return target;
+}
 
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
@@ -227,9 +260,22 @@ class PaymentScheduler {
 
         // If payment successful, update schedule and create payment record
         if (paymentResult.status === 'success') {
-          const nextDate = scheduleRecord.frequency === 'weekly'
-            ? addWeeks(scheduleRecord.nextPaymentDate, 1)
-            : addMonths(scheduleRecord.nextPaymentDate, 1);
+          let nextDate: Date;
+          if (scheduleRecord.frequency === 'weekly' && league) {
+            nextDate = getNextLeagueDateTime(
+              scheduleRecord.nextPaymentDate,
+              league.weekDay,
+              league.competitionStartTime
+            );
+          } else if (scheduleRecord.frequency === 'monthly') {
+            nextDate = addMonths(scheduleRecord.nextPaymentDate, 1);
+            if (league?.competitionStartTime) {
+              const [h, m] = league.competitionStartTime.split(':').map(Number);
+              nextDate = setHours(setMinutes(setSeconds(setMilliseconds(nextDate, 0), 0), m), h);
+            }
+          } else {
+            nextDate = addWeeks(scheduleRecord.nextPaymentDate, 1);
+          }
 
           logger.info(`[PaymentScheduler] Updating schedule ${scheduleRecord.id}`, {
             currentPaymentDate: scheduleRecord.nextPaymentDate,
