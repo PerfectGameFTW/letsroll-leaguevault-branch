@@ -91,7 +91,7 @@ const LeaguesDropdownContent = () => {
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
-  const leagues = leaguesResponse?.data || [];
+  const leagues = (leaguesResponse?.data || []).filter((l: League) => l.active);
 
   if (isLoading) return <LeagueLoadingFallback />;
 
