@@ -42,6 +42,7 @@ interface NavItem {
   label: string;
   href: string;
   hasDropdown?: boolean;
+  adminOnly?: boolean;
   subItems?: NavItem[];
 }
 
@@ -52,15 +53,21 @@ const navItems: NavItem[] = [
     href: "/"
   },
   {
-    icon: Trophy,
-    label: "Leagues",
-    href: "/leagues",
-    hasDropdown: true
+    icon: Building2,
+    label: "Organizations",
+    href: "/organizations",
+    adminOnly: true
   },
   {
     icon: MapPin,
     label: "Locations",
     href: "/locations"
+  },
+  {
+    icon: Trophy,
+    label: "Leagues",
+    href: "/leagues",
+    hasDropdown: true
   },
   {
     icon: Users,
@@ -76,6 +83,12 @@ const navItems: NavItem[] = [
     icon: ClipboardPlus,
     label: "Reports",
     href: "/reports"
+  },
+  {
+    icon: ShieldCheck,
+    label: "Admin",
+    href: "/admin",
+    adminOnly: true
   },
   {
     icon: LayoutDashboard,
@@ -278,10 +291,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <nav className="mt-4 flex-1 space-y-1 px-2">
                   <div className="space-y-2">
                     {navItems.map((item) => {
-                      // Show Bowler Dashboard only for system admins
-                      if (item.href === '/bowler-dashboard' && !isSystemAdmin) {
-                        return null;
-                      }
+                      if (item.adminOnly && !isAdmin) return null;
+                      if (item.href === '/bowler-dashboard' && !isSystemAdmin) return null;
                       
                       const isActive = location === item.href;
                       if (item.hasDropdown && !isCollapsed) {
@@ -331,48 +342,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       );
                     })}
                     
-                    {/* Admin navigation links - only visible to admin users */}
-                    {isAdmin && (
-                      <>
-                        <Link href="/admin">
-                          <button
-                            className={cn(
-                              "flex w-full items-center gap-3 rounded-lg transition-all hover:bg-accent",
-                              isCollapsed ? "justify-center p-2" : "px-3 py-2",
-                              location === "/admin" && "bg-accent"
-                            )}
-                            title={isCollapsed ? "Admin" : undefined}
-                          >
-                            <ShieldCheck className="h-4 w-4" />
-                            {!isCollapsed && (
-                              <>
-                                <span className="text-sm">Admin</span>
-                                {location === "/admin" && <ChevronRight className="ml-auto h-4 w-4" />}
-                              </>
-                            )}
-                          </button>
-                        </Link>
-                        
-                        <Link href="/organizations">
-                          <button
-                            className={cn(
-                              "flex w-full items-center gap-3 rounded-lg transition-all hover:bg-accent",
-                              isCollapsed ? "justify-center p-2" : "px-3 py-2",
-                              location === "/organizations" && "bg-accent"
-                            )}
-                            title={isCollapsed ? "Organizations" : undefined}
-                          >
-                            <Building2 className="h-4 w-4" />
-                            {!isCollapsed && (
-                              <>
-                                <span className="text-sm">Organizations</span>
-                                {location === "/organizations" && <ChevronRight className="ml-auto h-4 w-4" />}
-                              </>
-                            )}
-                          </button>
-                        </Link>
-                      </>
-                    )}
                   </div>
                 </nav>
               </Suspense>
