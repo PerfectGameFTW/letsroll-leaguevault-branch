@@ -42,7 +42,7 @@ interface User {
 
 export default function PaymentHistoryPage() {
   const { toast } = useToast();
-  const [showPayDialog, setShowPayDialog] = useState(false);
+  const [payDialogType, setPayDialogType] = useState<'pastdue' | 'remaining' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { card, isInitialized, initializeCard, cleanupCard } = useSquarePayment({
     onError: (error) => {
@@ -53,16 +53,16 @@ export default function PaymentHistoryPage() {
 
   const cardCallbackRef = useRef<(el: HTMLDivElement | null) => void>(() => {});
   cardCallbackRef.current = (el: HTMLDivElement | null) => {
-    if (el && showPayDialog) {
+    if (el && payDialogType) {
       initializeCard(el);
     }
   };
 
   useEffect(() => {
-    if (!showPayDialog) {
+    if (!payDialogType) {
       cleanupCard();
     }
-  }, [showPayDialog]);
+  }, [payDialogType]);
 
   // Get current user and their bowler ID
   const { data: currentUser, isLoading: loadingUser, error: userError } = useQuery<ApiResponse<User>>({
@@ -133,16 +133,19 @@ export default function PaymentHistoryPage() {
     remainingBalance = fullSeasonAmount - totalPaidAmount;
   }
 
-  const handlePastDuePayment = async () => {
-    if (!card || !bowlerId || !leagueId) {
+  const dialogAmount = payDialogType === 'pastdue' ? amountPastDue : remainingBalance;
+  const dialogLabel = payDialogType === 'pastdue' ? 'past due amount' : 'remaining balance';
+
+  const handleDialogPayment = async () => {
+    if (!card || !bowlerId || !leagueId || !dialogAmount) {
       toast({ title: "Error", description: "Missing payment information.", variant: "destructive" });
       return;
     }
     try {
       setIsSubmitting(true);
-      await createPayment(amountPastDue, card, bowlerId, leagueId, false);
-      toast({ title: "Payment Successful", description: `$${(amountPastDue / 100).toFixed(2)} past due amount has been paid.` });
-      setShowPayDialog(false);
+      await createPayment(dialogAmount, card, bowlerId, leagueId, false);
+      toast({ title: "Payment Successful", description: `$${(dialogAmount / 100).toFixed(2)} ${dialogLabel} has been paid.` });
+      setPayDialogType(null);
       queryClient.invalidateQueries({ queryKey: ["/api/payments", bowlerId, leagueId] });
     } catch (error) {
       console.error('[Payment Error]:', error);
@@ -293,7 +296,7 @@ export default function PaymentHistoryPage() {
 
           <Card
             className={amountPastDue > 0 ? "cursor-pointer transition-colors hover:border-destructive/50 hover:bg-destructive/5" : ""}
-            onClick={() => amountPastDue > 0 && setShowPayDialog(true)}
+            onClick={() => amountPastDue > 0 && setPayDialogType('pastdue')}
           >
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Amount Past Due to Date</CardTitle>
@@ -303,49 +306,6 @@ export default function PaymentHistoryPage() {
               <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
-
-          <Dialog open={showPayDialog} onOpenChange={setShowPayDialog}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Pay Past Due Amount</DialogTitle>
-                <DialogDescription>
-                  Pay your outstanding balance of ${(amountPastDue / 100).toFixed(2)}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="rounded-md border p-4 bg-muted/50">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Amount</span>
-                    <span className="text-lg font-bold">${(amountPastDue / 100).toFixed(2)}</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Card Details</label>
-                  <div
-                    ref={(el) => cardCallbackRef.current(el)}
-                    className="min-h-[80px] rounded-md border p-3"
-                  />
-                </div>
-                <Button
-                  onClick={handlePastDuePayment}
-                  disabled={!isInitialized || isSubmitting}
-                  className="w-full"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="mr-2 h-4 w-4" />
-                      Pay ${(amountPastDue / 100).toFixed(2)}
-                    </>
-                  )}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
 
           {/* Replaced Card Component */}
           <Card>
@@ -362,16 +322,63 @@ export default function PaymentHistoryPage() {
             </CardContent>
           </Card>
 
-          {/* Replaced Card Component */}
-          <Card>
+          <Card
+            className={remainingBalance > 0 ? "cursor-pointer transition-colors hover:border-primary/50 hover:bg-primary/5" : ""}
+            onClick={() => remainingBalance > 0 && setPayDialogType('remaining')}
+          >
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Full Season Remaining Balance</CardTitle>
-              <CardDescription>Amount left to pay</CardDescription>
+              <CardDescription>{remainingBalance > 0 ? "Click to pay off balance" : "Fully paid"}</CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">${(remainingBalance / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
+
+          <Dialog open={!!payDialogType} onOpenChange={(open) => !open && setPayDialogType(null)}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>{payDialogType === 'pastdue' ? 'Pay Past Due Amount' : 'Pay Remaining Balance'}</DialogTitle>
+                <DialogDescription>
+                  {payDialogType === 'pastdue'
+                    ? `Pay your outstanding balance of $${(amountPastDue / 100).toFixed(2)}`
+                    : `Pay off your remaining season balance of $${(remainingBalance / 100).toFixed(2)}`}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="rounded-md border p-4 bg-muted/50">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Amount</span>
+                    <span className="text-lg font-bold">${(dialogAmount / 100).toFixed(2)}</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Card Details</label>
+                  <div
+                    ref={(el) => cardCallbackRef.current(el)}
+                    className="min-h-[80px] rounded-md border p-3"
+                  />
+                </div>
+                <Button
+                  onClick={handleDialogPayment}
+                  disabled={!isInitialized || isSubmitting}
+                  className="w-full"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="mr-2 h-4 w-4" />
+                      Pay ${(dialogAmount / 100).toFixed(2)}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Payment History Table */}
