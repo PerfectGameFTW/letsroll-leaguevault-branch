@@ -2,115 +2,120 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { sendError, sendSuccess } from '../utils/api';
 import { storage } from '../storage';
+import { hashPassword } from '../auth';
+import { scrypt, timingSafeEqual } from 'crypto';
+import { promisify } from 'util';
 
-// Custom middleware to ensure user is authenticated
+const scryptAsync = promisify(scrypt);
+
+async function comparePasswords(supplied: string, stored: string) {
+  try {
+    const [hashed, salt] = stored.split(".");
+    const hashedBuf = Buffer.from(hashed, "hex");
+    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+    return timingSafeEqual(hashedBuf, suppliedBuf);
+  } catch {
+    return false;
+  }
+}
+
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
-    return sendError(
-      res,
-      'Authentication required',
-      401,
-      'AUTH_REQUIRED'
-    );
+    return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
   }
   next();
 }
 
 const router = Router();
 
-// Update user profile (name, email)
 router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
-      return sendError(
-        res,
-        'Invalid user ID',
-        400,
-        'INVALID_ID'
-      );
+      return sendError(res, 'Invalid user ID', 400, 'INVALID_ID');
     }
 
-    // Check if user is modifying their own profile or is an admin
     const user = req.user as any;
     if (user.id !== userId && !user.isAdmin) {
-      return sendError(
-        res,
-        'Unauthorized',
-        403,
-        'UNAUTHORIZED'
-      );
+      return sendError(res, 'Unauthorized', 403, 'UNAUTHORIZED');
     }
 
-    // Define schema for user update
     const userUpdateSchema = z.object({
       name: z.string().min(1).optional(),
       email: z.string().email().optional(),
-      isAdmin: z.boolean().optional() // Only admins can update this field
+      phone: z.string().nullable().optional(),
+      isAdmin: z.boolean().optional(),
     });
 
-    // Validate request data
     const validationResult = userUpdateSchema.safeParse(req.body);
     if (!validationResult.success) {
       const errorMessages = validationResult.error.errors.map(err => ({
         field: err.path.join('.'),
         message: err.message
       }));
-      
-      return sendError(
-        res,
-        'Validation failed',
-        400,
-        'VALIDATION_ERROR',
-        { details: errorMessages }
-      );
+      return sendError(res, 'Validation failed', 400, 'VALIDATION_ERROR', { details: errorMessages });
     }
 
     const updateData = validationResult.data;
-    
-    // Only allow admin users to update the isAdmin field
+
     if (updateData.isAdmin !== undefined && !user.isAdmin) {
       delete updateData.isAdmin;
     }
 
-    // Check if user exists
     const existingUser = await storage.getUser(userId);
     if (!existingUser) {
-      return sendError(
-        res,
-        'User not found',
-        404,
-        'USER_NOT_FOUND'
-      );
+      return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
     }
 
-    // Check if email is being changed and already exists
     if (updateData.email && updateData.email !== existingUser.email) {
       const userWithEmail = await storage.getUserByEmail(updateData.email);
       if (userWithEmail && userWithEmail.id !== userId) {
-        return sendError(
-          res,
-          'Email already in use',
-          400,
-          'EMAIL_IN_USE'
-        );
+        return sendError(res, 'Email already in use', 400, 'EMAIL_IN_USE');
       }
     }
 
-    // Update the user
     const updatedUser = await storage.updateUser(userId, updateData);
-    
-
     return sendSuccess(res, { ...updatedUser, password: undefined });
   } catch (error) {
     console.error('[User] Error updating user:', error);
-    return sendError(
-      res,
-      'Internal server error',
-      500,
-      'SERVER_ERROR',
-      { details: error instanceof Error ? error.message : undefined }
-    );
+    return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
+  }
+});
+
+router.post('/change-password', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const user = req.user as any;
+
+    const schema = z.object({
+      currentPassword: z.string().min(1, 'Current password is required'),
+      newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+    });
+
+    const validationResult = schema.safeParse(req.body);
+    if (!validationResult.success) {
+      const msg = validationResult.error.errors.map(e => e.message).join(', ');
+      return sendError(res, msg, 400, 'VALIDATION_ERROR');
+    }
+
+    const { currentPassword, newPassword } = validationResult.data;
+
+    const existingUser = await storage.getUser(user.id);
+    if (!existingUser) {
+      return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
+    }
+
+    const isValid = await comparePasswords(currentPassword, existingUser.password);
+    if (!isValid) {
+      return sendError(res, 'Current password is incorrect', 400, 'INVALID_PASSWORD');
+    }
+
+    const hashedNew = await hashPassword(newPassword);
+    await storage.updateUser(user.id, { password: hashedNew });
+
+    return sendSuccess(res, { message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('[User] Error changing password:', error);
+    return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
   }
 });
 

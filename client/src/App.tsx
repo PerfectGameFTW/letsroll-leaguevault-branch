@@ -26,6 +26,7 @@ import AdminPage from "@/pages/admin-page";
 import AdminLinkBowlerPage from "@/pages/admin-link-bowler";
 import OrganizationsPage from "@/pages/organizations-page";
 import LocationsPage from "@/pages/locations-page";
+import ProfileSettingsPage from "@/pages/profile-settings-page";
 import { useEffect, useRef, FC } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -114,6 +115,12 @@ function Router() {
       <Route path="/payment-history">
         <AuthRouteGuard>
           <PaymentHistoryPage />
+        </AuthRouteGuard>
+      </Route>
+
+      <Route path="/profile">
+        <AuthRouteGuard>
+          <ProfileSettingsPage />
         </AuthRouteGuard>
       </Route>
 
