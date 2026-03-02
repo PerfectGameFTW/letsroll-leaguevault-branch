@@ -102,8 +102,9 @@ export default function PaymentHistoryPage() {
   const payments = paymentsResponse?.data || [];
   const bowlerName = bowlerResponse?.data?.name || '';
 
-  // Calculate payment statistics
-  const totalPaidPayments = payments.filter(p => p.status === 'paid');
+  // Filter to only this bowler's payments for this league
+  const bowlerPayments = payments.filter(p => p.bowlerId === bowlerId && p.leagueId === leagueId);
+  const totalPaidPayments = bowlerPayments.filter(p => p.status === 'paid');
   const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
 
   let weeksDue = 0;
@@ -399,14 +400,14 @@ export default function PaymentHistoryPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {payments.length === 0 ? (
+                {bowlerPayments.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center py-4">
                       No payments recorded
                     </TableCell>
                   </TableRow>
                 ) : (
-                  payments.map((payment) => {
+                  bowlerPayments.map((payment) => {
                     const weekNumber = league.seasonStart
                       ? Math.max(1, differenceInWeeks(new Date(payment.weekOf), new Date(league.seasonStart)) + 1)
                       : '-';
