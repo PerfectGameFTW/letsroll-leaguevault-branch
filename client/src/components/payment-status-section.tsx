@@ -315,7 +315,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                           setFixedAmountType('remaining');
                         }}
                       >
-                        Remaining Balance
+                        Season Remaining Balance
                       </Button>
                     )}
                   </div>
