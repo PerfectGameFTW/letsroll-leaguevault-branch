@@ -376,7 +376,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     name="competitionStartTime"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Competition Start Time</FormLabel>
+                        <FormLabel>League Start Time</FormLabel>
                         <FormControl>
                           <Input
                             type="time"
