@@ -38,7 +38,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
   
   const handleLogout = async () => {
     try {
-      await apiRequest('POST', '/api/auth/logout', {});
+      await apiRequest('/api/auth/logout', 'POST', {});
       queryClient.clear(); // Clear all cached data
       window.location.href = '/login'; // Redirect to login page
       toast({
