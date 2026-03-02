@@ -96,23 +96,29 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   });
   const categories = categoriesData?.data || [];
 
-  const catalogUrl = selectedCategoryId
-    ? `/api/square/catalog/items?categoryId=${selectedCategoryId}`
-    : '/api/square/catalog/items';
-  const { data: catalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
+  const { data: allCatalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
+    queryKey: ['/api/square/catalog/items'],
+    staleTime: 1000 * 60 * 10,
+  });
+  const allCatalogItems = allCatalogData?.data || [];
+
+  const { data: filteredCatalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
     queryKey: ['/api/square/catalog/items', selectedCategoryId],
     queryFn: async () => {
-      const res = await fetch(catalogUrl);
+      const res = await fetch(`/api/square/catalog/items?categoryId=${selectedCategoryId}`);
       if (!res.ok) throw new Error('Failed to fetch catalog items');
       return res.json();
     },
     staleTime: 1000 * 60 * 10,
+    enabled: !!selectedCategoryId,
   });
-  const catalogItems = catalogData?.data || [];
+
+  const catalogItems = selectedCategoryId ? (filteredCatalogData?.data || []) : allCatalogItems;
+  const hasCatalogItems = allCatalogItems.length > 0;
 
   const getPriceForVariation = (variationId: string | null | undefined): number | null => {
     if (!variationId) return null;
-    for (const item of catalogItems) {
+    for (const item of allCatalogItems) {
       const v = item.variations.find(v => v.id === variationId);
       if (v) return v.price;
     }
@@ -486,7 +492,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   />
                 </div>
 
-                {catalogItems.length > 0 && (
+                {hasCatalogItems && (
                   <div className="space-y-3 rounded-lg border p-3">
                     <div className="text-sm font-medium">Square Catalog Items</div>
 
