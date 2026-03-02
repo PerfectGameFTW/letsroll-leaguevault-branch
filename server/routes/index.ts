@@ -18,6 +18,7 @@ import systemAdminRouter from './system-admin.js';
 import userAvatarRouter from './user-avatar.js';
 import userUpdateRouter from './user-update.js';
 import locationsRouter from './locations.js';
+import paymentSchedulesRouter from './payment-schedules.js';
 
 export function registerRoutes(app: Express): void {
   console.log('[Routes] Registering API routes...');
@@ -50,6 +51,7 @@ export function registerRoutes(app: Express): void {
   app.use('/api/user', userAvatarRouter);
   app.use('/api/user-update', userUpdateRouter);
   app.use('/api/locations', locationsRouter);
+  app.use('/api/payment-schedules', paymentSchedulesRouter);
 
   console.log('[Routes] API routes registered');
 }

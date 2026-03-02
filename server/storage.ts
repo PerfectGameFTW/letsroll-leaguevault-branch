@@ -13,9 +13,10 @@ import {
   type Payment, type InsertPayment,
   type Game, type InsertGame,
   type Score, type InsertScore,
-  type User, type InsertUser, // Add User types
-  type Organization, type InsertOrganization, // Add Organization types
+  type User, type InsertUser,
+  type Organization, type InsertOrganization,
   type Location, type InsertLocation,
+  type PaymentSchedule, type InsertPaymentSchedule,
 } from "@shared/schema.js";
 
 export interface IStorage {
@@ -82,6 +83,8 @@ export interface IStorage {
   updateUser(id: number, userData: Partial<InsertUser>): Promise<User>;
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User>;
+  createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule>;
+  getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
   
   archiveLeague(id: number): Promise<League>;
@@ -804,6 +807,25 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId))
       .returning();
     return updatedUser;
+  }
+
+  async createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule> {
+    const [result] = await db.insert(paymentSchedules).values(schedule).returning();
+    return result;
+  }
+
+  async getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined> {
+    const [result] = await db
+      .select()
+      .from(paymentSchedules)
+      .where(
+        and(
+          eq(paymentSchedules.bowlerId, bowlerId),
+          eq(paymentSchedules.leagueId, leagueId),
+          eq(paymentSchedules.active, true)
+        )
+      );
+    return result;
   }
 
   async updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void> {
