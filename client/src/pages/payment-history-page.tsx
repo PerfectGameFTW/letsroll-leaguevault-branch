@@ -242,15 +242,17 @@ export default function PaymentHistoryPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Amount Past Due to Date</CardTitle>
-              <CardDescription>Unpaid fees for weeks passed</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
-            </CardContent>
-          </Card>
+          <Link href="/bowler-dashboard">
+            <Card className="cursor-pointer transition-colors hover:border-destructive/50 hover:bg-destructive/5">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">Amount Past Due to Date</CardTitle>
+                <CardDescription>Unpaid fees for weeks passed — click to make a payment</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
+              </CardContent>
+            </Card>
+          </Link>
 
           {/* Replaced Card Component */}
           <Card>
