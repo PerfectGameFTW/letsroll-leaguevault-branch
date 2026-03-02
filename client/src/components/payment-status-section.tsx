@@ -334,6 +334,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                         onClick={() => {
                           setFixedAmount(financials.amountPastDue);
                           setFixedAmountType('pastDue');
+                          setIncludeFinalTwoWeeks(false);
                         }}
                       >
                         Past Due Balance
@@ -357,7 +358,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               </div>
             )}
             
-            {!financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0 && fixedAmountType !== 'remaining' && !(fixedAmount === null && selectedWeeks === totalWeeks) && (
+            {!financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0 && fixedAmountType !== 'remaining' && fixedAmountType !== 'pastDue' && !(fixedAmount === null && selectedWeeks === totalWeeks) && (
               <div className="flex items-start space-x-3 rounded-md border p-4 bg-muted/50">
                 <Checkbox
                   id="include-final-two-weeks"
