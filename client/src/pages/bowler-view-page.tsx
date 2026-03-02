@@ -31,6 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Bowler, Payment, Team, League, BowlerLeague } from "@shared/schema";
 import { format, differenceInWeeks, startOfToday, isValid, parseISO } from "date-fns";
 import { enrollInLoyalty } from "@/lib/square";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface LoyaltyInfo {
   points: number;
@@ -108,14 +109,33 @@ export default function BowlerViewPage() {
     }, []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [bowlerLeaguesResponse?.data, bowlerId]);
 
-  // Get all leagues
+  // Get all leagues (always fetch so we can show "add to league" option)
   const { data: leaguesResponse } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
-    enabled: !!bowlerLeagues.length,
-    staleTime: 1000 * 60 * 30, // Cache for 30 minutes
+    staleTime: 1000 * 60 * 30,
     retry: false,
   });
   const leagues = leaguesResponse?.data || [];
+
+  // Get all teams for the add-to-league flow
+  const [addLeagueId, setAddLeagueId] = useState<number | null>(null);
+  const [addTeamId, setAddTeamId] = useState<number | null>(null);
+  const { data: allTeamsResponse } = useQuery<ApiResponse<Team[]>>({
+    queryKey: ["/api/teams"],
+    staleTime: 1000 * 60 * 15,
+    retry: false,
+  });
+  const allTeams = allTeamsResponse?.data || [];
+
+  const availableLeagues = useMemo(() => {
+    const assignedLeagueIds = new Set(bowlerLeagues.map(bl => bl.leagueId));
+    return leagues.filter(l => l.active && !assignedLeagueIds.has(l.id));
+  }, [leagues, bowlerLeagues]);
+
+  const teamsForAddLeague = useMemo(() => {
+    if (!addLeagueId) return [];
+    return allTeams.filter(t => t.leagueId === addLeagueId);
+  }, [allTeams, addLeagueId]);
 
   // Get selected league's active team association
   const selectedAssociation = useMemo(() => {
@@ -186,6 +206,27 @@ export default function BowlerViewPage() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+
+  const addToLeagueMutation = useMutation({
+    mutationFn: async () => {
+      if (!addLeagueId || !addTeamId) throw new Error("Select a league and team");
+      return apiRequest("/api/bowler-leagues", "POST", {
+        bowlerId,
+        leagueId: addLeagueId,
+        teamId: addTeamId,
+        active: true,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      setAddLeagueId(null);
+      setAddTeamId(null);
+      toast({ title: "Success", description: "Bowler added to league" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -301,6 +342,63 @@ export default function BowlerViewPage() {
                 >
                   View Scores →
                 </Link>
+              </div>
+            )}
+            {availableLeagues.length > 0 && (
+              <div className="mt-3 space-y-2 rounded-lg border p-3">
+                <div className="text-sm font-medium">Add to League</div>
+                <Select
+                  value={addLeagueId?.toString() || ""}
+                  onValueChange={(val) => {
+                    setAddLeagueId(parseInt(val));
+                    setAddTeamId(null);
+                  }}
+                >
+                  <SelectTrigger className="w-[300px]">
+                    <SelectValue placeholder="Select a league" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableLeagues.map((league) => (
+                      <SelectItem key={league.id} value={league.id.toString()}>
+                        {league.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {addLeagueId && (
+                  <Select
+                    value={addTeamId?.toString() || ""}
+                    onValueChange={(val) => setAddTeamId(parseInt(val))}
+                  >
+                    <SelectTrigger className="w-[300px]">
+                      <SelectValue placeholder="Select a team" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {teamsForAddLeague.length === 0 ? (
+                        <SelectItem value="none" disabled>No teams in this league</SelectItem>
+                      ) : (
+                        teamsForAddLeague.map((team) => (
+                          <SelectItem key={team.id} value={team.id.toString()}>
+                            {team.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+                {addLeagueId && addTeamId && (
+                  <Button
+                    size="sm"
+                    onClick={() => addToLeagueMutation.mutate()}
+                    disabled={addToLeagueMutation.isPending}
+                  >
+                    {addToLeagueMutation.isPending ? (
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Adding...</>
+                    ) : (
+                      "Add to League"
+                    )}
+                  </Button>
+                )}
               </div>
             )}
           </div>
