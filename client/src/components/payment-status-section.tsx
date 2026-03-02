@@ -394,7 +394,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground flex items-center gap-1.5">
               <DollarSign className="h-3.5 w-3.5" />
-              Remaining Balance
+              Full Season Remaining Balance
             </span>
             <span className="text-sm font-medium">{formatDollars(financials.remainingBalance)}</span>
           </div>
