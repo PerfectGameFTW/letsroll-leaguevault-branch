@@ -254,10 +254,10 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select a league (optional)" />
+                        <SelectValue placeholder="Select a league" />
                       </SelectTrigger>
                       <SelectContent>
-                        {leagues.map((league) => (
+                        {leagues.filter((league) => league.active).map((league) => (
                           <SelectItem key={league.id} value={league.id.toString()}>
                             {league.name}
                           </SelectItem>
