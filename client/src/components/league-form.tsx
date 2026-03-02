@@ -167,22 +167,15 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
 
   const mutation = useMutation({
     mutationFn: async (data: InsertLeague) => {
-      const response = await apiRequest(
-        league ? "PATCH" : "POST",
+      return apiRequest(
         league ? `/api/leagues/${league.id}` : "/api/leagues",
+        league ? "PATCH" : "POST",
         {
           ...data,
           seasonStart: data.seasonStart.toISOString(),
           seasonEnd: data.seasonEnd.toISOString(),
         }
       );
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
-      }
-
-      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/leagues"] });
@@ -207,11 +200,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!league) return;
-      const response = await apiRequest("DELETE", `/api/leagues/${league.id}`);
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to delete league");
-      }
+      return apiRequest(`/api/leagues/${league.id}`, "DELETE");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/leagues"] });
