@@ -21,9 +21,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { InsertPayment, Bowler } from "@shared/schema";
+import type { InsertPayment, Bowler, League } from "@shared/schema";
 import { insertPaymentSchema } from "@shared/schema";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Loader2, AlertCircle, CreditCard, Info, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,6 +44,12 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const [squareLoadFailed, setSquareLoadFailed] = useState(false);
   const initializationAttempted = useRef(false);
   const queryClient = useQueryClient();
+
+  const { data: leagueData } = useQuery<{ success: boolean; data: League }>({
+    queryKey: ['/api/leagues', leagueId],
+    enabled: !!leagueId,
+  });
+  const leagueInfo = leagueData?.data;
 
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
@@ -230,6 +236,15 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         <DialogHeader>
           <DialogTitle>Record Payment</DialogTitle>
         </DialogHeader>
+
+        {leagueInfo?.squareCatalogItemName && (
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              Charging for: <span className="font-medium">{leagueInfo.squareCatalogItemName}</span> — ${(leagueInfo.weeklyFee / 100).toFixed(2)}
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

@@ -71,6 +71,9 @@ export const leagues = pgTable("leagues", {
   weeklyFee: integer("weekly_fee").notNull().default(2000),
   practiceStartTime: text("practice_start_time"),
   competitionStartTime: text("competition_start_time"),
+  squareCatalogItemId: text("square_catalog_item_id"),
+  squareCatalogItemVariationId: text("square_catalog_item_variation_id"),
+  squareCatalogItemName: text("square_catalog_item_name"),
   organizationId: integer("organization_id").references(() => organizations.id),
   locationId: integer("location_id").references(() => locations.id),
 }, (table) => ({
@@ -394,6 +397,9 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   weeklyFee: positiveIntSchema.default(2000),
   practiceStartTime: timeSchema.optional(),
   competitionStartTime: timeSchema.optional(),
+  squareCatalogItemId: z.string().nullable().optional(),
+  squareCatalogItemVariationId: z.string().nullable().optional(),
+  squareCatalogItemName: z.string().nullable().optional(),
   locationId: z.number().int().positive().nullable().optional(),
 }).omit({ id: true })
   .refine(
@@ -521,6 +527,9 @@ export const partialLeagueSchema = z.object({
   weeklyFee: positiveIntSchema,
   practiceStartTime: timeSchema,
   competitionStartTime: timeSchema,
+  squareCatalogItemId: z.string().nullable(),
+  squareCatalogItemVariationId: z.string().nullable(),
+  squareCatalogItemName: z.string().nullable(),
   locationId: z.number().int().positive().nullable(),
 }).partial().refine(
   (data) => {

@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Loader2, Users, CircleDollarSign, Trophy } from "lucide-react";
+import { Loader2, Users, CircleDollarSign, Trophy, ShoppingBag } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import type { League } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -65,7 +66,15 @@ export default function LeagueViewPage() {
   return (
     <Layout>
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">{league.name}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold">{league.name}</h1>
+          {league.squareCatalogItemName && (
+            <Badge variant="secondary" className="gap-1">
+              <ShoppingBag className="h-3 w-3" />
+              {league.squareCatalogItemName}
+            </Badge>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Link href={`/leagues/${leagueId}/teams`} className="block">

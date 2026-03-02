@@ -4,6 +4,7 @@ import { eq, and, lte, isNull, or } from "drizzle-orm";
 import { paymentSchedules, payments, leagues } from "@shared/schema";
 import { addWeeks, addMonths } from "date-fns";
 import { createSquarePayment } from "../lib/square";
+import { createOrderWithPayment } from "./square";
 import { logger } from "../logger";
 
 class PaymentScheduler {
@@ -170,18 +171,35 @@ class PaymentScheduler {
           scheduledTime: scheduleRecord.nextPaymentDate.toISOString()
         });
 
-        // Process payment using Square
         logger.info(`[PaymentScheduler] Initiating Square payment for ${jobId}`, {
           cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`,
           initiationTime: new Date().toISOString()
         });
 
-        const paymentResult = await createSquarePayment({
-          amount: scheduleRecord.amount,
-          cardId: scheduleRecord.squareCardId,
-          bowlerId: scheduleRecord.bowlerId,
-          leagueId: scheduleRecord.leagueId,
-        });
+        const league = await db.select().from(leagues).where(eq(leagues.id, scheduleRecord.leagueId)).then(r => r[0]);
+        const squareLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
+        let paymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string; cardId?: string };
+
+        if (league?.squareCatalogItemVariationId && squareLocationId) {
+          try {
+            const orderResult = await createOrderWithPayment(
+              scheduleRecord.squareCardId!,
+              scheduleRecord.amount,
+              league.squareCatalogItemVariationId,
+              squareLocationId
+            );
+            paymentResult = { status: 'success', paymentId: orderResult.id };
+          } catch (error) {
+            paymentResult = { status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
+          }
+        } else {
+          paymentResult = await createSquarePayment({
+            amount: scheduleRecord.amount,
+            cardId: scheduleRecord.squareCardId,
+            bowlerId: scheduleRecord.bowlerId,
+            leagueId: scheduleRecord.leagueId,
+          });
+        }
 
         logger.info(`[PaymentScheduler] Payment processed for ${jobId}`, {
           status: paymentResult.status,

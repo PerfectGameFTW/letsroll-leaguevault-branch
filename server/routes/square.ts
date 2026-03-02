@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { processPayment, createOrUpdateCustomer } from '../services/square.js';
+import { processPayment, createOrUpdateCustomer, listCatalogItems, createOrderWithPayment } from '../services/square.js';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
@@ -18,14 +18,26 @@ router.post('/payments', async (req, res) => {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
-    const payment = await processPayment(
-      req.body.sourceId,
-      req.body.amount,
-      req.body.storeCard
-    );
+    let payment;
+    const league = await storage.getLeague(req.body.leagueId);
+    const squareLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
 
-    // If this is for a recurring payment schedule and we have a card on file,
-    // update the schedule with the new card token
+    if (league?.squareCatalogItemVariationId && squareLocationId) {
+      payment = await createOrderWithPayment(
+        req.body.sourceId,
+        req.body.amount,
+        league.squareCatalogItemVariationId,
+        squareLocationId,
+        req.body.storeCard
+      );
+    } else {
+      payment = await processPayment(
+        req.body.sourceId,
+        req.body.amount,
+        req.body.storeCard
+      );
+    }
+
     if (req.body.storeCard && payment.cardOnFile && payment.cardOnFile.id) {
       try {
         await storage.updatePaymentScheduleCard(
@@ -115,7 +127,16 @@ router.post('/customers', async (req, res) => {
   }
 });
 
-// Add a debugging route to check Square environment
+router.get('/catalog/items', async (req, res) => {
+  try {
+    const items = await listCatalogItems();
+    sendSuccess(res, items);
+  } catch (error) {
+    console.error('[Square Routes] Catalog list error:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to fetch catalog items');
+  }
+});
+
 router.get('/config', (req, res) => {
   try {
     // Don't expose actual tokens, just show detection results

@@ -286,7 +286,143 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
   }
 }
 
+export async function listCatalogItems() {
+  const client = await initializeSquareClient();
+  if (!client) {
+    throw new Error('Square client not initialized');
+  }
+
+  try {
+    const response = await client.catalogApi.listCatalog(undefined, 'ITEM');
+    const objects = response.result.objects || [];
+
+    return objects.map((item) => {
+      const variations = (item.itemData?.variations || []).map((v) => ({
+        id: v.id,
+        name: v.itemVariationData?.name || 'Default',
+        price: v.itemVariationData?.priceMoney?.amount
+          ? Number(v.itemVariationData.priceMoney.amount)
+          : null,
+        currency: v.itemVariationData?.priceMoney?.currency || 'USD',
+      }));
+
+      return {
+        id: item.id,
+        name: item.itemData?.name || 'Unnamed Item',
+        description: item.itemData?.description || '',
+        variations,
+      };
+    });
+  } catch (error) {
+    console.error('[Square Service] Catalog list error:', error);
+    throw new Error('Failed to fetch catalog items: ' + (error instanceof Error ? error.message : String(error)));
+  }
+}
+
+export async function createOrderWithPayment(
+  sourceId: string,
+  amount: number,
+  catalogItemVariationId: string,
+  locationId: string,
+  storeCard: boolean = false
+) {
+  const client = await initializeSquareClient();
+  if (!client) {
+    throw new Error(JSON.stringify({
+      error: { message: "Payment system is temporarily unavailable", code: "INITIALIZATION_ERROR" }
+    }));
+  }
+
+  try {
+    console.log('[Square Service] Creating order with catalog item:', {
+      amount,
+      catalogItemVariationId,
+      locationId,
+      sourceIdPrefix: sourceId.substring(0, 5),
+    });
+
+    const orderResponse = await client.ordersApi.createOrder({
+      order: {
+        locationId,
+        lineItems: [
+          {
+            catalogObjectId: catalogItemVariationId,
+            quantity: '1',
+          },
+        ],
+      },
+      idempotencyKey: `order-${Date.now()}-${Math.random()}`,
+    });
+
+    const order = orderResponse.result.order;
+    if (!order?.id) {
+      throw new Error('Failed to create order');
+    }
+
+    console.log('[Square Service] Order created:', order.id);
+
+    const paymentRequest: any = {
+      sourceId,
+      idempotencyKey: `pay-${Date.now()}-${Math.random()}`,
+      amountMoney: {
+        amount: BigInt(amount),
+        currency: 'USD',
+      },
+      orderId: order.id,
+      locationId,
+      autocomplete: true,
+    };
+
+    if (storeCard) {
+      paymentRequest.card_on_file = true;
+    }
+
+    const paymentResponse = await client.paymentsApi.createPayment(paymentRequest);
+
+    if (!paymentResponse?.result?.payment) {
+      throw new Error(JSON.stringify({
+        error: { message: 'Unable to process payment', code: "INVALID_RESPONSE" }
+      }));
+    }
+
+    const payment = paymentResponse.result.payment;
+    const cardDetails = payment.cardDetails?.card;
+
+    let cardOnFile;
+    if (storeCard && payment.cardDetails?.status === 'CAPTURED') {
+      try {
+        const cardResponse = await client.cardsApi.retrieveCard(payment.cardDetails.card?.id || '');
+        if (cardResponse?.result?.card) {
+          cardOnFile = {
+            id: cardResponse.result.card.id,
+            last4: cardResponse.result.card.last4,
+            brand: cardResponse.result.card.cardBrand,
+          };
+        }
+      } catch (error) {
+        console.error('[Square Service] Error retrieving stored card:', error);
+      }
+    }
+
+    return {
+      id: payment.id,
+      status: payment.status,
+      orderId: order.id,
+      card: {
+        last4: cardDetails?.last4 ?? '****',
+        brand: cardDetails?.cardBrand ?? 'UNKNOWN',
+      },
+      cardOnFile,
+    };
+  } catch (error) {
+    console.error('[Square Service] Order+Payment error:', error);
+    throw error;
+  }
+}
+
 export default {
   createOrUpdateCustomer,
-  processPayment
+  processPayment,
+  listCatalogItems,
+  createOrderWithPayment,
 };

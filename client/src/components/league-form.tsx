@@ -29,6 +29,20 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { insertLeagueSchema, type InsertLeague, type League, type Location } from "@shared/schema";
+
+interface CatalogItemVariation {
+  id: string;
+  name: string;
+  price: number | null;
+  currency: string;
+}
+
+interface CatalogItem {
+  id: string;
+  name: string;
+  description: string;
+  variations: CatalogItemVariation[];
+}
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -69,6 +83,12 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   });
   const activeLocations = (locationsData?.data || []).filter(l => l.active);
 
+  const { data: catalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
+    queryKey: ['/api/square/catalog/items'],
+    staleTime: 1000 * 60 * 10,
+  });
+  const catalogItems = catalogData?.data || [];
+
   // Initialize dates with noon time to avoid timezone issues
   const today = new Date();
   today.setHours(12, 0, 0, 0);
@@ -89,6 +109,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       practiceStartTime: "",
       competitionStartTime: "",
       weeklyFee: 2000,
+      squareCatalogItemId: null,
+      squareCatalogItemVariationId: null,
+      squareCatalogItemName: null,
       locationId: null,
     },
   });
@@ -154,6 +177,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         practiceStartTime: league.practiceStartTime || "",
         competitionStartTime: league.competitionStartTime || "",
         weeklyFee: league.weeklyFee || 2000,
+        squareCatalogItemId: league.squareCatalogItemId || null,
+        squareCatalogItemVariationId: league.squareCatalogItemVariationId || null,
+        squareCatalogItemName: league.squareCatalogItemName || null,
         locationId: league.locationId || null,
       });
     } else if (!open) {
@@ -167,6 +193,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         practiceStartTime: "",
         competitionStartTime: "",
         weeklyFee: 2000,
+        squareCatalogItemId: null,
+        squareCatalogItemVariationId: null,
+        squareCatalogItemName: null,
         locationId: null,
       });
       setShowDeleteConfirm(false);
@@ -417,6 +446,53 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     )}
                   />
                 </div>
+
+                {catalogItems.length > 0 && (
+                  <FormItem>
+                    <FormLabel>Square Catalog Item</FormLabel>
+                    <Select
+                      value={form.watch('squareCatalogItemVariationId') || 'none'}
+                      onValueChange={(value) => {
+                        if (value === 'none') {
+                          form.setValue('squareCatalogItemId', null);
+                          form.setValue('squareCatalogItemVariationId', null);
+                          form.setValue('squareCatalogItemName', null);
+                        } else {
+                          for (const item of catalogItems) {
+                            const variation = item.variations.find(v => v.id === value);
+                            if (variation) {
+                              form.setValue('squareCatalogItemId', item.id);
+                              form.setValue('squareCatalogItemVariationId', variation.id);
+                              form.setValue('squareCatalogItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
+                              if (variation.price !== null) {
+                                form.setValue('weeklyFee', variation.price);
+                              }
+                              break;
+                            }
+                          }
+                        }
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="None (manual pricing)" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">None (manual pricing)</SelectItem>
+                        {catalogItems.map((item) =>
+                          item.variations.map((variation) => (
+                            <SelectItem key={variation.id} value={variation.id}>
+                              {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
+                              {variation.price !== null ? ` ($${(variation.price / 100).toFixed(2)})` : ''}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
 
                 <FormField
                   control={form.control}
