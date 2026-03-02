@@ -33,7 +33,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { differenceInWeeks } from "date-fns";
+import { differenceInWeeks, addWeeks } from "date-fns";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -87,28 +87,45 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     },
   });
 
-  // Calculate weeks between start and end dates
-  const numberOfWeeks = useMemo(() => {
-    const start = form.watch('seasonStart');
-    const end = form.watch('seasonEnd');
+  const [seasonLength, setSeasonLength] = useState<number>(0);
+
+  const watchedStart = form.watch('seasonStart');
+  const watchedEnd = form.watch('seasonEnd');
+
+  useEffect(() => {
+    const start = form.getValues('seasonStart');
+    const end = form.getValues('seasonEnd');
     if (start && end) {
-      // Ensure both dates use the same time for comparison
       const startDate = new Date(start);
       startDate.setHours(12, 0, 0, 0);
       const endDate = new Date(end);
       endDate.setHours(12, 0, 0, 0);
-      return differenceInWeeks(endDate, startDate);
+      const weeks = differenceInWeeks(endDate, startDate);
+      if (weeks > 0) setSeasonLength(weeks);
     }
-    return 0;
-  }, [form.watch('seasonStart'), form.watch('seasonEnd')]);
+  }, [watchedStart, watchedEnd]);
 
-  const watchedStart = form.watch('seasonStart');
+  const handleSeasonLengthChange = (weeks: number) => {
+    setSeasonLength(weeks);
+    const start = form.getValues('seasonStart');
+    if (start && weeks > 0) {
+      const startDate = new Date(start);
+      startDate.setHours(12, 0, 0, 0);
+      const endDate = addWeeks(startDate, weeks);
+      form.setValue('seasonEnd', endDate);
+    }
+  };
   useEffect(() => {
     if (watchedStart) {
       const date = new Date(watchedStart);
       if (!isNaN(date.getTime())) {
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         form.setValue('weekDay', dayNames[date.getDay()]);
+        if (seasonLength > 0) {
+          const startDate = new Date(watchedStart);
+          startDate.setHours(12, 0, 0, 0);
+          form.setValue('seasonEnd', addWeeks(startDate, seasonLength));
+        }
       }
     }
   }, [watchedStart]);
@@ -305,10 +322,18 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
 
                 {/* League Info Display */}
                 <div className="space-y-3">
-                  {/* Season Length Display */}
-                  <div className="rounded-lg border p-3">
-                    <div className="text-sm font-medium">Season Length</div>
-                    <div className="text-2xl font-bold mt-1">{numberOfWeeks} weeks</div>
+                  {/* Season Length Input */}
+                  <div>
+                    <label className="text-sm font-medium">Season Length (weeks)</label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={52}
+                      value={seasonLength || ''}
+                      onChange={(e) => handleSeasonLengthChange(parseInt(e.target.value) || 0)}
+                      placeholder="Enter number of weeks"
+                      className="mt-1.5"
+                    />
                   </div>
 
                   {/* Bowling Day Selection */}
