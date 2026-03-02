@@ -350,16 +350,8 @@ export default function BowlerViewPage() {
               </SelectContent>
             </Select>
             {team && (
-              <div className="space-y-1">
-                <div className="font-medium text-muted-foreground">
-                  {team.name}
-                </div>
-                <Link 
-                  href={`/bowlers/${bowler?.id}/scores`}
-                  className="text-sm text-muted-foreground hover:text-foreground"
-                >
-                  View Scores →
-                </Link>
+              <div className="font-medium text-muted-foreground">
+                {team.name}
               </div>
             )}
           </div>
