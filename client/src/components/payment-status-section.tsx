@@ -148,18 +148,21 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   }, [league, bowlerPayments]);
 
   const seasonPresets = useMemo(() => {
-    const hasPayments = financials.totalPaid > 0;
     const seasonStarted = league.seasonStart && new Date(league.seasonStart) < new Date();
-    const hideFullSeason = hasPayments && seasonStarted;
-    const presets = [
+    const halfSeasonAmount = weeklyFee * Math.ceil(totalWeeks / 2);
+    const hideFullSeason = financials.totalPaid > 0 && seasonStarted;
+    const hideHalfSeason = financials.totalPaid >= halfSeasonAmount && seasonStarted;
+    const presets: { label: string; weeks: number }[] = [
       { label: "1 Month", weeks: 4 },
-      { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
     ];
+    if (!hideHalfSeason) {
+      presets.push({ label: "Half Season", weeks: Math.ceil(totalWeeks / 2) });
+    }
     if (!hideFullSeason) {
       presets.push({ label: "Full Season", weeks: totalWeeks });
     }
     return presets;
-  }, [totalWeeks, financials.totalPaid, league.seasonStart]);
+  }, [totalWeeks, weeklyFee, financials.totalPaid, league.seasonStart]);
 
   const { data: scheduleResponse } = useQuery<{ success: boolean; data: ScheduleData }>({
     queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`],
