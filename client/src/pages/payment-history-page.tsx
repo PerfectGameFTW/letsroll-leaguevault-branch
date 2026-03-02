@@ -139,6 +139,7 @@ export default function PaymentHistoryPage() {
   let finalTwoWeeksDueByDate: Date | null = null;
   let finalTwoWeeksIsPaid = false;
   let finalTwoWeeksIsPastDue = false;
+  let finalTwoWeeksPaidOnWeek: number | null = null;
 
   if (league?.weeklyFee && league?.seasonStart) {
     finalTwoWeeksDueByWeek = league.finalTwoWeeksDueWeek ?? 6;
@@ -146,6 +147,21 @@ export default function PaymentHistoryPage() {
     finalTwoWeeksDueByDate = addWeeks(new Date(league.seasonStart), finalTwoWeeksDueByWeek);
     finalTwoWeeksIsPaid = totalPaidAmount >= finalTwoWeeksAmount;
     finalTwoWeeksIsPastDue = !finalTwoWeeksIsPaid && startOfToday() > finalTwoWeeksDueByDate;
+
+    if (finalTwoWeeksIsPaid) {
+      const seasonStart = new Date(league.seasonStart);
+      const sortedPayments = [...totalPaidPayments].sort(
+        (a, b) => new Date(a.weekOf).getTime() - new Date(b.weekOf).getTime()
+      );
+      let runningTotal = 0;
+      for (const p of sortedPayments) {
+        runningTotal += p.amount;
+        if (runningTotal >= finalTwoWeeksAmount) {
+          finalTwoWeeksPaidOnWeek = Math.max(1, differenceInWeeks(new Date(p.weekOf), seasonStart) + 1);
+          break;
+        }
+      }
+    }
   }
 
   const dialogAmount = payDialogType === 'pastdue' ? amountPastDue : remainingBalance;
@@ -382,7 +398,9 @@ export default function PaymentHistoryPage() {
                       ? 'text-destructive'
                       : 'text-muted-foreground'
                 }`}>
-                  {finalTwoWeeksIsPaid ? 'Paid' : finalTwoWeeksIsPastDue ? 'Past Due' : 'Due'}
+                  {finalTwoWeeksIsPaid
+                    ? `Paid on Week ${finalTwoWeeksPaidOnWeek ?? '?'}`
+                    : finalTwoWeeksIsPastDue ? 'Past Due' : 'Due'}
                 </p>
               </CardContent>
             </Card>
