@@ -30,7 +30,7 @@ import { insertBowlerSchema, type InsertBowler, type Team, type League, type Bow
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 interface BowlerFormProps {
   open: boolean;
@@ -43,6 +43,7 @@ interface BowlerFormProps {
 export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues }: BowlerFormProps) {
   const { toast } = useToast();
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
 
   // Move form initialization before any conditional logic
   const form = useForm<InsertBowler>({
@@ -50,9 +51,34 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
     defaultValues: {
       name: bowler?.name ?? "",
       email: bowler?.email ?? "",
+      phone: bowler?.phone ?? "",
       active: bowler?.active ?? true,
     },
   });
+
+  useEffect(() => {
+    if (open && bowler) {
+      form.reset({
+        name: bowler.name,
+        email: bowler.email ?? "",
+        phone: bowler.phone ?? "",
+        active: bowler.active,
+      });
+      if (bowlerLeagues && bowlerLeagues.length > 0) {
+        setSelectedLeagueId(bowlerLeagues[0].leagueId);
+        setSelectedTeamId(bowlerLeagues[0].teamId);
+      }
+    } else if (open && !bowler) {
+      form.reset({
+        name: "",
+        email: "",
+        phone: "",
+        active: true,
+      });
+      setSelectedLeagueId(null);
+      setSelectedTeamId(null);
+    }
+  }, [open, bowler]);
 
   // Query for leagues with proper caching
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ success: true, data: League[] }>({
@@ -110,10 +136,35 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
           const error = await response.text();
           throw new Error(error);
         }
-        return await response.json();
+        const result = await response.json();
+        const newBowlerId = result.data?.id;
+        if (newBowlerId && selectedLeagueId && selectedTeamId) {
+          const blResponse = await apiRequest("/api/bowler-leagues", "POST", {
+            bowlerId: newBowlerId,
+            leagueId: selectedLeagueId,
+            teamId: selectedTeamId,
+            active: true,
+          });
+          if (!blResponse.ok) {
+            console.error("Failed to assign bowler to league/team");
+          }
+        }
+        return result;
       }
     },
-    onSuccess,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      toast({
+        title: bowler ? "Bowler updated" : "Bowler created",
+        description: bowler
+          ? "Bowler has been updated successfully."
+          : "Bowler has been added to the system.",
+      });
+      setSelectedLeagueId(null);
+      setSelectedTeamId(null);
+      onClose();
+    },
     onError,
   });
 
@@ -176,6 +227,73 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone Number</FormLabel>
+                    <FormControl>
+                      <Input type="tel" placeholder="(555) 555-5555" {...field} value={field.value ?? ""} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {!bowler && (
+                <>
+                  <div>
+                    <FormLabel>League</FormLabel>
+                    <Select
+                      value={selectedLeagueId?.toString() ?? ""}
+                      onValueChange={(val) => {
+                        setSelectedLeagueId(val ? parseInt(val) : null);
+                        setSelectedTeamId(null);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a league (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {leagues.map((league) => (
+                          <SelectItem key={league.id} value={league.id.toString()}>
+                            {league.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedLeagueId && (
+                    <div>
+                      <FormLabel>Team</FormLabel>
+                      <Select
+                        value={selectedTeamId?.toString() ?? ""}
+                        onValueChange={(val) => setSelectedTeamId(val ? parseInt(val) : null)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a team" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {loadingTeams ? (
+                            <SelectItem value="loading" disabled>Loading teams...</SelectItem>
+                          ) : teams.length === 0 ? (
+                            <SelectItem value="none" disabled>No teams in this league</SelectItem>
+                          ) : (
+                            teams.map((team) => (
+                              <SelectItem key={team.id} value={team.id.toString()}>
+                                {team.name}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </>
+              )}
 
               <FormField
                 control={form.control}

@@ -102,6 +102,7 @@ export const bowlers = pgTable("bowlers", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   email: text("email"),
+  phone: text("phone"),
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
   squareCustomerId: text("square_customer_id"),
@@ -385,6 +386,7 @@ const baseLocationSchema = createInsertSchema(locations);
 export const insertBowlerSchema = baseBowlerSchema.extend({
   name: nameSchema,
   email: emailSchema.optional(),
+  phone: z.string().nullable().optional(),
   active: z.boolean().default(true),
   order: z.number().min(0).default(0),
   squareCustomerId: z.string().nullable().optional(),
