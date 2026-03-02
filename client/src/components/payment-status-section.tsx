@@ -472,13 +472,19 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
         {!activeSchedule && (
           <div className="space-y-2">
-            <Button
-              onClick={() => { setPaymentMode('autopay'); setSelectedSchedule('weekly'); setShowPaymentSetup(true); }}
-              className="w-full"
-            >
-              Set Up Auto-Pay
-              <CreditCard className="ml-2 h-4 w-4" />
-            </Button>
+            {financials.amountPastDue > 0 ? (
+              <p className="text-sm text-muted-foreground text-center">
+                Auto-pay is unavailable until your past due balance is paid in full.
+              </p>
+            ) : (
+              <Button
+                onClick={() => { setPaymentMode('autopay'); setSelectedSchedule('weekly'); setShowPaymentSetup(true); }}
+                className="w-full"
+              >
+                Set Up Auto-Pay
+                <CreditCard className="ml-2 h-4 w-4" />
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => { setPaymentMode('onetime'); setSelectedSchedule('custom'); setShowPaymentSetup(true); }}
