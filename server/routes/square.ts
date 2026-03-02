@@ -28,11 +28,15 @@ router.post('/payments', async (req, res) => {
     }
 
     const lineItems: { catalogObjectId: string; quantity: string }[] = [];
+    const weeklyFee = league?.weeklyFee || 0;
+    const quantity = weeklyFee > 0 && req.body.amount % weeklyFee === 0
+      ? String(req.body.amount / weeklyFee)
+      : '1';
     if (league?.squareLineageItemVariationId) {
-      lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity: '1' });
+      lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity });
     }
     if (league?.squarePrizeFundItemVariationId) {
-      lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '1' });
+      lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity });
     }
 
     const buyerEmail = bowler?.email || undefined;

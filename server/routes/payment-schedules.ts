@@ -186,7 +186,7 @@ router.patch('/:id', async (req, res) => {
 
       updates.frequency = frequency;
 
-      const weeklyFee = (league.pricePerWeek || 0) + (league.prizeFundPerWeek || 0);
+      const weeklyFee = league.weeklyFee || 0;
       updates.amount = frequency === 'monthly' ? weeklyFee * 4 : weeklyFee;
 
       updates.nextPaymentDate = getNextLeagueDateTime(

@@ -216,11 +216,15 @@ class PaymentScheduler {
         let paymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string; cardId?: string };
 
         const lineItems: { catalogObjectId: string; quantity: string }[] = [];
+        const weeklyFee = league?.weeklyFee || 0;
+        const scheduledQty = weeklyFee > 0 && scheduleRecord.amount % weeklyFee === 0
+          ? String(scheduleRecord.amount / weeklyFee)
+          : '1';
         if (league?.squareLineageItemVariationId) {
-          lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity: '1' });
+          lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity: scheduledQty });
         }
         if (league?.squarePrizeFundItemVariationId) {
-          lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '1' });
+          lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: scheduledQty });
         }
 
         if (lineItems.length > 0 && squareLocationId) {
@@ -432,10 +436,10 @@ class PaymentScheduler {
 
       const lineItems: { catalogObjectId: string; quantity: string }[] = [];
       if (league.squareLineageItemVariationId) {
-        lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity: '1' });
+        lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity: '2' });
       }
       if (league.squarePrizeFundItemVariationId) {
-        lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '1' });
+        lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '2' });
       }
 
       if (lineItems.length > 0 && squareLocationId) {
