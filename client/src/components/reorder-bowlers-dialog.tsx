@@ -74,7 +74,7 @@ export function ReorderBowlersDialog({
       setIsSubmitting(true);
 
       const updates = orderedLeagues.map((bl, index) => 
-        apiRequest("PATCH", `/api/bowler-leagues/${bl.id}`, {
+        apiRequest(`/api/bowler-leagues/${bl.id}`, "PATCH", {
           bowlerId: bl.bowlerId,
           leagueId: bl.leagueId,
           teamId: bl.teamId,

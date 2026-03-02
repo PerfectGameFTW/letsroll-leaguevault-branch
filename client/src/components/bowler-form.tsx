@@ -98,14 +98,14 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
       if (bowler) {
-        const response = await apiRequest("PATCH", `/api/bowlers/${bowler.id}`, data);
+        const response = await apiRequest(`/api/bowlers/${bowler.id}`, "PATCH", data);
         if (!response.ok) {
           const error = await response.text();
           throw new Error(error);
         }
         return await response.json();
       } else {
-        const response = await apiRequest("POST", "/api/bowlers", data);
+        const response = await apiRequest("/api/bowlers", "POST", data);
         if (!response.ok) {
           const error = await response.text();
           throw new Error(error);
@@ -120,7 +120,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!bowler) return;
-      const response = await apiRequest("DELETE", `/api/bowlers/${bowler.id}`);
+      const response = await apiRequest(`/api/bowlers/${bowler.id}`, "DELETE");
       if (!response.ok) {
         const error = await response.text();
         throw new Error(error);
