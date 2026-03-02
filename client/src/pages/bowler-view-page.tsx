@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
-import { Loader2, ArrowLeft, ExternalLink } from "lucide-react";
+import { Loader2, ArrowLeft, ExternalLink, Plus } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -27,6 +27,13 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { Bowler, Payment, Team, League, BowlerLeague } from "@shared/schema";
 import { format, differenceInWeeks, startOfToday, isValid, parseISO } from "date-fns";
@@ -120,6 +127,7 @@ export default function BowlerViewPage() {
   // Get all teams for the add-to-league flow
   const [addLeagueId, setAddLeagueId] = useState<number | null>(null);
   const [addTeamId, setAddTeamId] = useState<number | null>(null);
+  const [showAddLeagueDialog, setShowAddLeagueDialog] = useState(false);
   const { data: allTeamsResponse } = useQuery<ApiResponse<Team[]>>({
     queryKey: ["/api/teams"],
     staleTime: 1000 * 60 * 15,
@@ -223,6 +231,7 @@ export default function BowlerViewPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
       setAddLeagueId(null);
       setAddTeamId(null);
+      setShowAddLeagueDialog(false);
       toast({ title: "Success", description: "Bowler added to league" });
     },
     onError: (error: Error) => {
@@ -304,13 +313,22 @@ export default function BowlerViewPage() {
           </Link>
         )}
         <div className="flex flex-col gap-2 mb-6">
-          <div className="space-y-1">
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">{bowler?.name}</h1>
               <Badge variant={bowler?.active ? "default" : "secondary"}>
                 {bowler?.active ? "Active" : "Inactive"}
               </Badge>
             </div>
+            {availableLeagues.length > 0 && (
+              <Button
+                size="sm"
+                onClick={() => setShowAddLeagueDialog(true)}
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Add to League
+              </Button>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <Select
@@ -344,9 +362,21 @@ export default function BowlerViewPage() {
                 </Link>
               </div>
             )}
-            {availableLeagues.length > 0 && (
-              <div className="mt-3 space-y-2 rounded-lg border p-3">
-                <div className="text-sm font-medium">Add to League</div>
+          </div>
+        </div>
+
+        <Dialog open={showAddLeagueDialog} onOpenChange={(open) => {
+          setShowAddLeagueDialog(open);
+          if (!open) { setAddLeagueId(null); setAddTeamId(null); }
+        }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add to League</DialogTitle>
+              <DialogDescription>Assign {bowler?.name} to a league and team.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">League</label>
                 <Select
                   value={addLeagueId?.toString() || ""}
                   onValueChange={(val) => {
@@ -354,7 +384,7 @@ export default function BowlerViewPage() {
                     setAddTeamId(null);
                   }}
                 >
-                  <SelectTrigger className="w-[300px]">
+                  <SelectTrigger>
                     <SelectValue placeholder="Select a league" />
                   </SelectTrigger>
                   <SelectContent>
@@ -365,44 +395,49 @@ export default function BowlerViewPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                {addLeagueId && (
+              </div>
+              {addLeagueId && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Team</label>
                   <Select
                     value={addTeamId?.toString() || ""}
                     onValueChange={(val) => setAddTeamId(parseInt(val))}
                   >
-                    <SelectTrigger className="w-[300px]">
+                    <SelectTrigger>
                       <SelectValue placeholder="Select a team" />
                     </SelectTrigger>
                     <SelectContent>
                       {teamsForAddLeague.length === 0 ? (
                         <SelectItem value="none" disabled>No teams in this league</SelectItem>
                       ) : (
-                        teamsForAddLeague.map((team) => (
-                          <SelectItem key={team.id} value={team.id.toString()}>
-                            {team.name}
+                        teamsForAddLeague.map((t) => (
+                          <SelectItem key={t.id} value={t.id.toString()}>
+                            {t.name}
                           </SelectItem>
                         ))
                       )}
                     </SelectContent>
                   </Select>
-                )}
-                {addLeagueId && addTeamId && (
-                  <Button
-                    size="sm"
-                    onClick={() => addToLeagueMutation.mutate()}
-                    disabled={addToLeagueMutation.isPending}
-                  >
-                    {addToLeagueMutation.isPending ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Adding...</>
-                    ) : (
-                      "Add to League"
-                    )}
-                  </Button>
-                )}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => { setShowAddLeagueDialog(false); setAddLeagueId(null); setAddTeamId(null); }}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => addToLeagueMutation.mutate()}
+                  disabled={!addLeagueId || !addTeamId || addToLeagueMutation.isPending}
+                >
+                  {addToLeagueMutation.isPending ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Adding...</>
+                  ) : (
+                    "Add to League"
+                  )}
+                </Button>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Loyalty Program Section */}
         {bowler?.squareCustomerId && (
