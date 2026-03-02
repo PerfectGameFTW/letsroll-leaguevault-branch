@@ -293,13 +293,27 @@ export async function listCatalogCategories() {
   }
 
   try {
-    const response = await client.catalogApi.listCatalog(undefined, 'CATEGORY');
-    const objects = response.result.objects || [];
+    const allObjects: any[] = [];
+    let cursor: string | undefined;
+    do {
+      const response = await client.catalogApi.listCatalog(cursor, 'CATEGORY');
+      const objects = response.result.objects || [];
+      allObjects.push(...objects);
+      cursor = response.result.cursor || undefined;
+    } while (cursor);
 
-    return objects.map((cat) => ({
-      id: cat.id,
-      name: cat.categoryData?.name || 'Unnamed Category',
-    }));
+    const seen = new Set<string>();
+    return allObjects
+      .map((cat) => ({
+        id: cat.id,
+        name: cat.categoryData?.name || 'Unnamed Category',
+      }))
+      .filter((cat) => {
+        if (seen.has(cat.name)) return false;
+        seen.add(cat.name);
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   } catch (error) {
     console.error('[Square Service] Catalog categories error:', error);
     throw new Error('Failed to fetch catalog categories: ' + (error instanceof Error ? error.message : String(error)));
