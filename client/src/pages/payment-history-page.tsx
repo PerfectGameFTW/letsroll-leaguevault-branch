@@ -1,8 +1,11 @@
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
 import type { League, Payment } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { Loader2, ArrowLeft, CreditCard } from "lucide-react";
 import { Link } from "wouter";
 import {
   Table,
@@ -14,6 +17,10 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { differenceInWeeks, startOfToday, format } from "date-fns";
+import { useSquarePayment } from "@/hooks/use-square-payment";
+import { createPayment } from "@/lib/square";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -34,6 +41,26 @@ interface User {
 }
 
 export default function PaymentHistoryPage() {
+  const { toast } = useToast();
+  const [showPayDialog, setShowPayDialog] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const cardContainerRef = useRef<HTMLDivElement>(null);
+  const { card, isInitialized, initializeCard, cleanupCard } = useSquarePayment({
+    onError: (error) => {
+      console.error('[Square Payment Error]:', error);
+      toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
+    }
+  });
+
+  useEffect(() => {
+    if (showPayDialog && cardContainerRef.current) {
+      initializeCard(cardContainerRef.current);
+    }
+    if (!showPayDialog) {
+      cleanupCard();
+    }
+  }, [showPayDialog]);
+
   // Get current user and their bowler ID
   const { data: currentUser, isLoading: loadingUser, error: userError } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
@@ -102,6 +129,25 @@ export default function PaymentHistoryPage() {
     amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
     remainingBalance = fullSeasonAmount - totalPaidAmount;
   }
+
+  const handlePastDuePayment = async () => {
+    if (!card || !bowlerId || !leagueId) {
+      toast({ title: "Error", description: "Missing payment information.", variant: "destructive" });
+      return;
+    }
+    try {
+      setIsSubmitting(true);
+      await createPayment(amountPastDue, card, bowlerId, leagueId, false);
+      toast({ title: "Payment Successful", description: `$${(amountPastDue / 100).toFixed(2)} past due amount has been paid.` });
+      setShowPayDialog(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/payments", bowlerId, leagueId] });
+    } catch (error) {
+      console.error('[Payment Error]:', error);
+      toast({ title: "Payment Failed", description: "Unable to process payment. Please try again.", variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   if (loadingUser || loadingBowler || loadingBowlerLeagues || loadingLeague || loadingPayments) {
     return (
@@ -242,17 +288,61 @@ export default function PaymentHistoryPage() {
             </CardContent>
           </Card>
 
-          <Link href="/bowler-dashboard">
-            <Card className="cursor-pointer transition-colors hover:border-destructive/50 hover:bg-destructive/5">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Amount Past Due to Date</CardTitle>
-                <CardDescription>Unpaid fees for weeks passed — click to make a payment</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
-              </CardContent>
-            </Card>
-          </Link>
+          <Card
+            className={amountPastDue > 0 ? "cursor-pointer transition-colors hover:border-destructive/50 hover:bg-destructive/5" : ""}
+            onClick={() => amountPastDue > 0 && setShowPayDialog(true)}
+          >
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Amount Past Due to Date</CardTitle>
+              <CardDescription>{amountPastDue > 0 ? "Click to make a payment" : "No amount past due"}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Dialog open={showPayDialog} onOpenChange={setShowPayDialog}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Pay Past Due Amount</DialogTitle>
+                <DialogDescription>
+                  Pay your outstanding balance of ${(amountPastDue / 100).toFixed(2)}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="rounded-md border p-4 bg-muted/50">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Amount</span>
+                    <span className="text-lg font-bold">${(amountPastDue / 100).toFixed(2)}</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Card Details</label>
+                  <div
+                    ref={cardContainerRef}
+                    className="min-h-[80px] rounded-md border p-3"
+                  />
+                </div>
+                <Button
+                  onClick={handlePastDuePayment}
+                  disabled={!isInitialized || isSubmitting}
+                  className="w-full"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="mr-2 h-4 w-4" />
+                      Pay ${(amountPastDue / 100).toFixed(2)}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Replaced Card Component */}
           <Card>
