@@ -25,8 +25,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Loader2, Plus, Pencil, Archive, RotateCcw, Trash, AlertTriangle } from "lucide-react";
-import type { League, Team } from "@shared/schema";
+import type { League, Team, Location } from "@shared/schema";
 import type { ScoreWithRelations } from "@/lib/types/scores";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -40,12 +47,19 @@ export default function LeaguesPage() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [archiveConfirmId, setArchiveConfirmId] = useState<number | null>(null);
   const [deleteConfirmName, setDeleteConfirmName] = useState('');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
   });
+
+  const { data: locationsResponse } = useQuery<{ data: Location[] }>({
+    queryKey: ["/api/locations"],
+  });
+
+  const allLocations = locationsResponse?.data || [];
 
   const leagues = leaguesResponse?.data;
 
@@ -134,7 +148,15 @@ export default function LeaguesPage() {
   }
 
   const allLeagues = leagues || [];
-  const filteredLeagues = showArchived ? allLeagues : allLeagues.filter(l => l.active);
+  const locationMap = allLocations.reduce((acc, loc) => { acc[loc.id] = loc.name; return acc; }, {} as Record<number, string>);
+  let filteredLeagues = showArchived ? allLeagues : allLeagues.filter(l => l.active);
+  if (locationFilter !== 'all') {
+    if (locationFilter === 'none') {
+      filteredLeagues = filteredLeagues.filter(l => !l.locationId);
+    } else {
+      filteredLeagues = filteredLeagues.filter(l => l.locationId === parseInt(locationFilter));
+    }
+  }
   const archivedCount = allLeagues.filter(l => !l.active).length;
 
   return (
@@ -151,23 +173,43 @@ export default function LeaguesPage() {
       </div>
 
       <div className="rounded-md border mb-8">
-        {archivedCount > 0 && (
-          <div className="flex items-center justify-end gap-2 p-3 border-b">
-            <Label htmlFor="show-archived-leagues" className="text-sm text-muted-foreground cursor-pointer">
-              Show archived ({archivedCount})
-            </Label>
-            <Switch
-              id="show-archived-leagues"
-              checked={showArchived}
-              onCheckedChange={setShowArchived}
-            />
-          </div>
-        )}
+        <div className="flex items-center justify-between gap-4 p-3 border-b">
+          {allLocations.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Label className="text-sm text-muted-foreground whitespace-nowrap">Location:</Label>
+              <Select value={locationFilter} onValueChange={setLocationFilter}>
+                <SelectTrigger className="w-[180px] h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Locations</SelectItem>
+                  <SelectItem value="none">No Location</SelectItem>
+                  {allLocations.filter(l => l.active).map(loc => (
+                    <SelectItem key={loc.id} value={String(loc.id)}>{loc.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {archivedCount > 0 && (
+            <div className="flex items-center gap-2 ml-auto">
+              <Label htmlFor="show-archived-leagues" className="text-sm text-muted-foreground cursor-pointer">
+                Show archived ({archivedCount})
+              </Label>
+              <Switch
+                id="show-archived-leagues"
+                checked={showArchived}
+                onCheckedChange={setShowArchived}
+              />
+            </div>
+          )}
+        </div>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[15%]">Weekday</TableHead>
-              <TableHead className="w-[25%]">Name</TableHead>
+              <TableHead className="w-[12%]">Weekday</TableHead>
+              <TableHead className="w-[20%]">Name</TableHead>
+              <TableHead>Location</TableHead>
               <TableHead>Teams</TableHead>
               <TableHead className="w-[15%]">Start Date</TableHead>
               <TableHead className="w-[15%]">End Date</TableHead>
@@ -193,6 +235,9 @@ export default function LeaguesPage() {
                     >
                       {league.name}
                     </Link>
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {league.locationId ? locationMap[league.locationId] || '—' : '—'}
                   </TableCell>
                   <TableCell>{teamCounts[league.id] || 0}</TableCell>
                   <TableCell className="whitespace-nowrap">

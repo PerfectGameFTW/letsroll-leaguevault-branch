@@ -46,6 +46,20 @@ const emailSchema = z.string().email("Invalid email address");
 const positiveIntSchema = z.number().int().positive("Must be a positive number");
 
 // Database table definitions
+export const locations = pgTable("locations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  zipCode: text("zip_code"),
+  phone: text("phone"),
+  active: boolean("active").notNull().default(true),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id),
+}, (table) => ({
+  organizationIdx: index("locations_organization_idx").on(table.organizationId),
+}));
+
 export const leagues = pgTable("leagues", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -58,10 +72,12 @@ export const leagues = pgTable("leagues", {
   practiceStartTime: text("practice_start_time"),
   competitionStartTime: text("competition_start_time"),
   organizationId: integer("organization_id").references(() => organizations.id),
+  locationId: integer("location_id").references(() => locations.id),
 }, (table) => ({
   activeNameIdx: index("leagues_active_name_idx").on(table.active, table.name),
   seasonIdx: index("leagues_season_idx").on(table.seasonStart, table.seasonEnd),
-  organizationIdx: index("leagues_organization_idx").on(table.organizationId)
+  organizationIdx: index("leagues_organization_idx").on(table.organizationId),
+  locationIdx: index("leagues_location_idx").on(table.locationId)
 }));
 
 export const teams = pgTable("teams", {
@@ -239,12 +255,25 @@ export const paymentSchedules = pgTable("payment_schedules", {
 export const organizationRelations = relations(organizations, ({ many }) => ({
   leagues: many(leagues),
   users: many(users),
+  locations: many(locations),
+}));
+
+export const locationRelations = relations(locations, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [locations.organizationId],
+    references: [organizations.id],
+  }),
+  leagues: many(leagues),
 }));
 
 export const leagueRelations = relations(leagues, ({ one, many }) => ({
   organization: one(organizations, {
     fields: [leagues.organizationId],
     references: [organizations.id],
+  }),
+  location: one(locations, {
+    fields: [leagues.locationId],
+    references: [locations.id],
   }),
   teams: many(teams),
   bowlerLeagues: many(bowlerLeagues),
@@ -344,6 +373,7 @@ const baseOrganizationSchema = createInsertSchema(organizations);
 
 // Add validation schemas
 const basePaymentScheduleSchema = createInsertSchema(paymentSchedules);
+const baseLocationSchema = createInsertSchema(locations);
 
 // Enhanced insert schemas with additional validation
 export const insertBowlerSchema = baseBowlerSchema.extend({
@@ -364,6 +394,7 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   weeklyFee: positiveIntSchema.default(2000),
   practiceStartTime: timeSchema.optional(),
   competitionStartTime: timeSchema.optional(),
+  locationId: z.number().int().positive().nullable().optional(),
 }).omit({ id: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
@@ -490,6 +521,7 @@ export const partialLeagueSchema = z.object({
   weeklyFee: positiveIntSchema,
   practiceStartTime: timeSchema,
   competitionStartTime: timeSchema,
+  locationId: z.number().int().positive().nullable(),
 }).partial().refine(
   (data) => {
     if (data.seasonStart && data.seasonEnd) {
@@ -506,6 +538,19 @@ export const partialGameSchema = z.object(baseGameSchema.shape).partial();
 export const partialScoreSchema = z.object(baseScoreSchema.shape).partial();
 export const partialPaymentScheduleSchema = z.object(basePaymentScheduleSchema.shape).partial();
 export const partialOrganizationSchema = z.object(baseOrganizationSchema.shape).partial();
+export const partialLocationSchema = z.object(baseLocationSchema.shape).partial();
+
+// Location schema with validation
+export const insertLocationSchema = baseLocationSchema.extend({
+  name: nameSchema,
+  address: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zipCode: z.string().optional(),
+  phone: z.string().optional(),
+  active: z.boolean().default(true),
+  organizationId: positiveIntSchema,
+}).omit({ id: true });
 
 // Organization schema with validation
 export const insertOrganizationSchema = baseOrganizationSchema.extend({
@@ -553,6 +598,9 @@ export type InsertPaymentSchedule = z.infer<typeof insertPaymentScheduleSchema>;
 
 export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+
+export type Location = typeof locations.$inferSelect;
+export type InsertLocation = z.infer<typeof insertLocationSchema>;
 
 
 // API response types

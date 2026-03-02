@@ -1,10 +1,10 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, ShieldCheck, Building2 } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, ShieldCheck, Building2, MapPin } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import type { League, ApiResponse, Organization, User } from "@shared/schema";
+import type { League, Location, ApiResponse, Organization, User } from "@shared/schema";
 import { ErrorBoundary } from "react-error-boundary";
 import {
   NavigationMenu,
@@ -58,6 +58,11 @@ const navItems: NavItem[] = [
     hasDropdown: true
   },
   {
+    icon: MapPin,
+    label: "Locations",
+    href: "/locations"
+  },
+  {
     icon: Users,
     label: "Bowlers",
     href: "/bowlers"
@@ -88,22 +93,54 @@ const LeagueLoadingFallback = () => (
 const LeaguesDropdownContent = () => {
   const { data: leaguesResponse, isLoading } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const { data: locationsResponse } = useQuery<ApiResponse<Location[]>>({
+    queryKey: ["/api/locations"],
+    staleTime: 1000 * 60 * 5,
   });
 
   const leagues = (leaguesResponse?.data || []).filter((l: League) => l.active);
+  const locationsList = locationsResponse?.data || [];
+  const locationMap = locationsList.reduce((acc, loc) => { acc[loc.id] = loc.name; return acc; }, {} as Record<number, string>);
+  const hasLocations = locationsList.length > 0;
 
   if (isLoading) return <LeagueLoadingFallback />;
 
+  const grouped = leagues.reduce((acc, league) => {
+    const key = league.locationId ? locationMap[league.locationId] || 'Other' : 'Unassigned';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(league);
+    return acc;
+  }, {} as Record<string, League[]>);
+
   return (
-    <div className="w-[200px] p-2">
-      {leagues.map((league: League) => (
-        <Link key={league.id} href={`/leagues/${league.id}`}>
-          <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors">
-            {league.name}
-          </button>
-        </Link>
-      ))}
+    <div className="w-[220px] p-2">
+      {hasLocations ? (
+        Object.entries(grouped).map(([locationName, locationLeagues]) => (
+          <div key={locationName}>
+            <div className="px-4 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              {locationName}
+            </div>
+            {locationLeagues.map((league: League) => (
+              <Link key={league.id} href={`/leagues/${league.id}`}>
+                <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors">
+                  {league.name}
+                </button>
+              </Link>
+            ))}
+          </div>
+        ))
+      ) : (
+        leagues.map((league: League) => (
+          <Link key={league.id} href={`/leagues/${league.id}`}>
+            <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors">
+              {league.name}
+            </button>
+          </Link>
+        ))
+      )}
       <div className="border-t mt-2 pt-2">
         <Link href="/leagues">
           <button className="block w-full text-left px-4 py-2 text-sm rounded-md hover:bg-accent transition-colors font-medium">

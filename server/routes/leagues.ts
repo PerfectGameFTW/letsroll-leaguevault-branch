@@ -12,11 +12,14 @@ router.use(filterByOrganization);
 
 router.get("/", async (req: any, res) => {
   try {
-    // Get the organization filter from the middleware
     const organizationId = getOrganizationFilter(req);
     
-    // Fetch leagues with the organization filter
-    const leagues = await storage.getLeagues(organizationId);
+    let leagues = await storage.getLeagues(organizationId);
+    
+    const locationId = req.query.locationId ? parseInt(req.query.locationId) : null;
+    if (locationId) {
+      leagues = leagues.filter(l => l.locationId === locationId);
+    }
     
     sendSuccess(res, leagues);
   } catch (error) {

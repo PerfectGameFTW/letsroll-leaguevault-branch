@@ -46,6 +46,10 @@ A full-stack bowling league management application with multi-tenant support for
 - `SESSION_SECRET` - Express session secret
 
 ## Recent Changes (2026-03-02)
+- Added Locations layer between Organizations and Leagues (organizations → locations → leagues)
+- Locations CRUD with archive/delete, management page at `/locations`, sidebar nav link
+- League form includes Location dropdown; leagues table shows Location column with filter
+- Navigation dropdown groups leagues by location when locations exist
 - Removed all QubicaAMF scoring integration (parser, API service, score scheduler, schema fields, UI references)
 - Added league archive/delete system with cascade delete and type-to-confirm UI
 - League form: auto-fills Bowling Day from Season Start, editable Season Length auto-calculates Season End

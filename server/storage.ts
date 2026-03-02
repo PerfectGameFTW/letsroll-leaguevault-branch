@@ -5,6 +5,7 @@ import {
   users, // Add users table import
   paymentSchedules, // Add paymentSchedules table import
   organizations, // Add organizations table import
+  locations,
   type League, type InsertLeague,
   type Team, type InsertTeam,
   type Bowler, type InsertBowler,
@@ -14,6 +15,7 @@ import {
   type Score, type InsertScore,
   type User, type InsertUser, // Add User types
   type Organization, type InsertOrganization, // Add Organization types
+  type Location, type InsertLocation,
 } from "@shared/schema.js";
 
 export interface IStorage {
@@ -99,6 +101,15 @@ export interface IStorage {
   // Organization admin methods
   getOrganizationUsers(organizationId: number): Promise<User[]>;
   updateUserOrganizationAdminStatus(userId: number, isOrganizationAdmin: boolean): Promise<User>;
+
+  // Location methods
+  getLocations(organizationId?: number | null): Promise<Location[]>;
+  getLocation(id: number): Promise<Location | undefined>;
+  createLocation(data: InsertLocation): Promise<Location>;
+  updateLocation(id: number, data: Partial<InsertLocation>): Promise<Location>;
+  deleteLocation(id: number): Promise<void>;
+  archiveLocation(id: number): Promise<Location>;
+  restoreLocation(id: number): Promise<Location>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -997,6 +1008,50 @@ export class DatabaseStorage implements IStorage {
     });
     
     return updatedUser;
+  }
+
+  // Location methods
+  async getLocations(organizationId?: number | null): Promise<Location[]> {
+    const query = db.select().from(locations);
+
+    if (organizationId !== undefined) {
+      if (organizationId === null) {
+        return query.where(isNull(locations.organizationId)).orderBy(locations.name);
+      }
+      return query.where(eq(locations.organizationId, organizationId)).orderBy(locations.name);
+    }
+
+    return query.orderBy(locations.name);
+  }
+
+  async getLocation(id: number): Promise<Location | undefined> {
+    const [result] = await db.select().from(locations).where(eq(locations.id, id));
+    return result;
+  }
+
+  async createLocation(data: InsertLocation): Promise<Location> {
+    const [result] = await db.insert(locations).values(data).returning();
+    return result;
+  }
+
+  async updateLocation(id: number, data: Partial<InsertLocation>): Promise<Location> {
+    const [result] = await db.update(locations).set(data).where(eq(locations.id, id)).returning();
+    return result;
+  }
+
+  async deleteLocation(id: number): Promise<void> {
+    await db.update(leagues).set({ locationId: null }).where(eq(leagues.locationId, id));
+    await db.delete(locations).where(eq(locations.id, id));
+  }
+
+  async archiveLocation(id: number): Promise<Location> {
+    const [result] = await db.update(locations).set({ active: false }).where(eq(locations.id, id)).returning();
+    return result;
+  }
+
+  async restoreLocation(id: number): Promise<Location> {
+    const [result] = await db.update(locations).set({ active: true }).where(eq(locations.id, id)).returning();
+    return result;
   }
 }
 

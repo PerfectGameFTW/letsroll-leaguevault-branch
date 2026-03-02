@@ -25,6 +25,7 @@ import BowlerDashboardPage from "@/pages/bowler-dashboard-page";
 import AdminPage from "@/pages/admin-page";
 import AdminLinkBowlerPage from "@/pages/admin-link-bowler";
 import OrganizationsPage from "@/pages/organizations-page";
+import LocationsPage from "@/pages/locations-page";
 import { useEffect, useRef, FC } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -120,6 +121,12 @@ function Router() {
       <Route path="/home">
         <OrganizationRouteGuard>
           <HomePage />
+        </OrganizationRouteGuard>
+      </Route>
+      
+      <Route path="/locations">
+        <OrganizationRouteGuard>
+          <LocationsPage />
         </OrganizationRouteGuard>
       </Route>
       

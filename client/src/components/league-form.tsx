@@ -1,6 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { insertLeagueSchema, type InsertLeague, type League } from "@shared/schema";
+import { insertLeagueSchema, type InsertLeague, type League, type Location } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -64,6 +64,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const { toast } = useToast();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const { data: locationsData } = useQuery<{ success: boolean; data: Location[] }>({
+    queryKey: ['/api/locations'],
+  });
+  const activeLocations = (locationsData?.data || []).filter(l => l.active);
+
   // Initialize dates with noon time to avoid timezone issues
   const today = new Date();
   today.setHours(12, 0, 0, 0);
@@ -83,7 +88,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       weekDay: "Monday",
       practiceStartTime: "",
       competitionStartTime: "",
-      weeklyFee: 2000, // Default to $20.00
+      weeklyFee: 2000,
+      locationId: null,
     },
   });
 
@@ -148,6 +154,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         practiceStartTime: league.practiceStartTime || "",
         competitionStartTime: league.competitionStartTime || "",
         weeklyFee: league.weeklyFee || 2000,
+        locationId: league.locationId || null,
       });
     } else if (!open) {
       form.reset({
@@ -160,6 +167,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         practiceStartTime: "",
         competitionStartTime: "",
         weeklyFee: 2000,
+        locationId: null,
       });
       setShowDeleteConfirm(false);
     }
@@ -233,6 +241,37 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
               className="space-y-4"
             >
               <div className="space-y-4 pb-4">
+                {activeLocations.length > 0 && (
+                  <FormField
+                    control={form.control}
+                    name="locationId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Location</FormLabel>
+                        <Select
+                          onValueChange={(value) => field.onChange(value === "none" ? null : parseInt(value))}
+                          value={field.value ? String(field.value) : "none"}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a location" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">No Location</SelectItem>
+                            {activeLocations.map((location) => (
+                              <SelectItem key={location.id} value={String(location.id)}>
+                                {location.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
                 <FormField
                   control={form.control}
                   name="name"
