@@ -285,7 +285,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                     {seasonPresets.map((preset) => (
                       <Button
                         key={preset.label}
-                        variant="outline"
+                        variant={fixedAmount === null && selectedWeeks === preset.weeks ? "default" : "outline"}
                         size="sm"
                         onClick={() => handleWeekChangeWrapper(preset.weeks)}
                       >
