@@ -52,19 +52,19 @@ const RootRedirectHandler: FC = () => {
   useEffect(() => {
     if (!isLoading) {
       if (error || !currentUserResponse?.data) {
-        // If not authenticated, redirect to login
         navigate('/login');
-      } else if (currentUserResponse?.data?.organizationId) {
-        if (currentUserResponse?.data?.isOrganizationAdmin || currentUserResponse?.data?.isAdmin) {
-          navigate('/home');
-        } else {
-          navigate('/leagues');
-        }
       } else {
-        if (currentUserResponse?.data?.isAdmin && currentUserResponse?.data?.isOrganizationAdmin) {
+        const user = currentUserResponse.data;
+        const isAdmin = user.isOrganizationAdmin || user.isAdmin;
+
+        if (isAdmin && user.organizationId) {
+          navigate('/home');
+        } else if (user.bowlerId) {
           navigate('/bowler-dashboard');
-        } else {
+        } else if (user.organizationId) {
           navigate('/leagues');
+        } else {
+          navigate('/login');
         }
       }
     }
@@ -100,9 +100,9 @@ function Router() {
 
       {/* System Admin specific routes */}
       <Route path="/bowler-dashboard">
-        <SystemAdminRouteGuard>
+        <AuthRouteGuard>
           <BowlerDashboardPage />
-        </SystemAdminRouteGuard>
+        </AuthRouteGuard>
       </Route>
       
       <Route path="/bowlers/:bowlerId/payment-setup">
