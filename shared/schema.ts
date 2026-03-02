@@ -385,7 +385,7 @@ const baseLocationSchema = createInsertSchema(locations);
 // Enhanced insert schemas with additional validation
 export const insertBowlerSchema = baseBowlerSchema.extend({
   name: nameSchema,
-  email: emailSchema.optional(),
+  email: z.union([emailSchema, z.literal("")]).optional().nullable(),
   phone: z.string().nullable().optional(),
   active: z.boolean().default(true),
   order: z.number().min(0).default(0),

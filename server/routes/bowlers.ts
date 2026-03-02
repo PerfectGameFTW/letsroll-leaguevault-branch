@@ -168,7 +168,7 @@ router.post("/", async (req, res) => {
   } catch (error) {
     console.error('[Bowlers] Error creating bowler:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
+      sendError(res, error.errors.map(e => e.message).join(', '), 400);
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to create bowler');
     }
@@ -201,7 +201,7 @@ router.patch("/:id", async (req, res) => {
   } catch (error) {
     console.error('[Bowlers] Error updating bowler:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
+      sendError(res, error.errors.map(e => e.message).join(', '), 400);
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to update bowler');
     }
