@@ -82,12 +82,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     handleWeekChangeWrapper(selectedWeeks - 1);
   }, [handleWeekChangeWrapper, selectedWeeks]);
 
-  const seasonPresets = useMemo(() => [
-    { label: "1 Month", weeks: 4 },
-    { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
-    { label: "Full Season", weeks: totalWeeks }
-  ], [totalWeeks]);
-
   const calculateTotalAmount = useCallback(() => {
     if (selectedSchedule === 'custom') {
       return weeklyFee * selectedWeeks;
@@ -145,6 +139,16 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const financials = useMemo(() => {
     return calculateFinancials(league, bowlerPayments);
   }, [league, bowlerPayments]);
+
+  const seasonPresets = useMemo(() => {
+    const remainingWeeks = weeklyFee > 0 ? Math.ceil(financials.remainingBalance / weeklyFee) : totalWeeks;
+    return [
+      { label: "1 Month", weeks: 4 },
+      { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
+      { label: "Full Season", weeks: totalWeeks },
+      { label: "Remaining Balance", weeks: Math.max(1, remainingWeeks) },
+    ];
+  }, [totalWeeks, weeklyFee, financials.remainingBalance]);
 
   const { data: scheduleResponse } = useQuery<{ success: boolean; data: ScheduleData }>({
     queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`],
