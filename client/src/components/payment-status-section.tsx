@@ -154,8 +154,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [isChangingFrequency, setIsChangingFrequency] = useState(false);
-
   const cancelScheduleMutation = useMutation({
     mutationFn: async (scheduleId: number) => {
       return apiRequest(`/api/payment-schedules/${scheduleId}`, 'DELETE');
@@ -167,20 +165,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to cancel auto-pay. Please try again.", variant: "destructive" });
-    },
-  });
-
-  const changeFrequencyMutation = useMutation({
-    mutationFn: async ({ scheduleId, frequency }: { scheduleId: number; frequency: string }) => {
-      return apiRequest(`/api/payment-schedules/${scheduleId}`, 'PATCH', { frequency });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
-      setIsChangingFrequency(false);
-      toast({ title: "Schedule updated", description: "Your payment frequency has been updated." });
-    },
-    onError: () => {
-      toast({ title: "Error", description: "Failed to update schedule. Please try again.", variant: "destructive" });
     },
   });
 
@@ -463,58 +447,14 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
         <Separator />
 
-        {activeSchedule && !showCancelConfirm && !isChangingFrequency && (
-          <div className="space-y-2">
-            <Button
-              variant="outline"
-              onClick={() => setIsChangingFrequency(true)}
-              className="w-full"
-            >
-              Change Frequency
-              <RefreshCw className="ml-2 h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => setShowCancelConfirm(true)}
-              className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
-            >
-              Cancel Auto-Pay
-            </Button>
-          </div>
-        )}
-
-        {activeSchedule && isChangingFrequency && (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Switch to:</p>
-            <div className="flex gap-2">
-              <Button
-                variant={activeSchedule.frequency === 'weekly' ? 'outline' : 'default'}
-                disabled={activeSchedule.frequency === 'weekly' || changeFrequencyMutation.isPending}
-                onClick={() => changeFrequencyMutation.mutate({ scheduleId: activeSchedule.id, frequency: 'weekly' })}
-                className="flex-1"
-              >
-                {changeFrequencyMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Weekly
-              </Button>
-              <Button
-                variant={activeSchedule.frequency === 'monthly' ? 'outline' : 'default'}
-                disabled={activeSchedule.frequency === 'monthly' || changeFrequencyMutation.isPending}
-                onClick={() => changeFrequencyMutation.mutate({ scheduleId: activeSchedule.id, frequency: 'monthly' })}
-                className="flex-1"
-              >
-                {changeFrequencyMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Monthly
-              </Button>
-            </div>
-            <Button
-              variant="ghost"
-              onClick={() => setIsChangingFrequency(false)}
-              className="w-full"
-              size="sm"
-            >
-              Never mind
-            </Button>
-          </div>
+        {activeSchedule && !showCancelConfirm && (
+          <Button
+            variant="ghost"
+            onClick={() => setShowCancelConfirm(true)}
+            className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+          >
+            Cancel Auto-Pay
+          </Button>
         )}
 
         {activeSchedule && showCancelConfirm && (
