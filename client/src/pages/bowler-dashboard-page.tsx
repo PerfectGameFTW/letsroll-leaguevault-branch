@@ -315,6 +315,7 @@ export const BowlerDashboardPage: FC = () => {
           bowler={bowler}
           weeklyFee={weeklyFee}
           totalWeeks={totalWeeks}
+          payments={paymentsResponse?.data || []}
         />
       </div>
     </BowlerLayout>

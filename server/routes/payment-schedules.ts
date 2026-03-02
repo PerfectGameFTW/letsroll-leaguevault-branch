@@ -92,4 +92,33 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.get('/:bowlerId/:leagueId', async (req, res) => {
+  try {
+    if (!req.isAuthenticated()) {
+      return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
+    }
+
+    const bowlerId = parseInt(req.params.bowlerId, 10);
+    const leagueId = parseInt(req.params.leagueId, 10);
+
+    if (isNaN(bowlerId) || isNaN(leagueId)) {
+      return sendError(res, 'Invalid bowler or league ID', 400, 'INVALID_ID');
+    }
+
+    if (!await hasAccessToBowler(req, bowlerId)) {
+      return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+    }
+
+    const schedule = await storage.getPaymentSchedule(bowlerId, leagueId);
+    if (!schedule) {
+      return sendError(res, 'No active payment schedule found', 404, 'NOT_FOUND');
+    }
+
+    return sendSuccess(res, schedule);
+  } catch (error) {
+    console.error('[PaymentSchedules] Error fetching schedule:', error);
+    return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
+  }
+});
+
 export default router;

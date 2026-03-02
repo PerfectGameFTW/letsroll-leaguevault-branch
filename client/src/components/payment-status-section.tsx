@@ -4,20 +4,33 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, CreditCard, Calendar, Plus, Minus, CalendarDays, Settings } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { Loader2, CreditCard, Calendar, Plus, Minus, CalendarDays, Settings, DollarSign, AlertTriangle, RefreshCw } from "lucide-react";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery } from "@tanstack/react-query";
 import { formatCurrency } from "@/lib/utils";
-import type { League, Bowler } from "@shared/schema";
+import { calculateFinancials } from "@/lib/financial-utils";
+import { format } from "date-fns";
+import type { League, Bowler, Payment } from "@shared/schema";
 
 type PaymentSchedule = "weekly" | "monthly" | "custom";
+
+interface ScheduleData {
+  id: number;
+  frequency: string;
+  nextPaymentDate: string;
+  amount: number;
+  active: boolean;
+}
 
 interface PaymentStatusSectionProps {
   league: League;
   bowler: Bowler;
   weeklyFee: number;
   totalWeeks: number;
+  payments: Payment[];
 }
 
 export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
@@ -25,6 +38,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   bowler,
   weeklyFee,
   totalWeeks,
+  payments,
 }) => {
   const { toast } = useToast();
   const cardContainerRef = useRef<HTMLDivElement>(null);
@@ -119,6 +133,23 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       setIsSubmitting(false);
     }
   };
+
+  const bowlerPayments = useMemo(() => {
+    return (payments || []).filter(p => p.bowlerId === bowler.id && p.leagueId === league.id);
+  }, [payments, bowler.id, league.id]);
+
+  const financials = useMemo(() => {
+    return calculateFinancials(league, bowlerPayments);
+  }, [league, bowlerPayments]);
+
+  const { data: scheduleResponse } = useQuery<{ success: boolean; data: ScheduleData }>({
+    queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`],
+    enabled: !!bowler.id && !!league.id,
+    staleTime: 1000 * 60 * 5,
+  });
+  const activeSchedule = scheduleResponse?.success ? scheduleResponse.data : undefined;
+
+  const formatDollars = useCallback((cents: number) => `$${(cents / 100).toFixed(2)}`, []);
 
   if (showPaymentSetup) {
     return (
@@ -339,7 +370,66 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       <CardHeader>
         <CardTitle>Payment Settings</CardTitle>
       </CardHeader>
-      <CardContent className="pt-3">
+      <CardContent className="space-y-4">
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5" />
+              Weekly Fee
+            </span>
+            <span className="text-sm font-medium">{formatDollars(weeklyFee)}/week</span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+              <CalendarDays className="h-3.5 w-3.5" />
+              Full Season Total
+            </span>
+            <span className="text-sm font-medium">{formatDollars(financials.fullSeasonAmount)}</span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5" />
+              Remaining Balance
+            </span>
+            <span className="text-sm font-medium">{formatDollars(financials.remainingBalance)}</span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+              <RefreshCw className="h-3.5 w-3.5" />
+              Payment Schedule
+            </span>
+            <span className="text-sm font-medium">
+              {activeSchedule
+                ? `Auto-pay: ${activeSchedule.frequency === 'weekly' ? 'Weekly' : 'Monthly'}`
+                : 'No auto-pay'}
+            </span>
+          </div>
+
+          {activeSchedule && (
+            <div className="flex items-center justify-between pl-5">
+              <span className="text-xs text-muted-foreground">Next payment</span>
+              <span className="text-xs text-muted-foreground">
+                {format(new Date(activeSchedule.nextPaymentDate), 'MMM d, yyyy h:mm a')}
+              </span>
+            </div>
+          )}
+
+          {financials.amountPastDue > 0 && (
+            <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2">
+              <span className="text-sm font-medium text-destructive flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Past Due
+              </span>
+              <span className="text-sm font-bold text-destructive">{formatDollars(financials.amountPastDue)}</span>
+            </div>
+          )}
+        </div>
+
+        <Separator />
+
         <Button
           onClick={() => setShowPaymentSetup(true)}
           className="w-full"
