@@ -190,7 +190,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               <RadioGroup
                 value={selectedSchedule}
                 onValueChange={(value) => setSelectedSchedule(value as PaymentSchedule)}
-                className="grid grid-cols-1 md:grid-cols-3 gap-4"
+                className="grid grid-cols-1 md:grid-cols-2 gap-4"
               >
                 <div>
                   <RadioGroupItem value="weekly" id="weekly" className="sr-only" />
@@ -228,23 +228,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                   </Label>
                 </div>
                 
-                <div>
-                  <RadioGroupItem value="custom" id="custom" className="sr-only" />
-                  <Label
-                    htmlFor="custom"
-                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted p-4 cursor-pointer ${
-                      selectedSchedule === 'custom' 
-                        ? 'border-primary bg-primary/5' 
-                        : 'hover:border-primary/50 hover:bg-primary/5'
-                    }`}
-                  >
-                    <Settings className="h-6 w-6 mb-2" />
-                    <span className="text-sm font-medium">Custom</span>
-                    <span className="text-xs text-muted-foreground mt-1">
-                      Choose number of weeks
-                    </span>
-                  </Label>
-                </div>
               </RadioGroup>
             </div>
             )}
