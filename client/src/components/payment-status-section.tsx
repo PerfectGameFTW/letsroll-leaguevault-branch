@@ -49,6 +49,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [storeCard, setStoreCard] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
+  const [fixedAmount, setFixedAmount] = useState<number | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
@@ -72,6 +73,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const handleWeekChangeWrapper = useCallback((weeks: number) => {
     const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
     setSelectedWeeks(validWeeks);
+    setFixedAmount(null);
   }, [totalWeeks]);
 
   const incrementWeeks = useCallback(() => {
@@ -83,6 +85,9 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   }, [handleWeekChangeWrapper, selectedWeeks]);
 
   const calculateTotalAmount = useCallback(() => {
+    if (fixedAmount !== null) {
+      return fixedAmount;
+    }
     if (selectedSchedule === 'custom') {
       return weeklyFee * selectedWeeks;
     } else if (selectedSchedule === 'monthly') {
@@ -90,7 +95,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     } else {
       return weeklyFee;
     }
-  }, [selectedSchedule, weeklyFee, selectedWeeks]);
+  }, [selectedSchedule, weeklyFee, selectedWeeks, fixedAmount]);
 
   const handleSubmitPayment = async () => {
     if (!card) {
@@ -140,15 +145,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     return calculateFinancials(league, bowlerPayments);
   }, [league, bowlerPayments]);
 
-  const seasonPresets = useMemo(() => {
-    const remainingWeeks = weeklyFee > 0 ? Math.ceil(financials.remainingBalance / weeklyFee) : totalWeeks;
-    return [
-      { label: "1 Month", weeks: 4 },
-      { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
-      { label: "Full Season", weeks: totalWeeks },
-      { label: "Remaining Balance", weeks: Math.max(1, remainingWeeks) },
-    ];
-  }, [totalWeeks, weeklyFee, financials.remainingBalance]);
+  const seasonPresets = useMemo(() => [
+    { label: "1 Month", weeks: 4 },
+    { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
+    { label: "Full Season", weeks: totalWeeks },
+  ], [totalWeeks]);
 
   const { data: scheduleResponse } = useQuery<{ success: boolean; data: ScheduleData }>({
     queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`],
@@ -291,6 +292,19 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                         {preset.label}
                       </Button>
                     ))}
+                    {financials.remainingBalance > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const remainingWeeks = weeklyFee > 0 ? Math.floor(financials.remainingBalance / weeklyFee) : totalWeeks;
+                          setSelectedWeeks(Math.max(1, remainingWeeks));
+                          setFixedAmount(financials.remainingBalance);
+                        }}
+                      >
+                        Remaining Balance
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
