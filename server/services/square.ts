@@ -233,7 +233,7 @@ export async function processPayment(sourceId: string, amount: number, storeCard
   }
 }
 
-export async function createOrUpdateCustomer(name: string, email: string): Promise<SquareCustomer | null> {
+export async function createOrUpdateCustomer(name: string, email: string, phone?: string | null): Promise<SquareCustomer | null> {
   const client = await initializeSquareClient();
   if (!client) {
     console.error('[Square Service] Square client not initialized');
@@ -259,6 +259,7 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
     let customerId: string;
     const [firstName, ...lastNameParts] = name.split(' ');
     const lastName = lastNameParts.join(' ');
+    const phoneNumber = phone || undefined;
 
     if (searchResponse.result.customers?.[0]?.id) {
       console.log('[Square Service] Found existing customer, updating...');
@@ -267,6 +268,7 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
         givenName: firstName,
         familyName: lastName || '',
         emailAddress: email.toLowerCase(),
+        ...(phoneNumber && { phoneNumber }),
       });
 
       if (!updateResponse?.result?.customer) {
@@ -281,6 +283,7 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
         givenName: firstName,
         familyName: lastName || '',
         emailAddress: email.toLowerCase(),
+        ...(phoneNumber && { phoneNumber }),
       });
 
       if (!customerResponse?.result?.customer?.id) {

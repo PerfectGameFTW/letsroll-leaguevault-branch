@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sendError, sendSuccess } from '../utils/api';
 import { storage } from '../storage';
 import { hashPassword } from '../auth';
+import { createOrUpdateCustomer } from '../services/square';
 import { scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 
@@ -75,6 +76,48 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
     }
 
     const updatedUser = await storage.updateUser(userId, updateData);
+
+    if (updatedUser.bowlerId) {
+      const emailChanged = updateData.email && updateData.email !== existingUser.email;
+      const nameChanged = updateData.name && updateData.name !== existingUser.name;
+      const phoneChanged = updateData.phone !== undefined && updateData.phone !== existingUser.phone;
+
+      if (emailChanged || nameChanged || phoneChanged) {
+        try {
+          const bowler = await storage.getBowler(updatedUser.bowlerId);
+          if (bowler) {
+            const bowlerUpdate: Record<string, any> = {};
+            if (nameChanged) bowlerUpdate.name = updatedUser.name;
+            if (emailChanged) bowlerUpdate.email = updatedUser.email;
+            if (phoneChanged) bowlerUpdate.phone = updatedUser.phone;
+
+            if (Object.keys(bowlerUpdate).length > 0) {
+              await storage.updateBowler(bowler.id, { ...bowler, ...bowlerUpdate });
+              console.log('[User] Synced profile changes to bowler record:', bowler.id);
+            }
+
+            if (updatedUser.email && (emailChanged || nameChanged || phoneChanged)) {
+              const squareCustomer = await createOrUpdateCustomer(
+                updatedUser.name,
+                updatedUser.email,
+                updatedUser.phone
+              );
+              if (squareCustomer && squareCustomer.id !== bowler.squareCustomerId) {
+                await storage.updateBowler(bowler.id, {
+                  ...bowler,
+                  ...bowlerUpdate,
+                  squareCustomerId: squareCustomer.id,
+                });
+                console.log('[User] Linked Square customer to bowler:', squareCustomer.id);
+              }
+            }
+          }
+        } catch (syncError) {
+          console.error('[User] Error syncing to bowler/Square (non-fatal):', syncError);
+        }
+      }
+    }
+
     return sendSuccess(res, { ...updatedUser, password: undefined });
   } catch (error) {
     console.error('[User] Error updating user:', error);
