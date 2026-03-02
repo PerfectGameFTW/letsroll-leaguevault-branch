@@ -124,30 +124,24 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
       if (bowler) {
-        const response = await apiRequest(`/api/bowlers/${bowler.id}`, "PATCH", data);
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(error);
+        const result = await apiRequest(`/api/bowlers/${bowler.id}`, "PATCH", data);
+        if (!result.success) {
+          throw new Error(result.error?.message || "Failed to update bowler");
         }
-        return await response.json();
+        return result;
       } else {
-        const response = await apiRequest("/api/bowlers", "POST", data);
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(error);
+        const result = await apiRequest("/api/bowlers", "POST", data);
+        if (!result.success) {
+          throw new Error(result.error?.message || "Failed to create bowler");
         }
-        const result = await response.json();
         const newBowlerId = result.data?.id;
         if (newBowlerId && selectedLeagueId && selectedTeamId) {
-          const blResponse = await apiRequest("/api/bowler-leagues", "POST", {
+          await apiRequest("/api/bowler-leagues", "POST", {
             bowlerId: newBowlerId,
             leagueId: selectedLeagueId,
             teamId: selectedTeamId,
             active: true,
           });
-          if (!blResponse.ok) {
-            console.error("Failed to assign bowler to league/team");
-          }
         }
         return result;
       }
@@ -171,10 +165,9 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const deleteMutation = useMutation({
     mutationFn: async () => {
       if (!bowler) return;
-      const response = await apiRequest(`/api/bowlers/${bowler.id}`, "DELETE");
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+      const result = await apiRequest(`/api/bowlers/${bowler.id}`, "DELETE");
+      if (!result.success) {
+        throw new Error(result.error?.message || "Failed to delete bowler");
       }
     },
     onSuccess,
