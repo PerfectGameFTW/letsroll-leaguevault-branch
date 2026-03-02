@@ -49,6 +49,8 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [storeCard, setStoreCard] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
@@ -153,8 +155,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
   const formatDollars = useCallback((cents: number) => `$${(cents / 100).toFixed(2)}`, []);
 
-  const [isCancelling, setIsCancelling] = useState(false);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const cancelScheduleMutation = useMutation({
     mutationFn: async (scheduleId: number) => {
       return apiRequest(`/api/payment-schedules/${scheduleId}`, 'DELETE');
