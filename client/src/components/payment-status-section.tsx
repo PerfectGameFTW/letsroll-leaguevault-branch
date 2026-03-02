@@ -419,7 +419,13 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               <p className="text-sm text-muted-foreground mt-1">
                 {selectedSchedule === 'weekly' && 'Charged weekly'}
                 {selectedSchedule === 'monthly' && 'Charged monthly (every 4 weeks)'}
-                {selectedSchedule === 'custom' && `One-time payment for ${selectedWeeks} weeks`}
+                {selectedSchedule === 'custom' && (
+                  fixedAmountType === 'pastDue'
+                    ? 'One-time payment for Past Due Balance'
+                    : fixedAmountType === 'remaining'
+                      ? 'One-time payment for Season Remaining Balance'
+                      : `One-time payment for ${selectedWeeks} weeks`
+                )}
                 {includeFinalTwoWeeks && ` + Final 2 Weeks (${formatCurrency(financials.finalTwoWeeks.amount)})`}
               </p>
             </div>
