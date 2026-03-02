@@ -78,6 +78,9 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     setSelectedWeeks(validWeeks);
     setFixedAmount(null);
     setFixedAmountType(null);
+    if (validWeeks === totalWeeks) {
+      setIncludeFinalTwoWeeks(false);
+    }
   }, [totalWeeks]);
 
   const incrementWeeks = useCallback(() => {
@@ -343,6 +346,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                         onClick={() => {
                           setFixedAmount(financials.remainingBalance);
                           setFixedAmountType('remaining');
+                          setIncludeFinalTwoWeeks(false);
                         }}
                       >
                         Season Remaining Balance
@@ -353,7 +357,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               </div>
             )}
             
-            {!financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0 && (
+            {!financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0 && fixedAmountType !== 'remaining' && !(fixedAmount === null && selectedWeeks === totalWeeks) && (
               <div className="flex items-start space-x-3 rounded-md border p-4 bg-muted/50">
                 <Checkbox
                   id="include-final-two-weeks"
