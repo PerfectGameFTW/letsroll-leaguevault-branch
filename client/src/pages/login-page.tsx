@@ -68,7 +68,7 @@ const LoginPage: FC = () => {
         description: "Welcome back to the bowling league management system.",
       });
 
-      setLocation("/bowler-dashboard");
+      setLocation("/");
     } catch (error) {
       console.error("[Login] Login error:", error);
       toast({
