@@ -7,7 +7,7 @@ async function throwIfResNotOk(res: Response) {
       const contentType = res.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
         const errorData = await res.json();
-        errorMessage = errorData.message || errorData.error || res.statusText;
+        errorMessage = errorData.error?.message || errorData.message || (typeof errorData.error === 'string' ? errorData.error : null) || res.statusText;
       } else {
         errorMessage = await res.text();
       }
