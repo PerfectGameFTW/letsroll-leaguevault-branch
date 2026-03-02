@@ -85,6 +85,9 @@ export interface IStorage {
   updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User>;
   createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule>;
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
+  getPaymentScheduleById(id: number): Promise<PaymentSchedule | undefined>;
+  deactivatePaymentSchedule(id: number): Promise<void>;
+  updatePaymentScheduleFields(id: number, fields: Partial<Pick<PaymentSchedule, 'frequency' | 'amount' | 'nextPaymentDate' | 'squareCardId'>>): Promise<PaymentSchedule>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
   
   archiveLeague(id: number): Promise<League>;
@@ -826,6 +829,33 @@ export class DatabaseStorage implements IStorage {
         )
       );
     return result;
+  }
+
+  async getPaymentScheduleById(id: number): Promise<PaymentSchedule | undefined> {
+    const [result] = await db
+      .select()
+      .from(paymentSchedules)
+      .where(eq(paymentSchedules.id, id));
+    return result;
+  }
+
+  async deactivatePaymentSchedule(id: number): Promise<void> {
+    await db
+      .update(paymentSchedules)
+      .set({ active: false })
+      .where(eq(paymentSchedules.id, id));
+  }
+
+  async updatePaymentScheduleFields(
+    id: number,
+    fields: Partial<Pick<PaymentSchedule, 'frequency' | 'amount' | 'nextPaymentDate' | 'squareCardId'>>
+  ): Promise<PaymentSchedule> {
+    const [updated] = await db
+      .update(paymentSchedules)
+      .set(fields)
+      .where(eq(paymentSchedules.id, id))
+      .returning();
+    return updated;
   }
 
   async updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void> {

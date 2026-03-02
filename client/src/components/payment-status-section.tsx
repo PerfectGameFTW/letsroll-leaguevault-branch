@@ -9,7 +9,8 @@ import { Loader2, CreditCard, Calendar, Plus, Minus, CalendarDays, Settings, Dol
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/utils";
 import { calculateFinancials } from "@/lib/financial-utils";
 import { format } from "date-fns";
@@ -150,6 +151,38 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const activeSchedule = scheduleResponse?.success ? scheduleResponse.data : undefined;
 
   const formatDollars = useCallback((cents: number) => `$${(cents / 100).toFixed(2)}`, []);
+
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [isChangingFrequency, setIsChangingFrequency] = useState(false);
+
+  const cancelScheduleMutation = useMutation({
+    mutationFn: async (scheduleId: number) => {
+      return apiRequest(`/api/payment-schedules/${scheduleId}`, 'DELETE');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
+      setShowCancelConfirm(false);
+      toast({ title: "Auto-pay cancelled", description: "Your automatic payment schedule has been cancelled." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to cancel auto-pay. Please try again.", variant: "destructive" });
+    },
+  });
+
+  const changeFrequencyMutation = useMutation({
+    mutationFn: async ({ scheduleId, frequency }: { scheduleId: number; frequency: string }) => {
+      return apiRequest(`/api/payment-schedules/${scheduleId}`, 'PATCH', { frequency });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
+      setIsChangingFrequency(false);
+      toast({ title: "Schedule updated", description: "Your payment frequency has been updated." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update schedule. Please try again.", variant: "destructive" });
+    },
+  });
 
   if (showPaymentSetup) {
     return (
@@ -430,13 +463,96 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
         <Separator />
 
-        <Button
-          onClick={() => setShowPaymentSetup(true)}
-          className="w-full"
-        >
-          Update Payment Settings
-          <CreditCard className="ml-2 h-4 w-4" />
-        </Button>
+        {activeSchedule && !showCancelConfirm && !isChangingFrequency && (
+          <div className="space-y-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsChangingFrequency(true)}
+              className="w-full"
+            >
+              Change Frequency
+              <RefreshCw className="ml-2 h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setShowCancelConfirm(true)}
+              className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+            >
+              Cancel Auto-Pay
+            </Button>
+          </div>
+        )}
+
+        {activeSchedule && isChangingFrequency && (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Switch to:</p>
+            <div className="flex gap-2">
+              <Button
+                variant={activeSchedule.frequency === 'weekly' ? 'outline' : 'default'}
+                disabled={activeSchedule.frequency === 'weekly' || changeFrequencyMutation.isPending}
+                onClick={() => changeFrequencyMutation.mutate({ scheduleId: activeSchedule.id, frequency: 'weekly' })}
+                className="flex-1"
+              >
+                {changeFrequencyMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Weekly
+              </Button>
+              <Button
+                variant={activeSchedule.frequency === 'monthly' ? 'outline' : 'default'}
+                disabled={activeSchedule.frequency === 'monthly' || changeFrequencyMutation.isPending}
+                onClick={() => changeFrequencyMutation.mutate({ scheduleId: activeSchedule.id, frequency: 'monthly' })}
+                className="flex-1"
+              >
+                {changeFrequencyMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Monthly
+              </Button>
+            </div>
+            <Button
+              variant="ghost"
+              onClick={() => setIsChangingFrequency(false)}
+              className="w-full"
+              size="sm"
+            >
+              Never mind
+            </Button>
+          </div>
+        )}
+
+        {activeSchedule && showCancelConfirm && (
+          <div className="space-y-3 rounded-md border border-destructive/30 bg-destructive/5 p-3">
+            <p className="text-sm font-medium">Are you sure you want to cancel auto-pay?</p>
+            <p className="text-xs text-muted-foreground">You will need to set it up again if you change your mind.</p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowCancelConfirm(false)}
+                className="flex-1"
+                size="sm"
+              >
+                Keep It
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => cancelScheduleMutation.mutate(activeSchedule.id)}
+                disabled={cancelScheduleMutation.isPending}
+                className="flex-1"
+                size="sm"
+              >
+                {cancelScheduleMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Yes, Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!activeSchedule && (
+          <Button
+            onClick={() => setShowPaymentSetup(true)}
+            className="w-full"
+          >
+            Set Up Auto-Pay
+            <CreditCard className="ml-2 h-4 w-4" />
+          </Button>
+        )}
       </CardContent>
     </Card>
   );

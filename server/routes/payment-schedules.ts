@@ -121,4 +121,93 @@ router.get('/:bowlerId/:leagueId', async (req, res) => {
   }
 });
 
+router.delete('/:id', async (req, res) => {
+  try {
+    if (!req.isAuthenticated()) {
+      return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
+    }
+
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid schedule ID', 400, 'INVALID_ID');
+    }
+
+    const schedule = await storage.getPaymentScheduleById(id);
+    if (!schedule) {
+      return sendError(res, 'Payment schedule not found', 404, 'NOT_FOUND');
+    }
+
+    if (!await hasAccessToBowler(req, schedule.bowlerId)) {
+      return sendError(res, "You don't have access to this schedule", 403, 'FORBIDDEN');
+    }
+
+    await storage.deactivatePaymentSchedule(id);
+    await paymentScheduler.removeSchedule(id);
+
+    return sendSuccess(res, { message: 'Payment schedule cancelled' });
+  } catch (error) {
+    console.error('[PaymentSchedules] Error cancelling schedule:', error);
+    return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
+  }
+});
+
+router.patch('/:id', async (req, res) => {
+  try {
+    if (!req.isAuthenticated()) {
+      return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
+    }
+
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid schedule ID', 400, 'INVALID_ID');
+    }
+
+    const schedule = await storage.getPaymentScheduleById(id);
+    if (!schedule || !schedule.active) {
+      return sendError(res, 'Active payment schedule not found', 404, 'NOT_FOUND');
+    }
+
+    if (!await hasAccessToBowler(req, schedule.bowlerId)) {
+      return sendError(res, "You don't have access to this schedule", 403, 'FORBIDDEN');
+    }
+
+    const { frequency } = req.body;
+    if (frequency && !['weekly', 'monthly'].includes(frequency)) {
+      return sendError(res, 'Frequency must be "weekly" or "monthly"', 400, 'VALIDATION_ERROR');
+    }
+
+    const updates: Record<string, any> = {};
+
+    if (frequency && frequency !== schedule.frequency) {
+      const league = await storage.getLeague(schedule.leagueId);
+      if (!league) {
+        return sendError(res, 'League not found', 404, 'LEAGUE_NOT_FOUND');
+      }
+
+      updates.frequency = frequency;
+
+      const weeklyFee = (league.pricePerWeek || 0) + (league.prizeFundPerWeek || 0);
+      updates.amount = frequency === 'monthly' ? weeklyFee * 4 : weeklyFee;
+
+      updates.nextPaymentDate = getNextLeagueDateTime(
+        new Date(),
+        league.weekDay,
+        league.competitionStartTime
+      );
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return sendSuccess(res, schedule);
+    }
+
+    const updated = await storage.updatePaymentScheduleFields(id, updates);
+    await paymentScheduler.updateSchedule(updated);
+
+    return sendSuccess(res, updated);
+  } catch (error) {
+    console.error('[PaymentSchedules] Error updating schedule:', error);
+    return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
+  }
+});
+
 export default router;
