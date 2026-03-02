@@ -145,6 +145,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       practiceStartTime: "",
       competitionStartTime: "",
       weeklyFee: 2000,
+      finalTwoWeeksDueWeek: 6,
       squareLineageItemId: null,
       squareLineageItemVariationId: null,
       squareLineageItemName: null,
@@ -218,6 +219,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         practiceStartTime: league.practiceStartTime || "",
         competitionStartTime: league.competitionStartTime || "",
         weeklyFee: league.weeklyFee || 2000,
+        finalTwoWeeksDueWeek: league.finalTwoWeeksDueWeek ?? 6,
         squareLineageItemId: league.squareLineageItemId || null,
         squareLineageItemVariationId: league.squareLineageItemVariationId || null,
         squareLineageItemName: league.squareLineageItemName || null,
@@ -237,6 +239,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         practiceStartTime: "",
         competitionStartTime: "",
         weeklyFee: 2000,
+        finalTwoWeeksDueWeek: 6,
         squareLineageItemId: null,
         squareLineageItemVariationId: null,
         squareLineageItemName: null,
@@ -628,6 +631,34 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                           }
                         />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="finalTwoWeeksDueWeek"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Final 2 Weeks Due By</FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(parseInt(value))}
+                        value={String(field.value ?? 6)}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select week" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {Array.from({ length: 10 }, (_, i) => i + 1).map((week) => (
+                            <SelectItem key={week} value={String(week)}>
+                              Week {week}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}

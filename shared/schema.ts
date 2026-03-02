@@ -77,6 +77,7 @@ export const leagues = pgTable("leagues", {
   squarePrizeFundItemId: text("square_prize_fund_item_id"),
   squarePrizeFundItemVariationId: text("square_prize_fund_item_variation_id"),
   squarePrizeFundItemName: text("square_prize_fund_item_name"),
+  finalTwoWeeksDueWeek: integer("final_two_weeks_due_week").default(6),
   organizationId: integer("organization_id").references(() => organizations.id),
   locationId: integer("location_id").references(() => locations.id),
 }, (table) => ({

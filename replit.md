@@ -46,6 +46,15 @@ A full-stack bowling league management application with multi-tenant support for
 - `SESSION_SECRET` - Express session secret
 
 ## Recent Changes (2026-03-02)
+- Added Final 2 Weeks Due feature: leagues have configurable `finalTwoWeeksDueWeek` (week 1-10, default 6)
+  - League form: "Final 2 Weeks Due By" dropdown (Week 1-10)
+  - Payment Overview card: Final 2 Weeks status (paid/due/past due) with due date
+  - Payment History page: Final 2 Weeks card with color-coded status
+  - `calculateFinancials` returns `finalTwoWeeks` status object
+- Quick Select payment buttons: 1 Month, Half Season, Full Season, Past Due Balance, Season Remaining Balance
+  - Past Due/Remaining Balance use exact amounts (not rounded to weeks)
+  - Half Season/Full Season hide when bowler has already paid enough to make them irrelevant
+  - Active button stays highlighted
 - Fixed Square card-on-file: uses `cardsApi.createCard` (correct API) instead of invalid `card_on_file` payment param
   - Card is saved first, then used as payment source; requires bowler to have a Square customer ID
   - Both `processPayment` and `createOrderWithPayment` now accept `customerId` parameter

@@ -1,5 +1,13 @@
-import { differenceInWeeks, startOfToday } from "date-fns";
+import { differenceInWeeks, startOfToday, addWeeks } from "date-fns";
 import type { League, Payment } from "@shared/schema";
+
+export interface FinalTwoWeeksStatus {
+  amount: number;
+  dueByWeek: number;
+  dueByDate: Date | null;
+  isPaid: boolean;
+  isPastDue: boolean;
+}
 
 export interface FinancialCalculation {
   weeksPassed: number;
@@ -9,6 +17,7 @@ export interface FinancialCalculation {
   amountPastDue: number;
   fullSeasonAmount: number;
   remainingBalance: number;
+  finalTwoWeeks: FinalTwoWeeksStatus;
 }
 
 export function getSeasonLengthWeeks(league: { seasonStart: string | Date; seasonEnd: string | Date } | null | undefined): number {
@@ -37,6 +46,14 @@ export function getTotalPaidAmount(payments: Payment[]): number {
 export function calculateFinancials(league: League | null | undefined, payments: Payment[]): FinancialCalculation {
   const totalPaid = getTotalPaidAmount(payments);
 
+  const defaultFinalTwoWeeks: FinalTwoWeeksStatus = {
+    amount: 0,
+    dueByWeek: 6,
+    dueByDate: null,
+    isPaid: false,
+    isPastDue: false,
+  };
+
   if (!league?.seasonStart || !league?.seasonEnd || !league?.weeklyFee) {
     return {
       weeksPassed: 0,
@@ -46,6 +63,7 @@ export function calculateFinancials(league: League | null | undefined, payments:
       amountPastDue: 0,
       fullSeasonAmount: 0,
       remainingBalance: 0,
+      finalTwoWeeks: defaultFinalTwoWeeks,
     };
   }
 
@@ -56,6 +74,22 @@ export function calculateFinancials(league: League | null | undefined, payments:
   const amountPastDue = Math.max(0, totalDueToDate - totalPaid);
   const remainingBalance = Math.max(0, fullSeasonAmount - totalPaid);
 
+  const dueByWeek = league.finalTwoWeeksDueWeek ?? 6;
+  const finalTwoWeeksAmount = league.weeklyFee * 2;
+  const seasonStart = new Date(league.seasonStart);
+  const dueByDate = addWeeks(seasonStart, dueByWeek);
+  const today = startOfToday();
+  const isPastDueDate = today > dueByDate;
+  const isPaid = totalPaid >= finalTwoWeeksAmount;
+
+  const finalTwoWeeks: FinalTwoWeeksStatus = {
+    amount: finalTwoWeeksAmount,
+    dueByWeek: dueByWeek,
+    dueByDate,
+    isPaid,
+    isPastDue: !isPaid && isPastDueDate,
+  };
+
   return {
     weeksPassed,
     totalWeeksInSeason,
@@ -64,6 +98,7 @@ export function calculateFinancials(league: League | null | undefined, payments:
     amountPastDue,
     fullSeasonAmount,
     remainingBalance,
+    finalTwoWeeks,
   };
 }
 

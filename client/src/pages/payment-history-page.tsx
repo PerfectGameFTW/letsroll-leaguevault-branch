@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { differenceInWeeks, startOfToday, format } from "date-fns";
+import { differenceInWeeks, startOfToday, format, addWeeks } from "date-fns";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -132,6 +132,20 @@ export default function PaymentHistoryPage() {
     fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
     amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
     remainingBalance = fullSeasonAmount - totalPaidAmount;
+  }
+
+  let finalTwoWeeksAmount = 0;
+  let finalTwoWeeksDueByWeek = 6;
+  let finalTwoWeeksDueByDate: Date | null = null;
+  let finalTwoWeeksIsPaid = false;
+  let finalTwoWeeksIsPastDue = false;
+
+  if (league?.weeklyFee && league?.seasonStart) {
+    finalTwoWeeksDueByWeek = league.finalTwoWeeksDueWeek ?? 6;
+    finalTwoWeeksAmount = league.weeklyFee * 2;
+    finalTwoWeeksDueByDate = addWeeks(new Date(league.seasonStart), finalTwoWeeksDueByWeek);
+    finalTwoWeeksIsPaid = totalPaidAmount >= finalTwoWeeksAmount;
+    finalTwoWeeksIsPastDue = !finalTwoWeeksIsPaid && startOfToday() > finalTwoWeeksDueByDate;
   }
 
   const dialogAmount = payDialogType === 'pastdue' ? amountPastDue : remainingBalance;
@@ -335,6 +349,44 @@ export default function PaymentHistoryPage() {
               <p className="text-2xl font-bold">${(remainingBalance / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
+
+          {finalTwoWeeksAmount > 0 && (
+            <Card className={`${
+              finalTwoWeeksIsPaid
+                ? 'border-green-500/50 bg-green-500/5'
+                : finalTwoWeeksIsPastDue
+                  ? 'border-destructive/50 bg-destructive/5'
+                  : ''
+            }`}>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-lg">Final 2 Weeks</CardTitle>
+                <CardDescription>
+                  Due by Week {finalTwoWeeksDueByWeek}
+                  {finalTwoWeeksDueByDate && ` (${format(finalTwoWeeksDueByDate, 'MMM d, yyyy')})`}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className={`text-2xl font-bold ${
+                  finalTwoWeeksIsPaid
+                    ? 'text-green-600'
+                    : finalTwoWeeksIsPastDue
+                      ? 'text-destructive'
+                      : ''
+                }`}>
+                  ${(finalTwoWeeksAmount / 100).toFixed(2)}
+                </p>
+                <p className={`text-sm font-medium mt-1 ${
+                  finalTwoWeeksIsPaid
+                    ? 'text-green-600'
+                    : finalTwoWeeksIsPastDue
+                      ? 'text-destructive'
+                      : 'text-muted-foreground'
+                }`}>
+                  {finalTwoWeeksIsPaid ? 'Paid' : finalTwoWeeksIsPastDue ? 'Past Due' : 'Due'}
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           <Dialog open={!!payDialogType} onOpenChange={(open) => !open && setPayDialogType(null)}>
             <DialogContent className="sm:max-w-md">
