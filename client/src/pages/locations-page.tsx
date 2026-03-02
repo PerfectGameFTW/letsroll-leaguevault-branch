@@ -61,7 +61,7 @@ export default function LocationsPage() {
 
   const createMutation = useMutation({
     mutationFn: async (loc: { name: string; address?: string; city?: string; state?: string; zipCode?: string; phone?: string }) => {
-      return apiRequest("POST", "/api/locations", loc);
+      return apiRequest("/api/locations", "POST", loc);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
