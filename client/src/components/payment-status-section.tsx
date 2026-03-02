@@ -371,7 +371,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Payment Settings</CardTitle>
+        <CardTitle>Payment Overview</CardTitle>
       </CardHeader>
       <CardContent className="pt-6 space-y-4">
         <div className="space-y-3">
