@@ -1,4 +1,4 @@
-import { useState, useCallback, FC, useMemo } from "react";
+import { useState, FC, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,8 +38,9 @@ export const BowlerDashboardPage: FC = () => {
   const { 
     bowlers, 
     isInitialLoading: isLoadingBowlers, 
-    getBowlerFirstLeagueName: getBowlerLeagueName, 
-    getBowlerTeamName: getTeamName, 
+    isLoadingRelatedData: isLoadingRelated,
+    getBowlerFirstLeagueName, 
+    getBowlerTeamName, 
     getBowlerLeagueId 
   } = useBowlers();
   
@@ -95,15 +96,7 @@ export const BowlerDashboardPage: FC = () => {
     enabled: !!bowler?.id,
   });
 
-  const getBowlerFirstLeagueName = useCallback((bowler: Bowler) => {
-    return bowler?.leagues?.[0]?.leagueName || 'No League';
-  }, []);
-
-  const getBowlerTeamName = useCallback((bowler: Bowler) => {
-    return bowler?.leagues?.[0]?.teamName || 'No Team';
-  }, []);
-
-  const isLoadingRelatedData = isLoadingBowlers || isLoadingLeague || isLoadingPayments;
+  const isLoadingRelatedData = isLoadingBowlers || isLoadingRelated || isLoadingLeague || isLoadingPayments;
   const isInitialLoading = !userResponse;
   const isCombinedLoading = isInitialLoading || isLoadingRelatedData;
 
