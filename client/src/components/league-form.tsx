@@ -43,6 +43,11 @@ interface CatalogItem {
   description: string;
   variations: CatalogItemVariation[];
 }
+
+interface CatalogCategory {
+  id: string;
+  name: string;
+}
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
@@ -83,11 +88,36 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   });
   const activeLocations = (locationsData?.data || []).filter(l => l.active);
 
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+
+  const { data: categoriesData } = useQuery<{ success: boolean; data: CatalogCategory[] }>({
+    queryKey: ['/api/square/catalog/categories'],
+    staleTime: 1000 * 60 * 10,
+  });
+  const categories = categoriesData?.data || [];
+
+  const catalogUrl = selectedCategoryId
+    ? `/api/square/catalog/items?categoryId=${selectedCategoryId}`
+    : '/api/square/catalog/items';
   const { data: catalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
-    queryKey: ['/api/square/catalog/items'],
+    queryKey: ['/api/square/catalog/items', selectedCategoryId],
+    queryFn: async () => {
+      const res = await fetch(catalogUrl);
+      if (!res.ok) throw new Error('Failed to fetch catalog items');
+      return res.json();
+    },
     staleTime: 1000 * 60 * 10,
   });
   const catalogItems = catalogData?.data || [];
+
+  const getPriceForVariation = (variationId: string | null | undefined): number | null => {
+    if (!variationId) return null;
+    for (const item of catalogItems) {
+      const v = item.variations.find(v => v.id === variationId);
+      if (v) return v.price;
+    }
+    return null;
+  };
 
   // Initialize dates with noon time to avoid timezone issues
   const today = new Date();
@@ -109,9 +139,12 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       practiceStartTime: "",
       competitionStartTime: "",
       weeklyFee: 2000,
-      squareCatalogItemId: null,
-      squareCatalogItemVariationId: null,
-      squareCatalogItemName: null,
+      squareLineageItemId: null,
+      squareLineageItemVariationId: null,
+      squareLineageItemName: null,
+      squarePrizeFundItemId: null,
+      squarePrizeFundItemVariationId: null,
+      squarePrizeFundItemName: null,
       locationId: null,
     },
   });
@@ -177,9 +210,12 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         practiceStartTime: league.practiceStartTime || "",
         competitionStartTime: league.competitionStartTime || "",
         weeklyFee: league.weeklyFee || 2000,
-        squareCatalogItemId: league.squareCatalogItemId || null,
-        squareCatalogItemVariationId: league.squareCatalogItemVariationId || null,
-        squareCatalogItemName: league.squareCatalogItemName || null,
+        squareLineageItemId: league.squareLineageItemId || null,
+        squareLineageItemVariationId: league.squareLineageItemVariationId || null,
+        squareLineageItemName: league.squareLineageItemName || null,
+        squarePrizeFundItemId: league.squarePrizeFundItemId || null,
+        squarePrizeFundItemVariationId: league.squarePrizeFundItemVariationId || null,
+        squarePrizeFundItemName: league.squarePrizeFundItemName || null,
         locationId: league.locationId || null,
       });
     } else if (!open) {
@@ -193,9 +229,12 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         practiceStartTime: "",
         competitionStartTime: "",
         weeklyFee: 2000,
-        squareCatalogItemId: null,
-        squareCatalogItemVariationId: null,
-        squareCatalogItemName: null,
+        squareLineageItemId: null,
+        squareLineageItemVariationId: null,
+        squareLineageItemName: null,
+        squarePrizeFundItemId: null,
+        squarePrizeFundItemVariationId: null,
+        squarePrizeFundItemName: null,
         locationId: null,
       });
       setShowDeleteConfirm(false);
@@ -448,50 +487,119 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                 </div>
 
                 {catalogItems.length > 0 && (
-                  <FormItem>
-                    <FormLabel>Square Catalog Item</FormLabel>
-                    <Select
-                      value={form.watch('squareCatalogItemVariationId') || 'none'}
-                      onValueChange={(value) => {
-                        if (value === 'none') {
-                          form.setValue('squareCatalogItemId', null);
-                          form.setValue('squareCatalogItemVariationId', null);
-                          form.setValue('squareCatalogItemName', null);
-                        } else {
-                          for (const item of catalogItems) {
-                            const variation = item.variations.find(v => v.id === value);
-                            if (variation) {
-                              form.setValue('squareCatalogItemId', item.id);
-                              form.setValue('squareCatalogItemVariationId', variation.id);
-                              form.setValue('squareCatalogItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
-                              if (variation.price !== null) {
-                                form.setValue('weeklyFee', variation.price);
+                  <div className="space-y-3 rounded-lg border p-3">
+                    <div className="text-sm font-medium">Square Catalog Items</div>
+
+                    {categories.length > 0 && (
+                      <FormItem>
+                        <FormLabel>Filter by Category</FormLabel>
+                        <Select
+                          value={selectedCategoryId || 'all'}
+                          onValueChange={(value) => setSelectedCategoryId(value === 'all' ? null : value)}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="All Categories" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="all">All Categories</SelectItem>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormItem>
+                    )}
+
+                    <FormItem>
+                      <FormLabel>Lineage Item</FormLabel>
+                      <Select
+                        value={form.watch('squareLineageItemVariationId') || 'none'}
+                        onValueChange={(value) => {
+                          if (value === 'none') {
+                            form.setValue('squareLineageItemId', null);
+                            form.setValue('squareLineageItemVariationId', null);
+                            form.setValue('squareLineageItemName', null);
+                          } else {
+                            for (const item of catalogItems) {
+                              const variation = item.variations.find(v => v.id === value);
+                              if (variation) {
+                                form.setValue('squareLineageItemId', item.id);
+                                form.setValue('squareLineageItemVariationId', variation.id);
+                                form.setValue('squareLineageItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
+                                const prizeFundPrice = getPriceForVariation(form.getValues('squarePrizeFundItemVariationId'));
+                                const total = (variation.price || 0) + (prizeFundPrice || 0);
+                                if (total > 0) form.setValue('weeklyFee', total);
+                                break;
                               }
-                              break;
                             }
                           }
-                        }
-                      }}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="None (manual pricing)" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">None (manual pricing)</SelectItem>
-                        {catalogItems.map((item) =>
-                          item.variations.map((variation) => (
-                            <SelectItem key={variation.id} value={variation.id}>
-                              {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
-                              {variation.price !== null ? ` ($${(variation.price / 100).toFixed(2)})` : ''}
-                            </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
+                        }}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {catalogItems.map((item) =>
+                            item.variations.map((variation) => (
+                              <SelectItem key={variation.id} value={variation.id}>
+                                {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
+                                {variation.price !== null ? ` ($${(variation.price / 100).toFixed(2)})` : ''}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+
+                    <FormItem>
+                      <FormLabel>Prize Fund Item</FormLabel>
+                      <Select
+                        value={form.watch('squarePrizeFundItemVariationId') || 'none'}
+                        onValueChange={(value) => {
+                          if (value === 'none') {
+                            form.setValue('squarePrizeFundItemId', null);
+                            form.setValue('squarePrizeFundItemVariationId', null);
+                            form.setValue('squarePrizeFundItemName', null);
+                          } else {
+                            for (const item of catalogItems) {
+                              const variation = item.variations.find(v => v.id === value);
+                              if (variation) {
+                                form.setValue('squarePrizeFundItemId', item.id);
+                                form.setValue('squarePrizeFundItemVariationId', variation.id);
+                                form.setValue('squarePrizeFundItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
+                                const lineagePrice = getPriceForVariation(form.getValues('squareLineageItemVariationId'));
+                                const total = (lineagePrice || 0) + (variation.price || 0);
+                                if (total > 0) form.setValue('weeklyFee', total);
+                                break;
+                              }
+                            }
+                          }
+                        }}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="None" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">None</SelectItem>
+                          {catalogItems.map((item) =>
+                            item.variations.map((variation) => (
+                              <SelectItem key={variation.id} value={variation.id}>
+                                {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
+                                {variation.price !== null ? ` ($${(variation.price / 100).toFixed(2)})` : ''}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
+                  </div>
                 )}
 
                 <FormField

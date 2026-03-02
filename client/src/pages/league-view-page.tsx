@@ -68,11 +68,21 @@ export default function LeagueViewPage() {
       <div className="space-y-6">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-bold">{league.name}</h1>
-          {league.squareCatalogItemName && (
-            <Badge variant="secondary" className="gap-1">
-              <ShoppingBag className="h-3 w-3" />
-              {league.squareCatalogItemName}
-            </Badge>
+          {(league.squareLineageItemName || league.squarePrizeFundItemName) && (
+            <div className="flex gap-2">
+              {league.squareLineageItemName && (
+                <Badge variant="secondary" className="gap-1">
+                  <ShoppingBag className="h-3 w-3" />
+                  Lineage: {league.squareLineageItemName}
+                </Badge>
+              )}
+              {league.squarePrizeFundItemName && (
+                <Badge variant="outline" className="gap-1">
+                  <ShoppingBag className="h-3 w-3" />
+                  Prize Fund: {league.squarePrizeFundItemName}
+                </Badge>
+              )}
+            </div>
           )}
         </div>
 

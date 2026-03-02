@@ -180,12 +180,20 @@ class PaymentScheduler {
         const squareLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
         let paymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string; cardId?: string };
 
-        if (league?.squareCatalogItemVariationId && squareLocationId) {
+        const lineItems: { catalogObjectId: string; quantity: string }[] = [];
+        if (league?.squareLineageItemVariationId) {
+          lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity: '1' });
+        }
+        if (league?.squarePrizeFundItemVariationId) {
+          lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '1' });
+        }
+
+        if (lineItems.length > 0 && squareLocationId) {
           try {
             const orderResult = await createOrderWithPayment(
               scheduleRecord.squareCardId!,
               scheduleRecord.amount,
-              league.squareCatalogItemVariationId,
+              lineItems,
               squareLocationId
             );
             paymentResult = { status: 'success', paymentId: orderResult.id };

@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { processPayment, createOrUpdateCustomer, listCatalogItems, createOrderWithPayment } from '../services/square.js';
+import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment } from '../services/square.js';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
@@ -22,11 +22,19 @@ router.post('/payments', async (req, res) => {
     const league = await storage.getLeague(req.body.leagueId);
     const squareLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
 
-    if (league?.squareCatalogItemVariationId && squareLocationId) {
+    const lineItems: { catalogObjectId: string; quantity: string }[] = [];
+    if (league?.squareLineageItemVariationId) {
+      lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity: '1' });
+    }
+    if (league?.squarePrizeFundItemVariationId) {
+      lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '1' });
+    }
+
+    if (lineItems.length > 0 && squareLocationId) {
       payment = await createOrderWithPayment(
         req.body.sourceId,
         req.body.amount,
-        league.squareCatalogItemVariationId,
+        lineItems,
         squareLocationId,
         req.body.storeCard
       );
@@ -127,9 +135,20 @@ router.post('/customers', async (req, res) => {
   }
 });
 
+router.get('/catalog/categories', async (req, res) => {
+  try {
+    const categories = await listCatalogCategories();
+    sendSuccess(res, categories);
+  } catch (error) {
+    console.error('[Square Routes] Catalog categories error:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to fetch catalog categories');
+  }
+});
+
 router.get('/catalog/items', async (req, res) => {
   try {
-    const items = await listCatalogItems();
+    const categoryId = req.query.categoryId as string | undefined;
+    const items = await listCatalogItems(categoryId);
     sendSuccess(res, items);
   } catch (error) {
     console.error('[Square Routes] Catalog list error:', error);

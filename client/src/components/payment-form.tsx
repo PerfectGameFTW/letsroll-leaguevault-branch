@@ -237,11 +237,19 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           <DialogTitle>Record Payment</DialogTitle>
         </DialogHeader>
 
-        {leagueInfo?.squareCatalogItemName && (
+        {(leagueInfo?.squareLineageItemName || leagueInfo?.squarePrizeFundItemName) && (
           <Alert>
             <Info className="h-4 w-4" />
             <AlertDescription>
-              Charging for: <span className="font-medium">{leagueInfo.squareCatalogItemName}</span> — ${(leagueInfo.weeklyFee / 100).toFixed(2)}
+              <div className="space-y-1">
+                <div>Weekly fee: <span className="font-medium">${(leagueInfo.weeklyFee / 100).toFixed(2)}</span></div>
+                {leagueInfo.squareLineageItemName && (
+                  <div className="text-xs text-muted-foreground">Lineage: {leagueInfo.squareLineageItemName}</div>
+                )}
+                {leagueInfo.squarePrizeFundItemName && (
+                  <div className="text-xs text-muted-foreground">Prize Fund: {leagueInfo.squarePrizeFundItemName}</div>
+                )}
+              </div>
             </AlertDescription>
           </Alert>
         )}

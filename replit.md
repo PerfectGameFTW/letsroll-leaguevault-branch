@@ -46,10 +46,13 @@ A full-stack bowling league management application with multi-tenant support for
 - `SESSION_SECRET` - Express session secret
 
 ## Recent Changes (2026-03-02)
-- Integrated Square Catalog Items with leagues: sync items from Square, assign to leagues, auto-fill weekly fee from catalog price
-- Payments with catalog items use Square Orders API (line-item purchases); fallback to direct payment for leagues without catalog items
-- Payment scheduler also uses Orders API when catalog items are configured
-- League view shows catalog item badge; payment form shows item being charged
+- Square Catalog integration: dual-item model with Lineage + Prize Fund items per league
+  - Category filtering on catalog item endpoint (`GET /api/square/catalog/items?categoryId=...`)
+  - Categories endpoint (`GET /api/square/catalog/categories`)
+  - League form: category filter dropdown, separate Lineage and Prize Fund item pickers, auto-sum weekly fee
+  - Payments create Square Orders with multi-line items (lineage + prize fund as separate line items)
+  - Payment scheduler uses same Orders API logic for recurring payments
+  - League view shows lineage/prize fund badges; payment form shows fee breakdown
 - Added Locations layer between Organizations and Leagues (organizations → locations → leagues)
 - Locations CRUD with archive/delete, management page at `/locations`, sidebar nav link
 - League form includes Location dropdown; leagues table shows Location column with filter

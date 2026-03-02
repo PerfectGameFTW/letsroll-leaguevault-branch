@@ -286,7 +286,27 @@ export async function createOrUpdateCustomer(name: string, email: string): Promi
   }
 }
 
-export async function listCatalogItems() {
+export async function listCatalogCategories() {
+  const client = await initializeSquareClient();
+  if (!client) {
+    throw new Error('Square client not initialized');
+  }
+
+  try {
+    const response = await client.catalogApi.listCatalog(undefined, 'CATEGORY');
+    const objects = response.result.objects || [];
+
+    return objects.map((cat) => ({
+      id: cat.id,
+      name: cat.categoryData?.name || 'Unnamed Category',
+    }));
+  } catch (error) {
+    console.error('[Square Service] Catalog categories error:', error);
+    throw new Error('Failed to fetch catalog categories: ' + (error instanceof Error ? error.message : String(error)));
+  }
+}
+
+export async function listCatalogItems(categoryId?: string) {
   const client = await initializeSquareClient();
   if (!client) {
     throw new Error('Square client not initialized');
@@ -294,7 +314,14 @@ export async function listCatalogItems() {
 
   try {
     const response = await client.catalogApi.listCatalog(undefined, 'ITEM');
-    const objects = response.result.objects || [];
+    let objects = response.result.objects || [];
+
+    if (categoryId) {
+      objects = objects.filter((item) => {
+        const categories = item.itemData?.categories || [];
+        return categories.some((c: any) => c.id === categoryId);
+      });
+    }
 
     return objects.map((item) => {
       const variations = (item.itemData?.variations || []).map((v) => ({
@@ -319,10 +346,15 @@ export async function listCatalogItems() {
   }
 }
 
+export interface OrderLineItem {
+  catalogObjectId: string;
+  quantity: string;
+}
+
 export async function createOrderWithPayment(
   sourceId: string,
   amount: number,
-  catalogItemVariationId: string,
+  lineItems: OrderLineItem[],
   locationId: string,
   storeCard: boolean = false
 ) {
@@ -334,9 +366,9 @@ export async function createOrderWithPayment(
   }
 
   try {
-    console.log('[Square Service] Creating order with catalog item:', {
+    console.log('[Square Service] Creating order with catalog items:', {
       amount,
-      catalogItemVariationId,
+      lineItemCount: lineItems.length,
       locationId,
       sourceIdPrefix: sourceId.substring(0, 5),
     });
@@ -344,12 +376,7 @@ export async function createOrderWithPayment(
     const orderResponse = await client.ordersApi.createOrder({
       order: {
         locationId,
-        lineItems: [
-          {
-            catalogObjectId: catalogItemVariationId,
-            quantity: '1',
-          },
-        ],
+        lineItems,
       },
       idempotencyKey: `order-${Date.now()}-${Math.random()}`,
     });
@@ -424,5 +451,6 @@ export default {
   createOrUpdateCustomer,
   processPayment,
   listCatalogItems,
+  listCatalogCategories,
   createOrderWithPayment,
 };
