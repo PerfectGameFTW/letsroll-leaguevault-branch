@@ -50,6 +50,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedWeeks, setSelectedWeeks] = useState<number>(1);
   const [fixedAmount, setFixedAmount] = useState<number | null>(null);
+  const [fixedAmountType, setFixedAmountType] = useState<'remaining' | 'pastDue' | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
@@ -74,6 +75,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
     setSelectedWeeks(validWeeks);
     setFixedAmount(null);
+    setFixedAmountType(null);
   }, [totalWeeks]);
 
   const incrementWeeks = useCallback(() => {
@@ -292,12 +294,25 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                         {preset.label}
                       </Button>
                     ))}
+                    {financials.amountPastDue > 0 && (
+                      <Button
+                        variant={fixedAmountType === 'pastDue' ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setFixedAmount(financials.amountPastDue);
+                          setFixedAmountType('pastDue');
+                        }}
+                      >
+                        Past Due Balance
+                      </Button>
+                    )}
                     {financials.remainingBalance > 0 && (
                       <Button
-                        variant={fixedAmount !== null ? "default" : "outline"}
+                        variant={fixedAmountType === 'remaining' ? "default" : "outline"}
                         size="sm"
                         onClick={() => {
                           setFixedAmount(financials.remainingBalance);
+                          setFixedAmountType('remaining');
                         }}
                       >
                         Remaining Balance
