@@ -243,7 +243,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                   <div className="flex justify-between items-center">
                     <Label htmlFor="custom-weeks">Number of Weeks</Label>
                     <span className="text-sm font-medium">
-                      {formatCurrency(weeklyFee * selectedWeeks)} total
+                      {formatCurrency(fixedAmount !== null ? fixedAmount : weeklyFee * selectedWeeks)} total
                     </span>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -294,11 +294,9 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                     ))}
                     {financials.remainingBalance > 0 && (
                       <Button
-                        variant="outline"
+                        variant={fixedAmount !== null ? "default" : "outline"}
                         size="sm"
                         onClick={() => {
-                          const remainingWeeks = weeklyFee > 0 ? Math.floor(financials.remainingBalance / weeklyFee) : totalWeeks;
-                          setSelectedWeeks(Math.max(1, remainingWeeks));
                           setFixedAmount(financials.remainingBalance);
                         }}
                       >
