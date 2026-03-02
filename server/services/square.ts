@@ -303,17 +303,21 @@ export async function listCatalogCategories() {
     } while (cursor);
 
     const seen = new Set<string>();
-    return allObjects
+    const deduped = allObjects
+      .filter((cat) => !cat.isDeleted)
       .map((cat) => ({
         id: cat.id,
         name: cat.categoryData?.name || 'Unnamed Category',
       }))
       .filter((cat) => {
-        if (seen.has(cat.name)) return false;
-        seen.add(cat.name);
+        const key = cat.name.toLowerCase().trim();
+        if (seen.has(key)) return false;
+        seen.add(key);
         return true;
       })
       .sort((a, b) => a.name.localeCompare(b.name));
+    console.log(`[Square Service] Categories: ${allObjects.length} raw -> ${deduped.length} deduped`);
+    return deduped;
   } catch (error) {
     console.error('[Square Service] Catalog categories error:', error);
     throw new Error('Failed to fetch catalog categories: ' + (error instanceof Error ? error.message : String(error)));
