@@ -83,7 +83,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   }, [handleWeekChangeWrapper, selectedWeeks]);
 
   const seasonPresets = useMemo(() => [
-    { label: "1 Week", weeks: 1 },
+    { label: "1 Month", weeks: 4 },
     { label: "Half Season", weeks: Math.ceil(totalWeeks / 2) },
     { label: "Full Season", weeks: totalWeeks }
   ], [totalWeeks]);
