@@ -19,6 +19,7 @@ interface CreatePaymentParams {
   cardId: string;
   bowlerId: number;
   leagueId: number;
+  buyerEmail?: string;
 }
 
 export async function createSquarePayment({
@@ -26,6 +27,7 @@ export async function createSquarePayment({
   cardId,
   bowlerId,
   leagueId,
+  buyerEmail,
 }: CreatePaymentParams) {
   try {
     const idempotencyKey = `${bowlerId}-${leagueId}-${Date.now()}`;
@@ -41,10 +43,11 @@ export async function createSquarePayment({
       sourceId: cardId,
       idempotencyKey,
       amountMoney: {
-        amount: BigInt(amount), // Convert to BigInt to fix type error
+        amount: BigInt(amount),
         currency: "USD",
       },
       autocomplete: true,
+      ...(buyerEmail && { buyerEmailAddress: buyerEmail }),
     });
 
     if (payment.result?.payment?.id) {

@@ -84,7 +84,7 @@ export async function saveCardOnFile(sourceId: string, customerId: string) {
   }
 }
 
-export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false, customerId?: string) {
+export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false, customerId?: string, buyerEmail?: string) {
   const client = await initializeSquareClient();
   if (!client) {
     throw new Error(JSON.stringify({
@@ -145,6 +145,10 @@ export async function processPayment(sourceId: string, amount: number, storeCard
 
     if (customerId) {
       paymentRequest.customerId = customerId;
+    }
+
+    if (buyerEmail) {
+      paymentRequest.buyerEmailAddress = buyerEmail;
     }
 
     const response = await client.paymentsApi.createPayment(paymentRequest);
@@ -419,7 +423,8 @@ export async function createOrderWithPayment(
   lineItems: OrderLineItem[],
   locationId: string,
   storeCard: boolean = false,
-  customerId?: string
+  customerId?: string,
+  buyerEmail?: string
 ) {
   const client = await initializeSquareClient();
   if (!client) {
@@ -478,6 +483,10 @@ export async function createOrderWithPayment(
 
     if (customerId) {
       paymentRequest.customerId = customerId;
+    }
+
+    if (buyerEmail) {
+      paymentRequest.buyerEmailAddress = buyerEmail;
     }
 
     const paymentResponse = await client.paymentsApi.createPayment(paymentRequest);

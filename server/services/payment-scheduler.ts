@@ -1,7 +1,7 @@
 import schedule from "node-schedule";
 import { db } from "../db";
 import { eq, and, lte, isNull, or } from "drizzle-orm";
-import { paymentSchedules, payments, leagues } from "@shared/schema";
+import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
 import { addWeeks, addMonths } from "date-fns";
 import { createSquarePayment } from "../lib/square";
 import { createOrderWithPayment } from "./square";
@@ -177,6 +177,8 @@ class PaymentScheduler {
         });
 
         const league = await db.select().from(leagues).where(eq(leagues.id, scheduleRecord.leagueId)).then(r => r[0]);
+        const bowler = await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]);
+        const buyerEmail = bowler?.email || undefined;
         const squareLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
         let paymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string; cardId?: string };
 
@@ -194,7 +196,10 @@ class PaymentScheduler {
               scheduleRecord.squareCardId!,
               scheduleRecord.amount,
               lineItems,
-              squareLocationId
+              squareLocationId,
+              false,
+              undefined,
+              buyerEmail
             );
             paymentResult = { status: 'success', paymentId: orderResult.id };
           } catch (error) {
@@ -206,6 +211,7 @@ class PaymentScheduler {
             cardId: scheduleRecord.squareCardId,
             bowlerId: scheduleRecord.bowlerId,
             leagueId: scheduleRecord.leagueId,
+            buyerEmail,
           });
         }
 

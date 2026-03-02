@@ -35,6 +35,8 @@ router.post('/payments', async (req, res) => {
       lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '1' });
     }
 
+    const buyerEmail = bowler?.email || undefined;
+
     if (lineItems.length > 0 && squareLocationId) {
       payment = await createOrderWithPayment(
         req.body.sourceId,
@@ -42,14 +44,16 @@ router.post('/payments', async (req, res) => {
         lineItems,
         squareLocationId,
         req.body.storeCard,
-        customerId
+        customerId,
+        buyerEmail
       );
     } else {
       payment = await processPayment(
         req.body.sourceId,
         req.body.amount,
         req.body.storeCard,
-        customerId
+        customerId,
+        buyerEmail
       );
     }
 
