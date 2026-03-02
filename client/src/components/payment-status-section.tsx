@@ -527,6 +527,27 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
             <span className="text-sm font-medium">{formatDollars(financials.remainingBalance)}</span>
           </div>
 
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+              <RefreshCw className="h-3.5 w-3.5" />
+              Payment Schedule
+            </span>
+            <span className="text-sm font-medium">
+              {activeSchedule
+                ? `Auto-pay: ${activeSchedule.frequency === 'weekly' ? 'Weekly' : 'Monthly'} — ${formatDollars(activeSchedule.amount)}`
+                : 'No auto-pay'}
+            </span>
+          </div>
+
+          {activeSchedule && (
+            <div className="flex items-center justify-between pl-5">
+              <span className="text-xs text-muted-foreground">Next payment</span>
+              <span className="text-xs text-muted-foreground">
+                {format(new Date(activeSchedule.nextPaymentDate), 'MMM d, yyyy h:mm a')}
+              </span>
+            </div>
+          )}
+
           {financials.finalTwoWeeks.amount > 0 && (
             <div className={`flex items-center justify-between rounded-md px-3 py-2 ${
               financials.finalTwoWeeks.isPaid
@@ -576,27 +597,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                   {financials.finalTwoWeeks.isPaid ? 'Paid' : financials.finalTwoWeeks.isPastDue ? 'Past Due' : 'Due'}
                 </span>
               </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-              <RefreshCw className="h-3.5 w-3.5" />
-              Payment Schedule
-            </span>
-            <span className="text-sm font-medium">
-              {activeSchedule
-                ? `Auto-pay: ${activeSchedule.frequency === 'weekly' ? 'Weekly' : 'Monthly'} — ${formatDollars(activeSchedule.amount)}`
-                : 'No auto-pay'}
-            </span>
-          </div>
-
-          {activeSchedule && (
-            <div className="flex items-center justify-between pl-5">
-              <span className="text-xs text-muted-foreground">Next payment</span>
-              <span className="text-xs text-muted-foreground">
-                {format(new Date(activeSchedule.nextPaymentDate), 'MMM d, yyyy h:mm a')}
-              </span>
             </div>
           )}
 
