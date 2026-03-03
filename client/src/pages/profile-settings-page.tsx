@@ -6,9 +6,10 @@ import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Save, Lock, ArrowRight } from "lucide-react";
-import { Link } from "wouter";
+import { Loader2, Save, Lock, ArrowRight, LogOut } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -49,7 +50,9 @@ const STALE_TIME = 1000 * 60 * 5;
 
 export const ProfileSettingsPage: FC = () => {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const { data: userResponse, isLoading: isLoadingUser } = useQuery<ApiResponse<User>>({
     queryKey: ['/api/user'],
@@ -125,6 +128,24 @@ export const ProfileSettingsPage: FC = () => {
       });
     },
   });
+
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await apiRequest('/api/auth/logout', 'POST', {});
+      queryClient.clear();
+      setLocation('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      toast({
+        title: "Logout failed",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   const isSystemAdmin = currentUser?.isAdmin && currentUser?.isOrganizationAdmin;
 
@@ -321,6 +342,34 @@ export const ProfileSettingsPage: FC = () => {
                 </form>
               </Form>
             )}
+          </CardContent>
+        </Card>
+        <Separator />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Sign Out</CardTitle>
+            <CardDescription>Log out of your account on this device</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="destructive"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="flex items-center gap-2"
+            >
+              {isLoggingOut ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Signing out...
+                </>
+              ) : (
+                <>
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </>
+              )}
+            </Button>
           </CardContent>
         </Card>
       </div>
