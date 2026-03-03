@@ -143,7 +143,17 @@ export const BowlerDashboardPage: FC = () => {
     staleTime: STALE_TIME,
   });
 
-  const isLoading = isLoadingUser || isLoadingBowlers || isLoadingBL || isLoadingLeagues || isLoadingTeams || isLoadingPayments;
+  const isStillLoadingChain =
+    isLoadingUser ||
+    isLoadingBowlers ||
+    isLoadingBL ||
+    isLoadingLeagues ||
+    isLoadingTeams ||
+    isLoadingPayments ||
+    (!!currentUser?.bowlerId && !bowlersResponse) ||
+    (!!bowler && !bowlerLeaguesResponse) ||
+    (activeBowlerLeagues.length > 0 && !leaguesResponse) ||
+    (activeBowlerLeagues.length > 0 && !teamsResponse);
   const hasError = userError || bowlersError || blError || leaguesError || teamsError;
 
   const handleRetry = () => {
@@ -155,7 +165,7 @@ export const BowlerDashboardPage: FC = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/payments'] });
   };
 
-  if (isLoading && !league) {
+  if (isStillLoadingChain && !league) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
