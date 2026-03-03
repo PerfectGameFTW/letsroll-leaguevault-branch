@@ -346,9 +346,9 @@ export const ProfileSettingsPage: FC = () => {
         <Separator />
 
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-4">
             <CardTitle>Sign Out</CardTitle>
-            <CardDescription>Log out of your account on this device</CardDescription>
+            <CardDescription className="mt-1.5">Log out of your account on this device</CardDescription>
           </CardHeader>
           <CardContent>
             <Button
