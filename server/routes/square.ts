@@ -201,4 +201,11 @@ router.get('/config', (req, res) => {
   }
 });
 
+router.get('/config', (_req, res) => {
+  res.json({
+    appId: process.env.VITE_SQUARE_APP_ID || '',
+    locationId: process.env.VITE_SQUARE_LOCATION_ID || '',
+  });
+});
+
 export default router;
