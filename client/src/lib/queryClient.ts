@@ -65,16 +65,12 @@ export const getQueryFn: QueryFunction = async ({ queryKey, signal }) => {
       signal,
     });
 
-    if (res.status === 401) {
-      return { success: false, data: null, error: { message: "Not authenticated", code: "AUTH_REQUIRED" } };
-    }
-
     const validatedRes = await throwIfResNotOk(res);
     const data = await validatedRes.json();
     return data;
   } catch (error: any) {
     if (error?.name === 'AbortError') {
-      throw error;
+      return undefined;
     }
     console.error(`[Query] Error fetching ${queryKey[0]}:`, error);
     throw error;

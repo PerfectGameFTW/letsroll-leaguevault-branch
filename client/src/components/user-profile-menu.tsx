@@ -39,8 +39,6 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
   const handleLogout = async () => {
     try {
       await apiRequest('/api/auth/logout', 'POST', {});
-      await queryClient.cancelQueries();
-      queryClient.clear();
       window.location.href = '/login';
       toast({
         title: "Logged out",
