@@ -16,7 +16,6 @@ const isProduction = isProductionAppId;
 logger.info(`[Square] Initializing Square client with ${isProduction ? 'PRODUCTION' : 'SANDBOX'} environment`);
 logger.info(`[Square] App ID format: ${isProductionAppId ? 'PRODUCTION' : 'SANDBOX'}, Token format: ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'}`);
 logger.info(`[Square] Token source: ${process.env.SQUARE_PROD_TOKEN ? 'SQUARE_PROD_TOKEN' : process.env.SQUARE_PRODUCTION_ACCESS_TOKEN ? 'SQUARE_PRODUCTION_ACCESS_TOKEN' : 'SQUARE_ACCESS_TOKEN'}`);
-logger.info(`[Square] Token length: ${token.length}, prefix: ${token.substring(0, 6)}`);
 
 const squareClient = new Client({
   accessToken: token,

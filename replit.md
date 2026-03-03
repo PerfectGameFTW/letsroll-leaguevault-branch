@@ -41,8 +41,13 @@ A full-stack bowling league management application with multi-tenant support for
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection string (runtime-managed)
-- `SQUARE_APP_ID` / `VITE_SQUARE_APP_ID` - Square payment integration
-- `SQUARE_LOCATION_ID` / `VITE_SQUARE_LOCATION_ID` - Square location
+- `SQUARE_PROD_TOKEN` - Square production access token (priority 1)
+- `SQUARE_PRODUCTION_ACCESS_TOKEN` - Square production access token (priority 2, fallback)
+- `SQUARE_ACCESS_TOKEN` - Square access token (priority 3, fallback)
+- `SQUARE_PRODUCTION_APP_ID` - Square production app ID (shared env var)
+- `SQUARE_PRODUCTION_LOCATION_ID` - Square production location ID (shared env var)
+- `SQUARE_APP_ID` / `VITE_SQUARE_APP_ID` - Square app ID (fallback)
+- `SQUARE_LOCATION_ID` / `VITE_SQUARE_LOCATION_ID` - Square location (fallback)
 - `SESSION_SECRET` - Express session secret
 
 ## Recent Changes (2026-03-02)
