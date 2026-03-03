@@ -18,7 +18,7 @@ router.post('/payments', async (req, res) => {
 
     let payment;
     const league = await storage.getLeague(req.body.leagueId);
-    const squareLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
+    const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
 
     const bowler = await storage.getBowler(req.body.bowlerId);
     const customerId = bowler?.squareCustomerId || undefined;

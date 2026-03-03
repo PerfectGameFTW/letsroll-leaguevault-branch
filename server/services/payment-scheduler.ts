@@ -212,7 +212,7 @@ class PaymentScheduler {
         const league = await db.select().from(leagues).where(eq(leagues.id, scheduleRecord.leagueId)).then(r => r[0]);
         const bowler = await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]);
         const buyerEmail = bowler?.email || undefined;
-        const squareLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
+        const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
         let paymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string; cardId?: string };
 
         const lineItems: { catalogObjectId: string; quantity: string }[] = [];
@@ -430,7 +430,7 @@ class PaymentScheduler {
 
       const bowler = await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]);
       const buyerEmail = bowler?.email || undefined;
-      const squareLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
+      const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
 
       let finalPaymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string };
 
