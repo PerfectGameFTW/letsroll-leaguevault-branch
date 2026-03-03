@@ -69,6 +69,8 @@ export const BowlerDashboardPage: FC = () => {
     queryKey: ['/api/bowler-leagues'],
     enabled: !!bowler,
     staleTime: STALE_TIME,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
 
   const activeBowlerLeagues = useMemo((): BowlerLeague[] => {
@@ -88,6 +90,8 @@ export const BowlerDashboardPage: FC = () => {
     queryKey: ['/api/leagues'],
     enabled: activeBowlerLeagues.length > 0,
     staleTime: STALE_TIME,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
 
   const leagueMap = useMemo(() => {
@@ -106,6 +110,8 @@ export const BowlerDashboardPage: FC = () => {
     queryKey: ['/api/teams'],
     enabled: activeBowlerLeagues.length > 0,
     staleTime: STALE_TIME,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
 
   const teamMap = useMemo(() => {
