@@ -3,7 +3,9 @@ import { logger } from "../logger";
 
 // Determine environment based on the access token format rather than NODE_ENV
 // Production tokens start with "EAAAEv" while sandbox tokens start with "EAAAAv"
-const isProductionToken = process.env.SQUARE_ACCESS_TOKEN?.startsWith('EAAAEv') || false;
+const token = process.env.SQUARE_ACCESS_TOKEN || '';
+const appId = process.env.VITE_SQUARE_APP_ID || '';
+const isProductionToken = !appId.includes('sandbox-') || token.startsWith('EAAAEv') || token.startsWith('EAAAl7');
 
 // Log the detected environment for debugging
 logger.info(`[Square] Initializing Square client with ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'} environment`);
