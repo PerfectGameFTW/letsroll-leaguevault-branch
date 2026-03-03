@@ -56,7 +56,7 @@ export const BowlerDashboardPage: FC = () => {
   const { data: bowlersResponse, isLoading: isLoadingBowlers, error: bowlersError } = useQuery<ApiResponse<Bowler[]>>({
     queryKey: ['/api/bowlers'],
     enabled: !!currentUser?.bowlerId,
-    staleTime: STALE_TIME,
+    staleTime: 0,
   });
 
   const bowler = useMemo(() => {
@@ -86,10 +86,10 @@ export const BowlerDashboardPage: FC = () => {
     return activeBowlerLeagues[0];
   }, [activeBowlerLeagues, selectedLeagueId]);
 
-  const { data: leaguesResponse, isLoading: isLoadingLeagues, error: leaguesError } = useQuery<ApiResponse<League[]>>({
+  const { data: leaguesResponse, isLoading: isLoadingLeagues, isFetching: isFetchingLeagues, error: leaguesError } = useQuery<ApiResponse<League[]>>({
     queryKey: ['/api/leagues'],
     enabled: activeBowlerLeagues.length > 0,
-    staleTime: STALE_TIME,
+    staleTime: 0,
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
@@ -109,7 +109,7 @@ export const BowlerDashboardPage: FC = () => {
   const { data: teamsResponse, isLoading: isLoadingTeams, error: teamsError } = useQuery<ApiResponse<Team[]>>({
     queryKey: ['/api/teams'],
     enabled: activeBowlerLeagues.length > 0,
-    staleTime: STALE_TIME,
+    staleTime: 0,
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
@@ -143,6 +143,8 @@ export const BowlerDashboardPage: FC = () => {
     staleTime: STALE_TIME,
   });
 
+  const leagueNotYetResolved = activeBowlerLeagues.length > 0 && !leagueMap.has(activeBowlerLeagues[0].leagueId);
+
   const isStillLoadingChain =
     isLoadingUser ||
     isLoadingBowlers ||
@@ -153,23 +155,8 @@ export const BowlerDashboardPage: FC = () => {
     (!!currentUser?.bowlerId && !bowlersResponse) ||
     (!!bowler && !bowlerLeaguesResponse) ||
     (activeBowlerLeagues.length > 0 && !leaguesResponse) ||
-    (activeBowlerLeagues.length > 0 && !teamsResponse);
-
-  console.log('[Dashboard Debug]', JSON.stringify({
-    hasUser: !!currentUser,
-    bowlerId: currentUser?.bowlerId,
-    hasBowler: !!bowler,
-    bowlerName: bowler?.name,
-    blCount: bowlerLeaguesResponse?.data?.length,
-    activeBLCount: activeBowlerLeagues.length,
-    activeBL: activeBowlerLeague ? { bowlerId: activeBowlerLeague.bowlerId, leagueId: activeBowlerLeague.leagueId } : null,
-    leaguesCount: leaguesResponse?.data?.length,
-    hasLeague: !!league,
-    leagueName: league?.name,
-    isStillLoadingChain,
-    loadingFlags: { isLoadingUser, isLoadingBowlers, isLoadingBL, isLoadingLeagues, isLoadingTeams, isLoadingPayments },
-    errors: { user: !!userError, bowlers: !!bowlersError, bl: !!blError, leagues: !!leaguesError, teams: !!teamsError },
-  }));
+    (activeBowlerLeagues.length > 0 && !teamsResponse) ||
+    (leagueNotYetResolved && isFetchingLeagues);
 
   const hasError = userError || bowlersError || blError || leaguesError || teamsError;
 
