@@ -403,14 +403,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                 </div>
               )}
               
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="store-card" 
-                  checked={storeCard}
-                  onCheckedChange={(checked) => setStoreCard(checked === true)} 
-                />
-                <Label htmlFor="store-card">Save card for future payments</Label>
-              </div>
             </div>
             
             <div className="pt-4 border-t">
