@@ -1,4 +1,5 @@
 import { FC } from "react";
+import { queryClient } from "@/lib/queryClient";
 import {
   Card,
   CardContent,
@@ -62,6 +63,8 @@ const LoginPage: FC = () => {
       }
 
       const userData = await response.json();
+
+      await queryClient.invalidateQueries({ queryKey: ['/api/user'] });
 
       toast({
         title: "Login successful!",
