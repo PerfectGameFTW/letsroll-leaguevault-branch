@@ -53,7 +53,7 @@ export async function apiRequest<T = any>(
   }
 }
 
-export const getQueryFn: QueryFunction = async ({ queryKey }) => {
+export const getQueryFn: QueryFunction = async ({ queryKey, signal }) => {
   try {
     const url = ensureApiPrefix(queryKey[0] as string);
 
@@ -61,13 +61,21 @@ export const getQueryFn: QueryFunction = async ({ queryKey }) => {
       credentials: "include",
       headers: {
         "Accept": "application/json"
-      }
+      },
+      signal,
     });
+
+    if (res.status === 401) {
+      return { success: false, data: null, error: { message: "Not authenticated", code: "AUTH_REQUIRED" } };
+    }
 
     const validatedRes = await throwIfResNotOk(res);
     const data = await validatedRes.json();
     return data;
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      throw error;
+    }
     console.error(`[Query] Error fetching ${queryKey[0]}:`, error);
     throw error;
   }

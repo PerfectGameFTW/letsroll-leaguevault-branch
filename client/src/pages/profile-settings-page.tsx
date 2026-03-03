@@ -133,9 +133,9 @@ export const ProfileSettingsPage: FC = () => {
     try {
       setIsLoggingOut(true);
       await apiRequest('/api/auth/logout', 'POST', {});
-      queryClient.cancelQueries();
-      setLocation('/login');
+      await queryClient.cancelQueries();
       queryClient.clear();
+      setLocation('/login');
     } catch (error) {
       console.error('Logout failed:', error);
       toast({
