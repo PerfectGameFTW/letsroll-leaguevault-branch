@@ -31,18 +31,16 @@ declare global {
 let payments: any = null;
 let initializationPromise: Promise<any> | null = null;
 
-// Get the application credentials
 const appId = import.meta.env.VITE_SQUARE_APP_ID || '';
 const locationId = import.meta.env.VITE_SQUARE_LOCATION_ID || '';
 
-// Determine environment based on App ID format
-// Production app IDs don't have 'sandbox-' prefix
-const isProduction = !appId.includes('sandbox-');
+const isProduction = appId.length > 0 && !appId.includes('sandbox-');
 
-// Always use production SDK for production credentials
 const SQUARE_SDK_URL = isProduction
-  ? "https://web.squarecdn.com/v1/square.js" // Production SDK
-  : "https://sandbox.web.squarecdn.com/v1/square.js"; // Sandbox SDK
+  ? "https://web.squarecdn.com/v1/square.js"
+  : "https://sandbox.web.squarecdn.com/v1/square.js";
+
+console.log('[Square] SDK config:', { appIdSet: appId.length > 0, isProduction, sdkUrl: SQUARE_SDK_URL });
 
 export async function initializeSquare() {
   try {

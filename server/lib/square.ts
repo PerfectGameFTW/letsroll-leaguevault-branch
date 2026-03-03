@@ -1,19 +1,18 @@
 import { ApiError, Client, Environment } from "square";
 import { logger } from "../logger";
 
-// Determine environment based on the access token format rather than NODE_ENV
-// Production tokens start with "EAAAEv" while sandbox tokens start with "EAAAAv"
 const token = process.env.SQUARE_ACCESS_TOKEN || '';
 const appId = process.env.VITE_SQUARE_APP_ID || '';
-const isProductionToken = !appId.includes('sandbox-') || token.startsWith('EAAAEv') || token.startsWith('EAAAl7');
+const isProductionToken = token.startsWith('EAAAEv') || token.startsWith('EAAAl7');
+const isProductionAppId = !appId.includes('sandbox-');
+const isProduction = isProductionAppId;
 
-// Log the detected environment for debugging
-logger.info(`[Square] Initializing Square client with ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'} environment`);
-logger.info(`[Square] Token format check: ${isProductionToken ? 'PRODUCTION format detected' : 'SANDBOX format detected'}`);
+logger.info(`[Square] Initializing Square client with ${isProduction ? 'PRODUCTION' : 'SANDBOX'} environment`);
+logger.info(`[Square] App ID format: ${isProductionAppId ? 'PRODUCTION' : 'SANDBOX'}, Token format: ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'}`);
 
 const squareClient = new Client({
   accessToken: process.env.SQUARE_ACCESS_TOKEN,
-  environment: isProductionToken ? Environment.Production : Environment.Sandbox
+  environment: isProduction ? Environment.Production : Environment.Sandbox
 });
 
 interface CreatePaymentParams {
@@ -34,11 +33,11 @@ export async function createSquarePayment({
   try {
     const idempotencyKey = `${bowlerId}-${leagueId}-${Date.now()}`;
 
-    logger.info(`Creating Square payment in ${isProductionToken ? 'production' : 'sandbox'} mode`, {
+    logger.info(`Creating Square payment in ${isProduction ? 'production' : 'sandbox'} mode`, {
       amount,
       bowlerId,
       leagueId,
-      environment: isProductionToken ? 'production' : 'sandbox'
+      environment: isProduction ? 'production' : 'sandbox'
     });
 
     const payment = await squareClient.paymentsApi.createPayment({
