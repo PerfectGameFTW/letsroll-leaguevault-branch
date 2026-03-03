@@ -171,23 +171,27 @@ router.get('/catalog/items', async (req, res) => {
 });
 
 router.get('/config', (_req, res) => {
+  const prodAppId = process.env.SQUARE_PRODUCTION_APP_ID || '';
   const viteAppId = process.env.VITE_SQUARE_APP_ID || '';
   const squareAppId = process.env.SQUARE_APP_ID || '';
+
+  const prodLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || '';
   const viteLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
   const squareLocationId = process.env.SQUARE_LOCATION_ID || '';
 
-  const appId = (viteAppId && !viteAppId.includes('sandbox-')) ? viteAppId
-    : (squareAppId && !squareAppId.includes('sandbox-')) ? squareAppId
-    : viteAppId || squareAppId;
+  const appId = prodAppId
+    || ((viteAppId && !viteAppId.includes('sandbox-')) ? viteAppId : '')
+    || ((squareAppId && !squareAppId.includes('sandbox-')) ? squareAppId : '')
+    || viteAppId || squareAppId;
 
-  const locationId = viteLocationId || squareLocationId;
+  const locationId = prodLocationId || viteLocationId || squareLocationId;
 
   console.log('[Square Config] Serving config:', {
+    prodAppIdSet: !!prodAppId,
     viteAppIdSet: !!viteAppId,
     squareAppIdSet: !!squareAppId,
-    viteAppIdIsSandbox: viteAppId.includes('sandbox-'),
-    squareAppIdIsSandbox: squareAppId.includes('sandbox-'),
-    selectedAppIdSource: appId === viteAppId ? 'VITE' : appId === squareAppId ? 'SQUARE' : 'NONE',
+    selectedAppId: appId.substring(0, 10) + '...',
+    isProduction: appId.length > 0 && !appId.includes('sandbox-'),
   });
 
   res.json({ appId, locationId });

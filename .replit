@@ -57,3 +57,9 @@ args = "npm run dev"
 run = ["sh", "-c", "NODE_ENV=production node dist/index.js"]
 deploymentTarget = "cloudrun"
 build = ["sh", "-c", "npm run build"]
+
+[userenv]
+
+[userenv.shared]
+SQUARE_PRODUCTION_APP_ID = "sq0idp-7qXqEqFgsEkS1NpNbvhyDA"
+SQUARE_PRODUCTION_LOCATION_ID = "LPM9NWNXW82M5"
