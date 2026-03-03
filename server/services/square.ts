@@ -131,10 +131,14 @@ export async function processPayment(sourceId: string, amount: number, storeCard
     let paymentSourceId = sourceId;
 
     if (storeCard && customerId) {
-      const savedCard = await saveCardOnFile(sourceId, customerId);
-      if (savedCard?.id) {
-        cardOnFile = savedCard;
-        paymentSourceId = savedCard.id;
+      try {
+        const savedCard = await saveCardOnFile(sourceId, customerId);
+        if (savedCard?.id) {
+          cardOnFile = savedCard;
+          paymentSourceId = savedCard.id;
+        }
+      } catch (cardError) {
+        console.error('[Square Service] Card save failed in processPayment, proceeding with one-time payment:', cardError instanceof Error ? cardError.message : cardError);
       }
     }
 
@@ -452,10 +456,14 @@ export async function createOrderWithPayment(
     let paymentSourceId = sourceId;
 
     if (storeCard && customerId) {
-      const savedCard = await saveCardOnFile(sourceId, customerId);
-      if (savedCard?.id) {
-        cardOnFile = savedCard;
-        paymentSourceId = savedCard.id;
+      try {
+        const savedCard = await saveCardOnFile(sourceId, customerId);
+        if (savedCard?.id) {
+          cardOnFile = savedCard;
+          paymentSourceId = savedCard.id;
+        }
+      } catch (cardError) {
+        console.error('[Square Service] Card save failed, proceeding with one-time payment:', cardError instanceof Error ? cardError.message : cardError);
       }
     }
 
