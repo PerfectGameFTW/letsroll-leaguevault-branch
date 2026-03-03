@@ -10,19 +10,14 @@ interface SquareCustomer {
 let squareClient: Client | null = null;
 
 async function initializeSquareClient() {
-  if (!squareClient && process.env.SQUARE_ACCESS_TOKEN) {
+  const accessToken = process.env.SQUARE_PRODUCTION_ACCESS_TOKEN || process.env.SQUARE_ACCESS_TOKEN || '';
+  if (!squareClient && accessToken) {
     try {
       console.log('[Square Service] Initializing Square client...');
       console.log('[Square Service] Environment:', process.env.NODE_ENV);
+      console.log('[Square Service] Token source:', process.env.SQUARE_PRODUCTION_ACCESS_TOKEN ? 'SQUARE_PRODUCTION_ACCESS_TOKEN' : 'SQUARE_ACCESS_TOKEN');
 
-      if (!process.env.SQUARE_ACCESS_TOKEN) {
-        throw new Error('Square access token is not configured');
-      }
-
-      // Check if we're using a production access token
-      // Production tokens can start with various patterns including 'EAAAEv' or 'EAAAl7'
-      const token = process.env.SQUARE_ACCESS_TOKEN;
-      const isProductionToken = token.startsWith('EAAAEv') || token.startsWith('EAAAl7');
+      const isProductionToken = accessToken.startsWith('EAAAEv') || accessToken.startsWith('EAAAl7');
       
       const prodAppId = process.env.SQUARE_PRODUCTION_APP_ID || '';
       const viteAppId = process.env.VITE_SQUARE_APP_ID || '';
@@ -33,15 +28,13 @@ async function initializeSquareClient() {
         || viteAppId || sqAppId;
       const isProductionAppId = appId.length > 0 && !appId.includes('sandbox-');
       
-      // Always use production environment when app ID is production
-      // This ensures consistency between client and server
       const environment = isProductionAppId ? Environment.Production : Environment.Sandbox;
       
       console.log('[Square Service] Token format:', isProductionToken ? 'PRODUCTION' : 'SANDBOX');
       console.log('[Square Service] App ID format:', isProductionAppId ? 'PRODUCTION' : 'SANDBOX');
       console.log('[Square Service] Using Square environment:', environment === Environment.Production ? 'Production' : 'Sandbox');
       squareClient = new Client({
-        accessToken: process.env.SQUARE_ACCESS_TOKEN,
+        accessToken,
         environment
       });
 

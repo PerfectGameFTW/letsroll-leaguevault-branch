@@ -1,7 +1,7 @@
 import { ApiError, Client, Environment } from "square";
 import { logger } from "../logger";
 
-const token = process.env.SQUARE_ACCESS_TOKEN || '';
+const token = process.env.SQUARE_PRODUCTION_ACCESS_TOKEN || process.env.SQUARE_ACCESS_TOKEN || '';
 const prodAppId = process.env.SQUARE_PRODUCTION_APP_ID || '';
 const viteAppId = process.env.VITE_SQUARE_APP_ID || '';
 const squareAppId = process.env.SQUARE_APP_ID || '';
@@ -15,9 +15,10 @@ const isProduction = isProductionAppId;
 
 logger.info(`[Square] Initializing Square client with ${isProduction ? 'PRODUCTION' : 'SANDBOX'} environment`);
 logger.info(`[Square] App ID format: ${isProductionAppId ? 'PRODUCTION' : 'SANDBOX'}, Token format: ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'}`);
+logger.info(`[Square] Token source: ${process.env.SQUARE_PRODUCTION_ACCESS_TOKEN ? 'SQUARE_PRODUCTION_ACCESS_TOKEN' : 'SQUARE_ACCESS_TOKEN'}`);
 
 const squareClient = new Client({
-  accessToken: process.env.SQUARE_ACCESS_TOKEN,
+  accessToken: token,
   environment: isProduction ? Environment.Production : Environment.Sandbox
 });
 
