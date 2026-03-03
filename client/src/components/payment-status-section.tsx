@@ -660,7 +660,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               className="w-full"
             >
               Make One-Time Payment
-              <DollarSign className="ml-2 h-4 w-4" />
             </Button>
           </div>
         )}
