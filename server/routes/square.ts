@@ -170,42 +170,27 @@ router.get('/catalog/items', async (req, res) => {
   }
 });
 
-router.get('/config', (req, res) => {
-  try {
-    // Don't expose actual tokens, just show detection results
-    const accessToken = process.env.SQUARE_ACCESS_TOKEN || '';
-    const appId = process.env.VITE_SQUARE_APP_ID || '';
-    const locationId = process.env.VITE_SQUARE_LOCATION_ID || '';
-    
-    // Determine environment based on token format 
-    const isProductionToken = accessToken.startsWith('EAAAEv') || accessToken.startsWith('EAAAl7');
-    const isProductionAppId = !appId.includes('sandbox-');
-    
-    // Send back environment details without revealing secrets
-    sendSuccess(res, {
-      environment: {
-        tokenFormat: isProductionToken ? 'PRODUCTION' : 'SANDBOX',
-        appIdFormat: isProductionAppId ? 'PRODUCTION' : 'SANDBOX', 
-        nodeEnv: process.env.NODE_ENV || 'development'
-      },
-      credentials: {
-        hasAccessToken: !!accessToken,
-        hasAppId: !!appId,
-        hasLocationId: !!locationId
-      },
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('[Square Routes] Error checking environment:', error);
-    sendError(res, 'Error checking Square environment');
-  }
-});
-
 router.get('/config', (_req, res) => {
-  res.json({
-    appId: process.env.VITE_SQUARE_APP_ID || '',
-    locationId: process.env.VITE_SQUARE_LOCATION_ID || '',
+  const viteAppId = process.env.VITE_SQUARE_APP_ID || '';
+  const squareAppId = process.env.SQUARE_APP_ID || '';
+  const viteLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
+  const squareLocationId = process.env.SQUARE_LOCATION_ID || '';
+
+  const appId = (viteAppId && !viteAppId.includes('sandbox-')) ? viteAppId
+    : (squareAppId && !squareAppId.includes('sandbox-')) ? squareAppId
+    : viteAppId || squareAppId;
+
+  const locationId = viteLocationId || squareLocationId;
+
+  console.log('[Square Config] Serving config:', {
+    viteAppIdSet: !!viteAppId,
+    squareAppIdSet: !!squareAppId,
+    viteAppIdIsSandbox: viteAppId.includes('sandbox-'),
+    squareAppIdIsSandbox: squareAppId.includes('sandbox-'),
+    selectedAppIdSource: appId === viteAppId ? 'VITE' : appId === squareAppId ? 'SQUARE' : 'NONE',
   });
+
+  res.json({ appId, locationId });
 });
 
 export default router;

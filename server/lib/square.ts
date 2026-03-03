@@ -2,9 +2,13 @@ import { ApiError, Client, Environment } from "square";
 import { logger } from "../logger";
 
 const token = process.env.SQUARE_ACCESS_TOKEN || '';
-const appId = process.env.VITE_SQUARE_APP_ID || '';
+const viteAppId = process.env.VITE_SQUARE_APP_ID || '';
+const squareAppId = process.env.SQUARE_APP_ID || '';
+const appId = (viteAppId && !viteAppId.includes('sandbox-')) ? viteAppId
+  : (squareAppId && !squareAppId.includes('sandbox-')) ? squareAppId
+  : viteAppId || squareAppId;
 const isProductionToken = token.startsWith('EAAAEv') || token.startsWith('EAAAl7');
-const isProductionAppId = !appId.includes('sandbox-');
+const isProductionAppId = appId.length > 0 && !appId.includes('sandbox-');
 const isProduction = isProductionAppId;
 
 logger.info(`[Square] Initializing Square client with ${isProduction ? 'PRODUCTION' : 'SANDBOX'} environment`);

@@ -34,26 +34,23 @@ let squareConfig: { appId: string; locationId: string } | null = null;
 async function getSquareConfig(): Promise<{ appId: string; locationId: string }> {
   if (squareConfig) return squareConfig;
 
-  const buildTimeAppId = import.meta.env.VITE_SQUARE_APP_ID || '';
-  const buildTimeLocationId = import.meta.env.VITE_SQUARE_LOCATION_ID || '';
-
-  if (buildTimeAppId) {
-    squareConfig = { appId: buildTimeAppId, locationId: buildTimeLocationId };
-    console.log('[Square] Using build-time config, appId set:', true);
-    return squareConfig;
-  }
-
   try {
     const res = await fetch('/api/square/config');
     const data = await res.json();
-    squareConfig = { appId: data.appId || '', locationId: data.locationId || '' };
-    console.log('[Square] Using runtime config from server, appId set:', !!squareConfig.appId);
-    return squareConfig;
+    if (data.appId) {
+      squareConfig = { appId: data.appId, locationId: data.locationId || '' };
+      console.log('[Square] Using runtime config from server, isProduction:', !data.appId.includes('sandbox-'));
+      return squareConfig;
+    }
   } catch (err) {
     console.error('[Square] Failed to fetch config from server:', err);
-    squareConfig = { appId: '', locationId: '' };
-    return squareConfig;
   }
+
+  const buildTimeAppId = import.meta.env.VITE_SQUARE_APP_ID || '';
+  const buildTimeLocationId = import.meta.env.VITE_SQUARE_LOCATION_ID || '';
+  squareConfig = { appId: buildTimeAppId, locationId: buildTimeLocationId };
+  console.log('[Square] Using build-time config, isProduction:', buildTimeAppId.length > 0 && !buildTimeAppId.includes('sandbox-'));
+  return squareConfig;
 }
 
 function getSdkUrl(appId: string): string {

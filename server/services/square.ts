@@ -24,9 +24,12 @@ async function initializeSquareClient() {
       const token = process.env.SQUARE_ACCESS_TOKEN;
       const isProductionToken = token.startsWith('EAAAEv') || token.startsWith('EAAAl7');
       
-      // Check app ID format from environment variables
-      const appId = process.env.VITE_SQUARE_APP_ID || '';
-      const isProductionAppId = !appId.includes('sandbox-');
+      const viteAppId = process.env.VITE_SQUARE_APP_ID || '';
+      const sqAppId = process.env.SQUARE_APP_ID || '';
+      const appId = (viteAppId && !viteAppId.includes('sandbox-')) ? viteAppId
+        : (sqAppId && !sqAppId.includes('sandbox-')) ? sqAppId
+        : viteAppId || sqAppId;
+      const isProductionAppId = appId.length > 0 && !appId.includes('sandbox-');
       
       // Always use production environment when app ID is production
       // This ensures consistency between client and server
