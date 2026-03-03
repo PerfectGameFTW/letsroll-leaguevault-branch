@@ -202,11 +202,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // Get user's organization ID
   const userOrgId = currentUserResponse?.data?.organizationId;
   
-  // Fetch organization details if user has an organization
   const { data: organizationResponse } = useQuery<ApiResponse<Organization>>({
     queryKey: ["/api/organizations", userOrgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/${userOrgId}`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" }
+      });
+      if (!res.ok) throw new Error(`Failed to fetch organization: ${res.status}`);
+      return res.json();
+    },
     enabled: !!userOrgId,
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
   
   // Fallback to fetch Perfect Game organization for testing logo

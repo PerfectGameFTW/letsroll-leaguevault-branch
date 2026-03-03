@@ -79,11 +79,20 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
     enabled: true
   });
   
-  // Fetch user's organization based on user data
+  const userOrgId = currentUserResponse?.data?.organizationId;
   const { data: userOrgResponse } = useQuery<ApiResponse<Organization>>({
-    queryKey: ["/api/organizations", currentUserResponse?.data?.organizationId],
-    staleTime: 1000 * 60 * 60, // Cache for an hour
-    enabled: !!currentUserResponse?.data?.organizationId
+    queryKey: ["/api/organizations", userOrgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/${userOrgId}`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" }
+      });
+      if (!res.ok) throw new Error(`Failed to fetch organization: ${res.status}`);
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 60,
+    enabled: !!userOrgId,
+    retry: false,
   });
   
   // Determine which logo to use

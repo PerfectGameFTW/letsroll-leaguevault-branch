@@ -27,11 +27,15 @@ router.get('/', requireAdmin, async (req, res) => {
 });
 
 // Get an organization by ID (admin only)
-router.get('/:id', requireAdmin, async (req, res) => {
+router.get('/:id', async (req: any, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
       return sendError(res, 'Invalid organization ID', 400, 'InvalidRequest');
+    }
+
+    if (!req.user?.isAdmin && req.user?.organizationId !== id) {
+      return sendError(res, 'You do not have access to this organization', 403, 'Forbidden');
     }
 
     const organization = await storage.getOrganization(id);
