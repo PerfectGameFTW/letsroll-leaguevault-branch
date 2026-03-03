@@ -10,12 +10,13 @@ interface SquareCustomer {
 let squareClient: Client | null = null;
 
 async function initializeSquareClient() {
-  const accessToken = (process.env.SQUARE_PRODUCTION_ACCESS_TOKEN || process.env.SQUARE_ACCESS_TOKEN || '').trim();
+  const accessToken = (process.env.SQUARE_PRODUCTION_ACCESS_TOKEN || process.env.SQUARE_ACCESS_TOKEN || '').replace(/[^\x20-\x7E]/g, '').trim();
   if (!squareClient && accessToken) {
     try {
       console.log('[Square Service] Initializing Square client...');
       console.log('[Square Service] Environment:', process.env.NODE_ENV);
       console.log('[Square Service] Token source:', process.env.SQUARE_PRODUCTION_ACCESS_TOKEN ? 'SQUARE_PRODUCTION_ACCESS_TOKEN' : 'SQUARE_ACCESS_TOKEN');
+      console.log('[Square Service] Token length:', accessToken.length, 'prefix:', accessToken.substring(0, 6));
 
       const isProductionToken = accessToken.startsWith('EAAAEv') || accessToken.startsWith('EAAAl7');
       
