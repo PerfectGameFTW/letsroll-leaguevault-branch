@@ -10,7 +10,7 @@ interface SquareCustomer {
 let squareClient: Client | null = null;
 
 async function initializeSquareClient() {
-  const accessToken = process.env.SQUARE_PRODUCTION_ACCESS_TOKEN || process.env.SQUARE_ACCESS_TOKEN || '';
+  const accessToken = (process.env.SQUARE_PRODUCTION_ACCESS_TOKEN || process.env.SQUARE_ACCESS_TOKEN || '').trim();
   if (!squareClient && accessToken) {
     try {
       console.log('[Square Service] Initializing Square client...');
