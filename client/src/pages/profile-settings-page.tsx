@@ -261,9 +261,9 @@ export const ProfileSettingsPage: FC = () => {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-4">
             <CardTitle>Change Password</CardTitle>
-            <CardDescription>Update your account password</CardDescription>
+            <CardDescription className="mt-1.5">Update your account password</CardDescription>
           </CardHeader>
           <CardContent>
             {!showPasswordForm ? (
@@ -273,7 +273,7 @@ export const ProfileSettingsPage: FC = () => {
               </Button>
             ) : (
               <Form {...passwordForm}>
-                <form onSubmit={passwordForm.handleSubmit((data) => passwordMutation.mutate(data))} className="space-y-4">
+                <form onSubmit={passwordForm.handleSubmit((data) => passwordMutation.mutate(data))} className="space-y-5">
                   <FormField
                     control={passwordForm.control}
                     name="currentPassword"
@@ -316,7 +316,7 @@ export const ProfileSettingsPage: FC = () => {
                     )}
                   />
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 pt-1">
                     <Button type="submit" disabled={passwordMutation.isPending}>
                       {passwordMutation.isPending ? (
                         <>
