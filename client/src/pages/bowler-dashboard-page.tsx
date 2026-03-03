@@ -154,6 +154,23 @@ export const BowlerDashboardPage: FC = () => {
     (!!bowler && !bowlerLeaguesResponse) ||
     (activeBowlerLeagues.length > 0 && !leaguesResponse) ||
     (activeBowlerLeagues.length > 0 && !teamsResponse);
+
+  console.log('[Dashboard Debug]', JSON.stringify({
+    hasUser: !!currentUser,
+    bowlerId: currentUser?.bowlerId,
+    hasBowler: !!bowler,
+    bowlerName: bowler?.name,
+    blCount: bowlerLeaguesResponse?.data?.length,
+    activeBLCount: activeBowlerLeagues.length,
+    activeBL: activeBowlerLeague ? { bowlerId: activeBowlerLeague.bowlerId, leagueId: activeBowlerLeague.leagueId } : null,
+    leaguesCount: leaguesResponse?.data?.length,
+    hasLeague: !!league,
+    leagueName: league?.name,
+    isStillLoadingChain,
+    loadingFlags: { isLoadingUser, isLoadingBowlers, isLoadingBL, isLoadingLeagues, isLoadingTeams, isLoadingPayments },
+    errors: { user: !!userError, bowlers: !!bowlersError, bl: !!blError, leagues: !!leaguesError, teams: !!teamsError },
+  }));
+
   const hasError = userError || bowlersError || blError || leaguesError || teamsError;
 
   const handleRetry = () => {
