@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { initializeSquare } from "@/lib/square";
 
@@ -20,50 +20,51 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const mountedRef = useRef(true);
+  const cardRef = useRef<any>(null);
+  const initializingRef = useRef(false);
   const initializationAttempts = useRef(0);
+  const onErrorRef = useRef(onError);
   const maxAttempts = 3;
 
-  // Cleanup function
-  const cleanupCard = () => {
-    if (card) {
-      try {
-        card.destroy();
-        setCard(null);
-        setIsInitialized(false);
-        setError(null);
-      } catch (error) {
-        console.error('[useSquarePayment] Error during cleanup:', error);
-      }
-    }
-  };
+  onErrorRef.current = onError;
 
-  // Initialize card function with improved reliability
-  const initializeCard = async (container: HTMLDivElement) => {
+  const cleanupCard = useCallback(() => {
+    if (cardRef.current) {
+      try {
+        cardRef.current.destroy();
+      } catch (e) {
+        console.error('[useSquarePayment] Error during cleanup:', e);
+      }
+      cardRef.current = null;
+    }
+    initializingRef.current = false;
+    setCard(null);
+    setIsInitialized(false);
+    setError(null);
+  }, []);
+
+  const initializeCard = useCallback(async (container: HTMLDivElement) => {
     if (!container || !mountedRef.current) {
       return;
     }
 
-    // Protection against initialization when already initialized
-    if (card && isInitialized) {
+    if (cardRef.current || initializingRef.current) {
       return;
     }
 
+    initializingRef.current = true;
+
     try {
-      // Clean up existing card instance if any
-      cleanupCard();
-      
-      // Set a timeout to automatically fail if initialization takes too long
       const initTimeout = setTimeout(() => {
-        if (mountedRef.current && !isInitialized) {
+        if (mountedRef.current && !cardRef.current) {
           setError('Card initialization timed out');
-          
+          initializingRef.current = false;
+
           if (initializationAttempts.current < maxAttempts) {
             initializationAttempts.current++;
           } else {
-            // Max retries reached
             initializationAttempts.current = 0;
-            const timeoutError = 'Credit card form initialization timed out';
-            onError?.(timeoutError);
+            onErrorRef.current?.('Credit card form initialization timed out');
             toast({
               title: "Payment Form Notice",
               description: "Credit card payment form unavailable. Please try another payment method.",
@@ -72,17 +73,16 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
           }
         }
       }, 8000);
-      
+
       const payments = await initializeSquare();
 
       if (!mountedRef.current) {
         clearTimeout(initTimeout);
+        initializingRef.current = false;
         return;
       }
-      
-      // Create card payment form
+
       const newCard = await payments.card({
-        // Add some configuration options for better user experience
         style: {
           input: {
             backgroundColor: '#FFFFFF',
@@ -93,7 +93,7 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
             backgroundColor: '#FAFAFA',
           },
           '.input-container': {
-            borderColor: '#DDDDDD',  
+            borderColor: '#DDDDDD',
           },
           '.input-container.is-focus': {
             borderColor: '#888888',
@@ -108,17 +108,21 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
       clearTimeout(initTimeout);
 
       if (mountedRef.current) {
+        cardRef.current = newCard;
         setCard(newCard);
         setIsInitialized(true);
         setError(null);
         initializationAttempts.current = 0;
+        initializingRef.current = false;
       } else {
         newCard.destroy();
+        initializingRef.current = false;
       }
-    } catch (error) {
-      console.error('[useSquarePayment] Card initialization error:', error);
-      const errorMessage = error instanceof Error 
-        ? error.message 
+    } catch (err) {
+      console.error('[useSquarePayment] Card initialization error:', err);
+      initializingRef.current = false;
+      const errorMessage = err instanceof Error
+        ? err.message
         : 'Failed to initialize payment form';
 
       if (mountedRef.current) {
@@ -129,17 +133,14 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
           initializationAttempts.current++;
           const delay = Math.min(1000 * Math.pow(2, initializationAttempts.current), 5000);
 
-          // Schedule retry
           setTimeout(() => {
             if (mountedRef.current) {
               initializeCard(container);
             }
           }, delay);
         } else {
-          // Reset attempts and notify of failure
           initializationAttempts.current = 0;
-          onError?.(errorMessage);
-          // Check for common environment mismatch error
+          onErrorRef.current?.(errorMessage);
           if (errorMessage.includes('failed to load') || errorMessage.includes('not properly loaded')) {
             toast({
               title: "Square Environment Mismatch",
@@ -156,14 +157,21 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
         }
       }
     }
-  };
+  }, [toast, cleanupCard]);
 
-  // Cleanup on unmount
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      cleanupCard();
+      if (cardRef.current) {
+        try {
+          cardRef.current.destroy();
+        } catch (e) {
+          console.error('[useSquarePayment] Error during unmount cleanup:', e);
+        }
+        cardRef.current = null;
+      }
+      initializingRef.current = false;
     };
   }, []);
 
