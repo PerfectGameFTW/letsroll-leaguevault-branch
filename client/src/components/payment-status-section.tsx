@@ -537,27 +537,19 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
             </div>
           )}
 
-          {financials.finalTwoWeeks.amount > 0 && (
+          {financials.finalTwoWeeks.amount > 0 && !financials.finalTwoWeeks.isPaid && (
             <div className={`flex items-center justify-between rounded-md px-3 py-2 ${
-              financials.finalTwoWeeks.isPaid
-                ? 'bg-green-500/10'
-                : financials.finalTwoWeeks.isPastDue
+              financials.finalTwoWeeks.isPastDue
                   ? 'bg-destructive/10'
                   : 'bg-muted'
             }`}>
               <div className="flex flex-col gap-0.5">
                 <span className={`text-sm font-medium flex items-center gap-1.5 ${
-                  financials.finalTwoWeeks.isPaid
-                    ? 'text-green-600'
-                    : financials.finalTwoWeeks.isPastDue
-                      ? 'text-destructive'
-                      : ''
+                  financials.finalTwoWeeks.isPastDue ? 'text-destructive' : ''
                 }`}>
-                  {financials.finalTwoWeeks.isPaid
-                    ? <CheckCircle2 className="h-3.5 w-3.5" />
-                    : financials.finalTwoWeeks.isPastDue
-                      ? <AlertTriangle className="h-3.5 w-3.5" />
-                      : <CalendarDays className="h-3.5 w-3.5" />
+                  {financials.finalTwoWeeks.isPastDue
+                    ? <AlertTriangle className="h-3.5 w-3.5" />
+                    : <CalendarDays className="h-3.5 w-3.5" />
                   }
                   Final 2 Weeks
                 </span>
@@ -568,22 +560,14 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               </div>
               <div className="flex flex-col items-end gap-0.5">
                 <span className={`text-sm font-bold ${
-                  financials.finalTwoWeeks.isPaid
-                    ? 'text-green-600'
-                    : financials.finalTwoWeeks.isPastDue
-                      ? 'text-destructive'
-                      : ''
+                  financials.finalTwoWeeks.isPastDue ? 'text-destructive' : ''
                 }`}>
                   {formatDollars(financials.finalTwoWeeks.amount)}
                 </span>
                 <span className={`text-xs font-medium ${
-                  financials.finalTwoWeeks.isPaid
-                    ? 'text-green-600'
-                    : financials.finalTwoWeeks.isPastDue
-                      ? 'text-destructive'
-                      : 'text-muted-foreground'
+                  financials.finalTwoWeeks.isPastDue ? 'text-destructive' : 'text-muted-foreground'
                 }`}>
-                  {financials.finalTwoWeeks.isPaid ? 'Paid' : financials.finalTwoWeeks.isPastDue ? 'Past Due' : 'Due'}
+                  {financials.finalTwoWeeks.isPastDue ? 'Past Due' : 'Due'}
                 </span>
               </div>
             </div>
