@@ -85,6 +85,12 @@ const navItems: NavItem[] = [
     href: "/reports"
   },
   {
+    icon: Users,
+    label: "Users",
+    href: "/users",
+    adminOnly: true
+  },
+  {
     icon: ShieldCheck,
     label: "Admin",
     href: "/admin",

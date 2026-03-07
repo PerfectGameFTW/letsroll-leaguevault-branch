@@ -213,10 +213,12 @@ export const users = pgTable("users", {
   isAdmin: boolean("is_admin").notNull().default(false),
   isOrganizationAdmin: boolean("is_organization_admin").notNull().default(false),
   organizationId: integer("organization_id").references(() => organizations.id),
+  locationId: integer("location_id").references(() => locations.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   organizationIdx: index("users_organization_idx").on(table.organizationId),
   bowlerIdx: index("users_bowler_idx").on(table.bowlerId),
+  locationIdx: index("users_location_idx").on(table.locationId),
 }));
 
 // Organization table

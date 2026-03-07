@@ -213,4 +213,40 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, async (req: any
   }
 });
 
+// Update a user's location assignment
+router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (isNaN(userId)) {
+      return sendError(res, 'bad_request', 'Invalid user ID', 400);
+    }
+
+    const schema = z.object({
+      locationId: z.number().int().positive().nullable(),
+    });
+
+    const parseResult = schema.safeParse(req.body);
+    if (!parseResult.success) {
+      return sendError(res, 'validation_error', parseResult.error.message, 400);
+    }
+
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return sendError(res, 'not_found', 'User not found', 404);
+    }
+
+    if (!req.user.isAdmin && req.user.isOrganizationAdmin) {
+      if (user.organizationId !== req.user.organizationId) {
+        return sendError(res, 'forbidden', 'You can only update users in your own organization', 403);
+      }
+    }
+
+    const updatedUser = await storage.setUserLocation(userId, parseResult.data.locationId);
+    return sendSuccess(res, updatedUser);
+  } catch (error) {
+    console.error('[Org Admin Route] Error updating user location:', error);
+    return sendError(res, 'internal_error', 'Failed to update user location', 500);
+  }
+});
+
 export default router;

@@ -107,6 +107,7 @@ export interface IStorage {
   // Organization admin methods
   getOrganizationUsers(organizationId: number): Promise<User[]>;
   updateUserOrganizationAdminStatus(userId: number, isOrganizationAdmin: boolean): Promise<User>;
+  setUserLocation(userId: number, locationId: number | null): Promise<User>;
 
   // Location methods
   getLocations(organizationId?: number | null): Promise<Location[]>;
@@ -1059,6 +1060,18 @@ export class DatabaseStorage implements IStorage {
       isOrganizationAdmin: updatedUser.isOrganizationAdmin
     });
     
+    return updatedUser;
+  }
+
+  async setUserLocation(userId: number, locationId: number | null): Promise<User> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ locationId })
+      .where(eq(users.id, userId))
+      .returning();
+    if (!updatedUser) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
     return updatedUser;
   }
 
