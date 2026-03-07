@@ -519,6 +519,16 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
             <span className="text-sm font-medium">{formatDollars(financials.totalPaid)}</span>
           </div>
 
+          {financials.amountPastDue > 0 && (
+            <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2">
+              <span className="text-sm font-medium text-destructive flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Past Due
+              </span>
+              <span className="text-sm font-bold text-destructive">{formatDollars(financials.amountPastDue)}</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Full Season Remaining Balance</span>
             <span className="text-sm font-medium">{formatDollars(financials.remainingBalance)}</span>
@@ -578,15 +588,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
             </div>
           )}
 
-          {financials.amountPastDue > 0 && (
-            <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2">
-              <span className="text-sm font-medium text-destructive flex items-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Past Due
-              </span>
-              <span className="text-sm font-bold text-destructive">{formatDollars(financials.amountPastDue)}</span>
-            </div>
-          )}
         </div>
 
         <Separator />
