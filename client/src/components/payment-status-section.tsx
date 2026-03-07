@@ -510,6 +510,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           </div>
 
           <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Amount Due to Date</span>
+            <span className="text-sm font-medium">{formatDollars(financials.totalDueToDate)}</span>
+          </div>
+
+          <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Amount Paid to Date</span>
             <span className="text-sm font-medium">{formatDollars(financials.totalPaid)}</span>
           </div>
