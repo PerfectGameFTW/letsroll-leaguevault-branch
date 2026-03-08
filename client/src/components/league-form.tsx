@@ -118,9 +118,12 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
 
   const getPriceForVariation = (variationId: string | null | undefined): number | null => {
     if (!variationId) return null;
-    for (const item of allCatalogItems) {
-      const v = item.variations.find(v => v.id === variationId);
-      if (v) return v.price;
+    const searchLists = [allCatalogItems, catalogItems];
+    for (const list of searchLists) {
+      for (const item of list) {
+        const v = item.variations.find(v => v.id === variationId);
+        if (v) return v.price;
+      }
     }
     return null;
   };
