@@ -38,7 +38,10 @@ const dateSchema = z.coerce.date()
   .transform((date) => new Date(date.toISOString())); // Normalize to UTC
 
 const timeFormatRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
-const timeSchema = z.string().regex(timeFormatRegex, "Invalid time format. Use HH:MM (24-hour)");
+const timeSchema = z.union([
+  z.literal(""),
+  z.string().regex(timeFormatRegex, "Invalid time format. Use HH:MM (24-hour)"),
+]);
 
 // Common validation rules
 const nameSchema = z.string().min(2, "Name must be at least 2 characters");
