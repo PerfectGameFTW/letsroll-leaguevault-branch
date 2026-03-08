@@ -95,6 +95,7 @@ function Router() {
     <Switch>
       {/* Public routes */}
       <Route path="/sign-up" component={SignUpPage} />
+      <Route path="/signup" component={SignUpPage} />
       <Route path="/login" component={LoginPage} />
       <Route path="/set-password" component={SetPasswordPage} />
       <Route path="/claim-bowler">
