@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Loader2, Users, CircleDollarSign, Trophy } from "lucide-react";
+import { Loader2, Users, CircleDollarSign } from "lucide-react";
 
 import type { League } from "@shared/schema";
 import { useParams, Link } from "wouter";
@@ -70,7 +70,7 @@ export default function LeagueViewPage() {
           <h1 className="text-2xl font-bold">{league.name}</h1>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Link href={`/leagues/${leagueId}/teams`} className="block">
             <Card className="hover:bg-accent transition-colors">
               <CardHeader>
@@ -104,25 +104,6 @@ export default function LeagueViewPage() {
               <CardContent>
                 <p className="text-sm text-muted-foreground">
                   Record manual payments by team and week, view payment history
-                </p>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href={`/leagues/${leagueId}/scores`} className="block">
-            <Card className="hover:bg-accent transition-colors">
-              <CardHeader>
-                <div className="flex justify-center mb-2">
-                  <Trophy className="h-6 w-6" />
-                </div>
-                <CardTitle>Weekly Scores</CardTitle>
-                <CardDescription>
-                  View and track weekly bowling scores
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Access detailed weekly scores, statistics and performance tracking
                 </p>
               </CardContent>
             </Card>
