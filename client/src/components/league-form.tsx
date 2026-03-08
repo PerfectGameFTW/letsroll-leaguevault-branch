@@ -390,7 +390,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                           <Input
                             type="date"
                             {...field}
-                            value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
+                            value={field.value instanceof Date && !isNaN(field.value.getTime()) ? field.value.toISOString().split('T')[0] : ''}
                             onChange={(e) => {
                               const [year, month, day] = e.target.value.split('-').map(Number);
                               const date = new Date(year, month - 1, day, 12, 0, 0, 0);
@@ -413,7 +413,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                           <Input
                             type="date"
                             {...field}
-                            value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
+                            value={field.value instanceof Date && !isNaN(field.value.getTime()) ? field.value.toISOString().split('T')[0] : ''}
                             onChange={(e) => {
                               const [year, month, day] = e.target.value.split('-').map(Number);
                               const date = new Date(year, month - 1, day, 12, 0, 0, 0);
