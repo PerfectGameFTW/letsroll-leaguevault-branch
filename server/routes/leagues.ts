@@ -70,15 +70,11 @@ router.post("/", async (req: any, res) => {
     // Get organization filter from middleware
     const organizationId = getOrganizationFilter(req);
     
-    // Non-admin users can only create leagues for their organization
-    if (!req.user?.isAdmin) {
-      // If user belongs to an organization, set the organization ID
-      // This overrides any organizationId provided in the request body
-      if (organizationId !== null) {
-        league.organizationId = organizationId;
-      } else {
-        league.organizationId = null;
-      }
+    // Set the organization ID from the user's context if not already provided
+    if (organizationId !== null && !league.organizationId) {
+      league.organizationId = organizationId;
+    } else if (!league.organizationId) {
+      league.organizationId = req.user?.organizationId || null;
     }
     
     const created = await storage.createLeague(league);
