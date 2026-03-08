@@ -1,6 +1,6 @@
 import { FC, useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -42,12 +42,27 @@ interface LeagueGroup {
 const ClaimBowlerPage: FC = () => {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBowler, setSelectedBowler] = useState<UnlinkedBowler | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
+  const organizationId = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    return params.get("organizationId") || null;
+  }, [searchString]);
+
+  const unlinkedUrl = organizationId
+    ? `/api/bowlers/unlinked?organizationId=${organizationId}`
+    : "/api/bowlers/unlinked";
+
   const { data: unlinkedResponse, isLoading } = useQuery<{ success: boolean; data: LeagueGroup[] }>({
-    queryKey: ["/api/bowlers/unlinked"],
+    queryKey: ["/api/bowlers/unlinked", organizationId],
+    queryFn: async () => {
+      const res = await fetch(unlinkedUrl);
+      if (!res.ok) throw new Error("Failed to fetch unlinked bowlers");
+      return res.json();
+    },
   });
 
   const unlinkedData = unlinkedResponse?.data ?? [];

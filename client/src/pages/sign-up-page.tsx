@@ -1,4 +1,4 @@
-import { FC } from "react";
+import { FC, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 
 const PASSWORD_MIN_LENGTH = 8;
@@ -63,14 +63,12 @@ const signUpSchema = z.object({
     .regex(/[!@#$%^&*]/, "Password must contain at least one special character (!@#$%^&*)")
     .refine(
       (password) => {
-        // Additional complexity check - no repetitive characters
         return !/(.)\1{2,}/.test(password);
       },
       "Password cannot contain repetitive characters (e.g., 'aaa')"
     )
     .refine(
       (password) => {
-        // Check for common patterns
         const commonPatterns = ['123', 'abc', 'qwerty', 'password'];
         return !commonPatterns.some(pattern => 
           password.toLowerCase().includes(pattern)
@@ -81,6 +79,20 @@ const signUpSchema = z.object({
 });
 
 type SignUpFormData = z.infer<typeof signUpSchema>;
+
+interface OrgInfo {
+  id: number;
+  name: string;
+  slug: string;
+  logo: string | null;
+}
+
+interface League {
+  id: number;
+  name: string;
+  description: string | null;
+  active: boolean;
+}
 
 const PasswordRequirements: FC<{ errors: Record<string, any> }> = ({ errors }) => {
   const requirements = [
@@ -114,6 +126,12 @@ const PasswordRequirements: FC<{ errors: Record<string, any> }> = ({ errors }) =
 const SignUpPage: FC = () => {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
+
+  const orgSlug = useMemo(() => {
+    const params = new URLSearchParams(searchString);
+    return params.get("org") || null;
+  }, [searchString]);
 
   const form = useForm<SignUpFormData>({
     resolver: zodResolver(signUpSchema),
@@ -124,25 +142,39 @@ const SignUpPage: FC = () => {
       leagueId: "",
       password: "",
     },
-    mode: "onChange", // Enable real-time validation
+    mode: "onChange",
   });
 
-  // Define types for API response
-  interface League {
-    id: number;
-    name: string;
-    description: string | null;
-    active: boolean;
-    // Add other fields as needed
-  }
+  const { data: orgResponse } = useQuery<{ success: boolean; data: OrgInfo }>({
+    queryKey: ["/api/organizations/slug", orgSlug],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/slug/${orgSlug}`);
+      if (!res.ok) throw new Error("Organization not found");
+      return res.json();
+    },
+    enabled: !!orgSlug,
+  });
 
-  // Using the built-in getQueryFn for fetching
-  const { data: leaguesResponse } = useQuery<{success: boolean; data: League[]}>({
+  const orgInfo = orgResponse?.data ?? null;
+
+  const { data: orgLeaguesResponse } = useQuery<{ success: boolean; data: League[] }>({
+    queryKey: ["/api/organizations/slug", orgSlug, "leagues"],
+    queryFn: async () => {
+      const res = await fetch(`/api/organizations/slug/${orgSlug}/leagues`);
+      if (!res.ok) throw new Error("Failed to fetch leagues");
+      return res.json();
+    },
+    enabled: !!orgSlug,
+  });
+
+  const { data: allLeaguesResponse } = useQuery<{ success: boolean; data: League[] }>({
     queryKey: ["/api/leagues"],
+    enabled: !orgSlug,
   });
-  
-  // Extract leagues data from response safely
-  const leagues = leaguesResponse?.data ?? [];
+
+  const leagues = orgSlug
+    ? (orgLeaguesResponse?.data ?? [])
+    : (allLeaguesResponse?.data ?? []);
 
   const onSubmit = async (data: SignUpFormData) => {
     try {
@@ -180,12 +212,17 @@ const SignUpPage: FC = () => {
         });
       }
 
+      const registerBody: any = { ...data };
+      if (orgInfo?.id) {
+        registerBody.organizationId = orgInfo.id;
+      }
+
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(registerBody),
       });
 
       if (!response.ok) {
@@ -195,13 +232,11 @@ const SignUpPage: FC = () => {
 
       const userData = await response.json();
 
-      // Verify the user data includes the bowler ID
       if (!userData.data.bowlerId) {
-        console.error("[SignUp] Warning: Registered user does not have a bowler ID");
         toast({
-          title: "Partial Registration Success",
-          description: "Your account was created but some profile information may be incomplete. Please contact support.",
-          variant: "destructive",
+          title: "Account Created",
+          description: "Let's link your account to your bowler profile.",
+          variant: "default",
         });
       } else {
         toast({
@@ -214,7 +249,10 @@ const SignUpPage: FC = () => {
       if (userData.data.bowlerId) {
         setLocation("/bowler-dashboard");
       } else {
-        setLocation("/claim-bowler");
+        const claimUrl = orgInfo?.id
+          ? `/claim-bowler?organizationId=${orgInfo.id}`
+          : "/claim-bowler";
+        setLocation(claimUrl);
       }
     } catch (error) {
       console.error('[SignUp] Registration error:', error);
@@ -230,8 +268,17 @@ const SignUpPage: FC = () => {
     <div className="min-h-screen bg-background flex items-start sm:items-center justify-center p-4 pt-6 sm:pt-4">
       <Card className="w-full max-w-md mt-4 sm:mt-0">
         <CardHeader className="space-y-1 pb-4 sm:pb-6">
+          {orgInfo?.logo && (
+            <div className="flex justify-center mb-2">
+              <img
+                src={orgInfo.logo}
+                alt={orgInfo.name}
+                className="h-16 w-auto object-contain"
+              />
+            </div>
+          )}
           <CardTitle className="text-2xl font-bold text-center">
-            Join Your Bowling League
+            {orgInfo ? `Join ${orgInfo.name}` : "Join Your Bowling League"}
           </CardTitle>
           <CardDescription className="text-center">
             Sign up to track your scores and manage your league participation

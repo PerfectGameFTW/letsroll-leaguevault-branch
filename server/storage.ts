@@ -111,7 +111,7 @@ export interface IStorage {
   getUserByInviteToken(token: string): Promise<User | undefined>;
   setUserInviteToken(userId: number, token: string, expiry: Date): Promise<User>;
   clearUserInviteToken(userId: number): Promise<User>;
-  getBowlerByEmail(email: string): Promise<Bowler | undefined>;
+  getBowlerByEmail(email: string, organizationId?: number): Promise<Bowler | undefined>;
 
   // Location methods
   getLocations(organizationId?: number | null): Promise<Location[]>;
@@ -1140,7 +1140,16 @@ export class DatabaseStorage implements IStorage {
     return updatedUser;
   }
 
-  async getBowlerByEmail(email: string): Promise<Bowler | undefined> {
+  async getBowlerByEmail(email: string, organizationId?: number): Promise<Bowler | undefined> {
+    if (organizationId) {
+      const results = await db
+        .select({ bowler: bowlers })
+        .from(bowlers)
+        .innerJoin(bowlerLeagues, eq(bowlers.id, bowlerLeagues.bowlerId))
+        .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
+        .where(and(eq(bowlers.email, email), eq(leagues.organizationId, organizationId)));
+      return results[0]?.bowler;
+    }
     const [result] = await db.select().from(bowlers).where(eq(bowlers.email, email));
     return result;
   }

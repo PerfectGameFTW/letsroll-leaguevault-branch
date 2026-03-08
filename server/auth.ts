@@ -173,8 +173,10 @@ export function setupAuth(app: Express) {
         isAdmin: false,
       });
 
+      const organizationId = req.body.organizationId ? parseInt(req.body.organizationId) : undefined;
+
       try {
-        const bowler = await storage.getBowlerByEmail(result.data.email);
+        const bowler = await storage.getBowlerByEmail(result.data.email, organizationId);
         if (bowler) {
           const allUsers = await storage.getUsers();
           const alreadyLinked = allUsers.some(u => u.bowlerId === bowler.id);

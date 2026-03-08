@@ -10,6 +10,7 @@ const router = Router();
 
 router.get("/unlinked", async (req, res) => {
   try {
+    const organizationId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
     const allBowlers = await storage.getBowlers();
     const allUsers = await storage.getUsers();
     const allBowlerLeagues = await storage.getBowlerLeagues();
@@ -41,6 +42,7 @@ router.get("/unlinked", async (req, res) => {
         const league = leagueMap.get(entry.leagueId);
         const team = teamMap.get(entry.teamId);
         if (!league || !team) continue;
+        if (organizationId && league.organizationId !== organizationId) continue;
 
         const leagueKey = String(league.id);
         if (!grouped[leagueKey]) {
