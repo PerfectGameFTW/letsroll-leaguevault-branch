@@ -7,6 +7,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -44,6 +54,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const { toast } = useToast();
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
+  const [duplicateBowler, setDuplicateBowler] = useState<{ id: number; name: string; email: string } | null>(null);
 
   // Move form initialization before any conditional logic
   const form = useForm<InsertBowler>({
@@ -121,6 +132,37 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
     });
   }, [bowler, toast]);
 
+  const addExistingBowlerMutation = useMutation({
+    mutationFn: async (existingBowlerId: number) => {
+      if (!selectedLeagueId || !selectedTeamId) {
+        throw new Error("Please select a league and team first");
+      }
+      const result = await apiRequest("/api/bowler-leagues", "POST", {
+        bowlerId: existingBowlerId,
+        leagueId: selectedLeagueId,
+        teamId: selectedTeamId,
+        active: true,
+      });
+      if (!result.success) {
+        throw new Error(result.error?.message || "Failed to add bowler to team");
+      }
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      toast({
+        title: "Bowler added to team",
+        description: "The existing bowler has been added to this team.",
+      });
+      setDuplicateBowler(null);
+      setSelectedLeagueId(null);
+      setSelectedTeamId(null);
+      onClose();
+    },
+    onError,
+  });
+
   const mutation = useMutation({
     mutationFn: async (data: InsertBowler) => {
       if (bowler) {
@@ -134,6 +176,10 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
         if (!result.success) {
           throw new Error(result.error?.message || "Failed to create bowler");
         }
+        if ((result as any).duplicate && (result as any).existingBowler) {
+          setDuplicateBowler((result as any).existingBowler as { id: number; name: string; email: string });
+          return null;
+        }
         const newBowlerId = result.data?.id;
         if (newBowlerId && selectedLeagueId && selectedTeamId) {
           await apiRequest("/api/bowler-leagues", "POST", {
@@ -146,7 +192,8 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
         return result;
       }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result === null) return;
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
       toast({
@@ -177,7 +224,8 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
   const isLoading = loadingLeagues || loadingTeams;
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <>
+      <Dialog open={open} onOpenChange={onClose}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{bowler ? "Edit Bowler" : "Add New Bowler"}</DialogTitle>
@@ -359,5 +407,40 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
         )}
       </DialogContent>
     </Dialog>
+
+      <AlertDialog open={!!duplicateBowler} onOpenChange={(open) => { if (!open) setDuplicateBowler(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Duplicate Bowler Found</AlertDialogTitle>
+            <AlertDialogDescription>
+              A bowler named <strong>{duplicateBowler?.name}</strong> with email{" "}
+              <strong>{duplicateBowler?.email}</strong> already exists. Would you like to add them to this team instead?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDuplicateBowler(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (duplicateBowler) {
+                  addExistingBowlerMutation.mutate(duplicateBowler.id);
+                }
+              }}
+              disabled={addExistingBowlerMutation.isPending || !selectedLeagueId || !selectedTeamId}
+            >
+              {addExistingBowlerMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add to Team"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

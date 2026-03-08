@@ -8,6 +8,66 @@ import { hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
 
 const router = Router();
 
+router.get("/unlinked", async (req, res) => {
+  try {
+    const allBowlers = await storage.getBowlers();
+    const allUsers = await storage.getUsers();
+    const allBowlerLeagues = await storage.getBowlerLeagues();
+
+    const linkedBowlerIds = new Set(
+      allUsers.filter(u => u.bowlerId !== null && u.bowlerId !== undefined).map(u => u.bowlerId!)
+    );
+
+    const unlinkedBowlers = allBowlers.filter(
+      b => !linkedBowlerIds.has(b.id) && (!b.email || b.email.trim() === '')
+    );
+
+    const leagueIds = [...new Set(allBowlerLeagues.map(bl => bl.leagueId))];
+    const teamIds = [...new Set(allBowlerLeagues.map(bl => bl.teamId))];
+
+    const [leaguesData, teamsData] = await Promise.all([
+      Promise.all(leagueIds.map(id => storage.getLeague(id))),
+      Promise.all(teamIds.map(id => storage.getTeam(id))),
+    ]);
+
+    const leagueMap = new Map(leaguesData.filter(Boolean).map(l => [l!.id, l!]));
+    const teamMap = new Map(teamsData.filter(Boolean).map(t => [t!.id, t!]));
+
+    const grouped: Record<string, { league: { id: number; name: string }; teams: Record<string, { team: { id: number; name: string; number: number }; bowlers: { id: number; name: string }[] }> }> = {};
+
+    for (const bowler of unlinkedBowlers) {
+      const bowlerEntries = allBowlerLeagues.filter(bl => bl.bowlerId === bowler.id);
+      for (const entry of bowlerEntries) {
+        const league = leagueMap.get(entry.leagueId);
+        const team = teamMap.get(entry.teamId);
+        if (!league || !team) continue;
+
+        const leagueKey = String(league.id);
+        if (!grouped[leagueKey]) {
+          grouped[leagueKey] = { league: { id: league.id, name: league.name }, teams: {} };
+        }
+        const teamKey = String(team.id);
+        if (!grouped[leagueKey].teams[teamKey]) {
+          grouped[leagueKey].teams[teamKey] = { team: { id: team.id, name: team.name, number: team.number }, bowlers: [] };
+        }
+        if (!grouped[leagueKey].teams[teamKey].bowlers.some(b => b.id === bowler.id)) {
+          grouped[leagueKey].teams[teamKey].bowlers.push({ id: bowler.id, name: bowler.name });
+        }
+      }
+    }
+
+    const result = Object.values(grouped).map(g => ({
+      league: g.league,
+      teams: Object.values(g.teams),
+    }));
+
+    sendSuccess(res, result);
+  } catch (error) {
+    console.error('[Bowlers] Error fetching unlinked bowlers:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to fetch unlinked bowlers');
+  }
+});
+
 router.get("/", async (req, res) => {
   try {
     const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
@@ -66,7 +126,17 @@ router.get("/", async (req, res) => {
       ? accessibleBowlers.filter(b => ids.includes(b.id))
       : accessibleBowlers;
 
-    sendSuccess(res, filteredBowlers);
+    const allUsers = await storage.getUsers();
+    const linkedBowlerIds = new Set(
+      allUsers.filter(u => u.bowlerId != null).map(u => u.bowlerId)
+    );
+
+    const bowlersWithAccountStatus = filteredBowlers.map(b => ({
+      ...b,
+      hasAccount: linkedBowlerIds.has(b.id),
+    }));
+
+    sendSuccess(res, bowlersWithAccountStatus);
   } catch (error) {
     console.error('[Bowlers] Error fetching bowlers:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowlers');
@@ -89,8 +159,11 @@ router.get("/:id", async (req, res) => {
         return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
       }
     }
+
+    const allUsers = await storage.getUsers();
+    const hasAccount = allUsers.some(u => u.bowlerId === id);
     
-    sendSuccess(res, bowler);
+    sendSuccess(res, { ...bowler, hasAccount });
   } catch (error) {
     console.error('[Bowlers] Error fetching bowler:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler');
@@ -136,11 +209,19 @@ router.post("/", async (req, res) => {
       }
       
       const existingBowler = filteredBowlers.find(b =>
-        b.email && b.email.toLowerCase() === bowler.email.toLowerCase()
+        b.email && b.email.toLowerCase() === bowler.email!.toLowerCase()
       );
 
       if (existingBowler) {
-        return sendError(res, "A bowler with this email already exists", 400, 'DUPLICATE_EMAIL');
+        return res.status(200).json({
+          success: true,
+          duplicate: true,
+          existingBowler: {
+            id: existingBowler.id,
+            name: existingBowler.name,
+            email: existingBowler.email,
+          },
+        });
       }
     }
 
@@ -148,6 +229,16 @@ router.post("/", async (req, res) => {
     const created = await storage.createBowler(bowler);
 
     if (created.email) {
+      try {
+        const matchingUser = await storage.getUserByEmail(created.email);
+        if (matchingUser && !matchingUser.bowlerId) {
+          await storage.linkUserToBowler(matchingUser.id, created.id);
+          console.log(`[Bowlers] Auto-linked user ${matchingUser.id} to newly created bowler ${created.id}`);
+        }
+      } catch (linkError) {
+        console.error('[Bowlers] Error auto-linking user to bowler:', linkError);
+      }
+
       try {
         const squareCustomer = await createOrUpdateCustomer(created.name, created.email);
 
@@ -197,7 +288,20 @@ router.patch("/:id", async (req, res) => {
     let updated = await storage.updateBowler(id, merged);
 
     if (updated.email) {
-      const emailChanged = bowler.email?.toLowerCase() !== updated.email.toLowerCase();
+      const emailChanged = !bowler.email || bowler.email.toLowerCase() !== updated.email.toLowerCase();
+
+      if (emailChanged) {
+        try {
+          const matchingUser = await storage.getUserByEmail(updated.email);
+          if (matchingUser && !matchingUser.bowlerId) {
+            await storage.linkUserToBowler(matchingUser.id, id);
+            console.log(`[Bowlers] Auto-linked user ${matchingUser.id} to updated bowler ${id}`);
+          }
+        } catch (linkError) {
+          console.error('[Bowlers] Error auto-linking user to bowler on update:', linkError);
+        }
+      }
+
       const nameChanged = bowler.name !== updated.name;
       const needsSquareSync = !updated.squareCustomerId || emailChanged || nameChanged;
 

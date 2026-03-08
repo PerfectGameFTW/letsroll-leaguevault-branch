@@ -1,9 +1,12 @@
 import { Router } from 'express';
+import { randomBytes } from 'crypto';
 import { storage } from '../storage';
 import { insertLeagueSchema, partialLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
 import { getOrganizationFilter, filterByOrganization } from '../middleware/organization';
+import { hashPassword } from '../auth';
+import { sendInviteEmail } from '../services/email';
 
 const router = Router();
 
@@ -218,6 +221,78 @@ router.delete("/:id", async (req: any, res) => {
     sendSuccess(res, null, 204);
   } catch (error) {
     sendError(res, error instanceof Error ? error.message : 'Failed to delete league');
+  }
+});
+
+router.post("/:id/send-invites", async (req: any, res) => {
+  try {
+    const leagueId = parseInt(req.params.id);
+    const league = await storage.getLeague(leagueId);
+
+    if (!league) {
+      return sendError(res, "League not found", 404, 'NOT_FOUND');
+    }
+
+    const organizationId = getOrganizationFilter(req);
+    const userHasAccess =
+      req.user?.isAdmin ||
+      league.organizationId === null ||
+      (organizationId !== null && league.organizationId === organizationId);
+
+    if (!userHasAccess) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+
+    const bowlerLeagueEntries = await storage.getBowlerLeagues({ leagueId });
+
+    let sent = 0;
+    let alreadyRegistered = 0;
+    let noEmail = 0;
+
+    for (const bl of bowlerLeagueEntries) {
+      const bowler = await storage.getBowler(bl.bowlerId);
+      if (!bowler) continue;
+
+      if (!bowler.email) {
+        noEmail++;
+        continue;
+      }
+
+      const existingUser = await storage.getUserByEmail(bowler.email);
+      if (existingUser) {
+        alreadyRegistered++;
+        continue;
+      }
+
+      const placeholderPassword = await hashPassword(randomBytes(32).toString('hex'));
+      const inviteToken = randomBytes(32).toString('hex');
+      const inviteTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+      const newUser = await storage.createUser({
+        email: bowler.email,
+        password: placeholderPassword,
+        name: bowler.name,
+        isAdmin: false,
+        isOrganizationAdmin: false,
+        organizationId: league.organizationId || null,
+      });
+
+      await storage.setUserInviteToken(newUser.id, inviteToken, inviteTokenExpiry);
+      await storage.linkUserToBowler(newUser.id, bowler.id);
+
+      const organization = league.organizationId
+        ? await storage.getOrganization(league.organizationId)
+        : null;
+
+      const firstName = bowler.name.split(' ')[0];
+      await sendInviteEmail(bowler.email, firstName, inviteToken, organization?.name);
+
+      sent++;
+    }
+
+    sendSuccess(res, { sent, alreadyRegistered, noEmail });
+  } catch (error) {
+    sendError(res, error instanceof Error ? error.message : 'Failed to send invites');
   }
 });
 

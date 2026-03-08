@@ -211,7 +211,11 @@ const SignUpPage: FC = () => {
         });
       }
 
-      setLocation("/bowler-dashboard");
+      if (userData.data.bowlerId) {
+        setLocation("/bowler-dashboard");
+      } else {
+        setLocation("/claim-bowler");
+      }
     } catch (error) {
       console.error('[SignUp] Registration error:', error);
       toast({

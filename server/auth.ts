@@ -173,6 +173,27 @@ export function setupAuth(app: Express) {
         isAdmin: false,
       });
 
+      try {
+        const bowler = await storage.getBowlerByEmail(result.data.email);
+        if (bowler) {
+          const allUsers = await storage.getUsers();
+          const alreadyLinked = allUsers.some(u => u.bowlerId === bowler.id);
+          if (!alreadyLinked) {
+            await storage.linkUserToBowler(user.id, bowler.id);
+
+            const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId: bowler.id });
+            if (bowlerLeagueEntries.length > 0) {
+              const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
+              if (league?.organizationId) {
+                await storage.setUserOrganization(user.id, league.organizationId);
+              }
+            }
+          }
+        }
+      } catch (linkError) {
+        console.error('[Auth] Auto-link bowler after registration failed:', linkError);
+      }
+
       // Log the user in after registration
       req.login(user, (err) => {
         if (err) {
@@ -326,6 +347,29 @@ export function setupAuth(app: Express) {
       await storage.updateUser(user.id, { password: hashedPassword });
       await storage.clearUserInviteToken(user.id);
 
+      try {
+        const bowler = await storage.getBowlerByEmail(user.email);
+        if (bowler) {
+          const existingLinkedUsers = await storage.getUsers();
+          const alreadyLinked = existingLinkedUsers.some(u => u.bowlerId === bowler.id);
+          if (!alreadyLinked) {
+            await storage.linkUserToBowler(user.id, bowler.id);
+
+            if (!user.organizationId) {
+              const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId: bowler.id });
+              if (bowlerLeagueEntries.length > 0) {
+                const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
+                if (league?.organizationId) {
+                  await storage.setUserOrganization(user.id, league.organizationId);
+                }
+              }
+            }
+          }
+        }
+      } catch (linkError) {
+        console.error('[Auth] Auto-link bowler after set-password failed:', linkError);
+      }
+
       req.login(user, (err) => {
         if (err) {
           console.error('[Auth] Auto-login after password set failed:', err);
@@ -344,6 +388,75 @@ export function setupAuth(app: Express) {
       res.status(500).json({
         success: false,
         error: { message: "Failed to set password" }
+      });
+    }
+  });
+
+  authRouter.post("/claim-bowler", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({
+          success: false,
+          error: { message: "Not authenticated" }
+        });
+      }
+
+      const user = req.user as SelectUser;
+
+      if (user.bowlerId) {
+        return res.status(400).json({
+          success: false,
+          error: { message: "You are already linked to a bowler" }
+        });
+      }
+
+      const { bowlerId } = req.body;
+      if (!bowlerId || typeof bowlerId !== 'number') {
+        return res.status(400).json({
+          success: false,
+          error: { message: "Valid bowler ID is required" }
+        });
+      }
+
+      const bowler = await storage.getBowler(bowlerId);
+      if (!bowler) {
+        return res.status(404).json({
+          success: false,
+          error: { message: "Bowler not found" }
+        });
+      }
+
+      const allUsers = await storage.getUsers();
+      const alreadyLinked = allUsers.some(u => u.bowlerId === bowlerId);
+      if (alreadyLinked) {
+        return res.status(400).json({
+          success: false,
+          error: { message: "This bowler is already linked to another account" }
+        });
+      }
+
+      await storage.linkUserToBowler(user.id, bowlerId);
+
+      await storage.updateBowler(bowlerId, { ...bowler, email: user.email });
+
+      const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId });
+      if (bowlerLeagueEntries.length > 0 && !user.organizationId) {
+        const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
+        if (league?.organizationId) {
+          await storage.setUserOrganization(user.id, league.organizationId);
+        }
+      }
+
+      const updatedUser = await storage.getUser(user.id);
+      res.json({
+        success: true,
+        data: { ...updatedUser, password: undefined }
+      });
+    } catch (error) {
+      console.error('[Auth] Claim bowler error:', error);
+      res.status(500).json({
+        success: false,
+        error: { message: "Failed to claim bowler" }
       });
     }
   });

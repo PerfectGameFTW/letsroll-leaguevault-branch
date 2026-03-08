@@ -52,16 +52,35 @@ A full-stack bowling league management application with multi-tenant support for
 - `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
 
 ## Recent Changes (2026-03-08)
-- Added Users management page (`/users`) for org admins to create, manage, and remove users
+- **Bowler-to-User Auto-Linking System**: Automatic linking between bowler records and user accounts
+  - When a user sets their password via invite or self-registers, if their email matches a bowler record, they are automatically linked
+  - When an admin creates/updates a bowler with an email matching an existing user, they are auto-linked
+  - `storage.getBowlerByEmail(email)` method added to IStorage/DatabaseStorage
+- **Claim Bowler Page** (`/claim-bowler`): Self-service roster selection for bowlers without emails
+  - After self-registration, users without an auto-linked bowler are redirected to pick their name from the roster
+  - Shows unlinked bowlers (no email, no linked user) grouped by league and team
+  - `GET /api/bowlers/unlinked` endpoint, `POST /api/auth/claim-bowler` endpoint
+  - Skip option for users not yet on a roster
+- **Bulk League Invites**: Send registration invites to all bowlers in a league at once
+  - "Send Registration Invites" button on league detail page (`/leagues/:id`)
+  - `POST /api/leagues/:id/send-invites` creates user accounts and sends invite emails for all eligible bowlers
+  - Shows summary: sent count, already registered, no email on file
+- **Linked/Unlinked Status Indicators**:
+  - Users page (`/users`): "Linked Bowler" column showing bowler name + league/team or "Unlinked"
+  - Team roster view: "Account" column with "Has Account" / "No Account" badges per bowler
+- **Smart Duplicate Bowler Handling**: When adding a bowler with an email that already exists
+  - Instead of a hard error, shows a prompt to add the existing bowler to the new team
+  - Supports multi-location bowlers within the same organization
+- Users management page (`/users`) for org admins to create, manage, and remove users
   - Admin creates user with first name, last name, email, and role (Admin or End User)
   - System sends invite email via SendGrid with a secure link to set up password
-  - Users table shows status (Pending/Active), role, location assignment
+  - Users table shows status (Pending/Active), role, location, linked bowler
   - Resend invite button for pending users
   - `inviteToken` and `inviteTokenExpiry` columns on users table
 - Email service: `server/services/email.ts` using SendGrid (`@sendgrid/mail`)
 - Set Password page (`/set-password?token=...`) — public route for invited users to create their password
   - Validates invite token, shows password requirements, auto-logs in after password set
-- Auth routes added: `POST /api/auth/set-password`, `GET /api/auth/validate-invite`
+- Auth routes added: `POST /api/auth/set-password`, `GET /api/auth/validate-invite`, `POST /api/auth/claim-bowler`
 - Org admin routes added: `POST /api/org-admin/users/create`, `POST /api/org-admin/users/:id/resend-invite`
 
 ## Previous Changes (2026-03-02)

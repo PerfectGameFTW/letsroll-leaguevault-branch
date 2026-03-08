@@ -49,7 +49,38 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
     
     const users = await storage.getOrganizationUsers(organizationId);
     
-    return sendSuccess(res, users);
+    const usersWithBowlerInfo = await Promise.all(
+      users.map(async (user: any) => {
+        if (!user.bowlerId) {
+          return { ...user, linkedBowler: null };
+        }
+        const bowler = await storage.getBowler(user.bowlerId);
+        if (!bowler) {
+          return { ...user, linkedBowler: null };
+        }
+        const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId: bowler.id });
+        let leagueName: string | null = null;
+        let teamName: string | null = null;
+        if (bowlerLeagueEntries.length > 0) {
+          const bl = bowlerLeagueEntries[0];
+          const league = await storage.getLeague(bl.leagueId);
+          const team = await storage.getTeam(bl.teamId);
+          leagueName = league?.name || null;
+          teamName = team?.name || null;
+        }
+        return {
+          ...user,
+          linkedBowler: {
+            id: bowler.id,
+            name: bowler.name,
+            leagueName,
+            teamName,
+          },
+        };
+      })
+    );
+
+    return sendSuccess(res, usersWithBowlerInfo);
   } catch (error) {
     console.error('[Org Admin Route] Error getting organization users:', error);
     return sendError(res, 'internal_error', 'Failed to get organization users', 500);

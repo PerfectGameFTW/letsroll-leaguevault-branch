@@ -33,7 +33,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Plus, Trash2, Shield, MapPin, Send } from 'lucide-react';
+import { Plus, Trash2, Shield, MapPin, Send, Link2, Unlink2 } from 'lucide-react';
+
+interface LinkedBowler {
+  id: number;
+  name: string;
+  leagueName: string | null;
+  teamName: string | null;
+}
 
 interface User {
   id: number;
@@ -46,6 +53,7 @@ interface User {
   bowlerId: number | null;
   inviteToken: string | null;
   createdAt: string;
+  linkedBowler: LinkedBowler | null;
 }
 
 interface Location {
@@ -207,6 +215,7 @@ export default function UsersPage() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
+                      <TableHead>Linked Bowler</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Role</TableHead>
                       <TableHead>Location</TableHead>
@@ -218,6 +227,27 @@ export default function UsersPage() {
                       <TableRow key={user.id}>
                         <TableCell className="font-medium">{user.name || '—'}</TableCell>
                         <TableCell>{user.email}</TableCell>
+                        <TableCell>
+                          {user.linkedBowler ? (
+                            <div className="flex items-center gap-1.5">
+                              <Link2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+                              <div className="text-sm">
+                                <span className="font-medium">{user.linkedBowler.name}</span>
+                                {(user.linkedBowler.teamName || user.linkedBowler.leagueName) && (
+                                  <span className="text-muted-foreground">
+                                    {' — '}
+                                    {[user.linkedBowler.teamName, user.linkedBowler.leagueName].filter(Boolean).join(', ')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="flex items-center gap-1.5 text-muted-foreground">
+                              <Unlink2 className="h-3.5 w-3.5 shrink-0" />
+                              Unlinked
+                            </span>
+                          )}
+                        </TableCell>
                         <TableCell>
                           {hasPendingInvite(user) ? (
                             <Badge variant="outline" className="text-amber-600 border-amber-300">Pending</Badge>

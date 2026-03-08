@@ -111,6 +111,7 @@ export interface IStorage {
   getUserByInviteToken(token: string): Promise<User | undefined>;
   setUserInviteToken(userId: number, token: string, expiry: Date): Promise<User>;
   clearUserInviteToken(userId: number): Promise<User>;
+  getBowlerByEmail(email: string): Promise<Bowler | undefined>;
 
   // Location methods
   getLocations(organizationId?: number | null): Promise<Location[]>;
@@ -1137,6 +1138,11 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`User with ID ${userId} not found`);
     }
     return updatedUser;
+  }
+
+  async getBowlerByEmail(email: string): Promise<Bowler | undefined> {
+    const [result] = await db.select().from(bowlers).where(eq(bowlers.email, email));
+    return result;
   }
 
   async clearUserInviteToken(userId: number): Promise<User> {
