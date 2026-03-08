@@ -61,7 +61,8 @@ const navItems: NavItem[] = [
   {
     icon: MapPin,
     label: "Locations",
-    href: "/locations"
+    href: "/locations",
+    adminOnly: true
   },
   {
     icon: Users,
