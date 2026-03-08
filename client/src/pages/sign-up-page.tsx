@@ -281,7 +281,7 @@ const SignUpPage: FC = () => {
             {orgInfo ? `Welcome to ${orgInfo.name}` : "Join Your Bowling League"}
           </CardTitle>
           <CardDescription className="text-center">
-            Sign up to track your scores and manage your league participation
+            Sign up to manage your weekly league payments
           </CardDescription>
         </CardHeader>
         <CardContent className="pb-4 sm:pb-6">
