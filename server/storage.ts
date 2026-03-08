@@ -108,6 +108,9 @@ export interface IStorage {
   getOrganizationUsers(organizationId: number): Promise<User[]>;
   updateUserOrganizationAdminStatus(userId: number, isOrganizationAdmin: boolean): Promise<User>;
   setUserLocation(userId: number, locationId: number | null): Promise<User>;
+  getUserByInviteToken(token: string): Promise<User | undefined>;
+  setUserInviteToken(userId: number, token: string, expiry: Date): Promise<User>;
+  clearUserInviteToken(userId: number): Promise<User>;
 
   // Location methods
   getLocations(organizationId?: number | null): Promise<Location[]>;
@@ -1117,6 +1120,35 @@ export class DatabaseStorage implements IStorage {
   async restoreLocation(id: number): Promise<Location> {
     const [result] = await db.update(locations).set({ active: true }).where(eq(locations.id, id)).returning();
     return result;
+  }
+
+  async getUserByInviteToken(token: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.inviteToken, token));
+    return user;
+  }
+
+  async setUserInviteToken(userId: number, token: string, expiry: Date): Promise<User> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ inviteToken: token, inviteTokenExpiry: expiry })
+      .where(eq(users.id, userId))
+      .returning();
+    if (!updatedUser) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    return updatedUser;
+  }
+
+  async clearUserInviteToken(userId: number): Promise<User> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({ inviteToken: null, inviteTokenExpiry: null })
+      .where(eq(users.id, userId))
+      .returning();
+    if (!updatedUser) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    return updatedUser;
   }
 }
 

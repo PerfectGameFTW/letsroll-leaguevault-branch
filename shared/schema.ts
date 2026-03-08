@@ -214,6 +214,8 @@ export const users = pgTable("users", {
   isOrganizationAdmin: boolean("is_organization_admin").notNull().default(false),
   organizationId: integer("organization_id").references(() => organizations.id),
   locationId: integer("location_id").references(() => locations.id),
+  inviteToken: text("invite_token"),
+  inviteTokenExpiry: timestamp("invite_token_expiry"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   organizationIdx: index("users_organization_idx").on(table.organizationId),

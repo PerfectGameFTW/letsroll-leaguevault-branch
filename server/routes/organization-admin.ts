@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express';
+import { randomBytes } from 'crypto';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api';
+import { hashPassword } from '../auth';
+import { sendInviteEmail } from '../services/email';
 import { z } from 'zod';
 
 // Define error code type for type safety
@@ -246,6 +249,108 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, async (req: an
   } catch (error) {
     console.error('[Org Admin Route] Error updating user location:', error);
     return sendError(res, 'internal_error', 'Failed to update user location', 500);
+  }
+});
+
+router.post('/users/create', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
+  try {
+    const schema = z.object({
+      firstName: z.string().min(1, 'First name is required').max(50),
+      lastName: z.string().min(1, 'Last name is required').max(50),
+      email: z.string().email('Invalid email address'),
+      isOrganizationAdmin: z.boolean().default(false),
+      locationId: z.number().int().positive().nullable().optional(),
+    });
+
+    const parseResult = schema.safeParse(req.body);
+    if (!parseResult.success) {
+      return sendError(res, 'validation_error', parseResult.error.errors.map(e => e.message).join(', '), 400);
+    }
+
+    const { firstName, lastName, email, isOrganizationAdmin, locationId } = parseResult.data;
+    const fullName = `${firstName} ${lastName}`;
+
+    let organizationId: number;
+    if (req.user.isAdmin && req.body.organizationId) {
+      organizationId = parseInt(String(req.body.organizationId), 10);
+    } else {
+      organizationId = req.user.organizationId;
+    }
+
+    if (!organizationId) {
+      return sendError(res, 'bad_request', 'Organization ID is required', 400);
+    }
+
+    const existingUser = await storage.getUserByEmail(email);
+    if (existingUser) {
+      return sendError(res, 'conflict', 'A user with this email address already exists', 409);
+    }
+
+    const placeholderPassword = await hashPassword(randomBytes(32).toString('hex'));
+
+    const inviteToken = randomBytes(32).toString('hex');
+    const inviteTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    const newUser = await storage.createUser({
+      email,
+      password: placeholderPassword,
+      name: fullName,
+      isAdmin: false,
+      isOrganizationAdmin,
+      organizationId,
+    });
+
+    await storage.setUserInviteToken(newUser.id, inviteToken, inviteTokenExpiry);
+
+    if (locationId && !isOrganizationAdmin) {
+      await storage.setUserLocation(newUser.id, locationId);
+    }
+
+    const organization = await storage.getOrganization(organizationId);
+
+    const emailSent = await sendInviteEmail(email, firstName, inviteToken, organization?.name);
+
+    const finalUser = await storage.getUser(newUser.id);
+
+    return sendSuccess(res, { user: { ...finalUser, password: undefined }, emailSent });
+  } catch (error) {
+    console.error('[Org Admin Route] Error creating user:', error);
+    return sendError(res, 'internal_error', 'Failed to create user', 500);
+  }
+});
+
+router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (isNaN(userId)) {
+      return sendError(res, 'bad_request', 'Invalid user ID', 400);
+    }
+
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return sendError(res, 'not_found', 'User not found', 404);
+    }
+
+    if (!req.user.isAdmin && req.user.isOrganizationAdmin) {
+      if (user.organizationId !== req.user.organizationId) {
+        return sendError(res, 'forbidden', 'You can only manage users in your own organization', 403);
+      }
+    }
+
+    const inviteToken = randomBytes(32).toString('hex');
+    const inviteTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await storage.setUserInviteToken(userId, inviteToken, inviteTokenExpiry);
+
+    let organizationId = user.organizationId;
+    const organization = organizationId ? await storage.getOrganization(organizationId) : null;
+
+    const firstName = user.name.split(' ')[0];
+    const emailSent = await sendInviteEmail(user.email, firstName, inviteToken, organization?.name);
+
+    return sendSuccess(res, { emailSent });
+  } catch (error) {
+    console.error('[Org Admin Route] Error resending invite:', error);
+    return sendError(res, 'internal_error', 'Failed to resend invite', 500);
   }
 });
 

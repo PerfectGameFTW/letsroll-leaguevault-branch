@@ -49,8 +49,22 @@ A full-stack bowling league management application with multi-tenant support for
 - `SQUARE_APP_ID` / `VITE_SQUARE_APP_ID` - Square app ID (fallback)
 - `SQUARE_LOCATION_ID` / `VITE_SQUARE_LOCATION_ID` - Square location (fallback)
 - `SESSION_SECRET` - Express session secret
+- `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
 
-## Recent Changes (2026-03-02)
+## Recent Changes (2026-03-08)
+- Added Users management page (`/users`) for org admins to create, manage, and remove users
+  - Admin creates user with first name, last name, email, and role (Admin or End User)
+  - System sends invite email via SendGrid with a secure link to set up password
+  - Users table shows status (Pending/Active), role, location assignment
+  - Resend invite button for pending users
+  - `inviteToken` and `inviteTokenExpiry` columns on users table
+- Email service: `server/services/email.ts` using SendGrid (`@sendgrid/mail`)
+- Set Password page (`/set-password?token=...`) — public route for invited users to create their password
+  - Validates invite token, shows password requirements, auto-logs in after password set
+- Auth routes added: `POST /api/auth/set-password`, `GET /api/auth/validate-invite`
+- Org admin routes added: `POST /api/org-admin/users/create`, `POST /api/org-admin/users/:id/resend-invite`
+
+## Previous Changes (2026-03-02)
 - Added Final 2 Weeks Due feature: leagues have configurable `finalTwoWeeksDueWeek` (week 1-10, default 6)
   - League form: "Final 2 Weeks Due By" dropdown (Week 1-10)
   - Payment Overview card: Final 2 Weeks status (paid/due/past due) with due date

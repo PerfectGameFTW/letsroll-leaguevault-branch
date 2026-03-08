@@ -27,6 +27,7 @@ import AdminLinkBowlerPage from "@/pages/admin-link-bowler";
 import OrganizationsPage from "@/pages/organizations-page";
 import LocationsPage from "@/pages/locations-page";
 import UsersPage from "@/pages/users-page";
+import SetPasswordPage from "@/pages/set-password-page";
 import ProfileSettingsPage from "@/pages/profile-settings-page";
 import { useEffect, useRef, FC } from "react";
 import { initializeSquare } from "./lib/square";
@@ -95,6 +96,7 @@ function Router() {
       {/* Public routes */}
       <Route path="/sign-up" component={SignUpPage} />
       <Route path="/login" component={LoginPage} />
+      <Route path="/set-password" component={SetPasswordPage} />
       <Route path="/not-found" component={NotFound} />
 
       {/* Root route with redirect handler */}

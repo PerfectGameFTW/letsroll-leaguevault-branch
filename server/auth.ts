@@ -280,6 +280,97 @@ export function setupAuth(app: Express) {
     }
   });
 
+  authRouter.post("/set-password", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+
+      if (!token || !password) {
+        return res.status(400).json({
+          success: false,
+          error: { message: "Token and password are required" }
+        });
+      }
+
+      const passwordSchema = z.string()
+        .min(8, "Password must be at least 8 characters")
+        .max(100, "Password must be less than 100 characters")
+        .refine(p => /[A-Z]/.test(p), "Password must contain at least one uppercase letter")
+        .refine(p => /[a-z]/.test(p), "Password must contain at least one lowercase letter")
+        .refine(p => /[0-9]/.test(p), "Password must contain at least one number")
+        .refine(p => /[!@#$%^&*]/.test(p), "Password must contain at least one special character (!@#$%^&*)");
+
+      const passwordResult = passwordSchema.safeParse(password);
+      if (!passwordResult.success) {
+        return res.status(400).json({
+          success: false,
+          error: { message: passwordResult.error.errors[0].message }
+        });
+      }
+
+      const user = await storage.getUserByInviteToken(token);
+      if (!user) {
+        return res.status(400).json({
+          success: false,
+          error: { message: "Invalid or expired invitation link" }
+        });
+      }
+
+      if (user.inviteTokenExpiry && new Date(user.inviteTokenExpiry) < new Date()) {
+        return res.status(400).json({
+          success: false,
+          error: { message: "This invitation link has expired. Please ask your administrator to resend the invite." }
+        });
+      }
+
+      const hashedPassword = await hashPassword(password);
+      await storage.updateUser(user.id, { password: hashedPassword });
+      await storage.clearUserInviteToken(user.id);
+
+      req.login(user, (err) => {
+        if (err) {
+          console.error('[Auth] Auto-login after password set failed:', err);
+          return res.json({
+            success: true,
+            data: { message: "Password set successfully. Please log in." }
+          });
+        }
+        res.json({
+          success: true,
+          data: { ...user, password: undefined }
+        });
+      });
+    } catch (error) {
+      console.error('[Auth] Set password error:', error);
+      res.status(500).json({
+        success: false,
+        error: { message: "Failed to set password" }
+      });
+    }
+  });
+
+  authRouter.get("/validate-invite", async (req, res) => {
+    try {
+      const token = req.query.token as string;
+      if (!token) {
+        return res.status(400).json({ success: false, error: { message: "Token is required" } });
+      }
+
+      const user = await storage.getUserByInviteToken(token);
+      if (!user) {
+        return res.json({ success: false, error: { message: "Invalid invitation link" } });
+      }
+
+      if (user.inviteTokenExpiry && new Date(user.inviteTokenExpiry) < new Date()) {
+        return res.json({ success: false, error: { message: "This invitation link has expired" } });
+      }
+
+      return res.json({ success: true, data: { name: user.name, email: user.email } });
+    } catch (error) {
+      console.error('[Auth] Validate invite error:', error);
+      res.status(500).json({ success: false, error: { message: "Failed to validate invite" } });
+    }
+  });
+
   // Mount auth routes before any other routes
   app.use('/api/auth', authRouter);
 }
