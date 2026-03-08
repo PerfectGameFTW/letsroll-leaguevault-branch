@@ -17,13 +17,13 @@ Each organization has a unique sign-up URL that can be shared via QR code, email
 Your bowlers register at a URL specific to your organization:
 
 ```
-https://[your-domain]/signup?org=[your-slug]
+https://leaguevault.app/signup?org=[your-slug]
 ```
 
 For example, if your organization slug is `perfect-game`, the URL would be:
 
 ```
-https://[your-domain]/signup?org=perfect-game
+https://leaguevault.app/signup?org=perfect-game
 ```
 
 When bowlers visit this URL, they will see:
