@@ -173,21 +173,10 @@ export default function TeamViewPage() {
         throw new Error("Bowler league association not found");
       }
 
-      const response = await apiRequest(
-        "DELETE",
-        `/api/bowler-leagues/${bowlerLeague.id}`
+      return await apiRequest(
+        `/api/bowler-leagues/${bowlerLeague.id}`,
+        "DELETE"
       );
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text);
-      }
-
-      try {
-        return await response.json();
-      } catch (e) {
-        return { success: true, message: "Bowler removed successfully" };
-      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
