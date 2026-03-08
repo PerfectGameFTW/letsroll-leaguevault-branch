@@ -22,7 +22,6 @@ import PastDuePage from "@/pages/past-due-page";
 import SignUpPage from "@/pages/sign-up-page";
 import LoginPage from "@/pages/login-page";
 import BowlerDashboardPage from "@/pages/bowler-dashboard-page";
-import AdminPage from "@/pages/admin-page";
 import AdminLinkBowlerPage from "@/pages/admin-link-bowler";
 import OrganizationsPage from "@/pages/organizations-page";
 import LocationsPage from "@/pages/locations-page";
@@ -220,12 +219,6 @@ function Router() {
       </Route>
 
       {/* System Admin routes */}
-      <Route path="/admin">
-        <AdminRouteGuard>
-          <AdminPage />
-        </AdminRouteGuard>
-      </Route>
-      
       <Route path="/organizations">
         <AdminRouteGuard>
           <OrganizationsPage />
