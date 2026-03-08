@@ -17,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { Loader2, Plus, ArrowLeft, Pencil, Trash2, UserCheck, UserX } from "lucide-react";
+import { Loader2, Plus, ArrowLeft, Pencil, Trash2, CheckCircle2 } from "lucide-react";
 import type { Team, Bowler, League, BowlerLeague, ApiResponse } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
@@ -297,7 +297,6 @@ export default function TeamViewPage() {
               <TableHead>Name</TableHead>
               <TableHead>Weekly Fee</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Account</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -306,28 +305,18 @@ export default function TeamViewPage() {
               teamBowlers.map(({ bowler, bowlerLeague }) => (
                 <TableRow key={bowlerLeague.id}>
                   <TableCell>
-                    <Link href={`/bowlers/${bowler.id}`} className="hover:underline">
-                      {bowler.name}
-                    </Link>
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className={`h-4 w-4 ${(bowler as any).hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
+                      <Link href={`/bowlers/${bowler.id}`} className="hover:underline">
+                        {bowler.name}
+                      </Link>
+                    </div>
                   </TableCell>
                   <TableCell>${((league?.weeklyFee || 0) / 100).toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={bowlerLeague.active ? "default" : "secondary"}>
                       {bowlerLeague.active ? "Active" : "Inactive"}
                     </Badge>
-                  </TableCell>
-                  <TableCell>
-                    {(bowler as any).hasAccount ? (
-                      <Badge variant="default" className="gap-1">
-                        <UserCheck className="h-3 w-3" />
-                        Has Account
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="gap-1 text-muted-foreground">
-                        <UserX className="h-3 w-3" />
-                        No Account
-                      </Badge>
-                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
@@ -356,7 +345,7 @@ export default function TeamViewPage() {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={5} className="text-center">
+                <TableCell colSpan={4} className="text-center">
                   No bowlers assigned to this team
                 </TableCell>
               </TableRow>
