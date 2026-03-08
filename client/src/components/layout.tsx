@@ -64,6 +64,12 @@ const navItems: NavItem[] = [
     href: "/locations"
   },
   {
+    icon: Users,
+    label: "Users",
+    href: "/users",
+    adminOnly: true
+  },
+  {
     icon: Trophy,
     label: "Leagues",
     href: "/leagues",
@@ -83,12 +89,6 @@ const navItems: NavItem[] = [
     icon: ClipboardPlus,
     label: "Reports",
     href: "/reports"
-  },
-  {
-    icon: Users,
-    label: "Users",
-    href: "/users",
-    adminOnly: true
   },
   {
     icon: LayoutDashboard,
