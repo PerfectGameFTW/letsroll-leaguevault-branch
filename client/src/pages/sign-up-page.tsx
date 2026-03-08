@@ -278,7 +278,7 @@ const SignUpPage: FC = () => {
             </div>
           )}
           <CardTitle className="text-2xl font-bold text-center">
-            {orgInfo ? `Join ${orgInfo.name}` : "Join Your Bowling League"}
+            {orgInfo ? `Welcome to ${orgInfo.name}` : "Join Your Bowling League"}
           </CardTitle>
           <CardDescription className="text-center">
             Sign up to track your scores and manage your league participation
