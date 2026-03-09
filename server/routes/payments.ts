@@ -3,7 +3,7 @@ import { storage } from '../storage.js';
 import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema.js";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
-import { processPayment } from '../services/square.js';
+import { processPayment, refundPayment as squareRefund } from '../services/square.js';
 import { hasAccessToPayment, filterPaymentsByOrganization } from '../utils/access-control.js';
 
 const router = Router();
@@ -160,6 +160,53 @@ router.delete("/:id", async (req, res) => {
   } catch (error) {
     console.error('[Payments Route] Delete error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to delete payment');
+  }
+});
+
+router.post("/:id/refund", async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return sendError(res, "Invalid payment ID", 400, "INVALID_ID");
+    }
+
+    if (!req.user?.isAdmin && !req.user?.isOrganizationAdmin) {
+      return sendError(res, "Only admins can process refunds", 403, "FORBIDDEN");
+    }
+
+    const payment = await storage.getPaymentById(id);
+    if (!payment) {
+      return sendError(res, "Payment not found", 404, "NOT_FOUND");
+    }
+
+    if (payment.status === 'refunded') {
+      return sendError(res, "Payment has already been refunded", 400, "ALREADY_REFUNDED");
+    }
+
+    if (payment.status !== 'paid') {
+      return sendError(res, "Only paid payments can be refunded", 400, "INVALID_STATUS");
+    }
+
+    if (!req.user.isAdmin) {
+      const hasAccess = await hasAccessToPayment(req, id);
+      if (!hasAccess) {
+        return sendError(res, "You don't have access to refund this payment", 403, "FORBIDDEN");
+      }
+    }
+
+    const { reason } = req.body || {};
+    let squareRefundId: string | undefined;
+
+    if (payment.squarePaymentId && payment.type === 'credit_card') {
+      const refundResult = await squareRefund(payment.squarePaymentId, payment.amount, reason);
+      squareRefundId = refundResult.refundId;
+    }
+
+    const refunded = await storage.refundPayment(id, squareRefundId, reason);
+    sendSuccess(res, refunded);
+  } catch (error) {
+    console.error('[Payments Route] Refund error:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to process refund');
   }
 });
 

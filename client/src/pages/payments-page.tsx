@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { Loader2, Plus, Search, Trash2, RotateCcw } from "lucide-react";
 import type { Payment, Bowler, League } from "@shared/schema";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -31,6 +31,8 @@ import { useMutation } from "@tanstack/react-query";
 export default function PaymentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [paymentToDelete, setPaymentToDelete] = useState<number | null>(null);
+  const [paymentToRefund, setPaymentToRefund] = useState<Payment | null>(null);
+  const [refundReason, setRefundReason] = useState("");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const { toast } = useToast();
 
@@ -55,7 +57,7 @@ export default function PaymentsPage() {
 
   const deletePaymentMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await apiRequest("DELETE", `/api/payments/${id}`);
+      const response = await apiRequest(`/api/payments/${id}`, "DELETE");
       if (!response.success) {
         throw new Error(`Failed to delete payment: ${response.error?.message || "Unknown error"}`);
       }
@@ -72,6 +74,32 @@ export default function PaymentsPage() {
     onError: (error: Error) => {
       toast({
         title: "Error deleting payment",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const refundPaymentMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: number; reason?: string }) => {
+      const response = await apiRequest(`/api/payments/${id}/refund`, "POST", { reason });
+      if (!response.success) {
+        throw new Error(response.error?.message || "Failed to process refund");
+      }
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({
+        title: "Refund Processed",
+        description: "The payment has been successfully refunded.",
+      });
+      setPaymentToRefund(null);
+      setRefundReason("");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Refund Failed",
         description: error.message,
         variant: "destructive",
       });
@@ -189,8 +217,10 @@ export default function PaymentsPage() {
                             payment.status === "paid" ? "default" :
                               payment.status === "pending" ? "secondary" :
                                 payment.status === "failed" ? "destructive" :
-                                  "outline"
+                                  payment.status === "refunded" ? "outline" :
+                                    "outline"
                           }
+                          className={payment.status === "refunded" ? "border-orange-500 text-orange-600" : ""}
                         >
                           {payment.status}
                         </Badge>
@@ -204,18 +234,32 @@ export default function PaymentsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setPaymentToDelete(payment.id)}
-                          disabled={deletePaymentMutation.isPending}
-                        >
-                          {deletePaymentMutation.isPending ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                        <div className="flex items-center gap-1">
+                          {payment.status === "paid" && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Refund payment"
+                              onClick={() => setPaymentToRefund(payment)}
+                              disabled={refundPaymentMutation.isPending}
+                            >
+                              <RotateCcw className="h-4 w-4 text-orange-500" />
+                            </Button>
                           )}
-                        </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title="Delete payment"
+                            onClick={() => setPaymentToDelete(payment.id)}
+                            disabled={deletePaymentMutation.isPending}
+                          >
+                            {deletePaymentMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            )}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -257,6 +301,56 @@ export default function PaymentsPage() {
                 ) : (
                   "Delete"
                 )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={paymentToRefund !== null} onOpenChange={(open) => { if (!open) { setPaymentToRefund(null); setRefundReason(""); } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Refund Payment</DialogTitle>
+              <DialogDescription>
+                {paymentToRefund && (
+                  <>
+                    Refund <strong>${(paymentToRefund.amount / 100).toFixed(2)}</strong> ({paymentToRefund.type === 'credit_card' ? 'Credit Card' : paymentToRefund.type === 'check' ? 'Check' : 'Cash'})?
+                    {paymentToRefund.type === 'credit_card' && ' The refund will be processed through Square.'}
+                  </>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2">
+              <label className="text-sm font-medium">Reason (optional)</label>
+              <Input
+                placeholder="Enter refund reason..."
+                value={refundReason}
+                onChange={(e) => setRefundReason(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => { setPaymentToRefund(null); setRefundReason(""); }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="default"
+                className="bg-orange-500 hover:bg-orange-600"
+                onClick={() => {
+                  if (paymentToRefund) {
+                    refundPaymentMutation.mutate({ id: paymentToRefund.id, reason: refundReason || undefined });
+                  }
+                }}
+                disabled={refundPaymentMutation.isPending}
+              >
+                {refundPaymentMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                )}
+                Process Refund
               </Button>
             </DialogFooter>
           </DialogContent>

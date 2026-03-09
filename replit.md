@@ -51,7 +51,19 @@ A full-stack bowling league management application with multi-tenant support for
 - `SESSION_SECRET` - Express session secret
 - `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
 
-## Recent Changes (2026-03-08)
+## Recent Changes (2026-03-09)
+- **Payment Refund System**: Full refund support for org admins and system admins
+  - Square refund processing via `refundsApi.refundPayment` for credit card payments
+  - Cash/check payments can be marked as refunded without Square call
+  - `POST /api/payments/:id/refund` endpoint with access control (admin-only)
+  - Payment schema: added `refunded` status, `squareRefundId`, `refundReason`, `refundedAt` columns
+  - `refundPayment()` function in `server/services/square.ts`
+  - `getPaymentById()` and `refundPayment()` methods in storage layer
+  - Admin UI: orange refund button on paid payments in Payments page with confirmation dialog + optional reason
+  - Refunded payments show orange "refunded" badge
+- Fixed `apiRequest` argument order in payments-page.tsx delete mutation (URL first, method second)
+
+## Previous Changes (2026-03-08)
 - **Bowler-to-User Auto-Linking System**: Automatic linking between bowler records and user accounts
   - When a user sets their password via invite or self-registers, if their email matches a bowler record, they are automatically linked
   - When an admin creates/updates a bowler with an email matching an existing user, they are auto-linked

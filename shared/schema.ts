@@ -16,11 +16,12 @@ export const WeekDay = {
   SUNDAY: WEEKDAYS[6],
 } as const;
 
-const PAYMENT_STATUSES = ["paid", "pending", "failed"] as const;
+const PAYMENT_STATUSES = ["paid", "pending", "failed", "refunded"] as const;
 export const PaymentStatus = {
   PAID: PAYMENT_STATUSES[0],
   PENDING: PAYMENT_STATUSES[1],
   FAILED: PAYMENT_STATUSES[2],
+  REFUNDED: PAYMENT_STATUSES[3],
 } as const;
 
 const PAYMENT_TYPES = ["cash", "check", "credit_card"] as const;
@@ -154,6 +155,9 @@ export const payments = pgTable("payments", {
   type: text("type", { enum: PAYMENT_TYPES }).notNull(),
   checkNumber: text("check_number"),
   squarePaymentId: text("square_payment_id"),
+  squareRefundId: text("square_refund_id"),
+  refundReason: text("refund_reason"),
+  refundedAt: timestamp("refunded_at"),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({

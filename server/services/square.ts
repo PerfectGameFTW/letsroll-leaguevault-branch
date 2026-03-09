@@ -485,6 +485,50 @@ export async function createOrderWithPayment(
   }
 }
 
+export async function refundPayment(
+  squarePaymentId: string,
+  amountInCents: number,
+  reason?: string
+): Promise<{ refundId: string; status: string }> {
+  const client = await initializeSquareClient();
+  if (!client) {
+    throw new Error('Square client not initialized');
+  }
+
+  try {
+    const idempotencyKey = `refund-${squarePaymentId}-${Date.now()}`;
+
+    const response = await client.refundsApi.refundPayment({
+      idempotencyKey,
+      paymentId: squarePaymentId,
+      amountMoney: {
+        amount: BigInt(amountInCents),
+        currency: 'USD',
+      },
+      reason: reason || 'Refund processed via LeagueVault',
+    });
+
+    const refund = response.result.refund;
+    if (!refund || !refund.id) {
+      throw new Error('Refund response missing refund data');
+    }
+
+    console.log(`[Square Service] Refund processed: ${refund.id}, status: ${refund.status}`);
+    return {
+      refundId: refund.id,
+      status: refund.status || 'PENDING',
+    };
+  } catch (error) {
+    console.error('[Square Service] Refund error:', error);
+    const apiError = error as ApiError;
+    if (apiError.errors) {
+      const messages = apiError.errors.map((e: any) => e.detail).join(', ');
+      throw new Error(`Square refund failed: ${messages}`);
+    }
+    throw error;
+  }
+}
+
 export default {
   createOrUpdateCustomer,
   processPayment,
@@ -492,4 +536,5 @@ export default {
   listCatalogItems,
   listCatalogCategories,
   createOrderWithPayment,
+  refundPayment,
 };

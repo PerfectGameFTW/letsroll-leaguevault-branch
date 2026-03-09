@@ -53,8 +53,10 @@ export interface IStorage {
 
   // Payment methods
   getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date): Promise<Payment[]>;
+  getPaymentById(id: number): Promise<Payment | undefined>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePayment(id: number, payment: Partial<InsertPayment>): Promise<Payment>;
+  refundPayment(id: number, squareRefundId?: string, reason?: string): Promise<Payment>;
   deletePayment(id: number): Promise<void>;
 
   // Game methods
@@ -418,6 +420,11 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async getPaymentById(id: number): Promise<Payment | undefined> {
+    const [result] = await db.select().from(payments).where(eq(payments.id, id));
+    return result;
+  }
+
   async createPayment(payment: InsertPayment): Promise<Payment> {
     const [result] = await db.insert(payments).values(payment).returning();
     return result;
@@ -427,6 +434,20 @@ export class DatabaseStorage implements IStorage {
     const [result] = await db
       .update(payments)
       .set(payment)
+      .where(eq(payments.id, id))
+      .returning();
+    return result;
+  }
+
+  async refundPayment(id: number, squareRefundId?: string, reason?: string): Promise<Payment> {
+    const [result] = await db
+      .update(payments)
+      .set({
+        status: 'refunded',
+        squareRefundId: squareRefundId || null,
+        refundReason: reason || null,
+        refundedAt: new Date(),
+      })
       .where(eq(payments.id, id))
       .returning();
     return result;
