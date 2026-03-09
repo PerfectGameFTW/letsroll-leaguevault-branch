@@ -136,7 +136,7 @@ export default function TeamViewPage() {
   const updateTeamMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editTeamSchema>) => {
       if (!teamId) throw new Error("No team ID provided");
-      const response = await apiRequest("PATCH", `/api/teams/${teamId}`, values);
+      const response = await apiRequest(`/api/teams/${teamId}`, "PATCH", values);
       if (!response.ok) {
         const text = await response.text();
         throw new Error(text);

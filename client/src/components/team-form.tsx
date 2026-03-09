@@ -59,7 +59,7 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
 
   const mutation = useMutation({
     mutationFn: async (data: InsertTeam) => {
-      const response = await apiRequest("POST", "/api/teams", data);
+      const response = await apiRequest("/api/teams", "POST", data);
       if (!response.ok) {
         const error = await response.text();
         throw new Error(error);
