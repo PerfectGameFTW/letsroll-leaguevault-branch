@@ -187,6 +187,10 @@ router.post("/:id/refund", async (req: any, res) => {
       return sendError(res, "Only paid payments can be refunded", 400, "INVALID_STATUS");
     }
 
+    if (payment.type !== 'credit_card') {
+      return sendError(res, "Only credit card payments can be refunded", 400, "INVALID_TYPE");
+    }
+
     if (!req.user.isAdmin) {
       const hasAccess = await hasAccessToPayment(req, id);
       if (!hasAccess) {

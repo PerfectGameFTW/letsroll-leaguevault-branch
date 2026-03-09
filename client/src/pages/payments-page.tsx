@@ -235,7 +235,7 @@ export default function PaymentsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {payment.status === "paid" && (
+                          {payment.status === "paid" && payment.type === "credit_card" && (
                             <Button
                               size="icon"
                               variant="ghost"
