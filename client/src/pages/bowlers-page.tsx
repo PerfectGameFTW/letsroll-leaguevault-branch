@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { BowlerForm } from "@/components/bowler-form";
@@ -11,13 +12,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Eye, EyeOff, Search } from "lucide-react";
+import { Loader2, Plus, Eye, EyeOff, Search, RefreshCw } from "lucide-react";
 import type { Bowler } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 import { useBowlers } from "@/hooks/use-bowlers";
+import { apiRequest } from "@/lib/queryClient";
 
 // Loading skeleton component
 function BowlerTableSkeleton() {
@@ -77,14 +79,49 @@ export default function BowlersPage() {
     searchQuery
   });
 
+  const { data: bnStatusResponse } = useQuery<{ success: boolean; data: { configured: boolean } }>({
+    queryKey: ["/api/bn/status"],
+    staleTime: 1000 * 60 * 30,
+    retry: false,
+  });
+  const bnConfigured = bnStatusResponse?.data?.configured || false;
+
+  const bnSyncAllMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("/api/bn/sync-all", "POST");
+    },
+    onSuccess: (resp: any) => {
+      const d = resp?.data || resp;
+      toast({
+        title: "BowlNow Sync Complete",
+        description: `Synced ${d?.synced || 0} bowlers. ${d?.failed || 0} failed.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Sync Failed", description: error.message, variant: "destructive" });
+    },
+  });
+
   return (
     <Layout>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Bowlers</h1>
-        <Button onClick={() => setShowForm(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add Bowler
-        </Button>
+        <div className="flex items-center gap-2">
+          {bnConfigured && (
+            <Button
+              variant="outline"
+              onClick={() => bnSyncAllMutation.mutate()}
+              disabled={bnSyncAllMutation.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${bnSyncAllMutation.isPending ? "animate-spin" : ""}`} />
+              {bnSyncAllMutation.isPending ? "Syncing..." : "Sync All to BowlNow"}
+            </Button>
+          )}
+          <Button onClick={() => setShowForm(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Bowler
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-4 mb-6">
@@ -123,12 +160,13 @@ export default function BowlersPage() {
                 <TableHead>Team Name</TableHead>
                 <TableHead>Square Customer ID</TableHead>
                 <TableHead>Status</TableHead>
+                {bnConfigured && <TableHead>BowlNow</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredBowlers.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-4">
+                  <TableCell colSpan={bnConfigured ? 6 : 5} className="text-center py-4">
                     {isLoadingRelatedData ? (
                       <div className="flex items-center justify-center">
                         <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -177,6 +215,13 @@ export default function BowlersPage() {
                           {bowler.active ? "Active" : "Inactive"}
                         </Badge>
                       </TableCell>
+                      {bnConfigured && (
+                        <TableCell>
+                          <Badge variant={bowler.bnContactId ? "default" : "outline"} className={bowler.bnContactId ? "bg-green-600" : ""}>
+                            {bowler.bnContactId ? "Synced" : "Not Synced"}
+                          </Badge>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })

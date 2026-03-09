@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
-import { Loader2, ArrowLeft, ExternalLink, Plus } from "lucide-react";
+import { Loader2, ArrowLeft, ExternalLink, Plus, RefreshCw } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -183,8 +183,28 @@ export default function BowlerViewPage() {
   const { data: loyaltyInfo } = useQuery<LoyaltyInfo>({
     queryKey: ["/api/square/loyalty", bowler?.squareCustomerId],
     enabled: !!bowler?.squareCustomerId,
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
     retry: false,
+  });
+
+  const { data: bnStatusResponse } = useQuery<ApiResponse<{ configured: boolean }>>({
+    queryKey: ["/api/bn/status"],
+    staleTime: 1000 * 60 * 30,
+    retry: false,
+  });
+  const bnConfigured = bnStatusResponse?.data?.configured || false;
+
+  const bnSyncMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest(`/api/bn/sync-bowler/${bowlerId}`, "POST");
+    },
+    onSuccess: () => {
+      toast({ title: "Synced to BowlNow", description: `${bowler?.name} has been synced to BowlNow.` });
+      queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowlerId}`] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Sync Failed", description: error.message, variant: "destructive" });
+    },
   });
 
   // Update initialization logic for selectedLeagueId
@@ -319,16 +339,34 @@ export default function BowlerViewPage() {
               <Badge variant={bowler?.active ? "default" : "secondary"}>
                 {bowler?.active ? "Active" : "Inactive"}
               </Badge>
+              {bnConfigured && (
+                <Badge variant={bowler?.bnContactId ? "default" : "outline"} className={bowler?.bnContactId ? "bg-green-600" : ""}>
+                  {bowler?.bnContactId ? "BN Synced" : "BN Not Synced"}
+                </Badge>
+              )}
             </div>
-            {availableLeagues.length > 0 && (
-              <Button
-                size="sm"
-                onClick={() => setShowAddLeagueDialog(true)}
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                Add to League
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {bnConfigured && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => bnSyncMutation.mutate()}
+                  disabled={bnSyncMutation.isPending}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-1 ${bnSyncMutation.isPending ? "animate-spin" : ""}`} />
+                  {bnSyncMutation.isPending ? "Syncing..." : "Sync to BowlNow"}
+                </Button>
+              )}
+              {availableLeagues.length > 0 && (
+                <Button
+                  size="sm"
+                  onClick={() => setShowAddLeagueDialog(true)}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add to League
+                </Button>
+              )}
+            </div>
           </div>
           <div className="flex flex-col gap-1">
             <Select

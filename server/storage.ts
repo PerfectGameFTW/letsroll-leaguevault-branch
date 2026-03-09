@@ -41,6 +41,7 @@ export interface IStorage {
   getBowler(id: number): Promise<Bowler | undefined>;
   createBowler(bowler: InsertBowler): Promise<Bowler>;
   updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler>;
+  updateBowlerBnContactId(bowlerId: number, bnContactId: string): Promise<void>;
   deleteBowler(id: number): Promise<void>;
 
   // BowlerLeague methods
@@ -242,6 +243,10 @@ export class DatabaseStorage implements IStorage {
   async updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler> {
     const [result] = await db.update(bowlers).set(bowler).where(eq(bowlers.id, id)).returning();
     return result;
+  }
+
+  async updateBowlerBnContactId(bowlerId: number, bnContactId: string): Promise<void> {
+    await db.update(bowlers).set({ bnContactId }).where(eq(bowlers.id, bowlerId));
   }
 
   async deleteBowler(id: number): Promise<void> {

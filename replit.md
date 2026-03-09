@@ -50,8 +50,17 @@ A full-stack bowling league management application with multi-tenant support for
 - `SQUARE_LOCATION_ID` / `VITE_SQUARE_LOCATION_ID` - Square location (fallback)
 - `SESSION_SECRET` - Express session secret
 - `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
+- `BN_API_KEY` - BowlNow (GoHighLevel) sub-account API key for CRM contact sync
 
 ## Recent Changes (2026-03-09)
+- **BowlNow CRM Integration**: One-way sync of bowler contact data into BowlNow (GoHighLevel) CRM
+  - `server/services/bowlnow.ts` — service module for BN API (create/update contacts, sync single/all bowlers)
+  - `server/routes/bowlnow.ts` — admin API routes: `GET /api/bn/status`, `POST /api/bn/sync-bowler/:id`, `POST /api/bn/sync-all`
+  - Schema: added `bnContactId` text column to bowlers table (stores BN contact ID after sync)
+  - Auto-sync: bowler create/update routes fire-and-forget sync to BN
+  - UI: "Sync to BowlNow" button on individual bowler view, "Sync All to BowlNow" on bowlers list, BN synced/not-synced badges
+  - Custom field mapping: League Name, Team Name, Square Customer ID, Organization
+  - BN Location ID: `zQw4JcOJlKfJWCWvJ2pw`, API Version: `2021-07-28`
 - **New Season Feature**: Admins can create a new season of an existing league, carrying over all teams and bowler rosters
   - `POST /api/leagues/:id/new-season` endpoint creates a new league with identical settings, teams, and bowler assignments
   - `GET /api/leagues/:id/season-history` endpoint returns the full chain of linked seasons

@@ -113,6 +113,7 @@ export const bowlers = pgTable("bowlers", {
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
   squareCustomerId: text("square_customer_id"),
+  bnContactId: text("bn_contact_id"),
 });
 
 export const bowlerLeagues = pgTable("bowler_leagues", {

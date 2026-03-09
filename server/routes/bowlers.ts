@@ -5,6 +5,7 @@ import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { createOrUpdateCustomer } from '../services/square.js';
 import { hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
+import { syncBowlerToBN, isBNConfigured } from '../services/bowlnow.js';
 
 const router = Router();
 
@@ -258,6 +259,9 @@ router.post("/", async (req, res) => {
             squareCustomerId: squareCustomer.id,
             active: true
           });
+          if (isBNConfigured()) {
+            syncBowlerToBN(updated.id).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+          }
           return sendSuccess(res, updated, 201);
         }
       } catch (squareError) {
@@ -265,6 +269,9 @@ router.post("/", async (req, res) => {
       }
     }
 
+    if (isBNConfigured()) {
+      syncBowlerToBN(created.id).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+    }
     sendSuccess(res, created, 201);
   } catch (error) {
     console.error('[Bowlers] Error creating bowler:', error);
@@ -330,6 +337,9 @@ router.patch("/:id", async (req, res) => {
       }
     }
 
+    if (isBNConfigured()) {
+      syncBowlerToBN(updated.id).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+    }
     sendSuccess(res, updated);
   } catch (error) {
     console.error('[Bowlers] Error updating bowler:', error);
