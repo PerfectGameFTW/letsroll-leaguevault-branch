@@ -60,11 +60,10 @@ export function TeamForm({ open, onClose, leagueId }: TeamFormProps) {
   const mutation = useMutation({
     mutationFn: async (data: InsertTeam) => {
       const response = await apiRequest("/api/teams", "POST", data);
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+      if (!response.success) {
+        throw new Error(response.error?.message || "Failed to create team");
       }
-      return await response.json();
+      return response.data;
     },
     onSuccess: () => {
       // Invalidate both the teams list and the specific league's teams

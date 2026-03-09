@@ -137,11 +137,10 @@ export default function TeamViewPage() {
     mutationFn: async (values: z.infer<typeof editTeamSchema>) => {
       if (!teamId) throw new Error("No team ID provided");
       const response = await apiRequest(`/api/teams/${teamId}`, "PATCH", values);
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(text);
+      if (!response.success) {
+        throw new Error(response.error?.message || "Failed to update team");
       }
-      return response.json();
+      return response.data;
     },
     onSuccess: (updatedTeam) => {
       queryClient.setQueryData([`/api/teams/${teamId}`], { data: updatedTeam });
