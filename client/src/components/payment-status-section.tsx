@@ -5,7 +5,14 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, CreditCard, Calendar, Plus, Minus, CalendarDays, Settings, DollarSign, AlertTriangle, RefreshCw, CheckCircle2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, CreditCard, Calendar, Plus, Minus, CalendarDays, Settings, DollarSign, AlertTriangle, RefreshCw, CheckCircle2, Wallet } from "lucide-react";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -15,6 +22,14 @@ import { formatCurrency } from "@/lib/utils";
 import { calculateFinancials } from "@/lib/financial-utils";
 import { format } from "date-fns";
 import type { League, Bowler, Payment } from "@shared/schema";
+
+interface SavedCard {
+  id: string;
+  last4: string;
+  brand: string;
+  expMonth: number;
+  expYear: number;
+}
 
 type PaymentSchedule = "weekly" | "monthly" | "custom";
 
@@ -55,6 +70,8 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [showFinalTwoWeeksWarning, setShowFinalTwoWeeksWarning] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
+  const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
 
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
@@ -67,11 +84,26 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     }
   });
 
+  const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
+    queryKey: [`/api/square/cards/${bowler.id}`],
+    enabled: !!bowler.id,
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+  });
+  const savedCards = savedCardsResponse?.data || [];
+
   useEffect(() => {
-    if (showPaymentSetup && cardContainerRef.current) {
+    if (savedCards.length > 0) {
+      setCardMode('saved');
+      setSelectedSavedCardId(savedCards[0].id);
+    }
+  }, [savedCards.length]);
+
+  useEffect(() => {
+    if (showPaymentSetup && cardContainerRef.current && cardMode === 'new') {
       initializeCard(cardContainerRef.current);
     }
-  }, [showPaymentSetup, cardContainerRef, initializeCard]);
+  }, [showPaymentSetup, cardContainerRef, initializeCard, cardMode]);
 
   const handleWeekChangeWrapper = useCallback((weeks: number) => {
     const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
@@ -109,10 +141,19 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   }, [selectedSchedule, weeklyFee, selectedWeeks, fixedAmount, includeFinalTwoWeeks]);
 
   const handleSubmitPayment = async () => {
-    if (!card) {
+    if (cardMode === 'new' && !card) {
       toast({
         title: "Payment Setup Error",
-        description: "Missing required information to set up payment.",
+        description: "Please enter your card details before proceeding.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (cardMode === 'saved' && !selectedSavedCardId) {
+      toast({
+        title: "Payment Setup Error",
+        description: "Please select a saved card.",
         variant: "destructive",
       });
       return;
@@ -131,13 +172,30 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       setShowFinalTwoWeeksWarning(false);
       
       const amount = calculateTotalAmount();
-      const result = await createPayment(
-        amount,
-        card,
-        bowler.id, 
-        league.id,
-        storeCard
-      );
+
+      if (cardMode === 'saved' && selectedSavedCardId) {
+        const response = await fetch('/api/square/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceId: selectedSavedCardId,
+            amount,
+            bowlerId: bowler.id,
+            leagueId: league.id,
+            storeCard: false,
+          }),
+        });
+        const responseData = await response.json();
+        if (!response.ok) {
+          throw new Error(responseData.error?.message || 'Payment failed');
+        }
+      } else {
+        const shouldStore = isAutoPay || storeCard;
+        await createPayment(amount, card, bowler.id, league.id, shouldStore);
+        if (shouldStore) {
+          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
+        }
+      }
 
       toast({
         title: "Payment Successful",
@@ -153,7 +211,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       console.error('[Payment Error]:', error);
       toast({
         title: "Payment Failed",
-        description: typeof error === 'string' ? error : "Unable to process payment. Please try again.",
+        description: typeof error === 'string' ? error : (error instanceof Error ? error.message : "Unable to process payment. Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -381,22 +439,80 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               <div>
                 <h3 className="text-lg font-medium">Payment Information</h3>
                 <p className="text-sm text-muted-foreground">
-                  Enter your card details (securely processed by Square)
+                  {savedCards.length > 0
+                    ? "Use a saved card or enter new card details"
+                    : "Enter your card details (securely processed by Square)"}
                 </p>
               </div>
-              
-              <div ref={cardContainerRef} className="min-h-[200px] border rounded-lg bg-card p-4">
-                {!isInitialized && (
-                  <div className="flex items-center justify-center p-4">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    <p className="ml-2 text-sm text-muted-foreground">
-                      Loading credit card form...
-                    </p>
+
+              {savedCards.length > 0 && (
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={cardMode === 'saved' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setCardMode('saved')}
+                    className="flex items-center gap-2"
+                  >
+                    <Wallet className="h-4 w-4" />
+                    Saved Card
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={cardMode === 'new' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setCardMode('new')}
+                    className="flex items-center gap-2"
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    New Card
+                  </Button>
+                </div>
+              )}
+
+              {cardMode === 'saved' && savedCards.length > 0 ? (
+                <div className="space-y-3">
+                  <Select value={selectedSavedCardId} onValueChange={setSelectedSavedCardId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a saved card" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {savedCards.map((sc) => (
+                        <SelectItem key={sc.id} value={sc.id}>
+                          {sc.brand} ending in {sc.last4} (exp {sc.expMonth}/{sc.expYear})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <>
+                  <div ref={cardContainerRef} className="min-h-[200px] border rounded-lg bg-card p-4">
+                    {!isInitialized && (
+                      <div className="flex items-center justify-center p-4">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        <p className="ml-2 text-sm text-muted-foreground">
+                          Loading credit card form...
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              
-              {squareError && (
+                  {selectedSchedule === 'custom' && (
+                    <div className="flex items-center space-x-3">
+                      <Checkbox
+                        id="store-card-status"
+                        checked={storeCard}
+                        onCheckedChange={(checked) => setStoreCard(checked === true)}
+                      />
+                      <Label htmlFor="store-card-status" className="text-sm cursor-pointer">
+                        Save this card for future payments
+                      </Label>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {squareError && cardMode === 'new' && (
                 <div className="p-3 text-sm border border-destructive bg-destructive/10 text-destructive rounded-md">
                   <p><strong>Credit Card Form Error:</strong> {squareError}</p>
                   <p className="mt-1 text-xs">Consider using Cash or Check payment instead.</p>
@@ -473,7 +589,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               </Button>
               <Button 
                 onClick={handleSubmitPayment}
-                disabled={!isInitialized || isSubmitting}
+                disabled={
+                  (cardMode === 'new' && !isInitialized) ||
+                  (cardMode === 'saved' && !selectedSavedCardId) ||
+                  isSubmitting
+                }
                 className="min-w-[200px]"
               >
                 {isSubmitting ? (
