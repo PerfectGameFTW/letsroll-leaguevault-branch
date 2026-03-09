@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment } from '../services/square.js';
+import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile } from '../services/square.js';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
@@ -61,15 +61,23 @@ router.post('/payments', async (req, res) => {
       );
     }
 
-    if (req.body.storeCard && payment.cardOnFile && payment.cardOnFile.id) {
+    if (req.body.storeCard && customerId && req.body.sourceId && !req.body.sourceId.startsWith('ccof:')) {
       try {
-        await storage.updatePaymentScheduleCard(
-          req.body.bowlerId,
-          req.body.leagueId,
-          payment.cardOnFile.id
-        );
+        const savedCard = await saveCardOnFile(req.body.sourceId, customerId);
+        if (savedCard?.id) {
+          console.log('[Square Routes] Card saved on file:', savedCard.id.substring(0, 15) + '...');
+          try {
+            await storage.updatePaymentScheduleCard(
+              req.body.bowlerId,
+              req.body.leagueId,
+              savedCard.id
+            );
+          } catch (schedError) {
+            console.log('[Square Routes] No payment schedule to update (normal for one-time payments)');
+          }
+        }
       } catch (error) {
-        console.error('[Square Routes] Failed to update payment schedule card:', error);
+        console.error('[Square Routes] Failed to save card on file:', error);
       }
     }
 
@@ -167,6 +175,30 @@ router.get('/catalog/items', async (req, res) => {
   } catch (error) {
     console.error('[Square Routes] Catalog list error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch catalog items');
+  }
+});
+
+router.get('/cards/:bowlerId', async (req, res) => {
+  try {
+    const bowlerId = parseInt(req.params.bowlerId);
+    if (isNaN(bowlerId)) {
+      return sendError(res, 'Invalid bowler ID', 400);
+    }
+
+    if (!await hasAccessToBowler(req, bowlerId)) {
+      return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+    }
+
+    const bowler = await storage.getBowler(bowlerId);
+    if (!bowler?.squareCustomerId) {
+      return sendSuccess(res, []);
+    }
+
+    const cards = await listCardsOnFile(bowler.squareCustomerId);
+    sendSuccess(res, cards);
+  } catch (error) {
+    console.error('[Square Routes] List cards error:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to list cards');
   }
 });
 

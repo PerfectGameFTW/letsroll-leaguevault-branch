@@ -53,6 +53,13 @@ A full-stack bowling league management application with multi-tenant support for
 - `BN_API_KEY` - BowlNow (GoHighLevel) sub-account API key for CRM contact sync
 
 ## Recent Changes (2026-03-09)
+- **Saved Card Payments**: Bowlers can save credit cards during one-time payments and use them for future payments
+  - `listCardsOnFile(customerId)` function in `server/services/square.ts` — retrieves enabled cards from Square
+  - `GET /api/square/cards/:bowlerId` endpoint to list saved cards for a bowler
+  - Payment form updated: when a bowler has saved cards, shows "Saved Card" / "New Card" toggle
+  - Saved card payments go through `/api/square/payments` with the card ID as sourceId
+  - New card payments with "Save card" checked also go through `/api/square/payments` for proper card-on-file saving
+  - Card saving uses Square's Cards API (`cardsApi.createCard`) with the payment token
 - **BowlNow CRM Integration**: One-way sync of bowler contact data into BowlNow (GoHighLevel) CRM
   - `server/services/bowlnow.ts` — service module for BN API (create/update contacts, sync single/all bowlers)
   - `server/routes/bowlnow.ts` — admin API routes: `GET /api/bn/status`, `POST /api/bn/sync-bowler/:id`, `POST /api/bn/sync-all`

@@ -529,10 +529,33 @@ export async function refundPayment(
   }
 }
 
+export async function listCardsOnFile(customerId: string): Promise<{ id: string; last4: string; brand: string; expMonth: number; expYear: number }[]> {
+  const client = await initializeSquareClient();
+  if (!client) return [];
+
+  try {
+    const response = await client.cardsApi.listCards(undefined, customerId);
+    const cards = response.result.cards || [];
+    return cards
+      .filter(c => c.enabled)
+      .map(c => ({
+        id: c.id!,
+        last4: c.last4 || '****',
+        brand: c.cardBrand || 'UNKNOWN',
+        expMonth: Number(c.expMonth) || 0,
+        expYear: Number(c.expYear) || 0,
+      }));
+  } catch (error) {
+    console.error('[Square Service] Failed to list cards on file:', error instanceof Error ? error.message : error);
+    return [];
+  }
+}
+
 export default {
   createOrUpdateCustomer,
   processPayment,
   saveCardOnFile,
+  listCardsOnFile,
   listCatalogItems,
   listCatalogCategories,
   createOrderWithPayment,

@@ -21,12 +21,27 @@ import {
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { InsertPayment, Bowler, League } from "@shared/schema";
 import { insertPaymentSchema } from "@shared/schema";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { Loader2, AlertCircle, CreditCard, Info, AlertTriangle } from "lucide-react";
+import { Loader2, AlertCircle, CreditCard, Info, AlertTriangle, Wallet } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+interface SavedCard {
+  id: string;
+  last4: string;
+  brand: string;
+  expMonth: number;
+  expYear: number;
+}
 
 interface PaymentFormProps {
   open: boolean;
@@ -42,6 +57,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [activePaymentMethod, setActivePaymentMethod] = useState<'credit' | 'cash' | 'check'>('credit');
   const [squareLoadFailed, setSquareLoadFailed] = useState(false);
+  const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
+  const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
   const initializationAttempted = useRef(false);
   const queryClient = useQueryClient();
 
@@ -87,10 +104,28 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   }, [leagueId]);
 
   const paymentType = form.watch("type");
+  const selectedBowlerId = form.watch("bowlerId");
+
+  const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
+    queryKey: ['/api/square/cards', selectedBowlerId],
+    enabled: !!selectedBowlerId && paymentType === 'credit_card',
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+  });
+  const savedCards = savedCardsResponse?.data || [];
 
   useEffect(() => {
-    // Handle form closing or payment type change
-    if (!open || paymentType !== "credit_card") {
+    if (savedCards.length > 0 && paymentType === 'credit_card') {
+      setCardMode('saved');
+      setSelectedSavedCardId(savedCards[0].id);
+    } else {
+      setCardMode('new');
+      setSelectedSavedCardId('');
+    }
+  }, [savedCards.length, selectedBowlerId, paymentType]);
+
+  useEffect(() => {
+    if (!open || paymentType !== "credit_card" || cardMode === 'saved') {
       if (isInitialized) {
         cleanupCard();
         setIsSquareReady(false);
@@ -159,11 +194,13 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     return () => {
       clearTimeout(initTimeout);
     };
-  }, [open, paymentType, isInitialized, isSquareReady, cleanupCard, initializeCard, toast, form]);
+  }, [open, paymentType, cardMode, isInitialized, isSquareReady, cleanupCard, initializeCard, toast, form]);
 
   useEffect(() => {
     if (!open) {
       form.reset();
+      setCardMode('new');
+      setSelectedSavedCardId('');
     }
   }, [open]);
 
@@ -172,11 +209,34 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       setPaymentError(null);
 
       if (data.type === 'credit_card') {
+        if (cardMode === 'saved' && selectedSavedCardId) {
+          const response = await fetch('/api/square/payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceId: selectedSavedCardId,
+              amount: data.amount,
+              bowlerId: data.bowlerId,
+              leagueId: data.leagueId,
+              storeCard: false,
+            }),
+          });
+
+          const responseData = await response.json();
+          if (!response.ok) {
+            throw new Error(responseData.error?.message || 'Failed to process payment');
+          }
+
+          toast({ title: "Success", description: "Payment processed with saved card" });
+          queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+          onClose();
+          return;
+        }
+
         if (!card) {
           throw new Error('Credit card form not initialized');
         }
 
-        // Configure tokenization options if storing card
         const tokenizationOptions = data.storeCard ? {
           cardOnFile: true,
           verificationMethod: 'EXTERNAL',
@@ -195,14 +255,35 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           throw new Error(errorMessage);
         }
 
-        data.squarePaymentId = result.token;
+        const response = await fetch('/api/square/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceId: result.token,
+            amount: data.amount,
+            bowlerId: data.bowlerId,
+            leagueId: data.leagueId,
+            storeCard: data.storeCard || false,
+          }),
+        });
+
+        const responseData = await response.json();
+        if (!response.ok) {
+          throw new Error(responseData.error?.message || 'Failed to process payment');
+        }
+
+        toast({ title: "Success", description: "Payment processed successfully" });
+        if (data.storeCard) {
+          queryClient.invalidateQueries({ queryKey: ['/api/square/cards', data.bowlerId] });
+        }
+        queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+        onClose();
+        return;
       }
 
       const response = await fetch('/api/payments', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
 
@@ -212,11 +293,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         throw new Error(responseData.error?.message || 'Failed to process payment');
       }
 
-      toast({
-        title: "Success",
-        description: "Payment recorded successfully",
-      });
-
+      toast({ title: "Success", description: "Payment recorded successfully" });
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       onClose();
     } catch (error) {
@@ -446,48 +523,107 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
             {paymentType === "credit_card" && (
               <div className="space-y-4">
-                <div className="min-h-[200px] border rounded-lg bg-card">
-                  <div ref={cardContainerRef} className="p-4" />
-                  {!isSquareReady && (
-                    <div className="flex items-center justify-center p-4">
-                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                      <p className="ml-2 text-sm text-muted-foreground">
-                        Loading credit card form...
-                      </p>
-                    </div>
-                  )}
-                </div>
-                
-                {squareError && (
-                  <div className="p-3 text-sm border border-destructive bg-destructive/10 text-destructive rounded-md">
-                    <p><strong>Credit Card Form Error:</strong> {squareError}</p>
-                    <p className="mt-1 text-xs">Consider using Cash or Check payment instead.</p>
+                {savedCards.length > 0 && (
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={cardMode === 'saved' ? 'default' : 'outline'}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => {
+                        setCardMode('saved');
+                        setSelectedSavedCardId(savedCards[0].id);
+                      }}
+                    >
+                      <Wallet className="h-4 w-4 mr-1" />
+                      Saved Card
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={cardMode === 'new' ? 'default' : 'outline'}
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => {
+                        setCardMode('new');
+                        setSelectedSavedCardId('');
+                      }}
+                    >
+                      <CreditCard className="h-4 w-4 mr-1" />
+                      New Card
+                    </Button>
                   </div>
                 )}
-                
-                <div className="flex items-center space-x-2">
-                  <FormField
-                    control={form.control}
-                    name="storeCard"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                        <FormControl>
-                          <Checkbox
-                            id="storeCard"
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                        <label 
-                          htmlFor="storeCard" 
-                          className="text-sm font-medium leading-none cursor-pointer"
-                        >
-                          Save card for future payments
-                        </label>
-                      </FormItem>
+
+                {cardMode === 'saved' && savedCards.length > 0 ? (
+                  <div className="space-y-3">
+                    <Select
+                      value={selectedSavedCardId}
+                      onValueChange={setSelectedSavedCardId}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a saved card" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {savedCards.map((sc) => (
+                          <SelectItem key={sc.id} value={sc.id}>
+                            {sc.brand} •••• {sc.last4} (exp {String(sc.expMonth).padStart(2, '0')}/{sc.expYear})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Alert>
+                      <Wallet className="h-4 w-4" />
+                      <AlertDescription>
+                        Payment will be charged to the selected saved card.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                ) : (
+                  <>
+                    <div className="min-h-[200px] border rounded-lg bg-card">
+                      <div ref={cardContainerRef} className="p-4" />
+                      {!isSquareReady && (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                          <p className="ml-2 text-sm text-muted-foreground">
+                            Loading credit card form...
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {squareError && (
+                      <div className="p-3 text-sm border border-destructive bg-destructive/10 text-destructive rounded-md">
+                        <p><strong>Credit Card Form Error:</strong> {squareError}</p>
+                        <p className="mt-1 text-xs">Consider using Cash or Check payment instead.</p>
+                      </div>
                     )}
-                  />
-                </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <FormField
+                        control={form.control}
+                        name="storeCard"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                            <FormControl>
+                              <Checkbox
+                                id="storeCard"
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <label 
+                              htmlFor="storeCard" 
+                              className="text-sm font-medium leading-none cursor-pointer"
+                            >
+                              Save card for future payments
+                            </label>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -503,7 +639,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 type="submit"
                 disabled={
                   form.formState.isSubmitting || 
-                  (paymentType === "credit_card" && !isSquareReady)
+                  (paymentType === "credit_card" && cardMode === 'new' && !isSquareReady) ||
+                  (paymentType === "credit_card" && cardMode === 'saved' && !selectedSavedCardId)
                 }
               >
                 {form.formState.isSubmitting ? (
