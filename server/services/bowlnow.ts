@@ -71,7 +71,7 @@ export async function createContact(contactData: {
   lastName: string;
   email?: string;
   phone?: string;
-  customFields?: { id: string; value: string }[];
+  customFields?: { id: string; value: string | string[] }[];
 }): Promise<any | null> {
   try {
     const body: any = {
@@ -111,7 +111,7 @@ export async function updateContact(contactId: string, contactData: {
   lastName?: string;
   email?: string;
   phone?: string;
-  customFields?: { id: string; value: string }[];
+  customFields?: { id: string; value: string | string[] }[];
 }): Promise<any | null> {
   try {
     const body: any = {};
@@ -178,15 +178,15 @@ export async function syncBowlerToBN(bowlerId: number): Promise<{ success: boole
       }
     }
 
-    const customFields: { id: string; value: string }[] = [];
+    const customFields: { id: string; value: string | string[] }[] = [];
     if (bowler.squareCustomerId) {
       customFields.push({ id: CUSTOM_FIELD_IDS.squareCustomerId, value: bowler.squareCustomerId });
     }
     if (leagueNames.length > 0) {
-      customFields.push({ id: CUSTOM_FIELD_IDS.leagueName, value: leagueNames.join(', ') });
+      customFields.push({ id: CUSTOM_FIELD_IDS.leagueName, value: leagueNames.length === 1 ? leagueNames[0] : leagueNames });
     }
     if (teamNames.length > 0) {
-      customFields.push({ id: CUSTOM_FIELD_IDS.teamName, value: teamNames.join(', ') });
+      customFields.push({ id: CUSTOM_FIELD_IDS.teamName, value: teamNames.length === 1 ? teamNames[0] : teamNames });
     }
     if (orgName) {
       customFields.push({ id: CUSTOM_FIELD_IDS.organization, value: orgName });
