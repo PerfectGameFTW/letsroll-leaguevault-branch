@@ -34,15 +34,29 @@ function getOrgLogoUrl(orgId: number | string): string {
   return `${baseUrl}/api/organizations/${orgId}/logo`;
 }
 
+function convertLinksToButtons(html: string): string {
+  return html.replace(
+    /^(https?:\/\/[^\s<]+)$/gm,
+    (url) => {
+      let label = 'Click Here';
+      if (url.includes('/set-password')) label = 'Set Up Your Password';
+      else if (url.includes('/bowler-dashboard') || url.includes('/dashboard')) label = 'Go to Dashboard';
+      else if (url.includes('/login')) label = 'Log In';
+      else if (url.includes('/claim')) label = 'Claim Your Profile';
+
+      return `<a href="${url}" style="display: inline-block; background-color: #1a1a2e; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold;">${label}</a>`;
+    }
+  );
+}
+
 function wrapInHtmlLayout(body: string, variables: Record<string, string>): string {
-  const logoUrl = variables.organization_logo_url;
-  const orgName = variables.organization_name;
+  const styledBody = convertLinksToButtons(body);
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       
       <div style="font-size: 16px; color: #333; white-space: pre-line;">
-${body}
+${styledBody}
       </div>
       
       <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
