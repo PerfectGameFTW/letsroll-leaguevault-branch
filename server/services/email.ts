@@ -40,7 +40,7 @@ function wrapInHtmlLayout(body: string, variables: Record<string, string>): stri
 
   let headerHtml: string;
   if (logoUrl) {
-    headerHtml = `<img src="${logoUrl}" alt="${orgName || 'Organization'}" style="max-height: 80px; max-width: 250px;" />`;
+    headerHtml = `<img src="${logoUrl}" alt="${orgName || 'Organization'}" style="max-height: 64px; max-width: 200px;" />`;
   } else if (orgName) {
     headerHtml = `<h1 style="color: #1a1a2e; margin: 0; font-size: 28px;">${orgName}</h1>`;
   } else {
