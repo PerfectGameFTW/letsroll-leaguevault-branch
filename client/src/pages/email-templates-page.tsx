@@ -10,10 +10,11 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Mail, Pencil, Eye, EyeOff, Info, Send } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Mail, Pencil, Eye, EyeOff, Info, Send, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { EmailTemplate, ApiResponse } from "@shared/schema";
+import type { EmailTemplate, Organization, ApiResponse } from "@shared/schema";
 
 const TEMPLATE_VARIABLES = [
   { name: "{{bowler_name}}", description: "The bowler/user's name" },
@@ -51,9 +52,14 @@ export default function EmailTemplatesPage() {
   const [editActive, setEditActive] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const [testEmail, setTestEmail] = useState("");
+  const [testOrgId, setTestOrgId] = useState<string>("");
 
   const { data: templatesResponse, isLoading } = useQuery<ApiResponse<EmailTemplate[]>>({
     queryKey: ["/api/admin/email-templates"],
+  });
+
+  const { data: orgsResponse } = useQuery<ApiResponse<Organization[]>>({
+    queryKey: ["/api/organizations"],
   });
 
   const updateMutation = useMutation({
@@ -83,8 +89,8 @@ export default function EmailTemplatesPage() {
   });
 
   const sendTestMutation = useMutation({
-    mutationFn: async ({ id, toEmail }: { id: number; toEmail: string }) => {
-      return apiRequest(`/api/admin/email-templates/${id}/send-test`, "POST", { toEmail });
+    mutationFn: async ({ id, toEmail, organizationId }: { id: number; toEmail: string; organizationId?: string }) => {
+      return apiRequest(`/api/admin/email-templates/${id}/send-test`, "POST", { toEmail, organizationId: organizationId || undefined });
     },
     onSuccess: () => {
       toast({ title: "Test Email Sent", description: `A sample email was sent to ${testEmail}.` });
@@ -246,34 +252,70 @@ export default function EmailTemplatesPage() {
 
             <Separator />
 
-            <div className="space-y-2">
-              <Label>Send Test Email</Label>
-              <div className="flex gap-2">
-                <Input
-                  type="email"
-                  placeholder="Enter email address..."
-                  value={testEmail}
-                  onChange={(e) => setTestEmail(e.target.value)}
-                  className="flex-1"
-                />
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    if (!editingTemplate || !testEmail) return;
-                    sendTestMutation.mutate({ id: editingTemplate.id, toEmail: testEmail });
-                  }}
-                  disabled={sendTestMutation.isPending || !testEmail}
-                >
-                  {sendTestMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4 mr-1.5" />
-                  )}
-                  Send Test
-                </Button>
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2">
+                <Send className="h-4 w-4" />
+                Send Test Email
+              </Label>
+              <div className="space-y-2">
+                <div>
+                  <Label htmlFor="test-org" className="text-xs text-muted-foreground mb-1 block">Organization</Label>
+                  <Select value={testOrgId} onValueChange={setTestOrgId}>
+                    <SelectTrigger id="test-org">
+                      <SelectValue placeholder="Sample data (no real org)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sample data (no real org)</SelectItem>
+                      {(orgsResponse?.data || []).map((org) => (
+                        <SelectItem key={org.id} value={String(org.id)}>
+                          <span className="flex items-center gap-2">
+                            {org.logo ? (
+                              <img src={org.logo} alt="" className="h-4 w-4 rounded object-contain" />
+                            ) : (
+                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                            )}
+                            {org.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="test-email-input" className="text-xs text-muted-foreground mb-1 block">Recipient</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="test-email-input"
+                      type="email"
+                      placeholder="Enter email address..."
+                      value={testEmail}
+                      onChange={(e) => setTestEmail(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        if (!editingTemplate || !testEmail) return;
+                        sendTestMutation.mutate({
+                          id: editingTemplate.id,
+                          toEmail: testEmail,
+                          organizationId: testOrgId && testOrgId !== "none" ? testOrgId : undefined,
+                        });
+                      }}
+                      disabled={sendTestMutation.isPending || !testEmail}
+                    >
+                      {sendTestMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-1.5" />
+                      )}
+                      Send Test
+                    </Button>
+                  </div>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Sends a sample email with placeholder data so you can preview it in your inbox. Subject will be prefixed with [TEST].
+                Choose an organization to test with their real name and logo, or use sample data. Subject will be prefixed with [TEST].
               </p>
             </div>
 

@@ -170,7 +170,7 @@ router.post('/email-templates/:id/send-test', requireAdmin, async (req, res) => 
     if (isNaN(id)) {
       return sendError(res, 'Invalid template ID', 400, 'InvalidRequest');
     }
-    const { toEmail } = req.body;
+    const { toEmail, organizationId } = req.body;
     if (!toEmail || typeof toEmail !== 'string') {
       return sendError(res, 'Email address is required', 400, 'InvalidRequest');
     }
@@ -178,7 +178,11 @@ router.post('/email-templates/:id/send-test', requireAdmin, async (req, res) => 
     if (!template) {
       return sendError(res, 'Email template not found', 404, 'NotFound');
     }
-    const success = await sendTestEmail(template, toEmail);
+    let organization = undefined;
+    if (organizationId) {
+      organization = await storage.getOrganization(parseInt(organizationId, 10));
+    }
+    const success = await sendTestEmail(template, toEmail, organization);
     if (success) {
       sendSuccess(res, { message: `Test email sent to ${toEmail}` });
     } else {

@@ -176,7 +176,8 @@ export async function sendInviteEmail(
 
 export async function sendTestEmail(
   template: { subject: string; body: string; slug: string },
-  toEmail: string
+  toEmail: string,
+  organization?: { name: string; logo?: string | null } | null
 ): Promise<boolean> {
   if (!SENDGRID_API_KEY) {
     console.error('[Email] Cannot send test email — SENDGRID_API_KEY not configured');
@@ -185,8 +186,8 @@ export async function sendTestEmail(
 
   const sampleVariables: Record<string, string> = {
     bowler_name: 'John Smith',
-    organization_name: 'Sample Bowling Center',
-    organization_logo: '',
+    organization_name: organization?.name || 'Sample Bowling Center',
+    organization_logo: organization?.logo || '',
     league_name: 'Wednesday Night Mixed',
     invite_link: getBaseUrl() + '/set-password?token=sample-test-token',
     login_link: getBaseUrl() + '/login',
