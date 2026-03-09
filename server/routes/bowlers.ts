@@ -236,6 +236,14 @@ router.post("/", async (req, res) => {
         if (matchingUser && !matchingUser.bowlerId) {
           await storage.linkUserToBowler(matchingUser.id, created.id);
           console.log(`[Bowlers] Auto-linked user ${matchingUser.id} to newly created bowler ${created.id}`);
+          const bowlerLeagues = await storage.getBowlerLeagues(created.id);
+          if (bowlerLeagues.length > 0) {
+            const league = await storage.getLeague(bowlerLeagues[0].leagueId);
+            if (league?.organizationId && !matchingUser.organizationId) {
+              await storage.setUserOrganization(matchingUser.id, league.organizationId);
+              console.log(`[Bowlers] Set user ${matchingUser.id} organization to ${league.organizationId}`);
+            }
+          }
         }
       } catch (linkError) {
         console.error('[Bowlers] Error auto-linking user to bowler:', linkError);
