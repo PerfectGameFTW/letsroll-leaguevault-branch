@@ -1052,10 +1052,7 @@ export class DatabaseStorage implements IStorage {
     return db
       .select()
       .from(users)
-      .where(and(
-        eq(users.organizationId, organizationId),
-        sql`(${users.bowlerId} IS NULL OR ${users.isOrganizationAdmin} = true)`
-      ))
+      .where(and(eq(users.organizationId, organizationId), isNull(users.bowlerId)))
       .orderBy(users.name);
   }
 
