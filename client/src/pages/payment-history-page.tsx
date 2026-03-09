@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useQuery } from "@tanstack/react-query";
 import type { League, Payment } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
-import { Loader2, ArrowLeft, CreditCard } from "lucide-react";
+import { Loader2, ArrowLeft, CreditCard, Wallet } from "lucide-react";
 import { Link } from "wouter";
 import {
   Table,
@@ -15,12 +15,29 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { differenceInWeeks, startOfToday, format, addWeeks } from "date-fns";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+
+interface SavedCard {
+  id: string;
+  last4: string;
+  brand: string;
+  expMonth: number;
+  expYear: number;
+}
 
 interface ApiResponse<T> {
   success: boolean;
@@ -44,6 +61,9 @@ export default function PaymentHistoryPage() {
   const { toast } = useToast();
   const [payDialogType, setPayDialogType] = useState<'pastdue' | 'remaining' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
+  const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
+  const [storeCard, setStoreCard] = useState(false);
   const { card, isInitialized, initializeCard, cleanupCard } = useSquarePayment({
     onError: (error) => {
       console.error('[Square Payment Error]:', error);
@@ -53,7 +73,7 @@ export default function PaymentHistoryPage() {
 
   const cardCallbackRef = useRef<(el: HTMLDivElement | null) => void>(() => {});
   cardCallbackRef.current = (el: HTMLDivElement | null) => {
-    if (el && payDialogType) {
+    if (el && payDialogType && cardMode === 'new') {
       initializeCard(el);
     }
   };
@@ -70,6 +90,21 @@ export default function PaymentHistoryPage() {
   });
 
   const bowlerId = currentUser?.data?.bowlerId;
+
+  const { data: savedCardsResponse } = useQuery<ApiResponse<SavedCard[]>>({
+    queryKey: [`/api/square/cards/${bowlerId}`],
+    enabled: !!bowlerId,
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+  });
+  const savedCards = savedCardsResponse?.data || [];
+
+  useEffect(() => {
+    if (savedCards.length > 0) {
+      setCardMode('saved');
+      setSelectedSavedCardId(savedCards[0].id);
+    }
+  }, [savedCards.length]);
 
   // Get bowler details
   const { data: bowlerResponse, isLoading: loadingBowler, error: bowlerError } = useQuery<ApiResponse<{ name: string }>>({
@@ -168,19 +203,53 @@ export default function PaymentHistoryPage() {
   const dialogLabel = payDialogType === 'pastdue' ? 'past due amount' : 'remaining balance';
 
   const handleDialogPayment = async () => {
-    if (!card || !bowlerId || !leagueId || !dialogAmount) {
+    if (!bowlerId || !leagueId || !dialogAmount) {
       toast({ title: "Error", description: "Missing payment information.", variant: "destructive" });
       return;
     }
+
+    if (cardMode === 'new' && !card) {
+      toast({ title: "Error", description: "Please enter your card details.", variant: "destructive" });
+      return;
+    }
+
+    if (cardMode === 'saved' && !selectedSavedCardId) {
+      toast({ title: "Error", description: "Please select a saved card.", variant: "destructive" });
+      return;
+    }
+
     try {
       setIsSubmitting(true);
-      await createPayment(dialogAmount, card, bowlerId, leagueId, false);
+
+      if (cardMode === 'saved' && selectedSavedCardId) {
+        const response = await fetch('/api/square/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceId: selectedSavedCardId,
+            amount: dialogAmount,
+            bowlerId,
+            leagueId,
+            storeCard: false,
+          }),
+        });
+        const responseData = await response.json();
+        if (!response.ok) {
+          throw new Error(responseData.error?.message || 'Payment failed');
+        }
+      } else {
+        await createPayment(dialogAmount, card, bowlerId, leagueId, storeCard);
+        if (storeCard) {
+          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+        }
+      }
+
       toast({ title: "Payment Successful", description: `$${(dialogAmount / 100).toFixed(2)} ${dialogLabel} has been paid.` });
       setPayDialogType(null);
       queryClient.invalidateQueries({ queryKey: ["/api/payments", bowlerId, leagueId] });
     } catch (error) {
       console.error('[Payment Error]:', error);
-      toast({ title: "Payment Failed", description: "Unable to process payment. Please try again.", variant: "destructive" });
+      toast({ title: "Payment Failed", description: error instanceof Error ? error.message : "Unable to process payment. Please try again.", variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -423,16 +492,74 @@ export default function PaymentHistoryPage() {
                     <span className="text-lg font-bold">${(dialogAmount / 100).toFixed(2)}</span>
                   </div>
                 </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Card Details</label>
-                  <div
-                    ref={(el) => cardCallbackRef.current(el)}
-                    className="min-h-[80px] rounded-md border p-3"
-                  />
-                </div>
+
+                {savedCards.length > 0 && (
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={cardMode === 'saved' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setCardMode('saved')}
+                      className="flex items-center gap-2"
+                    >
+                      <Wallet className="h-4 w-4" />
+                      Saved Card
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={cardMode === 'new' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => setCardMode('new')}
+                      className="flex items-center gap-2"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      New Card
+                    </Button>
+                  </div>
+                )}
+
+                {cardMode === 'saved' && savedCards.length > 0 ? (
+                  <div className="space-y-3">
+                    <Select value={selectedSavedCardId} onValueChange={setSelectedSavedCardId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a saved card" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {savedCards.map((sc) => (
+                          <SelectItem key={sc.id} value={sc.id}>
+                            {sc.brand} ending in {sc.last4} (exp {sc.expMonth}/{sc.expYear})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <label className="text-sm font-medium mb-2 block">Card Details</label>
+                    <div
+                      ref={(el) => cardCallbackRef.current(el)}
+                      className="min-h-[80px] rounded-md border p-3"
+                    />
+                    <div className="flex items-center space-x-3">
+                      <Checkbox
+                        id="store-card-history"
+                        checked={storeCard}
+                        onCheckedChange={(checked) => setStoreCard(checked === true)}
+                      />
+                      <Label htmlFor="store-card-history" className="text-sm cursor-pointer">
+                        Save this card for future payments
+                      </Label>
+                    </div>
+                  </div>
+                )}
+
                 <Button
                   onClick={handleDialogPayment}
-                  disabled={!isInitialized || isSubmitting}
+                  disabled={
+                    (cardMode === 'new' && !isInitialized) ||
+                    (cardMode === 'saved' && !selectedSavedCardId) ||
+                    isSubmitting
+                  }
                   className="w-full"
                 >
                   {isSubmitting ? (
