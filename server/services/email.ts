@@ -94,6 +94,9 @@ export async function sendTemplatedEmail(
       from: { email: FROM_EMAIL, name: FROM_NAME },
       subject,
       html,
+      trackingSettings: {
+        clickTracking: { enable: false, enableText: false },
+      },
     };
 
     await sgMail.send(msg);
@@ -178,6 +181,9 @@ export async function sendInviteEmail(
         </p>
       </div>
     `,
+    trackingSettings: {
+      clickTracking: { enable: false, enableText: false },
+    },
   };
 
   try {
@@ -220,6 +226,9 @@ export async function sendTestEmail(
       from: { email: FROM_EMAIL, name: FROM_NAME },
       subject,
       html,
+      trackingSettings: {
+        clickTracking: { enable: false, enableText: false },
+      },
     });
     console.log(`[Email] Test email for '${template.slug}' sent to:`, toEmail);
     return true;
