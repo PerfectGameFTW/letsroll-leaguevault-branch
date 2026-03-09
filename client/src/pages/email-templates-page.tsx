@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -11,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Mail, Pencil, Eye, EyeOff, Info, Send, Building2 } from "lucide-react";
+import { Loader2, Mail, Pencil, Eye, EyeOff, Info, Send, Building2, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { EmailTemplate, Organization, ApiResponse } from "@shared/schema";
@@ -46,6 +45,7 @@ function replaceVariables(text: string, data: Record<string, string>): string {
 
 export default function EmailTemplatesPage() {
   const { toast } = useToast();
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<EmailTemplate | null>(null);
   const [editSubject, setEditSubject] = useState("");
   const [editBody, setEditBody] = useState("");
@@ -131,47 +131,54 @@ export default function EmailTemplatesPage() {
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {templates.map((template) => (
-              <Card key={template.id} className="relative">
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-5 w-5 text-muted-foreground" />
-                      <CardTitle className="text-lg">{template.name}</CardTitle>
+          <div className="rounded-lg border divide-y">
+            {templates.map((template) => {
+              const isExpanded = expandedId === template.id;
+              return (
+                <div key={template.id}>
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors"
+                    onClick={() => setExpandedId(isExpanded ? null : template.id)}
+                  >
+                    <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="font-medium text-sm flex-1 truncate">{template.name}</span>
+                    <Badge variant={template.active ? "default" : "secondary"} className="shrink-0">
+                      {template.active ? "Active" : "Inactive"}
+                    </Badge>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground shrink-0 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                  </button>
+                  {isExpanded && (
+                    <div className="px-4 pb-4 pt-1 space-y-3 bg-muted/30">
+                      {template.description && (
+                        <p className="text-sm text-muted-foreground">{template.description}</p>
+                      )}
+                      <div>
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Subject</span>
+                        <p className="text-sm mt-0.5">{template.subject}</p>
+                      </div>
+                      <div>
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Body Preview</span>
+                        <p className="text-sm mt-0.5 line-clamp-4 text-muted-foreground whitespace-pre-line">{template.body}</p>
+                      </div>
+                      <div className="flex items-center gap-3 pt-1">
+                        <Button variant="outline" size="sm" onClick={() => openEditor(template)}>
+                          <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                          Edit Template
+                        </Button>
+                        <div className="flex items-center gap-2 ml-auto">
+                          <span className="text-xs text-muted-foreground">{template.active ? "Active" : "Inactive"}</span>
+                          <Switch
+                            checked={template.active}
+                            onCheckedChange={(checked) => toggleMutation.mutate({ id: template.id, active: checked })}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={template.active ? "default" : "secondary"}>
-                        {template.active ? "Active" : "Inactive"}
-                      </Badge>
-                      <Switch
-                        checked={template.active}
-                        onCheckedChange={(checked) => toggleMutation.mutate({ id: template.id, active: checked })}
-                      />
-                    </div>
-                  </div>
-                  {template.description && (
-                    <CardDescription>{template.description}</CardDescription>
                   )}
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div>
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Subject</span>
-                      <p className="text-sm mt-0.5 truncate">{template.subject}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Body Preview</span>
-                      <p className="text-sm mt-0.5 line-clamp-3 text-muted-foreground whitespace-pre-line">{template.body}</p>
-                    </div>
-                    <Button variant="outline" size="sm" className="mt-2" onClick={() => openEditor(template)}>
-                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                      Edit Template
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                </div>
+              );
+            })}
           </div>
         )}
 
