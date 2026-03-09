@@ -220,7 +220,7 @@ export default function PaymentsPage() {
                                   payment.status === "refunded" ? "outline" :
                                     "outline"
                           }
-                          className={payment.status === "refunded" ? "border-orange-500 text-orange-600" : ""}
+                          className={payment.status === "refunded" ? "border-destructive text-destructive" : ""}
                         >
                           {payment.status}
                         </Badge>
@@ -243,7 +243,7 @@ export default function PaymentsPage() {
                               onClick={() => setPaymentToRefund(payment)}
                               disabled={refundPaymentMutation.isPending}
                             >
-                              <RotateCcw className="h-4 w-4 text-orange-500" />
+                              <RotateCcw className="h-4 w-4 text-destructive" />
                             </Button>
                           )}
                           <Button
@@ -336,8 +336,7 @@ export default function PaymentsPage() {
                 Cancel
               </Button>
               <Button
-                variant="default"
-                className="bg-orange-500 hover:bg-orange-600"
+                variant="destructive"
                 onClick={() => {
                   if (paymentToRefund) {
                     refundPaymentMutation.mutate({ id: paymentToRefund.id, reason: refundReason || undefined });
