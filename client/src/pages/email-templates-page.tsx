@@ -16,7 +16,9 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { EmailTemplate, Organization, ApiResponse } from "@shared/schema";
 
 const TEMPLATE_VARIABLES = [
-  { name: "{{bowler_name}}", description: "The bowler/user's name" },
+  { name: "{{bowler_name}}", description: "The bowler's name (for bowler invite emails)" },
+  { name: "{{admin_name}}", description: "The administrator's name (for org admin invite emails)" },
+  { name: "{{user_name}}", description: "The end user's name (for org end user invite emails)" },
   { name: "{{organization_name}}", description: "The organization name" },
   { name: "{{organization_logo}}", description: "The org's logo URL (for email header)" },
   { name: "{{league_name}}", description: "The league name (if applicable)" },
@@ -27,6 +29,8 @@ const TEMPLATE_VARIABLES = [
 
 const SAMPLE_DATA: Record<string, string> = {
   "{{bowler_name}}": "John Smith",
+  "{{admin_name}}": "Jane Admin",
+  "{{user_name}}": "Alex User",
   "{{organization_name}}": "Perfect Game Bowling",
   "{{organization_logo}}": "https://example.com/logo.png",
   "{{league_name}}": "Wednesday Night Mixed",
