@@ -107,7 +107,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const selectedBowlerId = form.watch("bowlerId");
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
-    queryKey: ['/api/square/cards', selectedBowlerId],
+    queryKey: [`/api/square/cards/${selectedBowlerId}`],
     enabled: !!selectedBowlerId && paymentType === 'credit_card',
     staleTime: 1000 * 60 * 5,
     retry: false,
@@ -274,7 +274,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
         toast({ title: "Success", description: "Payment processed successfully" });
         if (data.storeCard) {
-          queryClient.invalidateQueries({ queryKey: ['/api/square/cards', data.bowlerId] });
+          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${data.bowlerId}`] });
         }
         queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
         onClose();

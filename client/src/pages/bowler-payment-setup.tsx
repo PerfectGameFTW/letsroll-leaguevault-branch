@@ -117,7 +117,7 @@ export default function BowlerPaymentSetupPage() {
   const financials = calculateFinancials(league || null, bowlerPayments);
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
-    queryKey: ['/api/square/cards', bowlerId],
+    queryKey: [`/api/square/cards/${bowlerId}`],
     enabled: !!bowlerId,
     staleTime: 1000 * 60 * 5,
     retry: false,
@@ -245,7 +245,7 @@ export default function BowlerPaymentSetupPage() {
         const shouldStore = selectedSchedule !== 'custom' || storeCard;
         await createPayment(amount, card, bowlerId, league.id, shouldStore);
         if (shouldStore) {
-          queryClient.invalidateQueries({ queryKey: ['/api/square/cards', bowlerId] });
+          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
         }
       }
 
