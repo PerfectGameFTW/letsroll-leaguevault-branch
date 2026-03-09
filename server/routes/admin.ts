@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api';
 import { z } from 'zod';
-import { User as SelectUser } from '@shared/schema';
+import { User as SelectUser, updateEmailTemplateSchema } from '@shared/schema';
 import { requireAdmin } from '../middleware/admin';
 
 const router = Router();
@@ -111,6 +111,55 @@ router.get('/dashboard', requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('[Admin Routes] Error fetching admin dashboard stats:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch admin dashboard stats');
+  }
+});
+
+router.get('/email-templates', requireAdmin, async (req, res) => {
+  try {
+    const templates = await storage.getEmailTemplates();
+    sendSuccess(res, templates);
+  } catch (error) {
+    console.error('[Admin Routes] Error fetching email templates:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to fetch email templates');
+  }
+});
+
+router.get('/email-templates/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid template ID', 400, 'InvalidRequest');
+    }
+    const template = await storage.getEmailTemplate(id);
+    if (!template) {
+      return sendError(res, 'Email template not found', 404, 'NotFound');
+    }
+    sendSuccess(res, template);
+  } catch (error) {
+    console.error('[Admin Routes] Error fetching email template:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to fetch email template');
+  }
+});
+
+router.patch('/email-templates/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid template ID', 400, 'InvalidRequest');
+    }
+    const existing = await storage.getEmailTemplate(id);
+    if (!existing) {
+      return sendError(res, 'Email template not found', 404, 'NotFound');
+    }
+    const validated = updateEmailTemplateSchema.parse(req.body);
+    const updated = await storage.updateEmailTemplate(id, validated);
+    sendSuccess(res, updated);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return sendError(res, 'Invalid template data', 400, 'ValidationError');
+    }
+    console.error('[Admin Routes] Error updating email template:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to update email template');
   }
 });
 

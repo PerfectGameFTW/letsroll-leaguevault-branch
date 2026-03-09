@@ -672,6 +672,22 @@ export interface WeeklyStatWithBowler extends WeeklyStat {
   };
 }
 
+// Email Templates
+export const emailTemplates = pgTable("email_templates", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  description: text("description"),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  active: boolean("active").notNull().default(true),
+});
+
+export const insertEmailTemplateSchema = createInsertSchema(emailTemplates).omit({ id: true });
+export const updateEmailTemplateSchema = insertEmailTemplateSchema.partial().pick({ subject: true, body: true, active: true });
+export type InsertEmailTemplate = z.infer<typeof insertEmailTemplateSchema>;
+export type EmailTemplate = typeof emailTemplates.$inferSelect;
+
 // Add new interface for detailed score information
 export interface DetailedScore extends Score {
   game: Game;

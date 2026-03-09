@@ -65,6 +65,14 @@ A full-stack bowling league management application with multi-tenant support for
   - "Send Registration Invites" button on league detail page (`/leagues/:id`)
   - `POST /api/leagues/:id/send-invites` creates user accounts and sends invite emails for all eligible bowlers
   - Shows summary: sent count, already registered, no email on file
+- **Email Template System**: Database-stored email templates with superadmin editor
+  - 4 templates: Bulk Registration Invite, Self-Register Linked, Self-Register Unlinked, Bowler Claimed
+  - Templates support variables: `{{bowler_name}}`, `{{organization_name}}`, `{{organization_logo}}`, `{{league_name}}`, `{{invite_link}}`, `{{login_link}}`, `{{dashboard_link}}`
+  - Superadmin editor page at `/email-templates` with preview and active/inactive toggle
+  - `email_templates` table with slug, name, description, subject, body, active fields
+  - `sendTemplatedEmail(slug, toEmail, variables)` in `server/services/email.ts`
+  - Emails auto-send: on self-registration (linked/unlinked), on bowler claim, on bulk invite
+  - Org logo included in email header when available
 - **Linked/Unlinked Status Indicators**:
   - Users page (`/users`): "Linked Bowler" column showing bowler name + league/team or "Unlinked"
   - Team roster view: "Account" column with "Has Account" / "No Account" badges per bowler

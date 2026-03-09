@@ -29,6 +29,7 @@ import UsersPage from "@/pages/users-page";
 import SetPasswordPage from "@/pages/set-password-page";
 import ProfileSettingsPage from "@/pages/profile-settings-page";
 import ClaimBowlerPage from "@/pages/claim-bowler-page";
+import EmailTemplatesPage from "@/pages/email-templates-page";
 import { useEffect, useRef, FC } from "react";
 import { initializeSquare } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -241,6 +242,12 @@ function Router() {
       <Route path="/users">
         <AdminRouteGuard>
           <UsersPage />
+        </AdminRouteGuard>
+      </Route>
+
+      <Route path="/email-templates">
+        <AdminRouteGuard>
+          <EmailTemplatesPage />
         </AdminRouteGuard>
       </Route>
       

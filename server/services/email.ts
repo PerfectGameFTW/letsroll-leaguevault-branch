@@ -1,4 +1,5 @@
 import sgMail from '@sendgrid/mail';
+import { storage } from '../storage.js';
 
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 const FROM_EMAIL = 'noreply@leaguevault.app';
@@ -11,7 +12,7 @@ if (SENDGRID_API_KEY) {
   console.warn('[Email] SENDGRID_API_KEY not set — emails will not be sent');
 }
 
-function getBaseUrl(): string {
+export function getBaseUrl(): string {
   if (process.env.REPLIT_DOMAINS) {
     const domains = process.env.REPLIT_DOMAINS.split(',');
     return `https://${domains[0]}`;
@@ -22,19 +23,100 @@ function getBaseUrl(): string {
   return 'https://leaguevault.app';
 }
 
+function replaceVariables(text: string, variables: Record<string, string>): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    return variables[key] !== undefined ? variables[key] : match;
+  });
+}
+
+function wrapInHtmlLayout(body: string, variables: Record<string, string>): string {
+  const logoHtml = variables.organization_logo
+    ? `<div style="text-align: center; margin-bottom: 20px;">
+        <img src="${variables.organization_logo}" alt="${variables.organization_name || 'Organization'}" style="max-height: 80px; max-width: 200px;" />
+      </div>`
+    : '';
+
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        ${logoHtml}
+        <h1 style="color: #1a1a2e; margin: 0;">LeagueVault</h1>
+      </div>
+      
+      <div style="font-size: 16px; color: #333; white-space: pre-line;">
+${body}
+      </div>
+      
+      <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+      
+      <p style="font-size: 12px; color: #999; text-align: center;">
+        &copy; ${new Date().getFullYear()} LeagueVault. All rights reserved.
+      </p>
+    </div>
+  `;
+}
+
+export async function sendTemplatedEmail(
+  slug: string,
+  toEmail: string,
+  variables: Record<string, string>
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    console.error('[Email] Cannot send email — SENDGRID_API_KEY not configured');
+    return false;
+  }
+
+  try {
+    const template = await storage.getEmailTemplateBySlug(slug);
+    if (!template || !template.active) {
+      console.log(`[Email] Template '${slug}' not found or inactive, skipping`);
+      return false;
+    }
+
+    const subject = replaceVariables(template.subject, variables);
+    const body = replaceVariables(template.body, variables);
+    const html = wrapInHtmlLayout(body, variables);
+
+    const msg = {
+      to: toEmail,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
+      subject,
+      html,
+    };
+
+    await sgMail.send(msg);
+    console.log(`[Email] Templated email '${slug}' sent to:`, toEmail);
+    return true;
+  } catch (error: any) {
+    console.error(`[Email] Failed to send templated email '${slug}':`, error?.response?.body || error.message);
+    return false;
+  }
+}
+
 export async function sendInviteEmail(
   toEmail: string,
   userName: string,
   inviteToken: string,
   organizationName?: string
 ): Promise<boolean> {
+  const baseUrl = getBaseUrl();
+  const setupUrl = `${baseUrl}/set-password?token=${inviteToken}`;
+
+  const variables: Record<string, string> = {
+    bowler_name: userName,
+    invite_link: setupUrl,
+  };
+  if (organizationName) {
+    variables.organization_name = organizationName;
+  }
+
+  const sent = await sendTemplatedEmail('bulk_invite', toEmail, variables);
+  if (sent) return true;
+
   if (!SENDGRID_API_KEY) {
     console.error('[Email] Cannot send invite — SENDGRID_API_KEY not configured');
     return false;
   }
-
-  const baseUrl = getBaseUrl();
-  const setupUrl = `${baseUrl}/set-password?token=${inviteToken}`;
 
   const msg = {
     to: toEmail,

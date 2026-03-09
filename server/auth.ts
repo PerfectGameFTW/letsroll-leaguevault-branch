@@ -9,6 +9,7 @@ import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { z } from "zod";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
+import { sendTemplatedEmail, getBaseUrl } from "./services/email.js";
 
 const PostgresSessionStore = connectPg(session);
 
@@ -175,6 +176,7 @@ export function setupAuth(app: Express) {
 
       const organizationId = req.body.organizationId ? parseInt(req.body.organizationId) : undefined;
 
+      let bowlerLinked = false;
       try {
         const bowler = await storage.getBowlerByEmail(result.data.email, organizationId);
         if (bowler) {
@@ -182,15 +184,34 @@ export function setupAuth(app: Express) {
           const alreadyLinked = allUsers.some(u => u.bowlerId === bowler.id);
           if (!alreadyLinked) {
             await storage.linkUserToBowler(user.id, bowler.id);
+            bowlerLinked = true;
 
             const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId: bowler.id });
             if (bowlerLeagueEntries.length > 0) {
               const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
               if (league?.organizationId) {
                 await storage.setUserOrganization(user.id, league.organizationId);
+
+                const org = await storage.getOrganization(league.organizationId);
+                const baseUrl = getBaseUrl();
+                sendTemplatedEmail('self_register_linked', result.data.email, {
+                  bowler_name: bowler.name,
+                  organization_name: org?.name || '',
+                  organization_logo: org?.logo || '',
+                  league_name: league.name,
+                  dashboard_link: `${baseUrl}/dashboard`,
+                }).catch(err => console.error('[Auth] Failed to send self_register_linked email:', err));
               }
             }
           }
+        }
+
+        if (!bowlerLinked) {
+          const baseUrl = getBaseUrl();
+          sendTemplatedEmail('self_register_unlinked', result.data.email, {
+            bowler_name: result.data.name,
+            login_link: `${baseUrl}/login`,
+          }).catch(err => console.error('[Auth] Failed to send self_register_unlinked email:', err));
         }
       } catch (linkError) {
         console.error('[Auth] Auto-link bowler after registration failed:', linkError);
@@ -446,6 +467,21 @@ export function setupAuth(app: Express) {
         const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
         if (league?.organizationId) {
           await storage.setUserOrganization(user.id, league.organizationId);
+        }
+      }
+
+      if (bowlerLeagueEntries.length > 0) {
+        const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
+        if (league?.organizationId) {
+          const org = await storage.getOrganization(league.organizationId);
+          const baseUrl = getBaseUrl();
+          sendTemplatedEmail('bowler_claimed', user.email, {
+            bowler_name: bowler.name,
+            organization_name: org?.name || '',
+            organization_logo: org?.logo || '',
+            league_name: league.name,
+            dashboard_link: `${baseUrl}/dashboard`,
+          }).catch(err => console.error('[Auth] Failed to send bowler_claimed email:', err));
         }
       }
 

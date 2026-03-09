@@ -17,6 +17,8 @@ import {
   type Organization, type InsertOrganization,
   type Location, type InsertLocation,
   type PaymentSchedule, type InsertPaymentSchedule,
+  emailTemplates,
+  type EmailTemplate, type InsertEmailTemplate,
 } from "@shared/schema.js";
 
 export interface IStorage {
@@ -121,6 +123,12 @@ export interface IStorage {
   deleteLocation(id: number): Promise<void>;
   archiveLocation(id: number): Promise<Location>;
   restoreLocation(id: number): Promise<Location>;
+
+  // Email template methods
+  getEmailTemplates(): Promise<EmailTemplate[]>;
+  getEmailTemplate(id: number): Promise<EmailTemplate | undefined>;
+  getEmailTemplateBySlug(slug: string): Promise<EmailTemplate | undefined>;
+  updateEmailTemplate(id: number, data: Partial<InsertEmailTemplate>): Promise<EmailTemplate>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1164,6 +1172,28 @@ export class DatabaseStorage implements IStorage {
       throw new Error(`User with ID ${userId} not found`);
     }
     return updatedUser;
+  }
+
+  async getEmailTemplates(): Promise<EmailTemplate[]> {
+    return db.select().from(emailTemplates);
+  }
+
+  async getEmailTemplate(id: number): Promise<EmailTemplate | undefined> {
+    const [result] = await db.select().from(emailTemplates).where(eq(emailTemplates.id, id));
+    return result;
+  }
+
+  async getEmailTemplateBySlug(slug: string): Promise<EmailTemplate | undefined> {
+    const [result] = await db.select().from(emailTemplates).where(eq(emailTemplates.slug, slug));
+    return result;
+  }
+
+  async updateEmailTemplate(id: number, data: Partial<InsertEmailTemplate>): Promise<EmailTemplate> {
+    const [result] = await db.update(emailTemplates).set(data).where(eq(emailTemplates.id, id)).returning();
+    if (!result) {
+      throw new Error(`Email template with ID ${id} not found`);
+    }
+    return result;
   }
 }
 
