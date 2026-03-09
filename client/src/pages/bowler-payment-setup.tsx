@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import {
   Card,
@@ -12,7 +12,14 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Loader2, AlertCircle, AlertTriangle, CreditCard } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Loader2, AlertCircle, AlertTriangle, CreditCard, Wallet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
@@ -22,6 +29,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getSeasonLengthWeeks, calculateFinancials } from "@/lib/financial-utils";
 import { formatCurrency } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+
+interface SavedCard {
+  id: string;
+  last4: string;
+  brand: string;
+  expMonth: number;
+  expYear: number;
+}
 
 type PaymentSchedule = "weekly" | "monthly" | "custom";
 
@@ -58,6 +73,7 @@ export default function BowlerPaymentSetupPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const bowlerId = parseInt(params.bowlerId!);
+  const queryClient = useQueryClient();
   const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -65,6 +81,9 @@ export default function BowlerPaymentSetupPage() {
   const [customWeeks, setCustomWeeks] = useState(1);
   const [includeFinalTwoWeeks, setIncludeFinalTwoWeeks] = useState(false);
   const [showFinalTwoWeeksWarning, setShowFinalTwoWeeksWarning] = useState(false);
+  const [storeCard, setStoreCard] = useState(false);
+  const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
+  const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
 
   const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
     onError: (error) => {
@@ -97,11 +116,26 @@ export default function BowlerPaymentSetupPage() {
   );
   const financials = calculateFinancials(league || null, bowlerPayments);
 
+  const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
+    queryKey: ['/api/square/cards', bowlerId],
+    enabled: !!bowlerId,
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+  });
+  const savedCards = savedCardsResponse?.data || [];
+
   useEffect(() => {
-    if (cardContainerRef.current && !isInitialized) {
+    if (savedCards.length > 0) {
+      setCardMode('saved');
+      setSelectedSavedCardId(savedCards[0].id);
+    }
+  }, [savedCards.length]);
+
+  useEffect(() => {
+    if (cardContainerRef.current && !isInitialized && cardMode === 'new') {
       initializeCard(cardContainerRef.current);
     }
-  }, [isInitialized, initializeCard]);
+  }, [isInitialized, initializeCard, cardMode]);
 
   const calculatePaymentAmount = () => {
     if (!league) return 0;
@@ -119,10 +153,28 @@ export default function BowlerPaymentSetupPage() {
   };
 
   const handleSubmit = async () => {
-    if (!card || !league) {
+    if (!league) {
       toast({
         title: "Payment Setup Error",
         description: "Unable to process payment at this time. Please try again later.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (cardMode === 'new' && !card) {
+      toast({
+        title: "Payment Setup Error",
+        description: "Please enter your card details before proceeding.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (cardMode === 'saved' && !selectedSavedCardId) {
+      toast({
+        title: "Payment Setup Error",
+        description: "Please select a saved card.",
         variant: "destructive",
       });
       return;
@@ -171,8 +223,31 @@ export default function BowlerPaymentSetupPage() {
         }
       }
 
-      // Process the initial payment
-      const paymentResult = await createPayment(amount, card, bowlerId, league.id);
+      if (cardMode === 'saved' && selectedSavedCardId) {
+        const response = await fetch('/api/square/payments', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceId: selectedSavedCardId,
+            amount,
+            bowlerId,
+            leagueId: league.id,
+            storeCard: false,
+          }),
+        });
+        const responseData = await response.json();
+        if (!response.ok) {
+          throw new Error(JSON.stringify({
+            error: { message: responseData.error?.message || 'Payment failed', code: 'PAYMENT_FAILED' }
+          }));
+        }
+      } else {
+        const shouldStore = selectedSchedule !== 'custom' || storeCard;
+        await createPayment(amount, card, bowlerId, league.id, shouldStore);
+        if (shouldStore) {
+          queryClient.invalidateQueries({ queryKey: ['/api/square/cards', bowlerId] });
+        }
+      }
 
       toast({
         title: "Payment Successful",
@@ -290,27 +365,86 @@ export default function BowlerPaymentSetupPage() {
           <CardHeader>
             <CardTitle>Payment Information</CardTitle>
             <CardDescription>
-              Enter your card details to set up automatic payments
+              {savedCards.length > 0
+                ? "Use a saved card or enter new card details"
+                : "Enter your card details to set up payments"}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative min-h-[200px] border rounded-lg bg-card">
-              <div ref={cardContainerRef} className="p-4" />
-              {!isInitialized && (
-                <div className="flex items-center justify-center p-4">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                  <p className="ml-2 text-sm text-muted-foreground">
-                    Loading credit card form...
-                  </p>
+            {savedCards.length > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={cardMode === 'saved' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCardMode('saved')}
+                  className="flex items-center gap-2"
+                >
+                  <Wallet className="h-4 w-4" />
+                  Saved Card
+                </Button>
+                <Button
+                  type="button"
+                  variant={cardMode === 'new' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCardMode('new')}
+                  className="flex items-center gap-2"
+                >
+                  <CreditCard className="h-4 w-4" />
+                  New Card
+                </Button>
+              </div>
+            )}
+
+            {cardMode === 'saved' && savedCards.length > 0 ? (
+              <div className="space-y-3">
+                <Select value={selectedSavedCardId} onValueChange={setSelectedSavedCardId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a saved card" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {savedCards.map((sc) => (
+                      <SelectItem key={sc.id} value={sc.id}>
+                        {sc.brand} ending in {sc.last4} (exp {sc.expMonth}/{sc.expYear})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <>
+                <div className="relative min-h-[200px] border rounded-lg bg-card">
+                  <div ref={cardContainerRef} className="p-4" />
+                  {!isInitialized && (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <p className="ml-2 text-sm text-muted-foreground">
+                        Loading credit card form...
+                      </p>
+                    </div>
+                  )}
+                  {isInitialized && (
+                    <div className="absolute top-4 right-4">
+                      <CreditCard className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                  )}
                 </div>
-              )}
-              {isInitialized && (
-                <div className="absolute top-4 right-4">
-                  <CreditCard className="h-5 w-5 text-muted-foreground" />
-                </div>
-              )}
-            </div>
-            {squareError && (
+                {selectedSchedule === 'custom' && (
+                  <div className="flex items-center space-x-3 pt-2">
+                    <Checkbox
+                      id="store-card"
+                      checked={storeCard}
+                      onCheckedChange={(checked) => setStoreCard(checked === true)}
+                    />
+                    <Label htmlFor="store-card" className="text-sm cursor-pointer">
+                      Save this card for future payments
+                    </Label>
+                  </div>
+                )}
+              </>
+            )}
+
+            {squareError && cardMode === 'new' && (
               <div className="flex items-center gap-2 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4" />
                 <p>{squareError}</p>
@@ -363,7 +497,11 @@ export default function BowlerPaymentSetupPage() {
           <CardFooter>
             <Button
               onClick={handleSubmit}
-              disabled={!isInitialized || !!squareError || isProcessing}
+              disabled={
+                (cardMode === 'new' && (!isInitialized || !!squareError)) ||
+                (cardMode === 'saved' && !selectedSavedCardId) ||
+                isProcessing
+              }
               className="w-full"
             >
               {isProcessing ? (
@@ -371,6 +509,8 @@ export default function BowlerPaymentSetupPage() {
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Processing Payment...
                 </>
+              ) : selectedSchedule === 'custom' ? (
+                `Pay ${formatCurrency(calculatePaymentAmount())}`
               ) : (
                 "Set Up Payment Schedule"
               )}
