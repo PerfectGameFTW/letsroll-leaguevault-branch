@@ -53,6 +53,13 @@ A full-stack bowling league management application with multi-tenant support for
 - `BN_API_KEY` - BowlNow (GoHighLevel) sub-account API key for CRM contact sync
 
 ## Recent Changes (2026-03-09)
+- **PWA (Progressive Web App)**: App is installable on mobile and desktop home screens
+  - Web app manifest at `client/public/manifest.json` with LeagueVault branding
+  - PWA icons in `client/public/icons/` (72-512px sizes + apple-touch-icon)
+  - Service worker at `client/public/sw.js` — caches static assets, network-first for API, offline fallback
+  - Service worker registered in `client/src/main.tsx`
+  - Apple-specific meta tags for iOS home screen support
+  - Safe area insets and overscroll behavior for native mobile feel
 - **Saved Card Payments**: Bowlers can save credit cards during one-time payments and use them for future payments
   - `listCardsOnFile(customerId)` function in `server/services/square.ts` — retrieves enabled cards from Square
   - `GET /api/square/cards/:bowlerId` endpoint to list saved cards for a bowler
