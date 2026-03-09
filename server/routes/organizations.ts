@@ -193,7 +193,7 @@ router.post('/', requireAdmin, async (req, res) => {
         const baseUrl = getBaseUrl();
         const setupUrl = `${baseUrl}/set-password?token=${inviteToken}`;
         const variables: Record<string, string> = {
-          bowler_name: firstName,
+          admin_name: firstName,
           invite_link: setupUrl,
           organization_name: organization.name,
           organization_logo_url: getOrgLogoUrl(organization.id),
