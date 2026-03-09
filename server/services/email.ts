@@ -30,9 +30,18 @@ function replaceVariables(text: string, variables: Record<string, string>): stri
 }
 
 function wrapInHtmlLayout(body: string, variables: Record<string, string>): string {
-  const headerHtml = variables.organization_logo
-    ? `<img src="${variables.organization_logo}" alt="${variables.organization_name || 'Organization'}" style="max-height: 80px; max-width: 250px;" />`
-    : `<h1 style="color: #1a1a2e; margin: 0;">LeagueVault</h1>`;
+  const logo = variables.organization_logo;
+  const orgName = variables.organization_name;
+  const hasValidLogoUrl = logo && logo.startsWith('http');
+
+  let headerHtml: string;
+  if (hasValidLogoUrl) {
+    headerHtml = `<img src="${logo}" alt="${orgName || 'Organization'}" style="max-height: 80px; max-width: 250px;" />`;
+  } else if (orgName) {
+    headerHtml = `<h1 style="color: #1a1a2e; margin: 0; font-size: 28px;">${orgName}</h1>`;
+  } else {
+    headerHtml = `<h1 style="color: #1a1a2e; margin: 0; font-size: 28px;">LeagueVault</h1>`;
+  }
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
