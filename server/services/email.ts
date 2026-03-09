@@ -29,7 +29,7 @@ function replaceVariables(text: string, variables: Record<string, string>): stri
   });
 }
 
-function getOrgLogoUrl(orgId: number | string): string {
+export function getOrgLogoUrl(orgId: number | string): string {
   const baseUrl = getBaseUrl();
   return `${baseUrl}/api/organizations/${orgId}/logo`;
 }

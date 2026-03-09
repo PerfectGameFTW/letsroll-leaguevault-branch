@@ -13,7 +13,7 @@ import {
 } from '@shared/schema.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { hashPassword } from '../auth.js';
-import { sendInviteEmail } from '../services/email.js';
+import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email.js';
 
 const router = Router();
 
@@ -190,7 +190,15 @@ router.post('/', requireAdmin, async (req, res) => {
         await storage.setUserInviteToken(newAdminUser.id, inviteToken, inviteTokenExpiry);
 
         const firstName = adminData.name.split(' ')[0];
-        await sendInviteEmail(adminData.email, firstName, inviteToken, organization.name, organization.id);
+        const baseUrl = getBaseUrl();
+        const setupUrl = `${baseUrl}/set-password?token=${inviteToken}`;
+        const variables: Record<string, string> = {
+          bowler_name: firstName,
+          invite_link: setupUrl,
+          organization_name: organization.name,
+          organization_logo_url: getOrgLogoUrl(organization.id),
+        };
+        await sendTemplatedEmail('org_admin_invite', adminData.email, variables);
         
         return sendSuccess(res, { organization, adminUser: { ...newAdminUser, password: undefined } }, 201);
       } catch (adminError) {
