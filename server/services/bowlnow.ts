@@ -158,23 +158,23 @@ export async function syncBowlerToBN(bowlerId: number): Promise<{ success: boole
     const { firstName, lastName } = splitName(bowler.name);
 
     const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
-    let leagueName = '';
-    let teamName = '';
+    const leagueNames: string[] = [];
+    const teamNames: string[] = [];
     let orgName = '';
 
-    if (bowlerLeagues.length > 0) {
-      const activeBL = bowlerLeagues.find(bl => bl.active) || bowlerLeagues[0];
-      const league = await storage.getLeague(activeBL.leagueId);
+    const activeAssociations = bowlerLeagues.filter(bl => bl.active);
+    for (const bl of activeAssociations.length > 0 ? activeAssociations : bowlerLeagues.slice(0, 1)) {
+      const league = await storage.getLeague(bl.leagueId);
       if (league) {
-        leagueName = league.name;
-        if (league.organizationId) {
+        if (!leagueNames.includes(league.name)) leagueNames.push(league.name);
+        if (!orgName && league.organizationId) {
           const org = await storage.getOrganization(league.organizationId);
           if (org) orgName = org.name;
         }
       }
-      if (activeBL.teamId) {
-        const team = await storage.getTeam(activeBL.teamId);
-        if (team) teamName = team.name;
+      if (bl.teamId) {
+        const team = await storage.getTeam(bl.teamId);
+        if (team && !teamNames.includes(team.name)) teamNames.push(team.name);
       }
     }
 
@@ -182,11 +182,11 @@ export async function syncBowlerToBN(bowlerId: number): Promise<{ success: boole
     if (bowler.squareCustomerId) {
       customFields.push({ id: CUSTOM_FIELD_IDS.squareCustomerId, value: bowler.squareCustomerId });
     }
-    if (leagueName) {
-      customFields.push({ id: CUSTOM_FIELD_IDS.leagueName, value: leagueName });
+    if (leagueNames.length > 0) {
+      customFields.push({ id: CUSTOM_FIELD_IDS.leagueName, value: leagueNames.join(', ') });
     }
-    if (teamName) {
-      customFields.push({ id: CUSTOM_FIELD_IDS.teamName, value: teamName });
+    if (teamNames.length > 0) {
+      customFields.push({ id: CUSTOM_FIELD_IDS.teamName, value: teamNames.join(', ') });
     }
     if (orgName) {
       customFields.push({ id: CUSTOM_FIELD_IDS.organization, value: orgName });
