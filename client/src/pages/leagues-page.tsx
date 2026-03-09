@@ -38,6 +38,7 @@ import type { ScoreWithRelations } from "@/lib/types/scores";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInWeeks } from "date-fns";
+import { getSeasonLabel } from "@/lib/season-utils";
 import { Link } from "wouter";
 
 export default function LeaguesPage() {
@@ -235,6 +236,9 @@ export default function LeaguesPage() {
                     >
                       {league.name}
                     </Link>
+                    <p className="text-xs text-muted-foreground">
+                      {getSeasonLabel(league.seasonStart, league.seasonEnd)}
+                    </p>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {league.locationId ? locationMap[league.locationId] || '—' : '—'}

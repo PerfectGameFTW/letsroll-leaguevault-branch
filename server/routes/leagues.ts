@@ -296,4 +296,129 @@ router.post("/:id/send-invites", async (req: any, res) => {
   }
 });
 
+router.post("/:id/new-season", async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return sendError(res, "Invalid league ID", 400, "INVALID_ID");
+    }
+
+    if (!req.user?.isAdmin && !req.user?.isOrganizationAdmin) {
+      return sendError(res, "Only admins can start a new season", 403, "FORBIDDEN");
+    }
+
+    const sourceLeague = await storage.getLeague(id);
+    if (!sourceLeague) {
+      return sendError(res, "League not found", 404, "NOT_FOUND");
+    }
+
+    const { seasonStart, seasonEnd } = req.body;
+    if (!seasonStart || !seasonEnd) {
+      return sendError(res, "Season start and end dates are required", 400, "VALIDATION_ERROR");
+    }
+
+    const newSeasonStart = new Date(seasonStart);
+    const newSeasonEnd = new Date(seasonEnd);
+    if (newSeasonEnd <= newSeasonStart) {
+      return sendError(res, "Season end date must be after start date", 400, "VALIDATION_ERROR");
+    }
+
+    const newLeague = await storage.createLeague({
+      name: sourceLeague.name,
+      description: sourceLeague.description,
+      active: true,
+      seasonStart: newSeasonStart,
+      seasonEnd: newSeasonEnd,
+      weekDay: sourceLeague.weekDay,
+      weeklyFee: sourceLeague.weeklyFee,
+      practiceStartTime: sourceLeague.practiceStartTime,
+      competitionStartTime: sourceLeague.competitionStartTime,
+      squareLineageItemId: sourceLeague.squareLineageItemId,
+      squareLineageItemVariationId: sourceLeague.squareLineageItemVariationId,
+      squareLineageItemName: sourceLeague.squareLineageItemName,
+      squarePrizeFundItemId: sourceLeague.squarePrizeFundItemId,
+      squarePrizeFundItemVariationId: sourceLeague.squarePrizeFundItemVariationId,
+      squarePrizeFundItemName: sourceLeague.squarePrizeFundItemName,
+      finalTwoWeeksDueWeek: sourceLeague.finalTwoWeeksDueWeek,
+      organizationId: sourceLeague.organizationId,
+      locationId: sourceLeague.locationId,
+      seasonNumber: (sourceLeague.seasonNumber || 1) + 1,
+      previousSeasonId: sourceLeague.id,
+    });
+
+    const sourceTeams = await storage.getTeams(sourceLeague.id);
+    const teamIdMap = new Map<number, number>();
+
+    for (const team of sourceTeams) {
+      const newTeam = await storage.createTeam({
+        name: team.name,
+        number: team.number,
+        leagueId: newLeague.id,
+        active: team.active,
+      });
+      teamIdMap.set(team.id, newTeam.id);
+    }
+
+    const sourceBowlerLeagues = await storage.getBowlerLeagues({ leagueId: sourceLeague.id });
+
+    for (const bl of sourceBowlerLeagues) {
+      const newTeamId = teamIdMap.get(bl.teamId);
+      if (newTeamId) {
+        await storage.createBowlerLeague({
+          bowlerId: bl.bowlerId,
+          leagueId: newLeague.id,
+          teamId: newTeamId,
+          active: bl.active,
+          order: bl.order,
+        });
+      }
+    }
+
+    await storage.updateLeague(sourceLeague.id, { active: false });
+
+    sendSuccess(res, newLeague, 201);
+  } catch (error) {
+    console.error('[Leagues Route] New season error:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to create new season');
+  }
+});
+
+router.get("/:id/season-history", async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return sendError(res, "Invalid league ID", 400, "INVALID_ID");
+    }
+
+    const league = await storage.getLeague(id);
+    if (!league) {
+      return sendError(res, "League not found", 404, "NOT_FOUND");
+    }
+
+    const allLeagues = await storage.getLeagues(league.organizationId || undefined);
+    const seasons: any[] = [];
+
+    let current: typeof league | undefined = league;
+    while (current?.previousSeasonId) {
+      current = allLeagues.find(l => l.id === current!.previousSeasonId);
+      if (current) seasons.unshift(current);
+    }
+
+    seasons.push(league);
+
+    const nextSeason = allLeagues.find(l => l.previousSeasonId === league.id);
+    if (nextSeason) {
+      let next: typeof nextSeason | undefined = nextSeason;
+      while (next) {
+        seasons.push(next);
+        next = allLeagues.find(l => l.previousSeasonId === next!.id);
+      }
+    }
+
+    sendSuccess(res, seasons);
+  } catch (error) {
+    sendError(res, error instanceof Error ? error.message : 'Failed to fetch season history');
+  }
+});
+
 export default router;

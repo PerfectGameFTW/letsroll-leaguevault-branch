@@ -82,6 +82,8 @@ export const leagues = pgTable("leagues", {
   squarePrizeFundItemVariationId: text("square_prize_fund_item_variation_id"),
   squarePrizeFundItemName: text("square_prize_fund_item_name"),
   finalTwoWeeksDueWeek: integer("final_two_weeks_due_week").default(6),
+  seasonNumber: integer("season_number").notNull().default(1),
+  previousSeasonId: integer("previous_season_id"),
   organizationId: integer("organization_id").references(() => organizations.id),
   locationId: integer("location_id").references(() => locations.id),
 }, (table) => ({
@@ -421,6 +423,8 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   squarePrizeFundItemVariationId: z.string().nullable().optional(),
   squarePrizeFundItemName: z.string().nullable().optional(),
   locationId: z.number().int().positive().nullable().optional(),
+  seasonNumber: z.number().int().positive().default(1),
+  previousSeasonId: z.number().int().positive().nullable().optional(),
 }).omit({ id: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,

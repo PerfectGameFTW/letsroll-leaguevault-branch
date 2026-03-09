@@ -3,6 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,18 +16,31 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Users, CircleDollarSign, Mail } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Loader2, Users, CircleDollarSign, Mail, RefreshCw, History } from "lucide-react";
 
 import type { League } from "@shared/schema";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { getSeasonLabel } from "@/lib/season-utils";
 
 export default function LeagueViewPage() {
   const params = useParams();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const leagueId = parseInt(params.leagueId!);
   const [inviteResult, setInviteResult] = useState<{ sent: number; alreadyRegistered: number; noEmail: number } | null>(null);
+  const [showNewSeason, setShowNewSeason] = useState(false);
+  const [newSeasonStart, setNewSeasonStart] = useState("");
+  const [newSeasonEnd, setNewSeasonEnd] = useState("");
 
   const { data: leagueResponse, isLoading, error } = useQuery<{ success: true; data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
@@ -40,6 +55,42 @@ export default function LeagueViewPage() {
   });
 
   const league = leagueResponse?.data;
+
+  const { data: seasonHistoryResponse } = useQuery<{ success: true; data: League[] }>({
+    queryKey: ['/api/leagues', leagueId, 'season-history'],
+    queryFn: async () => {
+      const response = await fetch(`/api/leagues/${leagueId}/season-history`);
+      if (!response.ok) throw new Error('Failed to fetch season history');
+      return response.json();
+    },
+    enabled: !!league,
+  });
+  const seasonHistory = seasonHistoryResponse?.data || [];
+
+  const newSeasonMutation = useMutation({
+    mutationFn: async ({ seasonStart, seasonEnd }: { seasonStart: string; seasonEnd: string }) => {
+      return await apiRequest<League>(`/api/leagues/${leagueId}/new-season`, "POST", { seasonStart, seasonEnd });
+    },
+    onSuccess: (data) => {
+      const newLeague = data.data;
+      queryClient.invalidateQueries({ queryKey: ["/api/leagues"] });
+      toast({
+        title: "New Season Created",
+        description: `${league?.name} new season has been created. The previous season has been archived.`,
+      });
+      setShowNewSeason(false);
+      setNewSeasonStart("");
+      setNewSeasonEnd("");
+      setLocation(`/leagues/${newLeague.id}`);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create new season",
+        variant: "destructive",
+      });
+    },
+  });
 
   const sendInvitesMutation = useMutation({
     mutationFn: async () => {
@@ -104,7 +155,22 @@ export default function LeagueViewPage() {
     <Layout>
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold">{league.name}</h1>
+          <div>
+            <h1 className="text-2xl font-bold">{league.name}</h1>
+            {league.seasonStart && league.seasonEnd && (
+              <p className="text-sm text-muted-foreground mt-1">
+                {getSeasonLabel(league.seasonStart, league.seasonEnd)}
+                {!league.active && <Badge variant="secondary" className="ml-2">Archived</Badge>}
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {league.active && (
+              <Button variant="outline" onClick={() => setShowNewSeason(true)}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Start New Season
+              </Button>
+            )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" disabled={sendInvitesMutation.isPending}>
@@ -131,6 +197,7 @@ export default function LeagueViewPage() {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          </div>
         </div>
 
         {inviteResult && (
@@ -197,6 +264,84 @@ export default function LeagueViewPage() {
             </Card>
           </Link>
         </div>
+
+        {seasonHistory.length > 1 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                <CardTitle className="text-lg">Season History</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {seasonHistory.map((season) => (
+                  <Link key={season.id} href={`/leagues/${season.id}`}>
+                    <Badge
+                      variant={season.id === leagueId ? "default" : "outline"}
+                      className="cursor-pointer hover:bg-accent transition-colors"
+                    >
+                      {getSeasonLabel(season.seasonStart, season.seasonEnd)}
+                      {!season.active && season.id !== leagueId && " (Archived)"}
+                    </Badge>
+                  </Link>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Dialog open={showNewSeason} onOpenChange={(open) => { if (!open) { setShowNewSeason(false); setNewSeasonStart(""); setNewSeasonEnd(""); } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Start New Season</DialogTitle>
+              <DialogDescription>
+                Create a new season of <strong>{league.name}</strong> with the same teams and bowlers. The current season will be archived and remain accessible in the season history.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div>
+                <label className="text-sm font-medium">New Season Start Date</label>
+                <Input
+                  type="date"
+                  value={newSeasonStart}
+                  onChange={(e) => setNewSeasonStart(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">New Season End Date</label>
+                <Input
+                  type="date"
+                  value={newSeasonEnd}
+                  onChange={(e) => setNewSeasonEnd(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+              {newSeasonStart && newSeasonEnd && new Date(newSeasonEnd) > new Date(newSeasonStart) && (
+                <p className="text-sm text-muted-foreground">
+                  This will create the <strong>{getSeasonLabel(newSeasonStart, newSeasonEnd)}</strong>
+                </p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setShowNewSeason(false); setNewSeasonStart(""); setNewSeasonEnd(""); }}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => newSeasonMutation.mutate({ seasonStart: newSeasonStart, seasonEnd: newSeasonEnd })}
+                disabled={!newSeasonStart || !newSeasonEnd || newSeasonMutation.isPending}
+              >
+                {newSeasonMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                )}
+                Create New Season
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );

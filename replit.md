@@ -52,6 +52,14 @@ A full-stack bowling league management application with multi-tenant support for
 - `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
 
 ## Recent Changes (2026-03-09)
+- **New Season Feature**: Admins can create a new season of an existing league, carrying over all teams and bowler rosters
+  - `POST /api/leagues/:id/new-season` endpoint creates a new league with identical settings, teams, and bowler assignments
+  - `GET /api/leagues/:id/season-history` endpoint returns the full chain of linked seasons
+  - Schema: added `seasonNumber` (integer, default 1) and `previousSeasonId` (optional, self-referencing) to leagues table
+  - Old season is automatically archived when new season is created
+  - Season label utility (`client/src/lib/season-utils.ts`): generates display labels like "25/26 Season" (cross-year) or "Summer '26 Season" (same-year, based on start month)
+  - League view page: "Start New Season" button with date picker dialog, season label display, season history navigation
+  - Leagues list page: season label shown under each league name
 - **Payment Refund System**: Full refund support for org admins and system admins
   - Square refund processing via `refundsApi.refundPayment` for credit card payments
   - Cash/check payments can be marked as refunded without Square call
