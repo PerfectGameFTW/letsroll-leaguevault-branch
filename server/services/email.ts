@@ -38,20 +38,8 @@ function wrapInHtmlLayout(body: string, variables: Record<string, string>): stri
   const logoUrl = variables.organization_logo_url;
   const orgName = variables.organization_name;
 
-  let headerHtml: string;
-  if (logoUrl) {
-    headerHtml = `<img src="${logoUrl}" alt="${orgName || 'Organization'}" style="max-height: 64px; max-width: 200px;" />`;
-  } else if (orgName) {
-    headerHtml = `<h1 style="color: #1a1a2e; margin: 0; font-size: 28px;">${orgName}</h1>`;
-  } else {
-    headerHtml = `<h1 style="color: #1a1a2e; margin: 0; font-size: 28px;">LeagueVault</h1>`;
-  }
-
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-      <div style="text-align: center; margin-bottom: 30px;">
-        ${headerHtml}
-      </div>
       
       <div style="font-size: 16px; color: #333; white-space: pre-line;">
 ${body}
