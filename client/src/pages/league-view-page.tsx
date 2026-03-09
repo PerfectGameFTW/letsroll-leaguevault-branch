@@ -165,12 +165,6 @@ export default function LeagueViewPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {league.active && (
-              <Button variant="outline" onClick={() => setShowNewSeason(true)}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Start New Season
-              </Button>
-            )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" disabled={sendInvitesMutation.isPending}>
@@ -264,6 +258,15 @@ export default function LeagueViewPage() {
             </Card>
           </Link>
         </div>
+
+        {league.active && (
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setShowNewSeason(true)}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Start New Season
+            </Button>
+          </div>
+        )}
 
         {seasonHistory.length > 1 && (
           <Card>
