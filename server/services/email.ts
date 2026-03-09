@@ -208,6 +208,8 @@ export async function sendTestEmail(
 
   const sampleVariables: Record<string, string> = {
     bowler_name: 'John Smith',
+    admin_name: 'Jane Admin',
+    user_name: 'Alex User',
     organization_name: organization?.name || 'Sample Bowling Center',
     organization_logo_url: organization?.logo ? getOrgLogoUrl(organization.id) : '',
     league_name: 'Wednesday Night Mixed',
