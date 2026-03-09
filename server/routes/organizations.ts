@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { storage } from '../storage.js';
@@ -12,6 +13,7 @@ import {
 } from '@shared/schema.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { hashPassword } from '../auth.js';
+import { sendInviteEmail } from '../services/email.js';
 
 const router = Router();
 
@@ -161,44 +163,38 @@ router.post('/', requireAdmin, async (req, res) => {
 
     const organization = await storage.createOrganization(validatedData);
     
-    // If admin user data is provided, create the admin user
-    if (adminData && adminData.email && adminData.password && adminData.name) {
+    if (adminData && adminData.email && adminData.name) {
       try {
-        
-        // Check if user already exists
         const existingUser = await storage.getUserByEmail(adminData.email);
         if (existingUser) {
-          
-          // If user exists but is not an organization admin, update them
           if (!existingUser.isOrganizationAdmin) {
             await storage.updateUserOrganizationAdminStatus(existingUser.id, true);
           }
-          
-          // Set the user's organization
           await storage.setUserOrganization(existingUser.id, organization.id);
-          
-          // Include user info in the response
           return sendSuccess(res, { organization, adminUser: { ...existingUser, password: undefined } }, 201);
         }
         
-        // Hash password and create new admin user
-        const hashedPassword = await hashPassword(adminData.password);
+        const placeholderPassword = await hashPassword(randomBytes(32).toString('hex'));
         const newAdminUser = await storage.createUser({
           email: adminData.email,
           name: adminData.name,
-          password: hashedPassword,
+          password: placeholderPassword,
           phone: adminData.phone || null,
           isAdmin: false,
           isOrganizationAdmin: true,
           organizationId: organization.id
         });
+
+        const inviteToken = randomBytes(32).toString('hex');
+        const inviteTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        await storage.setUserInviteToken(newAdminUser.id, inviteToken, inviteTokenExpiry);
+
+        const firstName = adminData.name.split(' ')[0];
+        await sendInviteEmail(adminData.email, firstName, inviteToken, organization.name, organization.id);
         
-        
-        // Include user info in the response
         return sendSuccess(res, { organization, adminUser: { ...newAdminUser, password: undefined } }, 201);
       } catch (adminError) {
         console.error('[Organizations] Error creating admin user:', adminError);
-        // Even if admin user creation fails, the organization was created
         return sendSuccess(res, { 
           organization, 
           warning: 'Organization created but there was an error creating the admin user'

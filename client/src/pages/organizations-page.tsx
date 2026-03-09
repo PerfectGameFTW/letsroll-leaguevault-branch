@@ -35,7 +35,8 @@ export default function OrganizationsPage() {
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPhone, setAdminPhone] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
+
+
   
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [archiveConfirmId, setArchiveConfirmId] = useState<number | null>(null);
@@ -200,7 +201,6 @@ export default function OrganizationsPage() {
     setAdminName('');
     setAdminEmail('');
     setAdminPhone('');
-    setAdminPassword('');
     setLogo(null);
     setLogoPreview(null);
     setEditId(null);
@@ -226,7 +226,7 @@ export default function OrganizationsPage() {
     
     if (!editId) {
       // For new organizations, validate admin information
-      if (!adminName || !adminEmail || !adminPassword) {
+      if (!adminName || !adminEmail) {
         toast({
           title: 'Missing Administrator Information',
           description: 'Please fill out all required administrator fields.',
@@ -235,22 +235,11 @@ export default function OrganizationsPage() {
         return;
       }
 
-      // Simple email validation
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(adminEmail)) {
         toast({
           title: 'Invalid Email',
           description: 'Please enter a valid email address for the administrator.',
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      // Simple password validation
-      if (adminPassword.length < 8) {
-        toast({
-          title: 'Password Too Short',
-          description: 'Administrator password must be at least 8 characters long.',
           variant: 'destructive',
         });
         return;
@@ -276,7 +265,6 @@ export default function OrganizationsPage() {
       const adminData = {
         name: adminName,
         email: adminEmail,
-        password: adminPassword,
         phone: adminPhone || null
       };
 
@@ -515,7 +503,7 @@ export default function OrganizationsPage() {
                     <div className="mt-4 mb-2">
                       <h3 className="text-lg font-medium">Administrator Account</h3>
                       <p className="text-sm text-muted-foreground">
-                        Create an administrator account for this organization
+                        An invite email will be sent to the administrator to set up their password.
                       </p>
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
@@ -544,19 +532,6 @@ export default function OrganizationsPage() {
                       />
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
-                      <Label htmlFor="adminPassword" className="text-right">
-                        Admin Password
-                      </Label>
-                      <Input
-                        id="adminPassword"
-                        type="password"
-                        value={adminPassword}
-                        onChange={(e) => setAdminPassword(e.target.value)}
-                        className="col-span-3"
-                        required={!editId}
-                      />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
                       <Label htmlFor="adminPhone" className="text-right">
                         Admin Phone
                       </Label>
@@ -575,29 +550,6 @@ export default function OrganizationsPage() {
                   <p className="text-sm text-muted-foreground">
                     Additional organization information
                   </p>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="email" className="text-right">
-                    Email
-                  </Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="col-span-3"
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="phone" className="text-right">
-                    Phone
-                  </Label>
-                  <Input
-                    id="phone"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="col-span-3"
-                  />
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="address" className="text-right">
