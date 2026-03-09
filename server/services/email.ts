@@ -29,14 +29,18 @@ function replaceVariables(text: string, variables: Record<string, string>): stri
   });
 }
 
+function getOrgLogoUrl(orgId: number | string): string {
+  const baseUrl = getBaseUrl();
+  return `${baseUrl}/api/organizations/${orgId}/logo`;
+}
+
 function wrapInHtmlLayout(body: string, variables: Record<string, string>): string {
-  const logo = variables.organization_logo;
+  const logoUrl = variables.organization_logo_url;
   const orgName = variables.organization_name;
-  const hasValidLogoUrl = logo && logo.startsWith('http');
 
   let headerHtml: string;
-  if (hasValidLogoUrl) {
-    headerHtml = `<img src="${logo}" alt="${orgName || 'Organization'}" style="max-height: 80px; max-width: 250px;" />`;
+  if (logoUrl) {
+    headerHtml = `<img src="${logoUrl}" alt="${orgName || 'Organization'}" style="max-height: 80px; max-width: 250px;" />`;
   } else if (orgName) {
     headerHtml = `<h1 style="color: #1a1a2e; margin: 0; font-size: 28px;">${orgName}</h1>`;
   } else {
@@ -103,7 +107,8 @@ export async function sendInviteEmail(
   toEmail: string,
   userName: string,
   inviteToken: string,
-  organizationName?: string
+  organizationName?: string,
+  organizationId?: number
 ): Promise<boolean> {
   const baseUrl = getBaseUrl();
   const setupUrl = `${baseUrl}/set-password?token=${inviteToken}`;
@@ -114,6 +119,9 @@ export async function sendInviteEmail(
   };
   if (organizationName) {
     variables.organization_name = organizationName;
+  }
+  if (organizationId) {
+    variables.organization_logo_url = getOrgLogoUrl(organizationId);
   }
 
   const sent = await sendTemplatedEmail('bulk_invite', toEmail, variables);
@@ -183,7 +191,7 @@ export async function sendInviteEmail(
 export async function sendTestEmail(
   template: { subject: string; body: string; slug: string },
   toEmail: string,
-  organization?: { name: string; logo?: string | null } | null
+  organization?: { id: number; name: string; logo?: string | null } | null
 ): Promise<boolean> {
   if (!SENDGRID_API_KEY) {
     console.error('[Email] Cannot send test email — SENDGRID_API_KEY not configured');
@@ -193,7 +201,7 @@ export async function sendTestEmail(
   const sampleVariables: Record<string, string> = {
     bowler_name: 'John Smith',
     organization_name: organization?.name || 'Sample Bowling Center',
-    organization_logo: organization?.logo || '',
+    organization_logo_url: organization?.logo ? getOrgLogoUrl(organization.id) : '',
     league_name: 'Wednesday Night Mixed',
     invite_link: getBaseUrl() + '/set-password?token=sample-test-token',
     login_link: getBaseUrl() + '/login',
@@ -223,7 +231,8 @@ export async function resendInviteEmail(
   toEmail: string,
   userName: string,
   inviteToken: string,
-  organizationName?: string
+  organizationName?: string,
+  organizationId?: number
 ): Promise<boolean> {
-  return sendInviteEmail(toEmail, userName, inviteToken, organizationName);
+  return sendInviteEmail(toEmail, userName, inviteToken, organizationName, organizationId);
 }

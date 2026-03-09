@@ -285,7 +285,7 @@ router.post("/:id/send-invites", async (req: any, res) => {
         : null;
 
       const firstName = bowler.name.split(' ')[0];
-      await sendInviteEmail(bowler.email, firstName, inviteToken, organization?.name);
+      await sendInviteEmail(bowler.email, firstName, inviteToken, organization?.name, organization?.id);
 
       sent++;
     }

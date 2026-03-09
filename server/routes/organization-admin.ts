@@ -339,7 +339,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, async (req: any, res:
 
     const organization = await storage.getOrganization(organizationId);
 
-    const emailSent = await sendInviteEmail(email, firstName, inviteToken, organization?.name);
+    const emailSent = await sendInviteEmail(email, firstName, inviteToken, organization?.name, organization?.id);
 
     const finalUser = await storage.getUser(newUser.id);
 
@@ -376,7 +376,7 @@ router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, async (req
     const organization = organizationId ? await storage.getOrganization(organizationId) : null;
 
     const firstName = user.name.split(' ')[0];
-    const emailSent = await sendInviteEmail(user.email, firstName, inviteToken, organization?.name);
+    const emailSent = await sendInviteEmail(user.email, firstName, inviteToken, organization?.name, organization?.id);
 
     return sendSuccess(res, { emailSent });
   } catch (error) {

@@ -197,7 +197,7 @@ export function setupAuth(app: Express) {
                 sendTemplatedEmail('self_register_linked', result.data.email, {
                   bowler_name: bowler.name,
                   organization_name: org?.name || '',
-                  organization_logo: org?.logo || '',
+                  organization_logo_url: org?.logo ? `${baseUrl}/api/organizations/${org.id}/logo` : '',
                   league_name: league.name,
                   dashboard_link: `${baseUrl}/dashboard`,
                 }).catch(err => console.error('[Auth] Failed to send self_register_linked email:', err));
@@ -478,7 +478,7 @@ export function setupAuth(app: Express) {
           sendTemplatedEmail('bowler_claimed', user.email, {
             bowler_name: bowler.name,
             organization_name: org?.name || '',
-            organization_logo: org?.logo || '',
+            organization_logo_url: org?.logo ? `${baseUrl}/api/organizations/${org.id}/logo` : '',
             league_name: league.name,
             dashboard_link: `${baseUrl}/dashboard`,
           }).catch(err => console.error('[Auth] Failed to send bowler_claimed email:', err));

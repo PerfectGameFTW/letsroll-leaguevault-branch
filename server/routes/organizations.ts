@@ -26,6 +26,37 @@ router.get('/', requireAdmin, async (req, res) => {
   }
 });
 
+router.get('/:id/logo', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return res.status(400).send('Invalid organization ID');
+    }
+    const organization = await storage.getOrganization(id);
+    if (!organization || !organization.logo) {
+      return res.status(404).send('Logo not found');
+    }
+
+    const logo = organization.logo;
+    if (logo.startsWith('data:')) {
+      const matches = logo.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) {
+        return res.status(400).send('Invalid logo format');
+      }
+      const mimeType = matches[1];
+      const buffer = Buffer.from(matches[2], 'base64');
+      res.set('Content-Type', mimeType);
+      res.set('Cache-Control', 'public, max-age=86400');
+      return res.send(buffer);
+    }
+
+    return res.redirect(logo);
+  } catch (error) {
+    console.error('Error serving organization logo:', error);
+    res.status(500).send('Failed to serve logo');
+  }
+});
+
 // Get an organization by ID (admin only)
 router.get('/:id', async (req: any, res) => {
   try {
