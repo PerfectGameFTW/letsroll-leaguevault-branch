@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api';
 import { hashPassword } from '../auth';
-import { sendInviteEmail } from '../services/email';
+import { sendInviteEmail, sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email';
 import { z } from 'zod';
 
 // Define error code type for type safety
@@ -339,7 +339,17 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, async (req: any, res:
 
     const organization = await storage.getOrganization(organizationId);
 
-    const emailSent = await sendInviteEmail(email, firstName, inviteToken, organization?.name, organization?.id);
+    const baseUrl = getBaseUrl();
+    const setupUrl = `${baseUrl}/set-password?token=${inviteToken}`;
+    const variables: Record<string, string> = {
+      user_name: firstName,
+      invite_link: setupUrl,
+      organization_name: organization?.name || 'your organization',
+    };
+    if (organization?.id) {
+      variables.organization_logo_url = getOrgLogoUrl(organization.id);
+    }
+    const emailSent = await sendTemplatedEmail('org_end_user_invite', email, variables);
 
     const finalUser = await storage.getUser(newUser.id);
 
