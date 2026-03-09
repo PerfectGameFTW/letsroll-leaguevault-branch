@@ -1031,7 +1031,6 @@ export class DatabaseStorage implements IStorage {
       .update(users)
       .set({ 
         organizationId: organizationId,
-        isOrganizationAdmin: organizationId ? true : false 
       })
       .where(eq(users.id, userId))
       .returning();
@@ -1053,7 +1052,7 @@ export class DatabaseStorage implements IStorage {
     return db
       .select()
       .from(users)
-      .where(eq(users.organizationId, organizationId))
+      .where(and(eq(users.organizationId, organizationId), isNull(users.bowlerId)))
       .orderBy(users.name);
   }
 
