@@ -36,8 +36,8 @@ function getOrgLogoUrl(orgId: number | string): string {
 
 function convertLinksToButtons(html: string): string {
   return html.replace(
-    /^(https?:\/\/[^\s<]+)$/gm,
-    (url) => {
+    /^\s*(https?:\/\/[^\s<]+)\s*$/gm,
+    (_match, url) => {
       let label = 'Click Here';
       if (url.includes('/set-password')) label = 'Set Up Your Password';
       else if (url.includes('/bowler-dashboard') || url.includes('/dashboard')) label = 'Go to Dashboard';
