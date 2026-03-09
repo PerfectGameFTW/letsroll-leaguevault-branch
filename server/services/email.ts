@@ -30,17 +30,14 @@ function replaceVariables(text: string, variables: Record<string, string>): stri
 }
 
 function wrapInHtmlLayout(body: string, variables: Record<string, string>): string {
-  const logoHtml = variables.organization_logo
-    ? `<div style="text-align: center; margin-bottom: 20px;">
-        <img src="${variables.organization_logo}" alt="${variables.organization_name || 'Organization'}" style="max-height: 80px; max-width: 200px;" />
-      </div>`
-    : '';
+  const headerHtml = variables.organization_logo
+    ? `<img src="${variables.organization_logo}" alt="${variables.organization_name || 'Organization'}" style="max-height: 80px; max-width: 250px;" />`
+    : `<h1 style="color: #1a1a2e; margin: 0;">LeagueVault</h1>`;
 
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
       <div style="text-align: center; margin-bottom: 30px;">
-        ${logoHtml}
-        <h1 style="color: #1a1a2e; margin: 0;">LeagueVault</h1>
+        ${headerHtml}
       </div>
       
       <div style="font-size: 16px; color: #333; white-space: pre-line;">
@@ -50,7 +47,7 @@ ${body}
       <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
       
       <p style="font-size: 12px; color: #999; text-align: center;">
-        &copy; ${new Date().getFullYear()} LeagueVault. All rights reserved.
+        Powered by LeagueVault
       </p>
     </div>
   `;
@@ -158,7 +155,7 @@ export async function sendInviteEmail(
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
         
         <p style="font-size: 12px; color: #999; text-align: center;">
-          &copy; ${new Date().getFullYear()} LeagueVault. All rights reserved.
+          Powered by LeagueVault
         </p>
       </div>
     `,
