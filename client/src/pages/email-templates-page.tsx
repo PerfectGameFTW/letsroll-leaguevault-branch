@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Mail, Pencil, Eye, EyeOff, Info } from "lucide-react";
+import { Loader2, Mail, Pencil, Eye, EyeOff, Info, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { EmailTemplate, ApiResponse } from "@shared/schema";
@@ -50,6 +50,7 @@ export default function EmailTemplatesPage() {
   const [editBody, setEditBody] = useState("");
   const [editActive, setEditActive] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
 
   const { data: templatesResponse, isLoading } = useQuery<ApiResponse<EmailTemplate[]>>({
     queryKey: ["/api/admin/email-templates"],
@@ -78,6 +79,18 @@ export default function EmailTemplatesPage() {
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const sendTestMutation = useMutation({
+    mutationFn: async ({ id, toEmail }: { id: number; toEmail: string }) => {
+      return apiRequest(`/api/admin/email-templates/${id}/send-test`, "POST", { toEmail });
+    },
+    onSuccess: () => {
+      toast({ title: "Test Email Sent", description: `A sample email was sent to ${testEmail}.` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to Send", description: error.message, variant: "destructive" });
     },
   });
 
@@ -229,6 +242,39 @@ export default function EmailTemplatesPage() {
                   </div>
                 </>
               )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <Label>Send Test Email</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="email"
+                  placeholder="Enter email address..."
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    if (!editingTemplate || !testEmail) return;
+                    sendTestMutation.mutate({ id: editingTemplate.id, toEmail: testEmail });
+                  }}
+                  disabled={sendTestMutation.isPending || !testEmail}
+                >
+                  {sendTestMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4 mr-1.5" />
+                  )}
+                  Send Test
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Sends a sample email with placeholder data so you can preview it in your inbox. Subject will be prefixed with [TEST].
+              </p>
             </div>
 
             <DialogFooter>

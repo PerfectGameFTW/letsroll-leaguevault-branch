@@ -174,6 +174,44 @@ export async function sendInviteEmail(
   }
 }
 
+export async function sendTestEmail(
+  template: { subject: string; body: string; slug: string },
+  toEmail: string
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    console.error('[Email] Cannot send test email — SENDGRID_API_KEY not configured');
+    return false;
+  }
+
+  const sampleVariables: Record<string, string> = {
+    bowler_name: 'John Smith',
+    organization_name: 'Sample Bowling Center',
+    organization_logo: '',
+    league_name: 'Wednesday Night Mixed',
+    invite_link: getBaseUrl() + '/set-password?token=sample-test-token',
+    login_link: getBaseUrl() + '/login',
+    dashboard_link: getBaseUrl() + '/bowler-dashboard',
+  };
+
+  const subject = `[TEST] ${replaceVariables(template.subject, sampleVariables)}`;
+  const body = replaceVariables(template.body, sampleVariables);
+  const html = wrapInHtmlLayout(body, sampleVariables);
+
+  try {
+    await sgMail.send({
+      to: toEmail,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
+      subject,
+      html,
+    });
+    console.log(`[Email] Test email for '${template.slug}' sent to:`, toEmail);
+    return true;
+  } catch (error: any) {
+    console.error(`[Email] Failed to send test email:`, error?.response?.body || error.message);
+    return false;
+  }
+}
+
 export async function resendInviteEmail(
   toEmail: string,
   userName: string,

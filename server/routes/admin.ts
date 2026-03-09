@@ -4,6 +4,7 @@ import { sendSuccess, sendError } from '../utils/api';
 import { z } from 'zod';
 import { User as SelectUser, updateEmailTemplateSchema } from '@shared/schema';
 import { requireAdmin } from '../middleware/admin';
+import { sendTestEmail } from '../services/email';
 
 const router = Router();
 
@@ -160,6 +161,32 @@ router.patch('/email-templates/:id', requireAdmin, async (req, res) => {
     }
     console.error('[Admin Routes] Error updating email template:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to update email template');
+  }
+});
+
+router.post('/email-templates/:id/send-test', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid template ID', 400, 'InvalidRequest');
+    }
+    const { toEmail } = req.body;
+    if (!toEmail || typeof toEmail !== 'string') {
+      return sendError(res, 'Email address is required', 400, 'InvalidRequest');
+    }
+    const template = await storage.getEmailTemplate(id);
+    if (!template) {
+      return sendError(res, 'Email template not found', 404, 'NotFound');
+    }
+    const success = await sendTestEmail(template, toEmail);
+    if (success) {
+      sendSuccess(res, { message: `Test email sent to ${toEmail}` });
+    } else {
+      sendError(res, 'Failed to send test email. Check SendGrid configuration.', 500, 'SendFailed');
+    }
+  } catch (error) {
+    console.error('[Admin Routes] Error sending test email:', error);
+    sendError(res, error instanceof Error ? error.message : 'Failed to send test email');
   }
 });
 
