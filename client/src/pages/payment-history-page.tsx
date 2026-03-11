@@ -593,13 +593,12 @@ export default function PaymentHistoryPage() {
                   <TableHead>Week</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {bowlerPayments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-4">
+                    <TableCell colSpan={4} className="text-center py-4">
                       No payments recorded
                     </TableCell>
                   </TableRow>
@@ -626,11 +625,6 @@ export default function PaymentHistoryPage() {
                               payment.type === 'check' ? `Check #${payment.checkNumber}` :
                                 payment.type === 'credit_card' ? 'Credit Card' :
                                   'Other Payment'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={payment.status === 'paid' ? 'default' : 'destructive'}>
-                            {payment.status}
                           </Badge>
                         </TableCell>
                       </TableRow>
