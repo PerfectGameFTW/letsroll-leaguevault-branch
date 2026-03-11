@@ -14,7 +14,7 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
 import { UserProfileMenu } from "@/components/user-profile-menu";
-import leagueVaultLogo from "../assets/images/league-vault-logo.png";
+
 
 // Safe localStorage access function with memoization
 const getStoredValue = (key: string, defaultValue: any) => {
@@ -366,21 +366,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <div className={cn("transition-all duration-300", mainContentPadding)}>
         <header className="py-4 md:py-5 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto flex justify-center items-center">
-          {/* Organization logo centered in header */}
-          <div className="flex items-center">
-            {(organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo) ? (
+          <div className="flex items-center h-14 md:h-14 lg:h-16">
+            {(organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo) && (
               <img
                 src={organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo || ''}
                 alt={(organizationResponse?.data?.name || perfectGameOrgResponse?.data?.name || "Organization") + " Logo"}
-                className="h-14 md:h-14 lg:h-16 w-auto object-contain"
-                onError={(e) => {
-                  e.currentTarget.src = leagueVaultLogo;
-                }}
-              />
-            ) : (
-              <img
-                src={leagueVaultLogo}
-                alt="LeagueVault Logo"
                 className="h-14 md:h-14 lg:h-16 w-auto object-contain"
               />
             )}

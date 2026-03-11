@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import leagueVaultLogo from "../assets/images/league-vault-logo.png";
+
 
 interface NavItem {
   icon: typeof LayoutDashboard;
@@ -105,22 +105,15 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
       <aside className="hidden lg:block w-64 border-r px-4 py-6">
         <div className="mb-4">
           <Link href="/">
-            {orgLogo ? (
+            {orgLogo && (
               <img 
                 src={orgLogo}
                 alt={`${orgName} Logo`}
                 className="h-14 md:h-14 lg:h-16 w-auto mb-4 object-contain" 
-                onError={(e) => {
-                  console.error("[BowlerLayout] Failed to load organization logo:", e);
-                  e.currentTarget.src = leagueVaultLogo;
-                }}
               />
-            ) : (
-              <img 
-                src={leagueVaultLogo} 
-                alt="LeagueVault Logo" 
-                className="h-14 md:h-14 lg:h-16 w-auto mb-4 object-contain" 
-              />
+            )}
+            {!orgLogo && (
+              <div className="h-14 md:h-14 lg:h-16 mb-4" />
             )}
           </Link>
           <h2 className="text-lg font-semibold">{bowlerName}</h2>
@@ -170,17 +163,9 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
                 src={orgLogo}
                 alt={`${orgName} Logo`}
                 className="h-12 w-auto object-contain" 
-                onError={(e) => {
-                  console.error("[BowlerLayout] Failed to load organization logo in mobile header:", e);
-                  e.currentTarget.src = leagueVaultLogo;
-                }}
               />
             ) : (
-              <img 
-                src={leagueVaultLogo} 
-                alt="LeagueVault Logo" 
-                className="h-12 w-auto object-contain" 
-              />
+              <div className="h-12" />
             )}
           </Link>
 
