@@ -1,5 +1,6 @@
 import { Client, Environment } from 'square';
 import type { ApiError } from 'square';
+import crypto from 'crypto';
 
 interface SquareCustomer {
   id: string;
@@ -55,7 +56,7 @@ export async function saveCardOnFile(sourceId: string, customerId: string) {
   try {
     console.log('[Square Service] Saving card on file for customer:', customerId.substring(0, 10) + '...');
     const response = await client.cardsApi.createCard({
-      idempotencyKey: `card-${Date.now()}-${Math.random()}`,
+      idempotencyKey: crypto.createHash('sha256').update(`card:${sourceId}:${customerId}`).digest('hex'),
       sourceId,
       card: {
         customerId,
@@ -82,7 +83,7 @@ export async function saveCardOnFile(sourceId: string, customerId: string) {
   }
 }
 
-export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false, customerId?: string, buyerEmail?: string) {
+export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false, customerId?: string, buyerEmail?: string, idempotencyKey?: string) {
   const client = await initializeSquareClient();
   if (!client) {
     throw new Error(JSON.stringify({
@@ -122,7 +123,7 @@ export async function processPayment(sourceId: string, amount: number, storeCard
 
     const paymentRequest: any = {
       sourceId,
-      idempotencyKey: `${Date.now()}-${Math.random()}`,
+      idempotencyKey: idempotencyKey || `${Date.now()}-${Math.random()}`,
       amountMoney: {
         amount: BigInt(amount),
         currency: 'USD'
@@ -264,7 +265,7 @@ export async function createOrUpdateCustomer(name: string, email: string, phone?
     } else {
       console.log('[Square Service] No existing customer found, creating new...');
       const customerResponse = await client.customersApi.createCustomer({
-        idempotencyKey: `${Date.now()}-${Math.random()}`,
+        idempotencyKey: crypto.createHash('sha256').update(`customer:${email.toLowerCase()}:${name}`).digest('hex'),
         givenName: firstName,
         familyName: lastName || '',
         emailAddress: email.toLowerCase(),
@@ -405,7 +406,8 @@ export async function createOrderWithPayment(
   locationId: string,
   storeCard: boolean = false,
   customerId?: string,
-  buyerEmail?: string
+  buyerEmail?: string,
+  idempotencyKey?: string
 ) {
   const client = await initializeSquareClient();
   if (!client) {
@@ -429,7 +431,7 @@ export async function createOrderWithPayment(
         locationId,
         lineItems,
       },
-      idempotencyKey: `order-${Date.now()}-${Math.random()}`,
+      idempotencyKey: idempotencyKey ? `${idempotencyKey}-order` : `order-${Date.now()}-${Math.random()}`,
     });
 
     const order = orderResponse.result.order;
@@ -441,7 +443,7 @@ export async function createOrderWithPayment(
 
     const paymentRequest: any = {
       sourceId,
-      idempotencyKey: `pay-${Date.now()}-${Math.random()}`,
+      idempotencyKey: idempotencyKey ? `${idempotencyKey}-pay` : `pay-${Date.now()}-${Math.random()}`,
       amountMoney: {
         amount: BigInt(amount),
         currency: 'USD',

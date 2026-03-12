@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile } from '../services/square.js';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
@@ -67,6 +68,18 @@ router.post('/payments', async (req: any, res) => {
       return sendError(res, `Amount ($${(amount / 100).toFixed(2)}) exceeds remaining balance ($${(remainingBalance / 100).toFixed(2)})`, 400, 'AMOUNT_EXCEEDS_BALANCE');
     }
 
+    const weekOf = new Date();
+    weekOf.setHours(0, 0, 0, 0);
+    const idempotencyKey = crypto
+      .createHash('sha256')
+      .update(`${bowlerId}:${leagueId}:${amount}:${weekOf.toISOString().split('T')[0]}`)
+      .digest('hex');
+
+    const existingPayment = await storage.getPaymentByIdempotencyKey(idempotencyKey);
+    if (existingPayment) {
+      return res.json({ dbPaymentId: existingPayment.id, id: existingPayment.squarePaymentId, deduplicated: true });
+    }
+
     let payment;
     const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
 
@@ -98,7 +111,8 @@ router.post('/payments', async (req: any, res) => {
         squareLocationId,
         req.body.storeCard,
         customerId,
-        buyerEmail
+        buyerEmail,
+        idempotencyKey
       );
     } else {
       payment = await processPayment(
@@ -106,7 +120,8 @@ router.post('/payments', async (req: any, res) => {
         amount,
         req.body.storeCard,
         customerId,
-        buyerEmail
+        buyerEmail,
+        idempotencyKey
       );
     }
 
@@ -134,10 +149,11 @@ router.post('/payments', async (req: any, res) => {
       bowlerId,
       leagueId,
       amount,
-      weekOf: new Date(),
+      weekOf,
       status: 'paid',
       type: 'credit_card',
-      squarePaymentId: payment.id
+      squarePaymentId: payment.id,
+      idempotencyKey,
     });
 
     res.json({

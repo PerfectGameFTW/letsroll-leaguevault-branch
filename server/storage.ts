@@ -55,6 +55,7 @@ export interface IStorage {
   // Payment methods
   getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date): Promise<Payment[]>;
   getPaymentById(id: number): Promise<Payment | undefined>;
+  getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePayment(id: number, payment: Partial<InsertPayment>): Promise<Payment>;
   refundPayment(id: number, squareRefundId?: string, reason?: string): Promise<Payment>;
@@ -427,6 +428,11 @@ export class DatabaseStorage implements IStorage {
 
   async getPaymentById(id: number): Promise<Payment | undefined> {
     const [result] = await db.select().from(payments).where(eq(payments.id, id));
+    return result;
+  }
+
+  async getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined> {
+    const [result] = await db.select().from(payments).where(eq(payments.idempotencyKey, key)).limit(1);
     return result;
   }
 

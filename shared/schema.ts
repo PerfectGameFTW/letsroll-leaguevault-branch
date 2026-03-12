@@ -158,6 +158,7 @@ export const payments = pgTable("payments", {
   type: text("type", { enum: PAYMENT_TYPES }).notNull(),
   checkNumber: text("check_number"),
   squarePaymentId: text("square_payment_id"),
+  idempotencyKey: text("idempotency_key").unique(),
   squareRefundId: text("square_refund_id"),
   refundReason: text("refund_reason"),
   refundedAt: timestamp("refunded_at"),
@@ -456,8 +457,9 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   type: z.enum(PAYMENT_TYPES),
   checkNumber: z.string().optional(),
   squarePaymentId: z.string().optional(),
+  idempotencyKey: z.string().optional(),
   notes: z.string().optional(),
-  storeCard: z.boolean().optional(), // For client-side storage of card details (not stored in DB)
+  storeCard: z.boolean().optional(),
 }).omit({ id: true, createdAt: true });
 
 // Update the insert schemas with stronger validation
