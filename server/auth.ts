@@ -8,7 +8,7 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { z } from "zod";
-import { passwordSchema } from "./utils/password-validation";
+import { passwordSchema } from "@shared/password-validation";
 import connectPg from "connect-pg-simple";
 import { pool } from "./db";
 import { sendTemplatedEmail, getBaseUrl } from "./services/email.js";

@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { passwordSchema } from "./password-validation";
 
 // Update the enum definitions to use const arrays for Zod
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
@@ -498,36 +499,7 @@ export const insertUserSchema = baseUserSchema.extend({
   isAdmin: z.boolean().optional().default(false),
   isOrganizationAdmin: z.boolean().optional().default(false),
   organizationId: z.number().nullable().optional(),
-  password: z
-    .string()
-    .min(8, "Password must be at least 8 characters")
-    .max(100, "Password must be less than 100 characters")
-    .refine(
-      (password) => /[A-Z]/.test(password),
-      "Password must contain at least one uppercase letter"
-    )
-    .refine(
-      (password) => /[a-z]/.test(password),
-      "Password must contain at least one lowercase letter"
-    )
-    .refine(
-      (password) => /[0-9]/.test(password),
-      "Password must contain at least one number"
-    )
-    .refine(
-      (password) => /[!@#$%^&*]/.test(password),
-      "Password must contain at least one special character (!@#$%^&*)"
-    )
-    .refine(
-      (password) => {
-        const commonPasswords = [
-          "Password123!", "Admin123!", "Test123!",
-          "Welcome123!", "Abc123456!", "Qwerty123!"
-        ];
-        return !commonPasswords.includes(password);
-      },
-      "This password is too common. Please choose a more unique password"
-    ),
+  password: passwordSchema,
   bowlerId: z.number().nullable().optional(),
 }).omit({ id: true, createdAt: true });
 

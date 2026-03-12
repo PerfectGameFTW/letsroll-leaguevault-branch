@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { sendError, sendSuccess } from '../utils/api';
 import { storage } from '../storage';
 import { hashPassword } from '../auth';
-import { passwordSchema } from '../utils/password-validation';
+import { passwordSchema } from '@shared/password-validation';
 import { createOrUpdateCustomer } from '../services/square';
 import { scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
