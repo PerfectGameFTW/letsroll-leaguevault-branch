@@ -1,7 +1,11 @@
 import { storage } from '../storage.js';
 
 export async function hasAccessToLeague(req: any, leagueId: number): Promise<boolean> {
-  if (req.user?.isAdmin) {
+  if (!req.user) {
+    return false;
+  }
+
+  if (req.user.isAdmin) {
     return true;
   }
 
@@ -10,11 +14,18 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
     return false;
   }
 
-  if (league.organizationId === null) {
-    return true;
+  if (req.user.bowlerId) {
+    const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: req.user.bowlerId });
+    if (bowlerLeagues.some((bl: any) => bl.leagueId === leagueId)) {
+      return true;
+    }
   }
 
-  if (!req.user?.organizationId) {
+  if (league.organizationId === null) {
+    return !!req.user;
+  }
+
+  if (!req.user.organizationId) {
     return false;
   }
 
@@ -22,7 +33,11 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
 }
 
 export async function hasAccessToTeam(req: any, teamId: number): Promise<boolean> {
-  if (req.user?.isAdmin) {
+  if (!req.user) {
+    return false;
+  }
+
+  if (req.user.isAdmin) {
     return true;
   }
 
@@ -35,14 +50,22 @@ export async function hasAccessToTeam(req: any, teamId: number): Promise<boolean
 }
 
 export async function hasAccessToBowler(req: any, bowlerId: number): Promise<boolean> {
-  if (req.user?.isAdmin) {
+  if (!req.user) {
+    return false;
+  }
+
+  if (req.user.isAdmin) {
+    return true;
+  }
+
+  if (req.user.bowlerId === bowlerId) {
     return true;
   }
 
   const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
 
   if (bowlerLeagues.length === 0) {
-    return true;
+    return !!req.user;
   }
 
   for (const bl of bowlerLeagues) {
@@ -55,11 +78,15 @@ export async function hasAccessToBowler(req: any, bowlerId: number): Promise<boo
 }
 
 export async function hasAccessToPayment(req: any, paymentId: number): Promise<boolean> {
-  if (req.user?.isAdmin) {
+  if (!req.user) {
+    return false;
+  }
+
+  if (req.user.isAdmin) {
     return true;
   }
 
-  if (!req.user?.organizationId) {
+  if (!req.user.organizationId) {
     return false;
   }
 
@@ -87,11 +114,11 @@ export async function hasAccessToPayment(req: any, paymentId: number): Promise<b
 }
 
 export async function filterPaymentsByOrganization(req: any, payments: any[]): Promise<any[]> {
-  if (req.user?.isAdmin) {
-    return payments;
+  if (!req.user) {
+    return [];
   }
 
-  if (!req.user) {
+  if (req.user.isAdmin) {
     return payments;
   }
 

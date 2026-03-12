@@ -6,31 +6,71 @@ import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js
 
 const router = Router();
 
-router.post('/payments', async (req, res) => {
+router.post('/payments', async (req: any, res) => {
   try {
-    if (!await hasAccessToLeague(req, req.body.leagueId)) {
+    if (!req.isAuthenticated || !req.isAuthenticated()) {
+      return sendError(res, "Authentication required", 401, 'UNAUTHORIZED');
+    }
+
+    const { sourceId, amount, bowlerId, leagueId } = req.body;
+
+    if (!sourceId || !bowlerId || !leagueId) {
+      return sendError(res, "Missing required payment fields", 400, 'VALIDATION_ERROR');
+    }
+
+    if (typeof amount !== 'number' || amount <= 0) {
+      return sendError(res, "Amount must be a positive number", 400, 'VALIDATION_ERROR');
+    }
+
+    if (!await hasAccessToLeague(req, leagueId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
-    if (!await hasAccessToBowler(req, req.body.bowlerId)) {
+    if (!await hasAccessToBowler(req, bowlerId)) {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
+    const league = await storage.getLeague(leagueId);
+    if (!league) {
+      return sendError(res, "League not found", 404, 'NOT_FOUND');
+    }
+
+    const bowler = await storage.getBowler(bowlerId);
+    if (!bowler) {
+      return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
+    }
+
+    if (league.weeklyFee && league.seasonStart && league.seasonEnd) {
+      const seasonStart = new Date(league.seasonStart);
+      const seasonEnd = new Date(league.seasonEnd);
+      const totalWeeks = Math.max(1, Math.ceil((seasonEnd.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+      const fullSeasonAmount = league.weeklyFee * totalWeeks;
+
+      const existingPayments = await storage.getPayments(bowlerId, leagueId);
+      const totalPaid = existingPayments
+        .filter((p: any) => p.status === 'paid')
+        .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+
+      const remainingBalance = Math.max(0, fullSeasonAmount - totalPaid);
+
+      if (amount > remainingBalance + 100) {
+        return sendError(res, `Amount ($${(amount / 100).toFixed(2)}) exceeds remaining balance ($${(remainingBalance / 100).toFixed(2)})`, 400, 'AMOUNT_EXCEEDS_BALANCE');
+      }
+    }
+
     let payment;
-    const league = await storage.getLeague(req.body.leagueId);
     const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
 
-    const bowler = await storage.getBowler(req.body.bowlerId);
-    const customerId = bowler?.squareCustomerId || undefined;
+    const customerId = bowler.squareCustomerId || undefined;
 
     if (req.body.storeCard && !customerId) {
-      console.warn('[Square Routes] Cannot store card — bowler has no Square customer ID:', req.body.bowlerId);
+      console.warn('[Square Routes] Cannot store card — bowler has no Square customer ID:', bowlerId);
     }
 
     const lineItems: { catalogObjectId: string; quantity: string }[] = [];
-    const weeklyFee = league?.weeklyFee || 0;
-    const quantity = weeklyFee > 0 && req.body.amount % weeklyFee === 0
-      ? String(req.body.amount / weeklyFee)
+    const weeklyFee = league.weeklyFee || 0;
+    const quantity = weeklyFee > 0 && amount % weeklyFee === 0
+      ? String(amount / weeklyFee)
       : '1';
     if (league?.squareLineageItemVariationId) {
       lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity });
@@ -39,12 +79,12 @@ router.post('/payments', async (req, res) => {
       lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity });
     }
 
-    const buyerEmail = bowler?.email || undefined;
+    const buyerEmail = bowler.email || undefined;
 
     if (lineItems.length > 0 && squareLocationId) {
       payment = await createOrderWithPayment(
-        req.body.sourceId,
-        req.body.amount,
+        sourceId,
+        amount,
         lineItems,
         squareLocationId,
         req.body.storeCard,
@@ -53,23 +93,23 @@ router.post('/payments', async (req, res) => {
       );
     } else {
       payment = await processPayment(
-        req.body.sourceId,
-        req.body.amount,
+        sourceId,
+        amount,
         req.body.storeCard,
         customerId,
         buyerEmail
       );
     }
 
-    if (req.body.storeCard && customerId && req.body.sourceId && !req.body.sourceId.startsWith('ccof:')) {
+    if (req.body.storeCard && customerId && sourceId && !sourceId.startsWith('ccof:')) {
       try {
-        const savedCard = await saveCardOnFile(req.body.sourceId, customerId);
+        const savedCard = await saveCardOnFile(sourceId, customerId);
         if (savedCard?.id) {
           console.log('[Square Routes] Card saved on file:', savedCard.id.substring(0, 15) + '...');
           try {
             await storage.updatePaymentScheduleCard(
-              req.body.bowlerId,
-              req.body.leagueId,
+              bowlerId,
+              leagueId,
               savedCard.id
             );
           } catch (schedError) {
@@ -81,11 +121,10 @@ router.post('/payments', async (req, res) => {
       }
     }
 
-    // Save payment record to database
     const dbPayment = await storage.createPayment({
-      bowlerId: req.body.bowlerId,
-      leagueId: req.body.leagueId,
-      amount: req.body.amount,
+      bowlerId,
+      leagueId,
+      amount,
       weekOf: new Date(),
       status: 'paid',
       type: 'credit_card',

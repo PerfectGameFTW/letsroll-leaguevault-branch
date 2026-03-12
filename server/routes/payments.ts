@@ -3,27 +3,10 @@ import { storage } from '../storage.js';
 import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema.js";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
-import { processPayment, refundPayment as squareRefund } from '../services/square.js';
+import { refundPayment as squareRefund } from '../services/square.js';
 import { hasAccessToPayment, filterPaymentsByOrganization } from '../utils/access-control.js';
 
 const router = Router();
-
-// Add Square payment endpoint
-router.post("/square/process", async (req, res) => {
-  try {
-    const { sourceId, amount, locationId } = req.body;
-
-    if (!sourceId || !amount || !locationId) {
-      return sendError(res, "Missing required payment information", 400);
-    }
-
-    const payment = await processPayment(sourceId, amount, locationId);
-    sendSuccess(res, payment);
-  } catch (error) {
-    console.error('[Payments Route] Square payment error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Payment processing failed');
-  }
-});
 
 // Get payments with optional filters
 router.get("/", async (req, res) => {
