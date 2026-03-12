@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
 import { storage } from '../storage.js';
 import { hashPassword } from '../auth.js';
+import { passwordSchema } from '@shared/password-validation.js';
 
 const router = Router();
 
@@ -36,10 +37,7 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
     // Define schema for admin user data
     const adminSchema = z.object({
       email: z.string().email('Invalid email address'),
-      password: z.string()
-        .min(8, 'Password must be at least 8 characters')
-        .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-        .regex(/[!@#$%^&*]/, 'Password must contain at least one special character (!@#$%^&*)'),
+      password: passwordSchema,
       name: z.string().min(2, 'Name must be at least 2 characters'),
       phone: z.string().optional(),
     });
