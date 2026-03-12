@@ -455,6 +455,15 @@ export function setupAuth(app: Express) {
         });
       }
 
+      if (bowler.email && bowler.email.trim() !== '') {
+        if (bowler.email.toLowerCase().trim() !== user.email.toLowerCase().trim()) {
+          return res.status(403).json({
+            success: false,
+            error: { message: "You can only claim a bowler profile that matches your email address" }
+          });
+        }
+      }
+
       const allUsers = await storage.getUsers();
       const alreadyLinked = allUsers.some(u => u.bowlerId === bowlerId);
       if (alreadyLinked) {
