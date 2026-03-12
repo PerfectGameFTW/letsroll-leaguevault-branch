@@ -54,8 +54,14 @@ function isValidUser(user: any): user is SelectUser {
 }
 
 export function setupAuth(app: Express) {
+  if (!process.env.SESSION_SECRET) {
+    throw new Error(
+      "SESSION_SECRET must be set. Sessions cannot be secured without a signing key.",
+    );
+  }
+
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || '',
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     store: new PostgresSessionStore({
