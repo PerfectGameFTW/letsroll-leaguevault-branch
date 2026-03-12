@@ -63,3 +63,7 @@ build = ["sh", "-c", "npm run build"]
 [userenv.shared]
 SQUARE_PRODUCTION_APP_ID = "sq0idp-7qXqEqFgsEkS1NpNbvhyDA"
 SQUARE_PRODUCTION_LOCATION_ID = "LPM9NWNXW82M5"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
