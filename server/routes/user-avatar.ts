@@ -14,13 +14,6 @@ const router = Router();
 const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
 fs.mkdirSync(uploadsDir, { recursive: true });
 
-const ALLOWED_MIME_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/gif",
-  "image/webp",
-]);
-
 const MAGIC_BYTES: { ext: string; mime: string; check: (buf: Buffer) => boolean }[] = [
   {
     ext: "jpg",
@@ -76,12 +69,8 @@ const upload = multer({
   limits: {
     fileSize: 2 * 1024 * 1024,
   },
-  fileFilter: (_req, file, cb) => {
-    if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error("Invalid file type. Only JPEG, PNG, GIF, and WebP are allowed."));
-    }
+  fileFilter: (_req, _file, cb) => {
+    cb(null, true);
   },
 });
 
