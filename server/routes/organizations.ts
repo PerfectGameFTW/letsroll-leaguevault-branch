@@ -15,7 +15,7 @@ import { requireAdmin } from '../middleware/admin.js';
 import { hashPassword } from '../auth.js';
 import { requireOrganizationAccess } from '../utils/access-control.js';
 import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email.js';
-import { adminWriteLimiter } from '../middleware/rate-limit.js';
+import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit.js';
 
 const router = Router();
 
@@ -156,7 +156,7 @@ router.get('/slug/:slug/leagues', async (req, res) => {
 });
 
 // Create a new organization (admin only)
-router.post('/', requireAdmin, adminWriteLimiter, async (req, res) => {
+router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res) => {
   try {
     const { adminData, ...orgData } = req.body;
     const validatedData = insertOrganizationSchema.parse(orgData);
