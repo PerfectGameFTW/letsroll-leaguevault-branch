@@ -9,9 +9,17 @@ import { syncBowlerToBN, isBNConfigured } from '../services/bowlnow.js';
 
 const router = Router();
 
-router.get("/unlinked", async (req, res) => {
+router.get("/unlinked", async (req: any, res) => {
   try {
-    const organizationId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
+    if (!req.isAuthenticated || !req.isAuthenticated()) {
+      return sendError(res, "Authentication required", 401, 'UNAUTHORIZED');
+    }
+
+    let organizationId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
+
+    if (!req.user?.isAdmin) {
+      organizationId = req.user?.organizationId || organizationId;
+    }
     const allBowlers = await storage.getBowlers();
     const allUsers = await storage.getUsers();
     const allBowlerLeagues = await storage.getBowlerLeagues();
