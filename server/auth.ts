@@ -9,7 +9,10 @@ import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { sanitizeUser } from "./utils/api.js";
 
-function safeTokenCompare(provided: string, stored: string): boolean {
+function safeTokenCompare(provided: unknown, stored: unknown): boolean {
+  if (typeof provided !== 'string' || typeof stored !== 'string') {
+    return false;
+  }
   const providedBuf = Buffer.from(provided, 'utf-8');
   const storedBuf = Buffer.from(stored, 'utf-8');
   if (providedBuf.length !== storedBuf.length) {
