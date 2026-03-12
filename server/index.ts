@@ -48,6 +48,8 @@ app.use(helmet({
         "https://pds.squareup.com",
         "https://connect.squareup.com",
         "https://connect.squareupsandbox.com",
+        "https://pci-connect.squareup.com",
+        "https://pci-connect.squareupsandbox.com",
         ...(isDev ? ["ws:", "wss:"] : []),
       ],
       frameSrc: [
