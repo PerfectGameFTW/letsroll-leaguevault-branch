@@ -912,7 +912,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(scores)
       .where(inArray(scores.gameId, gameIds))
-      .orderBy(scores.teamId, scores.position);
+      .orderBy(scores.gameId, scores.teamId, scores.position);
   }
 
   async getBowlerLeaguesByBowlerIds(bowlerIds: number[]): Promise<BowlerLeague[]> {
