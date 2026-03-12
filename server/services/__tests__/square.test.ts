@@ -172,7 +172,7 @@ describe('Square Service', () => {
         }
       });
 
-      const result = await processPayment('source-id', 1000, 'location-id');
+      const result = await processPayment('source-id', 1000);
 
       expect(result).toEqual({
         id: 'payment-id',

@@ -92,34 +92,29 @@ class PaymentScheduler {
         organizationId: organizationId ?? 'all'
       });
 
-      // Build the query for active payment schedules
-      let query = db
+      const conditions = [
+        eq(paymentSchedules.active, true),
+        lte(paymentSchedules.nextPaymentDate, new Date()),
+      ];
+
+      if (organizationId !== undefined) {
+        if (organizationId === null) {
+          conditions.push(isNull(leagues.organizationId));
+          logger.info('[PaymentScheduler] Filtering for leagues with no organization');
+        } else {
+          conditions.push(eq(leagues.organizationId, organizationId));
+          logger.info(`[PaymentScheduler] Filtering for organization ID: ${organizationId}`);
+        }
+      }
+
+      const organizationFilteredSchedules = await db
         .select({
           schedule: paymentSchedules,
           leagueOrganizationId: leagues.organizationId
         })
         .from(paymentSchedules)
         .innerJoin(leagues, eq(paymentSchedules.leagueId, leagues.id))
-        .where(and(
-          eq(paymentSchedules.active, true),
-          lte(paymentSchedules.nextPaymentDate, new Date())
-        ));
-
-      // Add organization filter if specified
-      if (organizationId !== undefined) {
-        if (organizationId === null) {
-          // For null organizationId, get only leagues with null organizationId
-          query = query.where(isNull(leagues.organizationId));
-          logger.info('[PaymentScheduler] Filtering for leagues with no organization');
-        } else {
-          // Filter by the specific organizationId
-          query = query.where(eq(leagues.organizationId, organizationId));
-          logger.info(`[PaymentScheduler] Filtering for organization ID: ${organizationId}`);
-        }
-      }
-
-      // Execute the query
-      const organizationFilteredSchedules = await query;
+        .where(and(...conditions));
 
       // Extract the schedule objects from the result
       const activeSchedules = organizationFilteredSchedules.map(item => item.schedule);

@@ -192,7 +192,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       const date = new Date(watchedStart);
       if (!isNaN(date.getTime())) {
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-        form.setValue('weekDay', dayNames[date.getDay()]);
+        form.setValue('weekDay', dayNames[date.getDay()] as "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday");
         if (seasonLength > 0) {
           const startDate = new Date(watchedStart);
           startDate.setHours(12, 0, 0, 0);

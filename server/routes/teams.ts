@@ -113,7 +113,7 @@ router.post("/", async (req, res) => {
     sendSuccess(res, created, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
+      sendError(res, error.errors.map(e => e.message).join(', '), 400);
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to create team');
     }
@@ -153,7 +153,7 @@ router.patch("/:id", async (req, res) => {
     sendSuccess(res, updated);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
+      sendError(res, error.errors.map(e => e.message).join(', '), 400);
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to update team');
     }

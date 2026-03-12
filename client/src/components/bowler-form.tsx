@@ -262,7 +262,7 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
                   <FormItem>
                     <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input type="email" {...field} />
+                      <Input type="email" {...field} value={field.value ?? undefined} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

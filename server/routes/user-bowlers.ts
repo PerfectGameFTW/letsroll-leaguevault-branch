@@ -45,7 +45,7 @@ router.post('/link-bowler', requireAuth, async (req, res) => {
     sendSuccess(res, updatedUser);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400);
+      sendError(res, error.errors.map(e => e.message).join(', '), 400);
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to link bowler to user');
     }

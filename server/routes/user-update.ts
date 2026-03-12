@@ -71,7 +71,10 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       }
     }
 
-    const updatedUser = await storage.updateUser(userId, updateData);
+    const updatedUser = await storage.updateUser(userId, {
+      ...updateData,
+      phone: updateData.phone === null ? undefined : updateData.phone,
+    });
 
     if (updatedUser.bowlerId) {
       const emailChanged = updateData.email && updateData.email !== existingUser.email;

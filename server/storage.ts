@@ -229,9 +229,11 @@ export class DatabaseStorage implements IStorage {
           id: bowlers.id,
           name: bowlers.name,
           email: bowlers.email,
+          phone: bowlers.phone,
           active: bowlers.active,
           order: bowlers.order,
           squareCustomerId: bowlers.squareCustomerId,
+          bnContactId: bowlers.bnContactId,
         })
         .from(bowlers)
         .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))

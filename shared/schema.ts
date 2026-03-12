@@ -641,6 +641,15 @@ export interface ApiListResponse<T> {
   };
 }
 
+export interface WeeklyStat {
+  bowlerLeagueId: number;
+  game1: number | null;
+  game2: number | null;
+  game3: number | null;
+  total: number | null;
+  handicap: number | null;
+}
+
 export interface SeriesWithStats {
   id: number;
   leagueId: number;

@@ -123,8 +123,9 @@ async function checkHealth(port: number, retryCount = 0): Promise<boolean> {
     // For Dev workflow, both server and vite must be healthy
     const currentWorkflow = getCurrentWorkflow();
     if (currentWorkflow === 'Dev') {
-      const isHealthy = data.coordination?.port_status?.health?.server && 
-                       data.coordination?.port_status?.health?.vite;
+      const typedData = data as any;
+      const isHealthy = typedData.coordination?.port_status?.health?.server && 
+                       typedData.coordination?.port_status?.health?.vite;
       debugLog('Health', `Dev workflow health check: ${isHealthy}`);
       return isHealthy;
     }

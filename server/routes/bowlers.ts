@@ -202,7 +202,7 @@ router.post("/", async (req, res) => {
       const isOrgUser = req.user?.role !== 'system_admin' && !!req.user?.organizationId;
       const [existingBowlers, leagues, bowlerLeagues] = await Promise.all([
         storage.getBowlers(),
-        isOrgUser ? storage.getLeagues(req.user.organizationId) : Promise.resolve(null),
+        isOrgUser ? storage.getLeagues(req.user!.organizationId) : Promise.resolve(null),
         isOrgUser ? storage.getBowlerLeagues() : Promise.resolve(null),
       ]);
 
@@ -243,7 +243,7 @@ router.post("/", async (req, res) => {
         if (matchingUser && !matchingUser.bowlerId) {
           await storage.linkUserToBowler(matchingUser.id, created.id);
           console.log(`[Bowlers] Auto-linked user ${matchingUser.id} to newly created bowler ${created.id}`);
-          const bowlerLeagues = await storage.getBowlerLeagues(created.id);
+          const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: created.id });
           if (bowlerLeagues.length > 0) {
             const league = await storage.getLeague(bowlerLeagues[0].leagueId);
             if (league?.organizationId && !matchingUser.organizationId) {

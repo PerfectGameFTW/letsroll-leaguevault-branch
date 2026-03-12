@@ -61,15 +61,14 @@ export function useWeeklyPayments(leagueId: number) {
       status: string;
       checkNumber?: string;
     }) => {
-      const response = await apiRequest("POST", "/api/payments", {
+      const response = await apiRequest("/api/payments", "POST", {
         ...payment,
         weekOf: payment.weekOf.toISOString(),
       });
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to record payment');
       }
-      return response.json();
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
@@ -113,11 +112,7 @@ export function useWeeklyPayments(leagueId: number) {
 
   const deletePaymentMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await apiRequest("DELETE", `/api/payments/${id}`);
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
-      }
+      await apiRequest(`/api/payments/${id}`, "DELETE");
       return id;
     },
     onMutate: async (deletedId) => {
@@ -161,14 +156,13 @@ export function useWeeklyPayments(leagueId: number) {
 
   const updatePaymentMutation = useMutation({
     mutationFn: async ({ id, amount }: { id: number; amount: number }) => {
-      const response = await apiRequest("PATCH", `/api/payments/${id}`, {
+      const response = await apiRequest(`/api/payments/${id}`, "PATCH", {
         amount,
       });
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error);
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to update payment');
       }
-      return response.json();
+      return response.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });

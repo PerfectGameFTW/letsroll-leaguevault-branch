@@ -99,7 +99,7 @@ export function setupAuth(app: Express) {
         }
 
         if (!isValidUser(user)) {
-          console.error('[Auth] Invalid user object structure for ID:', user?.id);
+          console.error('[Auth] Invalid user object structure for ID:', (user as any)?.id);
           return done(null, false, { message: "Invalid user data structure" });
         }
 

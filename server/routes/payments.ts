@@ -66,7 +66,7 @@ router.post("/", async (req, res) => {
   } catch (error) {
     console.error('[Payments Route] Create error:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400, "VALIDATION_ERROR");
+      sendError(res, error.errors.map(e => e.message).join(', '), 400, "VALIDATION_ERROR");
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to create payment');
     }
@@ -84,6 +84,11 @@ router.patch("/:id", async (req, res) => {
       update.notes = undefined;
     }
 
+    // Convert null checkNumber to undefined
+    if (update.checkNumber === null) {
+      (update as any).checkNumber = undefined;
+    }
+
     // If updating to check payment type, ensure check number is provided
     if (update.type === 'check' && !update.checkNumber) {
       return sendError(res, 'Check number is required for check payments', 400, 'VALIDATION_ERROR');
@@ -97,7 +102,7 @@ router.patch("/:id", async (req, res) => {
       }
     }
 
-    const updated = await storage.updatePayment(id, update);
+    const updated = await storage.updatePayment(id, update as any);
     if (!updated) {
       return sendError(res, "Payment not found", 404, "NOT_FOUND");
     }
@@ -106,7 +111,7 @@ router.patch("/:id", async (req, res) => {
   } catch (error) {
     console.error('[Payments Route] Update error:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, error, 400, "VALIDATION_ERROR");
+      sendError(res, error.errors.map(e => e.message).join(', '), 400, "VALIDATION_ERROR");
     } else {
       sendError(res, error instanceof Error ? error.message : 'Failed to update payment');
     }
