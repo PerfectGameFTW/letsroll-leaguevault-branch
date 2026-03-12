@@ -27,12 +27,10 @@ router.get("/unlinked", async (req: any, res) => {
       organizationId = req.user.organizationId;
     }
     const allBowlers = await storage.getBowlers();
-    const allUsers = await storage.getUsers();
+    const linkedBowlerIdsList = await storage.getLinkedBowlerIds();
     const allBowlerLeagues = await storage.getBowlerLeagues();
 
-    const linkedBowlerIds = new Set(
-      allUsers.filter(u => u.bowlerId !== null && u.bowlerId !== undefined).map(u => u.bowlerId!)
-    );
+    const linkedBowlerIds = new Set(linkedBowlerIdsList);
 
     const unlinkedBowlers = allBowlers.filter(
       b => !linkedBowlerIds.has(b.id) && (!b.email || b.email.trim() === '')
@@ -143,10 +141,7 @@ router.get("/", async (req, res) => {
       ? accessibleBowlers.filter(b => ids.includes(b.id))
       : accessibleBowlers;
 
-    const allUsers = await storage.getUsers();
-    const linkedBowlerIds = new Set(
-      allUsers.filter(u => u.bowlerId != null).map(u => u.bowlerId)
-    );
+    const linkedBowlerIds = new Set(await storage.getLinkedBowlerIds());
 
     const bowlersWithAccountStatus = filteredBowlers.map(b => ({
       ...b,
@@ -177,8 +172,7 @@ router.get("/:id", async (req, res) => {
       }
     }
 
-    const allUsers = await storage.getUsers();
-    const hasAccount = allUsers.some(u => u.bowlerId === id);
+    const hasAccount = await storage.isBowlerLinked(id);
     
     sendSuccess(res, { ...bowler, hasAccount });
   } catch (error) {

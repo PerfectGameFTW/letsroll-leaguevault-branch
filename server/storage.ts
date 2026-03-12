@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, isNull, isNotNull } from "drizzle-orm";
 import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
@@ -88,6 +88,8 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, userData: Partial<InsertUser>): Promise<User>;
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
+  getLinkedBowlerIds(): Promise<number[]>;
+  isBowlerLinked(bowlerId: number): Promise<boolean>;
   updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User>;
   createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule>;
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
@@ -855,6 +857,23 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId))
       .returning();
     return updatedUser;
+  }
+
+  async getLinkedBowlerIds(): Promise<number[]> {
+    const rows = await db
+      .select({ bowlerId: users.bowlerId })
+      .from(users)
+      .where(isNotNull(users.bowlerId));
+    return rows.map(r => r.bowlerId!);
+  }
+
+  async isBowlerLinked(bowlerId: number): Promise<boolean> {
+    const [row] = await db
+      .select({ bowlerId: users.bowlerId })
+      .from(users)
+      .where(eq(users.bowlerId, bowlerId))
+      .limit(1);
+    return row !== undefined;
   }
 
   async createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule> {

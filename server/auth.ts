@@ -186,8 +186,7 @@ export function setupAuth(app: Express) {
       try {
         const bowler = await storage.getBowlerByEmail(result.data.email, organizationId);
         if (bowler) {
-          const allUsers = await storage.getUsers();
-          const alreadyLinked = allUsers.some(u => u.bowlerId === bowler.id);
+          const alreadyLinked = await storage.isBowlerLinked(bowler.id);
           if (!alreadyLinked) {
             await storage.linkUserToBowler(user.id, bowler.id);
             bowlerLinked = true;
@@ -379,8 +378,7 @@ export function setupAuth(app: Express) {
       try {
         const bowler = await storage.getBowlerByEmail(user.email);
         if (bowler) {
-          const existingLinkedUsers = await storage.getUsers();
-          const alreadyLinked = existingLinkedUsers.some(u => u.bowlerId === bowler.id);
+          const alreadyLinked = await storage.isBowlerLinked(bowler.id);
           if (!alreadyLinked) {
             await storage.linkUserToBowler(user.id, bowler.id);
 
@@ -464,8 +462,7 @@ export function setupAuth(app: Express) {
         }
       }
 
-      const allUsers = await storage.getUsers();
-      const alreadyLinked = allUsers.some(u => u.bowlerId === bowlerId);
+      const alreadyLinked = await storage.isBowlerLinked(bowlerId);
       if (alreadyLinked) {
         return res.status(400).json({
           success: false,
