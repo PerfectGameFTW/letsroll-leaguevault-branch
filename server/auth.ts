@@ -146,8 +146,19 @@ export function setupAuth(app: Express) {
     }
   });
 
-  const authLimiter = rateLimit({
+  const registerLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: { message: "Too many requests, please try again later", code: "RATE_LIMITED" }
+    }
+  });
+
+  const setPasswordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
     max: 5,
     standardHeaders: true,
     legacyHeaders: false,
@@ -161,7 +172,7 @@ export function setupAuth(app: Express) {
   const authRouter = Router();
 
   // Register auth endpoints
-  authRouter.post("/register", authLimiter, async (req, res) => {
+  authRouter.post("/register", registerLimiter, async (req, res) => {
     try {
       const registrationData = {
         email: req.body.email,
@@ -352,7 +363,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  authRouter.post("/set-password", authLimiter, async (req, res) => {
+  authRouter.post("/set-password", setPasswordLimiter, async (req, res) => {
     try {
       const { token, password } = req.body;
 
