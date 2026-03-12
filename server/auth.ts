@@ -8,6 +8,15 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { sanitizeUser } from "./utils/api.js";
+
+function safeTokenCompare(provided: string, stored: string): boolean {
+  const providedBuf = Buffer.from(provided, 'utf-8');
+  const storedBuf = Buffer.from(stored, 'utf-8');
+  if (providedBuf.length !== storedBuf.length) {
+    return false;
+  }
+  return timingSafeEqual(providedBuf, storedBuf);
+}
 import { z } from "zod";
 import { passwordSchema } from "@shared/password-validation";
 import connectPg from "connect-pg-simple";
@@ -387,7 +396,7 @@ export function setupAuth(app: Express) {
       }
 
       const user = await storage.getUserByInviteToken(token);
-      if (!user) {
+      if (!user || !user.inviteToken || !safeTokenCompare(token, user.inviteToken)) {
         return res.status(400).json({
           success: false,
           error: { message: "Invalid or expired invitation link" }
@@ -561,7 +570,7 @@ export function setupAuth(app: Express) {
       }
 
       const user = await storage.getUserByInviteToken(token);
-      if (!user) {
+      if (!user || !user.inviteToken || !safeTokenCompare(token, user.inviteToken)) {
         return res.json({ success: false, error: { message: "Invalid invitation link" } });
       }
 
