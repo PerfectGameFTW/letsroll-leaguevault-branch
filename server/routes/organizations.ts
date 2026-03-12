@@ -280,7 +280,7 @@ router.patch('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
 });
 
 // Archive an organization (admin only)
-router.patch('/:id/archive', requireAdmin, async (req, res) => {
+router.patch('/:id/archive', requireAdmin, adminWriteLimiter, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -301,7 +301,7 @@ router.patch('/:id/archive', requireAdmin, async (req, res) => {
 });
 
 // Restore an archived organization (admin only)
-router.patch('/:id/restore', requireAdmin, async (req, res) => {
+router.patch('/:id/restore', requireAdmin, adminWriteLimiter, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {

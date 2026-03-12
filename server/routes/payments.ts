@@ -75,7 +75,7 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
 });
 
 // Update payment
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", paymentWriteLimiter, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const parsed = partialPaymentSchema.parse(req.body);
@@ -114,7 +114,7 @@ router.patch("/:id", async (req, res) => {
 });
 
 // Delete payment
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", paymentWriteLimiter, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {

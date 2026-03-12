@@ -265,7 +265,7 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimit
 });
 
 // Update a user's location assignment
-router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
+router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
