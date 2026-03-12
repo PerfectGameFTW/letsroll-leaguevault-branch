@@ -1,4 +1,4 @@
-import { eq, and, desc, sql, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, desc, sql, isNull, isNotNull, inArray } from "drizzle-orm";
 import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
@@ -91,6 +91,11 @@ export interface IStorage {
   getLinkedBowlerIds(): Promise<number[]>;
   isBowlerLinked(bowlerId: number): Promise<boolean>;
   hasAdminUsers(): Promise<boolean>;
+  getLeaguesByIds(ids: number[]): Promise<League[]>;
+  getBowlersByIds(ids: number[]): Promise<Bowler[]>;
+  getTeamsByIds(ids: number[]): Promise<Team[]>;
+  getScoresByGameIds(gameIds: number[]): Promise<Score[]>;
+  getBowlerLeaguesByBowlerIds(bowlerIds: number[]): Promise<BowlerLeague[]>;
   updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User>;
   createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule>;
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
@@ -884,6 +889,39 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.isAdmin, true))
       .limit(1);
     return row !== undefined;
+  }
+
+  async getLeaguesByIds(ids: number[]): Promise<League[]> {
+    if (ids.length === 0) return [];
+    return db.select().from(leagues).where(inArray(leagues.id, ids));
+  }
+
+  async getBowlersByIds(ids: number[]): Promise<Bowler[]> {
+    if (ids.length === 0) return [];
+    return db.select().from(bowlers).where(inArray(bowlers.id, ids));
+  }
+
+  async getTeamsByIds(ids: number[]): Promise<Team[]> {
+    if (ids.length === 0) return [];
+    return db.select().from(teams).where(inArray(teams.id, ids));
+  }
+
+  async getScoresByGameIds(gameIds: number[]): Promise<Score[]> {
+    if (gameIds.length === 0) return [];
+    return db
+      .select()
+      .from(scores)
+      .where(inArray(scores.gameId, gameIds))
+      .orderBy(scores.teamId, scores.position);
+  }
+
+  async getBowlerLeaguesByBowlerIds(bowlerIds: number[]): Promise<BowlerLeague[]> {
+    if (bowlerIds.length === 0) return [];
+    return db
+      .select()
+      .from(bowlerLeagues)
+      .where(and(inArray(bowlerLeagues.bowlerId, bowlerIds), eq(bowlerLeagues.active, true)))
+      .orderBy(bowlerLeagues.order);
   }
 
   async createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule> {

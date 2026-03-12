@@ -62,14 +62,29 @@ export async function hasAccessToBowler(req: any, bowlerId: number): Promise<boo
     return true;
   }
 
-  const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
+  const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId });
 
-  if (bowlerLeagues.length === 0) {
+  if (bowlerLeagueEntries.length === 0) {
     return req.user.isOrganizationAdmin || false;
   }
 
-  for (const bl of bowlerLeagues) {
-    if (await hasAccessToLeague(req, bl.leagueId)) {
+  const leagueIds = [...new Set(bowlerLeagueEntries.map(bl => bl.leagueId))];
+  const fetchedLeagues = await storage.getLeaguesByIds(leagueIds);
+
+  let userLeagueIds: number[] = [];
+  if (req.user.bowlerId) {
+    const userBowlerLeagues = await storage.getBowlerLeagues({ bowlerId: req.user.bowlerId });
+    userLeagueIds = userBowlerLeagues.map(bl => bl.leagueId);
+  }
+
+  for (const league of fetchedLeagues) {
+    if (req.user.bowlerId && userLeagueIds.includes(league.id)) {
+      return true;
+    }
+    if (league.organizationId === null) {
+      return true;
+    }
+    if (req.user.organizationId && req.user.organizationId === league.organizationId) {
       return true;
     }
   }

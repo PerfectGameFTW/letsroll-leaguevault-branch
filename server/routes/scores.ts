@@ -68,11 +68,8 @@ router.get('/history', async (req, res) => {
 
     if (leagueId && weekNumber) {
       const games = await storage.getGames(leagueId, weekNumber);
-      const allScores = [];
-      for (const game of games) {
-        const gameScores = await storage.getGameScores(game.id);
-        allScores.push(...gameScores);
-      }
+      const gameIds = games.map(g => g.id);
+      const allScores = await storage.getScoresByGameIds(gameIds);
       return sendSuccess(res, allScores);
     }
 

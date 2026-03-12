@@ -49,36 +49,57 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
     
     const users = await storage.getOrganizationUsers(organizationId);
     
-    const usersWithBowlerInfo = await Promise.all(
-      users.map(async (user: any) => {
-        if (!user.bowlerId) {
-          return { ...user, linkedBowler: null };
-        }
-        const bowler = await storage.getBowler(user.bowlerId);
-        if (!bowler) {
-          return { ...user, linkedBowler: null };
-        }
-        const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId: bowler.id });
-        let leagueName: string | null = null;
-        let teamName: string | null = null;
-        if (bowlerLeagueEntries.length > 0) {
-          const bl = bowlerLeagueEntries[0];
-          const league = await storage.getLeague(bl.leagueId);
-          const team = await storage.getTeam(bl.teamId);
-          leagueName = league?.name || null;
-          teamName = team?.name || null;
-        }
-        return {
-          ...user,
-          linkedBowler: {
-            id: bowler.id,
-            name: bowler.name,
-            leagueName,
-            teamName,
-          },
-        };
-      })
-    );
+    const bowlerIds = users
+      .map((u: any) => u.bowlerId)
+      .filter((id: any): id is number => id != null);
+
+    const [allBowlers, allBowlerLeagueEntries] = await Promise.all([
+      storage.getBowlersByIds(bowlerIds),
+      storage.getBowlerLeaguesByBowlerIds(bowlerIds),
+    ]);
+
+    const bowlerMap = new Map(allBowlers.map(b => [b.id, b]));
+    const blByBowler = new Map<number, typeof allBowlerLeagueEntries>();
+    for (const bl of allBowlerLeagueEntries) {
+      if (!blByBowler.has(bl.bowlerId)) blByBowler.set(bl.bowlerId, []);
+      blByBowler.get(bl.bowlerId)!.push(bl);
+    }
+
+    const leagueIds = [...new Set(allBowlerLeagueEntries.map(bl => bl.leagueId))];
+    const teamIds = [...new Set(allBowlerLeagueEntries.map(bl => bl.teamId))];
+    const [allLeagues, allTeams] = await Promise.all([
+      storage.getLeaguesByIds(leagueIds),
+      storage.getTeamsByIds(teamIds),
+    ]);
+    const leagueMap = new Map(allLeagues.map(l => [l.id, l]));
+    const teamMap = new Map(allTeams.map(t => [t.id, t]));
+
+    const usersWithBowlerInfo = users.map((user: any) => {
+      if (!user.bowlerId) {
+        return { ...user, linkedBowler: null };
+      }
+      const bowler = bowlerMap.get(user.bowlerId);
+      if (!bowler) {
+        return { ...user, linkedBowler: null };
+      }
+      const entries = blByBowler.get(bowler.id) || [];
+      let leagueName: string | null = null;
+      let teamName: string | null = null;
+      if (entries.length > 0) {
+        const bl = entries[0];
+        leagueName = leagueMap.get(bl.leagueId)?.name || null;
+        teamName = teamMap.get(bl.teamId)?.name || null;
+      }
+      return {
+        ...user,
+        linkedBowler: {
+          id: bowler.id,
+          name: bowler.name,
+          leagueName,
+          teamName,
+        },
+      };
+    });
 
     return sendSuccess(res, usersWithBowlerInfo);
   } catch (error) {
