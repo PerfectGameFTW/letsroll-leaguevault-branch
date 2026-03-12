@@ -51,6 +51,27 @@ A full-stack bowling league management application with multi-tenant support for
 - `SESSION_SECRET` - Express session secret
 - `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
 - `BN_API_KEY` - BowlNow (GoHighLevel) sub-account API key for CRM contact sync
+- `SETUP_SECRET` - Protects admin bootstrap endpoints for disaster recovery (see Recovery section below)
+
+## Disaster Recovery — Admin Bootstrap
+
+If the database is ever wiped or rebuilt from scratch, you can recreate the first admin user using the protected setup endpoints. Both require the `SETUP_SECRET` value in the `x-setup-secret` header and only work when zero admin users exist.
+
+**Option A — Create a brand new admin user:**
+```bash
+curl -X POST https://<your-domain>/api/setup/create-first-admin \
+  -H "Content-Type: application/json" \
+  -H "x-setup-secret: <SETUP_SECRET value>" \
+  -d '{"email":"admin@example.com","password":"SecureP@ss1","name":"Admin Name"}'
+```
+
+**Option B — Promote an existing registered user to admin:**
+```bash
+curl -X POST https://<your-domain>/api/admin-update/first-system-admin/<userId> \
+  -H "x-setup-secret: <SETUP_SECRET value>"
+```
+
+These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes/admin-update.ts`. They are completely disabled if `SETUP_SECRET` is not set in the environment.
 
 ## Recent Changes (2026-03-09)
 - **PWA (Progressive Web App)**: App is installable on mobile and desktop home screens
