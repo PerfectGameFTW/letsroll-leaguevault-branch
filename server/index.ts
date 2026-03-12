@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
 import { registerRoutes } from "./routes/index";
 import { setupVite } from "./vite";
 import { testConnection, cleanup as dbCleanup } from "./db";
@@ -15,6 +16,8 @@ const server = createServer(app);
 const HOST = '0.0.0.0';
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
 
+const isDev = process.env.NODE_ENV !== "production";
+
 let activeRequests = 0;
 let viteSetupComplete = false;
 
@@ -25,6 +28,43 @@ const requestTracker = (req: Request, res: Response, next: NextFunction) => {
 };
 
 app.use(requestTracker);
+
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: [
+        "'self'",
+        "https://web.squarecdn.com",
+        "https://sandbox.web.squarecdn.com",
+        ...(isDev ? ["'unsafe-inline'", "'unsafe-eval'"] : []),
+      ],
+      styleSrc: [
+        "'self'",
+        "'unsafe-inline'",
+      ],
+      connectSrc: [
+        "'self'",
+        "https://pds.squareup.com",
+        "https://connect.squareup.com",
+        "https://connect.squareupsandbox.com",
+        ...(isDev ? ["ws:", "wss:"] : []),
+      ],
+      frameSrc: [
+        "'self'",
+        "https://web.squarecdn.com",
+        "https://sandbox.web.squarecdn.com",
+      ],
+      imgSrc: ["'self'", "data:", "blob:"],
+      fontSrc: ["'self'", "data:"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 setupAuth(app);
