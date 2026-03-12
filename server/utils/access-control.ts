@@ -91,8 +91,7 @@ export async function hasAccessToPayment(req: any, paymentId: number): Promise<b
   }
 
   try {
-    const payments = await storage.getPayments(undefined, undefined, undefined, undefined);
-    const payment = payments.find(p => p.id === paymentId);
+    const payment = await storage.getPaymentById(paymentId);
     if (!payment) {
       return false;
     }

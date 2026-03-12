@@ -90,10 +90,8 @@ router.post('/first-system-admin/:id', async (req: Request, res: Response) => {
     }
 
     // Check if there are existing admin users
-    const users = await storage.getUsers();
-    const adminUsers = users.filter(user => user.isAdmin);
-    
-    if (adminUsers.length > 0) {
+    const adminExists = await storage.hasAdminUsers();
+    if (adminExists) {
       return sendError(
         res,
         'Admin users already exist. Use the regular admin invitation process.',

@@ -90,6 +90,7 @@ export interface IStorage {
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   getLinkedBowlerIds(): Promise<number[]>;
   isBowlerLinked(bowlerId: number): Promise<boolean>;
+  hasAdminUsers(): Promise<boolean>;
   updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User>;
   createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule>;
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
@@ -872,6 +873,15 @@ export class DatabaseStorage implements IStorage {
       .select({ bowlerId: users.bowlerId })
       .from(users)
       .where(eq(users.bowlerId, bowlerId))
+      .limit(1);
+    return row !== undefined;
+  }
+
+  async hasAdminUsers(): Promise<boolean> {
+    const [row] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.isAdmin, true))
       .limit(1);
     return row !== undefined;
   }
