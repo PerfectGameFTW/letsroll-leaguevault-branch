@@ -18,7 +18,7 @@ const setAdminStatusSchema = z.object({
 router.get('/users', requireAdmin, async (req, res) => {
   try {
     const users = await storage.getUsers();
-    sendSuccess(res, users);
+    sendSuccess(res, users.map(({ password, ...u }) => u));
   } catch (error) {
     console.error('[Admin Routes] Error fetching users:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch users');
