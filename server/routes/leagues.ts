@@ -4,6 +4,7 @@ import { storage } from '../storage';
 import { insertLeagueSchema, partialLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
+import { requireOrganizationAccess } from '../utils/access-control';
 import { getOrganizationFilter, filterByOrganization } from '../middleware/organization';
 import { hashPassword } from '../auth';
 import { sendInviteEmail } from '../services/email';
@@ -39,19 +40,7 @@ router.get("/:id", async (req: any, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    // Use the organization middleware's filter logic
-    const organizationId = getOrganizationFilter(req);
-    
-    // Check if user has access to this league's organization
-    const userHasAccess = 
-      // System admins can access all leagues
-      req.user?.isAdmin || 
-      // Users can access leagues with no organization
-      league.organizationId === null || 
-      // Users can access leagues in their own organization
-      (organizationId !== null && league.organizationId === organizationId);
-    
-    if (!userHasAccess) {
+    if (!requireOrganizationAccess(req, league.organizationId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -102,19 +91,7 @@ router.patch("/:id", async (req: any, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    // Use the organization middleware's filter logic
-    const organizationId = getOrganizationFilter(req);
-    
-    // Check if user has access to this league's organization
-    const userHasAccess = 
-      // System admins can access all leagues
-      req.user?.isAdmin || 
-      // Users can access leagues with no organization
-      league.organizationId === null || 
-      // Users can access leagues in their own organization
-      (organizationId !== null && league.organizationId === organizationId);
-    
-    if (!userHasAccess) {
+    if (!requireOrganizationAccess(req, league.organizationId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -148,9 +125,7 @@ router.patch("/:id/archive", async (req: any, res) => {
     if (!league) {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
-    const organizationId = getOrganizationFilter(req);
-    const userHasAccess = req.user?.isAdmin || league.organizationId === null || (organizationId !== null && league.organizationId === organizationId);
-    if (!userHasAccess) {
+    if (!requireOrganizationAccess(req, league.organizationId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     const archived = await storage.archiveLeague(id);
@@ -168,9 +143,7 @@ router.patch("/:id/restore", async (req: any, res) => {
     if (!league) {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
-    const organizationId = getOrganizationFilter(req);
-    const userHasAccess = req.user?.isAdmin || league.organizationId === null || (organizationId !== null && league.organizationId === organizationId);
-    if (!userHasAccess) {
+    if (!requireOrganizationAccess(req, league.organizationId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     const restored = await storage.restoreLeague(id);
@@ -191,19 +164,7 @@ router.delete("/:id", async (req: any, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    // Use the organization middleware's filter logic
-    const organizationId = getOrganizationFilter(req);
-    
-    // Check if user has access to this league's organization
-    const userHasAccess = 
-      // System admins can access all leagues
-      req.user?.isAdmin || 
-      // Users can access leagues with no organization
-      league.organizationId === null || 
-      // Users can access leagues in their own organization
-      (organizationId !== null && league.organizationId === organizationId);
-    
-    if (!userHasAccess) {
+    if (!requireOrganizationAccess(req, league.organizationId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -233,13 +194,7 @@ router.post("/:id/send-invites", async (req: any, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
 
-    const organizationId = getOrganizationFilter(req);
-    const userHasAccess =
-      req.user?.isAdmin ||
-      league.organizationId === null ||
-      (organizationId !== null && league.organizationId === organizationId);
-
-    if (!userHasAccess) {
+    if (!requireOrganizationAccess(req, league.organizationId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 

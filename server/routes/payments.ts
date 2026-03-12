@@ -4,7 +4,7 @@ import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema.js";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { refundPayment as squareRefund } from '../services/square.js';
-import { hasAccessToPayment, filterPaymentsByOrganization } from '../utils/access-control.js';
+import { hasAccessToPayment, filterPaymentsByOrganization, requireOrganizationAccess } from '../utils/access-control.js';
 
 const router = Router();
 
@@ -16,15 +16,12 @@ router.get("/", async (req, res) => {
     const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
     const weekOf = req.query.weekOf ? new Date(req.query.weekOf as string) : undefined;
 
-    // If leagueId is provided and user is not admin, check organization access
-    if (leagueId && !req.user?.isAdmin && req.user?.organizationId) {
+    if (leagueId) {
       const league = await storage.getLeague(leagueId);
-      
       if (!league) {
         return sendError(res, "League not found", 404, 'NOT_FOUND');
       }
-      
-      if (league.organizationId !== null && league.organizationId !== req.user.organizationId) {
+      if (!requireOrganizationAccess(req, league.organizationId)) {
         return sendError(res, "You don't have access to this league's payments", 403, 'FORBIDDEN');
       }
     }
@@ -54,18 +51,12 @@ router.post("/", async (req, res) => {
       return sendError(res, 'Check number is required for check payments', 400, 'VALIDATION_ERROR');
     }
     
-    // If user is not admin, check league organization access
-    if (!req.user?.isAdmin && req.user?.organizationId) {
-      const league = await storage.getLeague(payment.leagueId);
-      
-      if (!league) {
-        return sendError(res, "League not found", 404, 'NOT_FOUND');
-      }
-      
-      // If league belongs to an organization, check if user has access
-      if (league.organizationId !== null && league.organizationId !== req.user.organizationId) {
-        return sendError(res, "You don't have access to create payments for this league", 403, 'FORBIDDEN');
-      }
+    const league = await storage.getLeague(payment.leagueId);
+    if (!league) {
+      return sendError(res, "League not found", 404, 'NOT_FOUND');
+    }
+    if (!requireOrganizationAccess(req, league.organizationId)) {
+      return sendError(res, "You don't have access to create payments for this league", 403, 'FORBIDDEN');
     }
 
     const created = await storage.createPayment(payment);

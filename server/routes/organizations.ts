@@ -13,6 +13,7 @@ import {
 } from '@shared/schema.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { hashPassword } from '../auth.js';
+import { requireOrganizationAccess } from '../utils/access-control.js';
 import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email.js';
 
 const router = Router();
@@ -71,7 +72,7 @@ router.get('/:id', async (req: any, res) => {
       return sendError(res, 'Invalid organization ID', 400, 'InvalidRequest');
     }
 
-    if (!req.user?.isAdmin && req.user?.organizationId !== id) {
+    if (!requireOrganizationAccess(req, id)) {
       return sendError(res, 'You do not have access to this organization', 403, 'Forbidden');
     }
 
@@ -409,11 +410,7 @@ router.get('/:id/leagues', async (req, res) => {
       return sendError(res, 'Organization not found', 404, 'NotFound');
     }
 
-    // Check if user has access to this organization
-    if (
-      !req.user?.isAdmin && 
-      req.user?.organizationId !== id
-    ) {
+    if (!requireOrganizationAccess(req, id)) {
       return sendError(res, 'You do not have access to this organization', 403, 'Forbidden');
     }
 

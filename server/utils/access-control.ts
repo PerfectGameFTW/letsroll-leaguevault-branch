@@ -1,5 +1,12 @@
 import { storage } from '../storage.js';
 
+export function requireOrganizationAccess(req: any, resourceOrgId: number | null): boolean {
+  if (!req.user) return false;
+  if (req.user.isAdmin) return true;
+  if (resourceOrgId === null) return true;
+  return req.user.organizationId === resourceOrgId;
+}
+
 export async function hasAccessToLeague(req: any, leagueId: number): Promise<boolean> {
   if (!req.user) {
     return false;

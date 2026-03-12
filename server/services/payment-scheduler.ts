@@ -43,6 +43,45 @@ function getNextLeagueDateTime(
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
 
+  private async checkLeagueOrgAccess(
+    leagueId: number,
+    requestedOrgId: number | null,
+    context: string
+  ): Promise<boolean> {
+    const row = await db
+      .select()
+      .from(leagues)
+      .where(eq(leagues.id, leagueId))
+      .limit(1);
+
+    if (row.length === 0) {
+      logger.error(`[PaymentScheduler] ${context}: league not found`, { leagueId });
+      return false;
+    }
+
+    const leagueOrgId = row[0].organizationId;
+
+    if (requestedOrgId === null && leagueOrgId !== null) {
+      logger.info(`[PaymentScheduler] ${context}: skipping — league belongs to org ${leagueOrgId}`, {
+        leagueId,
+        leagueOrgId,
+        requestedOrgId: 'null'
+      });
+      return false;
+    }
+
+    if (requestedOrgId !== null && leagueOrgId !== requestedOrgId) {
+      logger.info(`[PaymentScheduler] ${context}: skipping — org mismatch`, {
+        leagueId,
+        leagueOrgId,
+        requestedOrgId
+      });
+      return false;
+    }
+
+    return true;
+  }
+
   async initialize(organizationId?: number | null) {
     try {
       // Cancel any existing jobs
@@ -544,43 +583,9 @@ class PaymentScheduler {
       return;
     }
     
-    // Check if the schedule is for a league in the specified organization
     if (organizationId !== undefined) {
-      // Get the league to check its organization
-      const league = await db
-        .select()
-        .from(leagues)
-        .where(eq(leagues.id, schedule.leagueId))
-        .limit(1);
-      
-      if (league.length === 0) {
-        logger.error(`[PaymentScheduler] Cannot add schedule for non-existent league`, {
-          scheduleId: schedule.id,
-          leagueId: schedule.leagueId,
-        });
-        return;
-      }
-      
-      const leagueOrganizationId = league[0].organizationId;
-      
-      // Skip if organization ID doesn't match
-      if (organizationId === null && leagueOrganizationId !== null) {
-        logger.info(`[PaymentScheduler] Skipping schedule for league in different organization`, {
-          scheduleId: schedule.id,
-          leagueId: schedule.leagueId,
-          leagueOrganizationId,
-          requestedOrganizationId: 'null'
-        });
-        return;
-      } else if (organizationId !== null && leagueOrganizationId !== organizationId) {
-        logger.info(`[PaymentScheduler] Skipping schedule for league in different organization`, {
-          scheduleId: schedule.id,
-          leagueId: schedule.leagueId,
-          leagueOrganizationId,
-          requestedOrganizationId: organizationId
-        });
-        return;
-      }
+      const allowed = await this.checkLeagueOrgAccess(schedule.leagueId, organizationId, 'addSchedule');
+      if (!allowed) return;
     }
 
     logger.info(`[PaymentScheduler] Adding new payment schedule`, {
@@ -601,47 +606,22 @@ class PaymentScheduler {
       organizationId: organizationId ?? 'not specified'
     });
     
-    // If organization filtering is requested, verify the schedule belongs to the right organization
     if (organizationId !== undefined) {
-      // Get schedule with its league info to check organization access
-      const scheduleWithLeague = await db
-        .select({
-          schedule: paymentSchedules,
-          leagueOrganizationId: leagues.organizationId
-        })
+      const scheduleRow = await db
+        .select({ leagueId: paymentSchedules.leagueId })
         .from(paymentSchedules)
-        .innerJoin(leagues, eq(paymentSchedules.leagueId, leagues.id))
         .where(eq(paymentSchedules.id, scheduleId))
         .limit(1);
-      
-      if (scheduleWithLeague.length === 0) {
+
+      if (scheduleRow.length === 0) {
         logger.info(`[PaymentScheduler] Schedule not found, cannot remove: ${scheduleId}`);
         return;
       }
-      
-      const leagueOrganizationId = scheduleWithLeague[0].leagueOrganizationId;
-      
-      // Skip removal if organization doesn't match
-      if (organizationId === null && leagueOrganizationId !== null) {
-        logger.info(`[PaymentScheduler] Skipping removal for league in different organization`, {
-          scheduleId,
-          leagueOrganizationId,
-          requestedOrganizationId: 'null'
-        });
-        return;
-      } else if (organizationId !== null && leagueOrganizationId !== organizationId) {
-        logger.info(`[PaymentScheduler] Skipping removal for league in different organization`, {
-          scheduleId,
-          leagueOrganizationId,
-          requestedOrganizationId: organizationId
-        });
-        return;
-      }
-      
-      logger.info(`[PaymentScheduler] Organization check passed, proceeding with schedule removal: ${scheduleId}`);
+
+      const allowed = await this.checkLeagueOrgAccess(scheduleRow[0].leagueId, organizationId, 'removeSchedule');
+      if (!allowed) return;
     }
     
-    // Cancel the job
     this.cancelJob(`payment-${scheduleId}`);
   }
 
@@ -657,43 +637,9 @@ class PaymentScheduler {
       return;
     }
     
-    // Check if the schedule is for a league in the specified organization
     if (organizationId !== undefined) {
-      // Get the league to check its organization
-      const league = await db
-        .select()
-        .from(leagues)
-        .where(eq(leagues.id, schedule.leagueId))
-        .limit(1);
-      
-      if (league.length === 0) {
-        logger.error(`[PaymentScheduler] Cannot update schedule for non-existent league`, {
-          scheduleId: schedule.id,
-          leagueId: schedule.leagueId,
-        });
-        return;
-      }
-      
-      const leagueOrganizationId = league[0].organizationId;
-      
-      // Skip if organization ID doesn't match
-      if (organizationId === null && leagueOrganizationId !== null) {
-        logger.info(`[PaymentScheduler] Skipping update for league in different organization`, {
-          scheduleId: schedule.id,
-          leagueId: schedule.leagueId,
-          leagueOrganizationId,
-          requestedOrganizationId: 'null'
-        });
-        return;
-      } else if (organizationId !== null && leagueOrganizationId !== organizationId) {
-        logger.info(`[PaymentScheduler] Skipping update for league in different organization`, {
-          scheduleId: schedule.id,
-          leagueId: schedule.leagueId,
-          leagueOrganizationId,
-          requestedOrganizationId: organizationId
-        });
-        return;
-      }
+      const allowed = await this.checkLeagueOrgAccess(schedule.leagueId, organizationId, 'updateSchedule');
+      if (!allowed) return;
     }
 
     logger.info(`[PaymentScheduler] Updating payment schedule ${schedule.id}`, {
