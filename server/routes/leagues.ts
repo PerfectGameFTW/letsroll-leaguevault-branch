@@ -40,7 +40,7 @@ router.get("/:id", async (req: any, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    if (!requireOrganizationAccess(req, league.organizationId)) {
+    if (!requireOrganizationAccess(req, league.organizationId, 'league', id)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -109,7 +109,7 @@ router.patch("/:id", async (req: any, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    if (!requireOrganizationAccess(req, league.organizationId)) {
+    if (!requireOrganizationAccess(req, league.organizationId, 'league', id)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -143,7 +143,7 @@ router.patch("/:id/archive", async (req: any, res) => {
     if (!league) {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
-    if (!requireOrganizationAccess(req, league.organizationId)) {
+    if (!requireOrganizationAccess(req, league.organizationId, 'league', id)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     const archived = await storage.archiveLeague(id);
@@ -161,7 +161,7 @@ router.patch("/:id/restore", async (req: any, res) => {
     if (!league) {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
-    if (!requireOrganizationAccess(req, league.organizationId)) {
+    if (!requireOrganizationAccess(req, league.organizationId, 'league', id)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     const restored = await storage.restoreLeague(id);
@@ -182,7 +182,7 @@ router.delete("/:id", async (req: any, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    if (!requireOrganizationAccess(req, league.organizationId)) {
+    if (!requireOrganizationAccess(req, league.organizationId, 'league', id)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
@@ -212,7 +212,7 @@ router.post("/:id/send-invites", async (req: any, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
 
-    if (!requireOrganizationAccess(req, league.organizationId)) {
+    if (!requireOrganizationAccess(req, league.organizationId, 'league', leagueId)) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 

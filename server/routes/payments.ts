@@ -19,7 +19,7 @@ router.get("/", async (req, res) => {
       if (!league) {
         return sendError(res, "League not found", 404, 'NOT_FOUND');
       }
-      if (!requireOrganizationAccess(req, league.organizationId)) {
+      if (!requireOrganizationAccess(req, league.organizationId, 'league', leagueId)) {
         return sendError(res, "You don't have access to this league's payments", 403, 'FORBIDDEN');
       }
     }
@@ -58,7 +58,7 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
     if (!league) {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
-    if (!requireOrganizationAccess(req, league.organizationId)) {
+    if (!requireOrganizationAccess(req, league.organizationId, 'league', payment.leagueId)) {
       return sendError(res, "You don't have access to create payments for this league", 403, 'FORBIDDEN');
     }
 

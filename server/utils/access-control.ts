@@ -8,11 +8,11 @@ export function isOrgOrHigher(user: any): boolean {
   return user?.role === 'org_admin' || user?.role === 'system_admin';
 }
 
-export function requireOrganizationAccess(req: any, resourceOrgId: number | null): boolean {
+export function requireOrganizationAccess(req: any, resourceOrgId: number | null, resourceType?: string, resourceId?: number | string): boolean {
   if (!req.user) return false;
   if (isSystemAdmin(req.user)) return true;
   if (resourceOrgId === null) {
-    console.warn(`[NullOrgAccess] resource granted to user ${req.user.id}`);
+    console.warn(`[NullOrgAccess] ${resourceType ?? 'resource'} ${resourceId ?? '?'} granted to user ${req.user.id}`);
     return true;
   }
   return req.user.organizationId === resourceOrgId;

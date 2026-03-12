@@ -73,7 +73,7 @@ router.get('/:id', async (req: any, res) => {
       return sendError(res, 'Invalid organization ID', 400, 'InvalidRequest');
     }
 
-    if (!requireOrganizationAccess(req, id)) {
+    if (!requireOrganizationAccess(req, id, 'organization', id)) {
       return sendError(res, 'You do not have access to this organization', 403, 'Forbidden');
     }
 
@@ -410,7 +410,7 @@ router.get('/:id/leagues', async (req, res) => {
       return sendError(res, 'Organization not found', 404, 'NotFound');
     }
 
-    if (!requireOrganizationAccess(req, id)) {
+    if (!requireOrganizationAccess(req, id, 'organization', id)) {
       return sendError(res, 'You do not have access to this organization', 403, 'Forbidden');
     }
 
