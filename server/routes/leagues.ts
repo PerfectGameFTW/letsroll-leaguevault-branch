@@ -59,14 +59,32 @@ router.post("/", async (req: any, res) => {
       seasonEnd: new Date(req.body.seasonEnd)
     });
     
-    // Get organization filter from middleware
     const organizationId = getOrganizationFilter(req);
-    
-    // Set the organization ID from the user's context if not already provided
+
     if (organizationId !== null && !league.organizationId) {
       league.organizationId = organizationId;
     } else if (!league.organizationId) {
-      league.organizationId = req.user?.organizationId || null;
+      if (req.user?.role === 'system_admin') {
+        if (!req.body.globalAccess) {
+          return sendError(
+            res,
+            'An organizationId is required. To create a globally accessible league, set globalAccess: true in the request body.',
+            400,
+            'ORG_REQUIRED'
+          );
+        }
+        league.organizationId = null;
+      } else {
+        if (!req.user?.organizationId) {
+          return sendError(
+            res,
+            'You must belong to an organization to create a league.',
+            403,
+            'ORG_REQUIRED'
+          );
+        }
+        league.organizationId = req.user.organizationId;
+      }
     }
     
     const created = await storage.createLeague(league);
