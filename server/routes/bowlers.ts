@@ -17,8 +17,11 @@ router.get("/unlinked", async (req: any, res) => {
 
     let organizationId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
 
-    if (!req.user?.isAdmin) {
-      organizationId = req.user?.organizationId || organizationId;
+    if (!req.user?.isAdmin && !req.user?.isOrganizationAdmin) {
+      if (!req.user?.organizationId) {
+        return sendError(res, "No organization context available", 403, 'FORBIDDEN');
+      }
+      organizationId = req.user.organizationId;
     }
     const allBowlers = await storage.getBowlers();
     const allUsers = await storage.getUsers();
