@@ -45,7 +45,6 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       name: z.string().min(1).optional(),
       email: z.string().email().optional(),
       phone: z.string().nullable().optional(),
-      isAdmin: z.boolean().optional(),
     });
 
     const validationResult = userUpdateSchema.safeParse(req.body);
@@ -58,10 +57,6 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
     }
 
     const updateData = validationResult.data;
-
-    if (updateData.isAdmin !== undefined && !user.isAdmin) {
-      delete updateData.isAdmin;
-    }
 
     const existingUser = await storage.getUser(userId);
     if (!existingUser) {
