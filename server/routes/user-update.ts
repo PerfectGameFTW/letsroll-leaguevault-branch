@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sendError, sendSuccess } from '../utils/api';
 import { storage } from '../storage';
 import { hashPassword } from '../auth';
+import { passwordSchema } from '../utils/password-validation';
 import { createOrUpdateCustomer } from '../services/square';
 import { scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
@@ -126,7 +127,7 @@ router.post('/change-password', requireAuth, async (req: Request, res: Response)
 
     const schema = z.object({
       currentPassword: z.string().min(1, 'Current password is required'),
-      newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+      newPassword: passwordSchema,
     });
 
     const validationResult = schema.safeParse(req.body);
