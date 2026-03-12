@@ -1,9 +1,14 @@
 import rateLimit from "express-rate-limit";
+import type { Request } from "express";
 
 const rateLimitMessage = (msg: string) => ({
   success: false,
   error: { message: msg, code: "RATE_LIMITED" }
 });
+
+function userKeyGenerator(req: Request): string {
+  return req.user?.id?.toString() || req.ip || 'unknown';
+}
 
 export const paymentWriteLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -24,6 +29,7 @@ export const squarePaymentLimiter = rateLimit({
 export const adminWriteLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
+  keyGenerator: userKeyGenerator,
   standardHeaders: true,
   legacyHeaders: false,
   message: rateLimitMessage("Too many admin requests, please try again later"),
@@ -32,6 +38,7 @@ export const adminWriteLimiter = rateLimit({
 export const inviteLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 15,
+  keyGenerator: userKeyGenerator,
   standardHeaders: true,
   legacyHeaders: false,
   message: rateLimitMessage("Too many invite requests, please try again later"),

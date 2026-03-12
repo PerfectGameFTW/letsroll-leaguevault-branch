@@ -5,6 +5,7 @@ import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { paymentScheduler } from '../services/payment-scheduler.js';
 import { addWeeks, addMonths, nextDay, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
+import { adminWriteLimiter } from '../middleware/rate-limit.js';
 
 const WEEKDAY_MAP: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
   Sunday: 0,
@@ -41,7 +42,7 @@ function getNextLeagueDateTime(
 
 const router = Router();
 
-router.post('/', async (req, res) => {
+router.post('/', adminWriteLimiter, async (req, res) => {
   try {
     if (!req.isAuthenticated()) {
       return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
@@ -121,7 +122,7 @@ router.get('/:bowlerId/:leagueId', async (req, res) => {
   }
 });
 
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', adminWriteLimiter, async (req, res) => {
   try {
     if (!req.isAuthenticated()) {
       return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
@@ -151,7 +152,7 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', adminWriteLimiter, async (req, res) => {
   try {
     if (!req.isAuthenticated()) {
       return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
