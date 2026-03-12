@@ -56,9 +56,10 @@ app.get('/api/health', async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('[Server] Health check error:', error);
     res.status(503).json({
       status: 'unhealthy',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: 'Service unavailable'
     });
   }
 });
@@ -107,15 +108,20 @@ if (process.env.NODE_ENV !== "production") {
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[Error]', err);
   if (!res.headersSent) {
-    res.status(err.status || 500).json({
+    const statusCode = (typeof err.status === 'number' && err.status >= 400 && err.status < 500)
+      ? err.status
+      : 500;
+    const clientMessage = statusCode < 500
+      ? (err.message || "Bad request")
+      : "An internal error occurred";
+    res.status(statusCode).json({
       success: false,
       error: {
-        message: err.message || "Internal Server Error",
+        message: clientMessage,
         timestamp: new Date().toISOString()
       }
     });
   }
-  next(err);
 });
 
 async function testDatabaseConnectionWithRetry(maxRetries = 3, backoffMs = 1000): Promise<boolean> {
