@@ -199,24 +199,22 @@ router.post("/", async (req, res) => {
 
     // Check for existing bowler with same email if provided
     if (bowler.email) {
-      const existingBowlers = await storage.getBowlers();
-      
-      // If user is not admin and belongs to an organization, filter existing bowlers by organization
+      const isOrgUser = !req.user?.isAdmin && !!req.user?.organizationId;
+      const [existingBowlers, leagues, bowlerLeagues] = await Promise.all([
+        storage.getBowlers(),
+        isOrgUser ? storage.getLeagues(req.user.organizationId) : Promise.resolve(null),
+        isOrgUser ? storage.getBowlerLeagues() : Promise.resolve(null),
+      ]);
+
       let filteredBowlers = existingBowlers;
-      if (!req.user?.isAdmin && req.user?.organizationId) {
-        const [leagues, bowlerLeagues] = await Promise.all([
-          storage.getLeagues(req.user.organizationId),
-          storage.getBowlerLeagues(),
-        ]);
-        if (leagues && leagues.length > 0) {
-          const leagueIdSet = new Set(leagues.map(l => l.id));
-          const organizationBowlerIds = new Set(
-            bowlerLeagues
-              .filter(bl => leagueIdSet.has(bl.leagueId))
-              .map(bl => bl.bowlerId)
-          );
-          filteredBowlers = existingBowlers.filter(b => organizationBowlerIds.has(b.id));
-        }
+      if (isOrgUser && leagues && leagues.length > 0) {
+        const leagueIdSet = new Set(leagues.map(l => l.id));
+        const organizationBowlerIds = new Set(
+          bowlerLeagues!
+            .filter(bl => leagueIdSet.has(bl.leagueId))
+            .map(bl => bl.bowlerId)
+        );
+        filteredBowlers = existingBowlers.filter(b => organizationBowlerIds.has(b.id));
       }
       
       const existingBowler = filteredBowlers.find(b =>

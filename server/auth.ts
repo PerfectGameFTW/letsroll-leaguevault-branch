@@ -231,9 +231,10 @@ export function setupAuth(app: Express) {
             if (bowlerLeagueEntries.length > 0) {
               const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
               if (league?.organizationId) {
-                await storage.setUserOrganization(user.id, league.organizationId);
-
-                const org = await storage.getOrganization(league.organizationId);
+                const [, org] = await Promise.all([
+                  storage.setUserOrganization(user.id, league.organizationId),
+                  storage.getOrganization(league.organizationId),
+                ]);
                 const baseUrl = getBaseUrl();
                 sendTemplatedEmail('self_register_linked', result.data.email, {
                   bowler_name: bowler.name,
@@ -400,8 +401,10 @@ export function setupAuth(app: Express) {
       }
 
       const hashedPassword = await hashPassword(password);
-      await storage.updateUser(user.id, { password: hashedPassword });
-      await storage.clearUserInviteToken(user.id);
+      await Promise.all([
+        storage.updateUser(user.id, { password: hashedPassword }),
+        storage.clearUserInviteToken(user.id),
+      ]);
 
       try {
         const bowler = await storage.getBowlerByEmail(user.email);
@@ -509,22 +512,21 @@ export function setupAuth(app: Express) {
         });
       }
 
-      await storage.linkUserToBowler(user.id, bowlerId);
-
-      await storage.updateBowler(bowlerId, { ...bowler, email: user.email });
+      await Promise.all([
+        storage.linkUserToBowler(user.id, bowlerId),
+        storage.updateBowler(bowlerId, { ...bowler, email: user.email }),
+      ]);
 
       const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId });
-      if (bowlerLeagueEntries.length > 0 && !user.organizationId) {
-        const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
-        if (league?.organizationId) {
-          await storage.setUserOrganization(user.id, league.organizationId);
-        }
-      }
-
       if (bowlerLeagueEntries.length > 0) {
         const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
         if (league?.organizationId) {
-          const org = await storage.getOrganization(league.organizationId);
+          const [, org] = await Promise.all([
+            !user.organizationId
+              ? storage.setUserOrganization(user.id, league.organizationId)
+              : Promise.resolve(null),
+            storage.getOrganization(league.organizationId),
+          ]);
           const baseUrl = getBaseUrl();
           sendTemplatedEmail('bowler_claimed', user.email, {
             bowler_name: bowler.name,
