@@ -53,9 +53,11 @@ router.post('/payments', async (req: any, res) => {
 
       const remainingBalance = Math.max(0, fullSeasonAmount - totalPaid);
 
-      if (amount > remainingBalance + 100) {
+      if (amount > remainingBalance) {
         return sendError(res, `Amount ($${(amount / 100).toFixed(2)}) exceeds remaining balance ($${(remainingBalance / 100).toFixed(2)})`, 400, 'AMOUNT_EXCEEDS_BALANCE');
       }
+    } else if (!league.weeklyFee) {
+      return sendError(res, "League has no weekly fee configured — cannot process payment", 400, 'LEAGUE_NOT_CONFIGURED');
     }
 
     let payment;

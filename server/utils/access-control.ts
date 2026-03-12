@@ -65,7 +65,7 @@ export async function hasAccessToBowler(req: any, bowlerId: number): Promise<boo
   const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
 
   if (bowlerLeagues.length === 0) {
-    return !!req.user;
+    return req.user.isOrganizationAdmin || false;
   }
 
   for (const bl of bowlerLeagues) {
