@@ -11,7 +11,10 @@ export function isOrgOrHigher(user: any): boolean {
 export function requireOrganizationAccess(req: any, resourceOrgId: number | null): boolean {
   if (!req.user) return false;
   if (isSystemAdmin(req.user)) return true;
-  if (resourceOrgId === null) return true;
+  if (resourceOrgId === null) {
+    console.warn(`[NullOrgAccess] resource granted to user ${req.user.id}`);
+    return true;
+  }
   return req.user.organizationId === resourceOrgId;
 }
 
@@ -37,6 +40,7 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
   }
 
   if (league.organizationId === null) {
+    console.warn(`[NullOrgAccess] league ${leagueId} granted to user ${req.user.id}`);
     return !!req.user;
   }
 
@@ -97,6 +101,7 @@ export async function hasAccessToBowler(req: any, bowlerId: number): Promise<boo
       return true;
     }
     if (league.organizationId === null) {
+      console.warn(`[NullOrgAccess] bowler ${bowlerId} via league ${league.id} granted to user ${req.user.id}`);
       return true;
     }
     if (req.user.organizationId && req.user.organizationId === league.organizationId) {
@@ -132,6 +137,7 @@ export async function hasAccessToPayment(req: any, paymentId: number): Promise<b
     }
 
     if (league.organizationId === null) {
+      console.warn(`[NullOrgAccess] payment ${paymentId} via league ${payment.leagueId} granted to user ${req.user.id}`);
       return true;
     }
 

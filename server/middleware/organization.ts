@@ -92,8 +92,8 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
     return false;
   }
 
-  // If the league doesn't belong to any organization, anyone can access it
   if (league.organizationId === null) {
+    console.warn(`[NullOrgAccess] league ${leagueId} granted to user ${req.user?.id}`);
     return true;
   }
 
