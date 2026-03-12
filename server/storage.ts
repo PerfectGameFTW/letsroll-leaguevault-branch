@@ -17,6 +17,7 @@ import {
   type Organization, type InsertOrganization,
   type Location, type InsertLocation,
   type PaymentSchedule, type InsertPaymentSchedule,
+  type UserRole,
   emailTemplates,
   type EmailTemplate, type InsertEmailTemplate,
 } from "@shared/schema.js";
@@ -96,7 +97,7 @@ export interface IStorage {
   getTeamsByIds(ids: number[]): Promise<Team[]>;
   getScoresByGameIds(gameIds: number[]): Promise<Score[]>;
   getBowlerLeaguesByBowlerIds(bowlerIds: number[]): Promise<BowlerLeague[]>;
-  updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User>;
+  updateUserRole(userId: number, role: UserRole): Promise<User>;
   createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule>;
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
   getPaymentScheduleById(id: number): Promise<PaymentSchedule | undefined>;
@@ -120,7 +121,8 @@ export interface IStorage {
   
   // Organization admin methods
   getOrganizationUsers(organizationId: number): Promise<User[]>;
-  updateUserOrganizationAdminStatus(userId: number, isOrganizationAdmin: boolean): Promise<User>;
+
+
   setUserLocation(userId: number, locationId: number | null): Promise<User>;
   getUserByInviteToken(token: string): Promise<User | undefined>;
   setUserInviteToken(userId: number, token: string, expiry: Date): Promise<User>;
@@ -886,7 +888,7 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.isAdmin, true))
+      .where(eq(users.role, 'system_admin'))
       .limit(1);
     return row !== undefined;
   }
@@ -1008,34 +1010,29 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(users).orderBy(users.id);
   }
   
-  async updateUserAdminStatus(userId: number, isAdmin: boolean): Promise<User> {
-    console.log('[Storage] Updating admin status for user:', {
-      userId,
-      isAdmin
-    });
+  async updateUserRole(userId: number, role: UserRole): Promise<User> {
+    console.log('[Storage] Updating role for user:', { userId, role });
     
-    // Verify user exists
     const user = await this.getUser(userId);
     if (!user) {
-      console.error('[Storage] User not found for admin status update:', userId);
+      console.error('[Storage] User not found for role update:', userId);
       throw new Error(`User with ID ${userId} not found`);
     }
     
-    // Update user's admin status
     const [updatedUser] = await db
       .update(users)
-      .set({ isAdmin })
+      .set({ role })
       .where(eq(users.id, userId))
       .returning();
       
     if (!updatedUser) {
-      console.error('[Storage] Failed to update admin status for user:', userId);
-      throw new Error(`Failed to update admin status for user with ID ${userId}`);
+      console.error('[Storage] Failed to update role for user:', userId);
+      throw new Error(`Failed to update role for user with ID ${userId}`);
     }
     
-    console.log('[Storage] Successfully updated admin status for user:', {
+    console.log('[Storage] Successfully updated role for user:', {
       userId,
-      isAdmin: updatedUser.isAdmin
+      role: updatedUser.role
     });
     
     return updatedUser;
@@ -1074,7 +1071,7 @@ export class DatabaseStorage implements IStorage {
         await db.delete(leagues).where(eq(leagues.id, leagueId));
       }
     }
-    await db.update(users).set({ organizationId: null, isOrganizationAdmin: false }).where(eq(users.organizationId, id));
+    await db.update(users).set({ organizationId: null, role: 'user' }).where(eq(users.organizationId, id));
     await db.delete(organizations).where(eq(organizations.id, id));
   }
 
@@ -1097,7 +1094,7 @@ export class DatabaseStorage implements IStorage {
     }
     
     // If user is admin, return all organizations
-    if (user && user.isAdmin) {
+    if (user && user.role === 'system_admin') {
       return db.select().from(organizations).orderBy(organizations.name);
     }
     
@@ -1134,44 +1131,8 @@ export class DatabaseStorage implements IStorage {
       .orderBy(users.name);
   }
 
-  async updateUserOrganizationAdminStatus(userId: number, isOrganizationAdmin: boolean): Promise<User> {
-    console.log('[Storage] Updating organization admin status for user:', {
-      userId,
-      isOrganizationAdmin
-    });
-    
-    // Verify user exists
-    const user = await this.getUser(userId);
-    if (!user) {
-      console.error('[Storage] User not found for organization admin status update:', userId);
-      throw new Error(`User with ID ${userId} not found`);
-    }
-    
-    // Verify user belongs to an organization
-    if (!user.organizationId) {
-      console.error('[Storage] Cannot set organization admin status for user without organization:', userId);
-      throw new Error(`User with ID ${userId} does not belong to any organization`);
-    }
-    
-    // Update user's organization admin status
-    const [updatedUser] = await db
-      .update(users)
-      .set({ isOrganizationAdmin })
-      .where(eq(users.id, userId))
-      .returning();
-      
-    if (!updatedUser) {
-      console.error('[Storage] Failed to update organization admin status for user:', userId);
-      throw new Error(`Failed to update organization admin status for user with ID ${userId}`);
-    }
-    
-    console.log('[Storage] Updated organization admin status:', {
-      userId: updatedUser.id,
-      isOrganizationAdmin: updatedUser.isOrganizationAdmin
-    });
-    
-    return updatedUser;
-  }
+
+
 
   async setUserLocation(userId: number, locationId: number | null): Promise<User> {
     const [updatedUser] = await db

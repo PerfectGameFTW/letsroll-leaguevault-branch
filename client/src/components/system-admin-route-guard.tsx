@@ -19,7 +19,7 @@ export const SystemAdminRouteGuard: FC<SystemAdminRouteGuardProps> = ({ children
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
-  const isSystemAdmin = currentUserResponse?.data?.isAdmin && currentUserResponse?.data?.isOrganizationAdmin || false;
+  const isSystemAdmin = currentUserResponse?.data?.role === 'system_admin';
 
   useEffect(() => {
     // If user data is loaded and user is not a system admin, redirect to home

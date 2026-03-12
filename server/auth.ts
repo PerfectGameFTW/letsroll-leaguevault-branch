@@ -51,7 +51,7 @@ function isValidUser(user: any): user is SelectUser {
     typeof user.email === 'string' &&
     typeof user.password === 'string' &&
     typeof user.name === 'string' &&
-    typeof user.isAdmin === 'boolean' &&
+    typeof user.role === 'string' &&
     user.createdAt instanceof Date
   );
 }
@@ -213,7 +213,7 @@ export function setupAuth(app: Express) {
       const user = await storage.createUser({
         ...result.data,
         password: hashedPassword,
-        isAdmin: false,
+        role: 'user',
       });
 
       const organizationId = req.body.organizationId ? parseInt(req.body.organizationId) : undefined;

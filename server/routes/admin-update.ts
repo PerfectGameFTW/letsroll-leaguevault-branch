@@ -22,11 +22,12 @@ router.patch('/users/:id/admin-status', requireAdmin, async (req: Request, res: 
 
     // Define schema for admin status update
     const adminStatusSchema = z.object({
-      isAdmin: z.boolean()
+      makeSystemAdmin: z.boolean()
     });
 
-    // Validate request data
-    const validationResult = adminStatusSchema.safeParse(req.body);
+    const validationResult = adminStatusSchema.safeParse({
+      makeSystemAdmin: req.body.isAdmin ?? req.body.makeSystemAdmin
+    });
     if (!validationResult.success) {
       const errorMessages = validationResult.error.errors.map(err => ({
         field: err.path.join('.'),
@@ -42,9 +43,8 @@ router.patch('/users/:id/admin-status', requireAdmin, async (req: Request, res: 
       );
     }
 
-    const { isAdmin } = validationResult.data;
+    const { makeSystemAdmin } = validationResult.data;
     
-    // Check if user exists
     const user = await storage.getUser(userId);
     if (!user) {
       return sendError(
@@ -55,8 +55,8 @@ router.patch('/users/:id/admin-status', requireAdmin, async (req: Request, res: 
       );
     }
 
-    // Update the user's admin status
-    const updatedUser = await storage.updateUserAdminStatus(userId, isAdmin);
+    const newRole = makeSystemAdmin ? 'system_admin' : 'user';
+    const updatedUser = await storage.updateUserRole(userId, newRole);
 
 
     // Return the updated user without password
@@ -122,7 +122,7 @@ router.post('/first-system-admin/:id', async (req: Request, res: Response) => {
     }
 
     // Update the user's admin status
-    const updatedUser = await storage.updateUserAdminStatus(userId, true);
+    const updatedUser = await storage.updateUserRole(userId, 'system_admin');
 
 
     // Return the updated user without password

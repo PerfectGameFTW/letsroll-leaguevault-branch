@@ -96,7 +96,7 @@ router.patch("/:id", async (req: any, res) => {
     }
     
     // Non-admin users cannot change the organization of a league
-    if (!req.user?.isAdmin && req.body.organizationId !== undefined) {
+    if (req.user?.role !== 'system_admin' && req.body.organizationId !== undefined) {
       return sendError(res, "You don't have permission to change the organization of this league", 403, 'FORBIDDEN');
     }
     
@@ -227,8 +227,7 @@ router.post("/:id/send-invites", async (req: any, res) => {
         email: bowler.email,
         password: placeholderPassword,
         name: bowler.name,
-        isAdmin: false,
-        isOrganizationAdmin: false,
+        role: 'user',
         organizationId: league.organizationId || null,
       });
 
@@ -258,7 +257,7 @@ router.post("/:id/new-season", async (req: any, res) => {
       return sendError(res, "Invalid league ID", 400, "INVALID_ID");
     }
 
-    if (!req.user?.isAdmin && !req.user?.isOrganizationAdmin) {
+    if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
       return sendError(res, "Only admins can start a new season", 403, "FORBIDDEN");
     }
 

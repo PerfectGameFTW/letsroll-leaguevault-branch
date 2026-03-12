@@ -18,12 +18,11 @@ async function requireOrgAdminOrSystemAdmin(req: any, res: Response, next: any) 
   }
 
   // Allow system admins
-  if (req.user.isAdmin) {
+  if (req.user.role === 'system_admin') {
     return next();
   }
 
-  // Check if user is an organization admin
-  if (req.user.isOrganizationAdmin && req.user.organizationId) {
+  if (req.user.role === 'org_admin' && req.user.organizationId) {
     return next();
   }
 
@@ -39,7 +38,7 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
       : null;
     
     // For organization admins, force their own organization
-    if (!req.user.isAdmin && req.user.isOrganizationAdmin) {
+    if (req.user.role === 'org_admin') {
       organizationId = req.user.organizationId;
     }
     
@@ -118,31 +117,31 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, async (req
     
     // Validate request body
     const schema = z.object({
-      isOrganizationAdmin: z.boolean(),
+      makeOrgAdmin: z.boolean(),
     });
     
-    const parseResult = schema.safeParse(req.body);
+    const parseResult = schema.safeParse({
+      makeOrgAdmin: req.body.isOrganizationAdmin ?? req.body.makeOrgAdmin
+    });
     if (!parseResult.success) {
       return sendError(res, 'validation_error', parseResult.error.message, 400);
     }
     
-    const { isOrganizationAdmin } = parseResult.data;
+    const { makeOrgAdmin } = parseResult.data;
     
-    // Get the user to check organization
     const user = await storage.getUser(userId);
     if (!user) {
       return sendError(res, 'not_found', 'User not found', 404);
     }
     
-    // Organization admins can only update users in their own organization
-    if (!req.user.isAdmin && req.user.isOrganizationAdmin) {
+    if (req.user.role === 'org_admin') {
       if (user.organizationId !== req.user.organizationId) {
         return sendError(res, 'forbidden', 'You can only update users in your own organization', 403);
       }
     }
     
-    // Update user's organization admin status
-    const updatedUser = await storage.updateUserOrganizationAdminStatus(userId, isOrganizationAdmin);
+    const newRole = makeOrgAdmin ? 'org_admin' : 'user';
+    const updatedUser = await storage.updateUserRole(userId, newRole);
     return sendSuccess(res, updatedUser);
   } catch (error) {
     console.error('[Org Admin Route] Error updating organization admin status:', error);
@@ -161,7 +160,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, async (req: any, res
     // Validate request body
     const schema = z.object({
       organizationId: z.number().optional(),
-      isOrganizationAdmin: z.boolean().optional().default(false),
+      makeOrgAdmin: z.boolean().optional().default(false),
     });
     
     const parseResult = schema.safeParse(req.body);
@@ -169,13 +168,11 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, async (req: any, res
       return sendError(res, 'validation_error', parseResult.error.message, 400);
     }
     
-    const { isOrganizationAdmin } = parseResult.data;
+    const { makeOrgAdmin } = parseResult.data;
     
-    // Get the organization ID (for org admins, it must be their own org)
     let organizationId: number;
     
-    // System admins can specify any org ID
-    if (req.user.isAdmin && req.body.organizationId !== undefined) {
+    if (req.user.role === 'system_admin' && req.body.organizationId !== undefined) {
       organizationId = parseInt(String(req.body.organizationId), 10);
       if (isNaN(organizationId)) {
         return sendError(res, 'bad_request', 'Invalid organization ID', 400);
@@ -198,10 +195,9 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, async (req: any, res
     if (user.organizationId) {
       // If they're in the same org we're trying to add them to, just update admin status
       if (user.organizationId === organizationId) {
-        
-        // Update org admin status if needed
-        if (isOrganizationAdmin !== user.isOrganizationAdmin) {
-          const updatedUser = await storage.updateUserOrganizationAdminStatus(userId, isOrganizationAdmin);
+        const desiredRole = makeOrgAdmin ? 'org_admin' : 'user';
+        if (desiredRole !== user.role) {
+          const updatedUser = await storage.updateUserRole(userId, desiredRole);
           return sendSuccess(res, updatedUser);
         }
         
@@ -215,8 +211,8 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, async (req: any, res
     const updatedUser = await storage.setUserOrganization(userId, organizationId);
     
     // If requested to make user an org admin and they aren't already
-    if (isOrganizationAdmin && !updatedUser.isOrganizationAdmin) {
-      await storage.updateUserOrganizationAdminStatus(userId, true);
+    if (makeOrgAdmin && updatedUser.role !== 'org_admin') {
+      await storage.updateUserRole(userId, 'org_admin');
     }
     
     // Get fresh user data
@@ -243,12 +239,11 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, async (req: any
     }
     
     // Organization admins can only remove users from their own organization
-    if (!req.user.isAdmin && req.user.isOrganizationAdmin) {
+    if (req.user.role === 'org_admin') {
       if (user.organizationId !== req.user.organizationId) {
         return sendError(res, 'forbidden', 'You can only remove users from your own organization', 403);
       }
       
-      // Org admins cannot remove themselves
       if (user.id === req.user.id) {
         return sendError(res, 'forbidden', 'You cannot remove yourself from the organization', 403);
       }
@@ -290,7 +285,7 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, async (req: an
       return sendError(res, 'not_found', 'User not found', 404);
     }
 
-    if (!req.user.isAdmin && req.user.isOrganizationAdmin) {
+    if (req.user.role === 'org_admin') {
       if (user.organizationId !== req.user.organizationId) {
         return sendError(res, 'forbidden', 'You can only update users in your own organization', 403);
       }
@@ -310,7 +305,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, async (req: any, res:
       firstName: z.string().min(1, 'First name is required').max(50),
       lastName: z.string().min(1, 'Last name is required').max(50),
       email: z.string().email('Invalid email address'),
-      isOrganizationAdmin: z.boolean().default(false),
+      makeOrgAdmin: z.boolean().default(false),
       locationId: z.number().int().positive().nullable().optional(),
     });
 
@@ -319,11 +314,11 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, async (req: any, res:
       return sendError(res, 'validation_error', parseResult.error.errors.map(e => e.message).join(', '), 400);
     }
 
-    const { firstName, lastName, email, isOrganizationAdmin, locationId } = parseResult.data;
+    const { firstName, lastName, email, makeOrgAdmin, locationId } = parseResult.data;
     const fullName = `${firstName} ${lastName}`;
 
     let organizationId: number;
-    if (req.user.isAdmin && req.body.organizationId) {
+    if (req.user.role === 'system_admin' && req.body.organizationId) {
       organizationId = parseInt(String(req.body.organizationId), 10);
     } else {
       organizationId = req.user.organizationId;
@@ -347,14 +342,13 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, async (req: any, res:
       email,
       password: placeholderPassword,
       name: fullName,
-      isAdmin: false,
-      isOrganizationAdmin,
+      role: makeOrgAdmin ? 'org_admin' : 'user',
       organizationId,
     });
 
     await storage.setUserInviteToken(newUser.id, inviteToken, inviteTokenExpiry);
 
-    if (locationId && !isOrganizationAdmin) {
+    if (locationId && !makeOrgAdmin) {
       await storage.setUserLocation(newUser.id, locationId);
     }
 
@@ -393,7 +387,7 @@ router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, async (req
       return sendError(res, 'not_found', 'User not found', 404);
     }
 
-    if (!req.user.isAdmin && req.user.isOrganizationAdmin) {
+    if (req.user.role === 'org_admin') {
       if (user.organizationId !== req.user.organizationId) {
         return sendError(res, 'forbidden', 'You can only manage users in your own organization', 403);
       }

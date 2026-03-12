@@ -109,26 +109,18 @@ export default function AdminLinkBowlerPage() {
                 <div className="flex justify-between">
                   <span className="font-medium">Admin Status:</span>
                   <span className="flex items-center">
-                    {currentUser?.isAdmin ? (
+                    {currentUser?.role === 'system_admin' ? (
                       <>
                         <Check className="h-4 w-4 mr-1 text-green-500" />
                         System Admin
                       </>
-                    ) : (
-                      "Regular User"
-                    )}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="font-medium">Organization Admin:</span>
-                  <span className="flex items-center">
-                    {currentUser?.isOrganizationAdmin ? (
+                    ) : currentUser?.role === 'org_admin' ? (
                       <>
                         <Check className="h-4 w-4 mr-1 text-green-500" />
                         Organization Admin
                       </>
                     ) : (
-                      "Not an Organization Admin"
+                      "Regular User"
                     )}
                   </span>
                 </div>

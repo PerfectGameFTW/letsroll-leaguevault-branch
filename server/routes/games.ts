@@ -26,7 +26,7 @@ router.get('/', async (req, res) => {
     const { leagueId, weekNumber } = validationResult.data;
     
     // Check organization access for the league
-    if (!req.user?.isAdmin) {
+    if (req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToLeague(req, leagueId);
       if (!hasAccess) {
         return sendError(res, "You don't have access to this league's games", 403, 'FORBIDDEN');

@@ -146,7 +146,7 @@ export const ProfileSettingsPage: FC = () => {
     }
   };
 
-  const isSystemAdmin = currentUser?.isAdmin && currentUser?.isOrganizationAdmin;
+  const isSystemAdmin = currentUser?.role === 'system_admin';
 
   if (isLoadingUser) {
     return (

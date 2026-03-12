@@ -266,7 +266,7 @@ export const BowlerDashboardPage: FC = () => {
     );
   }
 
-  const isSystemAdmin = currentUser?.isAdmin && currentUser?.isOrganizationAdmin;
+  const isSystemAdmin = currentUser?.role === 'system_admin';
   const hasMultipleLeagues = activeBowlerLeagues.length > 1;
 
   return (

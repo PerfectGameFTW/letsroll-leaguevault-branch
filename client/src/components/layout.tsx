@@ -229,10 +229,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
   
-  const isAdmin = currentUserResponse?.data?.isAdmin || false;
-  const isOrganizationAdmin = currentUserResponse?.data?.isOrganizationAdmin || false;
-  // System admin is someone who has both admin and organization admin privileges
-  const isSystemAdmin = isAdmin && isOrganizationAdmin;
+  const userRole = currentUserResponse?.data?.role;
+  const isAdmin = userRole === 'system_admin';
+  const isSystemAdmin = userRole === 'system_admin';
 
   const toggleSidebar = useCallback(() => {
     setIsCollapsed((prev: boolean) => !prev);

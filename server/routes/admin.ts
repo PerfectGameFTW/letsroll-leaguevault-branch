@@ -11,7 +11,7 @@ const router = Router();
 // Schema for making a user an admin
 const setAdminStatusSchema = z.object({
   userId: z.number().int().positive('User ID must be a positive number'),
-  isAdmin: z.boolean()
+  makeSystemAdmin: z.boolean()
 });
 
 // Get all users (admin only)
@@ -31,17 +31,17 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
     const { userId } = req.params;
     const parsedData = setAdminStatusSchema.parse({ 
       userId: parseInt(userId), 
-      isAdmin: req.body.isAdmin 
+      makeSystemAdmin: req.body.isAdmin ?? req.body.makeSystemAdmin
     });
 
-    // Make sure the user isn't toggling their own admin status
     const requestingUser = req.user as SelectUser;
     if (requestingUser.id === parsedData.userId) {
       console.error('[Admin Routes] User attempted to change their own admin status');
       return sendError(res, 'Cannot modify your own admin status', 403, 'SELF_MODIFICATION_DENIED');
     }
     
-    const updatedUser = await storage.updateUserAdminStatus(parsedData.userId, parsedData.isAdmin);
+    const newRole = parsedData.makeSystemAdmin ? 'system_admin' : 'user';
+    const updatedUser = await storage.updateUserRole(parsedData.userId, newRole);
     sendSuccess(res, updatedUser);
   } catch (error) {
     console.error('[Admin Routes] Error updating admin status:', error);

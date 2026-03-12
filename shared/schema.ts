@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, index, uniqueIndex, pgEnum } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -16,6 +16,10 @@ export const WeekDay = {
   SATURDAY: WEEKDAYS[5],
   SUNDAY: WEEKDAYS[6],
 } as const;
+
+const USER_ROLES = ['system_admin', 'org_admin', 'user'] as const;
+export const userRoleEnum = pgEnum('user_role', USER_ROLES);
+export type UserRole = (typeof USER_ROLES)[number];
 
 const PAYMENT_STATUSES = ["paid", "pending", "failed", "refunded"] as const;
 export const PaymentStatus = {
@@ -222,8 +226,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   phone: text("phone"),
   avatar: text("avatar"),
-  isAdmin: boolean("is_admin").notNull().default(false),
-  isOrganizationAdmin: boolean("is_organization_admin").notNull().default(false),
+  role: userRoleEnum('role').notNull().default('user'),
   organizationId: integer("organization_id").references(() => organizations.id),
   locationId: integer("location_id").references(() => locations.id),
   inviteToken: text("invite_token"),
@@ -496,8 +499,7 @@ export const insertUserSchema = baseUserSchema.extend({
   email: emailSchema,
   name: nameSchema,
   phone: z.string().optional(),
-  isAdmin: z.boolean().optional().default(false),
-  isOrganizationAdmin: z.boolean().optional().default(false),
+  role: z.enum(USER_ROLES).optional().default('user'),
   organizationId: z.number().nullable().optional(),
   password: passwordSchema,
   bowlerId: z.number().nullable().optional(),

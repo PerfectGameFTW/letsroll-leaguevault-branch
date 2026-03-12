@@ -23,7 +23,7 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
 
     // Check if there are existing admin users
     const users = await storage.getUsers();
-    const adminUsers = users.filter(user => user.isAdmin);
+    const adminUsers = users.filter(user => user.role === 'system_admin');
     
     if (adminUsers.length > 0) {
       return sendError(
@@ -81,8 +81,7 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
       password: hashedPassword,
       name: userData.name,
       phone: userData.phone ?? undefined,
-      isAdmin: true, // This is the key difference - setting isAdmin to true
-      isOrganizationAdmin: false,
+      role: 'system_admin',
       organizationId: null
     });
 

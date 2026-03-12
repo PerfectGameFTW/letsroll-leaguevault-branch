@@ -32,7 +32,7 @@ router.get("/", async (req, res) => {
     
     // Filter payments by organization if needed
     let accessiblePayments = payments;
-    if (!req.user?.isAdmin) {
+    if (req.user?.role !== 'system_admin') {
       accessiblePayments = await filterPaymentsByOrganization(req, payments);
     }
     
@@ -90,7 +90,7 @@ router.patch("/:id", async (req, res) => {
     }
     
     // Check if user has access to this payment
-    if (!req.user?.isAdmin) {
+    if (req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToPayment(req, id);
       if (!hasAccess) {
         return sendError(res, "You don't have access to update this payment", 403, 'FORBIDDEN');
@@ -122,7 +122,7 @@ router.delete("/:id", async (req, res) => {
     }
     
     // Check if user has access to this payment
-    if (!req.user?.isAdmin) {
+    if (req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToPayment(req, id);
       if (!hasAccess) {
         return sendError(res, "You don't have access to delete this payment", 403, 'FORBIDDEN');
@@ -146,7 +146,7 @@ router.post("/:id/refund", async (req: any, res) => {
       return sendError(res, "Invalid payment ID", 400, "INVALID_ID");
     }
 
-    if (!req.user?.isAdmin && !req.user?.isOrganizationAdmin) {
+    if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
       return sendError(res, "Only admins can process refunds", 403, "FORBIDDEN");
     }
 
@@ -167,7 +167,7 @@ router.post("/:id/refund", async (req: any, res) => {
       return sendError(res, "Only credit card payments can be refunded", 400, "INVALID_TYPE");
     }
 
-    if (!req.user.isAdmin) {
+    if (req.user.role !== 'system_admin') {
       const hasAccess = await hasAccessToPayment(req, id);
       if (!hasAccess) {
         return sendError(res, "You don't have access to refund this payment", 403, "FORBIDDEN");

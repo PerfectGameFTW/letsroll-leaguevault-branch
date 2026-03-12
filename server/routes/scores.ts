@@ -35,7 +35,7 @@ router.get('/league/:leagueId/week/:weekNumber', async (req, res) => {
 
     const { leagueId, weekNumber } = validationResult.data;
 
-    if (!req.user?.isAdmin) {
+    if (req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToLeague(req, leagueId);
       if (!hasAccess) {
         return sendError(res, "You don't have access to this league's scores", 403, 'FORBIDDEN');
@@ -59,7 +59,7 @@ router.get('/history', async (req, res) => {
 
     const { leagueId, weekNumber } = validationResult.data;
 
-    if (leagueId && !req.user?.isAdmin) {
+    if (leagueId && req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToLeague(req, leagueId);
       if (!hasAccess) {
         return sendError(res, "You don't have access to this league's scores", 403, 'FORBIDDEN');

@@ -23,7 +23,7 @@ router.get("/", async (req, res) => {
       
       // Check if user has access to this league's organization
       const userHasAccess = 
-        req.user?.isAdmin || 
+        req.user?.role === 'system_admin' || 
         league.organizationId === null || 
         (req.user?.organizationId === league.organizationId);
       
@@ -34,7 +34,7 @@ router.get("/", async (req, res) => {
       }
     } else {
       // If no league ID, get teams for leagues the user has access to
-      if (req.user?.isAdmin) {
+      if (req.user?.role === 'system_admin') {
         // Admins can see all teams
         teams = await storage.getTeams();
       } else {
@@ -74,7 +74,7 @@ router.get("/:id", async (req, res) => {
     
     // Check if user has access to this league's organization
     const userHasAccess = 
-      req.user?.isAdmin || 
+      req.user?.role === 'system_admin' || 
       league.organizationId === null || 
       (req.user?.organizationId === league.organizationId);
     
@@ -101,7 +101,7 @@ router.post("/", async (req, res) => {
     
     // Check if user has access to this league's organization
     const userHasAccess = 
-      req.user?.isAdmin || 
+      req.user?.role === 'system_admin' || 
       league.organizationId === null || 
       (req.user?.organizationId === league.organizationId);
     
@@ -140,7 +140,7 @@ router.patch("/:id", async (req, res) => {
     
     // Check if user has access to this league's organization
     const userHasAccess = 
-      req.user?.isAdmin || 
+      req.user?.role === 'system_admin' || 
       league.organizationId === null || 
       (req.user?.organizationId === league.organizationId);
     
@@ -180,7 +180,7 @@ router.delete("/:id", async (req, res) => {
     
     // Check if user has access to this league's organization
     const userHasAccess = 
-      req.user?.isAdmin || 
+      req.user?.role === 'system_admin' || 
       league.organizationId === null || 
       (req.user?.organizationId === league.organizationId);
     

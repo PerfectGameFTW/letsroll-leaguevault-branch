@@ -172,8 +172,8 @@ router.post('/', requireAdmin, async (req, res) => {
       try {
         const existingUser = await storage.getUserByEmail(adminData.email);
         if (existingUser) {
-          if (!existingUser.isOrganizationAdmin) {
-            await storage.updateUserOrganizationAdminStatus(existingUser.id, true);
+          if (existingUser.role !== 'org_admin' && existingUser.role !== 'system_admin') {
+            await storage.updateUserRole(existingUser.id, 'org_admin');
           }
           await storage.setUserOrganization(existingUser.id, organization.id);
           return sendSuccess(res, { organization, adminUser: sanitizeUser(existingUser) }, 201);
@@ -185,8 +185,7 @@ router.post('/', requireAdmin, async (req, res) => {
           name: adminData.name,
           password: placeholderPassword,
           phone: adminData.phone || null,
-          isAdmin: false,
-          isOrganizationAdmin: true,
+          role: 'org_admin',
           organizationId: organization.id
         });
 
@@ -385,7 +384,7 @@ router.post('/user/:userId/set', requireAdmin, async (req, res) => {
       }
     }
     
-    // setUserOrganization method handles setting isOrganizationAdmin
+    
     const updatedUser = await storage.setUserOrganization(userId, organizationId);
     sendSuccess(res, updatedUser);
   } catch (error) {

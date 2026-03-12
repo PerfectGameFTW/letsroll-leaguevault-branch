@@ -190,7 +190,7 @@ router.post('/customers', async (req, res) => {
       }
       
       const userHasAccess = 
-        req.user?.isAdmin || 
+        req.user?.role === 'system_admin' || 
         league.organizationId === null || 
         (req.user?.organizationId === league.organizationId);
       

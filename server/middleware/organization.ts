@@ -42,7 +42,7 @@ export function filterByOrganization(req: any, res: Response, next: NextFunction
 
   // System admins without an organization see all data
   // System admins with an organization default to their org's data
-  if (req.user.isAdmin && !req.query.organizationId) {
+  if (req.user.role === 'system_admin' && !req.query.organizationId) {
     req.organizationFilter = req.user.organizationId || null;
     return next();
   }
@@ -52,7 +52,7 @@ export function filterByOrganization(req: any, res: Response, next: NextFunction
     const orgId = parseInt(req.query.organizationId);
 
     // System admins can access any organization
-    if (req.user.isAdmin) {
+    if (req.user.role === 'system_admin') {
       req.organizationFilter = orgId;
       return next();
     }
@@ -82,7 +82,7 @@ export function filterByOrganization(req: any, res: Response, next: NextFunction
  */
 export async function hasAccessToLeague(req: any, leagueId: number): Promise<boolean> {
   // System admins have access to all leagues
-  if (req.user && req.user.isAdmin) {
+  if (req.user && req.user.role === 'system_admin') {
     return true;
   }
 
@@ -113,7 +113,7 @@ export function getOrganizationFilter(req: any): number | null {
   }
 
   // System admins default to their org, or all if unassigned
-  if (req.user && req.user.isAdmin && !req.query.organizationId) {
+  if (req.user && req.user.role === 'system_admin' && !req.query.organizationId) {
     return req.user.organizationId || null;
   }
 
@@ -122,7 +122,7 @@ export function getOrganizationFilter(req: any): number | null {
     const orgId = parseInt(req.query.organizationId);
     
     // System admins can access any organization
-    if (req.user && req.user.isAdmin) {
+    if (req.user && req.user.role === 'system_admin') {
       return orgId;
     }
     

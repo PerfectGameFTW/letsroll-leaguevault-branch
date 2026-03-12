@@ -46,8 +46,7 @@ interface User {
   id: number;
   email: string;
   name: string | null;
-  isAdmin: boolean;
-  isOrganizationAdmin: boolean;
+  role: string;
   organizationId: number | null;
   locationId: number | null;
   bowlerId: number | null;
@@ -100,7 +99,7 @@ export default function UsersPage() {
   const orgLocations = locations.filter(l => l.organizationId === organizationId);
 
   const createUserMutation = useMutation({
-    mutationFn: async (data: { firstName: string; lastName: string; email: string; isOrganizationAdmin: boolean; locationId: number | null }) => {
+    mutationFn: async (data: { firstName: string; lastName: string; email: string; makeOrgAdmin: boolean; locationId: number | null }) => {
       return apiRequest('/api/org-admin/users/create', 'POST', data);
     },
     onSuccess: (data: any) => {
@@ -134,8 +133,8 @@ export default function UsersPage() {
   });
 
   const updateRoleMutation = useMutation({
-    mutationFn: async ({ userId, isOrganizationAdmin }: { userId: number; isOrganizationAdmin: boolean }) => {
-      return apiRequest(`/api/org-admin/users/${userId}/admin-status`, 'PATCH', { isOrganizationAdmin });
+    mutationFn: async ({ userId, makeOrgAdmin }: { userId: number; makeOrgAdmin: boolean }) => {
+      return apiRequest(`/api/org-admin/users/${userId}/admin-status`, 'PATCH', { makeOrgAdmin });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/org-admin/users'] });
@@ -257,7 +256,7 @@ export default function UsersPage() {
                         </TableCell>
                         <TableCell>
                           <Select
-                            value={user.isOrganizationAdmin ? 'admin' : 'user'}
+                            value={user.role === 'org_admin' || user.role === 'system_admin' ? 'admin' : 'user'}
                             onValueChange={(value) => {
                               if (user.id === currentUser?.id) {
                                 toast({ title: 'Error', description: 'You cannot change your own role.', variant: 'destructive' });
@@ -265,7 +264,7 @@ export default function UsersPage() {
                               }
                               updateRoleMutation.mutate({
                                 userId: user.id,
-                                isOrganizationAdmin: value === 'admin',
+                                makeOrgAdmin: value === 'admin',
                               });
                             }}
                             disabled={user.id === currentUser?.id}
@@ -290,7 +289,7 @@ export default function UsersPage() {
                           </Select>
                         </TableCell>
                         <TableCell>
-                          {user.isOrganizationAdmin ? (
+                          {user.role === 'org_admin' || user.role === 'system_admin' ? (
                             <Badge variant="secondary">All Locations</Badge>
                           ) : (
                             <Select
@@ -438,7 +437,7 @@ export default function UsersPage() {
                       firstName: firstName.trim(),
                       lastName: lastName.trim(),
                       email: email.trim(),
-                      isOrganizationAdmin: role === 'admin',
+                      makeOrgAdmin: role === 'admin',
                       locationId: role === 'admin' || locationId === 'none' ? null : parseInt(locationId),
                     });
                   }}

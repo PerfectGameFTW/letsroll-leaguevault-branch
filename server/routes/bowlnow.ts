@@ -14,7 +14,7 @@ router.get('/status', async (req: any, res: Response) => {
 
 router.post('/sync-bowler/:id', async (req: any, res: Response) => {
   try {
-    if (!req.user?.isAdmin && !req.user?.isOrganizationAdmin) {
+    if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
       return sendError(res, 'Admin access required', 403, 'FORBIDDEN');
     }
 
@@ -37,7 +37,7 @@ router.post('/sync-bowler/:id', async (req: any, res: Response) => {
 
 router.post('/sync-all', async (req: any, res: Response) => {
   try {
-    if (!req.user?.isAdmin && !req.user?.isOrganizationAdmin) {
+    if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
       return sendError(res, 'Admin access required', 403, 'FORBIDDEN');
     }
 

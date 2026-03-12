@@ -1,8 +1,16 @@
 import { storage } from '../storage.js';
 
+export function isSystemAdmin(user: any): boolean {
+  return user?.role === 'system_admin';
+}
+
+export function isOrgOrHigher(user: any): boolean {
+  return user?.role === 'org_admin' || user?.role === 'system_admin';
+}
+
 export function requireOrganizationAccess(req: any, resourceOrgId: number | null): boolean {
   if (!req.user) return false;
-  if (req.user.isAdmin) return true;
+  if (isSystemAdmin(req.user)) return true;
   if (resourceOrgId === null) return true;
   return req.user.organizationId === resourceOrgId;
 }
@@ -12,7 +20,7 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
     return false;
   }
 
-  if (req.user.isAdmin) {
+  if (isSystemAdmin(req.user)) {
     return true;
   }
 
@@ -44,7 +52,7 @@ export async function hasAccessToTeam(req: any, teamId: number): Promise<boolean
     return false;
   }
 
-  if (req.user.isAdmin) {
+  if (isSystemAdmin(req.user)) {
     return true;
   }
 
@@ -61,7 +69,7 @@ export async function hasAccessToBowler(req: any, bowlerId: number): Promise<boo
     return false;
   }
 
-  if (req.user.isAdmin) {
+  if (isSystemAdmin(req.user)) {
     return true;
   }
 
@@ -72,7 +80,7 @@ export async function hasAccessToBowler(req: any, bowlerId: number): Promise<boo
   const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId });
 
   if (bowlerLeagueEntries.length === 0) {
-    return req.user.isOrganizationAdmin || false;
+    return isOrgOrHigher(req.user);
   }
 
   const leagueIds = [...new Set(bowlerLeagueEntries.map(bl => bl.leagueId))];
@@ -104,7 +112,7 @@ export async function hasAccessToPayment(req: any, paymentId: number): Promise<b
     return false;
   }
 
-  if (req.user.isAdmin) {
+  if (isSystemAdmin(req.user)) {
     return true;
   }
 
@@ -139,7 +147,7 @@ export async function filterPaymentsByOrganization(req: any, payments: any[]): P
     return [];
   }
 
-  if (req.user.isAdmin) {
+  if (isSystemAdmin(req.user)) {
     return payments;
   }
 

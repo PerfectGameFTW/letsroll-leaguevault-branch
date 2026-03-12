@@ -38,7 +38,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
     }
 
     const user = req.user as any;
-    if (user.id !== userId && !user.isAdmin) {
+    if (user.id !== userId && user.role !== 'system_admin') {
       return sendError(res, 'Unauthorized', 403, 'UNAUTHORIZED');
     }
 

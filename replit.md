@@ -73,7 +73,16 @@ curl -X POST https://<your-domain>/api/admin-update/first-system-admin/<userId> 
 
 These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes/admin-update.ts`. They are completely disabled if `SETUP_SECRET` is not set in the environment.
 
-## Recent Changes (2026-03-09)
+## Recent Changes (2026-03-12)
+- **Role Enum Migration**: Replaced `isAdmin` (boolean) + `isOrganizationAdmin` (boolean) with a single `role` enum column (`system_admin`, `org_admin`, `user`)
+  - Schema: `pgEnum('user_role', ['system_admin', 'org_admin', 'user'])`, `role` column with default `'user'`
+  - Storage: `updateUserRole(userId, role)` replaces `updateUserAdminStatus` + `updateUserOrganizationAdminStatus`
+  - Access control helpers: `isSystemAdmin(user)` and `isOrgOrHigher(user)` in `server/utils/access-control.ts`
+  - All 17 route files, 4 middleware/auth files, and 11 frontend files updated
+  - Backend API fields renamed: `isOrganizationAdmin` → `makeOrgAdmin`, `isAdmin` → `makeSystemAdmin` (backward-compat fallback: server accepts old field names)
+  - Old boolean columns dropped from database
+
+## Previous Changes (2026-03-09)
 - **PWA (Progressive Web App)**: App is installable on mobile and desktop home screens
   - Web app manifest at `client/public/manifest.json` with LeagueVault branding
   - PWA icons in `client/public/icons/` (72-512px sizes + apple-touch-icon)

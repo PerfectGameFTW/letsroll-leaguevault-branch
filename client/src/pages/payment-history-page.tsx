@@ -53,8 +53,7 @@ interface User {
   bowlerId: number | null;
   name: string | null;
   email: string;
-  isAdmin: boolean;
-  isOrganizationAdmin: boolean;
+  role: string;
 }
 
 export default function PaymentHistoryPage() {
@@ -285,7 +284,7 @@ export default function PaymentHistoryPage() {
       <BowlerLayout bowlerName={currentUser.data.name || "Administrator"} leagueName="No Bowler Account">
         <div className="text-center space-y-4">
           <p>You don't have a bowler account linked to your user profile.</p>
-          {currentUser.data.isAdmin && (
+          {currentUser.data.role === 'system_admin' && (
             <div className="p-4 border rounded-md bg-amber-50 max-w-md mx-auto">
               <p className="text-amber-800">As an administrator, you can view payment history by selecting a specific bowler.</p>
             </div>

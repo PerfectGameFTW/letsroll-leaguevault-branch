@@ -21,8 +21,7 @@ interface UserProfileMenuProps {
     id: number;
     name: string | null;
     email: string;
-    isAdmin: boolean;
-    isOrganizationAdmin: boolean;
+    role: string;
     avatar?: string | null;
   };
   showName?: boolean;
@@ -228,9 +227,9 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
             <div className="w-full space-y-2">
               <Label>Roles</Label>
               <div className="text-sm">
-                {user.isAdmin && <div className="py-1">System Administrator</div>}
-                {user.isOrganizationAdmin && <div className="py-1">Organization Administrator</div>}
-                {!user.isAdmin && !user.isOrganizationAdmin && <div className="py-1">Standard User</div>}
+                {user.role === 'system_admin' && <div className="py-1">System Administrator</div>}
+                {user.role === 'org_admin' && <div className="py-1">Organization Administrator</div>}
+                {user.role === 'user' && <div className="py-1">Standard User</div>}
               </div>
             </div>
           </div>

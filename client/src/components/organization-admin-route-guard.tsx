@@ -19,9 +19,8 @@ export const OrganizationAdminRouteGuard: FC<OrganizationAdminRouteGuardProps> =
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });
 
-  const isOrgAdmin = currentUserResponse?.data?.isOrganizationAdmin || false;
-  const isSystemAdmin = currentUserResponse?.data?.isAdmin || false;
-  const hasAdminAccess = isOrgAdmin || isSystemAdmin;
+  const role = currentUserResponse?.data?.role;
+  const hasAdminAccess = role === 'system_admin' || role === 'org_admin';
 
   useEffect(() => {
     // If user data is loaded and user is not an org admin or system admin, redirect to home

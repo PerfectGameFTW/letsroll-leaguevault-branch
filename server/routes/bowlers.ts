@@ -20,7 +20,7 @@ router.get("/unlinked", async (req: any, res) => {
   try {
     let organizationId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
 
-    if (!req.user?.isAdmin && !req.user?.isOrganizationAdmin) {
+    if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
       if (!req.user?.organizationId) {
         return sendError(res, "No organization context available", 403, 'FORBIDDEN');
       }
@@ -99,7 +99,7 @@ router.get("/", async (req, res) => {
     }
 
     // If teamId is provided, check organization access
-    if (teamId && !req.user?.isAdmin) {
+    if (teamId && req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToTeam(req, teamId);
       if (!hasAccess) {
         return sendError(res, "You don't have access to this team's bowlers", 403, 'FORBIDDEN');
@@ -116,7 +116,7 @@ router.get("/", async (req, res) => {
     // If no teamId provided, we need to filter bowlers by organization
     let accessibleBowlers = bowlers;
     
-    if (!teamId && !req.user?.isAdmin && req.user?.organizationId) {
+    if (!teamId && req.user?.role !== 'system_admin' && req.user?.organizationId) {
       const [leagues, bowlerLeagues] = await Promise.all([
         storage.getLeagues(req.user.organizationId),
         storage.getBowlerLeagues(),
@@ -165,7 +165,7 @@ router.get("/:id", async (req, res) => {
     }
     
     // Check organization access
-    if (!req.user?.isAdmin) {
+    if (req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToBowler(req, id);
       if (!hasAccess) {
         return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
@@ -186,7 +186,7 @@ router.post("/", async (req, res) => {
     const bowler = insertBowlerSchema.parse(req.body);
     
     // If teamId is provided in the request, verify organization access
-    if (req.body.teamId && !req.user?.isAdmin) {
+    if (req.body.teamId && req.user?.role !== 'system_admin') {
       const teamId = parseInt(req.body.teamId);
       
       if (!isNaN(teamId)) {
@@ -199,7 +199,7 @@ router.post("/", async (req, res) => {
 
     // Check for existing bowler with same email if provided
     if (bowler.email) {
-      const isOrgUser = !req.user?.isAdmin && !!req.user?.organizationId;
+      const isOrgUser = req.user?.role !== 'system_admin' && !!req.user?.organizationId;
       const [existingBowlers, leagues, bowlerLeagues] = await Promise.all([
         storage.getBowlers(),
         isOrgUser ? storage.getLeagues(req.user.organizationId) : Promise.resolve(null),
@@ -300,7 +300,7 @@ router.patch("/:id", async (req, res) => {
     }
     
     // Check organization access
-    if (!req.user?.isAdmin) {
+    if (req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToBowler(req, id);
       if (!hasAccess) {
         return sendError(res, "You don't have access to update this bowler", 403, 'FORBIDDEN');
@@ -366,7 +366,7 @@ router.delete("/:id", async (req, res) => {
     }
     
     // Check organization access
-    if (!req.user?.isAdmin) {
+    if (req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToBowler(req, id);
       if (!hasAccess) {
         return sendError(res, "You don't have access to delete this bowler", 403, 'FORBIDDEN');

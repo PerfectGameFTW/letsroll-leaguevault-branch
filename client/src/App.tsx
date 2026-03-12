@@ -59,7 +59,7 @@ const RootRedirectHandler: FC = () => {
         navigate('/login');
       } else {
         const user = currentUserResponse.data;
-        const isAdmin = user.isOrganizationAdmin || user.isAdmin;
+        const isAdmin = user.role === 'system_admin' || user.role === 'org_admin';
 
         if (isAdmin && user.organizationId) {
           navigate('/home');

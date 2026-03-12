@@ -30,7 +30,7 @@ router.get('/:id', async (req: any, res) => {
       return sendError(res, 'Location not found', 404, 'NotFound');
     }
 
-    if (!req.user?.isAdmin && req.user?.organizationId !== location.organizationId) {
+    if (req.user?.role !== 'system_admin' && req.user?.organizationId !== location.organizationId) {
       return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
     }
 
@@ -44,14 +44,14 @@ router.get('/:id', async (req: any, res) => {
 router.post('/', async (req: any, res) => {
   try {
     const organizationId = req.user?.organizationId;
-    if (!organizationId && !req.user?.isAdmin) {
+    if (!organizationId && req.user?.role !== 'system_admin') {
       return sendError(res, 'Organization required', 400, 'InvalidRequest');
     }
 
     const body = { ...req.body, organizationId: req.body.organizationId || organizationId };
     const validatedData = insertLocationSchema.parse(body);
 
-    if (!req.user?.isAdmin && validatedData.organizationId !== organizationId) {
+    if (req.user?.role !== 'system_admin' && validatedData.organizationId !== organizationId) {
       return sendError(res, 'Cannot create location for another organization', 403, 'Forbidden');
     }
 
@@ -78,7 +78,7 @@ router.patch('/:id', async (req: any, res) => {
       return sendError(res, 'Location not found', 404, 'NotFound');
     }
 
-    if (!req.user?.isAdmin && req.user?.organizationId !== location.organizationId) {
+    if (req.user?.role !== 'system_admin' && req.user?.organizationId !== location.organizationId) {
       return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
     }
 
@@ -112,7 +112,7 @@ router.patch('/:id/archive', async (req: any, res) => {
       return sendError(res, 'Location not found', 404, 'NotFound');
     }
 
-    if (!req.user?.isAdmin && req.user?.organizationId !== location.organizationId) {
+    if (req.user?.role !== 'system_admin' && req.user?.organizationId !== location.organizationId) {
       return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
     }
 
@@ -136,7 +136,7 @@ router.patch('/:id/restore', async (req: any, res) => {
       return sendError(res, 'Location not found', 404, 'NotFound');
     }
 
-    if (!req.user?.isAdmin && req.user?.organizationId !== location.organizationId) {
+    if (req.user?.role !== 'system_admin' && req.user?.organizationId !== location.organizationId) {
       return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
     }
 
@@ -160,7 +160,7 @@ router.delete('/:id', async (req: any, res) => {
       return sendError(res, 'Location not found', 404, 'NotFound');
     }
 
-    if (!req.user?.isAdmin && req.user?.organizationId !== location.organizationId) {
+    if (req.user?.role !== 'system_admin' && req.user?.organizationId !== location.organizationId) {
       return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
     }
 

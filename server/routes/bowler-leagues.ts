@@ -37,7 +37,7 @@ router.get("/", async (req, res) => {
 
     let bowlerLeagues = await storage.getBowlerLeagues(filters);
 
-    if (!filters.bowlerId && !filters.leagueId && !filters.teamId && !req.user?.isAdmin) {
+    if (!filters.bowlerId && !filters.leagueId && !filters.teamId && req.user?.role !== 'system_admin') {
       const leagueIds = new Set<number>();
       for (const bl of bowlerLeagues) {
         leagueIds.add(bl.leagueId);
