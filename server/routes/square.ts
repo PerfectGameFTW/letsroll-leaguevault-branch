@@ -6,12 +6,15 @@ import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js
 
 const router = Router();
 
+router.use((req: any, res: any, next: any) => {
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    return sendError(res, "Authentication required", 401, 'UNAUTHORIZED');
+  }
+  next();
+});
+
 router.post('/payments', async (req: any, res) => {
   try {
-    if (!req.isAuthenticated || !req.isAuthenticated()) {
-      return sendError(res, "Authentication required", 401, 'UNAUTHORIZED');
-    }
-
     const { sourceId, amount, bowlerId, leagueId } = req.body;
 
     if (!sourceId || !bowlerId || !leagueId) {
