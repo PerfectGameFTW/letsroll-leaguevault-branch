@@ -77,17 +77,11 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const update = partialPaymentSchema.parse(req.body);
+    const parsed = partialPaymentSchema.parse(req.body);
 
-    // Convert null notes to undefined to match the schema
-    if (update.notes === null) {
-      update.notes = undefined;
-    }
-
-    // Convert null checkNumber to undefined
-    if (update.checkNumber === null) {
-      (update as any).checkNumber = undefined;
-    }
+    const update: Partial<z.infer<typeof insertPaymentSchema>> = Object.fromEntries(
+      Object.entries(parsed).map(([k, v]) => [k, v === null ? undefined : v])
+    );
 
     // If updating to check payment type, ensure check number is provided
     if (update.type === 'check' && !update.checkNumber) {
@@ -102,7 +96,7 @@ router.patch("/:id", async (req, res) => {
       }
     }
 
-    const updated = await storage.updatePayment(id, update as any);
+    const updated = await storage.updatePayment(id, update);
     if (!updated) {
       return sendError(res, "Payment not found", 404, "NOT_FOUND");
     }
