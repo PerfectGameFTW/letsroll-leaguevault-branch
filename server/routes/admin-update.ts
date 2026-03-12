@@ -77,8 +77,18 @@ router.patch('/users/:id/admin-status', requireAdmin, async (req: Request, res: 
 
 // Endpoint to make a registered user the first system admin
 // This can only work if ZERO admin users exist in the system
+// Requires a SETUP_SECRET header matching the SETUP_SECRET environment variable
 router.post('/first-system-admin/:id', async (req: Request, res: Response) => {
   try {
+    const setupSecret = process.env.SETUP_SECRET;
+    if (!setupSecret) {
+      return sendError(res, 'This endpoint is disabled. Set SETUP_SECRET to enable it.', 403, 'ENDPOINT_DISABLED');
+    }
+    const providedSecret = req.headers['x-setup-secret'];
+    if (!providedSecret || providedSecret !== setupSecret) {
+      return sendError(res, 'Invalid or missing setup secret.', 401, 'UNAUTHORIZED');
+    }
+
     // Check if there are existing admin users
     const users = await storage.getUsers();
     const adminUsers = users.filter(user => user.isAdmin);

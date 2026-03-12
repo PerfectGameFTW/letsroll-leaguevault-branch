@@ -8,8 +8,18 @@ const router = Router();
 
 // Endpoint to create the first admin user
 // This can only be used if there are no admin users in the system
+// Requires a SETUP_SECRET header matching the SETUP_SECRET environment variable
 router.post('/create-first-admin', async (req: Request, res: Response) => {
   try {
+    const setupSecret = process.env.SETUP_SECRET;
+    if (!setupSecret) {
+      return sendError(res, 'This endpoint is disabled. Set SETUP_SECRET to enable it.', 403, 'ENDPOINT_DISABLED');
+    }
+    const providedSecret = req.headers['x-setup-secret'];
+    if (!providedSecret || providedSecret !== setupSecret) {
+      return sendError(res, 'Invalid or missing setup secret.', 401, 'UNAUTHORIZED');
+    }
+
     // Check if there are existing admin users
     const users = await storage.getUsers();
     const adminUsers = users.filter(user => user.isAdmin);
