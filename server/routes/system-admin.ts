@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
 import { storage } from '../storage.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { db } from '../db.js';
+import { users as usersTable } from '../../shared/schema.js';
+import { eq } from 'drizzle-orm';
 
 /**
  * This route handles system administrator management
@@ -55,13 +58,9 @@ router.post('/create/:id', requireAdmin, async (req: Request, res: Response) => 
       } else {
         // For users without an organization, we'll update directly in the database
         // since the storage method requires an organization
-        const { db } = await import('../db.js');
-        const { users } = await import('../../shared/schema.js');
-        const { eq } = await import('drizzle-orm');
-        
-        await db.update(users)
+        await db.update(usersTable)
           .set({ isOrganizationAdmin: true })
-          .where(eq(users.id, userId));
+          .where(eq(usersTable.id, userId));
           
       }
       
@@ -174,13 +173,9 @@ router.post('/revoke/:id', requireAdmin, async (req: Request, res: Response) => 
         updatedUser = await storage.updateUserOrganizationAdminStatus(userId, false);
       } else {
         // For users without an organization, we'll update directly in the database
-        const { db } = await import('../db.js');
-        const { users } = await import('../../shared/schema.js');
-        const { eq } = await import('drizzle-orm');
-        
-        await db.update(users)
+        await db.update(usersTable)
           .set({ isOrganizationAdmin: false })
-          .where(eq(users.id, userId));
+          .where(eq(usersTable.id, userId));
           
         
         // Re-fetch the user to get updated info
