@@ -46,6 +46,10 @@ router.get('/:id/logo', async (req, res) => {
         return res.status(400).send('Invalid logo format');
       }
       const mimeType = matches[1];
+      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedMimeTypes.includes(mimeType)) {
+        return res.status(400).send('Invalid logo MIME type');
+      }
       const buffer = Buffer.from(matches[2], 'base64');
       res.set('Content-Type', mimeType);
       res.set('Cache-Control', 'public, max-age=86400');
