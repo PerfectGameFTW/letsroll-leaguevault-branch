@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
 import { storage } from '../storage.js';
 import { 
   insertOrganizationSchema, 
@@ -175,7 +175,7 @@ router.post('/', requireAdmin, async (req, res) => {
             await storage.updateUserOrganizationAdminStatus(existingUser.id, true);
           }
           await storage.setUserOrganization(existingUser.id, organization.id);
-          return sendSuccess(res, { organization, adminUser: { ...existingUser, password: undefined } }, 201);
+          return sendSuccess(res, { organization, adminUser: sanitizeUser(existingUser) }, 201);
         }
         
         const placeholderPassword = await hashPassword(randomBytes(32).toString('hex'));
@@ -204,7 +204,7 @@ router.post('/', requireAdmin, async (req, res) => {
         };
         await sendTemplatedEmail('org_admin_invite', adminData.email, variables);
         
-        return sendSuccess(res, { organization, adminUser: { ...newAdminUser, password: undefined } }, 201);
+        return sendSuccess(res, { organization, adminUser: sanitizeUser(newAdminUser) }, 201);
       } catch (adminError) {
         console.error('[Organizations] Error creating admin user:', adminError);
         return sendSuccess(res, { 

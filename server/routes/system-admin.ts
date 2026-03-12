@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
 import { storage } from '../storage.js';
 import { requireAdmin } from '../middleware/admin.js';
 
@@ -70,9 +70,8 @@ router.post('/create/:id', requireAdmin, async (req: Request, res: Response) => 
       sendSuccess(
         res,
         { 
-          ...updatedUser, 
-          password: undefined,
-          isOrganizationAdmin: true // Set explicitly since we just updated it
+          ...sanitizeUser(updatedUser),
+          isOrganizationAdmin: true
         }
       );
     } catch (error) {
@@ -106,7 +105,7 @@ router.get('/', requireAdmin, async (req: Request, res: Response) => {
     // Return the list of system admins without passwords
     sendSuccess(
       res,
-      systemAdmins.map(user => ({ ...user, password: undefined }))
+      systemAdmins.map(sanitizeUser)
     );
   } catch (error) {
     console.error('[System Admin] Error fetching system admins:', error);
@@ -192,7 +191,7 @@ router.post('/revoke/:id', requireAdmin, async (req: Request, res: Response) => 
       // Return the updated user without password
       sendSuccess(
         res,
-        { ...updatedUser, password: undefined }
+        sanitizeUser(updatedUser!)
       );
     } catch (error) {
       console.error('[System Admin] Error revoking organization admin status:', error);

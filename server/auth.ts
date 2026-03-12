@@ -7,6 +7,7 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
+import { sanitizeUser } from "./utils/api.js";
 import { z } from "zod";
 import { passwordSchema } from "@shared/password-validation";
 import connectPg from "connect-pg-simple";
@@ -268,7 +269,7 @@ export function setupAuth(app: Express) {
         }
         res.status(201).json({
           success: true,
-          data: { ...user, password: undefined }
+          data: sanitizeUser(user)
         });
       });
     } catch (error) {
@@ -319,7 +320,7 @@ export function setupAuth(app: Express) {
         }
         res.json({
           success: true,
-          data: { ...user, password: undefined }
+          data: sanitizeUser(user)
         });
       });
     })(req, res, next);
@@ -350,7 +351,7 @@ export function setupAuth(app: Express) {
       const user = req.user as SelectUser;
       res.json({
         success: true,
-        data: { ...user, password: undefined }
+        data: sanitizeUser(user)
       });
     } catch (error) {
       console.error('[Auth] Error in /api/user route:', error);
@@ -434,7 +435,7 @@ export function setupAuth(app: Express) {
         }
         res.json({
           success: true,
-          data: { ...user, password: undefined }
+          data: sanitizeUser(user)
         });
       });
     } catch (error) {
@@ -538,7 +539,7 @@ export function setupAuth(app: Express) {
       const updatedUser = await storage.getUser(user.id);
       res.json({
         success: true,
-        data: { ...updatedUser, password: undefined }
+        data: sanitizeUser(updatedUser!)
       });
     } catch (error) {
       console.error('[Auth] Claim bowler error:', error);

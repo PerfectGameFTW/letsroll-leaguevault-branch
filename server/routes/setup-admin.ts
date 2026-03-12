@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
 import { storage } from '../storage.js';
 import { hashPassword } from '../auth.js';
 
@@ -92,7 +92,7 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
     // Return the created user without password
     sendSuccess(
       res,
-      { ...newAdminUser, password: undefined },
+      sanitizeUser(newAdminUser),
       201
     );
   } catch (error) {

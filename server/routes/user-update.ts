@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { sendError, sendSuccess } from '../utils/api';
+import { sendError, sendSuccess, sanitizeUser } from '../utils/api';
 import { storage } from '../storage';
 import { hashPassword } from '../auth';
 import { passwordSchema } from '@shared/password-validation';
@@ -114,7 +114,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       }
     }
 
-    return sendSuccess(res, { ...updatedUser, password: undefined });
+    return sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
     console.error('[User] Error updating user:', error);
     return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');

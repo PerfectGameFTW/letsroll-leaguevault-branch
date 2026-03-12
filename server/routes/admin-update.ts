@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
 import { storage } from '../storage.js';
 import { requireAdmin } from '../middleware/admin.js';
 
@@ -62,7 +62,7 @@ router.patch('/users/:id/admin-status', requireAdmin, async (req: Request, res: 
     // Return the updated user without password
     sendSuccess(
       res,
-      { ...updatedUser, password: undefined }
+      sanitizeUser(updatedUser)
     );
   } catch (error) {
     console.error('[Admin] Error updating user admin status:', error);
@@ -128,7 +128,7 @@ router.post('/first-system-admin/:id', async (req: Request, res: Response) => {
     // Return the updated user without password
     sendSuccess(
       res,
-      { ...updatedUser, password: undefined }
+      sanitizeUser(updatedUser)
     );
   } catch (error) {
     console.error('[Admin] Error creating first system admin:', error);

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { randomBytes } from 'crypto';
 import { storage } from '../storage';
-import { sendSuccess, sendError } from '../utils/api';
+import { sendSuccess, sendError, sanitizeUser } from '../utils/api';
 import { hashPassword } from '../auth';
 import { sendInviteEmail, sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email';
 import { z } from 'zod';
@@ -374,7 +374,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, async (req: any, res:
 
     const finalUser = await storage.getUser(newUser.id);
 
-    return sendSuccess(res, { user: { ...finalUser, password: undefined }, emailSent });
+    return sendSuccess(res, { user: sanitizeUser(finalUser!), emailSent });
   } catch (error) {
     console.error('[Org Admin Route] Error creating user:', error);
     return sendError(res, 'internal_error', 'Failed to create user', 500);

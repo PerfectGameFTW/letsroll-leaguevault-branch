@@ -1,5 +1,13 @@
 import { Response } from 'express';
 import { ZodError } from 'zod';
+import { type User } from '@shared/schema.js';
+
+export type SanitizedUser = Omit<User, 'password' | 'inviteToken' | 'inviteTokenExpiry'>;
+
+export function sanitizeUser(user: User): SanitizedUser {
+  const { password, inviteToken, inviteTokenExpiry, ...safeUser } = user;
+  return safeUser;
+}
 
 export interface ApiResponse<T> {
   success: boolean;
