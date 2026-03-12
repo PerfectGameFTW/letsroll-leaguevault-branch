@@ -33,7 +33,7 @@ async function createFirstAdmin() {
         id: result.data.id,
         email: result.data.email,
         name: result.data.name,
-        isAdmin: result.data.isAdmin
+        role: result.data.role
       });
     } else {
       console.error('Failed to create admin user:', result.error);

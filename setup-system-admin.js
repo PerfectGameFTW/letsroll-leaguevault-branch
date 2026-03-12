@@ -1,12 +1,12 @@
 /**
  * To create a system admin, run the following SQL command directly:
  * 
- * UPDATE users SET is_admin = true, is_organization_admin = true WHERE id = [USER_ID];
+ * UPDATE users SET role = 'system_admin' WHERE id = [USER_ID];
  * 
  * Replace [USER_ID] with the ID of the user you want to promote to system admin.
  * 
  * Example: 
- * UPDATE users SET is_admin = true, is_organization_admin = true WHERE id = 33;
+ * UPDATE users SET role = 'system_admin' WHERE id = 33;
  * 
  * This will make the user with ID 33 a system admin with access to all pages.
  * 
@@ -21,7 +21,7 @@ console.log('---------------------------------');
 console.log('To create a system admin, use one of these methods:');
 console.log('');
 console.log('1. Direct SQL:');
-console.log('   UPDATE users SET is_admin = true, is_organization_admin = true WHERE id = [USER_ID];');
+console.log("   UPDATE users SET role = 'system_admin' WHERE id = [USER_ID];");
 console.log('');
 console.log('2. API endpoint (requires existing admin authentication):');
 console.log('   POST /api/system-admin/create/:id');
