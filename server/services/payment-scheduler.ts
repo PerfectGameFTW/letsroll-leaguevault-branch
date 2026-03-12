@@ -1,6 +1,6 @@
 import schedule from "node-schedule";
 import { db } from "../db";
-import { eq, and, lte, isNull, or, sql } from "drizzle-orm";
+import { eq, and, lte, gte, isNull, or, sql } from "drizzle-orm";
 import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
 import { addWeeks, addMonths, nextDay, setHours, setMinutes, setSeconds, setMilliseconds, isAfter, differenceInWeeks } from "date-fns";
 import { createSquarePayment } from "../lib/square";
@@ -400,13 +400,17 @@ class PaymentScheduler {
         return;
       }
 
+      const seasonEnd = new Date(league.seasonEnd);
+
       const totalPaidResult = await db
         .select({ total: sql<number>`COALESCE(SUM(${payments.amount}), 0)` })
         .from(payments)
         .where(and(
           eq(payments.bowlerId, scheduleRecord.bowlerId),
           eq(payments.leagueId, scheduleRecord.leagueId),
-          eq(payments.status, 'paid')
+          eq(payments.status, 'paid'),
+          gte(payments.weekOf, seasonStart),
+          lte(payments.weekOf, seasonEnd)
         ));
       const totalPaid = Number(totalPaidResult[0]?.total || 0);
 
