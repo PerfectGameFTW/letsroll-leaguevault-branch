@@ -453,7 +453,18 @@ export function setupAuth(app: Express) {
     }
   });
 
-  authRouter.post("/claim-bowler", loginLimiter, async (req, res) => {
+  const claimLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: { message: "Too many requests, please try again later", code: "RATE_LIMITED" }
+    }
+  });
+
+  authRouter.post("/claim-bowler", claimLimiter, async (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
         return res.status(401).json({
