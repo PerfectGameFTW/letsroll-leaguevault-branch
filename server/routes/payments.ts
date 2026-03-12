@@ -5,6 +5,7 @@ import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { refundPayment as squareRefund } from '../services/square.js';
 import { hasAccessToPayment, filterPaymentsByOrganization, requireOrganizationAccess } from '../utils/access-control.js';
+import { paymentWriteLimiter } from '../middleware/rate-limit.js';
 
 const router = Router();
 
@@ -44,7 +45,7 @@ router.get("/", async (req, res) => {
 });
 
 // Create new payment
-router.post("/", async (req, res) => {
+router.post("/", paymentWriteLimiter, async (req, res) => {
   try {
     const payment = insertPaymentSchema.parse(req.body);
 
@@ -138,7 +139,7 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-router.post("/:id/refund", async (req: any, res) => {
+router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {

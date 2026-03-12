@@ -15,6 +15,7 @@ import { requireAdmin } from '../middleware/admin.js';
 import { hashPassword } from '../auth.js';
 import { requireOrganizationAccess } from '../utils/access-control.js';
 import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email.js';
+import { adminWriteLimiter } from '../middleware/rate-limit.js';
 
 const router = Router();
 
@@ -155,7 +156,7 @@ router.get('/slug/:slug/leagues', async (req, res) => {
 });
 
 // Create a new organization (admin only)
-router.post('/', requireAdmin, async (req, res) => {
+router.post('/', requireAdmin, adminWriteLimiter, async (req, res) => {
   try {
     const { adminData, ...orgData } = req.body;
     const validatedData = insertOrganizationSchema.parse(orgData);
@@ -225,7 +226,7 @@ router.post('/', requireAdmin, async (req, res) => {
 });
 
 // Update an organization (admin only)
-router.patch('/:id', requireAdmin, async (req, res) => {
+router.patch('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -321,7 +322,7 @@ router.patch('/:id/restore', requireAdmin, async (req, res) => {
 });
 
 // Delete an organization permanently (admin only)
-router.delete('/:id', requireAdmin, async (req, res) => {
+router.delete('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -357,7 +358,7 @@ router.get('/user/me', async (req, res) => {
 });
 
 // Set user's organization (admin only)
-router.post('/user/:userId/set', requireAdmin, async (req, res) => {
+router.post('/user/:userId/set', requireAdmin, adminWriteLimiter, async (req, res) => {
   try {
     const userId = parseInt(req.params.userId, 10);
     if (isNaN(userId)) {

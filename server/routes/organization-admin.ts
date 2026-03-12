@@ -5,6 +5,7 @@ import { sendSuccess, sendError, sanitizeUser } from '../utils/api';
 import { hashPassword } from '../auth';
 import { sendInviteEmail, sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email';
 import { z } from 'zod';
+import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit';
 
 // Define error code type for type safety
 type ErrorCode = string;
@@ -108,7 +109,7 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
 });
 
 // Update a user's organization admin status
-router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
+router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
@@ -150,7 +151,7 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, async (req
 });
 
 // Add a user to the organization
-router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
+router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
@@ -225,7 +226,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, async (req: any, res
 });
 
 // Remove a user from the organization
-router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
+router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
@@ -299,7 +300,7 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, async (req: an
   }
 });
 
-router.post('/users/create', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
+router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async (req: any, res: Response) => {
   try {
     const schema = z.object({
       firstName: z.string().min(1, 'First name is required').max(50),
@@ -375,7 +376,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, async (req: any, res:
   }
 });
 
-router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
+router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, inviteLimiter, async (req: any, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {

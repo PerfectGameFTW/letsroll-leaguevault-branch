@@ -4,6 +4,7 @@ import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCa
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
+import { squarePaymentLimiter } from '../middleware/rate-limit.js';
 
 const router = Router();
 
@@ -14,7 +15,7 @@ router.use((req: any, res: any, next: any) => {
   next();
 });
 
-router.post('/payments', async (req: any, res) => {
+router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
   try {
     const { sourceId, amount, bowlerId, leagueId } = req.body;
 
@@ -172,7 +173,7 @@ router.post('/payments', async (req: any, res) => {
   }
 });
 
-router.post('/customers', async (req, res) => {
+router.post('/customers', squarePaymentLimiter, async (req, res) => {
   try {
     // If a team ID is provided, verify the user has access to it
     if (req.body.teamId) {
