@@ -40,24 +40,28 @@ router.post('/payments', async (req: any, res) => {
       return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
     }
 
-    if (league.weeklyFee && league.seasonStart && league.seasonEnd) {
-      const seasonStart = new Date(league.seasonStart);
-      const seasonEnd = new Date(league.seasonEnd);
-      const totalWeeks = Math.max(1, Math.ceil((seasonEnd.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
-      const fullSeasonAmount = league.weeklyFee * totalWeeks;
-
-      const existingPayments = await storage.getPayments(bowlerId, leagueId);
-      const totalPaid = existingPayments
-        .filter((p: any) => p.status === 'paid')
-        .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
-
-      const remainingBalance = Math.max(0, fullSeasonAmount - totalPaid);
-
-      if (amount > remainingBalance) {
-        return sendError(res, `Amount ($${(amount / 100).toFixed(2)}) exceeds remaining balance ($${(remainingBalance / 100).toFixed(2)})`, 400, 'AMOUNT_EXCEEDS_BALANCE');
-      }
-    } else if (!league.weeklyFee) {
+    if (!league.weeklyFee) {
       return sendError(res, "League has no weekly fee configured — cannot process payment", 400, 'LEAGUE_NOT_CONFIGURED');
+    }
+
+    if (!league.seasonStart || !league.seasonEnd) {
+      return sendError(res, "League has no season dates configured — cannot process payment", 400, 'LEAGUE_NOT_CONFIGURED');
+    }
+
+    const seasonStart = new Date(league.seasonStart);
+    const seasonEnd = new Date(league.seasonEnd);
+    const totalWeeks = Math.max(1, Math.ceil((seasonEnd.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+    const fullSeasonAmount = league.weeklyFee * totalWeeks;
+
+    const existingPayments = await storage.getPayments(bowlerId, leagueId);
+    const totalPaid = existingPayments
+      .filter((p: any) => p.status === 'paid')
+      .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+
+    const remainingBalance = Math.max(0, fullSeasonAmount - totalPaid);
+
+    if (amount > remainingBalance) {
+      return sendError(res, `Amount ($${(amount / 100).toFixed(2)}) exceeds remaining balance ($${(remainingBalance / 100).toFixed(2)})`, 400, 'AMOUNT_EXCEEDS_BALANCE');
     }
 
     let payment;
