@@ -11,10 +11,7 @@ const router = Router();
 // Get payments with optional filters
 router.get("/", async (req, res) => {
   try {
-    const bowlerId = req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined;
     const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
-    const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
-    const weekOf = req.query.weekOf ? new Date(req.query.weekOf as string) : undefined;
 
     if (leagueId) {
       const league = await storage.getLeague(leagueId);
@@ -26,7 +23,12 @@ router.get("/", async (req, res) => {
       }
     }
 
-    const payments = await storage.getPayments(bowlerId, leagueId, teamId, weekOf);
+    const payments = await storage.getPayments(
+      req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined,
+      leagueId,
+      req.query.teamId ? parseInt(req.query.teamId as string) : undefined,
+      req.query.weekOf ? new Date(req.query.weekOf as string) : undefined,
+    );
     
     // Filter payments by organization if needed
     let accessiblePayments = payments;
