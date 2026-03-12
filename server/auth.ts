@@ -2,6 +2,7 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express, Router } from "express";
 import session from "express-session";
+import rateLimit from "express-rate-limit";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
@@ -134,11 +135,33 @@ export function setupAuth(app: Express) {
     }
   });
 
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: { message: "Too many login attempts, please try again later", code: "RATE_LIMITED" }
+    }
+  });
+
+  const authLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: { message: "Too many requests, please try again later", code: "RATE_LIMITED" }
+    }
+  });
+
   // Auth routes - ensure these are mounted before any other routes
   const authRouter = Router();
 
   // Register auth endpoints
-  authRouter.post("/register", async (req, res) => {
+  authRouter.post("/register", authLimiter, async (req, res) => {
     try {
       const registrationData = {
         email: req.body.email,
@@ -259,7 +282,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  authRouter.post("/login", (req, res, next) => {
+  authRouter.post("/login", loginLimiter, (req, res, next) => {
     passport.authenticate("local", (err: any, user: any, info: any) => {
       if (err) {
         console.error('[Auth] Login error:', err);
@@ -329,7 +352,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  authRouter.post("/set-password", async (req, res) => {
+  authRouter.post("/set-password", authLimiter, async (req, res) => {
     try {
       const { token, password } = req.body;
 
@@ -419,7 +442,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  authRouter.post("/claim-bowler", async (req, res) => {
+  authRouter.post("/claim-bowler", loginLimiter, async (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
         return res.status(401).json({
