@@ -9,12 +9,15 @@ import { syncBowlerToBN, isBNConfigured } from '../services/bowlnow.js';
 
 const router = Router();
 
+router.use((req: any, res, next) => {
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    return sendError(res, "Authentication required", 401, 'UNAUTHORIZED');
+  }
+  next();
+});
+
 router.get("/unlinked", async (req: any, res) => {
   try {
-    if (!req.isAuthenticated || !req.isAuthenticated()) {
-      return sendError(res, "Authentication required", 401, 'UNAUTHORIZED');
-    }
-
     let organizationId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
 
     if (!req.user?.isAdmin && !req.user?.isOrganizationAdmin) {
