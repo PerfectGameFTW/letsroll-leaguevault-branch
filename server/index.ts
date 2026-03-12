@@ -56,6 +56,8 @@ app.use(helmet({
         "'self'",
         "https://web.squarecdn.com",
         "https://sandbox.web.squarecdn.com",
+        "https://pci-connect.squareup.com",
+        "https://pci-connect.squareupsandbox.com",
       ],
       imgSrc: ["'self'", "data:", "blob:"],
       fontSrc: ["'self'", "data:"],
