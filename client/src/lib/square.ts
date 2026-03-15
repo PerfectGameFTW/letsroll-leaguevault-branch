@@ -30,6 +30,47 @@ declare global {
 
 let payments: any = null;
 let squareConfig: { appId: string; locationId: string } | null = null;
+let preWarmedCard: any = null;
+
+const cardStyle = {
+  input: {
+    backgroundColor: '#FFFFFF',
+    fontSize: '14px',
+    color: '#333333',
+  },
+  'input.is-focus': {
+    backgroundColor: '#FAFAFA',
+  },
+  '.input-container': {
+    borderColor: '#DDDDDD',
+  },
+  '.input-container.is-focus': {
+    borderColor: '#888888',
+  },
+  '.input-container.is-error': {
+    borderColor: '#CC0023',
+  },
+};
+
+export async function warmUpSquareCard(): Promise<void> {
+  try {
+    if (!payments) return;
+    if (preWarmedCard) return;
+    preWarmedCard = await payments.card({ style: cardStyle });
+    console.log('[Square] Card object pre-warmed successfully');
+  } catch (err) {
+    console.error('[Square] Failed to pre-warm card:', err);
+    preWarmedCard = null;
+  }
+}
+
+export function getPreWarmedCard(): any {
+  const card = preWarmedCard;
+  preWarmedCard = null;
+  return card;
+}
+
+export { cardStyle };
 
 export function resetSquarePayments() {
   payments = null;

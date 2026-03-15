@@ -31,7 +31,7 @@ import ProfileSettingsPage from "@/pages/profile-settings-page";
 import ClaimBowlerPage from "@/pages/claim-bowler-page";
 import EmailTemplatesPage from "@/pages/email-templates-page";
 import { useEffect, useRef, FC } from "react";
-import { initializeSquare } from "./lib/square";
+import { initializeSquare, warmUpSquareCard } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { AdminRouteGuard } from "@/components/admin-route-guard";
 import { OrganizationRouteGuard } from "@/components/organization-route-guard";
@@ -274,6 +274,7 @@ function App() {
         await initializeSquare();
         initialized.current = true;
         initializationAttempts.current = 0;
+        warmUpSquareCard().catch(() => {});
       } catch (error) {
         console.error('[App] Square initialization attempt failed:', error);
         initializationAttempts.current++;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { initializeSquare, resetSquarePayments } from "@/lib/square";
+import { initializeSquare, resetSquarePayments, getPreWarmedCard, cardStyle } from "@/lib/square";
 
 interface UseSquarePaymentOptions {
   onError?: (error: string) => void;
@@ -83,27 +83,10 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
         return;
       }
 
-      const newCard = await payments.card({
-        style: {
-          input: {
-            backgroundColor: '#FFFFFF',
-            fontSize: '14px',
-            color: '#333333',
-          },
-          'input.is-focus': {
-            backgroundColor: '#FAFAFA',
-          },
-          '.input-container': {
-            borderColor: '#DDDDDD',
-          },
-          '.input-container.is-focus': {
-            borderColor: '#888888',
-          },
-          '.input-container.is-error': {
-            borderColor: '#CC0023',
-          },
-        }
-      });
+      let newCard = getPreWarmedCard();
+      if (!newCard) {
+        newCard = await payments.card({ style: cardStyle });
+      }
 
       await newCard.attach(container);
       clearTimeout(initTimeout);
