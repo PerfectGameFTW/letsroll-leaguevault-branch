@@ -32,12 +32,12 @@ A full-stack bowling league management application with multi-tenant support for
 - Indexes: payments(bowler_id, league_id, week_of), users(bowler_id), teams unique(league_id, number)
 
 ## Workflows
-- **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5001)
+- **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5000)
 
 ## Port Configuration
-- Development: defaults to port 5001 (mapped to externalPort 80 in .replit)
+- Development: defaults to port 5000 (matches .replit waitForPort for workspace preview)
 - Deployment: uses `process.env.PORT` (assigned by Replit's deployment platform)
-- The server respects `PORT` env var when set, falls back to 5001
+- The server respects `PORT` env var when set, falls back to 5000
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection string (runtime-managed)

@@ -15,7 +15,7 @@ app.set("trust proxy", 1);
 const server = createServer(app);
 
 const HOST = '0.0.0.0';
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -31,9 +31,9 @@ function getAllowedOrigins(): string[] {
     if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
       origins.push(`https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`);
     }
-    origins.push('http://localhost:5001');
+    origins.push('http://localhost:5000');
     origins.push('http://localhost:5173');
-    origins.push('http://127.0.0.1:5001');
+    origins.push('http://127.0.0.1:5000');
     origins.push('http://127.0.0.1:5173');
   }
   return origins;
