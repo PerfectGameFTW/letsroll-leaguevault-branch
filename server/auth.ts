@@ -42,6 +42,8 @@ export async function hashPassword(password: string) {
   return `${buf.toString("hex")}.${salt}`;
 }
 
+const DUMMY_HASH = '2f9f2c9675648aa136c5b1e089432e102f593725bba27de669a6a6c140fb07824e54678ada643212884f3e2402b6fc1fa8024243ec3b49c6f483cb4daf01411d.07178debc1ee62255438ded3ad0ea7de';
+
 async function comparePasswords(supplied: string, stored: string) {
   try {
     const [hashed, salt] = stored.split(".");
@@ -107,12 +109,14 @@ export function setupAuth(app: Express) {
         const user = await storage.getUserByEmail(email);
 
         if (!user) {
+          await comparePasswords(password, DUMMY_HASH);
           return done(null, false, { message: "Invalid email or password" });
         }
 
         if (!isValidUser(user)) {
           const userId = user && typeof user === 'object' ? (user as Record<string, unknown>).id : undefined;
           console.error('[Auth] Invalid user object structure for ID:', userId);
+          await comparePasswords(password, DUMMY_HASH);
           return done(null, false, { message: "Invalid user data structure" });
         }
 
