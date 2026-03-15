@@ -614,7 +614,6 @@ class PaymentScheduler {
     if (!this.validateCardId(schedule.squareCardId)) {
       logger.error(`[PaymentScheduler] Cannot update schedule with invalid card ID`, {
         scheduleId: schedule.id,
-        cardId: schedule.squareCardId ? `${schedule.squareCardId.substring(0, 10)}...` : 'none',
         bowlerId: schedule.bowlerId,
         validationTime: new Date().toISOString()
       });
