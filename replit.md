@@ -35,7 +35,7 @@ A full-stack bowling league management application with multi-tenant support for
 - **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5001)
 
 ## Port Configuration
-- Development: defaults to port 5001
+- Development: defaults to port 5001 (mapped to externalPort 80 in .replit)
 - Deployment: uses `process.env.PORT` (assigned by Replit's deployment platform)
 - The server respects `PORT` env var when set, falls back to 5001
 
