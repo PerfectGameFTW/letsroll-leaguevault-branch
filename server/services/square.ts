@@ -147,14 +147,6 @@ export async function processPayment(sourceId: string, amount: number, storeCard
     const payment = response.result.payment;
     const cardDetails = payment.cardDetails?.card;
 
-    console.log('[Square Service] Payment processed successfully:', {
-      paymentId: payment.id,
-      status: payment.status,
-      cardLast4: cardDetails?.last4 ?? '****',
-      cardBrand: cardDetails?.cardBrand ?? 'UNKNOWN',
-      amount: payment.amountMoney?.amount?.toString(),
-    });
-
     return {
       id: payment.id,
       status: payment.status,
