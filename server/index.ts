@@ -96,7 +96,7 @@ app.use(helmet({
       formAction: ["'self'"],
       frameAncestors: isDev
         ? ["'self'", "https://*.replit.dev", "https://*.repl.co"]
-        : ["'self'"],
+        : ["'self'", "https://leaguevault.app"],
     },
   },
   frameguard: isDev ? false : { action: 'sameorigin' },

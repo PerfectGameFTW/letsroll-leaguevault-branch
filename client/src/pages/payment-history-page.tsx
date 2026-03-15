@@ -498,7 +498,10 @@ export default function PaymentHistoryPage() {
                       type="button"
                       variant={cardMode === 'saved' ? 'default' : 'outline'}
                       size="sm"
-                      onClick={() => setCardMode('saved')}
+                      onClick={() => {
+                        cleanupCard();
+                        setCardMode('saved');
+                      }}
                       className="flex items-center gap-2"
                     >
                       <Wallet className="h-4 w-4" />
@@ -508,7 +511,10 @@ export default function PaymentHistoryPage() {
                       type="button"
                       variant={cardMode === 'new' ? 'default' : 'outline'}
                       size="sm"
-                      onClick={() => setCardMode('new')}
+                      onClick={() => {
+                        cleanupCard();
+                        setCardMode('new');
+                      }}
                       className="flex items-center gap-2"
                     >
                       <CreditCard className="h-4 w-4" />

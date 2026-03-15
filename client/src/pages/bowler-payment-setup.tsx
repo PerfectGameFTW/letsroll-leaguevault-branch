@@ -85,7 +85,7 @@ export default function BowlerPaymentSetupPage() {
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
 
-  const { card, isInitialized, error: squareError, initializeCard } = useSquarePayment({
+  const { card, isInitialized, error: squareError, initializeCard, cleanupCard } = useSquarePayment({
     onError: (error) => {
       console.error('[BowlerPaymentSetup] Square initialization error:', error);
       toast({
@@ -377,7 +377,10 @@ export default function BowlerPaymentSetupPage() {
                   type="button"
                   variant={cardMode === 'saved' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setCardMode('saved')}
+                  onClick={() => {
+                    cleanupCard();
+                    setCardMode('saved');
+                  }}
                   className="flex items-center gap-2"
                 >
                   <Wallet className="h-4 w-4" />
@@ -387,7 +390,10 @@ export default function BowlerPaymentSetupPage() {
                   type="button"
                   variant={cardMode === 'new' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setCardMode('new')}
+                  onClick={() => {
+                    cleanupCard();
+                    setCardMode('new');
+                  }}
                   className="flex items-center gap-2"
                 >
                   <CreditCard className="h-4 w-4" />
