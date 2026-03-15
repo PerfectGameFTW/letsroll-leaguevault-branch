@@ -275,16 +275,6 @@ class PaymentScheduler {
           });
         }
 
-        logger.info(`[PaymentScheduler] Payment processed for ${jobId}`, {
-          status: paymentResult.status,
-          paymentId: paymentResult.paymentId,
-          processingTime: new Date().toISOString(),
-          responseData: {
-            ...paymentResult,
-            cardId: paymentResult.cardId ? `${paymentResult.cardId.substring(0, 10)}...` : undefined
-          }
-        });
-
         // If payment successful, update schedule and create payment record
         if (paymentResult.status === 'success') {
           let nextDate: Date;
