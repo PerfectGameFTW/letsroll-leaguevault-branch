@@ -89,6 +89,7 @@ app.use(helmet({
       formAction: ["'self'"],
     },
   },
+  strictTransportSecurity: false,
   crossOriginEmbedderPolicy: false,
 }));
 
