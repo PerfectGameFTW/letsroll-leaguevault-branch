@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { initializeSquare } from "@/lib/square";
+import { initializeSquare, resetSquarePayments } from "@/lib/square";
 
 interface UseSquarePaymentOptions {
   onError?: (error: string) => void;
@@ -38,6 +38,7 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
       cardRef.current = null;
     }
     initializingRef.current = false;
+    resetSquarePayments();
     setCard(null);
     setIsInitialized(false);
     setError(null);
@@ -172,6 +173,7 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
         cardRef.current = null;
       }
       initializingRef.current = false;
+      resetSquarePayments();
     };
   }, []);
 

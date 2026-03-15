@@ -31,6 +31,10 @@ declare global {
 let payments: any = null;
 let squareConfig: { appId: string; locationId: string } | null = null;
 
+export function resetSquarePayments() {
+  payments = null;
+}
+
 async function getSquareConfig(): Promise<{ appId: string; locationId: string }> {
   if (squareConfig) return squareConfig;
 
