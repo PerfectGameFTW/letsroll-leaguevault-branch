@@ -18,6 +18,28 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
 
 const isDev = process.env.NODE_ENV !== "production";
 
+function getAllowedOrigins(): string[] {
+  const origins: string[] = [];
+  if (process.env.REPLIT_DOMAINS) {
+    for (const domain of process.env.REPLIT_DOMAINS.split(',')) {
+      origins.push(`https://${domain}`);
+    }
+  }
+  if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
+    origins.push(`https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`);
+  }
+  origins.push('https://leaguevault.app');
+  if (isDev) {
+    origins.push('http://localhost:5001');
+    origins.push('http://localhost:5173');
+    origins.push('http://127.0.0.1:5001');
+    origins.push('http://127.0.0.1:5173');
+  }
+  return origins;
+}
+
+const allowedOrigins = getAllowedOrigins();
+
 let activeRequests = 0;
 let viteSetupComplete = false;
 
@@ -75,7 +97,11 @@ setupAuth(app);
 
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') {
