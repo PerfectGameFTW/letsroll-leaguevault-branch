@@ -1,0 +1,80 @@
+modules = ["nodejs-20", "postgresql-16"]
+
+[nix]
+channel = "stable-24_05"
+
+[[ports]]
+localPort = 5000
+
+[[ports]]
+
+[[ports]]
+localPort = 5002
+externalPort = 3000
+
+[[ports]]
+localPort = 5003
+externalPort = 3001
+
+[[ports]]
+localPort = 5004
+externalPort = 3002
+
+[[ports]]
+localPort = 5005
+externalPort = 3003
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Dev"
+author = "agent"
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow]]
+name = "Dev"
+mode = "parallel"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Dev"
+
+[deployment]
+run = ["sh", "-c", "NODE_ENV=production node dist/index.js"]
+deploymentTarget = "cloudrun"
+build = ["sh", "-c", "npm run build"]
+
+[userenv]
+
+[userenv.shared]
+SQUARE_PRODUCTION_APP_ID = "sq0idp-7qXqEqFgsEkS1NpNbvhyDA"
+SQUARE_PRODUCTION_LOCATION_ID = "LPM9NWNXW82M5"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
