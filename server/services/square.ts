@@ -65,11 +65,6 @@ export async function saveCardOnFile(sourceId: string, customerId: string) {
 
     const card = response.result.card;
     if (card) {
-      console.log('[Square Service] Card saved on file:', {
-        cardId: card.id ? card.id.substring(0, 15) + '...' : 'unknown',
-        last4: card.last4 || '****',
-        brand: card.cardBrand || 'UNKNOWN',
-      });
       return {
         id: card.id,
         last4: card.last4,
