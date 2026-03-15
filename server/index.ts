@@ -65,6 +65,8 @@ app.use(helmet({
       styleSrc: [
         "'self'",
         "'unsafe-inline'",
+        "https://web.squarecdn.com",
+        "https://sandbox.web.squarecdn.com",
       ],
       connectSrc: [
         "'self'",
@@ -73,6 +75,7 @@ app.use(helmet({
         "https://connect.squareupsandbox.com",
         "https://pci-connect.squareup.com",
         "https://pci-connect.squareupsandbox.com",
+        "https://o160250.ingest.sentry.io",
         ...(isDev ? ["ws:", "wss:"] : []),
       ],
       frameSrc: [
