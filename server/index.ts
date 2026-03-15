@@ -94,8 +94,12 @@ app.use(helmet({
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       formAction: ["'self'"],
+      frameAncestors: isDev
+        ? ["'self'", "https://*.replit.dev", "https://*.repl.co"]
+        : ["'self'"],
     },
   },
+  frameguard: isDev ? false : { action: 'sameorigin' },
   strictTransportSecurity: false,
   crossOriginEmbedderPolicy: false,
 }));
