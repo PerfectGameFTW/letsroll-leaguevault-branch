@@ -70,6 +70,8 @@ app.use(helmet({
       ],
       connectSrc: [
         "'self'",
+        "https://web.squarecdn.com",
+        "https://sandbox.web.squarecdn.com",
         "https://pds.squareup.com",
         "https://connect.squareup.com",
         "https://connect.squareupsandbox.com",
