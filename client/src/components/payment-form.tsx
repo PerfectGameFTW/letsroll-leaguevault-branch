@@ -125,7 +125,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   }, [savedCards.length, selectedBowlerId, paymentType]);
 
   useEffect(() => {
-    if (!open || paymentType !== "credit_card" || cardMode === 'saved') {
+    if (!open || paymentType !== "credit_card") {
       if (isInitialized) {
         cleanupCard();
         setIsSquareReady(false);
@@ -194,7 +194,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     return () => {
       clearTimeout(initTimeout);
     };
-  }, [open, paymentType, cardMode, isInitialized, isSquareReady, cleanupCard, initializeCard, toast, form]);
+  }, [open, paymentType, isInitialized, isSquareReady, cleanupCard, initializeCard, toast, form]);
 
   useEffect(() => {
     if (!open) {
@@ -554,7 +554,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                   </div>
                 )}
 
-                {cardMode === 'saved' && savedCards.length > 0 ? (
+                {cardMode === 'saved' && savedCards.length > 0 && (
                   <div className="space-y-3">
                     <Select
                       value={selectedSavedCardId}
@@ -578,52 +578,52 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                       </AlertDescription>
                     </Alert>
                   </div>
-                ) : (
-                  <>
-                    <div className="min-h-[200px] border rounded-lg bg-card">
-                      <div ref={cardContainerRef} className="p-4" />
-                      {!isSquareReady && (
-                        <div className="flex items-center justify-center p-4">
-                          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                          <p className="ml-2 text-sm text-muted-foreground">
-                            Loading credit card form...
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {squareError && (
-                      <div className="p-3 text-sm border border-destructive bg-destructive/10 text-destructive rounded-md">
-                        <p><strong>Credit Card Form Error:</strong> {squareError}</p>
-                        <p className="mt-1 text-xs">Consider using Cash or Check payment instead.</p>
+                )}
+
+                <div className={cardMode === 'saved' && savedCards.length > 0 ? 'hidden' : ''}>
+                  <div className="min-h-[200px] border rounded-lg bg-card">
+                    <div ref={cardContainerRef} className="p-4" />
+                    {!isSquareReady && (
+                      <div className="flex items-center justify-center p-4">
+                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        <p className="ml-2 text-sm text-muted-foreground">
+                          Loading credit card form...
+                        </p>
                       </div>
                     )}
-                    
-                    <div className="flex items-center space-x-2">
-                      <FormField
-                        control={form.control}
-                        name="storeCard"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-row items-center space-x-2 space-y-0">
-                            <FormControl>
-                              <Checkbox
-                                id="storeCard"
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
-                            </FormControl>
-                            <label 
-                              htmlFor="storeCard" 
-                              className="text-sm font-medium leading-none cursor-pointer"
-                            >
-                              Save card for future payments
-                            </label>
-                          </FormItem>
-                        )}
-                      />
+                  </div>
+                  
+                  {squareError && (
+                    <div className="p-3 text-sm border border-destructive bg-destructive/10 text-destructive rounded-md">
+                      <p><strong>Credit Card Form Error:</strong> {squareError}</p>
+                      <p className="mt-1 text-xs">Consider using Cash or Check payment instead.</p>
                     </div>
-                  </>
-                )}
+                  )}
+                  
+                  <div className="flex items-center space-x-2">
+                    <FormField
+                      control={form.control}
+                      name="storeCard"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center space-x-2 space-y-0">
+                          <FormControl>
+                            <Checkbox
+                              id="storeCard"
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                          <label 
+                            htmlFor="storeCard" 
+                            className="text-sm font-medium leading-none cursor-pointer"
+                          >
+                            Save card for future payments
+                          </label>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
               </div>
             )}
 
