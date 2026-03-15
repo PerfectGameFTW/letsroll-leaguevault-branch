@@ -202,12 +202,6 @@ class PaymentScheduler {
 
     // Validate card ID
     if (!this.validateCardId(scheduleRecord.squareCardId)) {
-      logger.error(`[PaymentScheduler] Invalid card token for job ${jobId}`, {
-        cardId: scheduleRecord.squareCardId ? `${scheduleRecord.squareCardId.substring(0, 10)}...` : 'none',
-        scheduleId: scheduleRecord.id,
-        bowlerId: scheduleRecord.bowlerId,
-        validationTime: now.toISOString()
-      });
       return;
     }
 
