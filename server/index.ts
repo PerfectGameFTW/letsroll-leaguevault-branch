@@ -77,6 +77,8 @@ app.use(helmet({
         "https://connect.squareupsandbox.com",
         "https://pci-connect.squareup.com",
         "https://pci-connect.squareupsandbox.com",
+        "https://square-fonts-production-f.squarecdn.com",
+        "https://d1g145x70srn7h.cloudfront.net",
         "https://o160250.ingest.sentry.io",
         ...(isDev ? ["ws:", "wss:"] : []),
       ],
