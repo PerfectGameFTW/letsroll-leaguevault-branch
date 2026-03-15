@@ -6,7 +6,7 @@ import { Loader2, ArrowRight, RefreshCw, AlertTriangle } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
-import { getSeasonLengthWeeks } from "@/lib/financial-utils";
+import { getSeasonLengthWeeks, getWeeksPassedInSeason } from "@/lib/financial-utils";
 import type { League, Payment, User, Bowler, BowlerLeague, Team } from "@shared/schema";
 import { PaymentStatusSection } from "@/components/payment-status-section";
 import { queryClient } from "@/lib/queryClient";
@@ -132,6 +132,12 @@ export const BowlerDashboardPage: FC = () => {
   const totalWeeks = useMemo(() => {
     return getSeasonLengthWeeks(league) || 30;
   }, [league]);
+
+  const currentWeek = useMemo(() => {
+    if (!league?.seasonStart) return null;
+    const weeksPassed = getWeeksPassedInSeason(league);
+    return Math.max(1, Math.min(weeksPassed + 1, totalWeeks));
+  }, [league, totalWeeks]);
 
   const weeklyFee = useMemo(() => {
     return league?.weeklyFee || 2000;
@@ -319,11 +325,17 @@ export const BowlerDashboardPage: FC = () => {
                     </SelectContent>
                   </Select>
                   <p className="text-base text-muted-foreground">{teamName}</p>
+                  {currentWeek !== null && (
+                    <p className="text-sm text-muted-foreground">Week {currentWeek} of {totalWeeks}</p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-0.5">
                   <p className="text-lg">{leagueName}</p>
                   <p className="text-base text-muted-foreground">{teamName}</p>
+                  {currentWeek !== null && (
+                    <p className="text-sm text-muted-foreground">Week {currentWeek} of {totalWeeks}</p>
+                  )}
                 </div>
               )}
             </div>
