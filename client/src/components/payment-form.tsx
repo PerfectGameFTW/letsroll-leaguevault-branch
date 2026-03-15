@@ -531,6 +531,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                       size="sm"
                       className="flex-1"
                       onClick={() => {
+                        if (cardMode === 'saved') return;
                         cleanupCard();
                         setIsSquareReady(false);
                         initializationAttempted.current = false;
@@ -547,6 +548,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                       size="sm"
                       className="flex-1"
                       onClick={() => {
+                        if (cardMode === 'new') return;
                         cleanupCard();
                         setIsSquareReady(false);
                         initializationAttempted.current = false;
