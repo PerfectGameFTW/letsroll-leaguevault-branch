@@ -32,12 +32,13 @@ A full-stack bowling league management application with multi-tenant support for
 - Indexes: payments(bowler_id, league_id, week_of), users(bowler_id), teams unique(league_id, number)
 
 ## Workflows
-- **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5000)
+- **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5001)
 
 ## Port Configuration
-- Development: defaults to port 5000 (matches .replit waitForPort for workspace preview)
+- Development: Express server on port 5001 (maps to externalPort 80 in .replit for the public preview URL)
+- Readiness: TCP listener on port 5000 (satisfies .replit waitForPort = 5000 for workflow activation)
 - Deployment: uses `process.env.PORT` (assigned by Replit's deployment platform)
-- The server respects `PORT` env var when set, falls back to 5000
+- The server respects `PORT` env var when set, falls back to 5001
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection string (runtime-managed)
@@ -68,7 +69,7 @@ A baseline scan script is provided at `scripts/zap-scan.sh`. It runs a passive O
 bash scripts/zap-scan.sh
 ```
 
-The scan targets `http://host.docker.internal:5000` by default. Override with:
+The scan targets `http://host.docker.internal:5001` by default. Override with:
 ```bash
 ZAP_TARGET_URL=http://your-host:port bash scripts/zap-scan.sh
 ```
