@@ -36,7 +36,7 @@ export function loadScript(src: string): Promise<void> {
         } else {
           reject(new Error('Script loaded but Square object not properly initialized'));
         }
-      }, 1000); // Increased delay for better initialization chance
+      }, 50);
     };
     
     script.onerror = (e) => {

@@ -62,6 +62,10 @@ function getSdkUrl(appId: string): string {
 
 export async function initializeSquare() {
   try {
+    if (payments && window.Square?.payments) {
+      return payments;
+    }
+
     payments = null;
 
     const config = await getSquareConfig();
