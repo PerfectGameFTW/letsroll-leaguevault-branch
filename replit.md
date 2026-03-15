@@ -68,7 +68,7 @@ A baseline scan script is provided at `scripts/zap-scan.sh`. It runs a passive O
 bash scripts/zap-scan.sh
 ```
 
-The scan targets `http://host.docker.internal:5001` by default. Override with:
+The scan targets `http://host.docker.internal:5000` by default. Override with:
 ```bash
 ZAP_TARGET_URL=http://your-host:port bash scripts/zap-scan.sh
 ```
