@@ -170,7 +170,7 @@ if (process.env.NODE_ENV !== "production") {
       process.exit(1);
     });
 } else {
-  app.use(express.static(path.join(process.cwd(), 'dist/public')));
+  app.use(express.static(path.join(process.cwd(), 'dist/public'), { maxAge: '1y', immutable: true }));
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found' });
