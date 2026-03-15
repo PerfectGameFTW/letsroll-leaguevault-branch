@@ -86,7 +86,7 @@ export function setupAuth(app: Express) {
       tableName: 'session'
     }),
     cookie: {
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env.NODE_ENV === "production" || !!process.env.REPLIT_DEPLOYMENT,
       sameSite: "lax",
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       httpOnly: true

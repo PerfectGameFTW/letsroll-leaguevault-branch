@@ -11,6 +11,7 @@ import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
 
 const app = express();
+app.set("trust proxy", 1);
 const server = createServer(app);
 
 const HOST = '0.0.0.0';
