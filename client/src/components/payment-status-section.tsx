@@ -105,6 +105,12 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     }
   }, [showPaymentSetup, cardContainerRef, initializeCard, cardMode]);
 
+  useEffect(() => {
+    if (!showPaymentSetup) {
+      cleanupCard();
+    }
+  }, [showPaymentSetup, cleanupCard]);
+
   const handleWeekChangeWrapper = useCallback((weeks: number) => {
     const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
     setSelectedWeeks(validWeeks);
