@@ -136,12 +136,7 @@ class PaymentScheduler {
       const validSchedules = activeSchedules.filter(schedule => {
         const isValidCard = schedule.squareCardId && schedule.squareCardId.startsWith('ccof:');
         if (!isValidCard) {
-          logger.error(`[PaymentScheduler] Invalid card token for schedule ${schedule.id}`, {
-            cardId: schedule.squareCardId ? `${schedule.squareCardId.substring(0, 10)}...` : 'none',
-            bowlerId: schedule.bowlerId,
-            expectedPrefix: 'ccof:',
-            validationTime: new Date().toISOString()
-          });
+          logger.error(`[PaymentScheduler] Invalid card token for schedule ${schedule.id}`);
         }
         return isValidCard;
       });
