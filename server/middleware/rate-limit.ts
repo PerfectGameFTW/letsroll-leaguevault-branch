@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import type { Request } from "express";
 
 const rateLimitMessage = (msg: string) => ({
@@ -7,7 +7,7 @@ const rateLimitMessage = (msg: string) => ({
 });
 
 function userKeyGenerator(req: Request): string {
-  return req.user?.id?.toString() || req.ip || 'unknown';
+  return req.user?.id?.toString() || ipKeyGenerator(req.ip ?? 'unknown');
 }
 
 export const paymentWriteLimiter = rateLimit({
