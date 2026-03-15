@@ -87,10 +87,16 @@ const RootRedirectHandler: FC = () => {
 };
 
 function Router() {
+  const { data: userData } = useQuery<ApiResponse<any>>({
+    queryKey: ['/api/user'],
+    staleTime: 1000 * 60 * 5,
+  });
+
   useEffect(() => {
-    // Prefetch data when router mounts
-    prefetchQueries().catch(console.error);
-  }, []);
+    if (userData?.data) {
+      prefetchQueries().catch(console.error);
+    }
+  }, [userData]);
 
   return (
     <Switch>

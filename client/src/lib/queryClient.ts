@@ -72,7 +72,10 @@ export const getQueryFn: QueryFunction = async ({ queryKey, signal }) => {
     if (error?.name === 'AbortError') {
       return undefined;
     }
-    console.error(`[Query] Error fetching ${queryKey[0]}:`, error);
+    const is401 = typeof error?.message === 'string' && error.message.startsWith('401');
+    if (!is401) {
+      console.error(`[Query] Error fetching ${queryKey[0]}:`, error);
+    }
     throw error;
   }
 };
