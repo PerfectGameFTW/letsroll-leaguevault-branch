@@ -53,6 +53,28 @@ A full-stack bowling league management application with multi-tenant support for
 - `BN_API_KEY` - BowlNow (GoHighLevel) sub-account API key for CRM contact sync
 - `SETUP_SECRET` - Protects admin bootstrap endpoints for disaster recovery (see Recovery section below)
 
+## Security Scanning
+
+### npm audit
+Run `npm audit` to check dependencies for known vulnerabilities. No setup required.
+
+### OWASP ZAP (DAST)
+A baseline scan script is provided at `scripts/zap-scan.sh`. It runs a passive OWASP ZAP scan against the running application via Docker.
+
+**Prerequisites:** Docker must be installed and running.
+
+**Usage:**
+```bash
+bash scripts/zap-scan.sh
+```
+
+The scan targets `http://host.docker.internal:5001` by default. Override with:
+```bash
+ZAP_TARGET_URL=http://your-host:port bash scripts/zap-scan.sh
+```
+
+The HTML report is saved to `scripts/zap-report.html`.
+
 ## Disaster Recovery — Admin Bootstrap
 
 If the database is ever wiped or rebuilt from scratch, you can recreate the first admin user using the protected setup endpoints. Both require the `SETUP_SECRET` value in the `x-setup-secret` header and only work when zero admin users exist.
