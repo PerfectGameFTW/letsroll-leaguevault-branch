@@ -89,14 +89,6 @@ export async function processPayment(sourceId: string, amount: number, storeCard
   }
 
   try {
-    console.log('[Square Service] Processing payment:', { 
-      amount,
-      sourceIdPrefix: sourceId.substring(0, 5),
-      mode: process.env.NODE_ENV === 'production' ? 'Production' : 'Sandbox',
-      storeCard,
-      hasCustomerId: !!customerId
-    });
-
     if (!sourceId || !amount) {
       throw new Error(JSON.stringify({
         error: {
