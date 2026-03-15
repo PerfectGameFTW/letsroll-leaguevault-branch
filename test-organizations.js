@@ -240,8 +240,6 @@ async function runTests() {
     // Step 2: Login as admin
     console.log('Step 2: Logging in as admin...');
     const loginResult = await login(adminEmail, adminPassword);
-    console.log('Login result:', loginResult);
-    
     if (!loginResult.success) {
       throw new Error('Login failed, cannot proceed with tests');
     }
