@@ -27,16 +27,20 @@ localPort = 5005
 externalPort = 3003
 
 [workflows]
-runButton = "Dev"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "Dev"
-author = 39355628
+author = "agent"
 mode = "sequential"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx concurrently 'tsx watch server/index.ts' 'npm run dev -- --host 0.0.0.0'"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [[workflows.workflow]]
 name = "Dev"
@@ -52,6 +56,15 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run dev"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Dev"
 
 [deployment]
 run = ["sh", "-c", "NODE_ENV=production node dist/index.js"]
