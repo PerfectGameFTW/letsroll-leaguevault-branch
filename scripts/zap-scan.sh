@@ -28,10 +28,13 @@ echo "[1/3] Pulling OWASP ZAP image ($ZAP_IMAGE)..."
 docker pull "$ZAP_IMAGE"
 echo ""
 
+rm -f "$REPORT_FILE"
+
 echo "[2/3] Running baseline scan against $TARGET_URL ..."
 echo "      (This is a passive scan — no destructive probing.)"
 echo ""
 
+ZAP_EXIT=0
 docker run --rm \
   -v "$REPORT_DIR:/zap/wrk:rw" \
   --add-host=host.docker.internal:host-gateway \
@@ -40,18 +43,28 @@ docker run --rm \
     -t "$TARGET_URL" \
     -r zap-report.html \
     -I \
-  || true
+  || ZAP_EXIT=$?
 
 echo ""
 
-if [ -f "$REPORT_FILE" ]; then
-  echo "[3/3] Scan complete!"
-  echo ""
-  echo "  Report saved to: $REPORT_FILE"
-  echo ""
-  echo "  Open it in a browser to review findings."
-else
-  echo "[3/3] Scan finished but no report was generated."
-  echo "  Check the output above for errors."
+if [ ! -f "$REPORT_FILE" ]; then
+  echo "[3/3] FAILED: Scan did not produce a report (exit code $ZAP_EXIT)."
+  echo "  Check the output above for errors (e.g. connectivity, Docker issues)."
   exit 1
 fi
+
+if [ "$ZAP_EXIT" -eq 0 ]; then
+  echo "[3/3] Scan complete — no alerts found."
+elif [ "$ZAP_EXIT" -eq 1 ]; then
+  echo "[3/3] Scan complete — ZAP reported warnings (exit code 1)."
+elif [ "$ZAP_EXIT" -eq 2 ]; then
+  echo "[3/3] Scan complete — ZAP reported alerts (exit code 2)."
+else
+  echo "[3/3] Scan finished with unexpected exit code $ZAP_EXIT."
+fi
+
+echo ""
+echo "  Report saved to: $REPORT_FILE"
+echo "  Open it in a browser to review findings."
+
+exit "$ZAP_EXIT"
