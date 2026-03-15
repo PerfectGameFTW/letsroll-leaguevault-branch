@@ -170,11 +170,20 @@ if (process.env.NODE_ENV !== "production") {
       process.exit(1);
     });
 } else {
-  app.use(express.static(path.join(process.cwd(), 'dist/public'), { maxAge: '1y', immutable: true }));
+  app.use(express.static(path.join(process.cwd(), 'dist/public'), {
+    maxAge: '1y',
+    immutable: true,
+    setHeaders(res, filePath) {
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-store');
+      }
+    }
+  }));
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/')) {
       return res.status(404).json({ error: 'API endpoint not found' });
     }
+    res.setHeader('Cache-Control', 'no-store');
     res.sendFile(path.join(process.cwd(), 'dist/public/index.html'));
   });
   startServer();
