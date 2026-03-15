@@ -382,15 +382,6 @@ export async function createOrderWithPayment(
   }
 
   try {
-    console.log('[Square Service] Creating order with catalog items:', {
-      amount,
-      lineItemCount: lineItems.length,
-      locationId,
-      sourceIdPrefix: sourceId.substring(0, 5),
-      storeCard,
-      hasCustomerId: !!customerId,
-    });
-
     const orderResponse = await client.ordersApi.createOrder({
       order: {
         locationId,
