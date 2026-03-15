@@ -99,6 +99,7 @@ setupAuth(app);
 
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-store');
   const origin = req.headers.origin;
   if (origin) {
     res.setHeader('Vary', 'Origin');
