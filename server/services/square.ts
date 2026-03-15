@@ -164,19 +164,6 @@ export async function processPayment(sourceId: string, amount: number, storeCard
       },
     };
   } catch (error) {
-    console.error('[Square Service] Payment processing error:', {
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error,
-      input: { 
-        amount,
-        sourceIdPresent: !!sourceId,
-        storeCard
-      }
-    });
-
     if ((error as ApiError)?.statusCode === 400) {
       throw new Error(JSON.stringify({
         error: {
