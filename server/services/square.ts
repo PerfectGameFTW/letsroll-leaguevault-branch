@@ -16,7 +16,6 @@ async function initializeSquareClient() {
     try {
       console.log('[Square Service] Initializing Square client...');
       console.log('[Square Service] Environment:', process.env.NODE_ENV);
-      console.log('[Square Service] Token source:', process.env.SQUARE_PROD_TOKEN ? 'SQUARE_PROD_TOKEN' : process.env.SQUARE_PRODUCTION_ACCESS_TOKEN ? 'SQUARE_PRODUCTION_ACCESS_TOKEN' : 'SQUARE_ACCESS_TOKEN');
 
       const isProductionToken = accessToken.startsWith('EAAAEv') || accessToken.startsWith('EAAAl7');
       
