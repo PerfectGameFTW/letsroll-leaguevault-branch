@@ -101,6 +101,7 @@ export interface IStorage {
   createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule>;
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
   getPaymentScheduleById(id: number): Promise<PaymentSchedule | undefined>;
+  getActiveSchedulesByLeague(leagueId: number): Promise<PaymentSchedule[]>;
   deactivatePaymentSchedule(id: number): Promise<void>;
   updatePaymentScheduleFields(id: number, fields: Partial<Pick<PaymentSchedule, 'frequency' | 'amount' | 'nextPaymentDate' | 'squareCardId'>>): Promise<PaymentSchedule>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
@@ -953,6 +954,18 @@ export class DatabaseStorage implements IStorage {
       .from(paymentSchedules)
       .where(eq(paymentSchedules.id, id));
     return result;
+  }
+
+  async getActiveSchedulesByLeague(leagueId: number): Promise<PaymentSchedule[]> {
+    return db
+      .select()
+      .from(paymentSchedules)
+      .where(
+        and(
+          eq(paymentSchedules.leagueId, leagueId),
+          eq(paymentSchedules.active, true)
+        )
+      );
   }
 
   async deactivatePaymentSchedule(id: number): Promise<void> {

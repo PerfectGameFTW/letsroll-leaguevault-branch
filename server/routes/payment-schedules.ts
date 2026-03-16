@@ -118,7 +118,11 @@ router.get('/:bowlerId/:leagueId', async (req, res) => {
       return sendError(res, 'No active payment schedule found', 404, 'NOT_FOUND');
     }
 
-    return sendSuccess(res, schedule);
+    const league = await storage.getLeague(leagueId);
+    return sendSuccess(res, {
+      ...schedule,
+      leagueTimezone: league?.timezone ?? 'America/Chicago',
+    });
   } catch (error) {
     console.error('[PaymentSchedules] Error fetching schedule:', error);
     return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');

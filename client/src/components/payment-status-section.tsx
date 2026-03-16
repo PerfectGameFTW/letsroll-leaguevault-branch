@@ -21,6 +21,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { formatCurrency } from "@/lib/utils";
 import { calculateFinancials } from "@/lib/financial-utils";
 import { format } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import type { League, Bowler, Payment } from "@shared/schema";
 
 interface SavedCard {
@@ -39,6 +40,7 @@ interface ScheduleData {
   nextPaymentDate: string;
   amount: number;
   active: boolean;
+  leagueTimezone?: string;
 }
 
 interface PaymentStatusSectionProps {
@@ -754,7 +756,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
             <div className="flex items-center justify-between pl-5">
               <span className="text-xs text-muted-foreground">Next payment</span>
               <span className="text-xs text-muted-foreground">
-                {format(new Date(activeSchedule.nextPaymentDate), 'MMM d, yyyy h:mm a')}
+                {formatInTimeZone(new Date(activeSchedule.nextPaymentDate), activeSchedule.leagueTimezone || 'America/Chicago', 'MMM d, yyyy h:mm a')}
               </span>
             </div>
           )}

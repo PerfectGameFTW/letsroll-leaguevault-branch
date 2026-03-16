@@ -8,6 +8,14 @@ import { requireOrganizationAccess } from '../utils/access-control';
 import { getOrganizationFilter, filterByOrganization } from '../middleware/organization';
 import { hashPassword } from '../auth';
 import { sendInviteEmail } from '../services/email';
+import { addWeeks, nextDay, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
+import { fromZonedTime } from 'date-fns-tz';
+import { paymentScheduler } from '../services/payment-scheduler.js';
+
+const WEEKDAY_MAP: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
+  Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
+  Thursday: 4, Friday: 5, Saturday: 6,
+};
 
 const router = Router();
 
@@ -125,6 +133,50 @@ router.patch("/:id", async (req: any, res) => {
     });
     
     const updated = await storage.updateLeague(id, update);
+
+    const timezoneChanged = update.timezone && update.timezone !== league.timezone;
+    if (timezoneChanged) {
+      const activeSchedules = await storage.getActiveSchedulesByLeague(id);
+      const tz = updated.timezone ?? 'America/Chicago';
+      const weekDay = updated.weekDay;
+      const competitionStartTime = updated.competitionStartTime;
+
+      const [hours, minutes] = competitionStartTime
+        ? competitionStartTime.split(':').map(Number)
+        : [12, 0];
+      const dayIndex = WEEKDAY_MAP[weekDay];
+
+      for (const sched of activeSchedules) {
+        let target: Date;
+        if (dayIndex !== undefined) {
+          target = nextDay(new Date(), dayIndex);
+          target = setHours(target, hours);
+          target = setMinutes(target, minutes);
+          target = setSeconds(target, 0);
+          target = setMilliseconds(target, 0);
+          target = fromZonedTime(target, tz);
+
+          if (target <= new Date()) {
+            target = nextDay(target, dayIndex);
+            target = setHours(target, hours);
+            target = setMinutes(target, minutes);
+            target = setSeconds(target, 0);
+            target = setMilliseconds(target, 0);
+            target = fromZonedTime(target, tz);
+          }
+        } else {
+          target = addWeeks(new Date(), 1);
+        }
+
+        await storage.updatePaymentScheduleFields(sched.id, { nextPaymentDate: target });
+        await paymentScheduler.removeSchedule(sched.id);
+        const updatedSched = await storage.getPaymentScheduleById(sched.id);
+        if (updatedSched && updatedSched.active) {
+          await paymentScheduler.addSchedule(updatedSched, updated.organizationId);
+        }
+      }
+    }
+
     sendSuccess(res, updated);
   } catch (error) {
     if (error instanceof z.ZodError) {

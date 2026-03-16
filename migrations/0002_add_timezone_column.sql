@@ -1,2 +1,1 @@
-ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "timezone" text DEFAULT 'America/Chicago';--> statement-breakpoint
-UPDATE "payment_schedules" SET "next_payment_date" = '2026-03-19 00:30:00' WHERE "id" = 2 AND "bowler_id" = 129 AND "next_payment_date" = '2026-03-18 19:30:00';
+ALTER TABLE "leagues" ADD COLUMN IF NOT EXISTS "timezone" text DEFAULT 'America/Chicago';
