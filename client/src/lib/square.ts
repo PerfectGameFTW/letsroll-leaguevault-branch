@@ -3,6 +3,7 @@ import { loadScript } from "@/lib/utils";
 interface PaymentResult {
   id: string;
   status: string;
+  savedCardId?: string | null;
   card?: {
     last4: string;
     brand: string;

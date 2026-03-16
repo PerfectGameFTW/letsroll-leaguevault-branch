@@ -198,12 +198,48 @@ export default function BowlerPaymentSetupPage() {
         throw new Error("Invalid payment amount calculated");
       }
 
-      // Process payment and set up recurring schedule if needed
-      if (selectedSchedule !== "custom") {
-        // Create payment schedule
+      if (isAutoPay) {
+        // Auto-pay: we need a stored Square card ID for the recurring schedule.
+        // Process the payment first, then create the schedule with the correct card ID.
         const scheduleAmount = includeFinalTwoWeeks
           ? amount - league.weeklyFee * 2
           : amount;
+
+        let squareCardId: string;
+
+        if (cardMode === 'saved' && selectedSavedCardId) {
+          // Pay with the already-saved card
+          const response = await fetch('/api/square/payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceId: selectedSavedCardId,
+              amount,
+              bowlerId,
+              leagueId: league.id,
+              storeCard: false,
+            }),
+          });
+          const responseData = await response.json();
+          if (!response.ok) {
+            throw new Error(JSON.stringify({
+              error: { message: responseData.error?.message || 'Payment failed', code: 'PAYMENT_FAILED' }
+            }));
+          }
+          squareCardId = selectedSavedCardId;
+        } else {
+          // New card — always store it so the scheduler can charge it later
+          const paymentResult = await createPayment(amount, card, bowlerId, league.id, true);
+          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+          if (!paymentResult.savedCardId) {
+            throw new Error(JSON.stringify({
+              error: { message: 'Your card could not be saved for auto-pay. Please try again.', code: 'CARD_SAVE_FAILED' }
+            }));
+          }
+          squareCardId = paymentResult.savedCardId;
+        }
+
+        // Create the recurring schedule with the real stored card ID
         const scheduleResponse = await fetch("/api/payment-schedules", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -213,7 +249,7 @@ export default function BowlerPaymentSetupPage() {
             frequency: selectedSchedule,
             amount: scheduleAmount,
             nextPaymentDate: new Date(),
-            squareCardId: card.id,
+            squareCardId,
             includeFinalTwoWeeks,
           }),
         });
@@ -221,31 +257,31 @@ export default function BowlerPaymentSetupPage() {
         if (!scheduleResponse.ok) {
           throw new Error("Failed to set up payment schedule");
         }
-      }
-
-      if (cardMode === 'saved' && selectedSavedCardId) {
-        const response = await fetch('/api/square/payments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sourceId: selectedSavedCardId,
-            amount,
-            bowlerId,
-            leagueId: league.id,
-            storeCard: false,
-          }),
-        });
-        const responseData = await response.json();
-        if (!response.ok) {
-          throw new Error(JSON.stringify({
-            error: { message: responseData.error?.message || 'Payment failed', code: 'PAYMENT_FAILED' }
-          }));
-        }
       } else {
-        const shouldStore = selectedSchedule !== 'custom' || storeCard;
-        await createPayment(amount, card, bowlerId, league.id, shouldStore);
-        if (shouldStore) {
-          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+        // One-time / custom payment — no schedule needed
+        if (cardMode === 'saved' && selectedSavedCardId) {
+          const response = await fetch('/api/square/payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceId: selectedSavedCardId,
+              amount,
+              bowlerId,
+              leagueId: league.id,
+              storeCard: false,
+            }),
+          });
+          const responseData = await response.json();
+          if (!response.ok) {
+            throw new Error(JSON.stringify({
+              error: { message: responseData.error?.message || 'Payment failed', code: 'PAYMENT_FAILED' }
+            }));
+          }
+        } else {
+          const paymentResult = await createPayment(amount, card, bowlerId, league.id, storeCard);
+          if (storeCard && paymentResult.savedCardId) {
+            queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+          }
         }
       }
 

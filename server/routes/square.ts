@@ -85,6 +85,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
     }
 
     let payment;
+    let storedCardId: string | undefined;
     const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
 
     const customerId = bowler.squareCustomerId || undefined;
@@ -134,6 +135,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
         const savedCard = await saveCardOnFile(sourceId, customerId);
         if (savedCard?.id) {
           console.log('[Square Routes] Card saved on file:', savedCard.id.substring(0, 15) + '...');
+          storedCardId = savedCard.id;
           try {
             await storage.updatePaymentScheduleCard(
               bowlerId,
@@ -162,7 +164,8 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
     res.json({
       ...payment,
-      dbPaymentId: dbPayment.id
+      dbPaymentId: dbPayment.id,
+      savedCardId: storedCardId ?? null,
     });
   } catch (error) {
     console.error('[Square Routes] Payment processing error:', {
