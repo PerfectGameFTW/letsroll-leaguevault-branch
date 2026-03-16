@@ -633,7 +633,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       <CardContent className="pt-6 space-y-4">
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Full Season Total</span>
+            <span className="text-sm text-muted-foreground">Full Season Total Due</span>
             <span className="text-sm font-medium">{formatDollars(financials.fullSeasonAmount)}</span>
           </div>
 
