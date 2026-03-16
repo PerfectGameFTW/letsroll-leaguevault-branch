@@ -30,27 +30,25 @@ externalPort = 3003
 runButton = "Project"
 
 [[workflows.workflow]]
-name = "Dev"
-mode = "parallel"
-author = "agent"
-
-[workflows.workflow.metadata]
-agentRequireRestartOnSave = false
-outputType = "webview"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npm run dev"
-waitForPort = 5000
-
-[[workflows.workflow]]
 name = "Project"
 mode = "parallel"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Dev"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [deployment]
 run = ["sh", "-c", "NODE_ENV=production node dist/index.js"]
