@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, CreditCard, Calendar, Plus, Minus, CalendarDays, Settings, DollarSign, AlertTriangle, RefreshCw, CheckCircle2, Wallet } from "lucide-react";
 import { useSquarePayment } from "@/hooks/use-square-payment";
-import { createPayment } from "@/lib/square";
+import { createPayment, tokenizeCard } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -178,8 +178,31 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       setShowFinalTwoWeeksWarning(false);
       
       const amount = calculateTotalAmount();
+      const hasOutstandingBalance = financials.amountPastDue > 0;
+      let squareCardId: string | null = null;
+      let paymentWasCharged = false;
 
-      if (cardMode === 'saved' && selectedSavedCardId) {
+      if (isAutoPay && !hasOutstandingBalance) {
+        if (cardMode === 'saved' && selectedSavedCardId) {
+          squareCardId = selectedSavedCardId;
+        } else {
+          const token = await tokenizeCard(card);
+          const saveResponse = await fetch(`/api/square/cards/${bowler.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourceId: token }),
+          });
+          const saveData = await saveResponse.json();
+          if (!saveResponse.ok) {
+            throw new Error(saveData.error?.message || 'Failed to save card');
+          }
+          squareCardId = saveData.data?.savedCardId || null;
+          if (!squareCardId) {
+            throw new Error('Your card could not be saved for auto-pay. Please try again.');
+          }
+          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
+        }
+      } else if (cardMode === 'saved' && selectedSavedCardId) {
         const response = await fetch('/api/square/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -195,29 +218,80 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         if (!response.ok) {
           throw new Error(responseData.error?.message || 'Payment failed');
         }
+        squareCardId = selectedSavedCardId;
+        paymentWasCharged = true;
       } else {
         const shouldStore = isAutoPay || storeCard;
-        await createPayment(amount, card, bowler.id, league.id, shouldStore);
+        const paymentResult = await createPayment(amount, card, bowler.id, league.id, shouldStore);
         if (shouldStore) {
           queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
         }
+        if (isAutoPay) {
+          squareCardId = paymentResult.savedCardId || null;
+          if (!squareCardId) {
+            throw new Error('Your card could not be saved for auto-pay. Please try again.');
+          }
+        }
+        paymentWasCharged = true;
       }
 
-      toast({
-        title: "Payment Successful",
-        description: includeFinalTwoWeeks
-          ? `Payment of ${formatCurrency(amount)} processed (includes Final 2 Weeks).`
-          : `Your payment of ${formatCurrency(amount)} has been processed.`,
-      });
+      if (isAutoPay && squareCardId) {
+        const recurringAmount = selectedSchedule === 'monthly' ? weeklyFee * 4 : weeklyFee;
+        const scheduleResponse = await fetch('/api/payment-schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bowlerId: bowler.id,
+            leagueId: league.id,
+            frequency: selectedSchedule,
+            amount: recurringAmount,
+            nextPaymentDate: new Date(),
+            squareCardId,
+            includeFinalTwoWeeks,
+          }),
+        });
+        if (!scheduleResponse.ok) {
+          const scheduleData = await scheduleResponse.json();
+          throw new Error(scheduleData.error?.message || 'Failed to set up payment schedule');
+        }
+        queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
+      }
+
+      if (isAutoPay) {
+        toast({
+          title: "Auto-Pay Activated",
+          description: paymentWasCharged
+            ? `Payment of ${formatCurrency(amount)} processed and ${selectedSchedule} auto-pay is now active.`
+            : `Your card has been saved and ${selectedSchedule} auto-pay is now active.`,
+        });
+      } else {
+        toast({
+          title: "Payment Successful",
+          description: includeFinalTwoWeeks
+            ? `Payment of ${formatCurrency(amount)} processed (includes Final 2 Weeks).`
+            : `Your payment of ${formatCurrency(amount)} has been processed.`,
+        });
+      }
       
       setIncludeFinalTwoWeeks(false);
       setShowPaymentSetup(false);
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
     } catch (error) {
       console.error('[Payment Error]:', error);
+      let errorMessage = "Unable to process payment. Please try again.";
+      if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error instanceof Error) {
+        try {
+          const parsed = JSON.parse(error.message);
+          errorMessage = parsed.error?.message || error.message;
+        } catch {
+          errorMessage = error.message;
+        }
+      }
       toast({
         title: "Payment Failed",
-        description: typeof error === 'string' ? error : (error instanceof Error ? error.message : "Unable to process payment. Please try again."),
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
