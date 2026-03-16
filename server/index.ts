@@ -4,7 +4,6 @@ import { registerRoutes } from "./routes/index";
 import { setupVite } from "./vite";
 import { testConnection, cleanup as dbCleanup } from "./db";
 import { createServer } from 'http';
-import net from 'net';
 import { storage } from './storage';
 import path from 'path';
 import fs from 'fs';
@@ -16,8 +15,7 @@ app.set("trust proxy", 1);
 const server = createServer(app);
 
 const HOST = '0.0.0.0';
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
-const READINESS_PORT = 5000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -33,9 +31,9 @@ function getAllowedOrigins(): string[] {
     if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
       origins.push(`https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`);
     }
-    origins.push('http://localhost:5001');
+    origins.push('http://localhost:5000');
     origins.push('http://localhost:5173');
-    origins.push('http://127.0.0.1:5001');
+    origins.push('http://127.0.0.1:5000');
     origins.push('http://127.0.0.1:5173');
   }
   return origins;
@@ -45,7 +43,6 @@ const allowedOrigins = getAllowedOrigins();
 
 let activeRequests = 0;
 let viteSetupComplete = false;
-let readinessServer: net.Server | null = null;
 
 const requestTracker = (req: Request, res: Response, next: NextFunction) => {
   activeRequests++;
@@ -261,13 +258,6 @@ async function startServer() {
       console.log(`[Server] Running at http://${HOST}:${PORT}`);
     });
 
-    if (isDev && PORT !== READINESS_PORT) {
-      readinessServer = net.createServer();
-      readinessServer.listen(READINESS_PORT, HOST, () => {
-        console.log(`[Server] Readiness port open at ${READINESS_PORT}`);
-      });
-    }
-
     if (dbConnected) {
       try {
         await paymentScheduler.initialize();
@@ -307,10 +297,6 @@ async function shutdown() {
     });
 
     await dbCleanup();
-
-    if (readinessServer) {
-      readinessServer.close();
-    }
 
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('Server close timeout')), 5000);
