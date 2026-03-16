@@ -18,6 +18,7 @@ export interface FinancialCalculation {
   fullSeasonAmount: number;
   remainingBalance: number;
   finalTwoWeeks: FinalTwoWeeksStatus;
+  finalTwoWeeksDue: boolean;
 }
 
 export function getSeasonLengthWeeks(league: { seasonStart: string | Date; seasonEnd: string | Date } | null | undefined): number {
@@ -64,6 +65,7 @@ export function calculateFinancials(league: League | null | undefined, payments:
       fullSeasonAmount: 0,
       remainingBalance: 0,
       finalTwoWeeks: defaultFinalTwoWeeks,
+      finalTwoWeeksDue: false,
     };
   }
 
@@ -77,7 +79,7 @@ export function calculateFinancials(league: League | null | undefined, payments:
   const seasonStart = new Date(league.seasonStart);
   const dueByDate = addWeeks(seasonStart, dueByWeek);
   const today = startOfToday();
-  const isPastDueDate = today > dueByDate;
+  const isPastDueDate = today >= dueByDate;
   const isPaid = totalPaid >= finalTwoWeeksAmount;
 
   const finalTwoWeeks: FinalTwoWeeksStatus = {
@@ -103,6 +105,7 @@ export function calculateFinancials(league: League | null | undefined, payments:
     fullSeasonAmount,
     remainingBalance,
     finalTwoWeeks,
+    finalTwoWeeksDue: isPastDueDate,
   };
 }
 

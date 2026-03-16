@@ -20,6 +20,7 @@ const FinancialSummary = ({ bowler, league, payments, teamName, leagueName }: Fi
     fullSeasonAmount,
     remainingBalance,
     finalTwoWeeks,
+    finalTwoWeeksDue,
   } = calculateFinancials(league, payments);
 
   return (
@@ -67,7 +68,7 @@ const FinancialSummary = ({ bowler, league, payments, teamName, leagueName }: Fi
             <CardTitle className="text-lg">Amount Due to Date</CardTitle>
             <CardDescription>
               {weeksDue} week{weeksDue === 1 ? "" : "s"}
-              {finalTwoWeeks.dueByDate && new Date() > finalTwoWeeks.dueByDate ? " + final 2 weeks" : ""} at ${(
+              {finalTwoWeeksDue ? " + final 2 weeks" : ""} at ${(
                 (league?.weeklyFee || 0) / 100
               ).toFixed(2)}/week
             </CardDescription>
