@@ -15,7 +15,11 @@ app.set("trust proxy", 1);
 const server = createServer(app);
 
 const HOST = '0.0.0.0';
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
+// Port 5001 is mapped to external port :80 in Replit's networking layer,
+// which is what the picard Dev URL (preview pane) routes to.
+// Port 5000 is used exclusively as a readiness signal for Replit's waitForPort check.
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5001;
+const READINESS_PORT = 5000;
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -31,9 +35,9 @@ function getAllowedOrigins(): string[] {
     if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
       origins.push(`https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`);
     }
-    origins.push('http://localhost:5000');
+    origins.push('http://localhost:5001');
     origins.push('http://localhost:5173');
-    origins.push('http://127.0.0.1:5000');
+    origins.push('http://127.0.0.1:5001');
     origins.push('http://127.0.0.1:5173');
   }
   return origins;
@@ -245,6 +249,8 @@ async function testDatabaseConnectionWithRetry(maxRetries = 3, backoffMs = 1000)
   return false;
 }
 
+let readinessServer: ReturnType<typeof createServer> | null = null;
+
 async function startServer() {
   try {
     const dbConnected = await testDatabaseConnectionWithRetry();
@@ -257,6 +263,19 @@ async function startServer() {
     server.listen({ port: PORT, host: HOST }, () => {
       console.log(`[Server] Running at http://${HOST}:${PORT}`);
     });
+
+    // Start a minimal HTTP server on port 5000 exclusively for Replit's
+    // waitForPort readiness check. The picard Dev URL routes to port 5001
+    // (external port :80 mapping), so this listener only signals readiness.
+    if (isDev) {
+      readinessServer = createServer((_req, res) => {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
+      });
+      readinessServer.listen(READINESS_PORT, HOST, () => {
+        console.log(`[Server] Readiness listener on port ${READINESS_PORT}`);
+      });
+    }
 
     if (dbConnected) {
       try {
@@ -306,6 +325,12 @@ async function shutdown() {
         else resolve();
       });
     });
+
+    if (readinessServer) {
+      await new Promise<void>((resolve) => {
+        readinessServer!.close(() => resolve());
+      });
+    }
 
     console.log(`[Server] Shutdown completed in ${Date.now() - startTime}ms`);
     process.exit(0);
