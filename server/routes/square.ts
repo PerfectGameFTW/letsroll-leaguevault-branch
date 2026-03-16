@@ -249,6 +249,42 @@ router.get('/catalog/items', async (req, res) => {
   }
 });
 
+router.post('/cards/:bowlerId', async (req, res) => {
+  try {
+    const bowlerId = parseInt(req.params.bowlerId);
+    if (isNaN(bowlerId)) return sendError(res, 'Invalid bowler ID', 400);
+
+    if (!req.isAuthenticated()) {
+      return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
+    }
+
+    if (!await hasAccessToBowler(req, bowlerId)) {
+      return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+    }
+
+    const { sourceId } = req.body;
+    if (!sourceId || typeof sourceId !== 'string') {
+      return sendError(res, 'sourceId is required', 400);
+    }
+
+    const bowler = await storage.getBowler(bowlerId);
+    if (!bowler?.squareCustomerId) {
+      return sendError(res, 'Bowler does not have a Square customer account', 400);
+    }
+
+    const savedCard = await saveCardOnFile(sourceId, bowler.squareCustomerId);
+    if (!savedCard?.id) {
+      return sendError(res, 'Failed to save card on file', 500);
+    }
+
+    console.log('[Square Routes] Card saved on file (no-charge):', savedCard.id.substring(0, 15) + '...');
+    return sendSuccess(res, { savedCardId: savedCard.id, last4: savedCard.last4, brand: savedCard.brand });
+  } catch (error) {
+    console.error('[Square Routes] Save card error:', error);
+    return sendError(res, error instanceof Error ? error.message : 'Failed to save card');
+  }
+});
+
 router.get('/cards/:bowlerId', async (req, res) => {
   try {
     const bowlerId = parseInt(req.params.bowlerId);

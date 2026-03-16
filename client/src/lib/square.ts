@@ -220,6 +220,21 @@ export async function initializeSquare() {
   }
 }
 
+export async function tokenizeCard(cardInstance: any): Promise<string> {
+  if (!cardInstance) {
+    throw new Error(JSON.stringify({
+      error: { message: 'Card element not initialized', code: 'INITIALIZATION_ERROR' }
+    }));
+  }
+  const result = await cardInstance.tokenize();
+  if (result.status === 'OK' && result.token) {
+    return result.token;
+  }
+  throw new Error(JSON.stringify({
+    error: { message: 'Please check your card details and try again.', code: 'TOKENIZATION_ERROR' }
+  }));
+}
+
 export async function createPayment(amount: number, cardInstance: any, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
   try {
     if (!cardInstance) {

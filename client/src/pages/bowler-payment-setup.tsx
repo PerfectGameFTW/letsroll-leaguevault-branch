@@ -22,7 +22,7 @@ import {
 import { Loader2, AlertCircle, AlertTriangle, CreditCard, Wallet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useSquarePayment } from "@/hooks/use-square-payment";
-import { createPayment } from "@/lib/square";
+import { createPayment, tokenizeCard } from "@/lib/square";
 import { useParams, useLocation } from "wouter";
 import type { League, BowlerLeague, Payment } from "@shared/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -193,50 +193,73 @@ export default function BowlerPaymentSetupPage() {
       setIsProcessing(true);
       setShowFinalTwoWeeksWarning(false);
 
-      const amount = calculatePaymentAmount();
-      if (amount <= 0) {
-        throw new Error("Invalid payment amount calculated");
-      }
-
       if (isAutoPay) {
-        // Auto-pay: we need a stored Square card ID for the recurring schedule.
-        // Process the payment first, then create the schedule with the correct card ID.
-        const scheduleAmount = includeFinalTwoWeeks
-          ? amount - league.weeklyFee * 2
-          : amount;
+        // Auto-pay setup: save the card and create a recurring schedule.
+        // The base recurring amount (weeklyFee or weeklyFee × 4) is always the schedule amount.
+        const totalWeeks = getSeasonLengthWeeks(league);
+        const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule)!;
+        const recurringAmount = selectedOption.calculateAmount(league.weeklyFee, totalWeeks, customWeeks);
 
+        // Only charge upfront if the bowler has an outstanding balance.
+        const hasOutstandingBalance = financials.amountPastDue > 0;
         let squareCardId: string;
 
-        if (cardMode === 'saved' && selectedSavedCardId) {
-          // Pay with the already-saved card
-          const response = await fetch('/api/square/payments', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sourceId: selectedSavedCardId,
-              amount,
-              bowlerId,
-              leagueId: league.id,
-              storeCard: false,
-            }),
-          });
-          const responseData = await response.json();
-          if (!response.ok) {
-            throw new Error(JSON.stringify({
-              error: { message: responseData.error?.message || 'Payment failed', code: 'PAYMENT_FAILED' }
-            }));
+        if (hasOutstandingBalance) {
+          // Charge what they currently owe (plus final 2 weeks if opted in), then save card.
+          const initialAmount = calculatePaymentAmount();
+          if (initialAmount <= 0) throw new Error("Invalid payment amount calculated");
+
+          if (cardMode === 'saved' && selectedSavedCardId) {
+            const response = await fetch('/api/square/payments', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sourceId: selectedSavedCardId,
+                amount: initialAmount,
+                bowlerId,
+                leagueId: league.id,
+                storeCard: false,
+              }),
+            });
+            const responseData = await response.json();
+            if (!response.ok) {
+              throw new Error(JSON.stringify({
+                error: { message: responseData.error?.message || 'Payment failed', code: 'PAYMENT_FAILED' }
+              }));
+            }
+            squareCardId = selectedSavedCardId;
+          } else {
+            // New card — charge and store in one step
+            const paymentResult = await createPayment(initialAmount, card, bowlerId, league.id, true);
+            queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+            if (!paymentResult.savedCardId) {
+              throw new Error(JSON.stringify({
+                error: { message: 'Your card could not be saved for auto-pay. Please try again.', code: 'CARD_SAVE_FAILED' }
+              }));
+            }
+            squareCardId = paymentResult.savedCardId;
           }
-          squareCardId = selectedSavedCardId;
         } else {
-          // New card — always store it so the scheduler can charge it later
-          const paymentResult = await createPayment(amount, card, bowlerId, league.id, true);
-          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
-          if (!paymentResult.savedCardId) {
-            throw new Error(JSON.stringify({
-              error: { message: 'Your card could not be saved for auto-pay. Please try again.', code: 'CARD_SAVE_FAILED' }
-            }));
+          // Bowler is fully current — no charge needed, just save the card for future payments.
+          if (cardMode === 'saved' && selectedSavedCardId) {
+            squareCardId = selectedSavedCardId;
+          } else {
+            // Tokenize the card and save it on file without any charge
+            const token = await tokenizeCard(card);
+            const saveResponse = await fetch(`/api/square/cards/${bowlerId}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sourceId: token }),
+            });
+            const saveData = await saveResponse.json();
+            if (!saveResponse.ok || !saveData.data?.savedCardId) {
+              throw new Error(JSON.stringify({
+                error: { message: saveData.error?.message || 'Your card could not be saved. Please try again.', code: 'CARD_SAVE_FAILED' }
+              }));
+            }
+            squareCardId = saveData.data.savedCardId;
+            queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
           }
-          squareCardId = paymentResult.savedCardId;
         }
 
         // Create the recurring schedule with the real stored card ID
@@ -247,7 +270,7 @@ export default function BowlerPaymentSetupPage() {
             bowlerId,
             leagueId: league.id,
             frequency: selectedSchedule,
-            amount: scheduleAmount,
+            amount: recurringAmount,
             nextPaymentDate: new Date(),
             squareCardId,
             includeFinalTwoWeeks,
@@ -259,6 +282,9 @@ export default function BowlerPaymentSetupPage() {
         }
       } else {
         // One-time / custom payment — no schedule needed
+        const amount = calculatePaymentAmount();
+        if (amount <= 0) throw new Error("Invalid payment amount calculated");
+
         if (cardMode === 'saved' && selectedSavedCardId) {
           const response = await fetch('/api/square/payments', {
             method: 'POST',
@@ -285,11 +311,14 @@ export default function BowlerPaymentSetupPage() {
         }
       }
 
+      const noChargeSetup = isAutoPay && financials.amountPastDue === 0;
       toast({
-        title: "Payment Successful",
-        description: selectedSchedule === "custom"
-          ? "Your one-time payment has been processed successfully."
-          : `Your ${selectedSchedule} payment schedule has been set up successfully.`,
+        title: noChargeSetup ? "Auto-Pay Activated" : "Payment Successful",
+        description: noChargeSetup
+          ? `Your card has been saved and ${selectedSchedule} auto-pay is now active. Your first charge will be on the next league night.`
+          : selectedSchedule === "custom"
+            ? "Your one-time payment has been processed successfully."
+            : `Your payment has been processed and ${selectedSchedule} auto-pay is now active.`,
       });
 
       setLocation('/dashboard');
@@ -549,12 +578,16 @@ export default function BowlerPaymentSetupPage() {
               {isProcessing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing Payment...
+                  {selectedSchedule !== 'custom' && financials.amountPastDue === 0
+                    ? "Setting Up Auto-Pay..."
+                    : "Processing Payment..."}
                 </>
               ) : selectedSchedule === 'custom' ? (
                 `Pay ${formatCurrency(calculatePaymentAmount())}`
+              ) : financials.amountPastDue === 0 ? (
+                "Set Up Auto-Pay"
               ) : (
-                "Set Up Payment Schedule"
+                `Pay ${formatCurrency(calculatePaymentAmount())} & Set Up Auto-Pay`
               )}
             </Button>
           </CardFooter>
