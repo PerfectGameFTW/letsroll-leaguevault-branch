@@ -37,14 +37,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import type { Bowler, Payment, Team, League, BowlerLeague } from "@shared/schema";
 import { format, differenceInWeeks, startOfToday, isValid, parseISO } from "date-fns";
-import { enrollInLoyalty } from "@/lib/square";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-
-interface LoyaltyInfo {
-  points: number;
-  lifetimePoints: number;
-  enrolledAt: string;
-}
 
 interface ApiResponse<T> {
   success: boolean;
@@ -179,14 +172,6 @@ export default function BowlerViewPage() {
 
   const payments = paymentsResponse?.data || [];
 
-  // Add loyalty points query with proper caching
-  const { data: loyaltyInfo } = useQuery<LoyaltyInfo>({
-    queryKey: ["/api/square/loyalty", bowler?.squareCustomerId],
-    enabled: !!bowler?.squareCustomerId,
-    staleTime: 1000 * 60 * 5,
-    retry: false,
-  });
-
   const { data: bnStatusResponse } = useQuery<ApiResponse<{ configured: boolean }>>({
     queryKey: ["/api/bn/status"],
     staleTime: 1000 * 60 * 30,
@@ -213,29 +198,6 @@ export default function BowlerViewPage() {
       setSelectedLeagueId(bowlerLeagues[0].leagueId);
     }
   }, [bowlerLeagues, selectedLeagueId]);
-
-  // Add enroll mutation with proper error handling
-  const enrollMutation = useMutation({
-    mutationFn: async () => {
-      if (!bowler?.squareCustomerId) {
-        throw new Error("No Square customer ID");
-      }
-      return enrollInLoyalty(bowler.squareCustomerId);
-    },
-    onSuccess: () => {
-      toast({
-        title: "Success",
-        description: "Successfully enrolled in loyalty program",
-      });
-    },
-    onError: (error: Error) => {
-      toast({
-        title: "Failed to enroll",
-        description: error.message,
-        variant: "destructive",
-      });
-    },
-  });
 
   const addToLeagueMutation = useMutation({
     mutationFn: async () => {
@@ -468,64 +430,6 @@ export default function BowlerViewPage() {
             </div>
           </DialogContent>
         </Dialog>
-
-        {/* Loyalty Program Section */}
-        {bowler?.squareCustomerId && (
-          <div className="mb-6">
-            <h2 className="text-lg font-semibold mb-4">Loyalty Program</h2>
-            {loadingBowler ? (
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Loading loyalty information...</span>
-              </div>
-            ) : loyaltyInfo ? (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Current Points</CardTitle>
-                    <CardDescription>Available to redeem</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold">{loyaltyInfo.points}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Lifetime Points</CardTitle>
-                    <CardDescription>Total points earned</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold">{loyaltyInfo.lifetimePoints}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Member Since</CardTitle>
-                    <CardDescription>Enrollment date</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold">
-                      {format(new Date(loyaltyInfo.enrolledAt), "MMM d, yyyy")}
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-            ) : (
-              <div className="flex items-center gap-4">
-                <p className="text-muted-foreground">Not enrolled in loyalty program</p>
-                <Button
-                  onClick={() => enrollMutation.mutate()}
-                  disabled={enrollMutation.isPending}
-                >
-                  {enrollMutation.isPending && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Enroll Now
-                </Button>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Financial Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
