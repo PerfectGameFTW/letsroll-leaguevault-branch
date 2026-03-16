@@ -89,7 +89,7 @@ export function calculateFinancials(league: League | null | undefined, payments:
   };
 
   let totalDueToDate = league.weeklyFee * weeksPassed;
-  if (finalTwoWeeks.isPastDue) {
+  if (isPastDueDate) {
     totalDueToDate += finalTwoWeeksAmount;
   }
   const amountPastDue = Math.max(0, totalDueToDate - totalPaid);
