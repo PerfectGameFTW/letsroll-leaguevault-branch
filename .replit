@@ -5,10 +5,10 @@ channel = "stable-24_05"
 
 [[ports]]
 localPort = 5000
+externalPort = 80
 
 [[ports]]
 localPort = 5001
-externalPort = 80
 
 [[ports]]
 localPort = 5002
@@ -41,7 +41,7 @@ outputType = "webview"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npm run dev"
-waitForPort = 5001
+waitForPort = 5000
 
 [[workflows.workflow]]
 name = "Project"

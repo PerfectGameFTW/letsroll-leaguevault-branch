@@ -32,16 +32,14 @@ A full-stack bowling league management application with multi-tenant support for
 - Indexes: payments(bowler_id, league_id, week_of), users(bowler_id), teams unique(league_id, number)
 
 ## Workflows
-- **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5001, readiness on 5000)
-  - Configured: `waitForPort: 5001`, `outputType: webview`
+- **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5000)
 
 ## Port Configuration
-**IMPORTANT — dual-port architecture (do not revert without understanding this):**
-- **Port 5001** — Express app (Vite + API). This is the app port. Replit's networking maps port 5001 → external port :80, which is what the picard Dev URL routes to (the Preview pane uses this URL). Default fallback when `PORT` env var is not set.
-- **Port 5000** — Minimal HTTP readiness listener (returns 200 OK). Only exists in dev to satisfy Replit's `waitForPort` check and dismiss the "Your app is starting..." overlay. Serves no app traffic.
-- **Deployment**: uses `process.env.PORT` (set by Replit's deployment platform — production doesn't use port 5000 at all)
+- Development: defaults to port 5000 (Replit webview port; external :80 must be mapped to port 5000 in the Networking panel)
+- Deployment: uses `process.env.PORT` (assigned by Replit's deployment platform)
+- The server respects `PORT` env var when set, falls back to 5000
 - Session cookies use SameSite=None in Replit workspace (allows iframe preview)
-- The `waitForPort` workflow config is set to 5001 (NOT 5000) because Replit's port detector only sees ports with external port mappings (port 5001 has `:80`)
+- **Networking panel**: internal port 5000 must have external port :80 assigned for the Dev URL preview to work
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection string (runtime-managed)
