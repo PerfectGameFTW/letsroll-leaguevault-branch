@@ -97,6 +97,7 @@ app.use(helmet({
       frameAncestors: isDev
         ? [
             "'self'",
+            "https://*.replit.com",
             "https://*.replit.dev",
             "https://*.repl.co",
             ...[process.env.REPLIT_DEV_DOMAIN, ...(process.env.REPLIT_DOMAINS || '').split(',')]
