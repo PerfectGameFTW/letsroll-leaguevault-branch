@@ -7,6 +7,10 @@ import { refundPayment as squareRefund } from '../services/square.js';
 import { hasAccessToPayment, filterPaymentsByOrganization, requireOrganizationAccess } from '../utils/access-control.js';
 import { paymentWriteLimiter } from '../middleware/rate-limit.js';
 import { differenceInWeeks } from 'date-fns';
+import { paymentScheduler } from '../services/payment-scheduler.js';
+import { db } from '../db.js';
+import { eq, and, gte, lte, sql } from 'drizzle-orm';
+import { payments as paymentsTable } from '@shared/schema.js';
 
 const router = Router();
 
@@ -73,15 +77,23 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
         const fullSeasonAmount = league.weeklyFee * totalWeeks;
 
         if (fullSeasonAmount > 0) {
-          const allPayments = await storage.getPayments(payment.bowlerId, payment.leagueId);
-          const totalPaid = allPayments
-            .filter(p => p.status === 'paid')
-            .reduce((sum, p) => sum + p.amount, 0);
+          const totalPaidResult = await db
+            .select({ total: sql<number>`COALESCE(SUM(${paymentsTable.amount}), 0)` })
+            .from(paymentsTable)
+            .where(and(
+              eq(paymentsTable.bowlerId, payment.bowlerId),
+              eq(paymentsTable.leagueId, payment.leagueId),
+              eq(paymentsTable.status, 'paid'),
+              gte(paymentsTable.weekOf, seasonStart),
+              lte(paymentsTable.weekOf, seasonEnd)
+            ));
+          const totalPaid = Number(totalPaidResult[0]?.total || 0);
 
           if (totalPaid >= fullSeasonAmount) {
             const activeSchedule = await storage.getPaymentSchedule(payment.bowlerId, payment.leagueId);
             if (activeSchedule) {
               await storage.deactivatePaymentSchedule(activeSchedule.id);
+              await paymentScheduler.removeSchedule(activeSchedule.id);
               console.log(`[Payments Route] Bowler ${payment.bowlerId} paid in full for league ${payment.leagueId}, auto-cancelled schedule ${activeSchedule.id}`);
             }
           }
