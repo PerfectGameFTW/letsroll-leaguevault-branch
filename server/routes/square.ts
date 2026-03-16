@@ -77,6 +77,9 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       .digest('hex');
 
     const existingPayment = await storage.getPaymentByIdempotencyKey(idempotencyKey);
+    // Square limits idempotency_key to 45 chars; service appends "-order" (6) or "-pay" (4),
+    // so truncate the base key to 39 chars to stay within the limit in all cases.
+    const squareIdempotencyKey = idempotencyKey.substring(0, 39);
     if (existingPayment) {
       return res.json({ dbPaymentId: existingPayment.id, id: existingPayment.squarePaymentId, deduplicated: true });
     }
@@ -113,7 +116,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
         req.body.storeCard,
         customerId,
         buyerEmail,
-        idempotencyKey
+        squareIdempotencyKey
       );
     } else {
       payment = await processPayment(
@@ -122,7 +125,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
         req.body.storeCard,
         customerId,
         buyerEmail,
-        idempotencyKey
+        squareIdempotencyKey
       );
     }
 
