@@ -471,6 +471,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                     variant={cardMode === 'new' ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => {
+                      if (cardMode === 'new') return;
                       cleanupCard();
                       setCardMode('new');
                     }}
