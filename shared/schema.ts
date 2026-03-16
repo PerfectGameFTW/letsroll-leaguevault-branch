@@ -530,6 +530,7 @@ export const partialLeagueSchema = z.object({
   weeklyFee: positiveIntSchema,
   practiceStartTime: timeSchema,
   competitionStartTime: timeSchema,
+  timezone: z.string(),
   squareLineageItemId: z.string().nullable(),
   squareLineageItemVariationId: z.string().nullable(),
   squareLineageItemName: z.string().nullable(),
