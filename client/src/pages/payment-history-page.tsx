@@ -361,6 +361,20 @@ export default function PaymentHistoryPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardHeader className="pb-2">
+              <CardTitle className="text-lg">Full Season Amount Due</CardTitle>
+              <CardDescription>
+                {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at ${(
+                  (league?.weeklyFee || 0) / 100
+                ).toFixed(2)}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">${(fullSeasonAmount / 100).toFixed(2)}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
               <CardTitle className="text-lg">Weekly Fee</CardTitle>
               <CardDescription>Regular payment amount</CardDescription>
             </CardHeader>
@@ -403,21 +417,6 @@ export default function PaymentHistoryPage() {
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
-            </CardContent>
-          </Card>
-
-          {/* Replaced Card Component */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Full Season Lineage Amount Due</CardTitle>
-              <CardDescription>
-                {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at ${(
-                  (league?.weeklyFee || 0) / 100
-                ).toFixed(2)}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">${(fullSeasonAmount / 100).toFixed(2)}</p>
             </CardContent>
           </Card>
 
