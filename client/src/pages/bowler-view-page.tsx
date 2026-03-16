@@ -308,26 +308,6 @@ export default function BowlerViewPage() {
               )}
             </div>
             <div className="flex items-center gap-2">
-              {bnConfigured && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => bnSyncMutation.mutate()}
-                  disabled={bnSyncMutation.isPending}
-                >
-                  <RefreshCw className={`h-4 w-4 mr-1 ${bnSyncMutation.isPending ? "animate-spin" : ""}`} />
-                  {bnSyncMutation.isPending ? "Syncing..." : "Sync to BowlNow"}
-                </Button>
-              )}
-              {availableLeagues.length > 0 && (
-                <Button
-                  size="sm"
-                  onClick={() => setShowAddLeagueDialog(true)}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add to League
-                </Button>
-              )}
             </div>
           </div>
           <div className="flex flex-col gap-1">
@@ -356,80 +336,6 @@ export default function BowlerViewPage() {
             )}
           </div>
         </div>
-
-        <Dialog open={showAddLeagueDialog} onOpenChange={(open) => {
-          setShowAddLeagueDialog(open);
-          if (!open) { setAddLeagueId(null); setAddTeamId(null); }
-        }}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add to League</DialogTitle>
-              <DialogDescription>Assign {bowler?.name} to a league and team.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">League</label>
-                <Select
-                  value={addLeagueId?.toString() || ""}
-                  onValueChange={(val) => {
-                    setAddLeagueId(parseInt(val));
-                    setAddTeamId(null);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a league" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableLeagues.map((league) => (
-                      <SelectItem key={league.id} value={league.id.toString()}>
-                        {league.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {addLeagueId && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Team</label>
-                  <Select
-                    value={addTeamId?.toString() || ""}
-                    onValueChange={(val) => setAddTeamId(parseInt(val))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a team" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {teamsForAddLeague.length === 0 ? (
-                        <SelectItem value="none" disabled>No teams in this league</SelectItem>
-                      ) : (
-                        teamsForAddLeague.map((t) => (
-                          <SelectItem key={t.id} value={t.id.toString()}>
-                            {t.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => { setShowAddLeagueDialog(false); setAddLeagueId(null); setAddTeamId(null); }}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => addToLeagueMutation.mutate()}
-                  disabled={!addLeagueId || !addTeamId || addToLeagueMutation.isPending}
-                >
-                  {addToLeagueMutation.isPending ? (
-                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Adding...</>
-                  ) : (
-                    "Add to League"
-                  )}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
 
         {/* Financial Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
