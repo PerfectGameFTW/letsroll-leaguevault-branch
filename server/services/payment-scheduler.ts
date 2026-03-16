@@ -2,45 +2,12 @@ import schedule from "node-schedule";
 import { db } from "../db";
 import { eq, and, lte, gte, isNull, or, sql } from "drizzle-orm";
 import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
-import { addWeeks, addMonths, nextDay, setHours, setMinutes, setSeconds, setMilliseconds, isAfter, differenceInWeeks } from "date-fns";
+import { addWeeks, addMonths, setHours, setMinutes, setSeconds, setMilliseconds, isAfter, differenceInWeeks } from "date-fns";
 import { fromZonedTime } from "date-fns-tz";
 import { createSquarePayment } from "../lib/square";
 import { createOrderWithPayment } from "./square";
 import { logger } from "../logger";
-
-const WEEKDAY_MAP: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
-  Sunday: 0,
-  Monday: 1,
-  Tuesday: 2,
-  Wednesday: 3,
-  Thursday: 4,
-  Friday: 5,
-  Saturday: 6,
-};
-
-function getNextLeagueDateTime(
-  afterDate: Date,
-  weekDay: string,
-  competitionStartTime: string | null | undefined,
-  timezone: string = 'America/Chicago'
-): Date {
-  const [hours, minutes] = competitionStartTime
-    ? competitionStartTime.split(':').map(Number)
-    : [12, 0];
-
-  const dayIndex = WEEKDAY_MAP[weekDay];
-  if (dayIndex === undefined) {
-    return addWeeks(afterDate, 1);
-  }
-
-  let target = nextDay(afterDate, dayIndex);
-  target = setHours(target, hours);
-  target = setMinutes(target, minutes);
-  target = setSeconds(target, 0);
-  target = setMilliseconds(target, 0);
-
-  return fromZonedTime(target, timezone);
-}
+import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();

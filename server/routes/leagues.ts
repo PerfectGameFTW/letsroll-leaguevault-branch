@@ -8,14 +8,8 @@ import { requireOrganizationAccess } from '../utils/access-control';
 import { getOrganizationFilter, filterByOrganization } from '../middleware/organization';
 import { hashPassword } from '../auth';
 import { sendInviteEmail } from '../services/email';
-import { addWeeks, nextDay, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
-import { fromZonedTime } from 'date-fns-tz';
 import { paymentScheduler } from '../services/payment-scheduler.js';
-
-const WEEKDAY_MAP: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
-  Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
-  Thursday: 4, Friday: 5, Saturday: 6,
-};
+import { getNextLeagueDateTime } from '../utils/league-datetime.js';
 
 const router = Router();
 
@@ -138,37 +132,16 @@ router.patch("/:id", async (req: any, res) => {
     if (timezoneChanged) {
       const activeSchedules = await storage.getActiveSchedulesByLeague(id);
       const tz = updated.timezone ?? 'America/Chicago';
-      const weekDay = updated.weekDay;
-      const competitionStartTime = updated.competitionStartTime;
-
-      const [hours, minutes] = competitionStartTime
-        ? competitionStartTime.split(':').map(Number)
-        : [12, 0];
-      const dayIndex = WEEKDAY_MAP[weekDay];
 
       for (const sched of activeSchedules) {
-        let target: Date;
-        if (dayIndex !== undefined) {
-          target = nextDay(new Date(), dayIndex);
-          target = setHours(target, hours);
-          target = setMinutes(target, minutes);
-          target = setSeconds(target, 0);
-          target = setMilliseconds(target, 0);
-          target = fromZonedTime(target, tz);
+        const nextDate = getNextLeagueDateTime(
+          new Date(),
+          updated.weekDay,
+          updated.competitionStartTime,
+          tz
+        );
 
-          if (target <= new Date()) {
-            target = nextDay(target, dayIndex);
-            target = setHours(target, hours);
-            target = setMinutes(target, minutes);
-            target = setSeconds(target, 0);
-            target = setMilliseconds(target, 0);
-            target = fromZonedTime(target, tz);
-          }
-        } else {
-          target = addWeeks(new Date(), 1);
-        }
-
-        await storage.updatePaymentScheduleFields(sched.id, { nextPaymentDate: target });
+        await storage.updatePaymentScheduleFields(sched.id, { nextPaymentDate: nextDate });
         await paymentScheduler.removeSchedule(sched.id);
         const updatedSched = await storage.getPaymentScheduleById(sched.id);
         if (updatedSched && updatedSched.active) {
