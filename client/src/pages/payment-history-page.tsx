@@ -196,6 +196,11 @@ export default function PaymentHistoryPage() {
         }
       }
     }
+
+    if (finalTwoWeeksAmount > 0 && finalTwoWeeksDueByDate && startOfToday() > finalTwoWeeksDueByDate) {
+      totalSeasonDues += finalTwoWeeksAmount;
+      amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
+    }
   }
 
   const dialogAmount = payDialogType === 'pastdue' ? amountPastDue : remainingBalance;
