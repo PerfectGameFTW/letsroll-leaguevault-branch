@@ -164,8 +164,8 @@ export default function BowlerViewPage() {
   const league = leagueResponse?.data;
 
   const { data: paymentsResponse } = useQuery<ApiResponse<Payment[]>>({
-    queryKey: ["/api/payments", bowlerId, selectedLeagueId],
-    enabled: !!selectedLeagueId,
+    queryKey: [`/api/payments?bowlerId=${bowlerId}&leagueId=${selectedLeagueId}`, bowlerId, selectedLeagueId],
+    enabled: !!selectedLeagueId && !!bowlerId,
     staleTime: 1000 * 60, // Cache for 1 minute since payments change frequently
     retry: false,
   });
