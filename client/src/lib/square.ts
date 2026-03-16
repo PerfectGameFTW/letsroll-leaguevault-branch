@@ -23,8 +23,8 @@ interface SquareCustomer {
 
 declare global {
   interface Window {
-    Square: {
-      payments: (appId: string, locationId: string) => Promise<any>;
+    Square?: {
+      payments?: (appId: string, locationId: string) => Promise<any>;
     };
   }
 }
