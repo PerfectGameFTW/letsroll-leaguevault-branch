@@ -341,7 +341,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       return apiRequest(`/api/payment-schedules/${scheduleId}`, 'DELETE');
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
+      queryClient.removeQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
       setShowCancelConfirm(false);
       toast({ title: "Auto-pay cancelled", description: "Your automatic payment schedule has been cancelled." });
     },
