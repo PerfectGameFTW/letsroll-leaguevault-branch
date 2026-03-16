@@ -19,7 +19,6 @@ const FinancialSummary = ({ bowler, league, payments, teamName, leagueName }: Fi
     amountPastDue,
     fullSeasonAmount,
     remainingBalance,
-    finalTwoWeeks,
     finalTwoWeeksDue,
   } = calculateFinancials(league, payments);
 
