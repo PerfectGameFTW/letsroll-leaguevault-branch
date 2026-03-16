@@ -6,6 +6,7 @@ import { sendSuccess, sendError } from '../utils/api.js';
 import { refundPayment as squareRefund } from '../services/square.js';
 import { hasAccessToPayment, filterPaymentsByOrganization, requireOrganizationAccess } from '../utils/access-control.js';
 import { paymentWriteLimiter } from '../middleware/rate-limit.js';
+import { differenceInWeeks } from 'date-fns';
 
 const router = Router();
 
@@ -63,6 +64,33 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
     }
 
     const created = await storage.createPayment(payment);
+
+    if (payment.status === 'paid' && league.seasonStart && league.seasonEnd && league.weeklyFee) {
+      try {
+        const seasonStart = new Date(league.seasonStart);
+        const seasonEnd = new Date(league.seasonEnd);
+        const totalWeeks = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
+        const fullSeasonAmount = league.weeklyFee * totalWeeks;
+
+        if (fullSeasonAmount > 0) {
+          const allPayments = await storage.getPayments(payment.bowlerId, payment.leagueId);
+          const totalPaid = allPayments
+            .filter(p => p.status === 'paid')
+            .reduce((sum, p) => sum + p.amount, 0);
+
+          if (totalPaid >= fullSeasonAmount) {
+            const activeSchedule = await storage.getPaymentSchedule(payment.bowlerId, payment.leagueId);
+            if (activeSchedule) {
+              await storage.deactivatePaymentSchedule(activeSchedule.id);
+              console.log(`[Payments Route] Bowler ${payment.bowlerId} paid in full for league ${payment.leagueId}, auto-cancelled schedule ${activeSchedule.id}`);
+            }
+          }
+        }
+      } catch (pifError) {
+        console.error('[Payments Route] Error checking paid-in-full:', pifError);
+      }
+    }
+
     sendSuccess(res, created, 201);
   } catch (error) {
     console.error('[Payments Route] Create error:', error);

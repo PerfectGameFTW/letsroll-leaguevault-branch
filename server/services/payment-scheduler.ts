@@ -8,6 +8,7 @@ import { createSquarePayment } from "../lib/square";
 import { createOrderWithPayment } from "./square";
 import { logger } from "../logger";
 import { getNextLeagueDateTime } from "../utils/league-datetime.js";
+import { storage } from "../storage.js";
 
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
@@ -312,6 +313,14 @@ class PaymentScheduler {
             await this.checkAndChargeFinalTwoWeeks(scheduleRecord, league, jobId);
           }
 
+          // Check if bowler is now paid in full — if so, deactivate schedule
+          if (league) {
+            const paidInFull = await this.checkPaidInFull(scheduleRecord, league, jobId);
+            if (paidInFull) {
+              return;
+            }
+          }
+
           // Schedule next payment
           logger.info(`[PaymentScheduler] Scheduling next payment for ${jobId}`, {
             nextPaymentDate: nextDate,
@@ -492,6 +501,60 @@ class PaymentScheduler {
       logger.error(`[PaymentScheduler] Error checking final 2 weeks for ${jobId}`, {
         error: error instanceof Error ? error.message : error,
       });
+    }
+  }
+
+  private async checkPaidInFull(
+    scheduleRecord: typeof paymentSchedules.$inferSelect,
+    league: typeof leagues.$inferSelect,
+    jobId: string
+  ): Promise<boolean> {
+    try {
+      const seasonStart = new Date(league.seasonStart);
+      const seasonEnd = new Date(league.seasonEnd);
+      const totalWeeks = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
+      const fullSeasonAmount = league.weeklyFee * totalWeeks;
+
+      if (fullSeasonAmount <= 0) return false;
+
+      const totalPaidResult = await db
+        .select({ total: sql<number>`COALESCE(SUM(${payments.amount}), 0)` })
+        .from(payments)
+        .where(and(
+          eq(payments.bowlerId, scheduleRecord.bowlerId),
+          eq(payments.leagueId, scheduleRecord.leagueId),
+          eq(payments.status, 'paid'),
+          gte(payments.weekOf, seasonStart),
+          lte(payments.weekOf, seasonEnd)
+        ));
+      const totalPaid = Number(totalPaidResult[0]?.total || 0);
+
+      if (totalPaid >= fullSeasonAmount) {
+        logger.info(`[PaymentScheduler] Bowler paid in full, deactivating schedule for ${jobId}`, {
+          totalPaid,
+          fullSeasonAmount,
+          scheduleId: scheduleRecord.id,
+          bowlerId: scheduleRecord.bowlerId,
+          leagueId: scheduleRecord.leagueId,
+        });
+
+        await storage.deactivatePaymentSchedule(scheduleRecord.id);
+
+        const existingJob = this.jobs.get(jobId);
+        if (existingJob) {
+          existingJob.cancel();
+          this.jobs.delete(jobId);
+        }
+
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      logger.error(`[PaymentScheduler] Error checking paid-in-full for ${jobId}`, {
+        error: error instanceof Error ? error.message : error,
+      });
+      return false;
     }
   }
 
