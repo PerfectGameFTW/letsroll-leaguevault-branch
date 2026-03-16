@@ -147,6 +147,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       weekDay: "Monday",
       practiceStartTime: "",
       competitionStartTime: "",
+      timezone: "America/Chicago",
       weeklyFee: 2000,
       finalTwoWeeksDueWeek: 6,
       squareLineageItemId: null,
@@ -221,6 +222,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         weekDay: league.weekDay || "Monday",
         practiceStartTime: league.practiceStartTime || "",
         competitionStartTime: league.competitionStartTime || "",
+        timezone: league.timezone || "America/Chicago",
         weeklyFee: league.weeklyFee || 2000,
         finalTwoWeeksDueWeek: league.finalTwoWeeksDueWeek ?? 6,
         squareLineageItemId: league.squareLineageItemId || null,
@@ -241,6 +243,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         weekDay: "Monday",
         practiceStartTime: "",
         competitionStartTime: "",
+        timezone: "America/Chicago",
         weeklyFee: 2000,
         finalTwoWeeksDueWeek: 6,
         squareLineageItemId: null,
@@ -499,6 +502,36 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="timezone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Timezone</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || 'America/Chicago'}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select timezone" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="America/New_York">Eastern (ET)</SelectItem>
+                          <SelectItem value="America/Chicago">Central (CT)</SelectItem>
+                          <SelectItem value="America/Denver">Mountain (MT)</SelectItem>
+                          <SelectItem value="America/Phoenix">Arizona (MST)</SelectItem>
+                          <SelectItem value="America/Los_Angeles">Pacific (PT)</SelectItem>
+                          <SelectItem value="America/Anchorage">Alaska (AKT)</SelectItem>
+                          <SelectItem value="Pacific/Honolulu">Hawaii (HST)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 {hasCatalogItems && (
                   <div className="space-y-3 rounded-lg border p-3">

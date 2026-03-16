@@ -5,6 +5,7 @@ import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { paymentScheduler } from '../services/payment-scheduler.js';
 import { addWeeks, addMonths, nextDay, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
+import { fromZonedTime } from 'date-fns-tz';
 import { adminWriteLimiter } from '../middleware/rate-limit.js';
 
 const WEEKDAY_MAP: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
@@ -20,7 +21,8 @@ const WEEKDAY_MAP: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
 function getNextLeagueDateTime(
   afterDate: Date,
   weekDay: string,
-  competitionStartTime: string | null | undefined
+  competitionStartTime: string | null | undefined,
+  timezone: string = 'America/Chicago'
 ): Date {
   const [hours, minutes] = competitionStartTime
     ? competitionStartTime.split(':').map(Number)
@@ -37,7 +39,7 @@ function getNextLeagueDateTime(
   target = setSeconds(target, 0);
   target = setMilliseconds(target, 0);
 
-  return target;
+  return fromZonedTime(target, timezone);
 }
 
 const router = Router();
@@ -69,7 +71,8 @@ router.post('/', adminWriteLimiter, async (req, res) => {
     const nextPaymentDate = getNextLeagueDateTime(
       new Date(),
       league.weekDay,
-      league.competitionStartTime
+      league.competitionStartTime,
+      league.timezone ?? 'America/Chicago'
     );
 
     const validationResult = insertPaymentScheduleSchema.safeParse({
@@ -193,7 +196,8 @@ router.patch('/:id', adminWriteLimiter, async (req, res) => {
       updates.nextPaymentDate = getNextLeagueDateTime(
         new Date(),
         league.weekDay,
-        league.competitionStartTime
+        league.competitionStartTime,
+        league.timezone ?? 'America/Chicago'
       );
     }
 

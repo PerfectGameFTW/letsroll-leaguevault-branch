@@ -3,6 +3,7 @@ import { db } from "../db";
 import { eq, and, lte, gte, isNull, or, sql } from "drizzle-orm";
 import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
 import { addWeeks, addMonths, nextDay, setHours, setMinutes, setSeconds, setMilliseconds, isAfter, differenceInWeeks } from "date-fns";
+import { fromZonedTime } from "date-fns-tz";
 import { createSquarePayment } from "../lib/square";
 import { createOrderWithPayment } from "./square";
 import { logger } from "../logger";
@@ -20,7 +21,8 @@ const WEEKDAY_MAP: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
 function getNextLeagueDateTime(
   afterDate: Date,
   weekDay: string,
-  competitionStartTime: string | null | undefined
+  competitionStartTime: string | null | undefined,
+  timezone: string = 'America/Chicago'
 ): Date {
   const [hours, minutes] = competitionStartTime
     ? competitionStartTime.split(':').map(Number)
@@ -37,7 +39,7 @@ function getNextLeagueDateTime(
   target = setSeconds(target, 0);
   target = setMilliseconds(target, 0);
 
-  return target;
+  return fromZonedTime(target, timezone);
 }
 
 class PaymentScheduler {
@@ -278,17 +280,20 @@ class PaymentScheduler {
         // If payment successful, update schedule and create payment record
         if (paymentResult.status === 'success') {
           let nextDate: Date;
+          const tz = league?.timezone ?? 'America/Chicago';
           if (scheduleRecord.frequency === 'weekly' && league) {
             nextDate = getNextLeagueDateTime(
               scheduleRecord.nextPaymentDate,
               league.weekDay,
-              league.competitionStartTime
+              league.competitionStartTime,
+              tz
             );
           } else if (scheduleRecord.frequency === 'monthly') {
             nextDate = addMonths(scheduleRecord.nextPaymentDate, 1);
             if (league?.competitionStartTime) {
               const [h, m] = league.competitionStartTime.split(':').map(Number);
               nextDate = setHours(setMinutes(setSeconds(setMilliseconds(nextDate, 0), 0), m), h);
+              nextDate = fromZonedTime(nextDate, tz);
             }
           } else {
             nextDate = addWeeks(scheduleRecord.nextPaymentDate, 1);
