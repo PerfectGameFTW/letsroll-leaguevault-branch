@@ -305,6 +305,7 @@ router.post("/:id/new-season", async (req: any, res) => {
       weeklyFee: sourceLeague.weeklyFee,
       practiceStartTime: sourceLeague.practiceStartTime ?? undefined,
       competitionStartTime: sourceLeague.competitionStartTime ?? undefined,
+      timezone: sourceLeague.timezone ?? "America/Chicago",
       squareLineageItemId: sourceLeague.squareLineageItemId,
       squareLineageItemVariationId: sourceLeague.squareLineageItemVariationId,
       squareLineageItemName: sourceLeague.squareLineageItemName,
