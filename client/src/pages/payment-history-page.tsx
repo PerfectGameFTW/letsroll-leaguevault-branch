@@ -602,12 +602,13 @@ export default function PaymentHistoryPage() {
                   <TableHead>Week</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {bowlerPayments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center py-4">
+                    <TableCell colSpan={5} className="text-center py-4">
                       No payments recorded
                     </TableCell>
                   </TableRow>
@@ -634,6 +635,23 @@ export default function PaymentHistoryPage() {
                               payment.type === 'check' ? `Check #${payment.checkNumber}` :
                                 payment.type === 'credit_card' ? 'Credit Card' :
                                   'Other Payment'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={payment.status === 'refunded' ? 'destructive' : 'outline'}
+                            className={
+                              payment.status === 'paid' ? 'border-green-500 text-green-700 bg-green-50' :
+                              payment.status === 'failed' ? 'border-yellow-500 text-yellow-700 bg-yellow-50' :
+                              payment.status === 'pending' ? 'border-blue-500 text-blue-700 bg-blue-50' :
+                              ''
+                            }
+                          >
+                            {payment.status === 'paid' ? 'Paid' :
+                              payment.status === 'refunded' ? 'Refunded' :
+                              payment.status === 'failed' ? 'Failed' :
+                              payment.status === 'pending' ? 'Pending' :
+                              payment.status}
                           </Badge>
                         </TableCell>
                       </TableRow>
