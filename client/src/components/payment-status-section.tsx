@@ -468,6 +468,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                         onClick={() => {
                           setFixedAmount(financials.amountPastDue);
                           setFixedAmountType('pastDue');
+                          setSelectedWeeks(Math.max(1, Math.round(financials.amountPastDue / weeklyFee)));
                           setIncludeFinalTwoWeeks(false);
                         }}
                       >
@@ -481,6 +482,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                         onClick={() => {
                           setFixedAmount(financials.remainingBalance);
                           setFixedAmountType('remaining');
+                          setSelectedWeeks(maxPayableWeeks);
                           setIncludeFinalTwoWeeks(false);
                         }}
                       >
