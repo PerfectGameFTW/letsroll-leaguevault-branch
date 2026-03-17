@@ -25,11 +25,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { differenceInWeeks, startOfToday, format, addWeeks } from "date-fns";
+import { differenceInWeeks, format } from "date-fns";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { calculateFinancials } from "@/lib/financial-utils";
+import { formatCurrency } from "@/lib/utils";
 
 export default function PaymentHistoryPage() {
   const { toast } = useToast();
@@ -111,70 +113,34 @@ export default function PaymentHistoryPage() {
   const payments = paymentsResponse?.data || [];
   const bowlerName = bowlerResponse?.data?.name || '';
 
-  // Filter to only this bowler's payments for this league
   const bowlerPayments = payments.filter(p => p.bowlerId === bowlerId && p.leagueId === leagueId);
-  const totalPaidPayments = bowlerPayments.filter(p => p.status === 'paid');
-  const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
 
-  let weeksDue = 0;
-  let totalSeasonDues = 0;
-  let totalWeeksInSeason = 0;
-  let fullSeasonAmount = 0;
-  let amountPastDue = 0;
-  let remainingBalance = 0;
+  const financials = calculateFinancials(league, bowlerPayments);
+  const {
+    weeksPassed: weeksDue,
+    totalWeeksInSeason,
+    totalDueToDate: totalSeasonDues,
+    totalPaid: totalPaidAmount,
+    amountPastDue,
+    fullSeasonAmount,
+    remainingBalance,
+    finalTwoWeeks,
+  } = financials;
 
-  if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
-    const seasonStart = new Date(league.seasonStart);
-    const seasonEnd = new Date(league.seasonEnd);
-    const today = startOfToday();
-
-    if (today < seasonStart) {
-      weeksDue = 0;
-    } else if (today > seasonEnd) {
-      weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
-    } else {
-      weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
-    }
-
-    totalSeasonDues = league.weeklyFee * weeksDue;
-    totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
-    fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
-    amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
-    remainingBalance = fullSeasonAmount - totalPaidAmount;
-  }
-
-  let finalTwoWeeksAmount = 0;
-  let finalTwoWeeksDueByWeek = 6;
-  let finalTwoWeeksDueByDate: Date | null = null;
-  let finalTwoWeeksIsPaid = false;
-  let finalTwoWeeksIsPastDue = false;
   let finalTwoWeeksPaidOnWeek: number | null = null;
-
-  if (league?.weeklyFee && league?.seasonStart) {
-    finalTwoWeeksDueByWeek = league.finalTwoWeeksDueWeek ?? 6;
-    finalTwoWeeksAmount = league.weeklyFee * 2;
-    finalTwoWeeksDueByDate = addWeeks(new Date(league.seasonStart), finalTwoWeeksDueByWeek);
-    finalTwoWeeksIsPaid = totalPaidAmount >= finalTwoWeeksAmount;
-    finalTwoWeeksIsPastDue = !finalTwoWeeksIsPaid && startOfToday() > finalTwoWeeksDueByDate;
-
-    if (finalTwoWeeksIsPaid) {
-      const seasonStart = new Date(league.seasonStart);
-      const sortedPayments = [...totalPaidPayments].sort(
-        (a, b) => new Date(a.weekOf).getTime() - new Date(b.weekOf).getTime()
-      );
-      let runningTotal = 0;
-      for (const p of sortedPayments) {
-        runningTotal += p.amount;
-        if (runningTotal >= finalTwoWeeksAmount) {
-          finalTwoWeeksPaidOnWeek = Math.max(1, differenceInWeeks(new Date(p.weekOf), seasonStart) + 1);
-          break;
-        }
+  if (finalTwoWeeks.isPaid && finalTwoWeeks.amount > 0 && league?.seasonStart) {
+    const seasonStart = new Date(league.seasonStart);
+    const totalPaidPayments = bowlerPayments.filter(p => p.status === 'paid');
+    const sortedPayments = [...totalPaidPayments].sort(
+      (a, b) => new Date(a.weekOf).getTime() - new Date(b.weekOf).getTime()
+    );
+    let runningTotal = 0;
+    for (const p of sortedPayments) {
+      runningTotal += p.amount;
+      if (runningTotal >= finalTwoWeeks.amount) {
+        finalTwoWeeksPaidOnWeek = Math.max(1, differenceInWeeks(new Date(p.weekOf), seasonStart) + 1);
+        break;
       }
-    }
-
-    if (finalTwoWeeksAmount > 0 && finalTwoWeeksDueByDate && startOfToday() > finalTwoWeeksDueByDate) {
-      totalSeasonDues += finalTwoWeeksAmount;
-      amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
     }
   }
 
@@ -223,7 +189,7 @@ export default function PaymentHistoryPage() {
         }
       }
 
-      toast({ title: "Payment Successful", description: `$${(dialogAmount / 100).toFixed(2)} ${dialogLabel} has been paid.` });
+      toast({ title: "Payment Successful", description: `${formatCurrency(dialogAmount)} ${dialogLabel} has been paid.` });
       setPayDialogType(null);
       queryClient.invalidateQueries({ queryKey: ["/api/payments", bowlerId, leagueId] });
     } catch (error) {
@@ -343,13 +309,11 @@ export default function PaymentHistoryPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Full Season Amount Due</CardTitle>
               <CardDescription>
-                {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at ${(
-                  (league?.weeklyFee || 0) / 100
-                ).toFixed(2)}
+                {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at {formatCurrency(league?.weeklyFee || 0)}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">${(fullSeasonAmount / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(fullSeasonAmount)}</p>
             </CardContent>
           </Card>
 
@@ -359,7 +323,7 @@ export default function PaymentHistoryPage() {
               <CardDescription>Regular payment amount</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">${((league?.weeklyFee || 0) / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(league?.weeklyFee || 0)}</p>
             </CardContent>
           </Card>
 
@@ -367,13 +331,11 @@ export default function PaymentHistoryPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Amount Due to Date</CardTitle>
               <CardDescription>
-                {weeksDue} week{weeksDue === 1 ? "" : "s"} at ${(
-                  (league?.weeklyFee || 0) / 100
-                ).toFixed(2)}
+                {weeksDue} week{weeksDue === 1 ? "" : "s"} at {formatCurrency(league?.weeklyFee || 0)}
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">${(totalSeasonDues / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(totalSeasonDues)}</p>
             </CardContent>
           </Card>
 
@@ -383,7 +345,7 @@ export default function PaymentHistoryPage() {
               <CardDescription>All payments received</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">${(totalPaidAmount / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(totalPaidAmount)}</p>
             </CardContent>
           </Card>
 
@@ -396,7 +358,7 @@ export default function PaymentHistoryPage() {
               <CardDescription>{amountPastDue > 0 ? "Click to make a payment" : "No amount past due"}</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-destructive">${(amountPastDue / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold text-destructive">{formatCurrency(amountPastDue)}</p>
             </CardContent>
           </Card>
 
@@ -409,45 +371,45 @@ export default function PaymentHistoryPage() {
               <CardDescription>{remainingBalance > 0 ? "Click to pay off balance" : "Fully paid"}</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold">${(remainingBalance / 100).toFixed(2)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(remainingBalance)}</p>
             </CardContent>
           </Card>
 
-          {finalTwoWeeksAmount > 0 && (
+          {finalTwoWeeks.amount > 0 && (
             <Card className={`${
-              finalTwoWeeksIsPaid
+              finalTwoWeeks.isPaid
                 ? 'border-green-500/50 bg-green-500/5'
-                : finalTwoWeeksIsPastDue
+                : finalTwoWeeks.isPastDue
                   ? 'border-destructive/50 bg-destructive/5'
                   : ''
             }`}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg">Final 2 Weeks</CardTitle>
                 <CardDescription>
-                  Due by Week {finalTwoWeeksDueByWeek}
-                  {finalTwoWeeksDueByDate && ` (${format(finalTwoWeeksDueByDate, 'MMM d, yyyy')})`}
+                  Due by Week {finalTwoWeeks.dueByWeek}
+                  {finalTwoWeeks.dueByDate && ` (${format(finalTwoWeeks.dueByDate, 'MMM d, yyyy')})`}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <p className={`text-2xl font-bold ${
-                  finalTwoWeeksIsPaid
+                  finalTwoWeeks.isPaid
                     ? 'text-green-600'
-                    : finalTwoWeeksIsPastDue
+                    : finalTwoWeeks.isPastDue
                       ? 'text-destructive'
                       : ''
                 }`}>
-                  ${(finalTwoWeeksAmount / 100).toFixed(2)}
+                  {formatCurrency(finalTwoWeeks.amount)}
                 </p>
                 <p className={`text-sm font-medium mt-1 ${
-                  finalTwoWeeksIsPaid
+                  finalTwoWeeks.isPaid
                     ? 'text-green-600'
-                    : finalTwoWeeksIsPastDue
+                    : finalTwoWeeks.isPastDue
                       ? 'text-destructive'
                       : 'text-muted-foreground'
                 }`}>
-                  {finalTwoWeeksIsPaid
+                  {finalTwoWeeks.isPaid
                     ? `Paid on Week ${finalTwoWeeksPaidOnWeek ?? '?'}`
-                    : finalTwoWeeksIsPastDue ? 'Past Due' : 'Due'}
+                    : finalTwoWeeks.isPastDue ? 'Past Due' : 'Due'}
                 </p>
               </CardContent>
             </Card>
@@ -459,15 +421,15 @@ export default function PaymentHistoryPage() {
                 <DialogTitle>{payDialogType === 'pastdue' ? 'Pay Past Due Amount' : 'Pay Remaining Balance'}</DialogTitle>
                 <DialogDescription>
                   {payDialogType === 'pastdue'
-                    ? `Pay your outstanding balance of $${(amountPastDue / 100).toFixed(2)}`
-                    : `Pay off your remaining season balance of $${(remainingBalance / 100).toFixed(2)}`}
+                    ? `Pay your outstanding balance of ${formatCurrency(amountPastDue)}`
+                    : `Pay off your remaining season balance of ${formatCurrency(remainingBalance)}`}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="rounded-md border p-4 bg-muted/50">
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-muted-foreground">Amount</span>
-                    <span className="text-lg font-bold">${(dialogAmount / 100).toFixed(2)}</span>
+                    <span className="text-lg font-bold">{formatCurrency(dialogAmount)}</span>
                   </div>
                 </div>
 
@@ -554,7 +516,7 @@ export default function PaymentHistoryPage() {
                   ) : (
                     <>
                       <CreditCard className="mr-2 h-4 w-4" />
-                      Pay ${(dialogAmount / 100).toFixed(2)}
+                      Pay {formatCurrency(dialogAmount)}
                     </>
                   )}
                 </Button>
@@ -602,7 +564,7 @@ export default function PaymentHistoryPage() {
                           Week {weekNumber}
                         </TableCell>
                         <TableCell>
-                          ${(payment.amount / 100).toFixed(2)}
+                          {formatCurrency(payment.amount)}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">
