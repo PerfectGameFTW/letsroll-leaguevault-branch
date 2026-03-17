@@ -112,7 +112,7 @@ export default function PaymentHistoryPage() {
   });
 
   // Get league information for the bowler
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<ApiResponse<{ leagueId: number }[]>>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<ApiResponse<{ leagueId: number }[]>>({
     queryKey: ["/api/bowler-leagues", bowlerId],
     enabled: !!bowlerId,
   });
