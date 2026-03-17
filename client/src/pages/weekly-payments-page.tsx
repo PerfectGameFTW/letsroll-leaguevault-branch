@@ -14,7 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
 import { startOfToday } from "date-fns";
-import type { League, Team, Payment, Bowler, BowlerLeague } from "@shared/schema";
+import type { League, Payment, Bowler, BowlerLeague } from "@shared/schema";
+import { useTeams } from "@/hooks/use-teams";
 import { useParams, Link } from "wouter";
 import { PaymentEntryRow } from "@/components/payment-entry-row";
 import { PaymentHistoryTable } from "@/components/payment-history-table";
@@ -71,10 +72,7 @@ export default function WeeklyPaymentsPage() {
     staleTime: 1000 * 60 * 30,
   });
 
-  const { data: teamsResponse, isLoading: loadingTeams } = useQuery<{ data: Team[] }>({
-    queryKey: ["/api/teams", leagueId],
-    staleTime: 1000 * 60 * 15,
-  });
+  const { teams, isLoading: loadingTeams } = useTeams({ leagueId });
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments", { teamId: selectedTeam, weekOf: selectedDate?.toISOString(), leagueId }],
@@ -95,7 +93,6 @@ export default function WeeklyPaymentsPage() {
   });
 
   const league = leagueResponse?.data;
-  const teams = teamsResponse?.data || [];
   const payments = paymentsResponse?.data || [];
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
   const allBowlers = bowlersResponse?.data || [];
