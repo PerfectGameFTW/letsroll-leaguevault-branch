@@ -20,12 +20,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import type { User } from "@shared/schema";
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-}
+import type { User, ApiResponse } from "@shared/schema";
 
 const profileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),

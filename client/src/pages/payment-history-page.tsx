@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
-import type { League, Payment } from "@shared/schema";
+import type { League, Payment, User, SavedCard, ApiResponse } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { Loader2, ArrowLeft, CreditCard, Wallet } from "lucide-react";
 import { Link } from "wouter";
@@ -30,31 +30,6 @@ import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
-
-interface SavedCard {
-  id: string;
-  last4: string;
-  brand: string;
-  expMonth: number;
-  expYear: number;
-}
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error?: {
-    message: string;
-    code?: string;
-  };
-}
-
-interface User {
-  id: number;
-  bowlerId: number | null;
-  name: string | null;
-  email: string;
-  role: string;
-}
 
 export default function PaymentHistoryPage() {
   const { toast } = useToast();

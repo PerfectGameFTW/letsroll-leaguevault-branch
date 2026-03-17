@@ -22,15 +22,7 @@ import { formatCurrency } from "@/lib/utils";
 import { calculateFinancials } from "@/lib/financial-utils";
 import { format } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
-import type { League, Bowler, Payment } from "@shared/schema";
-
-interface SavedCard {
-  id: string;
-  last4: string;
-  brand: string;
-  expMonth: number;
-  expYear: number;
-}
+import type { League, Bowler, Payment, SavedCard } from "@shared/schema";
 
 type PaymentSchedule = "weekly" | "monthly" | "custom";
 
@@ -334,7 +326,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   });
   const activeSchedule = scheduleResponse?.success ? scheduleResponse.data : undefined;
 
-  const formatDollars = useCallback((cents: number) => `$${(cents / 100).toFixed(2)}`, []);
 
   const cancelScheduleMutation = useMutation({
     mutationFn: async (scheduleId: number) => {
@@ -710,22 +701,22 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Full Season Total Due</span>
-            <span className="text-sm font-medium">{formatDollars(financials.fullSeasonAmount)}</span>
+            <span className="text-sm font-medium">{formatCurrency(financials.fullSeasonAmount)}</span>
           </div>
 
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Weekly Fee</span>
-            <span className="text-sm font-medium">{formatDollars(weeklyFee)}/week</span>
+            <span className="text-sm font-medium">{formatCurrency(weeklyFee)}/week</span>
           </div>
 
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Amount Due to Date</span>
-            <span className="text-sm font-medium">{formatDollars(financials.totalDueToDate)}</span>
+            <span className="text-sm font-medium">{formatCurrency(financials.totalDueToDate)}</span>
           </div>
 
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Amount Paid to Date</span>
-            <span className="text-sm font-medium">{formatDollars(financials.totalPaid)}</span>
+            <span className="text-sm font-medium">{formatCurrency(financials.totalPaid)}</span>
           </div>
 
           {financials.amountPastDue > 0 && (
@@ -734,20 +725,20 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                 <AlertTriangle className="h-3.5 w-3.5" />
                 Past Due
               </span>
-              <span className="text-sm font-bold text-destructive">{formatDollars(financials.amountPastDue)}</span>
+              <span className="text-sm font-bold text-destructive">{formatCurrency(financials.amountPastDue)}</span>
             </div>
           )}
 
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Full Season Remaining Balance</span>
-            <span className="text-sm font-medium">{formatDollars(financials.remainingBalance)}</span>
+            <span className="text-sm font-medium">{formatCurrency(financials.remainingBalance)}</span>
           </div>
 
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Payment Schedule</span>
             <span className="text-sm font-medium">
               {activeSchedule
-                ? `Auto-pay: ${formatDollars(activeSchedule.amount)}/${activeSchedule.frequency === 'weekly' ? 'week' : 'month'}`
+                ? `Auto-pay: ${formatCurrency(activeSchedule.amount)}/${activeSchedule.frequency === 'weekly' ? 'week' : 'month'}`
                 : 'No auto-pay'}
             </span>
           </div>
@@ -786,7 +777,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                 <span className={`text-sm font-bold ${
                   financials.finalTwoWeeks.isPastDue ? 'text-destructive' : ''
                 }`}>
-                  {formatDollars(financials.finalTwoWeeks.amount)}
+                  {formatCurrency(financials.finalTwoWeeks.amount)}
                 </span>
                 <span className={`text-xs font-medium ${
                   financials.finalTwoWeeks.isPastDue ? 'text-destructive' : 'text-muted-foreground'

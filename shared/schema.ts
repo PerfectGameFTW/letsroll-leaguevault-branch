@@ -619,6 +619,14 @@ export type Location = typeof locations.$inferSelect;
 export type InsertLocation = z.infer<typeof insertLocationSchema>;
 
 
+export interface SavedCard {
+  id: string;
+  last4: string;
+  brand: string;
+  expMonth: number;
+  expYear: number;
+}
+
 // API response types
 export interface ApiResponse<T> {
   success: boolean;

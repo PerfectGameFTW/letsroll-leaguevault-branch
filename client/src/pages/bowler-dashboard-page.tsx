@@ -7,18 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Link } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { getSeasonLengthWeeks, getWeeksPassedInSeason } from "@/lib/financial-utils";
-import type { League, Payment, User, Bowler, BowlerLeague, Team } from "@shared/schema";
+import type { League, Payment, User, Bowler, BowlerLeague, Team, ApiResponse } from "@shared/schema";
 import { PaymentStatusSection } from "@/components/payment-status-section";
 import { queryClient } from "@/lib/queryClient";
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error?: {
-    message: string;
-    code?: string;
-  };
-}
 
 const STALE_TIME = 1000 * 60 * 5;
 
