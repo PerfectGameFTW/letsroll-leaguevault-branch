@@ -76,6 +76,18 @@ export default function WeeklyPaymentsPage() {
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments", { teamId: selectedTeam, weekOf: selectedDate?.toISOString(), leagueId }],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedTeam) params.set("teamId", selectedTeam);
+      if (selectedDate) params.set("weekOf", selectedDate.toISOString());
+      params.set("leagueId", String(leagueId));
+      const response = await fetch(`/api/payments?${params.toString()}`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" },
+      });
+      if (!response.ok) throw new Error("Failed to fetch payments");
+      return response.json();
+    },
     enabled: !!selectedTeam && !!selectedDate,
     staleTime: 1000 * 60,
   });
