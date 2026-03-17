@@ -164,8 +164,6 @@ export const BowlerDashboardPage: FC = () => {
     (activeBowlerLeagues.length > 0 && !teamsResponse) ||
     (leagueNotYetResolved && isFetchingLeagues);
 
-  const hasError = userError || bowlersError || blError || leaguesError || teamsError;
-
   const handleRetry = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/user'] });
     queryClient.invalidateQueries({ queryKey: ['/api/bowlers'] });
