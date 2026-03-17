@@ -310,9 +310,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     const halfSeasonAmount = weeklyFee * Math.ceil(totalWeeks / 2);
     const hideFullSeason = financials.totalPaid > 0 && seasonStarted;
     const hideHalfSeason = financials.totalPaid >= halfSeasonAmount && seasonStarted;
-    const presets: { label: string; weeks: number }[] = [
-      { label: "1 Month", weeks: 4 },
-    ];
+    const presets: { label: string; weeks: number }[] = [];
     if (!hideHalfSeason) {
       presets.push({ label: "Half Season", weeks: Math.ceil(totalWeeks / 2) });
     }
