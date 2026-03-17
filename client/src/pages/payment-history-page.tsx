@@ -126,6 +126,7 @@ export default function PaymentHistoryPage() {
     remainingBalance,
     finalTwoWeeks,
   } = financials;
+  const weeksDueCount = league?.weeklyFee ? Math.round(totalSeasonDues / league.weeklyFee) : 0;
   const weeksPaid = league?.weeklyFee ? Math.round(totalPaidAmount / league.weeklyFee) : 0;
 
   let finalTwoWeeksPaidOnWeek: number | null = null;
@@ -332,7 +333,7 @@ export default function PaymentHistoryPage() {
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Amount Due to Date</CardTitle>
               <CardDescription>
-                {weeksDue} week{weeksDue === 1 ? "" : "s"} at {formatCurrency(league?.weeklyFee || 0)}
+                {weeksDueCount} week{weeksDueCount === 1 ? "" : "s"} at {formatCurrency(league?.weeklyFee || 0)}
               </CardDescription>
             </CardHeader>
             <CardContent>
