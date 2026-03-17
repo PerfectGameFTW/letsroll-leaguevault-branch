@@ -130,26 +130,26 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
               <Button
                 variant="outline"
                 size="icon"
-                className="h-8 w-8"
+                className="h-10 w-10"
               >
-                <Menu className="h-4 w-4" />
+                <Menu className="h-5 w-5" />
                 <span className="sr-only">Toggle navigation menu</span>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuContent align="start" className="w-72 z-[200] mt-1 p-2">
               {navItems.map((item) => {
                 const isActive = location === item.href;
                 return (
                   <Link key={item.href} href={item.href}>
                     <DropdownMenuItem
                       className={cn(
-                        "flex items-center gap-2 cursor-pointer transition-colors",
+                        "flex items-center gap-3 cursor-pointer transition-colors text-base py-3 px-4 rounded-md",
                         isActive && "bg-accent"
                       )}
                     >
-                      <item.icon className="h-4 w-4" />
+                      <item.icon className="h-5 w-5 shrink-0" />
                       <span>{item.label}</span>
-                      {isActive && <ChevronRight className="ml-auto h-4 w-4" />}
+                      {isActive && <ChevronRight className="ml-auto h-5 w-5" />}
                     </DropdownMenuItem>
                   </Link>
                 );
