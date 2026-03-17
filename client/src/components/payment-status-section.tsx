@@ -105,15 +105,27 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     }
   }, [showPaymentSetup, cleanupCard]);
 
+  const bowlerPayments = useMemo(() => {
+    return (payments || []).filter(p => p.bowlerId === bowler.id && p.leagueId === league.id);
+  }, [payments, bowler.id, league.id]);
+
+  const financials = useMemo(() => {
+    return calculateFinancials(league, bowlerPayments);
+  }, [league, bowlerPayments]);
+
+  const maxPayableWeeks = useMemo(() => {
+    return Math.max(1, Math.floor(financials.remainingBalance / weeklyFee));
+  }, [financials.remainingBalance, weeklyFee]);
+
   const handleWeekChangeWrapper = useCallback((weeks: number) => {
-    const validWeeks = Math.min(Math.max(1, weeks), totalWeeks);
+    const validWeeks = Math.min(Math.max(1, weeks), maxPayableWeeks);
     setSelectedWeeks(validWeeks);
     setFixedAmount(null);
     setFixedAmountType(null);
-    if (validWeeks === totalWeeks) {
+    if (validWeeks === maxPayableWeeks) {
       setIncludeFinalTwoWeeks(false);
     }
-  }, [totalWeeks]);
+  }, [maxPayableWeeks]);
 
   const incrementWeeks = useCallback(() => {
     handleWeekChangeWrapper(selectedWeeks + 1);
@@ -293,14 +305,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     }
   };
 
-  const bowlerPayments = useMemo(() => {
-    return (payments || []).filter(p => p.bowlerId === bowler.id && p.leagueId === league.id);
-  }, [payments, bowler.id, league.id]);
-
-  const financials = useMemo(() => {
-    return calculateFinancials(league, bowlerPayments);
-  }, [league, bowlerPayments]);
-
   const seasonPresets = useMemo(() => {
     const seasonStarted = league.seasonStart && new Date(league.seasonStart) < new Date();
     const halfSeasonAmount = weeklyFee * Math.ceil(totalWeeks / 2);
@@ -427,7 +431,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                       id="custom-weeks"
                       type="number"
                       min="1"
-                      max={totalWeeks}
+                      max={maxPayableWeeks}
                       value={selectedWeeks}
                       onChange={(e) => handleWeekChangeWrapper(parseInt(e.target.value, 10))}
                       className="flex h-10 w-16 rounded-md border border-input bg-background px-3 py-2 text-sm text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -437,7 +441,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                       variant="outline"
                       size="icon"
                       onClick={incrementWeeks}
-                      disabled={selectedWeeks >= totalWeeks}
+                      disabled={selectedWeeks >= maxPayableWeeks}
                     >
                       <Plus className="h-4 w-4" />
                     </Button>
