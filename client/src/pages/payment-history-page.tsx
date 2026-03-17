@@ -126,6 +126,7 @@ export default function PaymentHistoryPage() {
     remainingBalance,
     finalTwoWeeks,
   } = financials;
+  const weeksPaid = league?.weeklyFee ? Math.round(totalPaidAmount / league.weeklyFee) : 0;
 
   let finalTwoWeeksPaidOnWeek: number | null = null;
   if (finalTwoWeeks.isPaid && finalTwoWeeks.amount > 0 && league?.seasonStart) {
@@ -342,7 +343,9 @@ export default function PaymentHistoryPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-lg">Amount Paid to Date</CardTitle>
-              <CardDescription>All payments received</CardDescription>
+              <CardDescription>
+                {weeksPaid} week{weeksPaid === 1 ? "" : "s"} at {formatCurrency(league?.weeklyFee || 0)}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">{formatCurrency(totalPaidAmount)}</p>
