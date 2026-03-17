@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, CreditCard, Calendar, Plus, Minus, CalendarDays, Settings, DollarSign, AlertTriangle, RefreshCw, CheckCircle2, Wallet } from "lucide-react";
+import { Loader2, CreditCard, Plus, Minus, CalendarDays, Settings, DollarSign, AlertTriangle, RefreshCw, CheckCircle2, Wallet } from "lucide-react";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment, tokenizeCard } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -24,7 +24,7 @@ import { format } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import type { League, Bowler, Payment, SavedCard } from "@shared/schema";
 
-type PaymentSchedule = "weekly" | "monthly" | "custom";
+type PaymentSchedule = "weekly" | "custom";
 
 interface ScheduleData {
   id: number;
@@ -139,8 +139,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     let base = 0;
     if (selectedSchedule === 'custom') {
       base = fixedAmount !== null ? fixedAmount : weeklyFee * selectedWeeks;
-    } else if (selectedSchedule === 'monthly') {
-      base = weeklyFee * 4;
     } else {
       base = weeklyFee;
     }
@@ -240,7 +238,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       }
 
       if (isAutoPay && squareCardId) {
-        const recurringAmount = selectedSchedule === 'monthly' ? weeklyFee * 4 : weeklyFee;
+        const recurringAmount = weeklyFee;
         const scheduleResponse = await fetch('/api/payment-schedules', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -378,24 +376,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                     <span className="text-sm font-medium">Weekly</span>
                     <span className="text-xs text-muted-foreground mt-1">
                       {formatCurrency(weeklyFee)} per week
-                    </span>
-                  </Label>
-                </div>
-                
-                <div>
-                  <RadioGroupItem value="monthly" id="monthly" className="sr-only" />
-                  <Label
-                    htmlFor="monthly"
-                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted p-4 cursor-pointer ${
-                      selectedSchedule === 'monthly' 
-                        ? 'border-primary bg-primary/5' 
-                        : 'hover:border-primary/50 hover:bg-primary/5'
-                    }`}
-                  >
-                    <Calendar className="h-6 w-6 mb-2" />
-                    <span className="text-sm font-medium">Monthly</span>
-                    <span className="text-xs text-muted-foreground mt-1">
-                      {formatCurrency(weeklyFee * 4)} per month
                     </span>
                   </Label>
                 </div>
@@ -610,7 +590,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               </div>
               <p className="text-sm text-muted-foreground mt-1">
                 {selectedSchedule === 'weekly' && 'Charged weekly'}
-                {selectedSchedule === 'monthly' && 'Charged monthly (every 4 weeks)'}
                 {selectedSchedule === 'custom' && (
                   fixedAmountType === 'pastDue'
                     ? 'One-time payment for Past Due Balance'
