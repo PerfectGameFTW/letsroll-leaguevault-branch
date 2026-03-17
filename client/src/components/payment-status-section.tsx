@@ -137,10 +137,8 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
   const calculateTotalAmount = useCallback(() => {
     let base = 0;
-    if (fixedAmount !== null) {
-      base = fixedAmount;
-    } else if (selectedSchedule === 'custom') {
-      base = weeklyFee * selectedWeeks;
+    if (selectedSchedule === 'custom') {
+      base = fixedAmount !== null ? fixedAmount : weeklyFee * selectedWeeks;
     } else if (selectedSchedule === 'monthly') {
       base = weeklyFee * 4;
     } else {
