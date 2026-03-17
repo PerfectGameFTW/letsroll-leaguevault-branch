@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Save, Lock, ArrowRight, LogOut } from "lucide-react";
+import { Loader2, Save, Lock, ArrowRight, LogOut, Pencil } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { Separator } from "@/components/ui/separator";
@@ -46,6 +46,7 @@ const STALE_TIME = 1000 * 60 * 5;
 export const ProfileSettingsPage: FC = () => {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -84,6 +85,7 @@ export const ProfileSettingsPage: FC = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/user'] });
+      setIsEditingProfile(false);
       toast({
         title: "Profile Updated",
         description: "Your profile has been saved successfully.",
@@ -185,73 +187,106 @@ export const ProfileSettingsPage: FC = () => {
         <Card>
           <CardHeader>
             <CardTitle>Profile Settings</CardTitle>
-            <CardDescription>Update your personal information</CardDescription>
+            <CardDescription>Your personal information</CardDescription>
           </CardHeader>
           <CardContent>
-            <Form {...profileForm}>
-              <form onSubmit={profileForm.handleSubmit((data) => profileMutation.mutate(data))} className="space-y-4">
-                <FormField
-                  control={profileForm.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={profileForm.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input type="email" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={profileForm.control}
-                  name="phone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Phone</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="tel"
-                          placeholder="(555) 555-5555"
-                          {...field}
-                          value={field.value || ""}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <Button type="submit" disabled={profileMutation.isPending} className="w-full sm:w-auto">
-                  {profileMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
-                      Save Changes
-                    </>
-                  )}
+            {!isEditingProfile ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Name</p>
+                  <p className="text-sm mt-1">{currentUser.name}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Email</p>
+                  <p className="text-sm mt-1">{currentUser.email}</p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Phone</p>
+                  <p className="text-sm mt-1">{currentUser.phone || "Not provided"}</p>
+                </div>
+                <Button variant="outline" onClick={() => setIsEditingProfile(true)} className="flex items-center gap-2">
+                  <Pencil className="h-4 w-4" />
+                  Edit Profile
                 </Button>
-              </form>
-            </Form>
+              </div>
+            ) : (
+              <Form {...profileForm}>
+                <form onSubmit={profileForm.handleSubmit((data) => profileMutation.mutate(data))} className="space-y-4">
+                  <FormField
+                    control={profileForm.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Name</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={profileForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email</FormLabel>
+                        <FormControl>
+                          <Input type="email" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={profileForm.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="tel"
+                            placeholder="(555) 555-5555"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="flex gap-2 pt-1">
+                    <Button type="submit" disabled={profileMutation.isPending}>
+                      {profileMutation.isPending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="mr-2 h-4 w-4" />
+                          Save Changes
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        profileForm.reset();
+                        setIsEditingProfile(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              </Form>
+            )}
           </CardContent>
         </Card>
 
