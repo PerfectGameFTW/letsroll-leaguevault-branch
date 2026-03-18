@@ -522,11 +522,14 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                       className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium"
                       onClick={() => setShowSchedule(s => !s)}
                     >
-                      <span>
-                        Bowling Schedule
-                        {(skipDates.length > 0 || cancelledDates.length > 0) && (
-                          <span className="ml-2 text-xs text-muted-foreground">
-                            ({skipDates.length} skip{skipDates.length !== 1 ? 's' : ''}, {cancelledDates.length} cancelled)
+                      <span className="flex flex-col items-start gap-0.5">
+                        <span>Bowling Schedule</span>
+                        {bowlingWeeks > 0 && (
+                          <span className="text-xs text-muted-foreground font-normal">
+                            {bowlingWeeks} planned week{bowlingWeeks !== 1 ? 's' : ''}
+                            {skipDates.length > 0 && ` · ${skipDates.length} holiday skip${skipDates.length !== 1 ? 's' : ''}`}
+                            {cancelledDates.length > 0 && ` · ${cancelledDates.length} cancellation${cancelledDates.length !== 1 ? 's' : ''}`}
+                            {computedSeasonEnd && ` · ends ${computedSeasonEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`}
                           </span>
                         )}
                       </span>
