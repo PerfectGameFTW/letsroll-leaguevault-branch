@@ -628,7 +628,7 @@ export default function BowlerPaymentSetupPage() {
                 <p>{squareError}</p>
               </div>
             )}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
               <div className="flex-1 border-t" />
               <span>Secure payment powered by Square</span>
               <div className="flex-1 border-t" />
