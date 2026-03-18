@@ -35,7 +35,25 @@ router.post('/', adminWriteLimiter, async (req, res) => {
       return sendError(res, 'League not found', 404, 'LEAGUE_NOT_FOUND');
     }
 
+    const isUpfrontLeague = league.paymentMode === 'upfront';
     const isUpfrontFrequency = req.body.frequency === 'upfront';
+
+    // Enforce invariants for upfront leagues:
+    // - frequency must be 'upfront'
+    // - amount must equal the full season amount
+    if (isUpfrontLeague) {
+      if (!isUpfrontFrequency) {
+        return sendError(res, 'Upfront leagues require frequency "upfront"', 400, 'INVALID_FREQUENCY');
+      }
+      const { differenceInWeeks } = await import('date-fns');
+      const totalWeeks = Math.max(0, differenceInWeeks(new Date(league.seasonEnd), new Date(league.seasonStart)));
+      const fullSeasonAmount = league.weeklyFee * totalWeeks;
+      if (req.body.amount !== fullSeasonAmount) {
+        return sendError(res, `Upfront leagues require full season amount (${fullSeasonAmount} cents)`, 400, 'INVALID_AMOUNT');
+      }
+    }
+
+    // Upfront schedules charge immediately; all others fire on the next league night.
     const nextPaymentDate = isUpfrontFrequency
       ? new Date()
       : getNextLeagueDateTime(

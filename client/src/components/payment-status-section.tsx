@@ -1,4 +1,5 @@
 import { FC, useRef, useEffect, useState, useMemo, useCallback } from "react";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -719,8 +720,10 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
             <span className="text-sm text-muted-foreground">Payment Schedule</span>
             <span className="text-sm font-medium">
               {activeSchedule
-                ? `Auto-pay: ${formatCurrency(activeSchedule.amount)}/${activeSchedule.frequency === 'weekly' ? 'week' : 'month'}`
-                : 'No auto-pay'}
+                ? activeSchedule.frequency === 'upfront'
+                  ? `Full season (${formatCurrency(activeSchedule.amount)})`
+                  : `Auto-pay: ${formatCurrency(activeSchedule.amount)}/${activeSchedule.frequency === 'weekly' ? 'week' : 'month'}`
+                : 'No payment set up'}
             </span>
           </div>
 
@@ -733,7 +736,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
             </div>
           )}
 
-          {financials.finalTwoWeeks.amount > 0 && !financials.finalTwoWeeks.isPaid && (
+          {league.paymentMode !== 'upfront' && financials.finalTwoWeeks.amount > 0 && !financials.finalTwoWeeks.isPaid && (
             <div className={`flex items-center justify-between rounded-md px-3 py-2 ${
               financials.finalTwoWeeks.isPastDue
                   ? 'bg-destructive/10'
@@ -810,7 +813,18 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           </div>
         )}
 
-        {!activeSchedule && (
+        {!activeSchedule && league.paymentMode === 'upfront' && (
+          <div className="space-y-2">
+            <Link href={`/bowlers/${bowler.id}/payment-setup`}>
+              <Button className="w-full">
+                Pay Full Season ({formatCurrency(financials.fullSeasonAmount)})
+                <CreditCard className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        )}
+
+        {!activeSchedule && league.paymentMode !== 'upfront' && (
           <div className="space-y-2">
               <Button
                 onClick={() => { setPaymentMode('autopay'); setSelectedSchedule('weekly'); setShowPaymentSetup(true); }}
