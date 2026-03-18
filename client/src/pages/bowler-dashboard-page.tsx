@@ -268,6 +268,7 @@ export const BowlerDashboardPage: FC = () => {
     <BowlerLayout
       bowlerName={bowler.name}
       leagueName={leagueName}
+      currentLeagueId={activeBowlerLeague?.leagueId}
     >
       {isSystemAdmin && (
         <div className="mb-6">

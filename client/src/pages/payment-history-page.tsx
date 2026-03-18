@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { League, Payment, User, SavedCard, ApiResponse } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { Loader2, ArrowLeft, CreditCard, Wallet } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import {
   Table,
   TableBody,
@@ -35,6 +35,12 @@ import { formatCurrency } from "@/lib/utils";
 
 export default function PaymentHistoryPage() {
   const { toast } = useToast();
+  const search = useSearch();
+  const urlLeagueId = useMemo(() => {
+    const id = new URLSearchParams(search).get('leagueId');
+    return id ? Number(id) : null;
+  }, []);
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(urlLeagueId);
   const [payDialogType, setPayDialogType] = useState<'pastdue' | 'remaining' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
@@ -94,8 +100,26 @@ export default function PaymentHistoryPage() {
     enabled: !!bowlerId,
   });
 
-  // Find the first active league for the bowler
-  const leagueId = bowlerLeaguesResponse?.data?.[0]?.leagueId;
+  const bowlerLeagues = bowlerLeaguesResponse?.data ?? [];
+  const hasMultipleLeagues = bowlerLeagues.length > 1;
+
+  // Derive the active leagueId: prefer user-selected, fall back to first in list
+  const leagueId = selectedLeagueId ?? bowlerLeagues[0]?.leagueId;
+
+  // Fetch all leagues (for dropdown names) when bowler belongs to multiple leagues
+  const { data: allLeaguesResponse } = useQuery<ApiResponse<League[]>>({
+    queryKey: ['/api/leagues'],
+    enabled: !!bowlerId && hasMultipleLeagues,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const leagueMap = useMemo(() => {
+    const map = new Map<number, League>();
+    if (allLeaguesResponse?.data) {
+      for (const l of allLeaguesResponse.data) map.set(l.id, l);
+    }
+    return map;
+  }, [allLeaguesResponse?.data]);
 
   // Get league details
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<ApiResponse<League>>({
@@ -288,7 +312,7 @@ export default function PaymentHistoryPage() {
   }
 
   return (
-    <BowlerLayout bowlerName={bowlerName} leagueName={league.name}>
+    <BowlerLayout bowlerName={bowlerName} leagueName={league.name} currentLeagueId={leagueId}>
       <div className="space-y-6">
         <Link
           href="/bowler-dashboard"
@@ -300,6 +324,29 @@ export default function PaymentHistoryPage() {
 
         <div>
           <h1 className="text-2xl font-bold mb-2">Payment History</h1>
+          {hasMultipleLeagues && (
+            <div className="mb-4">
+              <label className="text-sm font-medium text-muted-foreground">League</label>
+              <Select
+                value={String(selectedLeagueId ?? leagueId ?? '')}
+                onValueChange={(val) => setSelectedLeagueId(Number(val))}
+              >
+                <SelectTrigger className="w-full md:w-72 mt-1">
+                  <SelectValue placeholder="Select a league" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bowlerLeagues.map(bl => {
+                    const l = leagueMap.get(bl.leagueId);
+                    return (
+                      <SelectItem key={bl.leagueId} value={String(bl.leagueId)}>
+                        {l?.name ?? `League #${bl.leagueId}`}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <p className="text-muted-foreground mb-6">
             Track your payments and balance for {league.name}
           </p>

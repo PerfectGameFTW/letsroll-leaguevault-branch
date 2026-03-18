@@ -17,35 +17,45 @@ interface NavItem {
   icon: typeof LayoutDashboard;
   label: string;
   href: string;
+  baseHref: string;
 }
 
-const navItems: NavItem[] = [
-  {
-    icon: LayoutDashboard,
-    label: "Overview",
-    href: "/bowler-dashboard"
-  },
-  {
-    icon: History,
-    label: "Payment History",
-    href: "/payment-history"
-  },
-  {
-    icon: UserCircle,
-    label: "Profile Settings",
-    href: "/profile"
-  }
-];
+function buildNavItems(currentLeagueId?: number): NavItem[] {
+  const paymentHistoryHref = currentLeagueId
+    ? `/payment-history?leagueId=${currentLeagueId}`
+    : '/payment-history';
+  return [
+    {
+      icon: LayoutDashboard,
+      label: "Overview",
+      href: "/bowler-dashboard",
+      baseHref: "/bowler-dashboard",
+    },
+    {
+      icon: History,
+      label: "Payment History",
+      href: paymentHistoryHref,
+      baseHref: "/payment-history",
+    },
+    {
+      icon: UserCircle,
+      label: "Profile Settings",
+      href: "/profile",
+      baseHref: "/profile",
+    },
+  ];
+}
 
-const SideNav = () => {
+const SideNav = ({ currentLeagueId }: { currentLeagueId?: number }) => {
   const [location] = useLocation();
+  const navItems = buildNavItems(currentLeagueId);
 
   return (
     <nav className="space-y-2">
       {navItems.map((item) => {
-        const isActive = location === item.href;
+        const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?');
         return (
-          <Link key={item.href} href={item.href}>
+          <Link key={item.baseHref} href={item.href}>
             <button
               className={cn(
                 "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
@@ -63,8 +73,9 @@ const SideNav = () => {
   );
 };
 
-export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leagueName }) => {
+export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leagueName, currentLeagueId }) => {
   const [location] = useLocation();
+  const mobileNavItems = buildNavItems(currentLeagueId);
   
   // Fetch current user to get organization ID
   const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
@@ -119,7 +130,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
           <h2 className="text-lg font-semibold">{bowlerName}</h2>
           <p className="text-sm text-muted-foreground">{leagueName}</p>
         </div>
-        <SideNav />
+        <SideNav currentLeagueId={currentLeagueId} />
       </aside>
 
       {/* Mobile Navigation */}
@@ -137,10 +148,10 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-72 z-[200] mt-1 p-2">
-              {navItems.map((item) => {
-                const isActive = location === item.href;
+              {mobileNavItems.map((item) => {
+                const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?');
                 return (
-                  <Link key={item.href} href={item.href}>
+                  <Link key={item.baseHref} href={item.href}>
                     <DropdownMenuItem
                       className={cn(
                         "flex items-center gap-3 cursor-pointer transition-colors text-base py-3 px-4 rounded-md",
@@ -188,4 +199,5 @@ interface BowlerLayoutProps {
   children: ReactNode;
   bowlerName: string;
   leagueName: string;
+  currentLeagueId?: number;
 }
