@@ -1,6 +1,5 @@
 import { FC, useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, CreditCard, Plus, Minus, CalendarDays, Settings, DollarSign, AlertTriangle, RefreshCw, CheckCircle2, Wallet } from "lucide-react";
+import { Loader2, CreditCard, Plus, Minus, CalendarDays, AlertTriangle, Wallet } from "lucide-react";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment, tokenizeCard } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -417,39 +416,13 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                 </div>
               </div>
             ) : paymentMode === 'autopay' && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-medium">Payment Schedule</h3>
-                <p className="text-sm text-muted-foreground">
-                  Choose how often you want to be charged
-                </p>
-              </div>
-              
-              <RadioGroup
-                value={selectedSchedule}
-                onValueChange={(value) => setSelectedSchedule(value as PaymentSchedule)}
-                className="grid grid-cols-1 md:grid-cols-2 gap-4"
-              >
+              <div className="flex items-center gap-3 rounded-md border bg-muted/30 p-4">
+                <CalendarDays className="h-5 w-5 text-muted-foreground shrink-0" />
                 <div>
-                  <RadioGroupItem value="weekly" id="weekly" className="sr-only" />
-                  <Label
-                    htmlFor="weekly"
-                    className={`flex flex-col items-center justify-between rounded-md border-2 border-muted p-4 cursor-pointer ${
-                      selectedSchedule === 'weekly' 
-                        ? 'border-primary bg-primary/5' 
-                        : 'hover:border-primary/50 hover:bg-primary/5'
-                    }`}
-                  >
-                    <CalendarDays className="h-6 w-6 mb-2" />
-                    <span className="text-sm font-medium">Weekly</span>
-                    <span className="text-xs text-muted-foreground mt-1">
-                      {formatCurrency(weeklyFee)} per week
-                    </span>
-                  </Label>
+                  <p className="text-sm font-medium">Weekly auto-pay</p>
+                  <p className="text-sm text-muted-foreground">{formatCurrency(weeklyFee)} charged each league night</p>
                 </div>
-                
-              </RadioGroup>
-            </div>
+              </div>
             )}
             
             {selectedSchedule === 'custom' && league.paymentMode !== 'upfront' && (
