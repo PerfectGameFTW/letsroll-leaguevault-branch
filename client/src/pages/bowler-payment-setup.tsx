@@ -544,7 +544,7 @@ export default function BowlerPaymentSetupPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {savedCards.length > 0 && (
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-4">
                 <Button
                   type="button"
                   variant={cardMode === 'saved' ? 'default' : 'outline'}
