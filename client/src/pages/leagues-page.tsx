@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Plus, Pencil, Archive, RotateCcw, Trash, AlertTriangle } from "lucide-react";
 import type { League, Team, Location } from "@shared/schema";
+import { WEEKDAYS } from "@shared/schema";
 import type { ScoreWithRelations } from "@/lib/types/scores";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -158,6 +159,11 @@ export default function LeaguesPage() {
       filteredLeagues = filteredLeagues.filter(l => l.locationId === parseInt(locationFilter));
     }
   }
+  filteredLeagues = filteredLeagues.slice().sort((a, b) => {
+    const aIdx = WEEKDAYS.indexOf(a.weekDay as typeof WEEKDAYS[number]);
+    const bIdx = WEEKDAYS.indexOf(b.weekDay as typeof WEEKDAYS[number]);
+    return aIdx - bIdx;
+  });
   const archivedCount = allLeagues.filter(l => !l.active).length;
 
   return (

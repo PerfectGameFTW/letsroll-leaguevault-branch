@@ -6,7 +6,7 @@ import { z } from "zod";
 import { passwordSchema } from "./password-validation";
 
 // Update the enum definitions to use const arrays for Zod
-const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 
 const PAYMENT_MODES = ["weekly", "upfront"] as const;
 export type PaymentMode = (typeof PAYMENT_MODES)[number];
