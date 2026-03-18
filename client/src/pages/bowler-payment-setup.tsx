@@ -75,12 +75,6 @@ const UPFRONT_PAYMENT_OPTIONS: PaymentOption[] = [
     description: "Pay the full season amount in one payment",
     calculateAmount: (weeklyFee, totalWeeks) => weeklyFee * totalWeeks,
   },
-  {
-    id: "custom",
-    label: "Partial Payment",
-    description: "Make a partial payment toward your season balance",
-    calculateAmount: (weeklyFee, _, customWeeks = 1) => weeklyFee * customWeeks,
-  },
 ];
 
 export default function BowlerPaymentSetupPage() {
