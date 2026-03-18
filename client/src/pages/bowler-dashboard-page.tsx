@@ -332,6 +332,7 @@ export const BowlerDashboardPage: FC = () => {
         </Card>
 
         <PaymentStatusSection
+          key={league.id}
           league={league}
           bowler={bowler}
           weeklyFee={weeklyFee}
