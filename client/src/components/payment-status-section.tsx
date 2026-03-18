@@ -390,13 +390,15 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   if (showPaymentSetup) {
     return (
       <Card className="w-full">
-        <CardHeader>
+        <CardHeader className={league.paymentMode !== 'upfront' && paymentMode === 'autopay' ? 'pb-4' : undefined}>
           <CardTitle>
             {league.paymentMode === 'upfront' ? 'Full Season Payment' : paymentMode === 'onetime' ? 'Make One-Time Payment' : 'Set Up Automatic Payments'}
           </CardTitle>
-          <CardDescription>
-            {league.paymentMode === 'upfront' ? 'Your full season dues will be charged in a single payment' : paymentMode === 'onetime' ? 'Enter your card to make a payment' : 'Configure your payment schedule for the league'}
-          </CardDescription>
+          {(league.paymentMode === 'upfront' || paymentMode === 'onetime') && (
+            <CardDescription>
+              {league.paymentMode === 'upfront' ? 'Your full season dues will be charged in a single payment' : 'Enter your card to make a payment'}
+            </CardDescription>
+          )}
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
