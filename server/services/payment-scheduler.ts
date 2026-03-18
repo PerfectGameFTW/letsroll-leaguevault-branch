@@ -9,7 +9,7 @@ import { createOrderWithPayment } from "./square";
 import { logger } from "../logger";
 import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 import { storage } from "../storage.js";
-import { isDateSkippedOrCancelled, getEffectiveBowlingWeeks } from "@shared/schedule-utils";
+import { isDateSkippedOrCancelled, getEffectiveBowlingWeeks, countBowlingWeeksPassed } from "@shared/schedule-utils";
 
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
@@ -432,7 +432,18 @@ class PaymentScheduler {
 
       const seasonStart = new Date(league.seasonStart);
       const now = new Date();
-      const currentWeek = Math.max(0, differenceInWeeks(now, seasonStart));
+
+      let currentWeek: number;
+      if (league.totalBowlingWeeks != null && league.weekDay) {
+        currentWeek = countBowlingWeeksPassed(
+          seasonStart,
+          league.weekDay,
+          league.skipDates ?? [],
+          league.cancelledDates ?? []
+        );
+      } else {
+        currentWeek = Math.max(0, differenceInWeeks(now, seasonStart));
+      }
 
       if (currentWeek < dueByWeek) {
         return;

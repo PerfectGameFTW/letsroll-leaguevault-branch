@@ -171,14 +171,15 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   });
 
   const watchedStart = form.watch('seasonStart');
+  const watchedWeekDay = form.watch('weekDay');
   const watchedPaymentMode = form.watch('paymentMode');
   const isUpfront = watchedPaymentMode === 'upfront';
   const watchedWeeklyFee = form.watch('weeklyFee');
 
   const computedSeasonEnd = useMemo(() => {
-    if (!watchedStart || bowlingWeeks <= 0) return null;
-    return calculateSeasonEnd(watchedStart, bowlingWeeks, skipDates, cancelledDates);
-  }, [watchedStart, bowlingWeeks, skipDates, cancelledDates]);
+    if (!watchedStart || !watchedWeekDay || bowlingWeeks <= 0) return null;
+    return calculateSeasonEnd(watchedStart, watchedWeekDay, bowlingWeeks, skipDates, cancelledDates);
+  }, [watchedStart, watchedWeekDay, bowlingWeeks, skipDates, cancelledDates]);
 
   const effectiveBowlingWeeks = useMemo(
     () => getEffectiveBowlingWeeks(bowlingWeeks, cancelledDates),
@@ -186,9 +187,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   );
 
   const scheduleDates = useMemo(() => {
-    if (!watchedStart || bowlingWeeks <= 0) return [];
-    return getAllBowlingDates(watchedStart, bowlingWeeks, skipDates, cancelledDates);
-  }, [watchedStart, bowlingWeeks, skipDates, cancelledDates]);
+    if (!watchedStart || !watchedWeekDay || bowlingWeeks <= 0) return [];
+    return getAllBowlingDates(watchedStart, watchedWeekDay, bowlingWeeks, skipDates, cancelledDates);
+  }, [watchedStart, watchedWeekDay, bowlingWeeks, skipDates, cancelledDates]);
 
   useEffect(() => {
     if (computedSeasonEnd) {

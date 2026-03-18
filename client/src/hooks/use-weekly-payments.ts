@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { subDays } from "date-fns";
+import { subDays, addWeeks } from "date-fns";
 import type { Payment, League } from "@shared/schema";
 import { getBowlingWeekNumber, isDateSkippedOrCancelled } from "@shared/schedule-utils";
 
@@ -234,7 +234,12 @@ export function useWeeklyPayments(leagueId: number) {
   };
 }
 
-export function getNearestBowlingDay(date: Date, weekDay: string): Date {
+export function getNearestBowlingDay(
+  date: Date,
+  weekDay: string,
+  skipDates: string[] = [],
+  cancelledDates: string[] = []
+): Date {
   const weekDayMap: { [key: string]: number } = {
     'sunday': 0,
     'monday': 1,
@@ -248,24 +253,37 @@ export function getNearestBowlingDay(date: Date, weekDay: string): Date {
   const targetDay = weekDayMap[weekDay.toLowerCase()];
   const currentDay = date.getDay();
 
+  let candidate: Date;
   if (currentDay === targetDay) {
-    return date;
+    candidate = date;
+  } else {
+    let daysToSubtract = currentDay - targetDay;
+    if (daysToSubtract <= 0) {
+      daysToSubtract += 7;
+    }
+    candidate = subDays(date, daysToSubtract);
   }
 
-  let daysToSubtract = currentDay - targetDay;
-  if (daysToSubtract <= 0) {
-    daysToSubtract += 7;
+  if (skipDates.length === 0 && cancelledDates.length === 0) {
+    return candidate;
   }
 
-  return subDays(date, daysToSubtract);
+  let iterations = 0;
+  while (isDateSkippedOrCancelled(candidate, skipDates, cancelledDates) && iterations < 52) {
+    candidate = subDays(candidate, 7);
+    iterations++;
+  }
+
+  return candidate;
 }
 
 export function getWeekNumber(date: Date, league: League | undefined): number {
   if (!league?.seasonStart) return 0;
-  if (league.totalBowlingWeeks != null) {
+  if (league.totalBowlingWeeks != null && league.weekDay) {
     return getBowlingWeekNumber(
       date,
       league.seasonStart,
+      league.weekDay,
       league.skipDates ?? [],
       league.cancelledDates ?? []
     );

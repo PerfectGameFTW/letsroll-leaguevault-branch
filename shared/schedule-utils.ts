@@ -1,5 +1,10 @@
 import { addWeeks } from "date-fns";
 
+const WEEKDAY_MAP: Record<string, number> = {
+  Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
+  Thursday: 4, Friday: 5, Saturday: 6,
+};
+
 export function toIsoDateStr(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -31,8 +36,23 @@ export function getEffectiveBowlingWeeks(
   return Math.max(0, totalBowlingWeeks - (cancelledDates?.length ?? 0));
 }
 
+function findFirstBowlingDay(seasonStart: string | Date, weekDay: string): Date {
+  const targetDay = WEEKDAY_MAP[weekDay];
+  let start = toLocalMidnight(seasonStart);
+
+  if (targetDay === undefined) return start;
+
+  const startDay = start.getDay();
+  const daysToAdd = (targetDay - startDay + 7) % 7;
+  if (daysToAdd > 0) {
+    start = new Date(start.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+  }
+  return start;
+}
+
 export function calculateSeasonEnd(
   seasonStart: string | Date,
+  weekDay: string,
   totalBowlingWeeks: number,
   skipDates: string[],
   cancelledDates: string[]
@@ -45,10 +65,10 @@ export function calculateSeasonEnd(
 
   const effectiveWeeks = getEffectiveBowlingWeeks(totalBowlingWeeks, cancelledDates ?? []);
   if (effectiveWeeks <= 0) {
-    return toLocalMidnight(seasonStart);
+    return findFirstBowlingDay(seasonStart, weekDay);
   }
 
-  let current = toLocalMidnight(seasonStart);
+  let current = findFirstBowlingDay(seasonStart, weekDay);
   let found = 0;
   let lastBowlingDate = new Date(current);
   const maxIter = totalBowlingWeeks + allExcluded.size + 60;
@@ -68,6 +88,7 @@ export function calculateSeasonEnd(
 
 export function getAllBowlingDates(
   seasonStart: string | Date,
+  weekDay: string,
   totalBowlingWeeks: number,
   skipDates: string[],
   cancelledDates: string[]
@@ -78,7 +99,7 @@ export function getAllBowlingDates(
   const effectiveWeeks = getEffectiveBowlingWeeks(totalBowlingWeeks, cancelledDates ?? []);
   const result: ScheduleWeek[] = [];
 
-  let current = toLocalMidnight(seasonStart);
+  let current = findFirstBowlingDay(seasonStart, weekDay);
   let bowlingWeekNumber = 0;
   const maxIter = totalBowlingWeeks + skipSet.size + cancelSet.size + 60;
 
@@ -111,6 +132,7 @@ export function getAllBowlingDates(
 export function getBowlingWeekNumber(
   date: Date,
   seasonStart: string | Date,
+  weekDay: string,
   skipDates: string[],
   cancelledDates: string[]
 ): number {
@@ -119,7 +141,7 @@ export function getBowlingWeekNumber(
   const allExcluded = new Set([...skipSet, ...cancelSet]);
 
   const targetStr = toIsoDateStr(date);
-  let current = toLocalMidnight(seasonStart);
+  let current = findFirstBowlingDay(seasonStart, weekDay);
   let weekNum = 0;
   const maxIter = 200;
 
@@ -137,6 +159,7 @@ export function getBowlingWeekNumber(
 
 export function countBowlingWeeksPassed(
   seasonStart: string | Date,
+  weekDay: string,
   skipDates: string[],
   cancelledDates: string[]
 ): number {
@@ -146,7 +169,7 @@ export function countBowlingWeeksPassed(
 
   const today = toLocalMidnight(new Date());
   const todayStr = toIsoDateStr(today);
-  let current = toLocalMidnight(seasonStart);
+  let current = findFirstBowlingDay(seasonStart, weekDay);
   let weekNum = 0;
   const maxIter = 200;
 
@@ -160,6 +183,35 @@ export function countBowlingWeeksPassed(
   }
 
   return weekNum;
+}
+
+export function getBowlingDateByWeekNumber(
+  seasonStart: string | Date,
+  weekDay: string,
+  weekNumber: number,
+  skipDates: string[],
+  cancelledDates: string[]
+): Date | null {
+  if (weekNumber <= 0) return null;
+
+  const skipSet = new Set((skipDates ?? []).map((d) => d.slice(0, 10)));
+  const cancelSet = new Set((cancelledDates ?? []).map((d) => d.slice(0, 10)));
+  const allExcluded = new Set([...skipSet, ...cancelSet]);
+
+  let current = findFirstBowlingDay(seasonStart, weekDay);
+  let weekNum = 0;
+  const maxIter = weekNumber + allExcluded.size + 60;
+
+  for (let i = 0; i < maxIter; i++) {
+    const dateStr = toIsoDateStr(current);
+    if (!allExcluded.has(dateStr)) {
+      weekNum++;
+      if (weekNum >= weekNumber) return new Date(current);
+    }
+    current = addWeeks(current, 1);
+  }
+
+  return null;
 }
 
 export function isDateSkippedOrCancelled(

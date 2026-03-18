@@ -4,10 +4,11 @@ import { insertPaymentScheduleSchema } from '@shared/schema.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { paymentScheduler } from '../services/payment-scheduler.js';
-import { addMonths, setHours, setMinutes, setSeconds, setMilliseconds, differenceInWeeks } from 'date-fns';
+import { addMonths, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
 import { fromZonedTime } from 'date-fns-tz';
 import { adminWriteLimiter } from '../middleware/rate-limit.js';
 import { getNextLeagueDateTime } from '../utils/league-datetime.js';
+import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 
 const router = Router();
 
@@ -45,7 +46,12 @@ router.post('/', adminWriteLimiter, async (req, res) => {
       if (!isUpfrontFrequency) {
         return sendError(res, 'Upfront leagues require frequency "upfront"', 400, 'INVALID_FREQUENCY');
       }
-      const totalWeeks = Math.max(0, differenceInWeeks(new Date(league.seasonEnd), new Date(league.seasonStart)));
+      const totalWeeks = league.totalBowlingWeeks != null
+        ? getEffectiveBowlingWeeks(league.totalBowlingWeeks, league.cancelledDates ?? [])
+        : Math.max(0, Math.round(
+            (new Date(league.seasonEnd).getTime() - new Date(league.seasonStart).getTime()) /
+            (7 * 24 * 60 * 60 * 1000)
+          ));
       const fullSeasonAmount = league.weeklyFee * totalWeeks;
       if (req.body.amount !== fullSeasonAmount) {
         return sendError(res, `Upfront leagues require full season amount (${fullSeasonAmount} cents)`, 400, 'INVALID_AMOUNT');
@@ -61,7 +67,9 @@ router.post('/', adminWriteLimiter, async (req, res) => {
           new Date(),
           league.weekDay,
           league.competitionStartTime,
-          league.timezone ?? 'America/Chicago'
+          league.timezone ?? 'America/Chicago',
+          league.skipDates ?? [],
+          league.cancelledDates ?? []
         );
 
     const validationResult = insertPaymentScheduleSchema.safeParse({
@@ -190,7 +198,9 @@ router.patch('/:id', adminWriteLimiter, async (req, res) => {
         new Date(),
         league.weekDay,
         league.competitionStartTime,
-        league.timezone ?? 'America/Chicago'
+        league.timezone ?? 'America/Chicago',
+        league.skipDates ?? [],
+        league.cancelledDates ?? []
       );
     }
 

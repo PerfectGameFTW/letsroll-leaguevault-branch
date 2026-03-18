@@ -3,6 +3,7 @@ import type { League, Payment } from "@shared/schema";
 import {
   getEffectiveBowlingWeeks,
   countBowlingWeeksPassed,
+  getBowlingDateByWeekNumber,
 } from "@shared/schedule-utils";
 
 export interface FinalTwoWeeksStatus {
@@ -28,6 +29,7 @@ export interface FinancialCalculation {
 type LeagueWithSchedule = {
   seasonStart: string | Date;
   seasonEnd: string | Date;
+  weekDay?: string;
   totalBowlingWeeks?: number | null;
   skipDates?: string[] | null;
   cancelledDates?: string[] | null;
@@ -49,9 +51,10 @@ export function getSeasonLengthWeeks(league: LeagueWithSchedule | null | undefin
 
 export function getWeeksPassedInSeason(league: LeagueWithSchedule | null | undefined): number {
   if (!league?.seasonStart || !league?.seasonEnd) return 0;
-  if (league.totalBowlingWeeks != null) {
+  if (league.totalBowlingWeeks != null && league.weekDay) {
     return countBowlingWeeksPassed(
       league.seasonStart,
+      league.weekDay,
       league.skipDates ?? [],
       league.cancelledDates ?? []
     );
@@ -119,9 +122,22 @@ export function calculateFinancials(league: League | null | undefined, payments:
 
   const dueByWeek = league.finalTwoWeeksDueWeek ?? 6;
   const finalTwoWeeksAmount = league.weeklyFee * 2;
-  const seasonStart = new Date(league.seasonStart);
-  const dueByDate = addWeeks(seasonStart, dueByWeek);
   const today = startOfToday();
+
+  let dueByDate: Date;
+  if (league.totalBowlingWeeks != null && league.weekDay) {
+    const bowlingDueDate = getBowlingDateByWeekNumber(
+      league.seasonStart,
+      league.weekDay,
+      dueByWeek,
+      league.skipDates ?? [],
+      league.cancelledDates ?? []
+    );
+    dueByDate = bowlingDueDate ?? addWeeks(new Date(league.seasonStart), dueByWeek);
+  } else {
+    dueByDate = addWeeks(new Date(league.seasonStart), dueByWeek);
+  }
+
   const isPastDueDate = today >= dueByDate;
   const isPaid = totalPaid >= finalTwoWeeksAmount;
 
@@ -156,6 +172,7 @@ export function calculateBowlerPastDue(
   league: {
     seasonStart: string | Date;
     seasonEnd?: string | Date;
+    weekDay?: string;
     weeklyFee: number;
     paymentMode?: string;
     totalBowlingWeeks?: number | null;
@@ -168,6 +185,7 @@ export function calculateBowlerPastDue(
     const totalWeeks = getSeasonLengthWeeks({
       seasonStart: league.seasonStart,
       seasonEnd: league.seasonEnd ?? league.seasonStart,
+      weekDay: league.weekDay,
       totalBowlingWeeks: league.totalBowlingWeeks,
       skipDates: league.skipDates,
       cancelledDates: league.cancelledDates,
@@ -176,9 +194,10 @@ export function calculateBowlerPastDue(
     return Math.max(0, fullSeasonAmount - bowlerPaidAmount);
   }
 
-  if (league.totalBowlingWeeks != null) {
+  if (league.totalBowlingWeeks != null && league.weekDay) {
     const weeksPassed = countBowlingWeeksPassed(
       league.seasonStart,
+      league.weekDay,
       league.skipDates ?? [],
       league.cancelledDates ?? []
     );

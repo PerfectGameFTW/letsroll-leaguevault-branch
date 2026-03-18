@@ -10,6 +10,7 @@ import { hashPassword } from '../auth';
 import { sendInviteEmail } from '../services/email';
 import { paymentScheduler } from '../services/payment-scheduler.js';
 import { getNextLeagueDateTime } from '../utils/league-datetime.js';
+import { calculateSeasonEnd } from '@shared/schedule-utils';
 
 const router = Router();
 
@@ -54,11 +55,27 @@ router.get("/:id", async (req: any, res) => {
 
 router.post("/", async (req: any, res) => {
   try {
+    // Derive seasonEnd server-side when totalBowlingWeeks is provided
+    let derivedSeasonEnd = req.body.seasonEnd ? new Date(req.body.seasonEnd) : undefined;
+    if (
+      req.body.totalBowlingWeeks != null &&
+      req.body.seasonStart &&
+      req.body.weekDay
+    ) {
+      derivedSeasonEnd = calculateSeasonEnd(
+        new Date(req.body.seasonStart),
+        req.body.weekDay,
+        Number(req.body.totalBowlingWeeks),
+        req.body.skipDates ?? [],
+        req.body.cancelledDates ?? []
+      );
+    }
+
     // Parse league data
     const league = insertLeagueSchema.parse({
       ...req.body,
       seasonStart: new Date(req.body.seasonStart),
-      seasonEnd: new Date(req.body.seasonEnd)
+      seasonEnd: derivedSeasonEnd ?? new Date(req.body.seasonEnd)
     });
     
     const organizationId = getOrganizationFilter(req);
@@ -120,10 +137,31 @@ router.patch("/:id", async (req: any, res) => {
       return sendError(res, "You don't have permission to change the organization of this league", 403, 'FORBIDDEN');
     }
     
+    // Merge incoming fields with existing league data for derivation
+    const mergedWeekDay = req.body.weekDay ?? league.weekDay;
+    const mergedSeasonStart = req.body.seasonStart ?? league.seasonStart;
+    const mergedTotalBowlingWeeks = req.body.totalBowlingWeeks !== undefined
+      ? req.body.totalBowlingWeeks
+      : league.totalBowlingWeeks;
+    const mergedSkipDates = req.body.skipDates ?? league.skipDates ?? [];
+    const mergedCancelledDates = req.body.cancelledDates ?? league.cancelledDates ?? [];
+
+    // Derive seasonEnd server-side when totalBowlingWeeks is available
+    let derivedSeasonEnd = req.body.seasonEnd ? new Date(req.body.seasonEnd) : undefined;
+    if (mergedTotalBowlingWeeks != null && mergedSeasonStart && mergedWeekDay) {
+      derivedSeasonEnd = calculateSeasonEnd(
+        new Date(mergedSeasonStart),
+        mergedWeekDay,
+        Number(mergedTotalBowlingWeeks),
+        mergedSkipDates,
+        mergedCancelledDates
+      );
+    }
+
     const update = partialLeagueSchema.parse({
       ...req.body,
       seasonStart: req.body.seasonStart ? new Date(req.body.seasonStart) : undefined,
-      seasonEnd: req.body.seasonEnd ? new Date(req.body.seasonEnd) : undefined
+      seasonEnd: derivedSeasonEnd ?? (req.body.seasonEnd ? new Date(req.body.seasonEnd) : undefined)
     });
     
     const updated = await storage.updateLeague(id, update);
