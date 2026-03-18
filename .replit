@@ -63,4 +63,4 @@ SQUARE_PRODUCTION_LOCATION_ID = "LPM9NWNXW82M5"
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 20000
+timeoutMs = 60000
