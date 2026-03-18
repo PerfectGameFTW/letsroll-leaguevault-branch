@@ -11,7 +11,6 @@ import TeamViewPage from "@/pages/team-view-page";
 import BowlersPage from "@/pages/bowlers-page";
 import BowlerViewPage from "@/pages/bowler-view-page";
 import BowlerScoresPage from "@/pages/bowler-scores-page";
-import BowlerPaymentSetupPage from "@/pages/bowler-payment-setup";
 import LeagueScoresPage from "@/pages/league-scores-page";
 import PaymentsPage from "@/pages/payments-page";
 import PaymentHistoryPage from "@/pages/payment-history-page";
@@ -119,12 +118,6 @@ function Router() {
       <Route path="/bowler-dashboard">
         <AuthRouteGuard>
           <BowlerDashboardPage />
-        </AuthRouteGuard>
-      </Route>
-      
-      <Route path="/bowlers/:bowlerId/payment-setup">
-        <AuthRouteGuard>
-          <BowlerPaymentSetupPage />
         </AuthRouteGuard>
       </Route>
       
