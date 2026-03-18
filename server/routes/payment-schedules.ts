@@ -4,7 +4,7 @@ import { insertPaymentScheduleSchema } from '@shared/schema.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { paymentScheduler } from '../services/payment-scheduler.js';
-import { addMonths, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
+import { addMonths, setHours, setMinutes, setSeconds, setMilliseconds, differenceInWeeks } from 'date-fns';
 import { fromZonedTime } from 'date-fns-tz';
 import { adminWriteLimiter } from '../middleware/rate-limit.js';
 import { getNextLeagueDateTime } from '../utils/league-datetime.js';
@@ -45,12 +45,13 @@ router.post('/', adminWriteLimiter, async (req, res) => {
       if (!isUpfrontFrequency) {
         return sendError(res, 'Upfront leagues require frequency "upfront"', 400, 'INVALID_FREQUENCY');
       }
-      const { differenceInWeeks } = await import('date-fns');
       const totalWeeks = Math.max(0, differenceInWeeks(new Date(league.seasonEnd), new Date(league.seasonStart)));
       const fullSeasonAmount = league.weeklyFee * totalWeeks;
       if (req.body.amount !== fullSeasonAmount) {
         return sendError(res, `Upfront leagues require full season amount (${fullSeasonAmount} cents)`, 400, 'INVALID_AMOUNT');
       }
+    } else if (isUpfrontFrequency) {
+      return sendError(res, 'Frequency "upfront" is only valid for upfront-mode leagues', 400, 'INVALID_FREQUENCY');
     }
 
     // Upfront schedules charge immediately; all others fire on the next league night.
