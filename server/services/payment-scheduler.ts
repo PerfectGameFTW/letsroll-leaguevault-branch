@@ -3,7 +3,7 @@ import { db } from "../db";
 import { eq, and, lte, gte, isNull, or, sql } from "drizzle-orm";
 import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
 import { addWeeks, addMonths, setHours, setMinutes, setSeconds, setMilliseconds, isAfter, differenceInWeeks } from "date-fns";
-import { fromZonedTime } from "date-fns-tz";
+import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import { createSquarePayment } from "../lib/square";
 import { createOrderWithPayment } from "./square";
 import { logger } from "../logger";
@@ -205,13 +205,19 @@ class PaymentScheduler {
 
         const league = await db.select().from(leagues).where(eq(leagues.id, scheduleRecord.leagueId)).then(r => r[0]);
 
-        // Skip charge if the payment date is a skip or cancelled date — just advance the schedule
+        // Skip charge if the payment date is a skip or cancelled date — just advance the schedule.
+        // nextPaymentDate is stored as UTC; convert to league local time before comparing to
+        // skip/cancel ISO date strings (which are stored in league-local calendar dates).
+        const leagueTz = league?.timezone ?? 'America/Chicago';
+        const firingDateLeagueLocal = league
+          ? toZonedTime(scheduleRecord.nextPaymentDate, leagueTz)
+          : scheduleRecord.nextPaymentDate;
         if (league && isDateSkippedOrCancelled(
-          scheduleRecord.nextPaymentDate,
+          firingDateLeagueLocal,
           league.skipDates ?? [],
           league.cancelledDates ?? []
         )) {
-          const tz = league.timezone ?? 'America/Chicago';
+          const tz = leagueTz;
           const nextDate = getNextLeagueDateTime(
             scheduleRecord.nextPaymentDate,
             league.weekDay,
