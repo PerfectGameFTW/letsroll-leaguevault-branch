@@ -36,11 +36,11 @@ import { formatCurrency } from "@/lib/utils";
 export default function PaymentHistoryPage() {
   const { toast } = useToast();
   const search = useSearch();
-  const urlLeagueId = useMemo(() => {
+  // Seed from URL param once on mount; league validity is checked after data loads
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(() => {
     const id = new URLSearchParams(search).get('leagueId');
     return id ? Number(id) : null;
-  }, []);
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(urlLeagueId);
+  });
   const [payDialogType, setPayDialogType] = useState<'pastdue' | 'remaining' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
@@ -102,6 +102,16 @@ export default function PaymentHistoryPage() {
 
   const bowlerLeagues = bowlerLeaguesResponse?.data ?? [];
   const hasMultipleLeagues = bowlerLeagues.length > 1;
+
+  // Once league data loads, validate selectedLeagueId belongs to this bowler.
+  // If invalid (e.g., stale URL param), fall back to the first available league.
+  useEffect(() => {
+    if (!bowlerLeagues.length) return;
+    const validIds = bowlerLeagues.map(bl => bl.leagueId);
+    if (selectedLeagueId !== null && !validIds.includes(selectedLeagueId)) {
+      setSelectedLeagueId(validIds[0]);
+    }
+  }, [bowlerLeagues.map(bl => bl.leagueId).join(',')]);
 
   // Derive the active leagueId: prefer user-selected, fall back to first in list
   const leagueId = selectedLeagueId ?? bowlerLeagues[0]?.leagueId;
