@@ -7,6 +7,9 @@ import { passwordSchema } from "./password-validation";
 
 // Update the enum definitions to use const arrays for Zod
 const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+
+const PAYMENT_MODES = ["weekly", "upfront"] as const;
+export type PaymentMode = (typeof PAYMENT_MODES)[number];
 export const WeekDay = {
   MONDAY: WEEKDAYS[0],
   TUESDAY: WEEKDAYS[1],
@@ -88,6 +91,7 @@ export const leagues = pgTable("leagues", {
   squarePrizeFundItemName: text("square_prize_fund_item_name"),
   timezone: text("timezone").default("America/Chicago"),
   finalTwoWeeksDueWeek: integer("final_two_weeks_due_week").default(6),
+  paymentMode: text("payment_mode", { enum: PAYMENT_MODES }).notNull().default("weekly"),
   seasonNumber: integer("season_number").notNull().default(1),
   previousSeasonId: integer("previous_season_id"),
   organizationId: integer("organization_id").references(() => organizations.id),
@@ -433,6 +437,7 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   locationId: z.number().int().positive().nullable().optional(),
   seasonNumber: z.number().int().positive().default(1),
   previousSeasonId: z.number().int().positive().nullable().optional(),
+  paymentMode: z.enum(PAYMENT_MODES).default("weekly"),
 }).omit({ id: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
@@ -538,6 +543,7 @@ export const partialLeagueSchema = z.object({
   squarePrizeFundItemVariationId: z.string().nullable(),
   squarePrizeFundItemName: z.string().nullable(),
   locationId: z.number().int().positive().nullable(),
+  paymentMode: z.enum(PAYMENT_MODES),
 }).partial().refine(
   (data) => {
     if (data.seasonStart && data.seasonEnd) {

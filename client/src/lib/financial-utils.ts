@@ -74,6 +74,23 @@ export function calculateFinancials(league: League | null | undefined, payments:
   const fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
   const remainingBalance = Math.max(0, fullSeasonAmount - totalPaid);
 
+  const isUpfront = league.paymentMode === 'upfront';
+
+  if (isUpfront) {
+    const amountPastDue = Math.max(0, fullSeasonAmount - totalPaid);
+    return {
+      weeksPassed,
+      totalWeeksInSeason,
+      totalDueToDate: fullSeasonAmount,
+      totalPaid,
+      amountPastDue,
+      fullSeasonAmount,
+      remainingBalance,
+      finalTwoWeeks: { ...defaultFinalTwoWeeks, isPaid: true },
+      finalTwoWeeksDue: false,
+    };
+  }
+
   const dueByWeek = league.finalTwoWeeksDueWeek ?? 6;
   const finalTwoWeeksAmount = league.weeklyFee * 2;
   const seasonStart = new Date(league.seasonStart);
@@ -110,9 +127,14 @@ export function calculateFinancials(league: League | null | undefined, payments:
 }
 
 export function calculateBowlerPastDue(
-  league: { seasonStart: string | Date; weeklyFee: number },
+  league: { seasonStart: string | Date; seasonEnd?: string | Date; weeklyFee: number; paymentMode?: string },
   bowlerPaidAmount: number
 ): number {
+  if (league.paymentMode === 'upfront') {
+    const totalWeeks = league.seasonEnd ? getSeasonLengthWeeks({ seasonStart: league.seasonStart, seasonEnd: league.seasonEnd }) : 0;
+    const fullSeasonAmount = league.weeklyFee * totalWeeks;
+    return Math.max(0, fullSeasonAmount - bowlerPaidAmount);
+  }
   const today = startOfToday();
   const seasonStart = new Date(league.seasonStart);
   const weeksPassed = Math.max(0, Math.floor(

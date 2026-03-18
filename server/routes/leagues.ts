@@ -338,6 +338,7 @@ router.post("/:id/new-season", async (req: any, res) => {
       squarePrizeFundItemVariationId: sourceLeague.squarePrizeFundItemVariationId,
       squarePrizeFundItemName: sourceLeague.squarePrizeFundItemName,
       finalTwoWeeksDueWeek: sourceLeague.finalTwoWeeksDueWeek,
+      paymentMode: sourceLeague.paymentMode ?? "weekly",
       organizationId: sourceLeague.organizationId,
       locationId: sourceLeague.locationId,
       seasonNumber: (sourceLeague.seasonNumber || 1) + 1,

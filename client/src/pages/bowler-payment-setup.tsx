@@ -38,7 +38,7 @@ interface SavedCard {
   expYear: number;
 }
 
-type PaymentSchedule = "weekly" | "monthly" | "custom";
+type PaymentSchedule = "weekly" | "monthly" | "custom" | "upfront";
 
 interface PaymentOption {
   id: PaymentSchedule;
@@ -47,7 +47,7 @@ interface PaymentOption {
   calculateAmount: (weeklyFee: number, totalWeeks: number, customWeeks?: number) => number;
 }
 
-const PAYMENT_OPTIONS: PaymentOption[] = [
+const WEEKLY_PAYMENT_OPTIONS: PaymentOption[] = [
   {
     id: "weekly",
     label: "Weekly Automatic Payment",
@@ -68,13 +68,28 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
   },
 ];
 
+const UPFRONT_PAYMENT_OPTIONS: PaymentOption[] = [
+  {
+    id: "upfront",
+    label: "Pay Full Season",
+    description: "Pay the full season amount in one payment",
+    calculateAmount: (weeklyFee, totalWeeks) => weeklyFee * totalWeeks,
+  },
+  {
+    id: "custom",
+    label: "Partial Payment",
+    description: "Make a partial payment toward your season balance",
+    calculateAmount: (weeklyFee, _, customWeeks = 1) => weeklyFee * customWeeks,
+  },
+];
+
 export default function BowlerPaymentSetupPage() {
   const params = useParams();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const bowlerId = parseInt(params.bowlerId!);
   const queryClient = useQueryClient();
-  const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule>("weekly");
+  const [selectedSchedule, setSelectedSchedule] = useState<PaymentSchedule | null>(null);
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -107,6 +122,16 @@ export default function BowlerPaymentSetupPage() {
     enabled: !!bowlerLeagues.length,
   });
   const league = leagueResponse?.data;
+  const isUpfrontLeague = league?.paymentMode === 'upfront';
+  const PAYMENT_OPTIONS = isUpfrontLeague ? UPFRONT_PAYMENT_OPTIONS : WEEKLY_PAYMENT_OPTIONS;
+
+  useEffect(() => {
+    if (league) {
+      setSelectedSchedule(isUpfrontLeague ? 'upfront' : 'weekly');
+    }
+  }, [league?.id, isUpfrontLeague]);
+
+  const resolvedSchedule = selectedSchedule ?? (isUpfrontLeague ? 'upfront' : 'weekly');
 
   const { data: paymentsResponse } = useQuery<{ data: Payment[] }>({
     queryKey: ["/api/payments"],
@@ -140,13 +165,13 @@ export default function BowlerPaymentSetupPage() {
   const calculatePaymentAmount = () => {
     if (!league) return 0;
 
-    const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule);
+    const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === resolvedSchedule);
     if (!selectedOption) return 0;
 
     const totalWeeks = getSeasonLengthWeeks(league);
 
     let amount = selectedOption.calculateAmount(league.weeklyFee, totalWeeks, customWeeks);
-    if (includeFinalTwoWeeks) {
+    if (!isUpfrontLeague && includeFinalTwoWeeks) {
       amount += league.weeklyFee * 2;
     }
     return amount;
@@ -180,8 +205,8 @@ export default function BowlerPaymentSetupPage() {
       return;
     }
 
-    const isAutoPay = selectedSchedule !== 'custom';
-    const finalTwoWeeksUnpaid = !financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0;
+    const isAutoPay = !isUpfrontLeague && resolvedSchedule !== 'custom';
+    const finalTwoWeeksUnpaid = !isUpfrontLeague && !financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0;
 
     if (isAutoPay && finalTwoWeeksUnpaid && !includeFinalTwoWeeks && !showFinalTwoWeeksWarning) {
       setShowFinalTwoWeeksWarning(true);
@@ -197,7 +222,7 @@ export default function BowlerPaymentSetupPage() {
         // Auto-pay setup: save the card and create a recurring schedule.
         // The base recurring amount (weeklyFee or weeklyFee × 4) is always the schedule amount.
         const totalWeeks = getSeasonLengthWeeks(league);
-        const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === selectedSchedule)!;
+        const selectedOption = PAYMENT_OPTIONS.find(opt => opt.id === resolvedSchedule)!;
         const recurringAmount = selectedOption.calculateAmount(league.weeklyFee, totalWeeks, customWeeks);
 
         // Only charge upfront if the bowler has an outstanding balance.
@@ -269,7 +294,7 @@ export default function BowlerPaymentSetupPage() {
           body: JSON.stringify({
             bowlerId,
             leagueId: league.id,
-            frequency: selectedSchedule,
+            frequency: resolvedSchedule,
             amount: recurringAmount,
             nextPaymentDate: new Date(),
             squareCardId,
@@ -281,7 +306,7 @@ export default function BowlerPaymentSetupPage() {
           throw new Error("Failed to set up payment schedule");
         }
       } else {
-        // One-time / custom payment — no schedule needed
+        // One-time payment (custom for weekly leagues, upfront/partial for upfront leagues)
         const amount = calculatePaymentAmount();
         if (amount <= 0) throw new Error("Invalid payment amount calculated");
 
@@ -314,11 +339,13 @@ export default function BowlerPaymentSetupPage() {
       const noChargeSetup = isAutoPay && financials.amountPastDue === 0;
       toast({
         title: noChargeSetup ? "Auto-Pay Activated" : "Payment Successful",
-        description: noChargeSetup
-          ? `Your card has been saved and ${selectedSchedule} auto-pay is now active. Your first charge will be on the next league night.`
-          : selectedSchedule === "custom"
-            ? "Your one-time payment has been processed successfully."
-            : `Your payment has been processed and ${selectedSchedule} auto-pay is now active.`,
+        description: isUpfrontLeague
+          ? "Your full season payment has been processed successfully."
+          : noChargeSetup
+            ? `Your card has been saved and ${resolvedSchedule} auto-pay is now active. Your first charge will be on the next league night.`
+            : resolvedSchedule === "custom"
+              ? "Your one-time payment has been processed successfully."
+              : `Your payment has been processed and ${resolvedSchedule} auto-pay is now active.`,
       });
 
       setLocation('/dashboard');
@@ -374,36 +401,42 @@ export default function BowlerPaymentSetupPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Payment Schedule</CardTitle>
+            <CardTitle>{isUpfrontLeague ? "Payment Option" : "Payment Schedule"}</CardTitle>
             <CardDescription>
-              Select how you would like to pay your league dues
+              {isUpfrontLeague
+                ? `This league requires the full season to be paid upfront. Full season total: $${(financials.fullSeasonAmount / 100).toFixed(2)}`
+                : "Select how you would like to pay your league dues"}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <RadioGroup
-              value={selectedSchedule}
+              value={resolvedSchedule}
               onValueChange={(value) => setSelectedSchedule(value as PaymentSchedule)}
               className="space-y-4"
             >
-              {PAYMENT_OPTIONS.map((option) => (
-                <div key={option.id} className="flex items-center space-x-2">
-                  <RadioGroupItem value={option.id} id={option.id} />
-                  <Label htmlFor={option.id} className="flex flex-col">
-                    <span className="font-medium">{option.label}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {option.description}
-                    </span>
-                    <span className="text-sm font-semibold">
-                      ${(calculatePaymentAmount() / 100).toFixed(2)}
-                    </span>
-                  </Label>
-                </div>
-              ))}
+              {PAYMENT_OPTIONS.map((option) => {
+                const totalWeeks = getSeasonLengthWeeks(league);
+                const optionAmount = option.calculateAmount(league.weeklyFee, totalWeeks, customWeeks);
+                return (
+                  <div key={option.id} className="flex items-center space-x-2">
+                    <RadioGroupItem value={option.id} id={option.id} />
+                    <Label htmlFor={option.id} className="flex flex-col">
+                      <span className="font-medium">{option.label}</span>
+                      <span className="text-sm text-muted-foreground">
+                        {option.description}
+                      </span>
+                      <span className="text-sm font-semibold">
+                        ${(optionAmount / 100).toFixed(2)}
+                      </span>
+                    </Label>
+                  </div>
+                );
+              })}
             </RadioGroup>
           </CardContent>
         </Card>
 
-        {!financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0 && (
+        {!isUpfrontLeague && !financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0 && (
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-start space-x-3">
@@ -418,7 +451,7 @@ export default function BowlerPaymentSetupPage() {
                   </Label>
                   <p className="text-xs text-muted-foreground">
                     Pay the final 2 weeks upfront with your first payment. Due by Week {financials.finalTwoWeeks.dueByWeek}.
-                    {selectedSchedule !== 'custom' && ' Your auto-pay schedule will be reduced by 2 weeks.'}
+                    {resolvedSchedule !== 'custom' && ' Your auto-pay schedule will be reduced by 2 weeks.'}
                   </p>
                 </div>
               </div>
@@ -578,11 +611,11 @@ export default function BowlerPaymentSetupPage() {
               {isProcessing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {selectedSchedule !== 'custom' && financials.amountPastDue === 0
+                  {isAutoPay && financials.amountPastDue === 0
                     ? "Setting Up Auto-Pay..."
                     : "Processing Payment..."}
                 </>
-              ) : selectedSchedule === 'custom' ? (
+              ) : isUpfrontLeague || resolvedSchedule === 'custom' ? (
                 `Pay ${formatCurrency(calculatePaymentAmount())}`
               ) : financials.amountPastDue === 0 ? (
                 "Set Up Auto-Pay"

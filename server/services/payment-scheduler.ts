@@ -247,6 +247,8 @@ class PaymentScheduler {
 
         // If payment successful, update schedule and create payment record
         if (paymentResult.status === 'success') {
+          const isUpfrontLeague = league?.paymentMode === 'upfront';
+
           let nextDate: Date;
           const tz = league?.timezone ?? 'America/Chicago';
           if (scheduleRecord.frequency === 'weekly' && league) {
@@ -307,6 +309,23 @@ class PaymentScheduler {
               nextScheduledDate: nextDate
             });
           });
+
+          // For upfront leagues: deactivate schedule immediately after one successful payment;
+          // skip the weekly recurring charge and final-two-weeks auto-charge entirely.
+          if (isUpfrontLeague) {
+            logger.info(`[PaymentScheduler] Upfront league — deactivating schedule after payment for ${jobId}`, {
+              scheduleId: scheduleRecord.id,
+              bowlerId: scheduleRecord.bowlerId,
+              leagueId: scheduleRecord.leagueId,
+            });
+            await storage.deactivatePaymentSchedule(scheduleRecord.id);
+            const existingJob = this.jobs.get(jobId);
+            if (existingJob) {
+              existingJob.cancel();
+              this.jobs.delete(jobId);
+            }
+            return;
+          }
 
           // Check if final 2 weeks need to be auto-charged this week
           if (league) {

@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { insertLeagueSchema, type InsertLeague, type League, type Location } from "@shared/schema";
+import { insertLeagueSchema, type InsertLeague, type League, type Location, type PaymentMode } from "@shared/schema";
 
 interface CatalogItemVariation {
   id: string;
@@ -150,6 +150,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       timezone: "America/Chicago",
       weeklyFee: 2000,
       finalTwoWeeksDueWeek: 6,
+      paymentMode: "weekly",
       squareLineageItemId: null,
       squareLineageItemVariationId: null,
       squareLineageItemName: null,
@@ -164,6 +165,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
 
   const watchedStart = form.watch('seasonStart');
   const watchedEnd = form.watch('seasonEnd');
+  const watchedPaymentMode = form.watch('paymentMode');
+  const isUpfront = watchedPaymentMode === 'upfront';
+  const watchedWeeklyFee = form.watch('weeklyFee');
 
   useEffect(() => {
     const start = form.getValues('seasonStart');
@@ -225,6 +229,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         timezone: league.timezone || "America/Chicago",
         weeklyFee: league.weeklyFee || 2000,
         finalTwoWeeksDueWeek: league.finalTwoWeeksDueWeek ?? 6,
+        paymentMode: (league.paymentMode as PaymentMode) || "weekly",
         squareLineageItemId: league.squareLineageItemId || null,
         squareLineageItemVariationId: league.squareLineageItemVariationId || null,
         squareLineageItemName: league.squareLineageItemName || null,
@@ -246,6 +251,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         timezone: "America/Chicago",
         weeklyFee: 2000,
         finalTwoWeeksDueWeek: 6,
+        paymentMode: "weekly",
         squareLineageItemId: null,
         squareLineageItemVariationId: null,
         squareLineageItemName: null,
@@ -533,6 +539,31 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   )}
                 />
 
+                <FormField
+                  control={form.control}
+                  name="paymentMode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Mode</FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(value as PaymentMode)}
+                        value={field.value || "weekly"}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="weekly">Weekly — bowlers pay each week</SelectItem>
+                          <SelectItem value="upfront">Full Season Upfront — full amount due at start</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 {hasCatalogItems && (
                   <div className="space-y-3 rounded-lg border p-3">
                     <div className="text-sm font-medium">Square Catalog Items</div>
@@ -672,33 +703,48 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="finalTwoWeeksDueWeek"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Final 2 Weeks Due By</FormLabel>
-                      <Select
-                        onValueChange={(value) => field.onChange(parseInt(value))}
-                        value={String(field.value ?? 6)}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select week" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {Array.from({ length: 10 }, (_, i) => i + 1).map((week) => (
-                            <SelectItem key={week} value={String(week)}>
-                              Week {week}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {!isUpfront && (
+                  <FormField
+                    control={form.control}
+                    name="finalTwoWeeksDueWeek"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Final 2 Weeks Due By</FormLabel>
+                        <Select
+                          onValueChange={(value) => field.onChange(parseInt(value))}
+                          value={String(field.value ?? 6)}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select week" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {Array.from({ length: 10 }, (_, i) => i + 1).map((week) => (
+                              <SelectItem key={week} value={String(week)}>
+                                Week {week}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {isUpfront && seasonLength > 0 && watchedWeeklyFee > 0 && (
+                  <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                    <div className="font-medium">Full Season Total</div>
+                    <div className="text-muted-foreground mt-1">
+                      ${(watchedWeeklyFee / 100).toFixed(2)} &times; {seasonLength} weeks ={" "}
+                      <span className="font-semibold text-foreground">
+                        ${((watchedWeeklyFee * seasonLength) / 100).toFixed(2)}
+                      </span>{" "}
+                      due upfront per bowler
+                    </div>
+                  </div>
+                )}
 
                 <FormField
                   control={form.control}
