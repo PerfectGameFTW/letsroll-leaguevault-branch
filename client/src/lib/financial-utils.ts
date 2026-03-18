@@ -51,13 +51,15 @@ export function getSeasonLengthWeeks(league: LeagueWithSchedule | null | undefin
 
 export function getWeeksPassedInSeason(league: LeagueWithSchedule | null | undefined): number {
   if (!league?.seasonStart || !league?.seasonEnd) return 0;
+  const maxWeeks = getSeasonLengthWeeks(league);
   if (league.totalBowlingWeeks != null && league.weekDay) {
-    return countBowlingWeeksPassed(
+    const passed = countBowlingWeeksPassed(
       league.seasonStart,
       league.weekDay,
       league.skipDates ?? [],
       league.cancelledDates ?? []
     );
+    return Math.min(passed, maxWeeks);
   }
   const seasonStart = new Date(league.seasonStart);
   const seasonEnd = new Date(league.seasonEnd);
