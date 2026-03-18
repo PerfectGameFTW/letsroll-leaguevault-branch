@@ -270,7 +270,7 @@ export const paymentSchedules = pgTable("payment_schedules", {
   leagueId: integer("league_id")
     .notNull()
     .references(() => leagues.id, { onDelete: 'cascade' }),
-  frequency: text("frequency", { enum: ["weekly", "monthly"] }).notNull(),
+  frequency: text("frequency", { enum: ["weekly", "monthly", "upfront"] }).notNull(),
   amount: integer("amount").notNull(), // Store in cents
   nextPaymentDate: timestamp("next_payment_date").notNull(),
   active: boolean("active").notNull().default(true),
@@ -515,7 +515,7 @@ export const insertUserSchema = baseUserSchema.extend({
 export const insertPaymentScheduleSchema = basePaymentScheduleSchema.extend({
   bowlerId: positiveIntSchema,
   leagueId: positiveIntSchema,
-  frequency: z.enum(["weekly", "monthly"]),
+  frequency: z.enum(["weekly", "monthly", "upfront"]),
   amount: positiveIntSchema,
   nextPaymentDate: dateSchema,
   active: z.boolean().default(true),

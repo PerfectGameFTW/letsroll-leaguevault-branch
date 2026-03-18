@@ -299,8 +299,57 @@ export default function BowlerPaymentSetupPage() {
         if (!scheduleResponse.ok) {
           throw new Error("Failed to set up payment schedule");
         }
+      } else if (isUpfrontLeague) {
+        // Upfront league: save card and create a one-time 'upfront' schedule.
+        // The scheduler will charge the full season amount once, then deactivate the schedule.
+        const totalWeeks = getSeasonLengthWeeks(league);
+        const upfrontOption = PAYMENT_OPTIONS.find(opt => opt.id === 'upfront')!;
+        const upfrontAmount = upfrontOption.calculateAmount(league.weeklyFee, totalWeeks);
+
+        let squareCardId: string;
+
+        if (cardMode === 'saved' && selectedSavedCardId) {
+          squareCardId = selectedSavedCardId;
+        } else {
+          const token = await tokenizeCard(card);
+          const saveResponse = await fetch(`/api/square/cards/${bowlerId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourceId: token }),
+          });
+          const saveData = await saveResponse.json();
+          if (!saveResponse.ok || !saveData.data?.savedCardId) {
+            throw new Error(JSON.stringify({
+              error: { message: saveData.error?.message || 'Your card could not be saved. Please try again.', code: 'CARD_SAVE_FAILED' }
+            }));
+          }
+          squareCardId = saveData.data.savedCardId;
+          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+        }
+
+        // Create a one-time upfront schedule — the scheduler will charge immediately and deactivate it.
+        const scheduleResponse = await fetch("/api/payment-schedules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            bowlerId,
+            leagueId: league.id,
+            frequency: "upfront",
+            amount: upfrontAmount,
+            nextPaymentDate: new Date(),
+            squareCardId,
+            includeFinalTwoWeeks: false,
+          }),
+        });
+
+        if (!scheduleResponse.ok) {
+          const scheduleData = await scheduleResponse.json();
+          throw new Error(JSON.stringify({
+            error: { message: scheduleData.error?.message || 'Failed to set up payment schedule', code: 'SCHEDULE_FAILED' }
+          }));
+        }
       } else {
-        // One-time payment (custom for weekly leagues, upfront/partial for upfront leagues)
+        // One-time / custom payment for weekly leagues
         const amount = calculatePaymentAmount();
         if (amount <= 0) throw new Error("Invalid payment amount calculated");
 
@@ -332,9 +381,9 @@ export default function BowlerPaymentSetupPage() {
 
       const noChargeSetup = isAutoPay && financials.amountPastDue === 0;
       toast({
-        title: noChargeSetup ? "Auto-Pay Activated" : "Payment Successful",
+        title: isUpfrontLeague ? "Payment Scheduled" : noChargeSetup ? "Auto-Pay Activated" : "Payment Successful",
         description: isUpfrontLeague
-          ? "Your full season payment has been processed successfully."
+          ? "Your card has been saved and your full season payment will be processed momentarily."
           : noChargeSetup
             ? `Your card has been saved and ${resolvedSchedule} auto-pay is now active. Your first charge will be on the next league night.`
             : resolvedSchedule === "custom"
@@ -609,7 +658,9 @@ export default function BowlerPaymentSetupPage() {
                     ? "Setting Up Auto-Pay..."
                     : "Processing Payment..."}
                 </>
-              ) : isUpfrontLeague || resolvedSchedule === 'custom' ? (
+              ) : isUpfrontLeague ? (
+                `Set Up Full Season Payment (${formatCurrency(calculatePaymentAmount())})`
+              ) : resolvedSchedule === 'custom' ? (
                 `Pay ${formatCurrency(calculatePaymentAmount())}`
               ) : financials.amountPastDue === 0 ? (
                 "Set Up Auto-Pay"

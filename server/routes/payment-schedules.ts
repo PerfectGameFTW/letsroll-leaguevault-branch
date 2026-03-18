@@ -35,12 +35,15 @@ router.post('/', adminWriteLimiter, async (req, res) => {
       return sendError(res, 'League not found', 404, 'LEAGUE_NOT_FOUND');
     }
 
-    const nextPaymentDate = getNextLeagueDateTime(
-      new Date(),
-      league.weekDay,
-      league.competitionStartTime,
-      league.timezone ?? 'America/Chicago'
-    );
+    const isUpfrontFrequency = req.body.frequency === 'upfront';
+    const nextPaymentDate = isUpfrontFrequency
+      ? new Date()
+      : getNextLeagueDateTime(
+          new Date(),
+          league.weekDay,
+          league.competitionStartTime,
+          league.timezone ?? 'America/Chicago'
+        );
 
     const validationResult = insertPaymentScheduleSchema.safeParse({
       ...req.body,
@@ -147,8 +150,8 @@ router.patch('/:id', adminWriteLimiter, async (req, res) => {
     }
 
     const { frequency } = req.body;
-    if (frequency && !['weekly', 'monthly'].includes(frequency)) {
-      return sendError(res, 'Frequency must be "weekly" or "monthly"', 400, 'VALIDATION_ERROR');
+    if (frequency && !['weekly', 'monthly', 'upfront'].includes(frequency)) {
+      return sendError(res, 'Frequency must be "weekly", "monthly", or "upfront"', 400, 'VALIDATION_ERROR');
     }
 
     const updates: Record<string, any> = {};
