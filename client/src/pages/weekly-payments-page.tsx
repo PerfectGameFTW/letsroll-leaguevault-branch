@@ -124,7 +124,12 @@ export default function WeeklyPaymentsPage() {
   useEffect(() => {
     if (league?.weekDay && !selectedDate) {
       const today = startOfToday();
-      const nearestBowlingDay = getNearestBowlingDay(today, league.weekDay);
+      const nearestBowlingDay = getNearestBowlingDay(
+        today,
+        league.weekDay,
+        league.skipDates ?? [],
+        league.cancelledDates ?? []
+      );
       setSelectedDate(nearestBowlingDay);
     }
 
