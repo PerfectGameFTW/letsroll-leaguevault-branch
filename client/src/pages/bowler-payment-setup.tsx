@@ -171,6 +171,8 @@ export default function BowlerPaymentSetupPage() {
     return amount;
   };
 
+  const isAutoPay = !isUpfrontLeague && resolvedSchedule !== 'custom';
+
   const handleSubmit = async () => {
     if (!league) {
       toast({
@@ -199,7 +201,6 @@ export default function BowlerPaymentSetupPage() {
       return;
     }
 
-    const isAutoPay = !isUpfrontLeague && resolvedSchedule !== 'custom';
     const finalTwoWeeksUnpaid = !isUpfrontLeague && !financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0;
 
     if (isAutoPay && finalTwoWeeksUnpaid && !includeFinalTwoWeeks && !showFinalTwoWeeksWarning) {
