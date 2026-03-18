@@ -668,6 +668,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                 )}
               </Button>
             </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2">
+              <div className="flex-1 border-t" />
+              <span>Secure payment powered by Square</span>
+              <div className="flex-1 border-t" />
+            </div>
           </div>
         </CardContent>
       </Card>
