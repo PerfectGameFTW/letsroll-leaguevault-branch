@@ -430,9 +430,13 @@ export default function BowlerPaymentSetupPage() {
     <Layout>
       <div className="max-w-2xl mx-auto space-y-8">
         <div>
-          <h1 className="text-2xl font-bold">Set Up League Payments</h1>
+          <h1 className="text-2xl font-bold">
+            {isUpfrontLeague ? "Full Season Payment" : "Set Up League Payments"}
+          </h1>
           <p className="text-muted-foreground">
-            Choose your preferred payment schedule for {league.name}
+            {isUpfrontLeague
+              ? `Pay your full season dues for ${league.name} in one payment`
+              : `Choose your preferred payment schedule for ${league.name}`}
           </p>
         </div>
 
@@ -443,42 +447,61 @@ export default function BowlerPaymentSetupPage() {
           </Alert>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{isUpfrontLeague ? "Payment Option" : "Payment Schedule"}</CardTitle>
-            <CardDescription>
-              {isUpfrontLeague
-                ? `This league requires the full season to be paid upfront. Full season total: $${(financials.fullSeasonAmount / 100).toFixed(2)}`
-                : "Select how you would like to pay your league dues"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RadioGroup
-              value={resolvedSchedule}
-              onValueChange={(value) => setSelectedSchedule(value as PaymentSchedule)}
-              className="space-y-4"
-            >
-              {PAYMENT_OPTIONS.map((option) => {
-                const totalWeeks = getSeasonLengthWeeks(league);
-                const optionAmount = option.calculateAmount(league.weeklyFee, totalWeeks, customWeeks);
-                return (
-                  <div key={option.id} className="flex items-center space-x-2">
-                    <RadioGroupItem value={option.id} id={option.id} />
-                    <Label htmlFor={option.id} className="flex flex-col">
-                      <span className="font-medium">{option.label}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {option.description}
-                      </span>
-                      <span className="text-sm font-semibold">
-                        ${(optionAmount / 100).toFixed(2)}
-                      </span>
-                    </Label>
-                  </div>
-                );
-              })}
-            </RadioGroup>
-          </CardContent>
-        </Card>
+        {isUpfrontLeague ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Season Summary</CardTitle>
+              <CardDescription>Your full season dues will be charged in a single payment</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between py-1">
+                <span className="text-sm text-muted-foreground">Weekly fee</span>
+                <span className="text-sm">{formatCurrency(league.weeklyFee)} / week</span>
+              </div>
+              <div className="flex items-center justify-between py-1">
+                <span className="text-sm text-muted-foreground">Season length</span>
+                <span className="text-sm">{getSeasonLengthWeeks(league)} weeks</span>
+              </div>
+              <div className="border-t pt-3 flex items-center justify-between">
+                <span className="font-semibold">Total due today</span>
+                <span className="text-lg font-bold">{formatCurrency(financials.fullSeasonAmount)}</span>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>Payment Schedule</CardTitle>
+              <CardDescription>Select how you would like to pay your league dues</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RadioGroup
+                value={resolvedSchedule}
+                onValueChange={(value) => setSelectedSchedule(value as PaymentSchedule)}
+                className="space-y-4"
+              >
+                {PAYMENT_OPTIONS.map((option) => {
+                  const totalWeeks = getSeasonLengthWeeks(league);
+                  const optionAmount = option.calculateAmount(league.weeklyFee, totalWeeks, customWeeks);
+                  return (
+                    <div key={option.id} className="flex items-center space-x-2">
+                      <RadioGroupItem value={option.id} id={option.id} />
+                      <Label htmlFor={option.id} className="flex flex-col">
+                        <span className="font-medium">{option.label}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {option.description}
+                        </span>
+                        <span className="text-sm font-semibold">
+                          {formatCurrency(optionAmount)}
+                        </span>
+                      </Label>
+                    </div>
+                  );
+                })}
+              </RadioGroup>
+            </CardContent>
+          </Card>
+        )}
 
         {!isUpfrontLeague && !financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0 && (
           <Card>
@@ -655,12 +678,12 @@ export default function BowlerPaymentSetupPage() {
               {isProcessing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {isAutoPay && financials.amountPastDue === 0
+                  {isUpfrontLeague ? "Processing..." : isAutoPay && financials.amountPastDue === 0
                     ? "Setting Up Auto-Pay..."
                     : "Processing Payment..."}
                 </>
               ) : isUpfrontLeague ? (
-                `Set Up Full Season Payment (${formatCurrency(calculatePaymentAmount())})`
+                `Pay ${formatCurrency(financials.fullSeasonAmount)}`
               ) : resolvedSchedule === 'custom' ? (
                 `Pay ${formatCurrency(calculatePaymentAmount())}`
               ) : financials.amountPastDue === 0 ? (
