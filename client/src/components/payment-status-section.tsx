@@ -1,5 +1,4 @@
 import { FC, useRef, useEffect, useState, useMemo, useCallback } from "react";
-import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -168,10 +167,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       return;
     }
 
-    const isAutoPay = selectedSchedule !== 'custom';
+    const isUpfront = league.paymentMode === 'upfront';
+    const isAutoPay = !isUpfront && selectedSchedule !== 'custom';
     const finalTwoWeeksUnpaid = !financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0;
 
-    if (isAutoPay && finalTwoWeeksUnpaid && !includeFinalTwoWeeks && !showFinalTwoWeeksWarning) {
+    if (!isUpfront && isAutoPay && finalTwoWeeksUnpaid && !includeFinalTwoWeeks && !showFinalTwoWeeksWarning) {
       setShowFinalTwoWeeksWarning(true);
       return;
     }
@@ -179,6 +179,54 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     try {
       setIsSubmitting(true);
       setShowFinalTwoWeeksWarning(false);
+
+      if (isUpfront) {
+        const upfrontAmount = financials.fullSeasonAmount;
+        let squareCardId: string;
+
+        if (cardMode === 'saved' && selectedSavedCardId) {
+          squareCardId = selectedSavedCardId;
+        } else {
+          const token = await tokenizeCard(card);
+          const saveResponse = await fetch(`/api/square/cards/${bowler.id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourceId: token }),
+          });
+          const saveData = await saveResponse.json();
+          if (!saveResponse.ok || !saveData.data?.savedCardId) {
+            throw new Error(saveData.error?.message || 'Your card could not be saved. Please try again.');
+          }
+          squareCardId = saveData.data.savedCardId;
+          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
+        }
+
+        const scheduleResponse = await fetch('/api/payment-schedules', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bowlerId: bowler.id,
+            leagueId: league.id,
+            frequency: 'upfront',
+            amount: upfrontAmount,
+            nextPaymentDate: new Date(),
+            squareCardId,
+            includeFinalTwoWeeks: false,
+          }),
+        });
+        if (!scheduleResponse.ok) {
+          const scheduleData = await scheduleResponse.json();
+          throw new Error(scheduleData.error?.message || 'Failed to set up payment schedule');
+        }
+        queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
+        toast({
+          title: "Payment Scheduled",
+          description: "Your card has been saved and your full season payment will be processed momentarily.",
+        });
+        setShowPaymentSetup(false);
+        queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+        return;
+      }
       
       const amount = calculateTotalAmount();
       const hasOutstandingBalance = financials.amountPastDue > 0;
@@ -344,12 +392,31 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     return (
       <Card className="w-full">
         <CardHeader>
-          <CardTitle>{paymentMode === 'onetime' ? 'Make One-Time Payment' : 'Set Up Automatic Payments'}</CardTitle>
-          <CardDescription>{paymentMode === 'onetime' ? 'Enter your card to make a payment' : 'Configure your payment schedule for the league'}</CardDescription>
+          <CardTitle>
+            {league.paymentMode === 'upfront' ? 'Full Season Payment' : paymentMode === 'onetime' ? 'Make One-Time Payment' : 'Set Up Automatic Payments'}
+          </CardTitle>
+          <CardDescription>
+            {league.paymentMode === 'upfront' ? 'Your full season dues will be charged in a single payment' : paymentMode === 'onetime' ? 'Enter your card to make a payment' : 'Configure your payment schedule for the league'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {paymentMode === 'autopay' && (
+            {league.paymentMode === 'upfront' ? (
+              <div className="rounded-md border bg-muted/30 p-4 space-y-2">
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-sm text-muted-foreground">Weekly fee</span>
+                  <span className="text-sm">{formatCurrency(weeklyFee)} / week</span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-sm text-muted-foreground">Season length</span>
+                  <span className="text-sm">{totalWeeks} weeks</span>
+                </div>
+                <div className="border-t pt-3 flex items-center justify-between">
+                  <span className="font-semibold">Total due today</span>
+                  <span className="text-lg font-bold">{formatCurrency(financials.fullSeasonAmount)}</span>
+                </div>
+              </div>
+            ) : paymentMode === 'autopay' && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-medium">Payment Schedule</h3>
@@ -385,7 +452,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
             </div>
             )}
             
-            {selectedSchedule === 'custom' && (
+            {selectedSchedule === 'custom' && league.paymentMode !== 'upfront' && (
               <div className="space-y-4 p-4 rounded-md border bg-background">
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
@@ -584,25 +651,27 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
               
             </div>
             
-            <div className="pt-4 border-t">
-              <div className="flex justify-between items-center">
-                <span className="text-lg font-medium">Total Amount</span>
-                <span className="text-lg font-bold">{formatCurrency(calculateTotalAmount())}</span>
+            {league.paymentMode !== 'upfront' && (
+              <div className="pt-4 border-t">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-medium">Total Amount</span>
+                  <span className="text-lg font-bold">{formatCurrency(calculateTotalAmount())}</span>
+                </div>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {selectedSchedule === 'weekly' && 'Charged weekly'}
+                  {selectedSchedule === 'custom' && (
+                    fixedAmountType === 'pastDue'
+                      ? 'One-time payment for Past Due Balance'
+                      : fixedAmountType === 'remaining'
+                        ? 'One-time payment for Season Remaining Balance'
+                        : `One-time payment for ${selectedWeeks} weeks`
+                  )}
+                  {includeFinalTwoWeeks && ` + Final 2 Weeks (${formatCurrency(financials.finalTwoWeeks.amount)})`}
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground mt-1">
-                {selectedSchedule === 'weekly' && 'Charged weekly'}
-                {selectedSchedule === 'custom' && (
-                  fixedAmountType === 'pastDue'
-                    ? 'One-time payment for Past Due Balance'
-                    : fixedAmountType === 'remaining'
-                      ? 'One-time payment for Season Remaining Balance'
-                      : `One-time payment for ${selectedWeeks} weeks`
-                )}
-                {includeFinalTwoWeeks && ` + Final 2 Weeks (${formatCurrency(financials.finalTwoWeeks.amount)})`}
-              </p>
-            </div>
+            )}
             
-            {showFinalTwoWeeksWarning && (
+            {league.paymentMode !== 'upfront' && showFinalTwoWeeksWarning && (
               <div className="rounded-md border border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20 p-4 space-y-3">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
@@ -663,6 +732,8 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Processing...
                   </>
+                ) : league.paymentMode === 'upfront' ? (
+                  `Pay ${formatCurrency(financials.fullSeasonAmount)}`
                 ) : (
                   <>{selectedSchedule === 'custom' ? 'Make One-Time Payment' : 'Set Up Automatic Payments'}</>
                 )}
@@ -820,12 +891,10 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
         {!activeSchedule && league.paymentMode === 'upfront' && (
           <div className="space-y-2">
-            <Link href={`/bowlers/${bowler.id}/payment-setup`}>
-              <Button className="w-full">
-                Pay Full Season ({formatCurrency(financials.fullSeasonAmount)})
-                <CreditCard className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
+            <Button className="w-full" onClick={() => setShowPaymentSetup(true)}>
+              Pay Full Season ({formatCurrency(financials.fullSeasonAmount)})
+              <CreditCard className="ml-2 h-4 w-4" />
+            </Button>
           </div>
         )}
 
