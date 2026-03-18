@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Layout } from "@/components/layout";
+import { BowlerLayout } from "@/components/bowler-layout";
 import {
   Card,
   CardContent,
@@ -24,7 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment, tokenizeCard } from "@/lib/square";
 import { useParams, useLocation } from "wouter";
-import type { League, BowlerLeague, Payment } from "@shared/schema";
+import type { League, BowlerLeague, Payment, Bowler } from "@shared/schema";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getSeasonLengthWeeks, calculateFinancials } from "@/lib/financial-utils";
 import { formatCurrency } from "@/lib/utils";
@@ -105,15 +105,22 @@ export default function BowlerPaymentSetupPage() {
     },
   });
 
-  const { data: bowlerLeaguesResponse } = useQuery<{ data: BowlerLeague[] }>({
-    queryKey: ["/api/bowler-leagues", bowlerId],
+  const { data: bowlerResponse } = useQuery<{ data: Bowler }>({
+    queryKey: [`/api/bowlers/${bowlerId}`],
     enabled: !!bowlerId,
   });
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
+  const bowler = bowlerResponse?.data;
 
+  const { data: bowlerLeaguesResponse } = useQuery<{ data: BowlerLeague[] }>({
+    queryKey: ["/api/bowler-leagues"],
+    enabled: !!bowlerId,
+  });
+  const bowlerLeagues = (bowlerLeaguesResponse?.data || []).filter(bl => bl.bowlerId === bowlerId);
+
+  const leagueId = bowlerLeagues[0]?.leagueId;
   const { data: leagueResponse } = useQuery<{ data: League }>({
-    queryKey: ["/api/leagues", bowlerLeagues[0]?.leagueId],
-    enabled: !!bowlerLeagues.length,
+    queryKey: [`/api/leagues/${leagueId}`],
+    enabled: !!leagueId,
   });
   const league = leagueResponse?.data;
   const isUpfrontLeague = league?.paymentMode === 'upfront';
@@ -418,16 +425,16 @@ export default function BowlerPaymentSetupPage() {
 
   if (!league) {
     return (
-      <Layout>
+      <BowlerLayout bowlerName={bowler?.name ?? ''} leagueName="">
         <div className="flex items-center justify-center h-[50vh]">
           <Loader2 className="h-8 w-8 animate-spin" />
         </div>
-      </Layout>
+      </BowlerLayout>
     );
   }
 
   return (
-    <Layout>
+    <BowlerLayout bowlerName={bowler?.name ?? league.name} leagueName={league.name}>
       <div className="max-w-2xl mx-auto space-y-8">
         <div>
           <h1 className="text-2xl font-bold">
@@ -695,6 +702,6 @@ export default function BowlerPaymentSetupPage() {
           </CardFooter>
         </Card>
       </div>
-    </Layout>
+    </BowlerLayout>
   );
 }
