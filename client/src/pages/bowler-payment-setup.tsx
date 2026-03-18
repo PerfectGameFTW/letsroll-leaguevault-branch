@@ -672,7 +672,7 @@ export default function BowlerPaymentSetupPage() {
               </div>
             </CardContent>
           )}
-          <CardFooter>
+          <CardFooter className="pt-6">
             <Button
               onClick={handleSubmit}
               disabled={
