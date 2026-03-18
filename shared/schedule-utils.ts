@@ -96,11 +96,22 @@ export function getAllBowlingDates(
   const skipSet = new Set((skipDates ?? []).map((d) => d.slice(0, 10)));
   const cancelSet = new Set((cancelledDates ?? []).map((d) => d.slice(0, 10)));
 
-  const effectiveWeeks = getEffectiveBowlingWeeks(totalBowlingWeeks, cancelledDates ?? []);
-  const result: ScheduleWeek[] = [];
+  // Key semantics:
+  //   • Skip  → holiday; season EXTENDS (skip does NOT consume a planned slot)
+  //   • Cancelled → no makeup; season SHORTENS (cancelled DOES consume a planned slot)
+  //
+  // Therefore the planned calendar window contains exactly:
+  //   totalBowlingWeeks non-skip dates (normal + cancelled),
+  //   plus any additional skip weeks inserted inside that window.
+  //
+  // Every cancelled date IS inside the window and must always appear in the
+  // list so admins can toggle it back to Normal or Skip at any time.
 
+  const result: ScheduleWeek[] = [];
   let current = findFirstBowlingDay(seasonStart, weekDay);
   let bowlingWeekNumber = 0;
+  // slots = normal + cancelled rows emitted (skips don't count toward the window)
+  let slotsConsumed = 0;
   const maxIter = totalBowlingWeeks + skipSet.size + cancelSet.size + 60;
 
   for (let i = 0; i < maxIter; i++) {
@@ -113,16 +124,17 @@ export function getAllBowlingDates(
       ? "cancelled"
       : "normal";
 
+    // Only normal dates get a bowling week number
     const weekNum = !isSkip && !isCancelled ? ++bowlingWeekNumber : null;
 
-    result.push({
-      date: new Date(current),
-      isoDate: dateStr,
-      type,
-      bowlingWeekNumber: weekNum,
-    });
+    // Both normal and cancelled rows consume a planned slot
+    if (!isSkip) slotsConsumed++;
 
-    if (!isSkip && !isCancelled && bowlingWeekNumber >= effectiveWeeks) break;
+    result.push({ date: new Date(current), isoDate: dateStr, type, bowlingWeekNumber: weekNum });
+
+    // Stop once all planned slots are consumed
+    if (slotsConsumed >= totalBowlingWeeks) break;
+
     current = addWeeks(current, 1);
   }
 
