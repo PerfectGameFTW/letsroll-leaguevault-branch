@@ -1,5 +1,9 @@
-import { differenceInWeeks, startOfToday, addWeeks } from "date-fns";
+import { addWeeks, startOfToday } from "date-fns";
 import type { League, Payment } from "@shared/schema";
+import {
+  getEffectiveBowlingWeeks,
+  countBowlingWeeksPassed,
+} from "@shared/schedule-utils";
 
 export interface FinalTwoWeeksStatus {
   amount: number;
@@ -21,21 +25,43 @@ export interface FinancialCalculation {
   finalTwoWeeksDue: boolean;
 }
 
-export function getSeasonLengthWeeks(league: { seasonStart: string | Date; seasonEnd: string | Date } | null | undefined): number {
+type LeagueWithSchedule = {
+  seasonStart: string | Date;
+  seasonEnd: string | Date;
+  totalBowlingWeeks?: number | null;
+  skipDates?: string[] | null;
+  cancelledDates?: string[] | null;
+};
+
+export function getSeasonLengthWeeks(league: LeagueWithSchedule | null | undefined): number {
   if (!league?.seasonStart || !league?.seasonEnd) return 0;
+  if (league.totalBowlingWeeks != null) {
+    return getEffectiveBowlingWeeks(
+      league.totalBowlingWeeks,
+      league.cancelledDates ?? []
+    );
+  }
   const start = new Date(league.seasonStart);
   const end = new Date(league.seasonEnd);
-  return Math.max(0, differenceInWeeks(end, start));
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / msPerWeek));
 }
 
-export function getWeeksPassedInSeason(league: { seasonStart: string | Date; seasonEnd: string | Date } | null | undefined): number {
+export function getWeeksPassedInSeason(league: LeagueWithSchedule | null | undefined): number {
   if (!league?.seasonStart || !league?.seasonEnd) return 0;
+  if (league.totalBowlingWeeks != null) {
+    return countBowlingWeeksPassed(
+      league.seasonStart,
+      league.skipDates ?? [],
+      league.cancelledDates ?? []
+    );
+  }
   const seasonStart = new Date(league.seasonStart);
   const seasonEnd = new Date(league.seasonEnd);
   const today = startOfToday();
-
   const effectiveDate = today < seasonStart ? seasonStart : today > seasonEnd ? seasonEnd : today;
-  return Math.max(0, differenceInWeeks(effectiveDate, seasonStart));
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  return Math.max(0, Math.round((effectiveDate.getTime() - seasonStart.getTime()) / msPerWeek));
 }
 
 export function getTotalPaidAmount(payments: Payment[]): number {
@@ -127,18 +153,44 @@ export function calculateFinancials(league: League | null | undefined, payments:
 }
 
 export function calculateBowlerPastDue(
-  league: { seasonStart: string | Date; seasonEnd?: string | Date; weeklyFee: number; paymentMode?: string },
+  league: {
+    seasonStart: string | Date;
+    seasonEnd?: string | Date;
+    weeklyFee: number;
+    paymentMode?: string;
+    totalBowlingWeeks?: number | null;
+    skipDates?: string[] | null;
+    cancelledDates?: string[] | null;
+  },
   bowlerPaidAmount: number
 ): number {
   if (league.paymentMode === 'upfront') {
-    const totalWeeks = league.seasonEnd ? getSeasonLengthWeeks({ seasonStart: league.seasonStart, seasonEnd: league.seasonEnd }) : 0;
+    const totalWeeks = getSeasonLengthWeeks({
+      seasonStart: league.seasonStart,
+      seasonEnd: league.seasonEnd ?? league.seasonStart,
+      totalBowlingWeeks: league.totalBowlingWeeks,
+      skipDates: league.skipDates,
+      cancelledDates: league.cancelledDates,
+    });
     const fullSeasonAmount = league.weeklyFee * totalWeeks;
     return Math.max(0, fullSeasonAmount - bowlerPaidAmount);
   }
+
+  if (league.totalBowlingWeeks != null) {
+    const weeksPassed = countBowlingWeeksPassed(
+      league.seasonStart,
+      league.skipDates ?? [],
+      league.cancelledDates ?? []
+    );
+    const dueToDate = league.weeklyFee * weeksPassed;
+    return Math.max(0, dueToDate - bowlerPaidAmount);
+  }
+
   const today = startOfToday();
   const seasonStart = new Date(league.seasonStart);
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
   const weeksPassed = Math.max(0, Math.floor(
-    (today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
+    (today.getTime() - seasonStart.getTime()) / msPerWeek
   ));
   const dueToDate = league.weeklyFee * weeksPassed;
   return Math.max(0, dueToDate - bowlerPaidAmount);

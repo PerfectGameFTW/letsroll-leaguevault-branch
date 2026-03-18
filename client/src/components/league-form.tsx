@@ -28,7 +28,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import { insertLeagueSchema, type InsertLeague, type League, type Location, type PaymentMode } from "@shared/schema";
+import { calculateSeasonEnd, getAllBowlingDates, getEffectiveBowlingWeeks, toIsoDateStr } from "@shared/schedule-utils";
 
 interface CatalogItemVariation {
   id: string;
@@ -50,9 +52,9 @@ interface CatalogCategory {
 }
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChevronDown, ChevronUp, CalendarX, SkipForward, Check } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { differenceInWeeks, addWeeks } from "date-fns";
+import { differenceInWeeks } from "date-fns";
 import { Separator } from "@/components/ui/separator";
 import {
   Select,
@@ -82,6 +84,10 @@ interface LeagueFormProps {
 export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const { toast } = useToast();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [bowlingWeeks, setBowlingWeeks] = useState<number>(30);
+  const [skipDates, setSkipDates] = useState<string[]>([]);
+  const [cancelledDates, setCancelledDates] = useState<string[]>([]);
 
   const { data: locationsData } = useQuery<{ success: boolean; data: Location[] }>({
     queryKey: ['/api/locations'],
@@ -158,51 +164,55 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       squarePrizeFundItemVariationId: null,
       squarePrizeFundItemName: null,
       locationId: null,
+      totalBowlingWeeks: 30,
+      skipDates: [],
+      cancelledDates: [],
     },
   });
 
-  const [seasonLength, setSeasonLength] = useState<number>(0);
-
   const watchedStart = form.watch('seasonStart');
-  const watchedEnd = form.watch('seasonEnd');
   const watchedPaymentMode = form.watch('paymentMode');
   const isUpfront = watchedPaymentMode === 'upfront';
   const watchedWeeklyFee = form.watch('weeklyFee');
 
-  useEffect(() => {
-    const start = form.getValues('seasonStart');
-    const end = form.getValues('seasonEnd');
-    if (start && end) {
-      const startDate = new Date(start);
-      startDate.setHours(12, 0, 0, 0);
-      const endDate = new Date(end);
-      endDate.setHours(12, 0, 0, 0);
-      const weeks = differenceInWeeks(endDate, startDate);
-      if (weeks > 0) setSeasonLength(weeks);
-    }
-  }, [watchedStart, watchedEnd]);
+  const computedSeasonEnd = useMemo(() => {
+    if (!watchedStart || bowlingWeeks <= 0) return null;
+    return calculateSeasonEnd(watchedStart, bowlingWeeks, skipDates, cancelledDates);
+  }, [watchedStart, bowlingWeeks, skipDates, cancelledDates]);
 
-  const handleSeasonLengthChange = (weeks: number) => {
-    setSeasonLength(weeks);
-    const start = form.getValues('seasonStart');
-    if (start && weeks > 0) {
-      const startDate = new Date(start);
-      startDate.setHours(12, 0, 0, 0);
-      const endDate = addWeeks(startDate, weeks);
-      form.setValue('seasonEnd', endDate);
+  const effectiveBowlingWeeks = useMemo(
+    () => getEffectiveBowlingWeeks(bowlingWeeks, cancelledDates),
+    [bowlingWeeks, cancelledDates]
+  );
+
+  const scheduleDates = useMemo(() => {
+    if (!watchedStart || bowlingWeeks <= 0) return [];
+    return getAllBowlingDates(watchedStart, bowlingWeeks, skipDates, cancelledDates);
+  }, [watchedStart, bowlingWeeks, skipDates, cancelledDates]);
+
+  useEffect(() => {
+    if (computedSeasonEnd) {
+      form.setValue('seasonEnd', computedSeasonEnd);
+    }
+  }, [computedSeasonEnd]);
+
+  const toggleDateType = (isoDate: string, currentType: 'normal' | 'skip' | 'cancelled') => {
+    if (currentType === 'normal') {
+      setSkipDates(prev => [...prev, isoDate]);
+    } else if (currentType === 'skip') {
+      setSkipDates(prev => prev.filter(d => d !== isoDate));
+      setCancelledDates(prev => [...prev, isoDate]);
+    } else {
+      setCancelledDates(prev => prev.filter(d => d !== isoDate));
     }
   };
+
   useEffect(() => {
     if (watchedStart) {
       const date = new Date(watchedStart);
       if (!isNaN(date.getTime())) {
         const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         form.setValue('weekDay', dayNames[date.getDay()] as "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday");
-        if (seasonLength > 0) {
-          const startDate = new Date(watchedStart);
-          startDate.setHours(12, 0, 0, 0);
-          form.setValue('seasonEnd', addWeeks(startDate, seasonLength));
-        }
       }
     }
   }, [watchedStart]);
@@ -214,8 +224,12 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       const endDate = new Date(league.seasonEnd);
       endDate.setHours(12, 0, 0, 0);
 
-      const weeks = differenceInWeeks(endDate, startDate);
-      if (weeks > 0) setSeasonLength(weeks);
+      const initialWeeks = league.totalBowlingWeeks
+        ?? Math.max(1, differenceInWeeks(endDate, startDate));
+      setBowlingWeeks(initialWeeks);
+      setSkipDates(league.skipDates ?? []);
+      setCancelledDates(league.cancelledDates ?? []);
+      setShowSchedule(false);
 
       form.reset({
         name: league.name,
@@ -237,6 +251,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         squarePrizeFundItemVariationId: league.squarePrizeFundItemVariationId || null,
         squarePrizeFundItemName: league.squarePrizeFundItemName || null,
         locationId: league.locationId || null,
+        totalBowlingWeeks: initialWeeks,
+        skipDates: league.skipDates ?? [],
+        cancelledDates: league.cancelledDates ?? [],
       });
     } else if (!open) {
       form.reset({
@@ -259,20 +276,31 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         squarePrizeFundItemVariationId: null,
         squarePrizeFundItemName: null,
         locationId: null,
+        totalBowlingWeeks: 30,
+        skipDates: [],
+        cancelledDates: [],
       });
+      setBowlingWeeks(30);
+      setSkipDates([]);
+      setCancelledDates([]);
+      setShowSchedule(false);
       setShowDeleteConfirm(false);
     }
   }, [open, league, form]);
 
   const mutation = useMutation({
     mutationFn: async (data: InsertLeague) => {
+      const derivedEnd = computedSeasonEnd ?? data.seasonEnd;
       return apiRequest(
         league ? `/api/leagues/${league.id}` : "/api/leagues",
         league ? "PATCH" : "POST",
         {
           ...data,
           seasonStart: data.seasonStart.toISOString(),
-          seasonEnd: data.seasonEnd.toISOString(),
+          seasonEnd: derivedEnd instanceof Date ? derivedEnd.toISOString() : derivedEnd,
+          totalBowlingWeeks: bowlingWeeks,
+          skipDates,
+          cancelledDates,
         }
       );
     },
@@ -407,6 +435,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                               const [year, month, day] = e.target.value.split('-').map(Number);
                               const date = new Date(year, month - 1, day, 12, 0, 0, 0);
                               field.onChange(date);
+                              setSkipDates([]);
+                              setCancelledDates([]);
                             }}
                           />
                         </FormControl>
@@ -415,44 +445,39 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="seasonEnd"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Season End</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="date"
-                            {...field}
-                            value={field.value instanceof Date && !isNaN(field.value.getTime()) ? field.value.toISOString().split('T')[0] : ''}
-                            onChange={(e) => {
-                              const [year, month, day] = e.target.value.split('-').map(Number);
-                              const date = new Date(year, month - 1, day, 12, 0, 0, 0);
-                              field.onChange(date);
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div>
+                    <label className="text-sm font-medium">Season End</label>
+                    <div className="mt-1.5 flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground">
+                      {computedSeasonEnd
+                        ? computedSeasonEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : '—'}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Auto-calculated from schedule</p>
+                  </div>
                 </div>
 
                 {/* League Info Display */}
                 <div className="space-y-3">
-                  {/* Season Length Input */}
+                  {/* Bowling Weeks Input */}
                   <div>
-                    <label className="text-sm font-medium">Season Length (weeks)</label>
+                    <label className="text-sm font-medium">Bowling Weeks</label>
                     <Input
                       type="number"
                       min={1}
                       max={52}
-                      value={seasonLength || ''}
-                      onChange={(e) => handleSeasonLengthChange(parseInt(e.target.value) || 0)}
-                      placeholder="Enter number of weeks"
+                      value={bowlingWeeks || ''}
+                      onChange={(e) => {
+                        const w = parseInt(e.target.value) || 1;
+                        setBowlingWeeks(w);
+                        setSkipDates([]);
+                        setCancelledDates([]);
+                      }}
+                      placeholder="Number of bowling weeks"
                       className="mt-1.5"
                     />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Total planned bowling weeks (not counting holidays/cancellations)
+                    </p>
                   </div>
 
                   {/* Bowling Day Selection */}
@@ -487,6 +512,83 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     )}
                   />
                 </div>
+
+                {/* Bowling Schedule */}
+                {scheduleDates.length > 0 && (
+                  <div className="rounded-lg border">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium"
+                      onClick={() => setShowSchedule(s => !s)}
+                    >
+                      <span>
+                        Bowling Schedule
+                        {(skipDates.length > 0 || cancelledDates.length > 0) && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            ({skipDates.length} skip{skipDates.length !== 1 ? 's' : ''}, {cancelledDates.length} cancelled)
+                          </span>
+                        )}
+                      </span>
+                      {showSchedule ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
+
+                    {showSchedule && (
+                      <div className="border-t">
+                        <div className="px-3 py-2 text-xs text-muted-foreground bg-muted/30">
+                          Click a date to cycle: <span className="font-medium">Normal → Skip (holiday, season extends) → Cancelled (no makeup, season shortens)</span>
+                        </div>
+                        <div className="divide-y max-h-72 overflow-y-auto">
+                          {scheduleDates.map((week) => {
+                            const weekLabel = week.type === 'skip'
+                              ? 'Skip'
+                              : week.type === 'cancelled'
+                              ? 'Cancelled'
+                              : `Week ${week.bowlingWeekNumber}`;
+                            return (
+                              <button
+                                type="button"
+                                key={week.isoDate}
+                                onClick={() => toggleDateType(week.isoDate, week.type)}
+                                className={`flex w-full items-center justify-between px-3 py-1.5 text-sm hover:bg-muted/50 transition-colors ${
+                                  week.type === 'skip'
+                                    ? 'bg-yellow-50 dark:bg-yellow-950/20'
+                                    : week.type === 'cancelled'
+                                    ? 'bg-red-50 dark:bg-red-950/20'
+                                    : ''
+                                }`}
+                              >
+                                <span className={week.type !== 'normal' ? 'text-muted-foreground line-through' : ''}>
+                                  {week.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+                                </span>
+                                <Badge
+                                  variant={week.type === 'normal' ? 'outline' : 'secondary'}
+                                  className={`ml-2 text-xs shrink-0 ${
+                                    week.type === 'skip'
+                                      ? 'border-yellow-400 text-yellow-700 dark:text-yellow-400'
+                                      : week.type === 'cancelled'
+                                      ? 'border-red-400 text-red-700 dark:text-red-400'
+                                      : ''
+                                  }`}
+                                >
+                                  {week.type === 'skip' && <SkipForward className="mr-1 h-3 w-3" />}
+                                  {week.type === 'cancelled' && <CalendarX className="mr-1 h-3 w-3" />}
+                                  {week.type === 'normal' && <Check className="mr-1 h-3 w-3" />}
+                                  {weekLabel}
+                                </Badge>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="border-t px-3 py-2 text-xs text-muted-foreground bg-muted/30 flex justify-between">
+                          <span>{effectiveBowlingWeeks} bowling week{effectiveBowlingWeeks !== 1 ? 's' : ''}</span>
+                          {computedSeasonEnd && (
+                            <span>Season ends {computedSeasonEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Competition Start Time */}
                 <div className="grid grid-cols-1 gap-4">
@@ -733,13 +835,13 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   />
                 )}
 
-                {isUpfront && seasonLength > 0 && watchedWeeklyFee > 0 && (
+                {isUpfront && effectiveBowlingWeeks > 0 && watchedWeeklyFee > 0 && (
                   <div className="rounded-lg border bg-muted/40 p-3 text-sm">
                     <div className="font-medium">Full Season Total</div>
                     <div className="text-muted-foreground mt-1">
-                      ${(watchedWeeklyFee / 100).toFixed(2)} &times; {seasonLength} weeks ={" "}
+                      ${(watchedWeeklyFee / 100).toFixed(2)} &times; {effectiveBowlingWeeks} weeks ={" "}
                       <span className="font-semibold text-foreground">
-                        ${((watchedWeeklyFee * seasonLength) / 100).toFixed(2)}
+                        ${((watchedWeeklyFee * effectiveBowlingWeeks) / 100).toFixed(2)}
                       </span>{" "}
                       due upfront per bowler
                     </div>

@@ -138,7 +138,9 @@ router.patch("/:id", async (req: any, res) => {
           new Date(),
           updated.weekDay,
           updated.competitionStartTime,
-          tz
+          tz,
+          updated.skipDates ?? [],
+          updated.cancelledDates ?? []
         );
 
         await storage.updatePaymentScheduleFields(sched.id, { nextPaymentDate: nextDate });
@@ -343,6 +345,9 @@ router.post("/:id/new-season", async (req: any, res) => {
       locationId: sourceLeague.locationId,
       seasonNumber: (sourceLeague.seasonNumber || 1) + 1,
       previousSeasonId: sourceLeague.id,
+      totalBowlingWeeks: sourceLeague.totalBowlingWeeks,
+      skipDates: [],
+      cancelledDates: [],
     });
 
     const sourceTeams = await storage.getTeams(sourceLeague.id);

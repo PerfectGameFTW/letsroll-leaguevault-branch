@@ -9,6 +9,7 @@ import { createOrderWithPayment } from "./square";
 import { logger } from "../logger";
 import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 import { storage } from "../storage.js";
+import { isDateSkippedOrCancelled, getEffectiveBowlingWeeks } from "@shared/schedule-utils";
 
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
@@ -203,6 +204,28 @@ class PaymentScheduler {
         });
 
         const league = await db.select().from(leagues).where(eq(leagues.id, scheduleRecord.leagueId)).then(r => r[0]);
+
+        // Skip charge if the payment date is a skip or cancelled date — just advance the schedule
+        if (league && isDateSkippedOrCancelled(
+          scheduleRecord.nextPaymentDate,
+          league.skipDates ?? [],
+          league.cancelledDates ?? []
+        )) {
+          const tz = league.timezone ?? 'America/Chicago';
+          const nextDate = getNextLeagueDateTime(
+            scheduleRecord.nextPaymentDate,
+            league.weekDay,
+            league.competitionStartTime,
+            tz,
+            league.skipDates ?? [],
+            league.cancelledDates ?? []
+          );
+          logger.info(`[PaymentScheduler] Skipping charge on skip/cancelled date for ${jobId}, advancing to ${nextDate.toISOString()}`);
+          await storage.updatePaymentScheduleFields(scheduleRecord.id, { nextPaymentDate: nextDate });
+          this.schedulePayment({ ...scheduleRecord, nextPaymentDate: nextDate });
+          return;
+        }
+
         const bowler = await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]);
         const buyerEmail = bowler?.email || undefined;
         const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
@@ -256,7 +279,9 @@ class PaymentScheduler {
               scheduleRecord.nextPaymentDate,
               league.weekDay,
               league.competitionStartTime,
-              tz
+              tz,
+              league.skipDates ?? [],
+              league.cancelledDates ?? []
             );
           } else if (scheduleRecord.frequency === 'monthly') {
             nextDate = addMonths(scheduleRecord.nextPaymentDate, 1);
@@ -531,7 +556,15 @@ class PaymentScheduler {
     try {
       const seasonStart = new Date(league.seasonStart);
       const seasonEnd = new Date(league.seasonEnd);
-      const totalWeeks = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
+      let totalWeeks: number;
+      if (league.totalBowlingWeeks != null) {
+        totalWeeks = getEffectiveBowlingWeeks(
+          league.totalBowlingWeeks,
+          league.cancelledDates ?? []
+        );
+      } else {
+        totalWeeks = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
+      }
       const fullSeasonAmount = league.weeklyFee * totalWeeks;
 
       if (fullSeasonAmount <= 0) return false;

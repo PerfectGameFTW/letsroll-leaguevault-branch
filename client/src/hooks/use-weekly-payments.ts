@@ -2,8 +2,9 @@ import { useState, useCallback } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { subDays, differenceInWeeks } from "date-fns";
+import { subDays } from "date-fns";
 import type { Payment, League } from "@shared/schema";
+import { getBowlingWeekNumber, isDateSkippedOrCancelled } from "@shared/schedule-utils";
 
 interface PaymentEntry {
   bowlerId: number;
@@ -261,8 +262,17 @@ export function getNearestBowlingDay(date: Date, weekDay: string): Date {
 
 export function getWeekNumber(date: Date, league: League | undefined): number {
   if (!league?.seasonStart) return 0;
+  if (league.totalBowlingWeeks != null) {
+    return getBowlingWeekNumber(
+      date,
+      league.seasonStart,
+      league.skipDates ?? [],
+      league.cancelledDates ?? []
+    );
+  }
   const seasonStart = new Date(league.seasonStart);
-  const weeksDiff = differenceInWeeks(date, seasonStart);
+  const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+  const weeksDiff = Math.round((date.getTime() - seasonStart.getTime()) / msPerWeek);
   return weeksDiff + 1;
 }
 
@@ -280,5 +290,15 @@ export function isDateDisabled(date: Date, league: League | undefined): boolean 
   };
 
   const bowlingDayNumber = weekDayMap[league.weekDay.toLowerCase()];
-  return date.getDay() !== bowlingDayNumber;
+  if (date.getDay() !== bowlingDayNumber) return true;
+
+  if (league.totalBowlingWeeks != null) {
+    return isDateSkippedOrCancelled(
+      date,
+      league.skipDates ?? [],
+      league.cancelledDates ?? []
+    );
+  }
+
+  return false;
 }

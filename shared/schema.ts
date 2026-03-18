@@ -96,6 +96,9 @@ export const leagues = pgTable("leagues", {
   previousSeasonId: integer("previous_season_id"),
   organizationId: integer("organization_id").references(() => organizations.id),
   locationId: integer("location_id").references(() => locations.id),
+  totalBowlingWeeks: integer("total_bowling_weeks"),
+  skipDates: text("skip_dates").array().notNull().default(sql`'{}'`),
+  cancelledDates: text("cancelled_dates").array().notNull().default(sql`'{}'`),
 }, (table) => ({
   activeNameIdx: index("leagues_active_name_idx").on(table.active, table.name),
   seasonIdx: index("leagues_season_idx").on(table.seasonStart, table.seasonEnd),
@@ -438,6 +441,9 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   seasonNumber: z.number().int().positive().default(1),
   previousSeasonId: z.number().int().positive().nullable().optional(),
   paymentMode: z.enum(PAYMENT_MODES).default("weekly"),
+  totalBowlingWeeks: z.number().int().positive().nullable().optional(),
+  skipDates: z.array(z.string()).default([]),
+  cancelledDates: z.array(z.string()).default([]),
 }).omit({ id: true })
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
@@ -544,6 +550,9 @@ export const partialLeagueSchema = z.object({
   squarePrizeFundItemName: z.string().nullable(),
   locationId: z.number().int().positive().nullable(),
   paymentMode: z.enum(PAYMENT_MODES),
+  totalBowlingWeeks: z.number().int().positive().nullable(),
+  skipDates: z.array(z.string()),
+  cancelledDates: z.array(z.string()),
 }).partial().refine(
   (data) => {
     if (data.seasonStart && data.seasonEnd) {
