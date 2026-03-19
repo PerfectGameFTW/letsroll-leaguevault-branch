@@ -234,6 +234,12 @@ class PaymentScheduler {
 
         const bowler = await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]);
         const buyerEmail = bowler?.email || undefined;
+        const squareCustomerId = bowler?.squareCustomerId || undefined;
+        if (!squareCustomerId && scheduleRecord.squareCardId?.startsWith('ccof:')) {
+          logger.warn(`[PaymentScheduler] Card-on-file charge for ${jobId} has no squareCustomerId — Square may reject the payment`, {
+            bowlerId: scheduleRecord.bowlerId,
+          });
+        }
         const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
         let paymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string; cardId?: string };
 
@@ -257,7 +263,7 @@ class PaymentScheduler {
               lineItems,
               squareLocationId,
               false,
-              undefined,
+              squareCustomerId,
               buyerEmail
             );
             paymentResult = { status: 'success', paymentId: orderResult.id };
@@ -271,6 +277,7 @@ class PaymentScheduler {
             bowlerId: scheduleRecord.bowlerId,
             leagueId: scheduleRecord.leagueId,
             buyerEmail,
+            customerId: squareCustomerId,
           });
         }
 
@@ -489,6 +496,12 @@ class PaymentScheduler {
 
       const bowler = await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]);
       const buyerEmail = bowler?.email || undefined;
+      const squareCustomerId = bowler?.squareCustomerId || undefined;
+      if (!squareCustomerId && scheduleRecord.squareCardId?.startsWith('ccof:')) {
+        logger.warn(`[PaymentScheduler] Final-two-weeks card-on-file charge for ${jobId} has no squareCustomerId — Square may reject the payment`, {
+          bowlerId: scheduleRecord.bowlerId,
+        });
+      }
       const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
 
       let finalPaymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string };
@@ -509,7 +522,7 @@ class PaymentScheduler {
             lineItems,
             squareLocationId,
             false,
-            undefined,
+            squareCustomerId,
             buyerEmail
           );
           finalPaymentResult = { status: 'success', paymentId: orderResult.id };
@@ -523,6 +536,7 @@ class PaymentScheduler {
           bowlerId: scheduleRecord.bowlerId,
           leagueId: scheduleRecord.leagueId,
           buyerEmail,
+          customerId: squareCustomerId,
         });
       }
 

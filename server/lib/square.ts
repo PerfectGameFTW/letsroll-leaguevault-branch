@@ -27,6 +27,7 @@ interface CreatePaymentParams {
   bowlerId: number;
   leagueId: number;
   buyerEmail?: string;
+  customerId?: string;
 }
 
 export async function createSquarePayment({
@@ -35,6 +36,7 @@ export async function createSquarePayment({
   bowlerId,
   leagueId,
   buyerEmail,
+  customerId,
 }: CreatePaymentParams) {
   try {
     const idempotencyKey = `${bowlerId}-${leagueId}-${Date.now()}`;
@@ -55,6 +57,7 @@ export async function createSquarePayment({
       },
       autocomplete: true,
       ...(buyerEmail && { buyerEmailAddress: buyerEmail }),
+      ...(customerId && { customerId }),
     });
 
     if (payment.result?.payment?.id) {
