@@ -24,14 +24,30 @@ export function getNextLeagueDateTime(
     return addWeeks(afterDate, 1);
   }
 
-  // Work in league-local time: convert afterDate to the league timezone first,
-  // then compute the next bowling day in that timezone's calendar representation.
+  // Work in league-local time so day-of-week and time comparisons reflect the
+  // league's calendar, not the server's UTC clock.
   const afterLocal = toZonedTime(afterDate, timezone);
-  let target = nextDay(afterLocal, dayIndex);
-  target = setHours(target, hours);
-  target = setMinutes(target, minutes);
-  target = setSeconds(target, 0);
-  target = setMilliseconds(target, 0);
+
+  let target: Date;
+
+  // If today is already the correct weekday AND the scheduled time today has
+  // not yet passed, use tonight rather than jumping ahead a full week.
+  const todayIsCorrectDay = afterLocal.getDay() === dayIndex;
+  const scheduledTimeToday = setMilliseconds(
+    setSeconds(setMinutes(setHours(new Date(afterLocal), hours), minutes), 0),
+    0
+  );
+  const scheduledTimeStillAhead = afterLocal < scheduledTimeToday;
+
+  if (todayIsCorrectDay && scheduledTimeStillAhead) {
+    target = scheduledTimeToday;
+  } else {
+    target = nextDay(afterLocal, dayIndex);
+    target = setHours(target, hours);
+    target = setMinutes(target, minutes);
+    target = setSeconds(target, 0);
+    target = setMilliseconds(target, 0);
+  }
 
   const allExcluded = new Set([
     ...(skipDates ?? []).map((d) => d.slice(0, 10)),
