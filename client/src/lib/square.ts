@@ -283,8 +283,10 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
         if (storeCard) {
           try {
             result = await cardInstance.tokenize({ cardOnFile: true });
-          } catch (finalError) {
-            throw finalError;
+          } catch {
+            throw new Error(JSON.stringify({
+              error: { message: 'Please check your card details and try again.', code: 'TOKENIZATION_ERROR' }
+            }));
           }
         } else {
           throw secondTokenError;

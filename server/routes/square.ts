@@ -175,7 +175,14 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
         stack: error.stack
       } : error
     });
-    res.status(500).send(error instanceof Error ? error.message : 'Payment processing failed');
+    let userMessage = 'Payment processing failed. Please try again.';
+    if (error instanceof Error && error.message.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(error.message);
+        userMessage = parsed.error?.message || userMessage;
+      } catch {}
+    }
+    return sendError(res, userMessage, 500, 'PAYMENT_ERROR');
   }
 });
 

@@ -439,7 +439,24 @@ export async function createOrderWithPayment(
     };
   } catch (error) {
     console.error('[Square Service] Order+Payment error:', error);
-    throw error;
+    if (error instanceof Error && error.message.startsWith('{')) {
+      throw error;
+    }
+    const apiErr = error as ApiError;
+    if (apiErr?.statusCode === 402) {
+      throw new Error(JSON.stringify({
+        error: { message: 'Your payment was declined. Please try a different card.', code: 'PAYMENT_DECLINED' }
+      }));
+    }
+    if (apiErr?.statusCode === 400) {
+      const detail = apiErr?.result?.errors?.[0]?.detail;
+      throw new Error(JSON.stringify({
+        error: { message: 'Payment could not be processed. Please check your details and try again.', code: 'INVALID_REQUEST', detail }
+      }));
+    }
+    throw new Error(JSON.stringify({
+      error: { message: 'Payment processing failed. Please try again.', code: 'PAYMENT_FAILED' }
+    }));
   }
 }
 
