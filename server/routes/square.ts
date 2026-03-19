@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import crypto from 'crypto';
 import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile } from '../services/square.js';
+import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
@@ -55,7 +56,15 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
     const seasonStart = new Date(league.seasonStart);
     const seasonEnd = new Date(league.seasonEnd);
-    const totalWeeks = Math.max(1, Math.ceil((seasonEnd.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+    let totalWeeks: number;
+    if (league.totalBowlingWeeks != null) {
+      totalWeeks = getEffectiveBowlingWeeks(
+        league.totalBowlingWeeks,
+        league.cancelledDates ?? []
+      );
+    } else {
+      totalWeeks = Math.max(1, Math.ceil((seasonEnd.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+    }
     const fullSeasonAmount = league.weeklyFee * totalWeeks;
 
     const existingPayments = await storage.getPayments(bowlerId, leagueId);
