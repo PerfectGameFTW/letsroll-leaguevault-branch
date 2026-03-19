@@ -60,6 +60,8 @@ build = ["sh", "-c", "npm run build"]
 [userenv.shared]
 SQUARE_PRODUCTION_APP_ID = "sq0idp-7qXqEqFgsEkS1NpNbvhyDA"
 SQUARE_PRODUCTION_LOCATION_ID = "LPM9NWNXW82M5"
+SENTRY_DSN = "https://424c61a13e92d32157f44e43c5d2e03f@o4511069370777600.ingest.us.sentry.io/4511069394960384"
+VITE_SENTRY_DSN = "https://424c61a13e92d32157f44e43c5d2e03f@o4511069370777600.ingest.us.sentry.io/4511069394960384"
 
 [postMerge]
 path = "scripts/post-merge.sh"

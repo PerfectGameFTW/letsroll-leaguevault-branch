@@ -1,3 +1,11 @@
+import * as Sentry from "@sentry/node";
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV || "development",
+  tracesSampleRate: 1.0,
+});
+
 import express, { type Request, Response, NextFunction } from "express";
 import helmet from "helmet";
 import { registerRoutes } from "./routes/index";
@@ -79,7 +87,8 @@ app.use(helmet({
         "https://pci-connect.squareupsandbox.com",
         "https://square-fonts-production-f.squarecdn.com",
         "https://d1g145x70srn7h.cloudfront.net",
-        "https://o160250.ingest.sentry.io",
+        "https://*.ingest.sentry.io",
+        "https://*.ingest.us.sentry.io",
         ...(isDev ? ["ws:", "wss:"] : []),
       ],
       frameSrc: [
@@ -211,6 +220,8 @@ if (process.env.NODE_ENV !== "production") {
   });
   startServer();
 }
+
+Sentry.setupExpressErrorHandler(app);
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   console.error('[Error]', err);
