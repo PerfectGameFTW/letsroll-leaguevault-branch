@@ -43,6 +43,13 @@
       "when": 1742486400000,
       "tag": "0005_add_lineage_prize_fund_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1742572800000,
+      "tag": "0006_add_square_category_id",
+      "breakpoints": true
     }
   ]
 }

@@ -165,6 +165,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       squarePrizeFundItemId: null,
       squarePrizeFundItemVariationId: null,
       squarePrizeFundItemName: null,
+      squareCategoryId: null,
       locationId: null,
       totalBowlingWeeks: 30,
       skipDates: [],
@@ -233,6 +234,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       setSkipDates(league.skipDates ?? []);
       setCancelledDates(league.cancelledDates ?? []);
       setShowSchedule(false);
+      setSelectedCategoryId(league.squareCategoryId || null);
 
       form.reset({
         name: league.name,
@@ -255,6 +257,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         squarePrizeFundItemId: league.squarePrizeFundItemId || null,
         squarePrizeFundItemVariationId: league.squarePrizeFundItemVariationId || null,
         squarePrizeFundItemName: league.squarePrizeFundItemName || null,
+        squareCategoryId: league.squareCategoryId || null,
         locationId: league.locationId || null,
         totalBowlingWeeks: initialWeeks,
         skipDates: league.skipDates ?? [],
@@ -282,6 +285,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         squarePrizeFundItemId: null,
         squarePrizeFundItemVariationId: null,
         squarePrizeFundItemName: null,
+        squareCategoryId: null,
         locationId: null,
         totalBowlingWeeks: 30,
         skipDates: [],
@@ -292,6 +296,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       setCancelledDates([]);
       setShowSchedule(false);
       setShowDeleteConfirm(false);
+      setSelectedCategoryId(null);
     }
   }, [open, league, form]);
 
@@ -685,7 +690,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                         <FormLabel>Filter by Category</FormLabel>
                         <Select
                           value={selectedCategoryId || 'all'}
-                          onValueChange={(value) => setSelectedCategoryId(value === 'all' ? null : value)}
+                          onValueChange={(value) => {
+                            const catId = value === 'all' ? null : value;
+                            setSelectedCategoryId(catId);
+                            form.setValue('squareCategoryId', catId);
+                          }}
                         >
                           <FormControl>
                             <SelectTrigger>

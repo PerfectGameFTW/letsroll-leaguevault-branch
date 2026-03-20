@@ -415,6 +415,7 @@ router.post("/:id/new-season", async (req: any, res) => {
       squarePrizeFundItemId: sourceLeague.squarePrizeFundItemId,
       squarePrizeFundItemVariationId: sourceLeague.squarePrizeFundItemVariationId,
       squarePrizeFundItemName: sourceLeague.squarePrizeFundItemName,
+      squareCategoryId: sourceLeague.squareCategoryId ?? undefined,
       finalTwoWeeksDueWeek: sourceLeague.finalTwoWeeksDueWeek,
       paymentMode: sourceLeague.paymentMode ?? "weekly",
       organizationId: sourceLeague.organizationId,
