@@ -711,6 +711,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                             form.setValue('squareLineageItemId', null);
                             form.setValue('squareLineageItemVariationId', null);
                             form.setValue('squareLineageItemName', null);
+                            form.setValue('lineageFee', null);
                           } else {
                             for (const item of catalogItems) {
                               const variation = item.variations.find(v => v.id === value);
@@ -718,9 +719,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                                 form.setValue('squareLineageItemId', item.id);
                                 form.setValue('squareLineageItemVariationId', variation.id);
                                 form.setValue('squareLineageItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
+                                const lineagePrice = variation.price || 0;
                                 const prizeFundPrice = getPriceForVariation(form.getValues('squarePrizeFundItemVariationId'));
-                                const total = (variation.price || 0) + (prizeFundPrice || 0);
+                                const total = lineagePrice + (prizeFundPrice || 0);
                                 if (total > 0) form.setValue('weeklyFee', total);
+                                if (lineagePrice > 0) form.setValue('lineageFee', lineagePrice);
                                 break;
                               }
                             }
@@ -755,6 +758,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                             form.setValue('squarePrizeFundItemId', null);
                             form.setValue('squarePrizeFundItemVariationId', null);
                             form.setValue('squarePrizeFundItemName', null);
+                            form.setValue('prizeFundFee', null);
                           } else {
                             for (const item of catalogItems) {
                               const variation = item.variations.find(v => v.id === value);
@@ -763,8 +767,10 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                                 form.setValue('squarePrizeFundItemVariationId', variation.id);
                                 form.setValue('squarePrizeFundItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
                                 const lineagePrice = getPriceForVariation(form.getValues('squareLineageItemVariationId'));
-                                const total = (lineagePrice || 0) + (variation.price || 0);
+                                const prizeFundPrice = variation.price || 0;
+                                const total = (lineagePrice || 0) + prizeFundPrice;
                                 if (total > 0) form.setValue('weeklyFee', total);
+                                if (prizeFundPrice > 0) form.setValue('prizeFundFee', prizeFundPrice);
                                 break;
                               }
                             }
