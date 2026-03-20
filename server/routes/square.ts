@@ -378,7 +378,32 @@ router.get('/cards/:bowlerId', async (req, res) => {
   }
 });
 
-router.get('/config', (_req, res) => {
+router.get('/config', async (req: any, res) => {
+  // Attempt per-location config if locationId is supplied
+  const locationIdParam = req.query.locationId as string | undefined;
+  if (locationIdParam) {
+    const lvLocationId = parseInt(locationIdParam);
+    if (!isNaN(lvLocationId)) {
+      try {
+        const loc = await storage.getLocation(lvLocationId);
+        if (loc) {
+          const isAuthorized =
+            !req.isAuthenticated || !req.isAuthenticated() ||
+            req.user?.role === 'system_admin' ||
+            (req.user?.organizationId != null && req.user.organizationId === loc.organizationId);
+          if (isAuthorized) {
+            const creds = await storage.getLocationSquareConfig(lvLocationId);
+            if (creds?.appId && creds?.accessToken && creds.appId.trim().length > 0) {
+              return res.json({ appId: creds.appId.trim(), locationId: creds.locationId?.trim() || '' });
+            }
+          }
+        }
+      } catch {
+        // fall through to env-var config
+      }
+    }
+  }
+
   const prodAppId = process.env.SQUARE_PRODUCTION_APP_ID || '';
   const viteAppId = process.env.VITE_SQUARE_APP_ID || '';
   const squareAppId = process.env.SQUARE_APP_ID || '';

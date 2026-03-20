@@ -4,6 +4,7 @@ import { initializeSquare, resetSquarePayments, getPreWarmedCard, cardStyle } fr
 
 interface UseSquarePaymentOptions {
   onError?: (error: string) => void;
+  locationId?: number | null;
 }
 
 interface UseSquarePaymentReturn {
@@ -14,7 +15,7 @@ interface UseSquarePaymentReturn {
   cleanupCard: () => void;
 }
 
-export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): UseSquarePaymentReturn {
+export function useSquarePayment({ onError, locationId }: UseSquarePaymentOptions = {}): UseSquarePaymentReturn {
   const [card, setCard] = useState<any>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,9 +25,11 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
   const initializingRef = useRef(false);
   const initializationAttempts = useRef(0);
   const onErrorRef = useRef(onError);
+  const locationIdRef = useRef(locationId);
   const maxAttempts = 3;
 
   onErrorRef.current = onError;
+  locationIdRef.current = locationId;
 
   const cleanupCard = useCallback(() => {
     if (cardRef.current) {
@@ -75,7 +78,7 @@ export function useSquarePayment({ onError }: UseSquarePaymentOptions = {}): Use
         }
       }, 8000);
 
-      const payments = await initializeSquare();
+      const payments = await initializeSquare(locationIdRef.current);
 
       if (!mountedRef.current) {
         clearTimeout(initTimeout);

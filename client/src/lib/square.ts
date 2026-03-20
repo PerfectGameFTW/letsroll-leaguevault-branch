@@ -31,6 +31,7 @@ declare global {
 
 let payments: any = null;
 let squareConfig: { appId: string; locationId: string } | null = null;
+let squareConfigLocationId: number | null | undefined = undefined; // tracks which location the cached config/payments are for
 let preWarmedCard: any = null;
 
 const cardStyle = {
@@ -75,17 +76,22 @@ export { cardStyle };
 
 export function resetSquarePayments() {
   payments = null;
+  squareConfig = null;
+  squareConfigLocationId = undefined;
 }
 
-async function getSquareConfig(): Promise<{ appId: string; locationId: string }> {
-  if (squareConfig) return squareConfig;
+async function getSquareConfig(locationId?: number | null): Promise<{ appId: string; locationId: string }> {
+  // Return cached config only if the location matches
+  if (squareConfig && squareConfigLocationId === (locationId ?? null)) return squareConfig;
 
   try {
-    const res = await fetch('/api/square/config');
+    const url = locationId ? `/api/square/config?locationId=${locationId}` : '/api/square/config';
+    const res = await fetch(url);
     const data = await res.json();
     if (data.appId) {
       squareConfig = { appId: data.appId, locationId: data.locationId || '' };
-      console.log('[Square] Using runtime config from server, isProduction:', !data.appId.includes('sandbox-'));
+      squareConfigLocationId = locationId ?? null;
+      console.log('[Square] Using runtime config from server, isProduction:', !data.appId.includes('sandbox-'), locationId ? `(location ${locationId})` : '(global)');
       return squareConfig;
     }
   } catch (err) {
@@ -95,6 +101,7 @@ async function getSquareConfig(): Promise<{ appId: string; locationId: string }>
   const buildTimeAppId = import.meta.env.VITE_SQUARE_APP_ID || '';
   const buildTimeLocationId = import.meta.env.VITE_SQUARE_LOCATION_ID || '';
   squareConfig = { appId: buildTimeAppId, locationId: buildTimeLocationId };
+  squareConfigLocationId = locationId ?? null;
   console.log('[Square] Using build-time config, isProduction:', buildTimeAppId.length > 0 && !buildTimeAppId.includes('sandbox-'));
   return squareConfig;
 }
@@ -106,15 +113,21 @@ function getSdkUrl(appId: string): string {
     : "https://sandbox.web.squarecdn.com/v1/square.js";
 }
 
-export async function initializeSquare() {
+export async function initializeSquare(locationId?: number | null) {
   try {
+    // Reset if the location has changed
+    if (payments && squareConfigLocationId !== (locationId ?? null)) {
+      payments = null;
+      squareConfig = null;
+    }
+
     if (payments && window.Square?.payments) {
       return payments;
     }
 
     payments = null;
 
-    const config = await getSquareConfig();
+    const config = await getSquareConfig(locationId);
     const sdkUrl = getSdkUrl(config.appId);
     const isProduction = config.appId.length > 0 && !config.appId.includes('sandbox-');
 

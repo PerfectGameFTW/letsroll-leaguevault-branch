@@ -87,6 +87,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     initializeCard,
     cleanupCard,
   } = useSquarePayment({
+    locationId: leagueInfo?.locationId ?? null,
     onError: (error) => {
       form.setValue("type", "cash");
       toast({
@@ -107,7 +108,13 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const selectedBowlerId = form.watch("bowlerId");
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
-    queryKey: [`/api/square/cards/${selectedBowlerId}`],
+    queryKey: [`/api/square/cards/${selectedBowlerId}`, leagueId],
+    queryFn: async () => {
+      const params = leagueId ? `?leagueId=${leagueId}` : '';
+      const res = await fetch(`/api/square/cards/${selectedBowlerId}${params}`);
+      if (!res.ok) throw new Error('Failed to fetch saved cards');
+      return res.json();
+    },
     enabled: !!selectedBowlerId && paymentType === 'credit_card',
     staleTime: 1000 * 60 * 5,
     retry: false,

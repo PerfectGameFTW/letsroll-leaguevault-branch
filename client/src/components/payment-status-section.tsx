@@ -67,6 +67,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
 
   const { card, isInitialized, error: squareError, initializeCard, cleanupCard } = useSquarePayment({
+    locationId: league.locationId ?? null,
     onError: (error) => {
       console.error('[Square Payment Error]:', error);
       toast({
@@ -78,7 +79,12 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   });
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
-    queryKey: [`/api/square/cards/${bowler.id}`],
+    queryKey: [`/api/square/cards/${bowler.id}`, league.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/square/cards/${bowler.id}?leagueId=${league.id}`);
+      if (!res.ok) throw new Error('Failed to fetch saved cards');
+      return res.json();
+    },
     enabled: !!bowler.id,
     staleTime: 1000 * 60 * 5,
     retry: false,
