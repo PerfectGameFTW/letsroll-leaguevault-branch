@@ -84,25 +84,24 @@ async function getSquareConfig(locationId?: number | null): Promise<{ appId: str
   // Return cached config only if the location matches
   if (squareConfig && squareConfigLocationId === (locationId ?? null)) return squareConfig;
 
+  const url = locationId ? `/api/square/config?locationId=${locationId}` : '/api/square/config';
+  let data: any;
   try {
-    const url = locationId ? `/api/square/config?locationId=${locationId}` : '/api/square/config';
     const res = await fetch(url);
-    const data = await res.json();
-    if (data.appId) {
-      squareConfig = { appId: data.appId, locationId: data.locationId || '' };
-      squareConfigLocationId = locationId ?? null;
-      console.log('[Square] Using runtime config from server, isProduction:', !data.appId.includes('sandbox-'), locationId ? `(location ${locationId})` : '(global)');
-      return squareConfig;
-    }
+    data = await res.json();
   } catch (err) {
     console.error('[Square] Failed to fetch config from server:', err);
+    throw new Error('Payment is temporarily unavailable. Please try again or contact support.');
   }
 
-  const buildTimeAppId = import.meta.env.VITE_SQUARE_APP_ID || '';
-  const buildTimeLocationId = import.meta.env.VITE_SQUARE_LOCATION_ID || '';
-  squareConfig = { appId: buildTimeAppId, locationId: buildTimeLocationId };
+  if (!data.appId) {
+    console.error('[Square] Server returned no appId in config response');
+    throw new Error('Payment is temporarily unavailable. Please try again or contact support.');
+  }
+
+  squareConfig = { appId: data.appId, locationId: data.locationId || '' };
   squareConfigLocationId = locationId ?? null;
-  console.log('[Square] Using build-time config, isProduction:', buildTimeAppId.length > 0 && !buildTimeAppId.includes('sandbox-'));
+  console.log('[Square] Using runtime config from server, isProduction:', !data.appId.includes('sandbox-'), locationId ? `(location ${locationId})` : '(global)');
   return squareConfig;
 }
 
