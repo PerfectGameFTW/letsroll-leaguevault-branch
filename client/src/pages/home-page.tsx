@@ -69,7 +69,7 @@ export default function HomePage() {
   const payments = paymentsResponse?.data || [];
   
   const activeBowlers = bowlers.filter((b: Bowler) => b.active).length;
-  const totalLeagues = leagues.length;
+  const totalLeagues = leagues.filter((l: League) => l.active).length;
 
   // Calculate lineage and prize fund totals
   const paidPayments = payments.filter(p => p.status === 'paid');
@@ -92,7 +92,7 @@ export default function HomePage() {
           <Link href="/leagues" className="block transition-transform hover:scale-105">
             <Card className="cursor-pointer hover:border-primary h-full">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Leagues</CardTitle>
+                <CardTitle className="text-sm font-medium">Active Leagues</CardTitle>
                 <Trophy className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
