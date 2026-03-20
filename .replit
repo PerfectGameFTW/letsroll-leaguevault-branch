@@ -52,7 +52,7 @@ outputType = "webview"
 
 [deployment]
 run = ["sh", "-c", "NODE_ENV=production node dist/index.js"]
-deploymentTarget = "cloudrun"
+deploymentTarget = "autoscale"
 build = ["sh", "-c", "npm run build"]
 
 [userenv]
