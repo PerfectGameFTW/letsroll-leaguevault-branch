@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ChevronDown, ChevronUp, CheckCircle2, XCircle, Eye, EyeOff } from "lucide-react";
+import { ChevronDown, ChevronUp, CheckCircle2, XCircle, Eye, EyeOff, Pencil } from "lucide-react";
 import { SiSquare } from "react-icons/si";
 import type { ApiResponse, Organization, User } from "@shared/schema";
 
@@ -42,7 +42,8 @@ interface BowlNowCardProps {
 
 function BowlNowCard({ config, orgId }: BowlNowCardProps) {
   const { toast } = useToast();
-  const [expanded, setExpanded] = useState(false);
+  const isConfigured = config.apiKeyConfigured && config.enabled;
+  const [expanded, setExpanded] = useState(!isConfigured);
   const [enabled, setEnabled] = useState(config.enabled);
   const [apiKey, setApiKey] = useState("");
   const [locationId, setLocationId] = useState(config.locationId);
@@ -57,6 +58,7 @@ function BowlNowCard({ config, orgId }: BowlNowCardProps) {
       queryClient.invalidateQueries({ queryKey: ["/api/bn/status"] });
       toast({ title: "BowlNow settings saved", description: "Your integration settings have been updated." });
       setApiKey("");
+      setExpanded(false);
     },
     onError: (error: Error) => {
       toast({ title: "Save failed", description: error.message, variant: "destructive" });
@@ -81,8 +83,6 @@ function BowlNowCard({ config, orgId }: BowlNowCardProps) {
       locationId: locationId || undefined,
     });
   }
-
-  const isConfigured = config.apiKeyConfigured && config.enabled;
 
   return (
     <Card>
@@ -116,13 +116,24 @@ function BowlNowCard({ config, orgId }: BowlNowCardProps) {
               onCheckedChange={handleToggleEnabled}
               disabled={mutation.isPending}
             />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
+            {isConfigured && !expanded ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExpanded(true)}
+              >
+                <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                Edit
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setExpanded(!expanded)}
+              >
+                {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            )}
           </div>
         </div>
       </CardHeader>
