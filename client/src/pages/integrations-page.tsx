@@ -475,7 +475,7 @@ export default function IntegrationsPage() {
 
   const orgList = orgsResponse?.data ?? [];
 
-  const { data: integrationsResponse, isLoading, isFetching } = useQuery<ApiResponse<IntegrationsConfig>>({
+  const { data: integrationsResponse, isLoading, isFetching, isError } = useQuery<ApiResponse<IntegrationsConfig>>({
     queryKey: ["/api/integrations", effectiveOrgId],
     queryFn: async () => {
       const url = effectiveOrgId
@@ -494,10 +494,10 @@ export default function IntegrationsPage() {
   const prevEffectiveOrgIdRef = useRef<number | null>(effectiveOrgId);
 
   useEffect(() => {
-    if (!isFetching && effectiveOrgId && integrationsResponse) {
+    if (!isFetching && effectiveOrgId && (integrationsResponse || isError)) {
       setDisplayedOrgId(effectiveOrgId);
     }
-  }, [isFetching, effectiveOrgId, integrationsResponse]);
+  }, [isFetching, effectiveOrgId, integrationsResponse, isError]);
 
   useEffect(() => {
     if (prevEffectiveOrgIdRef.current !== effectiveOrgId) {
