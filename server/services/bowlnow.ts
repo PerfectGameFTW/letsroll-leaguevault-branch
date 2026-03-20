@@ -48,7 +48,7 @@ export function isBNConfigured(): boolean {
 
 export function isOrgBNConfigured(orgConfig: OrgIntegrations | null | undefined): boolean {
   if (!orgConfig?.bowlnow?.enabled) return false;
-  return !!(orgConfig.bowlnow.apiKey || getGlobalApiKey());
+  return !!orgConfig.bowlnow.apiKey;
 }
 
 export async function getOrgBNConfig(orgId: number): Promise<OrgIntegrations | null> {
@@ -177,7 +177,11 @@ export async function syncBowlerToBN(
   bowlerId: number,
   orgConfig?: OrgIntegrations | null,
 ): Promise<{ success: boolean; contactId?: string; error?: string }> {
-  if (!isOrgBNConfigured(orgConfig) && !isBNConfigured()) {
+  const hasOrgContext = orgConfig !== undefined;
+  if (hasOrgContext && !isOrgBNConfigured(orgConfig)) {
+    return { success: false, error: 'BowlNow not configured for this organization' };
+  }
+  if (!hasOrgContext && !isBNConfigured()) {
     return { success: false, error: 'BowlNow not configured' };
   }
 
@@ -282,7 +286,11 @@ export async function syncBowlerToBN(
 export async function syncAllBowlersToBN(
   orgConfig?: OrgIntegrations | null,
 ): Promise<{ total: number; synced: number; failed: number; errors: string[] }> {
-  if (!isOrgBNConfigured(orgConfig) && !isBNConfigured()) {
+  const hasOrgContext = orgConfig !== undefined;
+  if (hasOrgContext && !isOrgBNConfigured(orgConfig)) {
+    return { total: 0, synced: 0, failed: 0, errors: ['BowlNow not configured for this organization'] };
+  }
+  if (!hasOrgContext && !isBNConfigured()) {
     return { total: 0, synced: 0, failed: 0, errors: ['BowlNow not configured'] };
   }
 

@@ -50,6 +50,13 @@
       "when": 1742572800000,
       "tag": "0006_add_square_category_id",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1742659200000,
+      "tag": "0007_add_org_integrations",
+      "breakpoints": true
     }
   ]
 }
