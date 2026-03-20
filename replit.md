@@ -52,7 +52,7 @@ A full-stack bowling league management application with multi-tenant support for
 - `SQUARE_LOCATION_ID` / `VITE_SQUARE_LOCATION_ID` - Square location (fallback)
 - `SESSION_SECRET` - Express session secret
 - `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
-- `BN_API_KEY` - BowlNow (GoHighLevel) sub-account API key for CRM contact sync
+- `BN_API_KEY` - BowlNow sub-account API key for CRM contact sync
 - `SETUP_SECRET` - Protects admin bootstrap endpoints for disaster recovery (see Recovery section below)
 
 ## Security Scanning
@@ -121,7 +121,7 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
   - Saved card payments go through `/api/square/payments` with the card ID as sourceId
   - New card payments with "Save card" checked also go through `/api/square/payments` for proper card-on-file saving
   - Card saving uses Square's Cards API (`cardsApi.createCard`) with the payment token
-- **BowlNow CRM Integration**: One-way sync of bowler contact data into BowlNow (GoHighLevel) CRM
+- **BowlNow CRM Integration**: One-way sync of bowler contact data into BowlNow CRM
   - `server/services/bowlnow.ts` — service module for BN API (create/update contacts, sync single/all bowlers)
   - `server/routes/bowlnow.ts` — admin API routes: `GET /api/bn/status`, `POST /api/bn/sync-bowler/:id`, `POST /api/bn/sync-all`
   - Schema: added `bnContactId` text column to bowlers table (stores BN contact ID after sync)

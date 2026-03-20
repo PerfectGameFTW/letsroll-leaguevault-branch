@@ -143,7 +143,7 @@ function BowlNowCard({ config, orgId }: BowlNowCardProps) {
           <Separator />
           <CardContent className="pt-4 space-y-4">
             <p className="text-sm text-muted-foreground">
-              BowlNow (powered by GoHighLevel) keeps your bowler contact list up to date automatically.
+              BowlNow keeps your bowler contact list up to date automatically.
               When a bowler is added or updated, their name, email, phone, league, and team are synced to your BowlNow account.
             </p>
 
