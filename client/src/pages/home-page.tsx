@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
 import { Loader2, AlertCircle, Trophy, Users, TrendingUp, DollarSign } from "lucide-react";
 import { Link } from "wouter";
-import type { League, Payment, BowlerLeague, ApiResponse, Organization } from "@shared/schema";
+import type { League, Payment, BowlerLeague, ApiResponse, Organization, User } from "@shared/schema";
 import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
 import { formatCurrency } from "@/lib/utils";
 
@@ -47,19 +47,28 @@ export default function HomePage() {
     retry: false,
   });
 
-  const { data: perfectGameOrgResponse, isLoading: loadingOrg, error: orgError } = useQuery<ApiResponse<Organization>>({
-    queryKey: ["/api/organizations/slug/perfect-game"],
+  const { data: userResponse } = useQuery<ApiResponse<User>>({
+    queryKey: ["/api/user"],
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+  });
+
+  const organizationId = userResponse?.data?.organizationId;
+
+  const { data: orgResponse } = useQuery<ApiResponse<Organization>>({
+    queryKey: [`/api/organizations/${organizationId}`],
+    enabled: !!organizationId,
     staleTime: 1000 * 60 * 5,
     retry: false,
   });
 
   // Show loading state only when initial data is loading
-  if (loadingLeagues || loadingPayments || loadingBowlerLeagues || loadingOrg) {
+  if (loadingLeagues || loadingPayments || loadingBowlerLeagues) {
     return <LoadingState />;
   }
 
   // Handle errors
-  const error = leaguesError || paymentsError || bowlerLeaguesError || orgError;
+  const error = leaguesError || paymentsError || bowlerLeaguesError;
   if (error) {
     return <ErrorState error={error as Error} />;
   }
@@ -82,7 +91,7 @@ export default function HomePage() {
   const totalPrizeFundPaid = paidPayments.reduce((sum, p) => sum + (p.prizeFundAmount ?? 0), 0);
 
   // Get the organization data with the logo
-  const organization = perfectGameOrgResponse?.data;
+  const organization = orgResponse?.data;
 
   return (
     <Layout>
