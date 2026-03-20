@@ -5,7 +5,7 @@ import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
 import { addWeeks, addMonths, setHours, setMinutes, setSeconds, setMilliseconds, isAfter, differenceInWeeks } from "date-fns";
 import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import { createSquarePayment } from "../lib/square";
-import { createOrderWithPayment } from "./square";
+import { createOrderWithPayment, getSquareClientForLocation, getSquareLocationId } from "./square";
 import { logger } from "../logger";
 import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 import { storage } from "../storage.js";
@@ -240,7 +240,11 @@ class PaymentScheduler {
             bowlerId: scheduleRecord.bowlerId,
           });
         }
-        const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
+        const lvLocationId = league?.locationId ?? null;
+        const [squareClient, squareLocationId] = await Promise.all([
+          lvLocationId ? getSquareClientForLocation(lvLocationId) : null,
+          lvLocationId ? getSquareLocationId(lvLocationId) : Promise.resolve(process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || ''),
+        ]);
         let paymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string; cardId?: string };
 
         const lineItems: { catalogObjectId: string; quantity: string }[] = [];
@@ -264,7 +268,9 @@ class PaymentScheduler {
               squareLocationId,
               false,
               squareCustomerId,
-              buyerEmail
+              buyerEmail,
+              undefined,
+              squareClient
             );
             paymentResult = { status: 'success', paymentId: orderResult.id };
           } catch (error) {
@@ -510,7 +516,11 @@ class PaymentScheduler {
           bowlerId: scheduleRecord.bowlerId,
         });
       }
-      const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
+      const lvLocationId2 = league?.locationId ?? null;
+      const [squareClient2, squareLocationId] = await Promise.all([
+        lvLocationId2 ? getSquareClientForLocation(lvLocationId2) : null,
+        lvLocationId2 ? getSquareLocationId(lvLocationId2) : Promise.resolve(process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || ''),
+      ]);
 
       let finalPaymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string };
 
@@ -531,7 +541,9 @@ class PaymentScheduler {
             squareLocationId,
             false,
             squareCustomerId,
-            buyerEmail
+            buyerEmail,
+            undefined,
+            squareClient2
           );
           finalPaymentResult = { status: 'success', paymentId: orderResult.id };
         } catch (error) {

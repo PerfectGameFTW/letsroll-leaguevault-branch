@@ -19,6 +19,7 @@ import {
   type PaymentSchedule, type InsertPaymentSchedule,
   type UserRole,
   type OrgIntegrations,
+  type LocationSquareCredentials,
   emailTemplates,
   type EmailTemplate, type InsertEmailTemplate,
 } from "@shared/schema.js";
@@ -141,6 +142,8 @@ export interface IStorage {
   deleteLocation(id: number): Promise<void>;
   archiveLocation(id: number): Promise<Location>;
   restoreLocation(id: number): Promise<Location>;
+  getLocationSquareConfig(locationId: number): Promise<LocationSquareCredentials | null>;
+  updateLocationSquareConfig(locationId: number, creds: LocationSquareCredentials): Promise<Location>;
 
   // Email template methods
   getEmailTemplates(): Promise<EmailTemplate[]>;
@@ -1223,6 +1226,16 @@ export class DatabaseStorage implements IStorage {
 
   async restoreLocation(id: number): Promise<Location> {
     const [result] = await db.update(locations).set({ active: true }).where(eq(locations.id, id)).returning();
+    return result;
+  }
+
+  async getLocationSquareConfig(locationId: number): Promise<LocationSquareCredentials | null> {
+    const [location] = await db.select({ squareCredentials: locations.squareCredentials }).from(locations).where(eq(locations.id, locationId));
+    return location?.squareCredentials ?? null;
+  }
+
+  async updateLocationSquareConfig(locationId: number, creds: LocationSquareCredentials): Promise<Location> {
+    const [result] = await db.update(locations).set({ squareCredentials: creds }).where(eq(locations.id, locationId)).returning();
     return result;
   }
 

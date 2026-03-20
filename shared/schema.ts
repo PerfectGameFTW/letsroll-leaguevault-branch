@@ -57,6 +57,13 @@ const nameSchema = z.string().min(2, "Name must be at least 2 characters");
 const emailSchema = z.string().email("Invalid email address");
 const positiveIntSchema = z.number().int().positive("Must be a positive number");
 
+// Per-location Square credentials type (defined before locations table to allow $type<>)
+export interface LocationSquareCredentials {
+  appId?: string;
+  accessToken?: string;
+  locationId?: string;
+}
+
 // Database table definitions
 export const locations = pgTable("locations", {
   id: serial("id").primaryKey(),
@@ -68,6 +75,7 @@ export const locations = pgTable("locations", {
   phone: text("phone"),
   active: boolean("active").notNull().default(true),
   organizationId: integer("organization_id").notNull().references(() => organizations.id),
+  squareCredentials: jsonb("square_credentials").$type<LocationSquareCredentials>(),
 }, (table) => ({
   organizationIdx: index("locations_organization_idx").on(table.organizationId),
 }));
@@ -266,6 +274,12 @@ export const orgIntegrationsSchema = z.object({
     apiKey: z.string().optional(),
     locationId: z.string().optional(),
   }).optional(),
+}).nullable().optional();
+
+export const locationSquareCredentialsSchema = z.object({
+  appId: z.string().optional(),
+  accessToken: z.string().optional(),
+  locationId: z.string().optional(),
 }).nullable().optional();
 
 // Organization table
@@ -624,7 +638,7 @@ export const partialGameSchema = z.object(baseGameSchema.shape).partial();
 export const partialScoreSchema = z.object(baseScoreSchema.shape).partial();
 export const partialPaymentScheduleSchema = z.object(basePaymentScheduleSchema.shape).partial();
 export const partialOrganizationSchema = z.object(baseOrganizationSchema.shape).partial();
-export const partialLocationSchema = z.object(baseLocationSchema.shape).partial();
+export const partialLocationSchema = z.object({ ...baseLocationSchema.shape, squareCredentials: locationSquareCredentialsSchema }).partial();
 
 // Location schema with validation
 export const insertLocationSchema = baseLocationSchema.extend({
@@ -636,6 +650,7 @@ export const insertLocationSchema = baseLocationSchema.extend({
   phone: z.string().optional(),
   active: z.boolean().default(true),
   organizationId: positiveIntSchema,
+  squareCredentials: locationSquareCredentialsSchema,
 }).omit({ id: true });
 
 // Organization schema with validation

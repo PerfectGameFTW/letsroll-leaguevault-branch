@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile } from '../services/square.js';
+import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile, getSquareClientForLocation, getSquareLocationId } from '../services/square.js';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
@@ -95,7 +95,12 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
     let payment;
     let storedCardId: string | undefined;
-    const squareLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
+
+    const lvLocationId = league.locationId ?? null;
+    const [squareClient, squareLocationId] = await Promise.all([
+      lvLocationId ? getSquareClientForLocation(lvLocationId) : null,
+      lvLocationId ? getSquareLocationId(lvLocationId) : Promise.resolve(process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || ''),
+    ]);
 
     const customerId = bowler.squareCustomerId || undefined;
 
@@ -126,7 +131,8 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
         req.body.storeCard,
         customerId,
         buyerEmail,
-        squareIdempotencyKey
+        squareIdempotencyKey,
+        squareClient
       );
     } else {
       payment = await processPayment(
@@ -135,13 +141,14 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
         req.body.storeCard,
         customerId,
         buyerEmail,
-        squareIdempotencyKey
+        squareIdempotencyKey,
+        squareClient
       );
     }
 
     if (req.body.storeCard && customerId && sourceId && !sourceId.startsWith('ccof:')) {
       try {
-        const savedCard = await saveCardOnFile(sourceId, customerId);
+        const savedCard = await saveCardOnFile(sourceId, customerId, squareClient);
         if (savedCard?.id) {
           console.log('[Square Routes] Card saved on file:', savedCard.id.substring(0, 15) + '...');
           storedCardId = savedCard.id;

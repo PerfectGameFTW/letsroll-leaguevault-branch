@@ -1,6 +1,7 @@
 import { Client, Environment } from 'square';
 import type { ApiError } from 'square';
 import crypto from 'crypto';
+import { storage } from '../storage.js';
 
 interface SquareCustomer {
   id: string;
@@ -9,6 +10,14 @@ interface SquareCustomer {
 }
 
 let squareClient: Client | null = null;
+
+function buildSquareClient(accessToken: string, appId?: string): Client {
+  const cleanToken = accessToken.replace(/[^\x20-\x7E]/g, '').trim();
+  const isProductionAppId = appId ? (appId.length > 0 && !appId.includes('sandbox-')) : true;
+  const isProductionToken = cleanToken.startsWith('EAAAEv') || cleanToken.startsWith('EAAAl7');
+  const environment = (isProductionAppId || isProductionToken) ? Environment.Production : Environment.Sandbox;
+  return new Client({ accessToken: cleanToken, environment });
+}
 
 async function initializeSquareClient() {
   const accessToken = (process.env.SQUARE_PROD_TOKEN || process.env.SQUARE_PRODUCTION_ACCESS_TOKEN || process.env.SQUARE_ACCESS_TOKEN || '').replace(/[^\x20-\x7E]/g, '').trim();
@@ -48,8 +57,40 @@ async function initializeSquareClient() {
   return squareClient;
 }
 
-export async function saveCardOnFile(sourceId: string, customerId: string) {
-  const client = await initializeSquareClient();
+/**
+ * Returns a Square client for the given LeagueVault location ID.
+ * Uses the location's stored credentials if configured, falling back to env vars.
+ */
+export async function getSquareClientForLocation(lvLocationId: number): Promise<Client | null> {
+  try {
+    const creds = await storage.getLocationSquareConfig(lvLocationId);
+    if (creds?.accessToken && creds.accessToken.trim().length > 0) {
+      return buildSquareClient(creds.accessToken, creds.appId);
+    }
+  } catch {
+    // Fall through to env-var client
+  }
+  return initializeSquareClient();
+}
+
+/**
+ * Returns the Square Location ID for the given LeagueVault location.
+ * Uses the location's stored credential first, falls back to env vars.
+ */
+export async function getSquareLocationId(lvLocationId: number): Promise<string> {
+  try {
+    const creds = await storage.getLocationSquareConfig(lvLocationId);
+    if (creds?.locationId && creds.locationId.trim().length > 0) {
+      return creds.locationId.trim();
+    }
+  } catch {
+    // Fall through to env vars
+  }
+  return process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
+}
+
+export async function saveCardOnFile(sourceId: string, customerId: string, clientOverride?: Client | null) {
+  const client = clientOverride ?? await initializeSquareClient();
   if (!client) return null;
 
   try {
@@ -77,8 +118,8 @@ export async function saveCardOnFile(sourceId: string, customerId: string) {
   }
 }
 
-export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false, customerId?: string, buyerEmail?: string, idempotencyKey?: string) {
-  const client = await initializeSquareClient();
+export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false, customerId?: string, buyerEmail?: string, idempotencyKey?: string, clientOverride?: Client | null) {
+  const client = clientOverride ?? await initializeSquareClient();
   if (!client) {
     throw new Error(JSON.stringify({
       error: {
@@ -184,8 +225,8 @@ export async function processPayment(sourceId: string, amount: number, storeCard
   }
 }
 
-export async function createOrUpdateCustomer(name: string, email: string, phone?: string | null): Promise<SquareCustomer | null> {
-  const client = await initializeSquareClient();
+export async function createOrUpdateCustomer(name: string, email: string, phone?: string | null, clientOverride?: Client | null): Promise<SquareCustomer | null> {
+  const client = clientOverride ?? await initializeSquareClient();
   if (!client) {
     console.error('[Square Service] Square client not initialized');
     return null;
@@ -263,8 +304,8 @@ export async function createOrUpdateCustomer(name: string, email: string, phone?
   }
 }
 
-export async function listCatalogCategories() {
-  const client = await initializeSquareClient();
+export async function listCatalogCategories(clientOverride?: Client | null) {
+  const client = clientOverride ?? await initializeSquareClient();
   if (!client) {
     throw new Error('Square client not initialized');
   }
@@ -301,8 +342,8 @@ export async function listCatalogCategories() {
   }
 }
 
-export async function listCatalogItems(categoryId?: string) {
-  const client = await initializeSquareClient();
+export async function listCatalogItems(categoryId?: string, clientOverride?: Client | null) {
+  const client = clientOverride ?? await initializeSquareClient();
   if (!client) {
     throw new Error('Square client not initialized');
   }
@@ -372,9 +413,10 @@ export async function createOrderWithPayment(
   storeCard: boolean = false,
   customerId?: string,
   buyerEmail?: string,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  clientOverride?: Client | null
 ) {
-  const client = await initializeSquareClient();
+  const client = clientOverride ?? await initializeSquareClient();
   if (!client) {
     throw new Error(JSON.stringify({
       error: { message: "Payment system is temporarily unavailable", code: "INITIALIZATION_ERROR" }
@@ -464,9 +506,10 @@ export async function createOrderWithPayment(
 export async function refundPayment(
   squarePaymentId: string,
   amountInCents: number,
-  reason?: string
+  reason?: string,
+  clientOverride?: Client | null
 ): Promise<{ refundId: string; status: string }> {
-  const client = await initializeSquareClient();
+  const client = clientOverride ?? await initializeSquareClient();
   if (!client) {
     throw new Error('Square client not initialized');
   }
@@ -505,8 +548,8 @@ export async function refundPayment(
   }
 }
 
-export async function listCardsOnFile(customerId: string): Promise<{ id: string; last4: string; brand: string; expMonth: number; expYear: number }[]> {
-  const client = await initializeSquareClient();
+export async function listCardsOnFile(customerId: string, clientOverride?: Client | null): Promise<{ id: string; last4: string; brand: string; expMonth: number; expYear: number }[]> {
+  const client = clientOverride ?? await initializeSquareClient();
   if (!client) return [];
 
   try {

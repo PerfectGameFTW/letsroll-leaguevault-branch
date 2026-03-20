@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { storage } from '../storage.js';
-import { insertLocationSchema, partialLocationSchema } from '@shared/schema.js';
+import { insertLocationSchema, partialLocationSchema, locationSquareCredentialsSchema } from '@shared/schema.js';
 import { filterByOrganization } from '../middleware/organization.js';
 
 const router = Router();
@@ -169,6 +169,73 @@ router.delete('/:id', async (req: any, res) => {
   } catch (error) {
     console.error(`Error deleting location with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to delete location', 500, 'ServerError');
+  }
+});
+
+router.get('/:id/square-config', async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
+
+    const location = await storage.getLocation(id);
+    if (!location) return sendError(res, 'Location not found', 404, 'NotFound');
+
+    const isOrgAdmin = req.user?.role === 'org_admin' || req.user?.role === 'system_admin';
+    const hasAccess = req.user?.role === 'system_admin' || req.user?.organizationId === location.organizationId;
+    if (!isOrgAdmin || !hasAccess) {
+      return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
+    }
+
+    const creds = await storage.getLocationSquareConfig(id);
+    sendSuccess(res, {
+      appId: creds?.appId || null,
+      accessTokenConfigured: !!(creds?.accessToken && creds.accessToken.trim().length > 0),
+      locationId: creds?.locationId || null,
+    });
+  } catch (error) {
+    console.error(`Error fetching Square config for location ${req.params.id}:`, error);
+    sendError(res, 'Failed to fetch Square configuration', 500, 'ServerError');
+  }
+});
+
+router.patch('/:id/square-config', async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
+
+    const location = await storage.getLocation(id);
+    if (!location) return sendError(res, 'Location not found', 404, 'NotFound');
+
+    const isOrgAdmin = req.user?.role === 'org_admin' || req.user?.role === 'system_admin';
+    const hasAccess = req.user?.role === 'system_admin' || req.user?.organizationId === location.organizationId;
+    if (!isOrgAdmin || !hasAccess) {
+      return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
+    }
+
+    const parseResult = locationSquareCredentialsSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return sendError(res, 'Invalid Square credentials', 400, 'ValidationError');
+    }
+
+    const incoming = parseResult.data ?? {};
+
+    // Preserve existing accessToken if not provided in this request
+    const existing = await storage.getLocationSquareConfig(id);
+    const creds = {
+      appId: incoming.appId !== undefined ? (incoming.appId || undefined) : (existing?.appId || undefined),
+      accessToken: incoming.accessToken !== undefined ? (incoming.accessToken || undefined) : (existing?.accessToken || undefined),
+      locationId: incoming.locationId !== undefined ? (incoming.locationId || undefined) : (existing?.locationId || undefined),
+    };
+
+    await storage.updateLocationSquareConfig(id, creds);
+    sendSuccess(res, {
+      appId: creds.appId || null,
+      accessTokenConfigured: !!(creds.accessToken && creds.accessToken.trim().length > 0),
+      locationId: creds.locationId || null,
+    });
+  } catch (error) {
+    console.error(`Error updating Square config for location ${req.params.id}:`, error);
+    sendError(res, 'Failed to update Square configuration', 500, 'ServerError');
   }
 });
 
