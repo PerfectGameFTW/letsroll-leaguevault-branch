@@ -289,7 +289,9 @@ router.post("/", async (req, res) => {
       }
 
       try {
-        const squareCustomer = await createOrUpdateCustomer(created.name, created.email);
+        const orgId = (req as any).user?.organizationId;
+        const squareLocation = orgId ? await storage.getFirstSquareConfiguredLocation(orgId) : null;
+        const squareCustomer = await createOrUpdateCustomer(created.name, created.email, undefined, squareLocation?.id ?? null);
 
         if (squareCustomer) {
           const updated = await storage.updateBowler(created.id, {
@@ -297,7 +299,6 @@ router.post("/", async (req, res) => {
             squareCustomerId: squareCustomer.id,
             active: true
           });
-          const orgId = (req as any).user?.organizationId;
           if (orgId) {
             const orgConfig = await storage.getOrgIntegrations(orgId);
             if (isOrgBNConfigured(orgConfig)) {
@@ -370,7 +371,9 @@ router.patch("/:id", async (req, res) => {
 
       if (needsSquareSync) {
         try {
-          const squareCustomer = await createOrUpdateCustomer(updated.name, updated.email);
+          const patchOrgId = (req as any).user?.organizationId;
+          const patchSquareLocation = patchOrgId ? await storage.getFirstSquareConfiguredLocation(patchOrgId) : null;
+          const squareCustomer = await createOrUpdateCustomer(updated.name, updated.email, undefined, patchSquareLocation?.id ?? null);
           if (squareCustomer && squareCustomer.id !== updated.squareCustomerId) {
             updated = await storage.updateBowler(id, {
               ...updated,

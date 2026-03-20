@@ -144,6 +144,7 @@ export interface IStorage {
   restoreLocation(id: number): Promise<Location>;
   getLocationSquareConfig(locationId: number): Promise<LocationSquareCredentials | null>;
   updateLocationSquareConfig(locationId: number, creds: LocationSquareCredentials): Promise<Location>;
+  getFirstSquareConfiguredLocation(orgId: number): Promise<Location | undefined>;
 
   // Email template methods
   getEmailTemplates(): Promise<EmailTemplate[]>;
@@ -1197,6 +1198,13 @@ export class DatabaseStorage implements IStorage {
     }
 
     return query.orderBy(locations.name);
+  }
+
+  async getFirstSquareConfiguredLocation(orgId: number): Promise<Location | undefined> {
+    const orgLocations = await db.select().from(locations)
+      .where(eq(locations.organizationId, orgId))
+      .orderBy(locations.name);
+    return orgLocations.find(loc => !!(loc.squareCredentials as any)?.accessToken);
   }
 
   async getLocation(id: number): Promise<Location | undefined> {
