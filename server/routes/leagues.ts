@@ -11,6 +11,10 @@ import { sendInviteEmail } from '../services/email';
 import { paymentScheduler } from '../services/payment-scheduler.js';
 import { getNextLeagueDateTime } from '../utils/league-datetime.js';
 import { calculateSeasonEnd } from '@shared/schedule-utils';
+import { db } from '../db.js';
+import { payments as paymentsTable } from '@shared/schema.js';
+import { eq, isNull, and } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 const router = Router();
 
@@ -165,6 +169,29 @@ router.patch("/:id", async (req: any, res) => {
     });
     
     const updated = await storage.updateLeague(id, update);
+
+    const feesChanged = update.lineageFee !== undefined || update.prizeFundFee !== undefined;
+    if (feesChanged && updated.weeklyFee > 0) {
+      try {
+        const lineageFee = updated.lineageFee;
+        const prizeFundFee = updated.prizeFundFee;
+        await db.execute(sql`
+          UPDATE payments
+          SET
+            lineage_amount = ${lineageFee != null
+              ? sql`ROUND(amount::numeric * ${lineageFee} / ${updated.weeklyFee})::integer`
+              : sql`NULL`},
+            prize_fund_amount = ${prizeFundFee != null
+              ? sql`ROUND(amount::numeric * ${prizeFundFee} / ${updated.weeklyFee})::integer`
+              : sql`NULL`}
+          WHERE league_id = ${id}
+            AND status = 'paid'
+        `);
+        console.log(`[Leagues Route] Backfilled payment splits for league ${id}: lineageFee=${lineageFee}, prizeFundFee=${prizeFundFee}`);
+      } catch (backfillErr) {
+        console.error('[Leagues Route] Error backfilling payment splits:', backfillErr);
+      }
+    }
 
     const timezoneChanged = update.timezone && update.timezone !== league.timezone;
     if (timezoneChanged) {
