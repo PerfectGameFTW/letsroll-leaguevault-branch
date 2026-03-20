@@ -4,7 +4,7 @@ import { insertPaymentSchema, partialPaymentSchema, type League } from "@shared/
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { refundPayment as squareRefund } from '../services/square.js';
-import { hasAccessToPayment, filterPaymentsByOrganization, requireOrganizationAccess } from '../utils/access-control.js';
+import { hasAccessToPayment, requireOrganizationAccess } from '../utils/access-control.js';
 import { paymentWriteLimiter } from '../middleware/rate-limit.js';
 import { differenceInWeeks } from 'date-fns';
 import { paymentScheduler } from '../services/payment-scheduler.js';
@@ -23,7 +23,10 @@ router.get("/", async (req, res) => {
     if (rawQueryOrgId !== undefined && isNaN(rawQueryOrgId)) {
       return sendError(res, "Invalid organization ID format", 400);
     }
-    const queryOrgId = rawQueryOrgId;
+    // Effective org context: explicit param > sysadmin's own org > null (unaffiliated sysadmin)
+    const effectiveOrgId: number | null = isSystemAdmin
+      ? (rawQueryOrgId ?? req.user?.organizationId ?? null)
+      : (req.user?.organizationId ?? null);
 
     if (leagueId) {
       const league = await storage.getLeague(leagueId);
@@ -42,17 +45,17 @@ router.get("/", async (req, res) => {
       req.query.weekOf ? new Date(req.query.weekOf as string) : undefined,
     );
     
-    // Filter payments by organization:
-    // - System admin with an explicit organizationId param: scope to that org
-    // - System admin with no organizationId param: return all payments
-    // - All other users: filter by their own organizationId
+    // Filter payments by organization using effectiveOrgId:
+    // - effectiveOrgId non-null: scope to that org (covers org admins, affiliated sysadmins, and explicit param)
+    // - effectiveOrgId null + sysadmin: return all (unaffiliated system admin)
+    // - effectiveOrgId null + non-sysadmin: return nothing (fail-safe, no org context)
     let accessiblePayments = payments;
-    if (isSystemAdmin && queryOrgId !== undefined) {
-      const orgLeagues: League[] = await storage.getLeagues(queryOrgId);
+    if (effectiveOrgId !== null) {
+      const orgLeagues: League[] = await storage.getLeagues(effectiveOrgId);
       const orgLeagueIds = new Set(orgLeagues.map(l => l.id));
       accessiblePayments = payments.filter(p => orgLeagueIds.has(p.leagueId));
     } else if (!isSystemAdmin) {
-      accessiblePayments = await filterPaymentsByOrganization(req, payments);
+      accessiblePayments = [];
     }
     
     sendSuccess(res, accessiblePayments);
