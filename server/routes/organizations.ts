@@ -159,6 +159,7 @@ router.get('/slug/:slug/leagues', async (req, res) => {
 router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res) => {
   try {
     const { adminData, ...orgData } = req.body;
+    console.log('[Organizations] Create request body keys:', Object.keys(orgData));
     const validatedData = insertOrganizationSchema.parse(orgData);
     
     // Check if organization with slug already exists
@@ -218,7 +219,9 @@ router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res
     sendSuccess(res, organization, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return sendError(res, 'Invalid organization data', 400, 'ValidationError');
+      const fieldErrors = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+      console.error('[Organizations] Validation error:', fieldErrors);
+      return sendError(res, `Invalid organization data: ${fieldErrors}`, 400, 'ValidationError');
     }
     console.error('Error creating organization:', error);
     sendError(res, 'Failed to create organization', 500, 'ServerError');
