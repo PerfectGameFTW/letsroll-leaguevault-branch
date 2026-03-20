@@ -171,23 +171,32 @@ router.patch("/:id", async (req: any, res) => {
     const updated = await storage.updateLeague(id, update);
 
     const feesChanged = update.lineageFee !== undefined || update.prizeFundFee !== undefined;
-    if (feesChanged && updated.weeklyFee > 0) {
+    if (feesChanged) {
       try {
         const lineageFee = updated.lineageFee;
         const prizeFundFee = updated.prizeFundFee;
-        await db.execute(sql`
-          UPDATE payments
-          SET
-            lineage_amount = ${lineageFee != null
-              ? sql`ROUND(amount::numeric * ${lineageFee} / ${updated.weeklyFee})::integer`
-              : sql`NULL`},
-            prize_fund_amount = ${prizeFundFee != null
-              ? sql`ROUND(amount::numeric * ${prizeFundFee} / ${updated.weeklyFee})::integer`
-              : sql`NULL`}
-          WHERE league_id = ${id}
-            AND status = 'paid'
-        `);
-        console.log(`[Leagues Route] Backfilled payment splits for league ${id}: lineageFee=${lineageFee}, prizeFundFee=${prizeFundFee}`);
+        const weeklyFee = updated.weeklyFee;
+        const bothSet = lineageFee != null && prizeFundFee != null;
+        const sumMatchesWeekly = bothSet && (lineageFee + prizeFundFee === weeklyFee);
+
+        if (bothSet && sumMatchesWeekly && weeklyFee > 0) {
+          await db.execute(sql`
+            UPDATE payments
+            SET
+              lineage_amount = ROUND(amount::numeric * ${lineageFee} / ${weeklyFee})::integer,
+              prize_fund_amount = ROUND(amount::numeric * ${prizeFundFee} / ${weeklyFee})::integer
+            WHERE league_id = ${id}
+              AND status = 'paid'
+          `);
+          console.log(`[Leagues Route] Backfilled payment splits for league ${id}: lineageFee=${lineageFee}, prizeFundFee=${prizeFundFee}`);
+        } else {
+          await db.execute(sql`
+            UPDATE payments
+            SET lineage_amount = NULL, prize_fund_amount = NULL
+            WHERE league_id = ${id}
+          `);
+          console.log(`[Leagues Route] Cleared payment splits for league ${id} (fees not fully configured)`);
+        }
       } catch (backfillErr) {
         console.error('[Leagues Route] Error backfilling payment splits:', backfillErr);
       }

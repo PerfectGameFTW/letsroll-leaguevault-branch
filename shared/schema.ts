@@ -454,6 +454,18 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   .refine(
     (data) => data.seasonEnd > data.seasonStart,
     "Season end date must be after season start date"
+  )
+  .refine(
+    (data) => {
+      const lf = data.lineageFee;
+      const pf = data.prizeFundFee;
+      if (lf != null || pf != null) {
+        if (lf == null || pf == null) return false;
+        return lf + pf === data.weeklyFee;
+      }
+      return true;
+    },
+    { message: "Lineage fee and prize fund fee must both be set and sum to the weekly fee", path: ["lineageFee"] }
   );
 
 export const insertTeamSchema = baseTeamSchema.extend({
@@ -571,6 +583,18 @@ export const partialLeagueSchema = z.object({
     return true;
   },
   "Season end date must be after season start date"
+).refine(
+  (data) => {
+    const lf = data.lineageFee;
+    const pf = data.prizeFundFee;
+    const wf = data.weeklyFee;
+    if (lf != null || pf != null) {
+      if (lf == null || pf == null) return false;
+      if (wf != null && lf + pf !== wf) return false;
+    }
+    return true;
+  },
+  { message: "Lineage fee and prize fund fee must both be set and sum to the weekly fee", path: ["lineageFee"] }
 );
 export const partialTeamSchema = z.object(baseTeamSchema.shape).partial();
 export const partialBowlerLeagueSchema = z.object(baseBowlerLeagueSchema.shape).partial();
