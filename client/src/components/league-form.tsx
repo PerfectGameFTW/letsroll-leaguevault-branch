@@ -737,6 +737,15 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="none">None</SelectItem>
+                          {(() => {
+                            const savedId = form.watch('squareLineageItemVariationId');
+                            const savedName = form.watch('squareLineageItemName');
+                            const isInList = savedId && catalogItems.some(item => item.variations.some(v => v.id === savedId));
+                            if (savedId && savedName && !isInList) {
+                              return <SelectItem key={savedId} value={savedId}>{savedName}</SelectItem>;
+                            }
+                            return null;
+                          })()}
                           {catalogItems.map((item) =>
                             item.variations.map((variation) => (
                               <SelectItem key={variation.id} value={variation.id}>
