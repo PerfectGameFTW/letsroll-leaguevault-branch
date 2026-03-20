@@ -449,7 +449,8 @@ export async function createOrderWithPayment(
       }));
     }
     if (apiErr?.statusCode === 400) {
-      const detail = apiErr?.result?.errors?.[0]?.detail;
+      const result = apiErr?.result as { errors?: { detail?: string }[] } | undefined;
+      const detail = result?.errors?.[0]?.detail;
       throw new Error(JSON.stringify({
         error: { message: 'Payment could not be processed. Please check your details and try again.', code: 'INVALID_REQUEST', detail }
       }));
