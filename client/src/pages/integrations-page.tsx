@@ -452,6 +452,72 @@ function SquareSection({ orgId }: SquareSectionProps) {
   );
 }
 
+interface IntegrationsContentProps {
+  orgId: number;
+}
+
+function IntegrationsContent({ orgId }: IntegrationsContentProps) {
+  const { data: integrationsResponse, isLoading, isError } = useQuery<ApiResponse<IntegrationsConfig>>({
+    queryKey: ["/api/integrations", orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/integrations?organizationId=${orgId}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to fetch integrations: ${res.status}`);
+      return res.json();
+    },
+    staleTime: 0,
+    retry: false,
+  });
+
+  const config = integrationsResponse?.data;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4 max-w-2xl">
+        {[1, 2].map((i) => (
+          <Card key={i}>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-muted animate-pulse" />
+                <div className="space-y-2">
+                  <div className="h-4 w-24 bg-muted animate-pulse rounded" />
+                  <div className="h-3 w-48 bg-muted animate-pulse rounded" />
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="max-w-2xl">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3 text-destructive">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              <div>
+                <p className="font-medium text-sm">Failed to load integrations</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  There was a problem loading the integration settings for this organization. Please try refreshing the page.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-2xl">
+      {config && <BowlNowCard config={config.bowlnow} orgId={orgId} />}
+      <SquareSection orgId={orgId} />
+    </div>
+  );
+}
+
 export default function IntegrationsPage() {
   const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
@@ -475,25 +541,6 @@ export default function IntegrationsPage() {
 
   const orgList = orgsResponse?.data ?? [];
 
-  const { data: integrationsResponse, isLoading, isError } = useQuery<ApiResponse<IntegrationsConfig>>({
-    queryKey: ["/api/integrations", effectiveOrgId],
-    queryFn: async () => {
-      const url = effectiveOrgId
-        ? `/api/integrations?organizationId=${effectiveOrgId}`
-        : "/api/integrations";
-      const res = await fetch(url, { credentials: "include" });
-      if (!res.ok) throw new Error(`Failed to fetch integrations: ${res.status}`);
-      return res.json();
-    },
-    enabled: !!effectiveOrgId,
-    staleTime: 1000 * 60 * 5,
-    retry: false,
-  });
-
-  const config = integrationsResponse?.data;
-
-  console.log('[IntegrationsPage]', { effectiveOrgId, selectedOrgId, isLoading, isError, apiKeyConfigured: config?.bowlnow?.apiKeyConfigured });
-
   return (
     <Layout>
       <div className="mb-6">
@@ -511,7 +558,6 @@ export default function IntegrationsPage() {
           <Select
             value={effectiveOrgId ? String(effectiveOrgId) : ""}
             onValueChange={(val) => {
-              queryClient.removeQueries({ queryKey: ["/api/integrations"] });
               setSelectedOrgId(Number(val));
             }}
           >
@@ -533,43 +579,8 @@ export default function IntegrationsPage() {
         <div className="text-muted-foreground text-sm">
           {isSystemAdmin ? "Select an organization above to manage its integrations." : "No organization context found."}
         </div>
-      ) : isLoading ? (
-        <div className="space-y-4 max-w-2xl">
-          {[1, 2].map((i) => (
-            <Card key={i}>
-              <CardHeader>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-muted animate-pulse" />
-                  <div className="space-y-2">
-                    <div className="h-4 w-24 bg-muted animate-pulse rounded" />
-                    <div className="h-3 w-48 bg-muted animate-pulse rounded" />
-                  </div>
-                </div>
-              </CardHeader>
-            </Card>
-          ))}
-        </div>
-      ) : isError ? (
-        <div className="max-w-2xl">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-3 text-destructive">
-                <AlertCircle className="h-5 w-5 shrink-0" />
-                <div>
-                  <p className="font-medium text-sm">Failed to load integrations</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    There was a problem loading the integration settings for this organization. Please try refreshing the page.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
       ) : (
-        <div className="space-y-6 max-w-2xl">
-          {config && <BowlNowCard key={effectiveOrgId} config={config.bowlnow} orgId={effectiveOrgId} />}
-          <SquareSection key={effectiveOrgId} orgId={effectiveOrgId} />
-        </div>
+        <IntegrationsContent key={effectiveOrgId} orgId={effectiveOrgId} />
       )}
     </Layout>
   );
