@@ -127,7 +127,7 @@ router.get("/", async (req, res) => {
       return sendError(res, "Invalid organization ID format", 400);
     }
     const effectiveOrgId: number | null = isSystemAdmin
-      ? (rawQueryOrgId ?? null)
+      ? (rawQueryOrgId ?? req.user?.organizationId ?? null)
       : (req.user?.organizationId ?? null);
 
     // Fetch bowlers

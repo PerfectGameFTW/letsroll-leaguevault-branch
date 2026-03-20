@@ -37,20 +37,18 @@ router.get("/", async (req, res) => {
 
     let bowlerLeagues = await storage.getBowlerLeagues(filters);
 
-    if (!filters.bowlerId && !filters.leagueId && !filters.teamId && req.user?.role !== 'system_admin') {
-      const leagueIds = new Set<number>();
-      for (const bl of bowlerLeagues) {
-        leagueIds.add(bl.leagueId);
-      }
+    // When fetching all bowler-leagues with no specific filters, scope to the user's org.
+    // This applies to org admins AND system admins that belong to an org.
+    // Only a truly unaffiliated system admin (no organizationId) sees all entries.
+    if (!filters.bowlerId && !filters.leagueId && !filters.teamId) {
+      const scopedOrgId: number | null = req.user?.organizationId ?? null;
+      const isUnaffiliatedSystemAdmin = req.user?.role === 'system_admin' && scopedOrgId === null;
 
-      const accessibleLeagueIds = new Set<number>();
-      for (const lid of leagueIds) {
-        if (await hasAccessToLeague(req, lid)) {
-          accessibleLeagueIds.add(lid);
-        }
+      if (!isUnaffiliatedSystemAdmin) {
+        const orgLeagues = await storage.getLeagues(scopedOrgId);
+        const orgLeagueIds = new Set(orgLeagues.map(l => l.id));
+        bowlerLeagues = bowlerLeagues.filter(bl => orgLeagueIds.has(bl.leagueId));
       }
-
-      bowlerLeagues = bowlerLeagues.filter(bl => accessibleLeagueIds.has(bl.leagueId));
     }
 
     if (enriched === 'true') {

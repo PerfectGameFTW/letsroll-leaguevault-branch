@@ -33,19 +33,18 @@ router.get("/", async (req, res) => {
         return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
       }
     } else {
-      // If no league ID, get teams for leagues the user has access to
-      if (req.user?.role === 'system_admin') {
-        // Admins can see all teams
+      // If no league ID, scope to the user's org (applies to org admins AND system admins
+      // that belong to an org). Only a truly unaffiliated system admin sees all teams.
+      const scopedOrgId: number | null = req.user?.organizationId ?? null;
+
+      if (req.user?.role === 'system_admin' && scopedOrgId === null) {
+        // Unaffiliated system admin: see all teams
         teams = await storage.getTeams();
       } else {
-        // Get leagues accessible to the user
-        const leagues = await storage.getLeagues(req.user?.organizationId);
-        
-        // Get teams for each accessible league
+        // Everyone else (including affiliated system admins): scope to their org
+        const leagues = await storage.getLeagues(scopedOrgId);
         const teamPromises = leagues.map(league => storage.getTeams(league.id));
         const teamsArrays = await Promise.all(teamPromises);
-        
-        // Flatten the arrays of teams
         teams = teamsArrays.flat();
       }
     }
