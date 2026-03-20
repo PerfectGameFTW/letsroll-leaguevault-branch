@@ -1,12 +1,23 @@
 import { Response } from 'express';
 import { ZodError } from 'zod';
-import { type User } from '@shared/schema.js';
+import { type User, type Organization } from '@shared/schema.js';
 
 export type SanitizedUser = Omit<User, 'password' | 'inviteToken' | 'inviteTokenExpiry'>;
 
 export function sanitizeUser(user: User): SanitizedUser {
   const { password, inviteToken, inviteTokenExpiry, ...safeUser } = user;
   return safeUser;
+}
+
+export type SanitizedOrganization = Omit<Organization, 'integrations'>;
+
+export function sanitizeOrg(org: Organization): SanitizedOrganization {
+  const { integrations, ...safeOrg } = org;
+  return safeOrg;
+}
+
+export function sanitizeOrgs(orgs: Organization[]): SanitizedOrganization[] {
+  return orgs.map(sanitizeOrg);
 }
 
 export interface ApiResponse<T> {

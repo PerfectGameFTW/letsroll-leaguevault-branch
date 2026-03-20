@@ -316,7 +316,7 @@ export default function IntegrationsPage() {
         </div>
       ) : (
         <div className="space-y-4 max-w-2xl">
-          {config && <BowlNowCard config={config.bowlnow} orgId={effectiveOrgId} />}
+          {config && <BowlNowCard key={effectiveOrgId} config={config.bowlnow} orgId={effectiveOrgId} />}
           <SquareCard />
         </div>
       )}

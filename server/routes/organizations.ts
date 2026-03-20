@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
-import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser, sanitizeOrg, sanitizeOrgs } from '../utils/api.js';
 import { storage } from '../storage.js';
 import { 
   insertOrganizationSchema, 
@@ -23,7 +23,7 @@ const router = Router();
 router.get('/', requireAdmin, async (req, res) => {
   try {
     const organizations = await storage.getOrganizations();
-    sendSuccess(res, organizations);
+    sendSuccess(res, sanitizeOrgs(organizations));
   } catch (error) {
     console.error('Error fetching organizations:', error);
     sendError(res, 'Failed to fetch organizations', 500, 'ServerError');
@@ -82,7 +82,7 @@ router.get('/:id', async (req: any, res) => {
       return sendError(res, 'Organization not found', 404, 'NotFound');
     }
 
-    sendSuccess(res, organization);
+    sendSuccess(res, sanitizeOrg(organization));
   } catch (error) {
     console.error(`Error fetching organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to fetch organization', 500, 'ServerError');
@@ -178,7 +178,7 @@ router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res
             await storage.updateUserRole(existingUser.id, 'org_admin');
           }
           await storage.setUserOrganization(existingUser.id, organization.id);
-          return sendSuccess(res, { organization, adminUser: sanitizeUser(existingUser) }, 201);
+          return sendSuccess(res, { organization: sanitizeOrg(organization), adminUser: sanitizeUser(existingUser) }, 201);
         }
         
         const placeholderPassword = await hashPassword(randomBytes(32).toString('hex'));
@@ -206,17 +206,17 @@ router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res
         };
         await sendTemplatedEmail('org_admin_invite', adminData.email, variables);
         
-        return sendSuccess(res, { organization, adminUser: sanitizeUser(newAdminUser) }, 201);
+        return sendSuccess(res, { organization: sanitizeOrg(organization), adminUser: sanitizeUser(newAdminUser) }, 201);
       } catch (adminError) {
         console.error('[Organizations] Error creating admin user:', adminError);
         return sendSuccess(res, { 
-          organization, 
+          organization: sanitizeOrg(organization), 
           warning: 'Organization created but there was an error creating the admin user'
         }, 201);
       }
     }
 
-    sendSuccess(res, organization, 201);
+    sendSuccess(res, sanitizeOrg(organization), 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
       const fieldErrors = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
@@ -272,7 +272,7 @@ router.patch('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
     ) as Partial<InsertOrganization>;
 
     const updatedOrganization = await storage.updateOrganization(id, cleanedData);
-    sendSuccess(res, updatedOrganization);
+    sendSuccess(res, sanitizeOrg(updatedOrganization));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return sendError(res, 'Invalid organization data', 400, 'ValidationError');
@@ -296,7 +296,7 @@ router.patch('/:id/archive', requireAdmin, adminWriteLimiter, async (req, res) =
     }
 
     const archived = await storage.archiveOrganization(id);
-    sendSuccess(res, archived);
+    sendSuccess(res, sanitizeOrg(archived));
   } catch (error) {
     console.error(`Error archiving organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to archive organization', 500, 'ServerError');
@@ -317,7 +317,7 @@ router.patch('/:id/restore', requireAdmin, adminWriteLimiter, async (req, res) =
     }
 
     const restored = await storage.restoreOrganization(id);
-    sendSuccess(res, restored);
+    sendSuccess(res, sanitizeOrg(restored));
   } catch (error) {
     console.error(`Error restoring organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to restore organization', 500, 'ServerError');
@@ -353,7 +353,7 @@ router.get('/user/me', async (req, res) => {
     }
 
     const organizations = await storage.getUserOrganizations(req.user.id);
-    sendSuccess(res, organizations);
+    sendSuccess(res, sanitizeOrgs(organizations));
   } catch (error) {
     console.error('Error fetching user organizations:', error);
     sendError(res, 'Failed to fetch user organizations', 500, 'ServerError');
