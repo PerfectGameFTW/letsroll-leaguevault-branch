@@ -97,19 +97,7 @@ app.use(helmet({
       baseUri: ["'self'"],
       formAction: ["'self'"],
       frameAncestors: isDev
-        ? [
-            "'self'",
-            "https://*.replit.com",
-            "https://*.replit.dev",
-            "https://*.repl.co",
-            ...[process.env.REPLIT_DEV_DOMAIN, ...(process.env.REPLIT_DOMAINS || '').split(',')]
-              .filter(Boolean)
-              .map(domain => {
-                const parts = domain!.trim().split('.');
-                return parts.length > 2 ? `https://*.${parts.slice(1).join('.')}` : null;
-              })
-              .filter((v, i, a): v is string => v !== null && a.indexOf(v) === i),
-          ]
+        ? ["*"]
         : ["'self'", "https://leaguevault.app"],
     },
   },
