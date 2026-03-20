@@ -38,6 +38,12 @@ function replaceVariables(text: string, variables: Record<string, string>): stri
   });
 }
 
+function replaceVariablesPlainText(text: string, variables: Record<string, string>): string {
+  return text.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    return variables[key] !== undefined ? variables[key] : match;
+  });
+}
+
 export function getOrgLogoUrl(orgId: number | string): string {
   const baseUrl = getBaseUrl();
   return `${baseUrl}/api/organizations/${orgId}/logo`;
@@ -94,7 +100,7 @@ export async function sendTemplatedEmail(
       return false;
     }
 
-    const subject = replaceVariables(template.subject, variables);
+    const subject = replaceVariablesPlainText(template.subject, variables);
     const body = replaceVariables(template.body, variables);
     const html = wrapInHtmlLayout(body, variables);
 
@@ -227,7 +233,7 @@ export async function sendTestEmail(
     dashboard_link: getBaseUrl() + '/bowler-dashboard',
   };
 
-  const subject = `[TEST] ${replaceVariables(template.subject, sampleVariables)}`;
+  const subject = `[TEST] ${replaceVariablesPlainText(template.subject, sampleVariables)}`;
   const body = replaceVariables(template.body, sampleVariables);
   const html = wrapInHtmlLayout(body, sampleVariables);
 
