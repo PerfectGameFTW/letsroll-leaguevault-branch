@@ -1,20 +1,31 @@
 import { Router, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/api.js';
-import { isBNConfigured, isOrgBNConfigured, syncBowlerToBN, syncAllBowlersToBN } from '../services/bowlnow.js';
+import { isOrgBNConfigured, syncBowlerToBN, syncAllBowlersToBN } from '../services/bowlnow.js';
 import { storage } from '../storage.js';
 
 const router = Router();
 
 router.get('/status', async (req: any, res: Response) => {
   try {
-    const orgId = req.user?.organizationId;
+    const isSystemAdmin = req.user?.role === 'system_admin';
 
-    if (orgId) {
-      const orgConfig = await storage.getOrgIntegrations(orgId);
-      sendSuccess(res, { configured: isOrgBNConfigured(orgConfig) });
-    } else {
-      sendSuccess(res, { configured: isBNConfigured() });
+    let orgId: number | null = req.user?.organizationId ?? null;
+
+    if (isSystemAdmin && !orgId) {
+      const fromQuery = req.query?.organizationId
+        ? parseInt(req.query.organizationId as string, 10)
+        : null;
+      if (fromQuery && !isNaN(fromQuery)) {
+        orgId = fromQuery;
+      }
     }
+
+    if (!orgId) {
+      return sendSuccess(res, { configured: false });
+    }
+
+    const orgConfig = await storage.getOrgIntegrations(orgId);
+    sendSuccess(res, { configured: isOrgBNConfigured(orgConfig) });
   } catch (error) {
     sendError(res, 'Failed to check BowlNow status');
   }
@@ -31,9 +42,14 @@ router.post('/sync-bowler/:id', async (req: any, res: Response) => {
       return sendError(res, 'Invalid bowler ID', 400, 'BAD_REQUEST');
     }
 
-    const orgId = req.user?.organizationId;
-    const orgConfig = orgId ? await storage.getOrgIntegrations(orgId) : null;
+    const orgId = req.user?.organizationId
+      ?? (req.body?.organizationId ? parseInt(String(req.body.organizationId), 10) : null);
 
+    if (!orgId) {
+      return sendError(res, 'No organization context for BowlNow sync', 400, 'BAD_REQUEST');
+    }
+
+    const orgConfig = await storage.getOrgIntegrations(orgId);
     const result = await syncBowlerToBN(bowlerId, orgConfig);
     if (result.success) {
       sendSuccess(res, { contactId: result.contactId });
@@ -52,9 +68,14 @@ router.post('/sync-all', async (req: any, res: Response) => {
       return sendError(res, 'Admin access required', 403, 'FORBIDDEN');
     }
 
-    const orgId = req.user?.organizationId;
-    const orgConfig = orgId ? await storage.getOrgIntegrations(orgId) : null;
+    const orgId = req.user?.organizationId
+      ?? (req.body?.organizationId ? parseInt(String(req.body.organizationId), 10) : null);
 
+    if (!orgId) {
+      return sendError(res, 'No organization context for BowlNow sync', 400, 'BAD_REQUEST');
+    }
+
+    const orgConfig = await storage.getOrgIntegrations(orgId);
     const results = await syncAllBowlersToBN(orgConfig);
     sendSuccess(res, results);
   } catch (error) {
