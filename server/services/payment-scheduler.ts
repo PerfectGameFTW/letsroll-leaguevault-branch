@@ -4,7 +4,7 @@ import { eq, and, lte, gte, isNull, or, sql } from "drizzle-orm";
 import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
 import { addWeeks, addMonths, setHours, setMinutes, setSeconds, setMilliseconds, isAfter, differenceInWeeks } from "date-fns";
 import { fromZonedTime, toZonedTime } from "date-fns-tz";
-import { createOrderWithPayment, processPayment, getSquareClientForLocation, getSquareLocationId } from "./square";
+import { createOrderWithPayment, processPayment } from "./square";
 import { logger } from "../logger";
 import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 import { storage } from "../storage.js";
@@ -240,10 +240,6 @@ class PaymentScheduler {
           });
         }
         const lvLocationId = league?.locationId ?? null;
-        const [squareClient, squareLocationId] = await Promise.all([
-          lvLocationId ? getSquareClientForLocation(lvLocationId) : null,
-          lvLocationId ? getSquareLocationId(lvLocationId) : Promise.resolve(process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || ''),
-        ]);
         let paymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string; cardId?: string };
 
         const lineItems: { catalogObjectId: string; quantity: string }[] = [];
@@ -258,18 +254,16 @@ class PaymentScheduler {
           lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: scheduledQty });
         }
 
-        if (lineItems.length > 0 && squareLocationId) {
+        if (lineItems.length > 0) {
           try {
             const orderResult = await createOrderWithPayment(
               scheduleRecord.squareCardId!,
               scheduleRecord.amount,
               lineItems,
-              squareLocationId,
+              lvLocationId,
               false,
               squareCustomerId,
-              buyerEmail,
-              undefined,
-              squareClient
+              buyerEmail
             );
             paymentResult = { status: 'success', paymentId: orderResult.id };
           } catch (error) {
@@ -283,7 +277,7 @@ class PaymentScheduler {
             squareCustomerId,
             buyerEmail,
             undefined,
-            squareClient
+            lvLocationId
           );
           if (processResult?.id) {
             paymentResult = { status: 'success', paymentId: processResult.id };
@@ -521,12 +515,7 @@ class PaymentScheduler {
           bowlerId: scheduleRecord.bowlerId,
         });
       }
-      const lvLocationId2 = league?.locationId ?? null;
-      const [squareClient2, squareLocationId] = await Promise.all([
-        lvLocationId2 ? getSquareClientForLocation(lvLocationId2) : null,
-        lvLocationId2 ? getSquareLocationId(lvLocationId2) : Promise.resolve(process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || ''),
-      ]);
-
+      const finalLvLocationId = league?.locationId ?? null;
       let finalPaymentResult: { status: 'success' | 'error'; paymentId?: string; error?: string };
 
       const lineItems: { catalogObjectId: string; quantity: string }[] = [];
@@ -537,18 +526,16 @@ class PaymentScheduler {
         lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '2' });
       }
 
-      if (lineItems.length > 0 && squareLocationId) {
+      if (lineItems.length > 0) {
         try {
           const orderResult = await createOrderWithPayment(
             scheduleRecord.squareCardId!,
             finalTwoWeeksAmount,
             lineItems,
-            squareLocationId,
+            finalLvLocationId,
             false,
             squareCustomerId,
-            buyerEmail,
-            undefined,
-            squareClient2
+            buyerEmail
           );
           finalPaymentResult = { status: 'success', paymentId: orderResult.id };
         } catch (error) {
@@ -562,7 +549,7 @@ class PaymentScheduler {
           squareCustomerId,
           buyerEmail,
           undefined,
-          squareClient2
+          finalLvLocationId
         );
         if (processResult2?.id) {
           finalPaymentResult = { status: 'success', paymentId: processResult2.id };

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile, getSquareClientForLocation, getSquareLocationId } from '../services/square.js';
+import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile } from '../services/square.js';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../storage.js';
 import { sendSuccess, sendError } from '../utils/api.js';
@@ -97,11 +97,6 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
     let storedCardId: string | undefined;
 
     const lvLocationId = league.locationId ?? null;
-    const [squareClient, squareLocationId] = await Promise.all([
-      lvLocationId ? getSquareClientForLocation(lvLocationId) : null,
-      lvLocationId ? getSquareLocationId(lvLocationId) : Promise.resolve(process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || ''),
-    ]);
-
     const customerId = bowler.squareCustomerId || undefined;
 
     if (req.body.storeCard && !customerId) {
@@ -122,17 +117,16 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
     const buyerEmail = bowler.email || undefined;
 
-    if (lineItems.length > 0 && squareLocationId) {
+    if (lineItems.length > 0) {
       payment = await createOrderWithPayment(
         sourceId,
         amount,
         lineItems,
-        squareLocationId,
+        lvLocationId,
         req.body.storeCard,
         customerId,
         buyerEmail,
-        squareIdempotencyKey,
-        squareClient
+        squareIdempotencyKey
       );
     } else {
       payment = await processPayment(
@@ -142,13 +136,13 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
         customerId,
         buyerEmail,
         squareIdempotencyKey,
-        squareClient
+        lvLocationId
       );
     }
 
     if (req.body.storeCard && customerId && sourceId && !sourceId.startsWith('ccof:')) {
       try {
-        const savedCard = await saveCardOnFile(sourceId, customerId, squareClient);
+        const savedCard = await saveCardOnFile(sourceId, customerId, lvLocationId);
         if (savedCard?.id) {
           console.log('[Square Routes] Card saved on file:', savedCard.id.substring(0, 15) + '...');
           storedCardId = savedCard.id;
@@ -238,9 +232,16 @@ router.post('/customers', squarePaymentLimiter, async (req, res) => {
       }
     }
 
+    // Derive location ID from league context if available
+    const teamLvLocationId = req.body.teamId
+      ? (await storage.getLeague((await storage.getTeam(req.body.teamId))?.leagueId ?? 0))?.locationId ?? null
+      : null;
+
     const customer = await createOrUpdateCustomer(
       req.body.name,
-      req.body.email
+      req.body.email,
+      undefined,
+      teamLvLocationId
     );
 
     if (!customer) {
@@ -260,12 +261,22 @@ router.post('/customers', squarePaymentLimiter, async (req, res) => {
   }
 });
 
-router.get('/catalog/categories', async (req, res) => {
+router.get('/catalog/categories', async (req: any, res) => {
   try {
     const locationIdParam = req.query.locationId as string | undefined;
-    const locationId = locationIdParam ? parseInt(locationIdParam) : null;
-    const client = locationId && !isNaN(locationId) ? await getSquareClientForLocation(locationId) : null;
-    const categories = await listCatalogCategories(client);
+    const lvLocationId = locationIdParam ? parseInt(locationIdParam) : null;
+
+    // Authorization: verify the requesting user has access to this location's org
+    if (lvLocationId && !isNaN(lvLocationId)) {
+      const loc = await storage.getLocation(lvLocationId);
+      if (!loc) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
+      const isAuthorized =
+        req.user?.role === 'system_admin' ||
+        (req.user?.organizationId != null && req.user.organizationId === loc.organizationId);
+      if (!isAuthorized) return sendError(res, 'Forbidden', 403, 'FORBIDDEN');
+    }
+
+    const categories = await listCatalogCategories(lvLocationId);
     sendSuccess(res, categories);
   } catch (error) {
     console.error('[Square Routes] Catalog categories error:', error);
@@ -273,13 +284,23 @@ router.get('/catalog/categories', async (req, res) => {
   }
 });
 
-router.get('/catalog/items', async (req, res) => {
+router.get('/catalog/items', async (req: any, res) => {
   try {
     const categoryId = req.query.categoryId as string | undefined;
     const locationIdParam = req.query.locationId as string | undefined;
-    const locationId = locationIdParam ? parseInt(locationIdParam) : null;
-    const client = locationId && !isNaN(locationId) ? await getSquareClientForLocation(locationId) : null;
-    const items = await listCatalogItems(categoryId, client);
+    const lvLocationId = locationIdParam ? parseInt(locationIdParam) : null;
+
+    // Authorization: verify the requesting user has access to this location's org
+    if (lvLocationId && !isNaN(lvLocationId)) {
+      const loc = await storage.getLocation(lvLocationId);
+      if (!loc) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
+      const isAuthorized =
+        req.user?.role === 'system_admin' ||
+        (req.user?.organizationId != null && req.user.organizationId === loc.organizationId);
+      if (!isAuthorized) return sendError(res, 'Forbidden', 403, 'FORBIDDEN');
+    }
+
+    const items = await listCatalogItems(categoryId, lvLocationId);
     sendSuccess(res, items);
   } catch (error) {
     console.error('[Square Routes] Catalog list error:', error);
@@ -310,7 +331,12 @@ router.post('/cards/:bowlerId', async (req, res) => {
       return sendError(res, 'Bowler does not have a Square customer account', 400);
     }
 
-    const savedCard = await saveCardOnFile(sourceId, bowler.squareCustomerId);
+    // Derive location from optional leagueId context
+    const cardLeagueId = req.body.leagueId ? parseInt(req.body.leagueId) : null;
+    const cardLeague = cardLeagueId ? await storage.getLeague(cardLeagueId) : null;
+    const cardLvLocationId = cardLeague?.locationId ?? null;
+
+    const savedCard = await saveCardOnFile(sourceId, bowler.squareCustomerId, cardLvLocationId);
     if (!savedCard?.id) {
       return sendError(res, 'Failed to save card on file', 500);
     }
@@ -339,7 +365,12 @@ router.get('/cards/:bowlerId', async (req, res) => {
       return sendSuccess(res, []);
     }
 
-    const cards = await listCardsOnFile(bowler.squareCustomerId);
+    // Derive location from optional leagueId query param
+    const listLeagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : null;
+    const listLeague = listLeagueId ? await storage.getLeague(listLeagueId) : null;
+    const listLvLocationId = listLeague?.locationId ?? null;
+
+    const cards = await listCardsOnFile(bowler.squareCustomerId, listLvLocationId);
     sendSuccess(res, cards);
   } catch (error) {
     console.error('[Square Routes] List cards error:', error);

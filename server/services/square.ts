@@ -89,8 +89,19 @@ export async function getSquareLocationId(lvLocationId: number): Promise<string>
   return process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
 }
 
-export async function saveCardOnFile(sourceId: string, customerId: string, clientOverride?: Client | null) {
-  const client = clientOverride ?? await initializeSquareClient();
+/**
+ * Internal helper: resolves a Square Client from an optional LV location ID.
+ * Falls back to the env-var-initialized global client when locationId is absent.
+ */
+async function resolveSquareClient(locationId?: number | null): Promise<Client | null> {
+  if (locationId != null) {
+    return getSquareClientForLocation(locationId);
+  }
+  return initializeSquareClient();
+}
+
+export async function saveCardOnFile(sourceId: string, customerId: string, locationId?: number | null) {
+  const client = await resolveSquareClient(locationId);
   if (!client) return null;
 
   try {
@@ -118,8 +129,8 @@ export async function saveCardOnFile(sourceId: string, customerId: string, clien
   }
 }
 
-export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false, customerId?: string, buyerEmail?: string, idempotencyKey?: string, clientOverride?: Client | null) {
-  const client = clientOverride ?? await initializeSquareClient();
+export async function processPayment(sourceId: string, amount: number, storeCard: boolean = false, customerId?: string, buyerEmail?: string, idempotencyKey?: string, locationId?: number | null) {
+  const client = await resolveSquareClient(locationId);
   if (!client) {
     throw new Error(JSON.stringify({
       error: {
@@ -225,8 +236,8 @@ export async function processPayment(sourceId: string, amount: number, storeCard
   }
 }
 
-export async function createOrUpdateCustomer(name: string, email: string, phone?: string | null, clientOverride?: Client | null): Promise<SquareCustomer | null> {
-  const client = clientOverride ?? await initializeSquareClient();
+export async function createOrUpdateCustomer(name: string, email: string, phone?: string | null, locationId?: number | null): Promise<SquareCustomer | null> {
+  const client = await resolveSquareClient(locationId);
   if (!client) {
     console.error('[Square Service] Square client not initialized');
     return null;
@@ -304,8 +315,8 @@ export async function createOrUpdateCustomer(name: string, email: string, phone?
   }
 }
 
-export async function listCatalogCategories(clientOverride?: Client | null) {
-  const client = clientOverride ?? await initializeSquareClient();
+export async function listCatalogCategories(locationId?: number | null) {
+  const client = await resolveSquareClient(locationId);
   if (!client) {
     throw new Error('Square client not initialized');
   }
@@ -342,8 +353,8 @@ export async function listCatalogCategories(clientOverride?: Client | null) {
   }
 }
 
-export async function listCatalogItems(categoryId?: string, clientOverride?: Client | null) {
-  const client = clientOverride ?? await initializeSquareClient();
+export async function listCatalogItems(categoryId?: string, locationId?: number | null) {
+  const client = await resolveSquareClient(locationId);
   if (!client) {
     throw new Error('Square client not initialized');
   }
@@ -409,21 +420,33 @@ export async function createOrderWithPayment(
   sourceId: string,
   amount: number,
   lineItems: OrderLineItem[],
-  locationId: string,
+  lvLocationId?: number | null,
   storeCard: boolean = false,
   customerId?: string,
   buyerEmail?: string,
   idempotencyKey?: string,
-  clientOverride?: Client | null
 ) {
-  const client = clientOverride ?? await initializeSquareClient();
+  const [client, squareLocationId] = await Promise.all([
+    resolveSquareClient(lvLocationId),
+    lvLocationId != null
+      ? getSquareLocationId(lvLocationId)
+      : Promise.resolve(process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || ''),
+  ]);
+
   if (!client) {
     throw new Error(JSON.stringify({
       error: { message: "Payment system is temporarily unavailable", code: "INITIALIZATION_ERROR" }
     }));
   }
 
+  if (!squareLocationId) {
+    throw new Error(JSON.stringify({
+      error: { message: "Square location not configured for this location", code: "CONFIGURATION_ERROR" }
+    }));
+  }
+
   try {
+    const locationId = squareLocationId;
     const orderResponse = await client.ordersApi.createOrder({
       order: {
         locationId,
@@ -507,9 +530,9 @@ export async function refundPayment(
   squarePaymentId: string,
   amountInCents: number,
   reason?: string,
-  clientOverride?: Client | null
+  locationId?: number | null
 ): Promise<{ refundId: string; status: string }> {
-  const client = clientOverride ?? await initializeSquareClient();
+  const client = await resolveSquareClient(locationId);
   if (!client) {
     throw new Error('Square client not initialized');
   }
@@ -548,8 +571,8 @@ export async function refundPayment(
   }
 }
 
-export async function listCardsOnFile(customerId: string, clientOverride?: Client | null): Promise<{ id: string; last4: string; brand: string; expMonth: number; expYear: number }[]> {
-  const client = clientOverride ?? await initializeSquareClient();
+export async function listCardsOnFile(customerId: string, locationId?: number | null): Promise<{ id: string; last4: string; brand: string; expMonth: number; expYear: number }[]> {
+  const client = await resolveSquareClient(locationId);
   if (!client) return [];
 
   try {
