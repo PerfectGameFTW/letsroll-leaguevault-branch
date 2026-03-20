@@ -17,8 +17,20 @@ router.use((req: any, res: Response, next) => {
 });
 
 function resolveOrgId(req: any): number | null {
-  const orgId = req.user?.organizationId;
-  return orgId ?? null;
+  const isSystemAdmin = req.user?.role === 'system_admin';
+
+  if (isSystemAdmin) {
+    const fromQuery = req.query?.organizationId
+      ? parseInt(req.query.organizationId as string, 10)
+      : null;
+    const fromBody = req.body?.organizationId
+      ? parseInt(String(req.body.organizationId), 10)
+      : null;
+    const resolved = fromQuery || fromBody || req.user?.organizationId;
+    return resolved ?? null;
+  }
+
+  return req.user?.organizationId ?? null;
 }
 
 router.get('/', async (req: any, res: Response) => {
@@ -46,6 +58,7 @@ router.get('/', async (req: any, res: Response) => {
 });
 
 const updateIntegrationsSchema = z.object({
+  organizationId: z.number().int().positive().optional(),
   bowlnow: z.object({
     enabled: z.boolean(),
     apiKey: z.string().optional(),

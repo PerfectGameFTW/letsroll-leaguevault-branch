@@ -240,7 +240,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isAdmin = userRole === 'system_admin';
   const isSystemAdmin = userRole === 'system_admin';
   const isOrgAdmin = userRole === 'org_admin';
-  const canSeeOrgAdminItems = (isOrgAdmin || isSystemAdmin) && !!userOrgId;
+  const canSeeOrgAdminItems = isSystemAdmin || (isOrgAdmin && !!userOrgId);
 
   const toggleSidebar = useCallback(() => {
     setIsCollapsed((prev: boolean) => !prev);

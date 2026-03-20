@@ -14,11 +14,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ChevronDown, ChevronUp, CheckCircle2, XCircle, Eye, EyeOff } from "lucide-react";
 import { SiSquare } from "react-icons/si";
-import type { ApiResponse } from "@shared/schema";
+import type { ApiResponse, Organization, User } from "@shared/schema";
 
 interface IntegrationsConfig {
   bowlnow: {
@@ -30,9 +37,10 @@ interface IntegrationsConfig {
 
 interface BowlNowCardProps {
   config: IntegrationsConfig["bowlnow"];
+  orgId: number;
 }
 
-function BowlNowCard({ config }: BowlNowCardProps) {
+function BowlNowCard({ config, orgId }: BowlNowCardProps) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [enabled, setEnabled] = useState(config.enabled);
@@ -42,7 +50,7 @@ function BowlNowCard({ config }: BowlNowCardProps) {
 
   const mutation = useMutation({
     mutationFn: async (data: { enabled: boolean; apiKey?: string; locationId?: string }) => {
-      return apiRequest("/api/integrations", "PATCH", { bowlnow: data });
+      return apiRequest("/api/integrations", "PATCH", { organizationId: orgId, bowlnow: data });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/integrations"] });
@@ -148,7 +156,7 @@ function BowlNowCard({ config }: BowlNowCardProps) {
                 </button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Find your API key in your BowlNow account under Settings → API.
+                Find your API key in your BowlNow account under Settings &rarr; API.
               </p>
             </div>
 
@@ -215,8 +223,39 @@ function SquareCard() {
 }
 
 export default function IntegrationsPage() {
+  const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
+    queryKey: ["/api/user"],
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const currentUser = currentUserResponse?.data;
+  const isSystemAdmin = currentUser?.role === "system_admin";
+
+  const [selectedOrgId, setSelectedOrgId] = useState<number | null>(null);
+
+  const effectiveOrgId = isSystemAdmin
+    ? (selectedOrgId ?? currentUser?.organizationId ?? null)
+    : (currentUser?.organizationId ?? null);
+
+  const { data: orgsResponse } = useQuery<ApiResponse<Organization[]>>({
+    queryKey: ["/api/organizations"],
+    enabled: isSystemAdmin,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const orgList = orgsResponse?.data ?? [];
+
   const { data: integrationsResponse, isLoading } = useQuery<ApiResponse<IntegrationsConfig>>({
-    queryKey: ["/api/integrations"],
+    queryKey: ["/api/integrations", effectiveOrgId],
+    queryFn: async () => {
+      const url = effectiveOrgId
+        ? `/api/integrations?organizationId=${effectiveOrgId}`
+        : "/api/integrations";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to fetch integrations: ${res.status}`);
+      return res.json();
+    },
+    enabled: !!effectiveOrgId,
     staleTime: 1000 * 60 * 5,
     retry: false,
   });
@@ -232,8 +271,35 @@ export default function IntegrationsPage() {
         </p>
       </div>
 
-      {isLoading ? (
-        <div className="space-y-4">
+      {isSystemAdmin && orgList.length > 0 && (
+        <div className="mb-6 max-w-2xl">
+          <Label htmlFor="org-select" className="text-sm font-medium mb-2 block">
+            Organization
+          </Label>
+          <Select
+            value={effectiveOrgId ? String(effectiveOrgId) : ""}
+            onValueChange={(val) => setSelectedOrgId(Number(val))}
+          >
+            <SelectTrigger id="org-select" className="w-64">
+              <SelectValue placeholder="Select an organization..." />
+            </SelectTrigger>
+            <SelectContent>
+              {orgList.map((org) => (
+                <SelectItem key={org.id} value={String(org.id)}>
+                  {org.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {!effectiveOrgId ? (
+        <div className="text-muted-foreground text-sm">
+          {isSystemAdmin ? "Select an organization above to manage its integrations." : "No organization context found."}
+        </div>
+      ) : isLoading ? (
+        <div className="space-y-4 max-w-2xl">
           {[1, 2].map((i) => (
             <Card key={i}>
               <CardHeader>
@@ -250,7 +316,7 @@ export default function IntegrationsPage() {
         </div>
       ) : (
         <div className="space-y-4 max-w-2xl">
-          {config && <BowlNowCard config={config.bowlnow} />}
+          {config && <BowlNowCard config={config.bowlnow} orgId={effectiveOrgId} />}
           <SquareCard />
         </div>
       )}
