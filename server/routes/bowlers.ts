@@ -18,9 +18,23 @@ router.use((req: any, res, next) => {
 
 router.get("/unlinked", async (req: any, res) => {
   try {
-    let organizationId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
+    const rawUnlinkedOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
+    if (rawUnlinkedOrgId !== undefined && isNaN(rawUnlinkedOrgId)) {
+      return sendError(res, "Invalid organization ID format", 400);
+    }
 
-    if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
+    let organizationId: number | undefined;
+    if (req.user?.role === 'system_admin') {
+      // System admins may scope by query param, or see all if omitted
+      organizationId = rawUnlinkedOrgId;
+    } else if (req.user?.role === 'org_admin') {
+      // Org admins are always scoped to their own organization
+      if (!req.user?.organizationId) {
+        return sendError(res, "No organization context available", 403, 'FORBIDDEN');
+      }
+      organizationId = req.user.organizationId;
+    } else {
+      // Regular users must have an org
       if (!req.user?.organizationId) {
         return sendError(res, "No organization context available", 403, 'FORBIDDEN');
       }
