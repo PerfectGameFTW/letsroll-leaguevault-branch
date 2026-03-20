@@ -5,7 +5,6 @@ import { Loader2, AlertCircle, Trophy, Users, TrendingUp, DollarSign } from "luc
 import { Link } from "wouter";
 import type { Bowler, League, Payment, ApiResponse, Organization } from "@shared/schema";
 import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
-import { PaymentDistributionChart } from "@/components/payment-distribution-chart";
 import { formatCurrency } from "@/lib/utils";
 
 function LoadingState() {
@@ -142,16 +141,7 @@ export default function HomePage() {
           </Link>
         </div>
 
-        {/* On mobile: full width for each section, on tablet+: side by side */}
-        <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
-          {/* On mobile and desktop: payment chart with the same width as cards above */}
-          <div className="col-span-1 md:col-span-1">
-            <PaymentDistributionChart payments={payments} activeBowlersCount={activeBowlers} />
-          </div>
-          <div className="col-span-1 md:col-span-1">
-            <PastDueBowlersSection />
-          </div>
-        </div>
+        <PastDueBowlersSection />
       </div>
     </Layout>
   );
