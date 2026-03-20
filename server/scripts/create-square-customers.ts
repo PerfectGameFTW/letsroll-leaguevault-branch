@@ -1,13 +1,35 @@
+/**
+ * One-off migration script: backfills Square customer records for bowlers
+ * that don't have a squareCustomerId yet.
+ *
+ * IMPORTANT: This script reads credentials from environment variables and
+ * must be run once per location with that location's own Square credentials.
+ * Set SQUARE_ACCESS_TOKEN to the target location's access token before running.
+ * Do NOT run with a global or shared token — records will land in the wrong account.
+ *
+ * Usage:
+ *   SQUARE_ACCESS_TOKEN=<location_token> npx tsx server/scripts/create-square-customers.ts
+ */
 import { Client, Environment } from "square";
 import { db } from "../db";
 import { bowlers } from "@shared/schema";
 import { eq, isNull } from "drizzle-orm";
 
+const accessToken = (process.env.SQUARE_ACCESS_TOKEN || '').replace(/[^\x20-\x7E]/g, '').trim();
+
+if (!accessToken) {
+  console.error('ERROR: SQUARE_ACCESS_TOKEN is required. Set it to the target location\'s Square access token.');
+  process.exit(1);
+}
+
+const isProductionToken = accessToken.startsWith('EAAAEv') || accessToken.startsWith('EAAAl7');
+
 const squareClient = new Client({
-  accessToken: process.env.SQUARE_ACCESS_TOKEN,
-  // Explicitly set sandbox environment
-  environment: Environment.Sandbox,
+  accessToken,
+  environment: isProductionToken ? Environment.Production : Environment.Sandbox,
 });
+
+console.log(`Running in ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'} mode.`);
 
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -15,7 +37,6 @@ async function sleep(ms: number) {
 
 async function createSquareCustomers() {
   try {
-    // Get all bowlers without Square Customer IDs
     const bowlersWithoutSquareId = await db
       .select()
       .from(bowlers)
@@ -28,14 +49,12 @@ async function createSquareCustomers() {
 
     for (const bowler of bowlersWithoutSquareId) {
       try {
-        // Skip if email is null
         if (!bowler.email) {
           console.log(`Skipping bowler ${bowler.name} - no email address`);
           errorCount++;
           continue;
         }
 
-        // Create customer in Square
         const response = await squareClient.customersApi.createCustomer({
           idempotencyKey: `bowler_${bowler.id}_${Date.now()}`,
           givenName: bowler.name.split(' ')[0],
@@ -45,7 +64,6 @@ async function createSquareCustomers() {
         });
 
         if (response.result.customer?.id) {
-          // Update bowler with Square Customer ID
           await db
             .update(bowlers)
             .set({ squareCustomerId: response.result.customer.id })
@@ -55,13 +73,11 @@ async function createSquareCustomers() {
           successCount++;
         }
 
-        // Add a small delay to avoid rate limits
         await sleep(100);
       } catch (error: any) {
         console.error(`Error creating Square Customer for ${bowler.name}:`, error);
         errorCount++;
 
-        // Add a longer delay if we hit rate limits
         if (error.statusCode === 429) {
           console.log('Rate limit hit, waiting 5 seconds...');
           await sleep(5000);
@@ -82,7 +98,6 @@ Import complete:
   }
 }
 
-// Run the script
 createSquareCustomers()
   .then(() => process.exit(0))
   .catch((error) => {

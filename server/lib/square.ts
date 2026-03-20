@@ -1,31 +1,13 @@
-import { ApiError, Client, Environment } from "square";
+import { ApiError } from "square";
 import { logger } from "../logger";
-
-const token = (process.env.SQUARE_PROD_TOKEN || process.env.SQUARE_PRODUCTION_ACCESS_TOKEN || process.env.SQUARE_ACCESS_TOKEN || '').replace(/[^\x20-\x7E]/g, '').trim();
-const prodAppId = process.env.SQUARE_PRODUCTION_APP_ID || '';
-const viteAppId = process.env.VITE_SQUARE_APP_ID || '';
-const squareAppId = process.env.SQUARE_APP_ID || '';
-const appId = prodAppId
-  || ((viteAppId && !viteAppId.includes('sandbox-')) ? viteAppId : '')
-  || ((squareAppId && !squareAppId.includes('sandbox-')) ? squareAppId : '')
-  || viteAppId || squareAppId;
-const isProductionToken = token.startsWith('EAAAEv') || token.startsWith('EAAAl7');
-const isProductionAppId = appId.length > 0 && !appId.includes('sandbox-');
-const isProduction = isProductionAppId;
-
-logger.info(`[Square] Initializing Square client with ${isProduction ? 'PRODUCTION' : 'SANDBOX'} environment`);
-logger.info(`[Square] App ID format: ${isProductionAppId ? 'PRODUCTION' : 'SANDBOX'}, Token format: ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'}`);
-
-const squareClient = new Client({
-  accessToken: token,
-  environment: isProduction ? Environment.Production : Environment.Sandbox
-});
+import { getSquareClientForLocation } from "../services/square";
 
 interface CreatePaymentParams {
   amount: number;
   cardId: string;
   bowlerId: number;
   leagueId: number;
+  locationId: number;
   buyerEmail?: string;
   customerId?: string;
 }
@@ -35,20 +17,28 @@ export async function createSquarePayment({
   cardId,
   bowlerId,
   leagueId,
+  locationId,
   buyerEmail,
   customerId,
 }: CreatePaymentParams) {
   try {
+    const client = await getSquareClientForLocation(locationId);
+    if (!client) {
+      return {
+        status: "error" as const,
+        error: "Square is not configured for this location",
+      };
+    }
+
     const idempotencyKey = `${bowlerId}-${leagueId}-${Date.now()}`;
 
-    logger.info(`Creating Square payment in ${isProduction ? 'production' : 'sandbox'} mode`, {
+    logger.info(`Creating Square payment for location ${locationId}`, {
       amount,
       bowlerId,
       leagueId,
-      environment: isProduction ? 'production' : 'sandbox'
     });
 
-    const payment = await squareClient.paymentsApi.createPayment({
+    const payment = await client.paymentsApi.createPayment({
       sourceId: cardId,
       idempotencyKey,
       amountMoney: {

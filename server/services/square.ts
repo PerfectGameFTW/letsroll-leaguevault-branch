@@ -9,8 +9,6 @@ interface SquareCustomer {
   email: string;
 }
 
-let squareClient: Client | null = null;
-
 function buildSquareClient(accessToken: string, appId?: string): Client {
   const cleanToken = accessToken.replace(/[^\x20-\x7E]/g, '').trim();
   const isProductionAppId = appId ? (appId.length > 0 && !appId.includes('sandbox-')) : true;
@@ -19,47 +17,10 @@ function buildSquareClient(accessToken: string, appId?: string): Client {
   return new Client({ accessToken: cleanToken, environment });
 }
 
-async function initializeSquareClient() {
-  const accessToken = (process.env.SQUARE_PROD_TOKEN || process.env.SQUARE_PRODUCTION_ACCESS_TOKEN || process.env.SQUARE_ACCESS_TOKEN || '').replace(/[^\x20-\x7E]/g, '').trim();
-  if (!squareClient && accessToken) {
-    try {
-      console.log('[Square Service] Initializing Square client...');
-      console.log('[Square Service] Environment:', process.env.NODE_ENV);
-
-      const isProductionToken = accessToken.startsWith('EAAAEv') || accessToken.startsWith('EAAAl7');
-      
-      const prodAppId = process.env.SQUARE_PRODUCTION_APP_ID || '';
-      const viteAppId = process.env.VITE_SQUARE_APP_ID || '';
-      const sqAppId = process.env.SQUARE_APP_ID || '';
-      const appId = prodAppId
-        || ((viteAppId && !viteAppId.includes('sandbox-')) ? viteAppId : '')
-        || ((sqAppId && !sqAppId.includes('sandbox-')) ? sqAppId : '')
-        || viteAppId || sqAppId;
-      const isProductionAppId = appId.length > 0 && !appId.includes('sandbox-');
-      
-      const environment = isProductionAppId ? Environment.Production : Environment.Sandbox;
-      
-      console.log('[Square Service] Token format:', isProductionToken ? 'PRODUCTION' : 'SANDBOX');
-      console.log('[Square Service] App ID format:', isProductionAppId ? 'PRODUCTION' : 'SANDBOX');
-      console.log('[Square Service] Using Square environment:', environment === Environment.Production ? 'Production' : 'Sandbox');
-      squareClient = new Client({
-        accessToken,
-        environment
-      });
-
-      console.log('[Square Service] Square client initialized successfully');
-      console.log('[Square Service] Using environment:', environment === Environment.Production ? 'Production' : 'Sandbox');
-    } catch (error) {
-      console.error('[Square Service] Failed to initialize Square client:', error);
-      throw new Error('Failed to initialize Square client: ' + (error instanceof Error ? error.message : String(error)));
-    }
-  }
-  return squareClient;
-}
-
 /**
  * Returns a Square client for the given LeagueVault location ID.
- * Uses the location's stored credentials if configured, falling back to env vars.
+ * Returns null if the location has no Square credentials configured.
+ * Never falls back to global env-var credentials.
  */
 export async function getSquareClientForLocation(lvLocationId: number): Promise<Client | null> {
   try {
@@ -67,26 +28,7 @@ export async function getSquareClientForLocation(lvLocationId: number): Promise<
     if (creds?.accessToken && creds.accessToken.trim().length > 0) {
       return buildSquareClient(creds.accessToken, creds.appId);
     }
-    console.warn(`[Square Service] No credentials found for location ${lvLocationId} — falling back to global env-var Square account`);
-  } catch (err) {
-    console.warn(`[Square Service] Error fetching credentials for location ${lvLocationId} — falling back to global env-var Square account:`, err);
-  }
-  return initializeSquareClient();
-}
-
-/**
- * Like getSquareClientForLocation but returns null instead of falling back to
- * env-var credentials when no location-specific credentials are configured.
- * Use this for catalog lookups so a location without Square credentials
- * returns empty data rather than leaking another account's catalog.
- */
-export async function getSquareClientForLocationStrict(lvLocationId: number): Promise<Client | null> {
-  try {
-    const creds = await storage.getLocationSquareConfig(lvLocationId);
-    if (creds?.accessToken && creds.accessToken.trim().length > 0) {
-      return buildSquareClient(creds.accessToken, creds.appId);
-    }
-    console.warn(`[Square Service] No Square credentials configured for location ${lvLocationId} — returning empty catalog`);
+    console.warn(`[Square Service] No Square credentials configured for location ${lvLocationId}`);
     return null;
   } catch (err) {
     console.warn(`[Square Service] Error fetching credentials for location ${lvLocationId}:`, err);
@@ -96,7 +38,7 @@ export async function getSquareClientForLocationStrict(lvLocationId: number): Pr
 
 /**
  * Returns the Square Location ID for the given LeagueVault location.
- * Uses the location's stored credential first, falls back to env vars.
+ * Returns empty string when no location-specific ID is stored.
  */
 export async function getSquareLocationId(lvLocationId: number): Promise<string> {
   try {
@@ -105,20 +47,21 @@ export async function getSquareLocationId(lvLocationId: number): Promise<string>
       return creds.locationId.trim();
     }
   } catch {
-    // Fall through to env vars
+    // no-op
   }
-  return process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || '';
+  return '';
 }
 
 /**
  * Internal helper: resolves a Square Client from an optional LV location ID.
- * Falls back to the env-var-initialized global client when locationId is absent.
+ * Returns null when locationId is absent or the location has no credentials.
  */
 async function resolveSquareClient(locationId?: number | null): Promise<Client | null> {
   if (locationId != null) {
     return getSquareClientForLocation(locationId);
   }
-  return initializeSquareClient();
+  console.warn('[Square Service] resolveSquareClient called without locationId — no client available');
+  return null;
 }
 
 export async function saveCardOnFile(sourceId: string, customerId: string, locationId?: number | null) {
@@ -337,11 +280,7 @@ export async function createOrUpdateCustomer(name: string, email: string, phone?
 }
 
 export async function listCatalogCategories(locationId?: number | null) {
-  // When a specific location is requested, use strict credentials (no env-var fallback)
-  // so a misconfigured location returns empty data rather than another account's catalog.
-  const client = locationId != null
-    ? await getSquareClientForLocationStrict(locationId)
-    : await resolveSquareClient(null);
+  const client = locationId != null ? await getSquareClientForLocation(locationId) : null;
   if (!client) {
     return [];
   }
@@ -379,11 +318,7 @@ export async function listCatalogCategories(locationId?: number | null) {
 }
 
 export async function listCatalogItems(categoryId?: string, locationId?: number | null) {
-  // When a specific location is requested, use strict credentials (no env-var fallback)
-  // so a misconfigured location returns empty data rather than another account's catalog.
-  const client = locationId != null
-    ? await getSquareClientForLocationStrict(locationId)
-    : await resolveSquareClient(null);
+  const client = locationId != null ? await getSquareClientForLocation(locationId) : null;
   if (!client) {
     return [];
   }
@@ -457,9 +392,7 @@ export async function createOrderWithPayment(
 ) {
   const [client, squareLocationId] = await Promise.all([
     resolveSquareClient(lvLocationId),
-    lvLocationId != null
-      ? getSquareLocationId(lvLocationId)
-      : Promise.resolve(process.env.SQUARE_PRODUCTION_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || process.env.SQUARE_LOCATION_ID || ''),
+    lvLocationId != null ? getSquareLocationId(lvLocationId) : Promise.resolve(''),
   ]);
 
   if (!client) {
