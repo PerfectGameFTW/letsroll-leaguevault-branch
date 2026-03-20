@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import {
@@ -475,7 +475,7 @@ export default function IntegrationsPage() {
 
   const orgList = orgsResponse?.data ?? [];
 
-  const { data: integrationsResponse, isLoading, isFetching, isError } = useQuery<ApiResponse<IntegrationsConfig>>({
+  const { data: integrationsResponse, isLoading, isError } = useQuery<ApiResponse<IntegrationsConfig>>({
     queryKey: ["/api/integrations", effectiveOrgId],
     queryFn: async () => {
       const url = effectiveOrgId
@@ -490,24 +490,7 @@ export default function IntegrationsPage() {
     retry: false,
   });
 
-  const [displayedOrgId, setDisplayedOrgId] = useState<number | null>(null);
-  const prevEffectiveOrgIdRef = useRef<number | null>(effectiveOrgId);
-
-  useEffect(() => {
-    if (!isFetching && effectiveOrgId && (integrationsResponse || isError)) {
-      setDisplayedOrgId(effectiveOrgId);
-    }
-  }, [isFetching, effectiveOrgId, integrationsResponse, isError]);
-
-  useEffect(() => {
-    if (prevEffectiveOrgIdRef.current !== effectiveOrgId) {
-      prevEffectiveOrgIdRef.current = effectiveOrgId;
-      setDisplayedOrgId(null);
-    }
-  }, [effectiveOrgId]);
-
-  const isOrgSwitching = effectiveOrgId !== displayedOrgId;
-  const config = !isOrgSwitching ? integrationsResponse?.data : undefined;
+  const config = integrationsResponse?.data;
 
   return (
     <Layout>
@@ -525,7 +508,10 @@ export default function IntegrationsPage() {
           </Label>
           <Select
             value={effectiveOrgId ? String(effectiveOrgId) : ""}
-            onValueChange={(val) => setSelectedOrgId(Number(val))}
+            onValueChange={(val) => {
+              queryClient.removeQueries({ queryKey: ["/api/integrations"] });
+              setSelectedOrgId(Number(val));
+            }}
           >
             <SelectTrigger id="org-select" className="w-64">
               <SelectValue placeholder="Select an organization..." />
@@ -545,7 +531,7 @@ export default function IntegrationsPage() {
         <div className="text-muted-foreground text-sm">
           {isSystemAdmin ? "Select an organization above to manage its integrations." : "No organization context found."}
         </div>
-      ) : (isLoading || isOrgSwitching) ? (
+      ) : isLoading ? (
         <div className="space-y-4 max-w-2xl">
           {[1, 2].map((i) => (
             <Card key={i}>
