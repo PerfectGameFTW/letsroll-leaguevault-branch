@@ -153,10 +153,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       return res.json();
     },
     staleTime: 1000 * 60 * 10,
+    enabled: !!watchedLocationId,
   });
   const categories = categoriesData?.data || [];
 
-  const { data: allCatalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
+  const { data: allCatalogData, isLoading: isLoadingCatalog } = useQuery<{ success: boolean; data: CatalogItem[] }>({
     queryKey: ['/api/square/catalog/items', watchedLocationId],
     queryFn: async () => {
       const res = await fetch(`/api/square/catalog/items${catalogLocationParam}`);
@@ -164,6 +165,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       return res.json();
     },
     staleTime: 1000 * 60 * 10,
+    enabled: !!watchedLocationId,
   });
   const allCatalogItems = allCatalogData?.data || [];
 
@@ -402,7 +404,17 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                       <FormItem>
                         <FormLabel>Location</FormLabel>
                         <Select
-                          onValueChange={(value) => field.onChange(value === "none" ? null : parseInt(value))}
+                          onValueChange={(value) => {
+                            field.onChange(value === "none" ? null : parseInt(value));
+                            setSelectedCategoryId(null);
+                            form.setValue('squareCategoryId', null);
+                            form.setValue('squareLineageItemId', null);
+                            form.setValue('squareLineageItemVariationId', null);
+                            form.setValue('squareLineageItemName', null);
+                            form.setValue('squarePrizeFundItemId', null);
+                            form.setValue('squarePrizeFundItemVariationId', null);
+                            form.setValue('squarePrizeFundItemName', null);
+                          }}
                           value={field.value ? String(field.value) : "none"}
                         >
                           <FormControl>
@@ -702,6 +714,12 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     </FormItem>
                   )}
                 />
+
+                {watchedLocationId && !isLoadingCatalog && !hasCatalogItems && (
+                  <div className="text-sm text-muted-foreground rounded-lg border p-3">
+                    No Square catalog items found for this location. Make sure Square credentials are configured in the integrations settings.
+                  </div>
+                )}
 
                 {hasCatalogItems && (
                   <div className="space-y-3 rounded-lg border p-3">

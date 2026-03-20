@@ -67,8 +67,9 @@ export async function getSquareClientForLocation(lvLocationId: number): Promise<
     if (creds?.accessToken && creds.accessToken.trim().length > 0) {
       return buildSquareClient(creds.accessToken, creds.appId);
     }
-  } catch {
-    // Fall through to env-var client
+    console.warn(`[Square Service] No credentials found for location ${lvLocationId} — falling back to global env-var Square account`);
+  } catch (err) {
+    console.warn(`[Square Service] Error fetching credentials for location ${lvLocationId} — falling back to global env-var Square account:`, err);
   }
   return initializeSquareClient();
 }
