@@ -97,44 +97,6 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const isResettingForm = useRef(false);
 
-  const { data: categoriesData } = useQuery<{ success: boolean; data: CatalogCategory[] }>({
-    queryKey: ['/api/square/catalog/categories'],
-    staleTime: 1000 * 60 * 10,
-  });
-  const categories = categoriesData?.data || [];
-
-  const { data: allCatalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
-    queryKey: ['/api/square/catalog/items'],
-    staleTime: 1000 * 60 * 10,
-  });
-  const allCatalogItems = allCatalogData?.data || [];
-
-  const { data: filteredCatalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
-    queryKey: ['/api/square/catalog/items', selectedCategoryId],
-    queryFn: async () => {
-      const res = await fetch(`/api/square/catalog/items?categoryId=${selectedCategoryId}`);
-      if (!res.ok) throw new Error('Failed to fetch catalog items');
-      return res.json();
-    },
-    staleTime: 1000 * 60 * 10,
-    enabled: !!selectedCategoryId,
-  });
-
-  const catalogItems = selectedCategoryId ? (filteredCatalogData?.data || []) : allCatalogItems;
-  const hasCatalogItems = allCatalogItems.length > 0;
-
-  const getPriceForVariation = (variationId: string | null | undefined): number | null => {
-    if (!variationId) return null;
-    const searchLists = [allCatalogItems, catalogItems];
-    for (const list of searchLists) {
-      for (const item of list) {
-        const v = item.variations.find(v => v.id === variationId);
-        if (v) return v.price;
-      }
-    }
-    return null;
-  };
-
   // Initialize dates with noon time to avoid timezone issues
   const today = new Date();
   today.setHours(12, 0, 0, 0);
@@ -179,6 +141,60 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const watchedPaymentMode = form.watch('paymentMode');
   const isUpfront = watchedPaymentMode === 'upfront';
   const watchedWeeklyFee = form.watch('weeklyFee');
+  const watchedLocationId = form.watch('locationId');
+
+  const catalogLocationParam = watchedLocationId ? `?locationId=${watchedLocationId}` : '';
+
+  const { data: categoriesData } = useQuery<{ success: boolean; data: CatalogCategory[] }>({
+    queryKey: ['/api/square/catalog/categories', watchedLocationId],
+    queryFn: async () => {
+      const res = await fetch(`/api/square/catalog/categories${catalogLocationParam}`);
+      if (!res.ok) throw new Error('Failed to fetch catalog categories');
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 10,
+  });
+  const categories = categoriesData?.data || [];
+
+  const { data: allCatalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
+    queryKey: ['/api/square/catalog/items', watchedLocationId],
+    queryFn: async () => {
+      const res = await fetch(`/api/square/catalog/items${catalogLocationParam}`);
+      if (!res.ok) throw new Error('Failed to fetch catalog items');
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 10,
+  });
+  const allCatalogItems = allCatalogData?.data || [];
+
+  const { data: filteredCatalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
+    queryKey: ['/api/square/catalog/items', watchedLocationId, selectedCategoryId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedCategoryId) params.set('categoryId', selectedCategoryId);
+      if (watchedLocationId) params.set('locationId', String(watchedLocationId));
+      const res = await fetch(`/api/square/catalog/items?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch catalog items');
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 10,
+    enabled: !!selectedCategoryId,
+  });
+
+  const catalogItems = selectedCategoryId ? (filteredCatalogData?.data || []) : allCatalogItems;
+  const hasCatalogItems = allCatalogItems.length > 0;
+
+  const getPriceForVariation = (variationId: string | null | undefined): number | null => {
+    if (!variationId) return null;
+    const searchLists = [allCatalogItems, catalogItems];
+    for (const list of searchLists) {
+      for (const item of list) {
+        const v = item.variations.find(v => v.id === variationId);
+        if (v) return v.price;
+      }
+    }
+    return null;
+  };
 
   const computedSeasonEnd = useMemo(() => {
     if (!watchedStart || !watchedWeekDay || bowlingWeeks <= 0) return null;

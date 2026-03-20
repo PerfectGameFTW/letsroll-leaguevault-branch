@@ -4,8 +4,7 @@ import { eq, and, lte, gte, isNull, or, sql } from "drizzle-orm";
 import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
 import { addWeeks, addMonths, setHours, setMinutes, setSeconds, setMilliseconds, isAfter, differenceInWeeks } from "date-fns";
 import { fromZonedTime, toZonedTime } from "date-fns-tz";
-import { createSquarePayment } from "../lib/square";
-import { createOrderWithPayment, getSquareClientForLocation, getSquareLocationId } from "./square";
+import { createOrderWithPayment, processPayment, getSquareClientForLocation, getSquareLocationId } from "./square";
 import { logger } from "../logger";
 import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 import { storage } from "../storage.js";
@@ -277,14 +276,20 @@ class PaymentScheduler {
             paymentResult = { status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
           }
         } else {
-          paymentResult = await createSquarePayment({
-            amount: scheduleRecord.amount,
-            cardId: scheduleRecord.squareCardId,
-            bowlerId: scheduleRecord.bowlerId,
-            leagueId: scheduleRecord.leagueId,
+          const processResult = await processPayment(
+            scheduleRecord.squareCardId!,
+            scheduleRecord.amount,
+            false,
+            squareCustomerId,
             buyerEmail,
-            customerId: squareCustomerId,
-          });
+            undefined,
+            squareClient
+          );
+          if (processResult?.id) {
+            paymentResult = { status: 'success', paymentId: processResult.id };
+          } else {
+            paymentResult = { status: 'error', error: 'Payment processing failed' };
+          }
         }
 
         // If payment successful, update schedule and create payment record
@@ -550,14 +555,20 @@ class PaymentScheduler {
           finalPaymentResult = { status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
         }
       } else {
-        finalPaymentResult = await createSquarePayment({
-          amount: finalTwoWeeksAmount,
-          cardId: scheduleRecord.squareCardId,
-          bowlerId: scheduleRecord.bowlerId,
-          leagueId: scheduleRecord.leagueId,
+        const processResult2 = await processPayment(
+          scheduleRecord.squareCardId!,
+          finalTwoWeeksAmount,
+          false,
+          squareCustomerId,
           buyerEmail,
-          customerId: squareCustomerId,
-        });
+          undefined,
+          squareClient2
+        );
+        if (processResult2?.id) {
+          finalPaymentResult = { status: 'success', paymentId: processResult2.id };
+        } else {
+          finalPaymentResult = { status: 'error', error: 'Payment processing failed' };
+        }
       }
 
       const finalLineageAmount = (league?.lineageFee != null && (league?.weeklyFee ?? 0) > 0)

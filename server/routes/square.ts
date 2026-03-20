@@ -262,7 +262,10 @@ router.post('/customers', squarePaymentLimiter, async (req, res) => {
 
 router.get('/catalog/categories', async (req, res) => {
   try {
-    const categories = await listCatalogCategories();
+    const locationIdParam = req.query.locationId as string | undefined;
+    const locationId = locationIdParam ? parseInt(locationIdParam) : null;
+    const client = locationId && !isNaN(locationId) ? await getSquareClientForLocation(locationId) : null;
+    const categories = await listCatalogCategories(client);
     sendSuccess(res, categories);
   } catch (error) {
     console.error('[Square Routes] Catalog categories error:', error);
@@ -273,7 +276,10 @@ router.get('/catalog/categories', async (req, res) => {
 router.get('/catalog/items', async (req, res) => {
   try {
     const categoryId = req.query.categoryId as string | undefined;
-    const items = await listCatalogItems(categoryId);
+    const locationIdParam = req.query.locationId as string | undefined;
+    const locationId = locationIdParam ? parseInt(locationIdParam) : null;
+    const client = locationId && !isNaN(locationId) ? await getSquareClientForLocation(locationId) : null;
+    const items = await listCatalogItems(categoryId, client);
     sendSuccess(res, items);
   } catch (error) {
     console.error('[Square Routes] Catalog list error:', error);
