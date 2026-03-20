@@ -53,7 +53,7 @@ interface CatalogCategory {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ChevronDown, ChevronUp, CalendarX, SkipForward, Check } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { differenceInWeeks } from "date-fns";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -95,6 +95,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const activeLocations = (locationsData?.data || []).filter(l => l.active);
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const isResettingForm = useRef(false);
 
   const { data: categoriesData } = useQuery<{ success: boolean; data: CatalogCategory[] }>({
     queryKey: ['/api/square/catalog/categories'],
@@ -212,6 +213,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   };
 
   useEffect(() => {
+    if (isResettingForm.current) return;
     if (watchedStart) {
       const date = new Date(watchedStart);
       if (!isNaN(date.getTime())) {
@@ -236,6 +238,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       setShowSchedule(false);
       setSelectedCategoryId(league.squareCategoryId || null);
 
+      isResettingForm.current = true;
       form.reset({
         name: league.name,
         description: league.description || "",
@@ -263,7 +266,9 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         skipDates: league.skipDates ?? [],
         cancelledDates: league.cancelledDates ?? [],
       });
+      setTimeout(() => { isResettingForm.current = false; }, 0);
     } else if (!open) {
+      isResettingForm.current = true;
       form.reset({
         name: "",
         description: "",
@@ -291,6 +296,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         skipDates: [],
         cancelledDates: [],
       });
+      setTimeout(() => { isResettingForm.current = false; }, 0);
       setBowlingWeeks(30);
       setSkipDates([]);
       setCancelledDates([]);
