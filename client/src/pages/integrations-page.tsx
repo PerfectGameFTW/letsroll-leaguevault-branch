@@ -281,7 +281,6 @@ function SquareLocationCard({ location }: SquareLocationCardProps) {
             </div>
             <div>
               <CardTitle className="text-base">{location.name}</CardTitle>
-              <CardDescription>Square payment processing for this location</CardDescription>
             </div>
           </div>
           <div className="flex items-center gap-3">
