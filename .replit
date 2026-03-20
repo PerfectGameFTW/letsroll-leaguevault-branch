@@ -51,9 +51,9 @@ waitForPort = 5000
 outputType = "webview"
 
 [deployment]
-run = ["sh", "-c", "NODE_ENV=production node dist/index.js"]
+run = ["sh", "-c", "NODE_ENV=production node --import ./dist/instrument.js dist/index.js"]
 deploymentTarget = "vm"
-build = ["sh", "-c", "npm run build"]
+build = ["sh", "-c", "npm run build && esbuild server/instrument.ts --platform=node --packages=external --bundle --format=esm --outdir=dist"]
 
 [userenv]
 
