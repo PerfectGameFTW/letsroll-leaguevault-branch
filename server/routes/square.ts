@@ -388,9 +388,8 @@ router.get('/config', async (req: any, res) => {
         const loc = await storage.getLocation(lvLocationId);
         if (loc) {
           const isAuthorized =
-            !req.isAuthenticated || !req.isAuthenticated() ||
             req.user?.role === 'system_admin' ||
-            (req.user?.organizationId != null && req.user.organizationId === loc.organizationId);
+            (req.user?.role === 'org_admin' && req.user?.organizationId != null && req.user.organizationId === loc.organizationId);
           if (isAuthorized) {
             const creds = await storage.getLocationSquareConfig(lvLocationId);
             if (creds?.appId && creds?.accessToken && creds.appId.trim().length > 0) {
