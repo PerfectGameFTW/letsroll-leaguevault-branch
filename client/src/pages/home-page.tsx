@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
 import { Loader2, AlertCircle, Trophy, Users, TrendingUp, DollarSign } from "lucide-react";
 import { Link } from "wouter";
-import type { Bowler, League, Payment, ApiResponse, Organization } from "@shared/schema";
+import type { League, Payment, BowlerLeague, ApiResponse, Organization } from "@shared/schema";
 import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
 import { formatCurrency } from "@/lib/utils";
 
@@ -29,12 +29,6 @@ function ErrorState({ error }: { error: Error }) {
 }
 
 export default function HomePage() {
-  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<ApiResponse<Bowler[]>>({
-    queryKey: ["/api/bowlers"],
-    staleTime: 1000 * 30,
-    retry: false,
-  });
-
   const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
     staleTime: 1000 * 30,
@@ -47,6 +41,12 @@ export default function HomePage() {
     retry: false,
   });
   
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<ApiResponse<BowlerLeague[]>>({
+    queryKey: ["/api/bowler-leagues"],
+    staleTime: 1000 * 30,
+    retry: false,
+  });
+
   const { data: perfectGameOrgResponse, isLoading: loadingOrg, error: orgError } = useQuery<ApiResponse<Organization>>({
     queryKey: ["/api/organizations/slug/perfect-game"],
     staleTime: 1000 * 60 * 5,
@@ -54,22 +54,27 @@ export default function HomePage() {
   });
 
   // Show loading state only when initial data is loading
-  if (loadingBowlers || loadingLeagues || loadingPayments || loadingOrg) {
+  if (loadingLeagues || loadingPayments || loadingBowlerLeagues || loadingOrg) {
     return <LoadingState />;
   }
 
   // Handle errors
-  const error = bowlersError || leaguesError || paymentsError || orgError;
+  const error = leaguesError || paymentsError || bowlerLeaguesError || orgError;
   if (error) {
     return <ErrorState error={error as Error} />;
   }
 
-  const bowlers = bowlersResponse?.data || [];
   const leagues = leaguesResponse?.data || [];
   const payments = paymentsResponse?.data || [];
-  
-  const activeBowlers = bowlers.filter((b: Bowler) => b.active).length;
-  const totalLeagues = leagues.filter((l: League) => l.active).length;
+  const bowlerLeaguesData = bowlerLeaguesResponse?.data || [];
+
+  const activeLeagueIds = new Set(leagues.filter((l: League) => l.active).map((l: League) => l.id));
+  const activeBowlers = new Set(
+    bowlerLeaguesData
+      .filter((bl: BowlerLeague) => bl.active && activeLeagueIds.has(bl.leagueId))
+      .map((bl: BowlerLeague) => bl.bowlerId)
+  ).size;
+  const totalLeagues = activeLeagueIds.size;
 
   // Calculate lineage and prize fund totals
   const paidPayments = payments.filter(p => p.status === 'paid');
