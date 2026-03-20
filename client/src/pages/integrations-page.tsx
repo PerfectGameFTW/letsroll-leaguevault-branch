@@ -25,6 +25,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ChevronDown, ChevronUp, CheckCircle2, XCircle, Eye, EyeOff, Pencil, AlertCircle } from "lucide-react";
 import { SiSquare } from "react-icons/si";
+import bowlnowLogo from "@/assets/images/bowlnow-logo.png";
 import type { ApiResponse, Organization, Location, User } from "@shared/schema";
 
 interface IntegrationsConfig {
@@ -103,8 +104,8 @@ function BowlNowCard({ config, orgId }: BowlNowCardProps) {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-              <span className="text-orange-600 font-bold text-sm">BN</span>
+            <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center overflow-hidden shrink-0">
+              <img src={bowlnowLogo} alt="BowlNow" className="w-full h-full object-contain" />
             </div>
             <div>
               <CardTitle className="text-base">BowlNow</CardTitle>
