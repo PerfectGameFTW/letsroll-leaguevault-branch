@@ -50,15 +50,13 @@ interface BowlNowCardProps {
 function BowlNowCard({ config, orgId }: BowlNowCardProps) {
   const { toast } = useToast();
   const isConfigured = config.apiKeyConfigured && config.enabled;
-  const [expanded, setExpanded] = useState(!isConfigured);
+  const [expanded, setExpanded] = useState(false);
   const [enabled, setEnabled] = useState(config.enabled);
   const [apiKey, setApiKey] = useState("");
   const [locationId, setLocationId] = useState(config.locationId);
   const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
-    const configured = config.apiKeyConfigured && config.enabled;
-    setExpanded(!configured);
     setEnabled(config.enabled);
     setLocationId(config.locationId);
     setApiKey("");
@@ -109,7 +107,6 @@ function BowlNowCard({ config, orgId }: BowlNowCardProps) {
             </div>
             <div>
               <CardTitle className="text-base">BowlNow</CardTitle>
-              <CardDescription>Sync bowler contacts with your BowlNow CRM</CardDescription>
             </div>
           </div>
           <div className="flex items-center gap-3">
