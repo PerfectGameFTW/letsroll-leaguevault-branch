@@ -160,10 +160,19 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       }
     }
 
+    const lineageAmount = (league.lineageFee != null && league.weeklyFee > 0)
+      ? Math.round(amount * league.lineageFee / league.weeklyFee)
+      : undefined;
+    const prizeFundAmount = (league.prizeFundFee != null && league.weeklyFee > 0)
+      ? Math.round(amount * league.prizeFundFee / league.weeklyFee)
+      : undefined;
+
     const dbPayment = await storage.createPayment({
       bowlerId,
       leagueId,
       amount,
+      lineageAmount,
+      prizeFundAmount,
       weekOf,
       status: 'paid',
       type: 'credit_card',

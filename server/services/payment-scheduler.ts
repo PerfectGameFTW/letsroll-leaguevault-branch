@@ -332,10 +332,18 @@ class PaymentScheduler {
             });
 
             // Create payment record
+            const scheduledLineageAmount = (league?.lineageFee != null && (league?.weeklyFee ?? 0) > 0)
+              ? Math.round(scheduleRecord.amount * league.lineageFee / league.weeklyFee)
+              : undefined;
+            const scheduledPrizeFundAmount = (league?.prizeFundFee != null && (league?.weeklyFee ?? 0) > 0)
+              ? Math.round(scheduleRecord.amount * league.prizeFundFee / league.weeklyFee)
+              : undefined;
             await tx.insert(payments).values({
               bowlerId: scheduleRecord.bowlerId,
               leagueId: scheduleRecord.leagueId,
               amount: scheduleRecord.amount,
+              lineageAmount: scheduledLineageAmount,
+              prizeFundAmount: scheduledPrizeFundAmount,
               status: 'paid',
               type: 'credit_card',
               weekOf: scheduleRecord.nextPaymentDate,
@@ -540,11 +548,19 @@ class PaymentScheduler {
         });
       }
 
+      const finalLineageAmount = (league?.lineageFee != null && (league?.weeklyFee ?? 0) > 0)
+        ? Math.round(finalTwoWeeksAmount * league.lineageFee / league.weeklyFee)
+        : undefined;
+      const finalPrizeFundAmount = (league?.prizeFundFee != null && (league?.weeklyFee ?? 0) > 0)
+        ? Math.round(finalTwoWeeksAmount * league.prizeFundFee / league.weeklyFee)
+        : undefined;
       if (finalPaymentResult.status === 'success') {
         await db.insert(payments).values({
           bowlerId: scheduleRecord.bowlerId,
           leagueId: scheduleRecord.leagueId,
           amount: finalTwoWeeksAmount,
+          lineageAmount: finalLineageAmount,
+          prizeFundAmount: finalPrizeFundAmount,
           status: 'paid',
           type: 'credit_card',
           weekOf: new Date(),

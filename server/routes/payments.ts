@@ -83,7 +83,18 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
       return sendError(res, "You don't have access to create payments for this league", 403, 'FORBIDDEN');
     }
 
-    const created = await storage.createPayment(payment);
+    const lineageAmount = (league.lineageFee != null && league.weeklyFee > 0)
+      ? Math.round(payment.amount * league.lineageFee / league.weeklyFee)
+      : undefined;
+    const prizeFundAmount = (league.prizeFundFee != null && league.weeklyFee > 0)
+      ? Math.round(payment.amount * league.prizeFundFee / league.weeklyFee)
+      : undefined;
+
+    const created = await storage.createPayment({
+      ...payment,
+      lineageAmount,
+      prizeFundAmount,
+    });
 
     if (payment.status === 'paid' && league.seasonStart && league.seasonEnd && league.weeklyFee) {
       try {

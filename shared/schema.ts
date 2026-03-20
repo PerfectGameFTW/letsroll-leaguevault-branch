@@ -81,6 +81,8 @@ export const leagues = pgTable("leagues", {
   seasonEnd: timestamp("season_end", { mode: "date" }).notNull(),
   weekDay: text("week_day", { enum: WEEKDAYS }).notNull(),
   weeklyFee: integer("weekly_fee").notNull().default(2000),
+  lineageFee: integer("lineage_fee"),
+  prizeFundFee: integer("prize_fund_fee"),
   practiceStartTime: text("practice_start_time"),
   competitionStartTime: text("competition_start_time"),
   squareLineageItemId: text("square_lineage_item_id"),
@@ -166,6 +168,8 @@ export const payments = pgTable("payments", {
     .notNull()
     .references(() => leagues.id, { onDelete: 'cascade' }),
   amount: integer("amount").notNull(), // Store in cents
+  lineageAmount: integer("lineage_amount"), // Lineage portion in cents
+  prizeFundAmount: integer("prize_fund_amount"), // Prize fund portion in cents
   weekOf: timestamp("week_of").notNull(),
   status: text("status", { enum: PAYMENT_STATUSES }).notNull().default('paid'),
   type: text("type", { enum: PAYMENT_TYPES }).notNull(),
@@ -428,6 +432,8 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   seasonEnd: dateSchema,
   weekDay: z.enum(WEEKDAYS),
   weeklyFee: positiveIntSchema.default(2000),
+  lineageFee: z.number().int().min(0).nullable().optional(),
+  prizeFundFee: z.number().int().min(0).nullable().optional(),
   practiceStartTime: timeSchema.optional(),
   competitionStartTime: timeSchema.optional(),
   timezone: z.string().default("America/Chicago"),
@@ -469,6 +475,8 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   bowlerId: positiveIntSchema,
   leagueId: positiveIntSchema,
   amount: positiveIntSchema,
+  lineageAmount: z.number().int().min(0).nullable().optional(),
+  prizeFundAmount: z.number().int().min(0).nullable().optional(),
   weekOf: dateSchema,
   status: z.enum(PAYMENT_STATUSES).default("paid"),
   type: z.enum(PAYMENT_TYPES),
@@ -539,6 +547,8 @@ export const partialLeagueSchema = z.object({
   seasonEnd: dateSchema,
   weekDay: z.enum(WEEKDAYS),
   weeklyFee: positiveIntSchema,
+  lineageFee: z.number().int().min(0).nullable(),
+  prizeFundFee: z.number().int().min(0).nullable(),
   practiceStartTime: timeSchema,
   competitionStartTime: timeSchema,
   timezone: z.string(),

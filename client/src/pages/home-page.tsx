@@ -76,13 +76,10 @@ export default function HomePage() {
   ).size;
   const totalLeagues = activeLeagueIds.size;
 
-  // Calculate lineage and prize fund totals
+  // Calculate lineage and prize fund totals from actual tracked amounts
   const paidPayments = payments.filter(p => p.status === 'paid');
-  const totalLineagePaid = paidPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
-  
-  // For this example, we're using half of total payments for prize fund
-  // In a real app, this would be calculated based on specific payment types or categories
-  const totalPrizeFundPaid = Math.floor(totalLineagePaid * 0.5);
+  const totalLineagePaid = paidPayments.reduce((sum, p) => sum + (p.lineageAmount ?? 0), 0);
+  const totalPrizeFundPaid = paidPayments.reduce((sum, p) => sum + (p.prizeFundAmount ?? 0), 0);
 
   // Get the organization data with the logo
   const organization = perfectGameOrgResponse?.data;

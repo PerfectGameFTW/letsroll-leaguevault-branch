@@ -155,6 +155,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       competitionStartTime: "",
       timezone: "America/Chicago",
       weeklyFee: 2000,
+      lineageFee: null,
+      prizeFundFee: null,
       finalTwoWeeksDueWeek: 6,
       paymentMode: "weekly",
       squareLineageItemId: null,
@@ -243,6 +245,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         competitionStartTime: league.competitionStartTime || "",
         timezone: league.timezone || "America/Chicago",
         weeklyFee: league.weeklyFee || 2000,
+        lineageFee: league.lineageFee ?? null,
+        prizeFundFee: league.prizeFundFee ?? null,
         finalTwoWeeksDueWeek: league.finalTwoWeeksDueWeek ?? 6,
         paymentMode: (league.paymentMode as PaymentMode) || "weekly",
         squareLineageItemId: league.squareLineageItemId || null,
@@ -268,6 +272,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         competitionStartTime: "",
         timezone: "America/Chicago",
         weeklyFee: 2000,
+        lineageFee: null,
+        prizeFundFee: null,
         finalTwoWeeksDueWeek: 6,
         paymentMode: "weekly",
         squareLineageItemId: null,
@@ -808,6 +814,70 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     </FormItem>
                   )}
                 />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="lineageFee"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Lineage Fee</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={field.value != null ? field.value / 100 : ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              field.onChange(val === "" ? null : Math.round(parseFloat(val) * 100));
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="prizeFundFee"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Prize Fund Fee</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={field.value != null ? field.value / 100 : ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              field.onChange(val === "" ? null : Math.round(parseFloat(val) * 100));
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                {(() => {
+                  const lf = form.watch('lineageFee');
+                  const pf = form.watch('prizeFundFee');
+                  const wf = form.watch('weeklyFee');
+                  if ((lf != null || pf != null) && wf > 0) {
+                    const total = (lf ?? 0) + (pf ?? 0);
+                    const matches = total === wf;
+                    return (
+                      <p className={`text-xs ${matches ? 'text-muted-foreground' : 'text-destructive'}`}>
+                        Lineage + Prize Fund = ${(total / 100).toFixed(2)} {matches ? '✓ matches weekly fee' : `— must equal $${(wf / 100).toFixed(2)}`}
+                      </p>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {!isUpfront && (
                   <FormField
