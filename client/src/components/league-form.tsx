@@ -731,32 +731,44 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                       <p className="text-sm text-muted-foreground">No Square catalog items found for this location. Make sure Square credentials are configured in the integrations settings.</p>
                     )}
 
-                    {categories.length > 0 && (
-                      <FormItem>
-                        <FormLabel>Filter by Category</FormLabel>
-                        <Select
-                          value={selectedCategoryId || 'all'}
-                          onValueChange={(value) => {
-                            const catId = value === 'all' ? null : value;
-                            setSelectedCategoryId(catId);
-                            form.setValue('squareCategoryId', catId);
-                          }}
-                          disabled={!hasCatalogItems}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="All Categories" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="all">All Categories</SelectItem>
-                            {categories.map((cat) => (
-                              <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
+                    <FormItem>
+                      <FormLabel>Filter by Category</FormLabel>
+                      <Select
+                        value={
+                          !watchedLocationId || !hasCatalogItems
+                            ? undefined
+                            : (selectedCategoryId || 'all')
+                        }
+                        onValueChange={(value) => {
+                          const catId = value === 'all' ? null : value;
+                          setSelectedCategoryId(catId);
+                          form.setValue('squareCategoryId', catId);
+                        }}
+                        disabled={!hasCatalogItems}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={!watchedLocationId ? "Select a location first" : !hasCatalogItems ? "No Square items configured for this location" : "All Categories"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {!watchedLocationId && (
+                            <SelectItem value="__no-location" disabled>Select a location first</SelectItem>
+                          )}
+                          {watchedLocationId && !hasCatalogItems && (
+                            <SelectItem value="__no-items" disabled>No Square items configured for this location</SelectItem>
+                          )}
+                          {hasCatalogItems && (
+                            <>
+                              <SelectItem value="all">All Categories</SelectItem>
+                              {categories.map((cat) => (
+                                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                              ))}
+                            </>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </FormItem>
 
                     <FormItem>
                       <FormLabel>Lineage Item</FormLabel>
