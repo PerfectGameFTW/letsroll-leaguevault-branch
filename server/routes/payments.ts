@@ -18,6 +18,8 @@ const router = Router();
 router.get("/", async (req, res) => {
   try {
     const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
+    const isSystemAdmin = req.user?.role === 'system_admin';
+    const queryOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
 
     if (leagueId) {
       const league = await storage.getLeague(leagueId);
@@ -36,9 +38,16 @@ router.get("/", async (req, res) => {
       req.query.weekOf ? new Date(req.query.weekOf as string) : undefined,
     );
     
-    // Filter payments by organization if needed
+    // Filter payments by organization:
+    // - System admin with an explicit organizationId param: scope to that org
+    // - System admin with no organizationId param: return all payments
+    // - All other users: filter by their own organizationId
     let accessiblePayments = payments;
-    if (req.user?.role !== 'system_admin') {
+    if (isSystemAdmin && queryOrgId !== undefined) {
+      const orgLeagues = await storage.getLeagues(queryOrgId);
+      const orgLeagueIds = new Set((orgLeagues ?? []).map((l: any) => l.id));
+      accessiblePayments = payments.filter(p => orgLeagueIds.has(p.leagueId));
+    } else if (!isSystemAdmin) {
       accessiblePayments = await filterPaymentsByOrganization(req, payments);
     }
     

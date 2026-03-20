@@ -12,8 +12,8 @@ export function requireOrganizationAccess(req: any, resourceOrgId: number | null
   if (!req.user) return false;
   if (isSystemAdmin(req.user)) return true;
   if (resourceOrgId === null) {
-    console.warn(`[NullOrgAccess] ${resourceType ?? 'resource'} ${resourceId ?? '?'} granted to user ${req.user.id}`);
-    return true;
+    console.warn(`[NullOrgAccess] ${resourceType ?? 'resource'} ${resourceId ?? '?'} has no organization — denying access to user ${req.user.id}`);
+    return false;
   }
   return req.user.organizationId === resourceOrgId;
 }
@@ -40,8 +40,8 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
   }
 
   if (league.organizationId === null) {
-    console.warn(`[NullOrgAccess] league ${leagueId} granted to user ${req.user.id}`);
-    return !!req.user;
+    console.warn(`[NullOrgAccess] league ${leagueId} has no organization — denying access to user ${req.user.id}`);
+    return false;
   }
 
   if (!req.user.organizationId) {
@@ -84,7 +84,7 @@ export async function hasAccessToBowler(req: any, bowlerId: number): Promise<boo
   const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId });
 
   if (bowlerLeagueEntries.length === 0) {
-    return isOrgOrHigher(req.user);
+    return false;
   }
 
   const leagueIds = [...new Set(bowlerLeagueEntries.map(bl => bl.leagueId))];
@@ -101,8 +101,8 @@ export async function hasAccessToBowler(req: any, bowlerId: number): Promise<boo
       return true;
     }
     if (league.organizationId === null) {
-      console.warn(`[NullOrgAccess] bowler ${bowlerId} via league ${league.id} granted to user ${req.user.id}`);
-      return true;
+      console.warn(`[NullOrgAccess] bowler ${bowlerId} via league ${league.id} has no organization — denying access to user ${req.user.id}`);
+      continue;
     }
     if (req.user.organizationId && req.user.organizationId === league.organizationId) {
       return true;
@@ -137,8 +137,8 @@ export async function hasAccessToPayment(req: any, paymentId: number): Promise<b
     }
 
     if (league.organizationId === null) {
-      console.warn(`[NullOrgAccess] payment ${paymentId} via league ${payment.leagueId} granted to user ${req.user.id}`);
-      return true;
+      console.warn(`[NullOrgAccess] payment ${paymentId} via league ${payment.leagueId} has no organization — denying access to user ${req.user.id}`);
+      return false;
     }
 
     return req.user.organizationId === league.organizationId;
@@ -158,13 +158,7 @@ export async function filterPaymentsByOrganization(req: any, payments: any[]): P
   }
 
   if (!req.user.organizationId) {
-    const leagues = await storage.getLeagues(null);
-    if (!leagues || leagues.length === 0) {
-      return [];
-    }
-
-    const leagueIds = leagues.map(l => l.id);
-    return payments.filter(payment => leagueIds.includes(payment.leagueId));
+    return [];
   }
 
   const leagues = await storage.getLeagues(req.user.organizationId);
