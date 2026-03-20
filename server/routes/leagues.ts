@@ -404,6 +404,8 @@ router.post("/:id/new-season", async (req: any, res) => {
       seasonEnd: newSeasonEnd,
       weekDay: sourceLeague.weekDay,
       weeklyFee: sourceLeague.weeklyFee,
+      lineageFee: sourceLeague.lineageFee ?? undefined,
+      prizeFundFee: sourceLeague.prizeFundFee ?? undefined,
       practiceStartTime: sourceLeague.practiceStartTime ?? undefined,
       competitionStartTime: sourceLeague.competitionStartTime ?? undefined,
       timezone: sourceLeague.timezone ?? "America/Chicago",
