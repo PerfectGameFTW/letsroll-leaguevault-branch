@@ -761,7 +761,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     <FormItem>
                       <FormLabel>Lineage Item</FormLabel>
                       <Select
-                        value={form.watch('squareLineageItemVariationId') || 'none'}
+                        value={
+                          !watchedLocationId || !hasCatalogItems
+                            ? undefined
+                            : (form.watch('squareLineageItemVariationId') || 'none')
+                        }
                         onValueChange={(value) => {
                           if (value === 'none') {
                             form.setValue('squareLineageItemId', null);
@@ -789,27 +793,37 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder={!watchedLocationId ? "Select a location first" : !hasCatalogItems ? "No items available" : "None"} />
+                            <SelectValue placeholder={!watchedLocationId ? "Select a location first" : !hasCatalogItems ? "No Square items configured for this location" : "None"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {(() => {
-                            const savedId = form.watch('squareLineageItemVariationId');
-                            const savedName = form.watch('squareLineageItemName');
-                            const isInList = savedId && catalogItems.some(item => item.variations.some(v => v.id === savedId));
-                            if (savedId && savedName && !isInList) {
-                              return <SelectItem key={savedId} value={savedId}>{savedName}</SelectItem>;
-                            }
-                            return null;
-                          })()}
-                          {catalogItems.map((item) =>
-                            item.variations.map((variation) => (
-                              <SelectItem key={variation.id} value={variation.id}>
-                                {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
-                                {variation.price !== null ? ` ($${(variation.price / 100).toFixed(2)})` : ''}
-                              </SelectItem>
-                            ))
+                          {!watchedLocationId && (
+                            <SelectItem value="__no-location" disabled>Select a location first</SelectItem>
+                          )}
+                          {watchedLocationId && !hasCatalogItems && (
+                            <SelectItem value="__no-items" disabled>No Square items configured for this location</SelectItem>
+                          )}
+                          {hasCatalogItems && (
+                            <>
+                              <SelectItem value="none">None</SelectItem>
+                              {(() => {
+                                const savedId = form.watch('squareLineageItemVariationId');
+                                const savedName = form.watch('squareLineageItemName');
+                                const isInList = savedId && catalogItems.some(item => item.variations.some(v => v.id === savedId));
+                                if (savedId && savedName && !isInList) {
+                                  return <SelectItem key={savedId} value={savedId}>{savedName}</SelectItem>;
+                                }
+                                return null;
+                              })()}
+                              {catalogItems.map((item) =>
+                                item.variations.map((variation) => (
+                                  <SelectItem key={variation.id} value={variation.id}>
+                                    {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
+                                    {variation.price !== null ? ` ($${(variation.price / 100).toFixed(2)})` : ''}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </>
                           )}
                         </SelectContent>
                       </Select>
@@ -818,7 +832,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                     <FormItem>
                       <FormLabel>Prize Fund Item</FormLabel>
                       <Select
-                        value={form.watch('squarePrizeFundItemVariationId') || 'none'}
+                        value={
+                          !watchedLocationId || !hasCatalogItems
+                            ? undefined
+                            : (form.watch('squarePrizeFundItemVariationId') || 'none')
+                        }
                         onValueChange={(value) => {
                           if (value === 'none') {
                             form.setValue('squarePrizeFundItemId', null);
@@ -846,18 +864,28 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder={!watchedLocationId ? "Select a location first" : !hasCatalogItems ? "No items available" : "None"} />
+                            <SelectValue placeholder={!watchedLocationId ? "Select a location first" : !hasCatalogItems ? "No Square items configured for this location" : "None"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {catalogItems.map((item) =>
-                            item.variations.map((variation) => (
-                              <SelectItem key={variation.id} value={variation.id}>
-                                {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
-                                {variation.price !== null ? ` ($${(variation.price / 100).toFixed(2)})` : ''}
-                              </SelectItem>
-                            ))
+                          {!watchedLocationId && (
+                            <SelectItem value="__no-location" disabled>Select a location first</SelectItem>
+                          )}
+                          {watchedLocationId && !hasCatalogItems && (
+                            <SelectItem value="__no-items" disabled>No Square items configured for this location</SelectItem>
+                          )}
+                          {hasCatalogItems && (
+                            <>
+                              <SelectItem value="none">None</SelectItem>
+                              {catalogItems.map((item) =>
+                                item.variations.map((variation) => (
+                                  <SelectItem key={variation.id} value={variation.id}>
+                                    {item.name}{variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}
+                                    {variation.price !== null ? ` ($${(variation.price / 100).toFixed(2)})` : ''}
+                                  </SelectItem>
+                                ))
+                              )}
+                            </>
                           )}
                         </SelectContent>
                       </Select>
