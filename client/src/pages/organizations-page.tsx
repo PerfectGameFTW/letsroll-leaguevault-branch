@@ -84,7 +84,7 @@ export default function OrganizationsPage() {
     unknown
   >({
     mutationFn: async (org: InsertOrganization) => {
-      return apiRequest('POST', '/api/organizations', org);
+      return apiRequest('/api/organizations', 'POST', org);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/organizations'] });
