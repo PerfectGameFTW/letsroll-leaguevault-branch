@@ -108,9 +108,12 @@ router.get("/", async (req, res) => {
 
     // Determine the effective organization context
     const isSystemAdmin = req.user?.role === 'system_admin';
-    const queryOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
+    const rawQueryOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
+    if (rawQueryOrgId !== undefined && isNaN(rawQueryOrgId)) {
+      return sendError(res, "Invalid organization ID format", 400);
+    }
     const effectiveOrgId: number | null = isSystemAdmin
-      ? (queryOrgId ?? null)
+      ? (rawQueryOrgId ?? null)
       : (req.user?.organizationId ?? null);
 
     // Fetch bowlers

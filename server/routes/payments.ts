@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage.js';
-import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema.js";
+import { insertPaymentSchema, partialPaymentSchema, type League } from "@shared/schema.js";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { refundPayment as squareRefund } from '../services/square.js';
@@ -19,7 +19,11 @@ router.get("/", async (req, res) => {
   try {
     const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
     const isSystemAdmin = req.user?.role === 'system_admin';
-    const queryOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
+    const rawQueryOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
+    if (rawQueryOrgId !== undefined && isNaN(rawQueryOrgId)) {
+      return sendError(res, "Invalid organization ID format", 400);
+    }
+    const queryOrgId = rawQueryOrgId;
 
     if (leagueId) {
       const league = await storage.getLeague(leagueId);
@@ -44,8 +48,8 @@ router.get("/", async (req, res) => {
     // - All other users: filter by their own organizationId
     let accessiblePayments = payments;
     if (isSystemAdmin && queryOrgId !== undefined) {
-      const orgLeagues = await storage.getLeagues(queryOrgId);
-      const orgLeagueIds = new Set((orgLeagues ?? []).map((l: any) => l.id));
+      const orgLeagues: League[] = await storage.getLeagues(queryOrgId);
+      const orgLeagueIds = new Set(orgLeagues.map(l => l.id));
       accessiblePayments = payments.filter(p => orgLeagueIds.has(p.leagueId));
     } else if (!isSystemAdmin) {
       accessiblePayments = await filterPaymentsByOrganization(req, payments);
