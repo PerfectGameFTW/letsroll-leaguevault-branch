@@ -407,16 +407,10 @@ router.get('/config', async (req: any, res) => {
   const viteAppId = process.env.VITE_SQUARE_APP_ID || '';
   const squareAppId = process.env.SQUARE_APP_ID || '';
 
-  const prodLocationId = process.env.SQUARE_PRODUCTION_LOCATION_ID || '';
-  const viteLocationId = process.env.VITE_SQUARE_LOCATION_ID || '';
-  const squareLocationId = process.env.SQUARE_LOCATION_ID || '';
-
   const appId = prodAppId
     || ((viteAppId && !viteAppId.includes('sandbox-')) ? viteAppId : '')
     || ((squareAppId && !squareAppId.includes('sandbox-')) ? squareAppId : '')
     || viteAppId || squareAppId;
-
-  const locationId = prodLocationId || viteLocationId || squareLocationId;
 
   console.log('[Square Config] Serving config:', {
     prodAppIdSet: !!prodAppId,
@@ -426,7 +420,7 @@ router.get('/config', async (req: any, res) => {
     isProduction: appId.length > 0 && !appId.includes('sandbox-'),
   });
 
-  res.json({ appId, locationId });
+  res.json({ appId, locationId: '' });
 });
 
 export default router;
