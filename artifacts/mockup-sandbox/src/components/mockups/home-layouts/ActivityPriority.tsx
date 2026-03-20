@@ -1,4 +1,3 @@
-import React from 'react';
 import './_group.css';
 import { 
   Trophy, 
@@ -9,14 +8,12 @@ import {
   ChevronRight,
   Bell,
   Search,
-  Menu,
   MoreHorizontal
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const ActivityPriority = () => {
@@ -44,10 +41,7 @@ const ActivityPriority = () => {
             <Bell className="h-5 w-5" />
             <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-destructive"></span>
           </Button>
-          <Avatar className="h-8 w-8 border">
-            <AvatarImage src="https://i.pravatar.cc/150?u=admin" />
-            <AvatarFallback>AD</AvatarFallback>
-          </Avatar>
+          <div className="h-8 w-8 rounded-full border bg-primary flex items-center justify-center text-xs font-medium text-primary-foreground">AD</div>
         </div>
       </header>
 
@@ -150,9 +144,7 @@ const ActivityPriority = () => {
                         <TableRow key={i} className="hover:bg-orange-50/30">
                           <TableCell>
                             <div className="flex items-center gap-3">
-                              <Avatar className="h-9 w-9 border border-orange-100 bg-orange-50">
-                                <AvatarFallback className="text-orange-700 font-medium">{bowler.avatar}</AvatarFallback>
-                              </Avatar>
+                              <div className="h-9 w-9 rounded-full border border-orange-100 bg-orange-50 flex items-center justify-center text-xs font-medium text-orange-700">{bowler.avatar}</div>
                               <div>
                                 <div className="font-medium text-foreground">{bowler.name}</div>
                                 <div className="text-xs text-muted-foreground">{bowler.email}</div>
