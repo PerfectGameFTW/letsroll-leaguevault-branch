@@ -229,7 +229,7 @@ export default function LeaguesPage() {
             {filteredLeagues.map((league) => {
               const startDate = new Date(league.seasonStart);
               const endDate = new Date(league.seasonEnd);
-              const weeks = differenceInWeeks(endDate, startDate);
+              const weeks = league.totalBowlingWeeks;
               const bowlingDay = league.weekDay ? league.weekDay.charAt(0).toUpperCase() + league.weekDay.slice(1) : 'Not set';
 
               return (
