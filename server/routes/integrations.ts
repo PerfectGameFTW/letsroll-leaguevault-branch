@@ -83,11 +83,17 @@ router.patch('/', async (req: any, res: Response) => {
 
     if (parsed.data.bowlnow !== undefined) {
       const incoming = parsed.data.bowlnow;
+      const resolvedApiKey = (incoming.apiKey !== undefined && incoming.apiKey !== '')
+        ? incoming.apiKey
+        : existing?.bowlnow?.apiKey;
+
+      if (incoming.enabled && !resolvedApiKey) {
+        return sendError(res, 'An API key is required to enable BowlNow', 400, 'VALIDATION_ERROR');
+      }
+
       updated.bowlnow = {
         enabled: incoming.enabled,
-        apiKey: incoming.apiKey !== undefined && incoming.apiKey !== ''
-          ? incoming.apiKey
-          : existing?.bowlnow?.apiKey,
+        apiKey: resolvedApiKey,
         locationId: incoming.locationId !== undefined
           ? incoming.locationId
           : existing?.bowlnow?.locationId,

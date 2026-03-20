@@ -53,7 +53,7 @@ function BowlNowCard({ config, orgId }: BowlNowCardProps) {
       return apiRequest("/api/integrations", "PATCH", { organizationId: orgId, bowlnow: data });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/integrations", orgId] });
       queryClient.invalidateQueries({ queryKey: ["/api/bn/status"] });
       toast({ title: "BowlNow settings saved", description: "Your integration settings have been updated." });
       setApiKey("");
