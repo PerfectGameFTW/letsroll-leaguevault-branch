@@ -1203,7 +1203,7 @@ export class DatabaseStorage implements IStorage {
   async getFirstSquareConfiguredLocation(orgId: number): Promise<Location | undefined> {
     const orgLocations = await db.select().from(locations)
       .where(eq(locations.organizationId, orgId))
-      .orderBy(locations.name);
+      .orderBy(locations.id);
     return orgLocations.find(loc => (loc.squareCredentials?.accessToken ?? '').trim().length > 0);
   }
 
