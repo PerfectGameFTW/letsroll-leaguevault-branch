@@ -180,7 +180,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       return res.json();
     },
     staleTime: 1000 * 60 * 10,
-    enabled: !!selectedCategoryId,
+    enabled: !!selectedCategoryId && !!watchedLocationId,
   });
 
   const catalogItems = selectedCategoryId ? (filteredCatalogData?.data || []) : allCatalogItems;
