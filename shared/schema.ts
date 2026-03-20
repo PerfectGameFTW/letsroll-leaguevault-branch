@@ -592,7 +592,7 @@ export const insertOrganizationSchema = baseOrganizationSchema.extend({
   state: z.string().optional(),
   zipCode: z.string().optional(),
   phone: z.string().optional(),
-  email: emailSchema.optional(),
+  email: z.union([emailSchema, z.literal("")]).optional(),
   logo: z.string().optional(),
   active: z.boolean().default(true),
 }).omit({ id: true, createdAt: true });
