@@ -36,11 +36,13 @@ function resolveOrgId(req: any): number | null {
 router.get('/', async (req: any, res: Response) => {
   try {
     const orgId = resolveOrgId(req);
+    console.log(`[Integrations GET] queryParam=${req.query?.organizationId}, resolvedOrgId=${orgId}, userOrgId=${req.user?.organizationId}, userRole=${req.user?.role}`);
     if (!orgId) {
       return sendError(res, 'No organization context', 400, 'BAD_REQUEST');
     }
 
     const integrations = await storage.getOrgIntegrations(orgId);
+    console.log(`[Integrations GET] orgId=${orgId} → apiKeyConfigured=${!!integrations?.bowlnow?.apiKey}, enabled=${integrations?.bowlnow?.enabled}`);
 
     const response = {
       bowlnow: {

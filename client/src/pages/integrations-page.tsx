@@ -492,6 +492,8 @@ export default function IntegrationsPage() {
 
   const config = integrationsResponse?.data;
 
+  console.log('[IntegrationsPage]', { effectiveOrgId, selectedOrgId, isLoading, isError, apiKeyConfigured: config?.bowlnow?.apiKeyConfigured });
+
   return (
     <Layout>
       <div className="mb-6">
