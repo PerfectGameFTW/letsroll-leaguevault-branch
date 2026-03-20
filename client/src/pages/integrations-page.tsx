@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import {
@@ -54,6 +54,14 @@ function BowlNowCard({ config, orgId }: BowlNowCardProps) {
   const [apiKey, setApiKey] = useState("");
   const [locationId, setLocationId] = useState(config.locationId);
   const [showApiKey, setShowApiKey] = useState(false);
+
+  useEffect(() => {
+    const configured = config.apiKeyConfigured && config.enabled;
+    setExpanded(!configured);
+    setEnabled(config.enabled);
+    setLocationId(config.locationId);
+    setApiKey("");
+  }, [config.apiKeyConfigured, config.enabled, config.locationId]);
 
   const mutation = useMutation({
     mutationFn: async (data: { enabled: boolean; apiKey?: string; locationId?: string }) => {
@@ -467,7 +475,7 @@ export default function IntegrationsPage() {
 
   const orgList = orgsResponse?.data ?? [];
 
-  const { data: integrationsResponse, isLoading } = useQuery<ApiResponse<IntegrationsConfig>>({
+  const { data: integrationsResponse, isLoading, isFetching } = useQuery<ApiResponse<IntegrationsConfig>>({
     queryKey: ["/api/integrations", effectiveOrgId],
     queryFn: async () => {
       const url = effectiveOrgId
@@ -482,7 +490,24 @@ export default function IntegrationsPage() {
     retry: false,
   });
 
-  const config = integrationsResponse?.data;
+  const [displayedOrgId, setDisplayedOrgId] = useState<number | null>(null);
+  const prevEffectiveOrgIdRef = useRef<number | null>(effectiveOrgId);
+
+  useEffect(() => {
+    if (!isFetching && effectiveOrgId && integrationsResponse) {
+      setDisplayedOrgId(effectiveOrgId);
+    }
+  }, [isFetching, effectiveOrgId, integrationsResponse]);
+
+  useEffect(() => {
+    if (prevEffectiveOrgIdRef.current !== effectiveOrgId) {
+      prevEffectiveOrgIdRef.current = effectiveOrgId;
+      setDisplayedOrgId(null);
+    }
+  }, [effectiveOrgId]);
+
+  const isOrgSwitching = effectiveOrgId !== displayedOrgId;
+  const config = !isOrgSwitching ? integrationsResponse?.data : undefined;
 
   return (
     <Layout>
@@ -520,7 +545,7 @@ export default function IntegrationsPage() {
         <div className="text-muted-foreground text-sm">
           {isSystemAdmin ? "Select an organization above to manage its integrations." : "No organization context found."}
         </div>
-      ) : isLoading ? (
+      ) : (isLoading || isOrgSwitching) ? (
         <div className="space-y-4 max-w-2xl">
           {[1, 2].map((i) => (
             <Card key={i}>
