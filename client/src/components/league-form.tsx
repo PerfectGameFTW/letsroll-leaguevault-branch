@@ -715,15 +715,21 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   )}
                 />
 
-                {watchedLocationId && !isLoadingCatalog && !hasCatalogItems && (
-                  <div className="text-sm text-muted-foreground rounded-lg border p-3">
-                    No Square catalog items found for this location. Make sure Square credentials are configured in the integrations settings.
-                  </div>
-                )}
-
-                {hasCatalogItems && (
+                {activeLocations.length > 0 && (
                   <div className="space-y-3 rounded-lg border p-3">
                     <div className="text-sm font-medium">Square Catalog Items</div>
+
+                    {!watchedLocationId && (
+                      <p className="text-sm text-muted-foreground">Select a location first to load Square catalog items.</p>
+                    )}
+
+                    {watchedLocationId && isLoadingCatalog && (
+                      <p className="text-sm text-muted-foreground">Loading catalog items&hellip;</p>
+                    )}
+
+                    {watchedLocationId && !isLoadingCatalog && !hasCatalogItems && (
+                      <p className="text-sm text-muted-foreground">No Square catalog items found for this location. Make sure Square credentials are configured in the integrations settings.</p>
+                    )}
 
                     {categories.length > 0 && (
                       <FormItem>
@@ -735,6 +741,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                             setSelectedCategoryId(catId);
                             form.setValue('squareCategoryId', catId);
                           }}
+                          disabled={!hasCatalogItems}
                         >
                           <FormControl>
                             <SelectTrigger>
@@ -778,10 +785,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                             }
                           }
                         }}
+                        disabled={!hasCatalogItems}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="None" />
+                            <SelectValue placeholder={!watchedLocationId ? "Select a location first" : !hasCatalogItems ? "No items available" : "None"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -834,10 +842,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                             }
                           }
                         }}
+                        disabled={!hasCatalogItems}
                       >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="None" />
+                            <SelectValue placeholder={!watchedLocationId ? "Select a location first" : !hasCatalogItems ? "No items available" : "None"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>

@@ -75,6 +75,26 @@ export async function getSquareClientForLocation(lvLocationId: number): Promise<
 }
 
 /**
+ * Like getSquareClientForLocation but returns null instead of falling back to
+ * env-var credentials when no location-specific credentials are configured.
+ * Use this for catalog lookups so a location without Square credentials
+ * returns empty data rather than leaking another account's catalog.
+ */
+export async function getSquareClientForLocationStrict(lvLocationId: number): Promise<Client | null> {
+  try {
+    const creds = await storage.getLocationSquareConfig(lvLocationId);
+    if (creds?.accessToken && creds.accessToken.trim().length > 0) {
+      return buildSquareClient(creds.accessToken, creds.appId);
+    }
+    console.warn(`[Square Service] No Square credentials configured for location ${lvLocationId} — returning empty catalog`);
+    return null;
+  } catch (err) {
+    console.warn(`[Square Service] Error fetching credentials for location ${lvLocationId}:`, err);
+    return null;
+  }
+}
+
+/**
  * Returns the Square Location ID for the given LeagueVault location.
  * Uses the location's stored credential first, falls back to env vars.
  */
@@ -317,9 +337,13 @@ export async function createOrUpdateCustomer(name: string, email: string, phone?
 }
 
 export async function listCatalogCategories(locationId?: number | null) {
-  const client = await resolveSquareClient(locationId);
+  // When a specific location is requested, use strict credentials (no env-var fallback)
+  // so a misconfigured location returns empty data rather than another account's catalog.
+  const client = locationId != null
+    ? await getSquareClientForLocationStrict(locationId)
+    : await resolveSquareClient(null);
   if (!client) {
-    throw new Error('Square client not initialized');
+    return [];
   }
 
   try {
@@ -355,9 +379,13 @@ export async function listCatalogCategories(locationId?: number | null) {
 }
 
 export async function listCatalogItems(categoryId?: string, locationId?: number | null) {
-  const client = await resolveSquareClient(locationId);
+  // When a specific location is requested, use strict credentials (no env-var fallback)
+  // so a misconfigured location returns empty data rather than another account's catalog.
+  const client = locationId != null
+    ? await getSquareClientForLocationStrict(locationId)
+    : await resolveSquareClient(null);
   if (!client) {
-    throw new Error('Square client not initialized');
+    return [];
   }
 
   try {
