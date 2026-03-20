@@ -5,7 +5,7 @@ import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { createOrUpdateCustomer } from '../services/square.js';
 import { hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
-import { syncBowlerToBN, isBNConfigured } from '../services/bowlnow.js';
+import { syncBowlerToBN, isOrgBNConfigured, isBNConfigured } from '../services/bowlnow.js';
 
 const router = Router();
 
@@ -297,7 +297,13 @@ router.post("/", async (req, res) => {
             squareCustomerId: squareCustomer.id,
             active: true
           });
-          if (isBNConfigured()) {
+          const orgId = (req as any).user?.organizationId;
+          if (orgId) {
+            const orgConfig = await storage.getOrgIntegrations(orgId);
+            if (isOrgBNConfigured(orgConfig)) {
+              syncBowlerToBN(updated.id, orgConfig).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+            }
+          } else if (isBNConfigured()) {
             syncBowlerToBN(updated.id).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
           }
           return sendSuccess(res, updated, 201);
@@ -307,7 +313,13 @@ router.post("/", async (req, res) => {
       }
     }
 
-    if (isBNConfigured()) {
+    const createOrgId = (req as any).user?.organizationId;
+    if (createOrgId) {
+      const createOrgConfig = await storage.getOrgIntegrations(createOrgId);
+      if (isOrgBNConfigured(createOrgConfig)) {
+        syncBowlerToBN(created.id, createOrgConfig).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+      }
+    } else if (isBNConfigured()) {
       syncBowlerToBN(created.id).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
     }
     sendSuccess(res, created, 201);
@@ -375,7 +387,13 @@ router.patch("/:id", async (req, res) => {
       }
     }
 
-    if (isBNConfigured()) {
+    const updateOrgId = (req as any).user?.organizationId;
+    if (updateOrgId) {
+      const updateOrgConfig = await storage.getOrgIntegrations(updateOrgId);
+      if (isOrgBNConfigured(updateOrgConfig)) {
+        syncBowlerToBN(updated.id, updateOrgConfig).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+      }
+    } else if (isBNConfigured()) {
       syncBowlerToBN(updated.id).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
     }
     sendSuccess(res, updated);

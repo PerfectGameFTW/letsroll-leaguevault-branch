@@ -29,6 +29,7 @@ import SetPasswordPage from "@/pages/set-password-page";
 import ProfileSettingsPage from "@/pages/profile-settings-page";
 import ClaimBowlerPage from "@/pages/claim-bowler-page";
 import EmailTemplatesPage from "@/pages/email-templates-page";
+import IntegrationsPage from "@/pages/integrations-page";
 import { useEffect, useRef, FC } from "react";
 import { initializeSquare, warmUpSquareCard } from "./lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -248,6 +249,12 @@ function Router() {
         <AdminRouteGuard>
           <EmailTemplatesPage />
         </AdminRouteGuard>
+      </Route>
+
+      <Route path="/integrations">
+        <OrganizationAdminRouteGuard>
+          <IntegrationsPage />
+        </OrganizationAdminRouteGuard>
       </Route>
       
       {/* Fallback route */}

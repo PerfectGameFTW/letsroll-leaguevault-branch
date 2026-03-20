@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -43,6 +43,7 @@ interface NavItem {
   href: string;
   hasDropdown?: boolean;
   adminOnly?: boolean;
+  orgAdminOnly?: boolean;
   subItems?: NavItem[];
 }
 
@@ -96,6 +97,12 @@ const navItems: NavItem[] = [
     icon: ClipboardPlus,
     label: "Reports",
     href: "/reports"
+  },
+  {
+    icon: Plug,
+    label: "Integrations",
+    href: "/integrations",
+    orgAdminOnly: true
   },
   {
     icon: LayoutDashboard,
@@ -232,6 +239,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const userRole = currentUserResponse?.data?.role;
   const isAdmin = userRole === 'system_admin';
   const isSystemAdmin = userRole === 'system_admin';
+  const isOrgAdmin = userRole === 'org_admin';
+  const canSeeOrgAdminItems = (isOrgAdmin || isSystemAdmin) && !!userOrgId;
 
   const toggleSidebar = useCallback(() => {
     setIsCollapsed((prev: boolean) => !prev);
@@ -305,6 +314,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   <div className="space-y-2">
                     {navItems.map((item) => {
                       if (item.adminOnly && !isAdmin) return null;
+                      if (item.orgAdminOnly && !canSeeOrgAdminItems) return null;
                       if (item.href === '/bowler-dashboard' && !isSystemAdmin) return null;
                       
                       const isActive = location === item.href;

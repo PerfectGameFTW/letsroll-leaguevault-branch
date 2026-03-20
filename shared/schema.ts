@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, index, uniqueIndex, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, index, uniqueIndex, pgEnum, jsonb } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
@@ -251,6 +251,23 @@ export const users = pgTable("users", {
   locationIdx: index("users_location_idx").on(table.locationId),
 }));
 
+// Per-org integration configuration type
+export interface OrgIntegrations {
+  bowlnow?: {
+    enabled: boolean;
+    apiKey?: string;
+    locationId?: string;
+  };
+}
+
+export const orgIntegrationsSchema = z.object({
+  bowlnow: z.object({
+    enabled: z.boolean(),
+    apiKey: z.string().optional(),
+    locationId: z.string().optional(),
+  }).optional(),
+}).nullable().optional();
+
 // Organization table
 export const organizations = pgTable("organizations", {
   id: serial("id").primaryKey(),
@@ -265,6 +282,7 @@ export const organizations = pgTable("organizations", {
   logo: text("logo"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  integrations: jsonb("integrations").$type<OrgIntegrations>(),
 }, (table) => ({
   slugIdx: uniqueIndex("organization_slug_idx").on(table.slug),
 }));
@@ -632,6 +650,7 @@ export const insertOrganizationSchema = baseOrganizationSchema.extend({
   email: z.union([emailSchema, z.literal("")]).optional(),
   logo: z.string().optional(),
   active: z.boolean().default(true),
+  integrations: orgIntegrationsSchema,
 }).omit({ id: true, createdAt: true });
 
 // Type exports

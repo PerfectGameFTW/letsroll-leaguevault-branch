@@ -20,6 +20,7 @@ import userUpdateRouter from './user-update.js';
 import locationsRouter from './locations.js';
 import paymentSchedulesRouter from './payment-schedules.js';
 import bowlnowRouter from './bowlnow.js';
+import integrationsRouter from './integrations.js';
 
 export function registerRoutes(app: Express): void {
   console.log('[Routes] Registering API routes...');
@@ -54,6 +55,7 @@ export function registerRoutes(app: Express): void {
   app.use('/api/locations', locationsRouter);
   app.use('/api/payment-schedules', paymentSchedulesRouter);
   app.use('/api/bn', bowlnowRouter);
+  app.use('/api/integrations', integrationsRouter);
 
   console.log('[Routes] API routes registered');
 }

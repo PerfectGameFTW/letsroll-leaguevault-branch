@@ -18,6 +18,7 @@ import {
   type Location, type InsertLocation,
   type PaymentSchedule, type InsertPaymentSchedule,
   type UserRole,
+  type OrgIntegrations,
   emailTemplates,
   type EmailTemplate, type InsertEmailTemplate,
 } from "@shared/schema.js";
@@ -119,6 +120,8 @@ export interface IStorage {
   getUserOrganizations(userId: number): Promise<Organization[]>;
   setUserOrganization(userId: number, organizationId: number | null): Promise<User>;
   getOrganizationLeagues(organizationId: number): Promise<League[]>;
+  getOrgIntegrations(orgId: number): Promise<OrgIntegrations | null>;
+  updateOrgIntegrations(orgId: number, integrations: OrgIntegrations): Promise<Organization>;
   
   // Organization admin methods
   getOrganizationUsers(organizationId: number): Promise<User[]>;
@@ -1133,6 +1136,24 @@ export class DatabaseStorage implements IStorage {
       .from(leagues)
       .where(eq(leagues.organizationId, organizationId))
       .orderBy(leagues.name);
+  }
+
+  async getOrgIntegrations(orgId: number): Promise<OrgIntegrations | null> {
+    const [org] = await db
+      .select({ integrations: organizations.integrations })
+      .from(organizations)
+      .where(eq(organizations.id, orgId));
+    return (org?.integrations as OrgIntegrations | null) ?? null;
+  }
+
+  async updateOrgIntegrations(orgId: number, integrations: OrgIntegrations): Promise<Organization> {
+    const [result] = await db
+      .update(organizations)
+      .set({ integrations })
+      .where(eq(organizations.id, orgId))
+      .returning();
+    if (!result) throw new Error(`Organization with ID ${orgId} not found`);
+    return result;
   }
 
   // Organization admin methods

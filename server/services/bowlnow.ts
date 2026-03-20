@@ -1,7 +1,8 @@
 import { storage } from '../storage.js';
+import type { OrgIntegrations } from '@shared/schema.js';
 
 const BN_API_BASE = 'https://services.leadconnectorhq.com';
-const BN_LOCATION_ID = 'zQw4JcOJlKfJWCWvJ2pw';
+const DEFAULT_BN_LOCATION_ID = 'zQw4JcOJlKfJWCWvJ2pw';
 const BN_API_VERSION = '2021-07-28';
 
 const CUSTOM_FIELD_IDS = {
@@ -11,13 +12,21 @@ const CUSTOM_FIELD_IDS = {
   organization: 'poVtF90VhO1CZ2TdD6qQ',
 };
 
-function getApiKey(): string | undefined {
+function getGlobalApiKey(): string | undefined {
   return process.env.BN_API_KEY;
 }
 
-function getHeaders(): Record<string, string> {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error('[BowlNow] BN_API_KEY not configured');
+function resolveApiKey(orgConfig?: OrgIntegrations | null): string | undefined {
+  const orgKey = orgConfig?.bowlnow?.apiKey;
+  if (orgKey) return orgKey;
+  return getGlobalApiKey();
+}
+
+function resolveLocationId(orgConfig?: OrgIntegrations | null): string {
+  return orgConfig?.bowlnow?.locationId || DEFAULT_BN_LOCATION_ID;
+}
+
+function getHeaders(apiKey: string): Record<string, string> {
   return {
     'Authorization': `Bearer ${apiKey}`,
     'Version': BN_API_VERSION,
@@ -34,19 +43,32 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
 }
 
 export function isBNConfigured(): boolean {
-  return !!getApiKey();
+  return !!getGlobalApiKey();
 }
 
-export async function findContactByEmail(email: string): Promise<any | null> {
+export function isOrgBNConfigured(orgConfig: OrgIntegrations | null | undefined): boolean {
+  if (!orgConfig?.bowlnow?.enabled) return false;
+  return !!(orgConfig.bowlnow.apiKey || getGlobalApiKey());
+}
+
+export async function getOrgBNConfig(orgId: number): Promise<OrgIntegrations | null> {
+  return storage.getOrgIntegrations(orgId);
+}
+
+export async function findContactByEmail(email: string, orgConfig?: OrgIntegrations | null): Promise<any | null> {
   try {
+    const apiKey = resolveApiKey(orgConfig);
+    if (!apiKey) return null;
+    const locationId = resolveLocationId(orgConfig);
+
     const params = new URLSearchParams({
-      locationId: BN_LOCATION_ID,
+      locationId,
       query: email,
       limit: '1',
     });
     const response = await fetch(`${BN_API_BASE}/contacts/?${params}`, {
       method: 'GET',
-      headers: getHeaders(),
+      headers: getHeaders(apiKey),
     });
 
     if (!response.ok) {
@@ -72,10 +94,14 @@ export async function createContact(contactData: {
   email?: string;
   phone?: string;
   customFields?: { id: string; value: string | string[] }[];
-}): Promise<any | null> {
+}, orgConfig?: OrgIntegrations | null): Promise<any | null> {
   try {
+    const apiKey = resolveApiKey(orgConfig);
+    if (!apiKey) return null;
+    const locationId = resolveLocationId(orgConfig);
+
     const body: any = {
-      locationId: BN_LOCATION_ID,
+      locationId,
       firstName: contactData.firstName,
       lastName: contactData.lastName,
     };
@@ -87,7 +113,7 @@ export async function createContact(contactData: {
 
     const response = await fetch(`${BN_API_BASE}/contacts/`, {
       method: 'POST',
-      headers: getHeaders(),
+      headers: getHeaders(apiKey),
       body: JSON.stringify(body),
     });
 
@@ -112,8 +138,11 @@ export async function updateContact(contactId: string, contactData: {
   email?: string;
   phone?: string;
   customFields?: { id: string; value: string | string[] }[];
-}): Promise<any | null> {
+}, orgConfig?: OrgIntegrations | null): Promise<any | null> {
   try {
+    const apiKey = resolveApiKey(orgConfig);
+    if (!apiKey) return null;
+
     const body: any = {};
     if (contactData.firstName !== undefined) body.firstName = contactData.firstName;
     if (contactData.lastName !== undefined) body.lastName = contactData.lastName;
@@ -125,7 +154,7 @@ export async function updateContact(contactId: string, contactData: {
 
     const response = await fetch(`${BN_API_BASE}/contacts/${contactId}`, {
       method: 'PUT',
-      headers: getHeaders(),
+      headers: getHeaders(apiKey),
       body: JSON.stringify(body),
     });
 
@@ -144,10 +173,15 @@ export async function updateContact(contactId: string, contactData: {
   }
 }
 
-export async function syncBowlerToBN(bowlerId: number): Promise<{ success: boolean; contactId?: string; error?: string }> {
-  if (!isBNConfigured()) {
+export async function syncBowlerToBN(
+  bowlerId: number,
+  orgConfig?: OrgIntegrations | null,
+): Promise<{ success: boolean; contactId?: string; error?: string }> {
+  if (!isOrgBNConfigured(orgConfig) && !isBNConfigured()) {
     return { success: false, error: 'BowlNow not configured' };
   }
+
+  const effectiveConfig = orgConfig ?? null;
 
   try {
     const bowler = await storage.getBowler(bowlerId);
@@ -202,14 +236,14 @@ export async function syncBowlerToBN(bowlerId: number): Promise<{ success: boole
         email: bowler.email || undefined,
         phone: bowler.phone || undefined,
         customFields,
-      });
+      }, effectiveConfig);
       if (contact) {
         return { success: true, contactId: bowler.bnContactId };
       }
     }
 
     if (bowler.email) {
-      existingContact = await findContactByEmail(bowler.email);
+      existingContact = await findContactByEmail(bowler.email, effectiveConfig);
     }
 
     if (existingContact) {
@@ -218,7 +252,7 @@ export async function syncBowlerToBN(bowlerId: number): Promise<{ success: boole
         lastName,
         phone: bowler.phone || undefined,
         customFields,
-      });
+      }, effectiveConfig);
       if (contact) {
         await storage.updateBowlerBnContactId(bowlerId, existingContact.id);
         return { success: true, contactId: existingContact.id };
@@ -231,7 +265,7 @@ export async function syncBowlerToBN(bowlerId: number): Promise<{ success: boole
       email: bowler.email || undefined,
       phone: bowler.phone || undefined,
       customFields,
-    });
+    }, effectiveConfig);
 
     if (contact) {
       await storage.updateBowlerBnContactId(bowlerId, contact.id);
@@ -245,8 +279,10 @@ export async function syncBowlerToBN(bowlerId: number): Promise<{ success: boole
   }
 }
 
-export async function syncAllBowlersToBN(): Promise<{ total: number; synced: number; failed: number; errors: string[] }> {
-  if (!isBNConfigured()) {
+export async function syncAllBowlersToBN(
+  orgConfig?: OrgIntegrations | null,
+): Promise<{ total: number; synced: number; failed: number; errors: string[] }> {
+  if (!isOrgBNConfigured(orgConfig) && !isBNConfigured()) {
     return { total: 0, synced: 0, failed: 0, errors: ['BowlNow not configured'] };
   }
 
@@ -254,7 +290,7 @@ export async function syncAllBowlersToBN(): Promise<{ total: number; synced: num
   const results = { total: bowlers.length, synced: 0, failed: 0, errors: [] as string[] };
 
   for (const bowler of bowlers) {
-    const result = await syncBowlerToBN(bowler.id);
+    const result = await syncBowlerToBN(bowler.id, orgConfig);
     if (result.success) {
       results.synced++;
     } else {
