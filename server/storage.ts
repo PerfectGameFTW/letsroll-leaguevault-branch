@@ -1204,7 +1204,7 @@ export class DatabaseStorage implements IStorage {
     const orgLocations = await db.select().from(locations)
       .where(eq(locations.organizationId, orgId))
       .orderBy(locations.name);
-    return orgLocations.find(loc => !!(loc.squareCredentials as any)?.accessToken);
+    return orgLocations.find(loc => (loc.squareCredentials?.accessToken ?? '').trim().length > 0);
   }
 
   async getLocation(id: number): Promise<Location | undefined> {

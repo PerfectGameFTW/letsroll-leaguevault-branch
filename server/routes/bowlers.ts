@@ -291,21 +291,24 @@ router.post("/", async (req, res) => {
       try {
         const orgId = (req as any).user?.organizationId;
         const squareLocation = orgId ? await storage.getFirstSquareConfiguredLocation(orgId) : null;
-        const squareCustomer = await createOrUpdateCustomer(created.name, created.email, undefined, squareLocation?.id ?? null);
-
-        if (squareCustomer) {
-          const updated = await storage.updateBowler(created.id, {
-            ...created,
-            squareCustomerId: squareCustomer.id,
-            active: true
-          });
-          if (orgId) {
-            const orgConfig = await storage.getOrgIntegrations(orgId);
-            if (isOrgBNConfigured(orgConfig)) {
-              syncBowlerToBN(updated.id, orgConfig).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+        if (squareLocation?.id) {
+          const squareCustomer = await createOrUpdateCustomer(created.name, created.email, undefined, squareLocation.id);
+          if (squareCustomer) {
+            const updated = await storage.updateBowler(created.id, {
+              ...created,
+              squareCustomerId: squareCustomer.id,
+              active: true
+            });
+            if (orgId) {
+              const orgConfig = await storage.getOrgIntegrations(orgId);
+              if (isOrgBNConfigured(orgConfig)) {
+                syncBowlerToBN(updated.id, orgConfig).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+              }
             }
+            return sendSuccess(res, updated, 201);
           }
-          return sendSuccess(res, updated, 201);
+        } else {
+          console.log('[Bowlers] No Square-configured location found for org, skipping customer sync');
         }
       } catch (squareError) {
         console.error('[Bowlers] Square API error:', squareError);
@@ -373,12 +376,16 @@ router.patch("/:id", async (req, res) => {
         try {
           const patchOrgId = (req as any).user?.organizationId;
           const patchSquareLocation = patchOrgId ? await storage.getFirstSquareConfiguredLocation(patchOrgId) : null;
-          const squareCustomer = await createOrUpdateCustomer(updated.name, updated.email, undefined, patchSquareLocation?.id ?? null);
-          if (squareCustomer && squareCustomer.id !== updated.squareCustomerId) {
-            updated = await storage.updateBowler(id, {
-              ...updated,
-              squareCustomerId: squareCustomer.id,
-            });
+          if (patchSquareLocation?.id) {
+            const squareCustomer = await createOrUpdateCustomer(updated.name, updated.email, undefined, patchSquareLocation.id);
+            if (squareCustomer && squareCustomer.id !== updated.squareCustomerId) {
+              updated = await storage.updateBowler(id, {
+                ...updated,
+                squareCustomerId: squareCustomer.id,
+              });
+            }
+          } else {
+            console.log('[Bowlers] No Square-configured location found for org, skipping customer sync on update');
           }
         } catch (squareError) {
           console.error('[Bowlers] Square customer sync error on update:', squareError);

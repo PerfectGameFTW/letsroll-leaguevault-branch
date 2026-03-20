@@ -96,16 +96,28 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
             }
 
             if (updatedUser.email && (emailChanged || nameChanged || phoneChanged)) {
-              const userSquareLocationId = updatedUser.locationId
-                ?? (updatedUser.organizationId
-                  ? (await storage.getFirstSquareConfiguredLocation(updatedUser.organizationId))?.id ?? null
-                  : null);
-              const squareCustomer = await createOrUpdateCustomer(
-                updatedUser.name,
-                updatedUser.email,
-                updatedUser.phone,
-                userSquareLocationId
-              );
+              let resolvedSquareLocationId: number | null = null;
+              if (updatedUser.locationId) {
+                const locationCreds = await storage.getLocationSquareConfig(updatedUser.locationId);
+                if ((locationCreds?.accessToken ?? '').trim().length > 0) {
+                  resolvedSquareLocationId = updatedUser.locationId;
+                }
+              }
+              if (!resolvedSquareLocationId && updatedUser.organizationId) {
+                const sq = await storage.getFirstSquareConfiguredLocation(updatedUser.organizationId);
+                resolvedSquareLocationId = sq?.id ?? null;
+              }
+              if (!resolvedSquareLocationId) {
+                console.log('[User] No Square-configured location found, skipping Square customer sync');
+              }
+              const squareCustomer = resolvedSquareLocationId
+                ? await createOrUpdateCustomer(
+                    updatedUser.name,
+                    updatedUser.email,
+                    updatedUser.phone,
+                    resolvedSquareLocationId
+                  )
+                : null;
               if (squareCustomer && squareCustomer.id !== bowler.squareCustomerId) {
                 await storage.updateBowler(bowler.id, {
                   ...bowler,
