@@ -52,6 +52,10 @@ A full-stack bowling league management application with multi-tenant support for
 - **Networking panel**: internal port 5000 must have external port :80 assigned for the Dev URL preview to work
 
 ## Environment Variables
+All server-side env vars are validated at startup by `server/config.ts` (Zod-based).
+- **Required** (app exits if missing): `DATABASE_URL`, `SESSION_SECRET`
+- **Optional** (warning logged if missing): `SENDGRID_API_KEY`, `SENTRY_DSN`, `BN_API_KEY`, `SETUP_SECRET`
+- Import `{ env }` from `server/config` to access typed env values throughout server code.
 - `DATABASE_URL` - PostgreSQL connection string (runtime-managed)
 - `SQUARE_PROD_TOKEN` - Square production access token (priority 1)
 - `SQUARE_PRODUCTION_ACCESS_TOKEN` - Square production access token (priority 2, fallback)

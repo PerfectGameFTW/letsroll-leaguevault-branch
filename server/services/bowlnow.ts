@@ -1,5 +1,6 @@
 import { storage } from '../storage.js';
 import type { OrgIntegrations } from '@shared/schema.js';
+import { env } from '../config';
 
 const BN_API_BASE = 'https://services.leadconnectorhq.com';
 const DEFAULT_BN_LOCATION_ID = 'zQw4JcOJlKfJWCWvJ2pw';
@@ -13,7 +14,7 @@ const CUSTOM_FIELD_IDS = {
 };
 
 function getGlobalApiKey(): string | undefined {
-  return process.env.BN_API_KEY;
+  return env.BN_API_KEY;
 }
 
 function resolveApiKey(orgConfig?: OrgIntegrations | null): string | undefined {

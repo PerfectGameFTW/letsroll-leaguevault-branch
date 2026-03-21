@@ -8,6 +8,7 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { sanitizeUser } from "./utils/api.js";
+import { env } from "./config";
 
 function safeTokenCompare(provided: unknown, stored: unknown): boolean {
   if (typeof provided !== 'string' || typeof stored !== 'string') {
@@ -71,14 +72,8 @@ function isValidUser(user: any): user is SelectUser {
 }
 
 export function setupAuth(app: Express) {
-  if (!process.env.SESSION_SECRET) {
-    throw new Error(
-      "SESSION_SECRET must be set. Sessions cannot be secured without a signing key.",
-    );
-  }
-
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET,
+    secret: env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     store: new PostgresSessionStore({

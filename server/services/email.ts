@@ -1,15 +1,14 @@
 import sgMail from '@sendgrid/mail';
 import { storage } from '../storage.js';
+import { env } from '../config';
 
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const SENDGRID_API_KEY = env.SENDGRID_API_KEY;
 const FROM_EMAIL = 'noreply@leaguevault.app';
 const FROM_NAME = 'LeagueVault';
 
 if (SENDGRID_API_KEY) {
   sgMail.setApiKey(SENDGRID_API_KEY);
   console.log('[Email] SendGrid initialized');
-} else {
-  console.warn('[Email] SENDGRID_API_KEY not set — emails will not be sent');
 }
 
 export function getBaseUrl(): string {

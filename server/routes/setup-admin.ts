@@ -4,6 +4,7 @@ import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
 import { storage } from '../storage.js';
 import { hashPassword } from '../auth.js';
 import { passwordSchema } from '@shared/password-validation.js';
+import { env } from '../config';
 
 const router = Router();
 
@@ -12,7 +13,7 @@ const router = Router();
 // Requires a SETUP_SECRET header matching the SETUP_SECRET environment variable
 router.post('/create-first-admin', async (req: Request, res: Response) => {
   try {
-    const setupSecret = process.env.SETUP_SECRET;
+    const setupSecret = env.SETUP_SECRET;
     if (!setupSecret) {
       return sendError(res, 'This endpoint is disabled. Set SETUP_SECRET to enable it.', 403, 'ENDPOINT_DISABLED');
     }

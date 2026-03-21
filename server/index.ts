@@ -1,3 +1,4 @@
+import { env, isDev } from "./config";
 import * as Sentry from "@sentry/node";
 import express, { type Request, Response, NextFunction } from "express";
 import helmet from "helmet";
@@ -16,9 +17,7 @@ app.set("trust proxy", 1);
 const server = createServer(app);
 
 const HOST = '0.0.0.0';
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
-
-const isDev = process.env.NODE_ENV !== "production";
+const PORT = env.PORT;
 
 function getAllowedOrigins(): string[] {
   const origins: string[] = [];

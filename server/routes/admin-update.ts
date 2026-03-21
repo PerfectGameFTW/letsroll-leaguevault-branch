@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
 import { storage } from '../storage.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { env } from '../config';
 
 const router = Router();
 
@@ -80,7 +81,7 @@ router.patch('/users/:id/admin-status', requireAdmin, async (req: Request, res: 
 // Requires a SETUP_SECRET header matching the SETUP_SECRET environment variable
 router.post('/first-system-admin/:id', async (req: Request, res: Response) => {
   try {
-    const setupSecret = process.env.SETUP_SECRET;
+    const setupSecret = env.SETUP_SECRET;
     if (!setupSecret) {
       return sendError(res, 'This endpoint is disabled. Set SETUP_SECRET to enable it.', 403, 'ENDPOINT_DISABLED');
     }
