@@ -14,7 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Loader2, Plus, Search, Trash2, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
-import type { Payment, Bowler, League, PaginationMeta } from "@shared/schema";
+import type { Payment, Bowler, League, PaginationMeta, ApiResponse } from "@shared/schema";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -53,6 +53,12 @@ export default function PaymentsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const { toast } = useToast();
+
+  const { data: userResponse } = useQuery<ApiResponse<any>>({
+    queryKey: ["/api/user"],
+    staleTime: 1000 * 60 * 5,
+  });
+  const isAdmin = userResponse?.data?.role === 'system_admin' || userResponse?.data?.role === 'org_admin';
 
   const { data: leaguesResponse } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
@@ -270,7 +276,7 @@ export default function PaymentsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {payment.status === "paid" && payment.type === "credit_card" && (
+                          {payment.status === "paid" && payment.type === "credit_card" && isAdmin && (
                             <Button
                               size="icon"
                               variant="ghost"
@@ -281,19 +287,21 @@ export default function PaymentsPage() {
                               <RotateCcw className="h-4 w-4 text-destructive" />
                             </Button>
                           )}
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            title="Delete payment"
-                            onClick={() => setPaymentToDelete(payment.id)}
-                            disabled={deletePaymentMutation.isPending}
-                          >
-                            {deletePaymentMutation.isPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4 text-destructive" />
-                            )}
-                          </Button>
+                          {(payment.type !== "credit_card" || isAdmin) && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="Delete payment"
+                              onClick={() => setPaymentToDelete(payment.id)}
+                              disabled={deletePaymentMutation.isPending}
+                            >
+                              {deletePaymentMutation.isPending ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              )}
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

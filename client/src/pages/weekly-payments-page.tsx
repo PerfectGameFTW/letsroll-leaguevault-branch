@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
 import { startOfToday } from "date-fns";
-import type { League, Payment, Bowler, BowlerLeague } from "@shared/schema";
+import type { League, Payment, Bowler, BowlerLeague, ApiResponse } from "@shared/schema";
 import { useTeams } from "@/hooks/use-teams";
 import { useParams, Link } from "wouter";
 import { PaymentEntryRow } from "@/components/payment-entry-row";
@@ -66,6 +66,12 @@ export default function WeeklyPaymentsPage() {
     deletePaymentMutation,
     updatePaymentMutation,
   } = useWeeklyPayments(leagueId);
+
+  const { data: userResponse } = useQuery<ApiResponse<any>>({
+    queryKey: ["/api/user"],
+    staleTime: 1000 * 60 * 5,
+  });
+  const isAdmin = userResponse?.data?.role === 'system_admin' || userResponse?.data?.role === 'org_admin';
 
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
@@ -284,6 +290,7 @@ export default function WeeklyPaymentsPage() {
                     onStartEdit={handleStartEdit}
                     onDelete={setPaymentToDelete}
                     isDeletePending={deletePaymentMutation.isPending}
+                    isAdmin={isAdmin}
                   />
                 </div>
               )}

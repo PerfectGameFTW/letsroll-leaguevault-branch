@@ -18,6 +18,7 @@ interface PaymentHistoryTableProps {
   onStartEdit: (payment: Payment) => void;
   onDelete: (paymentId: number) => void;
   isDeletePending: boolean;
+  isAdmin?: boolean;
 }
 
 export const PaymentHistoryTable = memo(function PaymentHistoryTable({
@@ -26,6 +27,7 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
   onStartEdit,
   onDelete,
   isDeletePending,
+  isAdmin = false,
 }: PaymentHistoryTableProps) {
   return (
     <div className="rounded-md border">
@@ -72,18 +74,20 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
                         <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
                       </svg>
                     </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => onDelete(payment.id)}
-                      disabled={isDeletePending}
-                    >
-                      {isDeletePending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      )}
-                    </Button>
+                    {(payment.type !== 'credit_card' || isAdmin) && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => onDelete(payment.id)}
+                        disabled={isDeletePending}
+                      >
+                        {isDeletePending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        )}
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               );

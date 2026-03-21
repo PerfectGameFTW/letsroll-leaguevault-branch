@@ -194,8 +194,16 @@ router.delete("/:id", paymentWriteLimiter, async (req, res) => {
     if (isNaN(id)) {
       return sendError(res, "Invalid payment ID", 400, "INVALID_ID");
     }
-    
-    // Check if user has access to this payment
+
+    const payment = await storage.getPaymentById(id);
+    if (!payment) {
+      return sendError(res, "Payment not found", 404, "NOT_FOUND");
+    }
+
+    if (payment.type === 'credit_card' && req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
+      return sendError(res, "Only admins can delete credit card payments", 403, "FORBIDDEN");
+    }
+
     if (req.user?.role !== 'system_admin') {
       const hasAccess = await hasAccessToPayment(req, id);
       if (!hasAccess) {
@@ -205,7 +213,6 @@ router.delete("/:id", paymentWriteLimiter, async (req, res) => {
 
     await storage.deletePayment(id);
 
-    // Return a JSON response with success status
     sendSuccess(res, { message: "Payment deleted successfully" }, 200);
   } catch (error) {
     console.error('[Payments Route] Delete error:', error);
