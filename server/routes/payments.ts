@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage.js';
-import { insertPaymentSchema, partialPaymentSchema, type League } from "@shared/schema.js";
+import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema.js";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { refundPayment as squareRefund } from '../services/square.js';
@@ -38,27 +38,19 @@ router.get("/", async (req, res) => {
       }
     }
 
+    if (!isSystemAdmin && effectiveOrgId === null) {
+      return sendSuccess(res, []);
+    }
+
     const payments = await storage.getPayments(
       req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined,
       leagueId,
       req.query.teamId ? parseInt(req.query.teamId as string) : undefined,
       req.query.weekOf ? new Date(req.query.weekOf as string) : undefined,
+      effectiveOrgId ?? undefined,
     );
     
-    // Filter payments by organization using effectiveOrgId:
-    // - effectiveOrgId non-null: scope to that org (covers org admins, affiliated sysadmins, and explicit param)
-    // - effectiveOrgId null + sysadmin: return all (unaffiliated system admin)
-    // - effectiveOrgId null + non-sysadmin: return nothing (fail-safe, no org context)
-    let accessiblePayments = payments;
-    if (effectiveOrgId !== null) {
-      const orgLeagues: League[] = await storage.getLeagues(effectiveOrgId);
-      const orgLeagueIds = new Set(orgLeagues.map(l => l.id));
-      accessiblePayments = payments.filter(p => orgLeagueIds.has(p.leagueId));
-    } else if (!isSystemAdmin) {
-      accessiblePayments = [];
-    }
-    
-    sendSuccess(res, accessiblePayments);
+    sendSuccess(res, payments);
   } catch (error) {
     console.error('[Payments Route] Get error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch payments');

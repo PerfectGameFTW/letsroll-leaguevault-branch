@@ -130,48 +130,20 @@ router.get("/", async (req, res) => {
       ? (rawQueryOrgId ?? req.user?.organizationId ?? null)
       : (req.user?.organizationId ?? null);
 
-    // Fetch bowlers
-    const bowlers = await storage.getBowlers(teamId);
+    if (!teamId && !isSystemAdmin && effectiveOrgId === null) {
+      return sendSuccess(res, []);
+    }
+
+    const orgFilter = (!teamId && effectiveOrgId !== null) ? effectiveOrgId : undefined;
+    const bowlers = await storage.getBowlers(teamId, orgFilter);
     
     if (!bowlers || bowlers.length === 0) {
       return sendSuccess(res, []);
     }
 
-    // If no teamId provided, filter bowlers by organization
-    let accessibleBowlers = bowlers;
-
-    if (!teamId) {
-      if (isSystemAdmin && effectiveOrgId === null) {
-        // System admin with no org filter: return all bowlers
-        accessibleBowlers = bowlers;
-      } else if (effectiveOrgId === null) {
-        // Non-system-admin with no organizationId: return nothing (fail-safe)
-        return sendSuccess(res, []);
-      } else {
-        const [leagues, bowlerLeagues] = await Promise.all([
-          storage.getLeagues(effectiveOrgId),
-          storage.getBowlerLeagues(),
-        ]);
-
-        if (!leagues || leagues.length === 0) {
-          return sendSuccess(res, []);
-        }
-
-        const leagueIdSet = new Set(leagues.map(l => l.id));
-        const organizationBowlerIds = new Set(
-          bowlerLeagues
-            .filter(bl => leagueIdSet.has(bl.leagueId))
-            .map(bl => bl.bowlerId)
-        );
-
-        accessibleBowlers = bowlers.filter(b => organizationBowlerIds.has(b.id));
-      }
-    }
-
-    // Filter by IDs if provided
     const filteredBowlers = ids 
-      ? accessibleBowlers.filter(b => ids.includes(b.id))
-      : accessibleBowlers;
+      ? bowlers.filter(b => ids.includes(b.id))
+      : bowlers;
 
     const linkedBowlerIds = new Set(await storage.getLinkedBowlerIds());
 

@@ -110,14 +110,13 @@ export const resetQueries = async (queryKeys: string[]) => {
   );
 };
 
-// Prefetch initial data
-export const prefetchQueries = async () => {
+export const prefetchQueries = async (role: 'admin' | 'bowler') => {
   try {
-    await Promise.all([
-      queryClient.prefetchQuery({ queryKey: ['/api/leagues'] }),
-      queryClient.prefetchQuery({ queryKey: ['/api/teams'] }),
-      queryClient.prefetchQuery({ queryKey: ['/api/bowlers'] }),
-    ]);
+    if (role === 'admin') {
+      await queryClient.prefetchQuery({ queryKey: ['/api/leagues'] });
+    } else {
+      await queryClient.prefetchQuery({ queryKey: ['/api/bowler-leagues'] });
+    }
   } catch (error) {
     console.error('[Query] Error prefetching initial data:', error);
   }

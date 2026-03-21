@@ -40,7 +40,7 @@ export interface IStorage {
   deleteTeam(id: number): Promise<void>;
 
   // Bowler methods
-  getBowlers(teamId?: number): Promise<Bowler[]>;
+  getBowlers(teamId?: number, organizationId?: number): Promise<Bowler[]>;
   getBowler(id: number): Promise<Bowler | undefined>;
   createBowler(bowler: InsertBowler): Promise<Bowler>;
   updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler>;
@@ -56,7 +56,7 @@ export interface IStorage {
   deleteBowlerLeague(id: number): Promise<boolean>;
 
   // Payment methods
-  getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date): Promise<Payment[]>;
+  getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date, organizationId?: number): Promise<Payment[]>;
   getPaymentById(id: number): Promise<Payment | undefined>;
   getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined>;
   createPayment(payment: InsertPayment): Promise<Payment>;
@@ -230,7 +230,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Bowler methods
-  async getBowlers(teamId?: number): Promise<Bowler[]> {
+  async getBowlers(teamId?: number, organizationId?: number): Promise<Bowler[]> {
     if (teamId !== undefined) {
       return db
         .select({
@@ -246,6 +246,24 @@ export class DatabaseStorage implements IStorage {
         .from(bowlers)
         .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
         .where(eq(bowlerLeagues.teamId, teamId))
+        .orderBy(bowlers.order);
+    }
+    if (organizationId !== undefined) {
+      return db
+        .selectDistinct({
+          id: bowlers.id,
+          name: bowlers.name,
+          email: bowlers.email,
+          phone: bowlers.phone,
+          active: bowlers.active,
+          order: bowlers.order,
+          squareCustomerId: bowlers.squareCustomerId,
+          bnContactId: bowlers.bnContactId,
+        })
+        .from(bowlers)
+        .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
+        .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
+        .where(eq(leagues.organizationId, organizationId))
         .orderBy(bowlers.order);
     }
     return db.select().from(bowlers).orderBy(bowlers.order);
@@ -380,16 +398,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Payment methods
-  async getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date): Promise<Payment[]> {
+  async getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date, organizationId?: number): Promise<Payment[]> {
     try {
       console.log('[Storage] Getting payments with filters:', {
         bowlerId,
         leagueId,
         teamId,
-        weekOf: weekOf?.toISOString()
+        weekOf: weekOf?.toISOString(),
+        organizationId,
       });
 
-      const query = db.select().from(payments);
       const conditions = [];
 
       if (bowlerId !== undefined) {
@@ -399,7 +417,6 @@ export class DatabaseStorage implements IStorage {
         conditions.push(eq(payments.leagueId, leagueId));
       }
       if (teamId !== undefined) {
-        // If teamId is provided, we need to lookup bowlers via bowler_leagues who are on this team
         const bowlerLeaguesSubquery = db
           .select({ bowler_id: bowlerLeagues.bowlerId })
           .from(bowlerLeagues)
@@ -418,6 +435,11 @@ export class DatabaseStorage implements IStorage {
         endDate.setHours(23, 59, 59, 999);
         conditions.push(sql`${payments.weekOf} BETWEEN ${startDate} AND ${endDate}`);
       }
+      if (organizationId !== undefined) {
+        conditions.push(sql`${payments.leagueId} IN (SELECT "id" FROM ${leagues} WHERE ${leagues.organizationId} = ${organizationId})`);
+      }
+
+      const query = db.select().from(payments);
 
       if (conditions.length > 0) {
         query.where(and(...conditions));

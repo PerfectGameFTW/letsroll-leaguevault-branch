@@ -2,35 +2,7 @@ import { Switch, Route, Redirect } from "wouter";
 import { queryClient, prefetchQueries } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import NotFound from "@/pages/not-found";
-import HomePage from "@/pages/home-page";
-import LeaguesPage from "@/pages/leagues-page";
-import LeagueViewPage from "@/pages/league-view-page";
-import TeamsPage from "@/pages/teams-page";
-import TeamViewPage from "@/pages/team-view-page";
-import BowlersPage from "@/pages/bowlers-page";
-import BowlerViewPage from "@/pages/bowler-view-page";
-import BowlerScoresPage from "@/pages/bowler-scores-page";
-import LeagueScoresPage from "@/pages/league-scores-page";
-import PaymentsPage from "@/pages/payments-page";
-import PaymentHistoryPage from "@/pages/payment-history-page";
-import WeeklyPaymentsPage from "@/pages/weekly-payments-page";
-import ReportsPage from "@/pages/reports-page";
-import LeaguePastDuePage from "@/pages/league-past-due-page";
-import PastDuePage from "@/pages/past-due-page";
-import SignUpPage from "@/pages/sign-up-page";
-import LoginPage from "@/pages/login-page";
-import BowlerDashboardPage from "@/pages/bowler-dashboard-page";
-import AdminLinkBowlerPage from "@/pages/admin-link-bowler";
-import OrganizationsPage from "@/pages/organizations-page";
-import LocationsPage from "@/pages/locations-page";
-import UsersPage from "@/pages/users-page";
-import SetPasswordPage from "@/pages/set-password-page";
-import ProfileSettingsPage from "@/pages/profile-settings-page";
-import ClaimBowlerPage from "@/pages/claim-bowler-page";
-import EmailTemplatesPage from "@/pages/email-templates-page";
-import IntegrationsPage from "@/pages/integrations-page";
-import { useEffect, FC } from "react";
+import { lazy, Suspense, useEffect, FC } from "react";
 import { AdminRouteGuard } from "@/components/admin-route-guard";
 import { OrganizationRouteGuard } from "@/components/organization-route-guard";
 import { OrganizationAdminRouteGuard } from "@/components/organization-admin-route-guard";
@@ -40,15 +12,50 @@ import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import type { ApiResponse } from "@shared/schema";
+import NotFound from "@/pages/not-found";
+import LoginPage from "@/pages/login-page";
 
-// Root redirect handler component
+const HomePage = lazy(() => import("@/pages/home-page"));
+const LeaguesPage = lazy(() => import("@/pages/leagues-page"));
+const LeagueViewPage = lazy(() => import("@/pages/league-view-page"));
+const TeamsPage = lazy(() => import("@/pages/teams-page"));
+const TeamViewPage = lazy(() => import("@/pages/team-view-page"));
+const BowlersPage = lazy(() => import("@/pages/bowlers-page"));
+const BowlerViewPage = lazy(() => import("@/pages/bowler-view-page"));
+const BowlerScoresPage = lazy(() => import("@/pages/bowler-scores-page"));
+const LeagueScoresPage = lazy(() => import("@/pages/league-scores-page"));
+const PaymentsPage = lazy(() => import("@/pages/payments-page"));
+const PaymentHistoryPage = lazy(() => import("@/pages/payment-history-page"));
+const WeeklyPaymentsPage = lazy(() => import("@/pages/weekly-payments-page"));
+const ReportsPage = lazy(() => import("@/pages/reports-page"));
+const LeaguePastDuePage = lazy(() => import("@/pages/league-past-due-page"));
+const PastDuePage = lazy(() => import("@/pages/past-due-page"));
+const SignUpPage = lazy(() => import("@/pages/sign-up-page"));
+const BowlerDashboardPage = lazy(() => import("@/pages/bowler-dashboard-page"));
+const AdminLinkBowlerPage = lazy(() => import("@/pages/admin-link-bowler"));
+const OrganizationsPage = lazy(() => import("@/pages/organizations-page"));
+const LocationsPage = lazy(() => import("@/pages/locations-page"));
+const UsersPage = lazy(() => import("@/pages/users-page"));
+const SetPasswordPage = lazy(() => import("@/pages/set-password-page"));
+const ProfileSettingsPage = lazy(() => import("@/pages/profile-settings-page"));
+const ClaimBowlerPage = lazy(() => import("@/pages/claim-bowler-page"));
+const EmailTemplatesPage = lazy(() => import("@/pages/email-templates-page"));
+const IntegrationsPage = lazy(() => import("@/pages/integrations-page"));
+
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center h-[60vh]">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    </div>
+  );
+}
+
 const RootRedirectHandler: FC = () => {
   const [, navigate] = useLocation();
   
-  // Fetch current user to check authentication status
   const { data: currentUserResponse, isLoading, error } = useQuery<ApiResponse<any>>({
     queryKey: ['/api/user'],
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 
   useEffect(() => {
@@ -72,13 +79,8 @@ const RootRedirectHandler: FC = () => {
     }
   }, [isLoading, error, currentUserResponse, navigate]);
 
-  // Show loading state while checking authentication
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return <PageLoader />;
   }
 
   return null;
@@ -92,172 +94,180 @@ function Router() {
 
   useEffect(() => {
     if (userData?.data) {
-      prefetchQueries().catch(console.error);
+      const user = userData.data;
+      const isAdmin = user.role === 'system_admin' || user.role === 'org_admin';
+      if (isAdmin) {
+        prefetchQueries('admin').catch(console.error);
+      } else if (user.bowlerId) {
+        prefetchQueries('bowler').catch(console.error);
+      }
     }
   }, [userData]);
 
   return (
-    <Switch>
-      {/* Public routes */}
-      <Route path="/sign-up" component={SignUpPage} />
-      <Route path="/signup" component={SignUpPage} />
-      <Route path="/login" component={LoginPage} />
-      <Route path="/set-password" component={SetPasswordPage} />
-      <Route path="/claim-bowler">
-        <AuthRouteGuard>
-          <ClaimBowlerPage />
-        </AuthRouteGuard>
-      </Route>
-      <Route path="/not-found" component={NotFound} />
+    <Suspense fallback={<PageLoader />}>
+      <Switch>
+        {/* Public routes */}
+        <Route path="/sign-up" component={SignUpPage} />
+        <Route path="/signup" component={SignUpPage} />
+        <Route path="/login" component={LoginPage} />
+        <Route path="/set-password" component={SetPasswordPage} />
+        <Route path="/claim-bowler">
+          <AuthRouteGuard>
+            <ClaimBowlerPage />
+          </AuthRouteGuard>
+        </Route>
+        <Route path="/not-found" component={NotFound} />
 
-      {/* Root route with redirect handler */}
-      <Route path="/" component={RootRedirectHandler} />
+        {/* Root route with redirect handler */}
+        <Route path="/" component={RootRedirectHandler} />
 
-      {/* System Admin specific routes */}
-      <Route path="/bowler-dashboard">
-        <AuthRouteGuard>
-          <BowlerDashboardPage />
-        </AuthRouteGuard>
-      </Route>
-      
-      <Route path="/payment-history">
-        <AuthRouteGuard>
-          <PaymentHistoryPage />
-        </AuthRouteGuard>
-      </Route>
+        {/* System Admin specific routes */}
+        <Route path="/bowler-dashboard">
+          <AuthRouteGuard>
+            <BowlerDashboardPage />
+          </AuthRouteGuard>
+        </Route>
+        
+        <Route path="/payment-history">
+          <AuthRouteGuard>
+            <PaymentHistoryPage />
+          </AuthRouteGuard>
+        </Route>
 
-      <Route path="/profile">
-        <AuthRouteGuard>
-          <ProfileSettingsPage />
-        </AuthRouteGuard>
-      </Route>
+        <Route path="/profile">
+          <AuthRouteGuard>
+            <ProfileSettingsPage />
+          </AuthRouteGuard>
+        </Route>
 
-      {/* Organization-specific routes */}
-      <Route path="/home">
-        <OrganizationRouteGuard>
-          <HomePage />
-        </OrganizationRouteGuard>
-      </Route>
-      
-      <Route path="/locations">
-        <OrganizationRouteGuard>
-          <LocationsPage />
-        </OrganizationRouteGuard>
-      </Route>
-      
-      <Route path="/leagues">
-        <OrganizationRouteGuard>
-          <LeaguesPage />
-        </OrganizationRouteGuard>
-      </Route>
-      
-      <Route path="/leagues/:leagueId">
-        <OrganizationRouteGuard>
-          <LeagueViewPage />
-        </OrganizationRouteGuard>
-      </Route>
-      
-      <Route path="/leagues/:leagueId/teams">
-        <OrganizationRouteGuard>
-          <TeamsPage />
-        </OrganizationRouteGuard>
-      </Route>
-      
-      <Route path="/leagues/:leagueId/scores">
-        <OrganizationRouteGuard>
-          <LeagueScoresPage />
-        </OrganizationRouteGuard>
-      </Route>
-      
-      <Route path="/teams/:teamId">
-        <OrganizationRouteGuard>
-          <TeamViewPage />
-        </OrganizationRouteGuard>
-      </Route>
-      
-      <Route path="/bowlers">
-        <OrganizationRouteGuard>
-          <BowlersPage />
-        </OrganizationRouteGuard>
-      </Route>
-      
-      <Route path="/bowlers/:bowlerId">
-        <OrganizationRouteGuard>
-          <BowlerViewPage />
-        </OrganizationRouteGuard>
-      </Route>
-      
-      <Route path="/bowlers/:bowlerId/scores">
-        <OrganizationRouteGuard>
-          <BowlerScoresPage />
-        </OrganizationRouteGuard>
-      </Route>
+        {/* Organization-specific routes */}
+        <Route path="/home">
+          <OrganizationRouteGuard>
+            <HomePage />
+          </OrganizationRouteGuard>
+        </Route>
+        
+        <Route path="/locations">
+          <OrganizationRouteGuard>
+            <LocationsPage />
+          </OrganizationRouteGuard>
+        </Route>
+        
+        <Route path="/leagues">
+          <OrganizationRouteGuard>
+            <LeaguesPage />
+          </OrganizationRouteGuard>
+        </Route>
+        
+        <Route path="/leagues/:leagueId">
+          <OrganizationRouteGuard>
+            <LeagueViewPage />
+          </OrganizationRouteGuard>
+        </Route>
+        
+        <Route path="/leagues/:leagueId/teams">
+          <OrganizationRouteGuard>
+            <TeamsPage />
+          </OrganizationRouteGuard>
+        </Route>
+        
+        <Route path="/leagues/:leagueId/scores">
+          <OrganizationRouteGuard>
+            <LeagueScoresPage />
+          </OrganizationRouteGuard>
+        </Route>
+        
+        <Route path="/teams/:teamId">
+          <OrganizationRouteGuard>
+            <TeamViewPage />
+          </OrganizationRouteGuard>
+        </Route>
+        
+        <Route path="/bowlers">
+          <OrganizationRouteGuard>
+            <BowlersPage />
+          </OrganizationRouteGuard>
+        </Route>
+        
+        <Route path="/bowlers/:bowlerId">
+          <OrganizationRouteGuard>
+            <BowlerViewPage />
+          </OrganizationRouteGuard>
+        </Route>
+        
+        <Route path="/bowlers/:bowlerId/scores">
+          <OrganizationRouteGuard>
+            <BowlerScoresPage />
+          </OrganizationRouteGuard>
+        </Route>
 
-      {/* Organization Admin routes */}
-      <Route path="/leagues/:leagueId/weekly-payments">
-        <OrganizationAdminRouteGuard>
-          <WeeklyPaymentsPage />
-        </OrganizationAdminRouteGuard>
-      </Route>
-      
-      <Route path="/payments">
-        <OrganizationAdminRouteGuard>
-          <PaymentsPage />
-        </OrganizationAdminRouteGuard>
-      </Route>
-      
-      <Route path="/reports">
-        <OrganizationAdminRouteGuard>
-          <ReportsPage />
-        </OrganizationAdminRouteGuard>
-      </Route>
-      
-      <Route path="/reports/leagues/:leagueId/past-due">
-        <OrganizationAdminRouteGuard>
-          <LeaguePastDuePage />
-        </OrganizationAdminRouteGuard>
-      </Route>
-      
-      <Route path="/reports/past-due">
-        <OrganizationAdminRouteGuard>
-          <PastDuePage />
-        </OrganizationAdminRouteGuard>
-      </Route>
+        {/* Organization Admin routes */}
+        <Route path="/leagues/:leagueId/weekly-payments">
+          <OrganizationAdminRouteGuard>
+            <WeeklyPaymentsPage />
+          </OrganizationAdminRouteGuard>
+        </Route>
+        
+        <Route path="/payments">
+          <OrganizationAdminRouteGuard>
+            <PaymentsPage />
+          </OrganizationAdminRouteGuard>
+        </Route>
+        
+        <Route path="/reports">
+          <OrganizationAdminRouteGuard>
+            <ReportsPage />
+          </OrganizationAdminRouteGuard>
+        </Route>
+        
+        <Route path="/reports/leagues/:leagueId/past-due">
+          <OrganizationAdminRouteGuard>
+            <LeaguePastDuePage />
+          </OrganizationAdminRouteGuard>
+        </Route>
+        
+        <Route path="/reports/past-due">
+          <OrganizationAdminRouteGuard>
+            <PastDuePage />
+          </OrganizationAdminRouteGuard>
+        </Route>
 
-      {/* System Admin routes */}
-      <Route path="/organizations">
-        <AdminRouteGuard>
-          <OrganizationsPage />
-        </AdminRouteGuard>
-      </Route>
-      
-      <Route path="/admin/link-bowler">
-        <AdminRouteGuard>
-          <AdminLinkBowlerPage />
-        </AdminRouteGuard>
-      </Route>
+        {/* System Admin routes */}
+        <Route path="/organizations">
+          <AdminRouteGuard>
+            <OrganizationsPage />
+          </AdminRouteGuard>
+        </Route>
+        
+        <Route path="/admin/link-bowler">
+          <AdminRouteGuard>
+            <AdminLinkBowlerPage />
+          </AdminRouteGuard>
+        </Route>
 
-      <Route path="/users">
-        <AdminRouteGuard>
-          <UsersPage />
-        </AdminRouteGuard>
-      </Route>
+        <Route path="/users">
+          <AdminRouteGuard>
+            <UsersPage />
+          </AdminRouteGuard>
+        </Route>
 
-      <Route path="/email-templates">
-        <AdminRouteGuard>
-          <EmailTemplatesPage />
-        </AdminRouteGuard>
-      </Route>
+        <Route path="/email-templates">
+          <AdminRouteGuard>
+            <EmailTemplatesPage />
+          </AdminRouteGuard>
+        </Route>
 
-      <Route path="/integrations">
-        <OrganizationAdminRouteGuard>
-          <IntegrationsPage />
-        </OrganizationAdminRouteGuard>
-      </Route>
-      
-      {/* Fallback route */}
-      <Route component={NotFound} />
-    </Switch>
+        <Route path="/integrations">
+          <OrganizationAdminRouteGuard>
+            <IntegrationsPage />
+          </OrganizationAdminRouteGuard>
+        </Route>
+        
+        {/* Fallback route */}
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
