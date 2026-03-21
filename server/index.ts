@@ -10,6 +10,7 @@ import { storage } from './storage';
 import path from 'path';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
+import { ensureUserAvatarsTable, migrateLocalAvatarsToDB } from './migrations/migrate-avatars';
 
 const app = express();
 app.set("trust proxy", 1);
@@ -244,6 +245,13 @@ async function startServer() {
     });
 
     if (dbConnected) {
+      try {
+        await ensureUserAvatarsTable();
+        await migrateLocalAvatarsToDB();
+      } catch (error) {
+        console.error('[Server] Error running avatar migration:', error);
+      }
+
       try {
         await paymentScheduler.initialize();
         console.log('[Server] Schedulers initialized');
