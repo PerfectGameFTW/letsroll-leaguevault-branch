@@ -31,6 +31,16 @@ A full-stack bowling league management application with multi-tenant support for
 - Driver: standard `pg` Pool
 - Indexes: payments(bowler_id, league_id, week_of), users(bowler_id), teams unique(league_id, number)
 
+## Server-Side Pagination
+- `GET /api/payments` supports optional `page` and `limit` query params for server-side pagination
+- When `page` is present, returns `{ success, data, pagination: { page, limit, total, totalPages } }`
+- When `page` is absent, returns the traditional `{ success, data }` array format (backward compatible)
+- Pagination infrastructure in `server/utils/api.ts`: `sendPaginatedSuccess()` and `parsePaginationParams()`
+- Storage layer: `getPaymentsPaginated()` method in `IStorage` / `DatabaseStorage`
+- Shared types: `PaginationMeta`, `PaginatedResult<T>` in `shared/schema.ts`
+- Admin payments page (`client/src/pages/payments-page.tsx`) uses paginated API with page controls
+- Limit is capped at 100 per page server-side; default is 50
+
 ## Workflows
 - **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5000)
 

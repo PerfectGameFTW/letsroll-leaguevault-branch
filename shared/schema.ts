@@ -723,15 +723,22 @@ export interface ApiResponse<T> {
   };
 }
 
+export interface PaginationMeta {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  pagination: PaginationMeta;
+}
+
 export interface ApiListResponse<T> {
   success: boolean;
   data: T[];
-  pagination?: {
-    currentPage: number;
-    totalPages: number;
-    totalItems: number;
-    itemsPerPage: number;
-  };
+  pagination?: PaginationMeta;
   error?: {
     message: string;
     code?: string;

@@ -2,9 +2,9 @@ import { eq, and, desc, sql, isNull, isNotNull, inArray } from "drizzle-orm";
 import { db } from "./db.js";
 import {
   leagues, teams, bowlers, bowlerLeagues, payments, games, scores,
-  users, // Add users table import
-  paymentSchedules, // Add paymentSchedules table import
-  organizations, // Add organizations table import
+  users,
+  paymentSchedules,
+  organizations,
   locations,
   type League, type InsertLeague,
   type Team, type InsertTeam,
@@ -20,6 +20,7 @@ import {
   type UserRole,
   type OrgIntegrations,
   type LocationSquareCredentials,
+  type PaginatedResult,
   emailTemplates,
   type EmailTemplate, type InsertEmailTemplate,
 } from "@shared/schema.js";
@@ -57,6 +58,7 @@ export interface IStorage {
 
   // Payment methods
   getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date, organizationId?: number): Promise<Payment[]>;
+  getPaymentsPaginated(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId?: number }, page: number, limit: number): Promise<PaginatedResult<Payment>>;
   getPaymentById(id: number): Promise<Payment | undefined>;
   getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined>;
   createPayment(payment: InsertPayment): Promise<Payment>;
@@ -466,6 +468,71 @@ export class DatabaseStorage implements IStorage {
       console.error('[Storage] Error getting payments:', error);
       throw error;
     }
+  }
+
+  async getPaymentsPaginated(
+    filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId?: number },
+    page: number,
+    limit: number
+  ): Promise<PaginatedResult<Payment>> {
+    const conditions = [];
+
+    if (filters.bowlerId !== undefined) {
+      conditions.push(eq(payments.bowlerId, filters.bowlerId));
+    }
+    if (filters.leagueId !== undefined) {
+      conditions.push(eq(payments.leagueId, filters.leagueId));
+    }
+    if (filters.teamId !== undefined) {
+      const bowlerLeaguesSubquery = db
+        .select({ bowler_id: bowlerLeagues.bowlerId })
+        .from(bowlerLeagues)
+        .where(and(
+          eq(bowlerLeagues.teamId, filters.teamId),
+          filters.leagueId !== undefined ? eq(bowlerLeagues.leagueId, filters.leagueId) : undefined
+        ))
+        .as('bl');
+      conditions.push(sql`${payments.bowlerId} IN (SELECT "bowler_id" FROM ${bowlerLeaguesSubquery})`);
+    }
+    if (filters.weekOf !== undefined) {
+      const startDate = new Date(filters.weekOf);
+      startDate.setHours(0, 0, 0, 0);
+      const endDate = new Date(filters.weekOf);
+      endDate.setHours(23, 59, 59, 999);
+      conditions.push(sql`${payments.weekOf} BETWEEN ${startDate} AND ${endDate}`);
+    }
+    if (filters.organizationId !== undefined) {
+      conditions.push(sql`${payments.leagueId} IN (SELECT "id" FROM ${leagues} WHERE ${leagues.organizationId} = ${filters.organizationId})`);
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(payments)
+      .where(whereClause);
+    const total = Number(countResult?.count ?? 0);
+
+    const offset = (page - 1) * limit;
+    const query = db.select().from(payments);
+    if (whereClause) {
+      query.where(whereClause);
+    }
+    query.orderBy(desc(payments.weekOf));
+    query.limit(limit);
+    query.offset(offset);
+
+    const items = await query;
+
+    return {
+      items,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async getPaymentById(id: number): Promise<Payment | undefined> {

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { storage } from '../storage.js';
 import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema.js";
 import { z } from "zod";
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, sendPaginatedSuccess, parsePaginationParams } from '../utils/api.js';
 import { refundPayment as squareRefund } from '../services/square.js';
 import { hasAccessToPayment, requireOrganizationAccess } from '../utils/access-control.js';
 import { paymentWriteLimiter } from '../middleware/rate-limit.js';
@@ -42,12 +42,27 @@ router.get("/", async (req, res) => {
       return sendSuccess(res, []);
     }
 
-    const payments = await storage.getPayments(
-      req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined,
+    const filters = {
+      bowlerId: req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined,
       leagueId,
-      req.query.teamId ? parseInt(req.query.teamId as string) : undefined,
-      req.query.weekOf ? new Date(req.query.weekOf as string) : undefined,
-      effectiveOrgId ?? undefined,
+      teamId: req.query.teamId ? parseInt(req.query.teamId as string) : undefined,
+      weekOf: req.query.weekOf ? new Date(req.query.weekOf as string) : undefined,
+      organizationId: effectiveOrgId ?? undefined,
+    };
+
+    const paginationParams = parsePaginationParams(req.query);
+
+    if (paginationParams) {
+      const result = await storage.getPaymentsPaginated(filters, paginationParams.page, paginationParams.limit);
+      return sendPaginatedSuccess(res, result.items, result.pagination);
+    }
+
+    const payments = await storage.getPayments(
+      filters.bowlerId,
+      filters.leagueId,
+      filters.teamId,
+      filters.weekOf,
+      filters.organizationId,
     );
     
     sendSuccess(res, payments);

@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { ZodError } from 'zod';
-import { type User, type Organization } from '@shared/schema.js';
+import { type User, type Organization, type PaginationMeta } from '@shared/schema.js';
 
 export type SanitizedUser = Omit<User, 'password' | 'inviteToken' | 'inviteTokenExpiry'>;
 
@@ -36,6 +36,26 @@ export function sendSuccess<T>(res: Response, data: T, status = 200) {
     data
   };
   res.status(status).json(response);
+}
+
+export function sendPaginatedSuccess<T>(res: Response, data: T[], pagination: PaginationMeta, status = 200) {
+  res.status(status).json({
+    success: true,
+    data,
+    pagination,
+  });
+}
+
+export function parsePaginationParams(query: Record<string, any>): { page: number; limit: number } | null {
+  const page = query.page ? parseInt(query.page as string) : undefined;
+  const limit = query.limit ? parseInt(query.limit as string) : undefined;
+
+  if (page === undefined && limit === undefined) return null;
+
+  const safePage = (page && !isNaN(page) && page > 0) ? page : 1;
+  const safeLimit = (limit && !isNaN(limit) && limit > 0) ? Math.min(limit, 100) : 50;
+
+  return { page: safePage, limit: safeLimit };
 }
 
 export function sendError(
