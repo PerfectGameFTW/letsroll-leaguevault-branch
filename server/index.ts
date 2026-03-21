@@ -240,10 +240,6 @@ async function startServer() {
       console.log('[Server] Database connected');
     }
 
-    server.listen({ port: PORT, host: HOST }, () => {
-      console.log(`[Server] Running at http://${HOST}:${PORT}`);
-    });
-
     if (dbConnected) {
       try {
         await ensureUserAvatarsTable();
@@ -251,7 +247,13 @@ async function startServer() {
       } catch (error) {
         console.error('[Server] Error running avatar migration:', error);
       }
+    }
 
+    server.listen({ port: PORT, host: HOST }, () => {
+      console.log(`[Server] Running at http://${HOST}:${PORT}`);
+    });
+
+    if (dbConnected) {
       try {
         await paymentScheduler.initialize();
         console.log('[Server] Schedulers initialized');
