@@ -23,13 +23,13 @@ function getAllowedOrigins(): string[] {
   const origins: string[] = [];
   origins.push('https://leaguevault.app');
   if (isDev) {
-    if (process.env.REPLIT_DOMAINS) {
-      for (const domain of process.env.REPLIT_DOMAINS.split(',')) {
+    if (env.REPLIT_DOMAINS) {
+      for (const domain of env.REPLIT_DOMAINS.split(',')) {
         origins.push(`https://${domain}`);
       }
     }
-    if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
-      origins.push(`https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`);
+    if (env.REPL_SLUG && env.REPL_OWNER) {
+      origins.push(`https://${env.REPL_SLUG}.${env.REPL_OWNER}.repl.co`);
     }
     origins.push('http://localhost:5000');
     origins.push('http://localhost:5173');
@@ -170,7 +170,7 @@ app.all('/api/*', (req, res) => {
   });
 });
 
-if (process.env.NODE_ENV !== "production") {
+if (isDev) {
   setupVite(app, server)
     .then(() => {
       console.log('[Server] Vite middleware ready');

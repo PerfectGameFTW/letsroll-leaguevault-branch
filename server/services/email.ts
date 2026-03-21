@@ -12,12 +12,12 @@ if (SENDGRID_API_KEY) {
 }
 
 export function getBaseUrl(): string {
-  if (process.env.REPLIT_DOMAINS) {
-    const domains = process.env.REPLIT_DOMAINS.split(',');
+  if (env.REPLIT_DOMAINS) {
+    const domains = env.REPLIT_DOMAINS.split(',');
     return `https://${domains[0]}`;
   }
-  if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
-    return `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+  if (env.REPL_SLUG && env.REPL_OWNER) {
+    return `https://${env.REPL_SLUG}.${env.REPL_OWNER}.repl.co`;
   }
   return 'https://leaguevault.app';
 }

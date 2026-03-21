@@ -8,7 +8,7 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { sanitizeUser } from "./utils/api.js";
-import { env } from "./config";
+import { env, isDev } from "./config";
 
 function safeTokenCompare(provided: unknown, stored: unknown): boolean {
   if (typeof provided !== 'string' || typeof stored !== 'string') {
@@ -83,8 +83,8 @@ export function setupAuth(app: Express) {
       tableName: 'session'
     }),
     cookie: {
-      secure: process.env.NODE_ENV === "production" || !!process.env.REPLIT_DEPLOYMENT || !!process.env.REPLIT_DOMAINS,
-      sameSite: process.env.REPLIT_DOMAINS ? "none" as const : "lax" as const,
+      secure: !isDev || !!env.REPLIT_DEPLOYMENT || !!env.REPLIT_DOMAINS,
+      sameSite: env.REPLIT_DOMAINS ? "none" as const : "lax" as const,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       httpOnly: true
     }
