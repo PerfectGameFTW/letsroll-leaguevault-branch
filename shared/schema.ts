@@ -259,6 +259,13 @@ export const users = pgTable("users", {
   locationIdx: index("users_location_idx").on(table.locationId),
 }));
 
+export const userAvatars = pgTable("user_avatars", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  data: text("data").notNull(),
+  mimeType: text("mime_type").notNull(),
+});
+
 // Per-org integration configuration type
 export interface OrgIntegrations {
   bowlnow?: {

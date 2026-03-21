@@ -8,7 +8,6 @@ import { testConnection, cleanup as dbCleanup } from "./db";
 import { createServer } from 'http';
 import { storage } from './storage';
 import path from 'path';
-import fs from 'fs';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
 
@@ -150,12 +149,6 @@ app.get('/api/health', async (req, res) => {
     });
   }
 });
-
-const uploadsDir = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-app.use('/uploads', express.static(uploadsDir));
 
 registerRoutes(app);
 

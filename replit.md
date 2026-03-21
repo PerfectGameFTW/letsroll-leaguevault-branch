@@ -41,6 +41,15 @@ A full-stack bowling league management application with multi-tenant support for
 - Admin payments page (`client/src/pages/payments-page.tsx`) uses paginated API with page controls
 - Limit is capped at 100 per page server-side; default is 50
 
+## Avatar Storage
+- User avatars are stored persistently in the `user_avatars` PostgreSQL table (base64-encoded)
+- Table: `user_avatars` (id, user_id UNIQUE, data TEXT, mime_type TEXT)
+- Upload: `POST /api/user/avatar` (multipart, max 2MB, magic-byte validated)
+- Serve: `GET /api/user/avatar/:userId` (returns raw image binary with proper Content-Type, 1hr cache)
+- Delete: `DELETE /api/user/avatar`
+- The `users.avatar` column stores the URL path (`/api/user/avatar/{userId}`)
+- No local filesystem dependency — avatars survive redeploys
+
 ## Workflows
 - **Dev**: `npm run dev` - Main development workflow (Express + Vite on port 5000)
 

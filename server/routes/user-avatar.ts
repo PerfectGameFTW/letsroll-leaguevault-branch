@@ -1,18 +1,11 @@
 import { Router, Request, Response } from "express";
-import { storage } from "../storage";
+import { db } from "../db";
+import { userAvatars } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { promisify } from "util";
 import { sendSuccess, sendError } from "../utils/api";
 
-const mkdir = promisify(fs.mkdir);
-const rename = promisify(fs.rename);
-const unlink = promisify(fs.unlink);
 const router = Router();
-
-const uploadsDir = path.join(process.cwd(), "uploads", "avatars");
-fs.mkdirSync(uploadsDir, { recursive: true });
 
 const MAGIC_BYTES: { ext: string; mime: string; check: (buf: Buffer) => boolean }[] = [
   {
@@ -42,14 +35,9 @@ const MAGIC_BYTES: { ext: string; mime: string; check: (buf: Buffer) => boolean 
   },
 ];
 
-function detectImageType(filePath: string): { ext: string; mime: string } | null {
-  const fd = fs.openSync(filePath, "r");
-  const buf = Buffer.alloc(12);
-  fs.readSync(fd, buf, 0, 12, 0);
-  fs.closeSync(fd);
-
+function detectImageTypeFromBuffer(buf: Buffer): { ext: string; mime: string } | null {
   for (const entry of MAGIC_BYTES) {
-    if (entry.check(buf)) {
+    if (buf.length >= 12 && entry.check(buf)) {
       return { ext: entry.ext, mime: entry.mime };
     }
   }
@@ -57,20 +45,9 @@ function detectImageType(filePath: string): { ext: string; mime: string } | null
 }
 
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => {
-      cb(null, uploadsDir);
-    },
-    filename: (req, _file, cb) => {
-      const userId = req.user?.id;
-      cb(null, `user-${userId}-tmp`);
-    },
-  }),
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 2 * 1024 * 1024,
-  },
-  fileFilter: (_req, _file, cb) => {
-    cb(null, true);
   },
 });
 
@@ -86,31 +63,57 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
       return sendError(res, "No file uploaded", 400);
     }
 
-    const detected = detectImageType(req.file.path);
+    const detected = detectImageTypeFromBuffer(req.file.buffer);
 
     if (!detected) {
-      await unlink(req.file.path);
       return sendError(res, "Invalid file content. The file is not a valid JPEG, PNG, GIF, or WebP image.", 400);
     }
 
-    const finalFilename = `user-${userId}.${detected.ext}`;
-    const finalPath = path.join(uploadsDir, finalFilename);
+    const base64Data = req.file.buffer.toString("base64");
 
-    if (req.file.path !== finalPath && fs.existsSync(finalPath)) {
-      await unlink(finalPath);
-    }
-    await rename(req.file.path, finalPath);
+    await db
+      .insert(userAvatars)
+      .values({ userId, data: base64Data, mimeType: detected.mime })
+      .onConflictDoUpdate({
+        target: userAvatars.userId,
+        set: { data: base64Data, mimeType: detected.mime },
+      });
 
-    const avatarUrl = `/uploads/avatars/${finalFilename}`;
+    const avatarUrl = `/api/user/avatar/${userId}`;
+    const { storage } = await import("../storage");
     await storage.updateUser(userId, { avatar: avatarUrl });
 
     return sendSuccess(res, { avatarUrl });
   } catch (error) {
-    if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
-    }
     console.error("[UserAvatar] Upload error:", error);
     return sendError(res, error instanceof Error ? error.message : "Upload failed", 500);
+  }
+});
+
+router.get("/avatar/:userId", async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (isNaN(userId)) {
+      return sendError(res, "Invalid user ID", 400);
+    }
+
+    const [avatarRow] = await db
+      .select()
+      .from(userAvatars)
+      .where(eq(userAvatars.userId, userId));
+
+    if (!avatarRow) {
+      return res.status(404).send("Avatar not found");
+    }
+
+    const imageBuffer = Buffer.from(avatarRow.data, "base64");
+    res.setHeader("Content-Type", avatarRow.mimeType);
+    res.setHeader("Content-Length", imageBuffer.length.toString());
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    return res.send(imageBuffer);
+  } catch (error) {
+    console.error("[UserAvatar] Serve avatar error:", error);
+    return res.status(500).send("Failed to serve avatar");
   }
 });
 
@@ -121,6 +124,7 @@ router.get("/avatar", async (req: Request, res: Response) => {
 
   try {
     const userId = req.user.id;
+    const { storage } = await import("../storage");
     const user = await storage.getUser(userId);
 
     if (!user || !user.avatar) {
@@ -141,17 +145,10 @@ router.delete("/avatar", async (req: Request, res: Response) => {
 
   try {
     const userId = req.user.id;
-    const user = await storage.getUser(userId);
 
-    if (!user || !user.avatar) {
-      return sendError(res, "Avatar not found", 404);
-    }
+    await db.delete(userAvatars).where(eq(userAvatars.userId, userId));
 
-    const avatarPath = path.join(process.cwd(), user.avatar);
-    if (fs.existsSync(avatarPath)) {
-      fs.unlinkSync(avatarPath);
-    }
-
+    const { storage } = await import("../storage");
     await storage.updateUser(userId, { avatar: null });
 
     return sendSuccess(res, { message: "Avatar deleted successfully" });
