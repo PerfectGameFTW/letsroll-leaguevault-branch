@@ -30,9 +30,7 @@ import ProfileSettingsPage from "@/pages/profile-settings-page";
 import ClaimBowlerPage from "@/pages/claim-bowler-page";
 import EmailTemplatesPage from "@/pages/email-templates-page";
 import IntegrationsPage from "@/pages/integrations-page";
-import { useEffect, useRef, FC } from "react";
-import { initializeSquare, warmUpSquareCard } from "./lib/square";
-import { useToast } from "@/hooks/use-toast";
+import { useEffect, FC } from "react";
 import { AdminRouteGuard } from "@/components/admin-route-guard";
 import { OrganizationRouteGuard } from "@/components/organization-route-guard";
 import { OrganizationAdminRouteGuard } from "@/components/organization-admin-route-guard";
@@ -264,54 +262,6 @@ function Router() {
 }
 
 function App() {
-  const { toast } = useToast();
-  const initializationAttempts = useRef(0);
-  const maxAttempts = 3;
-  const initialized = useRef(false);
-
-  useEffect(() => {
-    async function initSquare() {
-      // Skip if already initialized or max attempts reached
-      if (initialized.current || initializationAttempts.current >= maxAttempts) {
-        return;
-      }
-
-      try {
-        await initializeSquare();
-        initialized.current = true;
-        initializationAttempts.current = 0;
-        warmUpSquareCard().catch(() => {});
-      } catch (error) {
-        console.error('[App] Square initialization attempt failed:', error);
-        initializationAttempts.current++;
-
-        if (initializationAttempts.current < maxAttempts) {
-          // Retry with exponential backoff
-          const delay = Math.min(1000 * Math.pow(2, initializationAttempts.current), 5000);
-          setTimeout(initSquare, delay);
-        } else {
-          // Only show error toast if all retries fail
-          console.error('[App] Square initialization failed after all attempts');
-          toast({
-            title: "Square Integration Notice",
-            description: "Payment system initialization delayed. Credit card payments may be temporarily unavailable.",
-            variant: "default",
-          });
-          // Reset for potential future attempts
-          initializationAttempts.current = 0;
-        }
-      }
-    }
-
-    initSquare();
-
-    // Cleanup function
-    return () => {
-      initialized.current = false;
-      initializationAttempts.current = 0;
-    };
-  }, [toast]);
-
   return (
     <QueryClientProvider client={queryClient}>
       <Router />
