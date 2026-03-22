@@ -71,7 +71,7 @@ function isValidUser(user: any): user is SelectUser {
     typeof user.password === 'string' &&
     typeof user.name === 'string' &&
     typeof user.role === 'string' &&
-    user.createdAt instanceof Date
+    (user.createdAt instanceof Date || (typeof user.createdAt === 'string' && !isNaN(Date.parse(user.createdAt))))
   );
 }
 
