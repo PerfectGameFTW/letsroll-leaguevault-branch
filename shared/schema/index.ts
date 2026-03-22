@@ -30,4 +30,4 @@ export type { InsertEmailTemplate, UpdateEmailTemplate, EmailTemplate } from "./
 
 export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, gameRelations, scoreRelations, paymentRelations, paymentScheduleRelations, userRelations } from "./relations";
 
-export type { SavedCard, ApiResponse, PaginationMeta, PaginatedResult, ApiListResponse, WeeklyStat, SeriesWithStats, WeeklyStatWithBowler, DetailedScore } from "./api-types";
+export type { SavedCard, ApiResponse, PaginationMeta, PaginatedResult, ApiListResponse, WeeklyStat, SeriesWithStats, WeeklyStatWithBowler, DetailedScore, BowlerDetailsResponse, TeamDetailsResponse } from "./api-types";

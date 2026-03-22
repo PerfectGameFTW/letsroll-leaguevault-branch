@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Loader2, Plus, ArrowLeft, Pencil, Trash2, CheckCircle2 } from "lucide-react";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
-import type { Team, Bowler, League, BowlerLeague, ApiResponse } from "@shared/schema";
+import type { Team, Bowler, League, BowlerLeague, ApiResponse, TeamDetailsResponse } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -51,13 +51,6 @@ export default function TeamViewPage() {
       name: "",
     },
   });
-
-  interface TeamDetailsResponse {
-    team: Team;
-    league: League;
-    bowlerLeagues: BowlerLeague[];
-    bowlers: Bowler[];
-  }
 
   const { data: detailsResponse, isLoading: loadingDetails, error: detailsError, refetch: refetchDetails } = useQuery<ApiResponse<TeamDetailsResponse>>({
     queryKey: [`/api/teams/${teamId}/details`],

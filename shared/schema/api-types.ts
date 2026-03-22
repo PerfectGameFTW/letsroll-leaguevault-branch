@@ -1,7 +1,9 @@
 import type { Score } from "./games";
 import type { Game } from "./games";
-import type { Bowler } from "./bowlers";
+import type { Bowler, BowlerLeague } from "./bowlers";
 import type { Team } from "./teams";
+import type { League } from "./leagues";
+import type { Payment } from "./payments";
 
 export interface SavedCard {
   id: string;
@@ -65,6 +67,21 @@ export interface WeeklyStatWithBowler extends WeeklyStat {
     bowler: Bowler;
     team: Team;
   };
+}
+
+export interface BowlerDetailsResponse {
+  bowler: Bowler & { hasAccount: boolean };
+  bowlerLeagues: BowlerLeague[];
+  leagues: League[];
+  teams: Team[];
+  payments?: Payment[];
+}
+
+export interface TeamDetailsResponse {
+  team: Team;
+  league: League;
+  bowlerLeagues: BowlerLeague[];
+  bowlers: (Bowler & { hasAccount: boolean })[];
 }
 
 export interface DetailedScore extends Score {

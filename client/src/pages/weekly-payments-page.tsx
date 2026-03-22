@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import { startOfToday } from "date-fns";
-import type { League, Payment, Bowler, BowlerLeague, Team, ApiResponse } from "@shared/schema";
+import type { League, Payment, Bowler, BowlerLeague, Team, ApiResponse, TeamDetailsResponse } from "@shared/schema";
 import { useTeams } from "@/hooks/use-teams";
 import { useParams, Link } from "wouter";
 import { PaymentEntryRow } from "@/components/payment-entry-row";
@@ -78,6 +78,7 @@ export default function WeeklyPaymentsPage() {
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
     staleTime: 1000 * 60 * 30,
+    enabled: !selectedTeam,
   });
 
   const { teams, isLoading: loadingTeams } = useTeams({ leagueId });
@@ -104,20 +105,13 @@ export default function WeeklyPaymentsPage() {
     staleTime: 1000 * 60,
   });
 
-  interface TeamDetailsResponse {
-    team: Team;
-    league: League;
-    bowlerLeagues: BowlerLeague[];
-    bowlers: Bowler[];
-  }
-
   const { data: teamDetailsResponse, isLoading: loadingTeamDetails } = useQuery<{ data: TeamDetailsResponse }>({
     queryKey: [`/api/teams/${selectedTeam}/details`],
     enabled: !!selectedTeam,
     staleTime: 1000 * 60 * 5,
   });
 
-  const league = leagueResponse?.data;
+  const league = teamDetailsResponse?.data?.league ?? leagueResponse?.data;
   const payments = paymentsResponse?.data || [];
   const bowlerLeagues = teamDetailsResponse?.data?.bowlerLeagues || [];
   const bowlers = teamDetailsResponse?.data?.bowlers || [];
@@ -148,7 +142,7 @@ export default function WeeklyPaymentsPage() {
     };
   }
 
-  if ((loadingLeague || loadingTeams) && !league) {
+  if ((loadingLeague || loadingTeams || (selectedTeam && loadingTeamDetails)) && !league) {
     return (
       <Layout>
         <PageLoadingState />

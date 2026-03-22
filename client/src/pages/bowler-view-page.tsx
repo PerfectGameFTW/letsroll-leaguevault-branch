@@ -37,20 +37,11 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import type { Bowler, Payment, Team, League, BowlerLeague } from "@shared/schema";
+import type { Bowler, Payment, Team, League, BowlerLeague, BowlerDetailsResponse, ApiResponse } from "@shared/schema";
 import { format, isValid, parseISO } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { calculateBowlerViewFinancials } from "@/lib/financial-utils";
 import { filterActiveBowlerLeagues } from "@/lib/bowler-league-utils";
-
-interface ApiResponse<T> {
-  success: boolean;
-  data: T;
-  error?: {
-    message: string;
-    code?: string;
-  };
-}
 
 function isValidISODate(date: string): date is string {
   try {
@@ -65,13 +56,6 @@ export default function BowlerViewPage() {
   const { toast } = useToast();
   const bowlerId = parseInt(params.bowlerId!);
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
-
-  interface BowlerDetailsResponse {
-    bowler: Bowler;
-    bowlerLeagues: BowlerLeague[];
-    leagues: League[];
-    teams: Team[];
-  }
 
   const { data: detailsResponse, isLoading: loadingDetails } = useQuery<ApiResponse<BowlerDetailsResponse>>({
     queryKey: [`/api/bowlers/${bowlerId}/details`],
@@ -88,22 +72,23 @@ export default function BowlerViewPage() {
     return filterActiveBowlerLeagues(allLeagues, bowlerId);
   }, [detailsResponse?.data?.bowlerLeagues, bowlerId]);
 
-  // Get all leagues (always fetch so we can show "add to league" option)
+  const [addLeagueId, setAddLeagueId] = useState<number | null>(null);
+  const [addTeamId, setAddTeamId] = useState<number | null>(null);
+  const [showAddLeagueDialog, setShowAddLeagueDialog] = useState(false);
+
   const { data: leaguesResponse } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
     staleTime: 1000 * 60 * 30,
     retry: false,
+    enabled: showAddLeagueDialog,
   });
   const leagues = leaguesResponse?.data || [];
 
-  // Get all teams for the add-to-league flow
-  const [addLeagueId, setAddLeagueId] = useState<number | null>(null);
-  const [addTeamId, setAddTeamId] = useState<number | null>(null);
-  const [showAddLeagueDialog, setShowAddLeagueDialog] = useState(false);
   const { data: allTeamsResponse } = useQuery<ApiResponse<Team[]>>({
     queryKey: ["/api/teams"],
     staleTime: 1000 * 60 * 15,
     retry: false,
+    enabled: showAddLeagueDialog,
   });
   const allTeams = allTeamsResponse?.data || [];
 
@@ -139,9 +124,24 @@ export default function BowlerViewPage() {
   }, [detailsLeagues, selectedLeagueId]);
 
   const { data: paymentsResponse } = useQuery<ApiResponse<Payment[]>>({
-    queryKey: [`/api/payments?bowlerId=${bowlerId}&leagueId=${selectedLeagueId}`, bowlerId, selectedLeagueId],
+    queryKey: ["/api/payments", { bowlerId, leagueId: selectedLeagueId }],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams();
+      params.set("bowlerId", String(bowlerId));
+      params.set("leagueId", String(selectedLeagueId));
+      const response = await fetch(`/api/payments?${params.toString()}`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" },
+        signal,
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error?.message || "Failed to fetch payments");
+      }
+      return response.json();
+    },
     enabled: !!selectedLeagueId && !!bowlerId,
-    staleTime: 1000 * 60, // Cache for 1 minute since payments change frequently
+    staleTime: 1000 * 60,
     retry: false,
   });
 
@@ -264,7 +264,7 @@ export default function BowlerViewPage() {
               </SelectTrigger>
               <SelectContent>
                 {bowlerLeagues.map((bl) => {
-                  const leagueInfo = leagues?.find(l => l.id === bl.leagueId);
+                  const leagueInfo = detailsLeagues?.find(l => l.id === bl.leagueId);
                   return leagueInfo ? (
                     <SelectItem key={bl.leagueId} value={bl.leagueId.toString()}>
                       {leagueInfo.name}

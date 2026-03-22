@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
-import type { League, Payment, User, SavedCard, ApiResponse } from "@shared/schema";
+import type { League, Payment, User, SavedCard, ApiResponse, BowlerDetailsResponse } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { ArrowLeft } from "lucide-react";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
@@ -72,15 +72,20 @@ export default function PaymentHistoryPage() {
     }
   }, [savedCards.length]);
 
-  interface BowlerDetailsResponse {
-    bowler: { name: string; hasAccount: boolean };
-    bowlerLeagues: { leagueId: number }[];
-    leagues: League[];
-    teams: { id: number; name: string }[];
-  }
-
   const { data: bowlerDetailsResponse, isLoading: loadingBowlerDetails, error: bowlerError } = useQuery<ApiResponse<BowlerDetailsResponse>>({
-    queryKey: [`/api/bowlers/${bowlerId}/details`],
+    queryKey: [`/api/bowlers/${bowlerId}/details`, { includePayments: true }],
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`/api/bowlers/${bowlerId}/details?includePayments=true`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" },
+        signal,
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error?.message || "Failed to fetch bowler details");
+      }
+      return response.json();
+    },
     enabled: !!bowlerId,
   });
 
@@ -105,13 +110,32 @@ export default function PaymentHistoryPage() {
     return map;
   }, [detailsLeagues]);
 
+  const detailsLoaded = !!bowlerDetailsResponse?.data;
+  const allPaymentsFromDetails = bowlerDetailsResponse?.data?.payments;
+  const hasPaymentsFromDetails = Array.isArray(allPaymentsFromDetails);
+
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<ApiResponse<Payment[]>>({
-    queryKey: ["/api/payments", bowlerId, leagueId],
-    enabled: !!bowlerId && !!leagueId,
+    queryKey: ["/api/payments", { bowlerId, leagueId }],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams();
+      params.set("bowlerId", String(bowlerId));
+      params.set("leagueId", String(leagueId));
+      const response = await fetch(`/api/payments?${params.toString()}`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" },
+        signal,
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error?.message || "Failed to fetch payments");
+      }
+      return response.json();
+    },
+    enabled: !!bowlerId && !!leagueId && detailsLoaded && !hasPaymentsFromDetails,
   });
 
   const league = leagueMap.get(leagueId!);
-  const payments = paymentsResponse?.data || [];
+  const payments = hasPaymentsFromDetails ? allPaymentsFromDetails : (paymentsResponse?.data || []);
   const bowlerName = bowlerDetailsResponse?.data?.bowler?.name || '';
 
   const bowlerPayments = payments.filter(p => p.bowlerId === bowlerId && p.leagueId === leagueId);
@@ -182,7 +206,8 @@ export default function PaymentHistoryPage() {
 
       toast({ title: "Payment Successful", description: `${formatCurrency(dialogAmount)} ${dialogLabel} has been paid.` });
       setPayDialogType(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/payments", bowlerId, leagueId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments", { bowlerId, leagueId }] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowlerId}/details`] });
     } catch (error) {
       console.error('[Payment Error]:', error);
       toast({ title: "Payment Failed", description: error instanceof Error ? error.message : "Unable to process payment. Please try again.", variant: "destructive" });
@@ -191,7 +216,7 @@ export default function PaymentHistoryPage() {
     }
   };
 
-  if (loadingUser || loadingBowlerDetails || loadingPayments) {
+  if (loadingUser || loadingBowlerDetails || (!hasPaymentsFromDetails && loadingPayments)) {
     return (
       <BowlerLayout bowlerName={bowlerName || 'Loading...'} leagueName={league?.name || 'Loading...'}>
         <PageLoadingState />
