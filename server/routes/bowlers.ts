@@ -138,10 +138,12 @@ router.get("/", async (req, res) => {
     }
 
     let bowlers;
-    if (isSystemAdmin && !effectiveOrgId && !teamId) {
+    if (isSystemAdmin && effectiveOrgId === null) {
       bowlers = await storage.getAllBowlers();
+    } else if (effectiveOrgId !== null) {
+      bowlers = await storage.getBowlers({ teamId, organizationId: effectiveOrgId });
     } else {
-      bowlers = await storage.getBowlers({ teamId, organizationId: effectiveOrgId! });
+      return sendSuccess(res, []);
     }
     
     if (!bowlers || bowlers.length === 0) {

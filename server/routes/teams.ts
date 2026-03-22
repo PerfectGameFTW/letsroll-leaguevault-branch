@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertTeamSchema, updateTeamSchema } from "@shared/schema";
+import { insertTeamSchema, updateTeamSchema, type Team } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 
@@ -11,7 +11,7 @@ router.get("/", async (req, res) => {
     const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
     
     // If a league ID is provided, we need to check if the user has access to that league
-    let teams = [];
+    let teams: Team[] = [];
     
     if (leagueId) {
       // First, get the league to check its organization
