@@ -45,6 +45,8 @@ export async function migrateAvatarsFromDBToDisk(): Promise<void> {
 
   ensureAvatarsDirectory();
 
+  let failedCount = 0;
+
   for (const row of rows.rows) {
     const userId = row.user_id as number;
     const base64Data = row.data as string;
@@ -63,12 +65,18 @@ export async function migrateAvatarsFromDBToDisk(): Promise<void> {
 
       log.info(`Migrated avatar for user ${userId} to ${filename}`);
     } catch (error) {
+      failedCount++;
       log.error(`Failed to migrate avatar for user ${userId}:`, error);
     }
   }
 
+  if (failedCount > 0) {
+    log.warn(`${failedCount} avatar(s) failed to migrate, keeping user_avatars table for retry on next startup`);
+    return;
+  }
+
   await db.execute(sql`DROP TABLE IF EXISTS user_avatars`);
-  log.info("Migration complete, user_avatars table dropped");
+  log.info("All avatars migrated successfully, user_avatars table dropped");
 }
 
 export async function migrateApiUrlsToDiskUrls(): Promise<void> {
