@@ -71,17 +71,18 @@ export default function PaymentHistoryPage() {
     }
   }, [savedCards.length]);
 
-  const { data: bowlerResponse, isLoading: loadingBowler, error: bowlerError } = useQuery<ApiResponse<{ name: string }>>({
-    queryKey: [`/api/bowlers/${bowlerId}`],
+  interface BowlerDetailsResponse {
+    bowler: { name: string; hasAccount: boolean };
+    bowlerLeagues: { leagueId: number }[];
+    leagues: League[];
+  }
+
+  const { data: bowlerDetailsResponse, isLoading: loadingBowlerDetails, error: bowlerError } = useQuery<ApiResponse<BowlerDetailsResponse>>({
+    queryKey: [`/api/bowlers/${bowlerId}/details`],
     enabled: !!bowlerId,
   });
 
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<ApiResponse<{ leagueId: number }[]>>({
-    queryKey: ["/api/bowler-leagues", bowlerId],
-    enabled: !!bowlerId,
-  });
-
-  const bowlerLeagues = bowlerLeaguesResponse?.data ?? [];
+  const bowlerLeagues = bowlerDetailsResponse?.data?.bowlerLeagues ?? [];
   const hasMultipleLeagues = bowlerLeagues.length > 1;
 
   useEffect(() => {
@@ -120,7 +121,7 @@ export default function PaymentHistoryPage() {
 
   const league = leagueResponse?.data;
   const payments = paymentsResponse?.data || [];
-  const bowlerName = bowlerResponse?.data?.name || '';
+  const bowlerName = bowlerDetailsResponse?.data?.bowler?.name || '';
 
   const bowlerPayments = payments.filter(p => p.bowlerId === bowlerId && p.leagueId === leagueId);
 
@@ -199,7 +200,7 @@ export default function PaymentHistoryPage() {
     }
   };
 
-  if (loadingUser || loadingBowler || loadingBowlerLeagues || loadingLeague || loadingPayments) {
+  if (loadingUser || loadingBowlerDetails || loadingLeague || loadingPayments) {
     return (
       <BowlerLayout bowlerName={bowlerName || 'Loading...'} leagueName={league?.name || 'Loading...'}>
         <PageLoadingState />

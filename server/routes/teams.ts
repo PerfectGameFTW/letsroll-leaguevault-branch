@@ -56,6 +56,47 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/:id/details", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const team = await storage.getTeam(id);
+
+    if (!team) {
+      return sendError(res, "Team not found", 404, 'NOT_FOUND');
+    }
+
+    const league = await storage.getLeague(team.leagueId);
+
+    if (!league) {
+      return sendError(res, "League not found", 404, 'NOT_FOUND');
+    }
+
+    const userHasAccess =
+      req.user?.role === 'system_admin' ||
+      league.organizationId === null ||
+      (req.user?.organizationId === league.organizationId);
+
+    if (!userHasAccess) {
+      return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
+    }
+
+    const [bowlerLeagues, allBowlers] = await Promise.all([
+      storage.getBowlerLeagues({ teamId: id, leagueId: team.leagueId }),
+      storage.getBowlers({
+        teamId: id,
+        organizationId: league.organizationId ?? req.user?.organizationId ?? 0,
+      }),
+    ]);
+
+    const bowlerIds = new Set(bowlerLeagues.map(bl => bl.bowlerId));
+    const bowlers = allBowlers.filter(b => bowlerIds.has(b.id));
+
+    sendSuccess(res, { team, league, bowlerLeagues, bowlers });
+  } catch (error) {
+    sendError(res, 'Failed to fetch team details');
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);

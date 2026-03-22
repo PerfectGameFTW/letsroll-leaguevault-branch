@@ -33,14 +33,6 @@ const editTeamSchema = z.object({
   name: z.string().min(1, "Team name is required"),
 });
 
-function InlineErrorMessage({ error }: { error: Error }) {
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-      <span>Error: {error.message}</span>
-    </div>
-  );
-}
-
 export default function TeamViewPage() {
   const [showForm, setShowForm] = useState(false);
   const [showAssignForm, setShowAssignForm] = useState(false);
@@ -60,46 +52,23 @@ export default function TeamViewPage() {
     },
   });
 
-  // Query for team data with proper error handling
-  const { data: teamResponse, isLoading: loadingTeam, error: teamError } = useQuery<ApiResponse<Team>>({
-    queryKey: [`/api/teams/${teamId}`],
+  interface TeamDetailsResponse {
+    team: Team;
+    league: League;
+    bowlerLeagues: BowlerLeague[];
+    bowlers: Bowler[];
+  }
+
+  const { data: detailsResponse, isLoading: loadingDetails, error: detailsError } = useQuery<ApiResponse<TeamDetailsResponse>>({
+    queryKey: [`/api/teams/${teamId}/details`],
     enabled: !!teamId,
     retry: false,
   });
 
-  const team = teamResponse?.data;
-
-  // Get league info with proper error handling
-  const { data: leagueResponse, isLoading: loadingLeague, error: leagueError } = useQuery<ApiResponse<League>>({
-    queryKey: [`/api/leagues/${team?.leagueId}`],
-    enabled: !!team?.leagueId,
-    retry: false,
-  });
-
-  const league = leagueResponse?.data;
-
-  // Get bowler leagues for this team with proper error handling
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<ApiResponse<BowlerLeague[]>>({
-    queryKey: ["/api/bowler-leagues", { teamId, leagueId: team?.leagueId }],
-    enabled: !!team?.leagueId && !!teamId,
-    retry: false,
-  });
-
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
-
-  // Get bowlers data with proper error handling
-  const bowlerIds = useMemo(() =>
-    bowlerLeagues.map((bl: BowlerLeague) => bl.bowlerId),
-    [bowlerLeagues]
-  );
-
-  const { data: bowlersResponse, isLoading: loadingBowlers, error: bowlersError } = useQuery<ApiResponse<Bowler[]>>({
-    queryKey: ["/api/bowlers", bowlerIds],
-    enabled: bowlerIds.length > 0,
-    retry: false,
-  });
-
-  const bowlers = bowlersResponse?.data || [];
+  const team = detailsResponse?.data?.team;
+  const league = detailsResponse?.data?.league;
+  const bowlerLeagues = detailsResponse?.data?.bowlerLeagues || [];
+  const bowlers = detailsResponse?.data?.bowlers || [];
 
   const teamBowlers = useMemo(
     () => getTeamBowlers(bowlerLeagues, bowlers, teamId),
@@ -116,7 +85,7 @@ export default function TeamViewPage() {
       return response.data;
     },
     onSuccess: (updatedTeam) => {
-      queryClient.setQueryData([`/api/teams/${teamId}`], { data: updatedTeam });
+      queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}/details`] });
       setShowEditDialog(false);
       toast({
         title: "Team updated",
@@ -151,7 +120,7 @@ export default function TeamViewPage() {
       );
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}/details`] });
       setShowRemoveDialog(null);
       toast({
         title: "Bowler removed",
@@ -192,10 +161,18 @@ export default function TeamViewPage() {
   }
 
   // Handle loading states with proper error display
-  if (teamError) {
+  if (detailsError) {
     return (
       <Layout>
-        <PageErrorState message={`Error loading team: ${teamError.message}`} />
+        <PageErrorState message={`Error loading team: ${detailsError.message}`} />
+      </Layout>
+    );
+  }
+
+  if (loadingDetails) {
+    return (
+      <Layout>
+        <PageLoadingState />
       </Layout>
     );
   }
@@ -204,15 +181,6 @@ export default function TeamViewPage() {
     return (
       <Layout>
         <div className="text-center text-destructive">Team not found</div>
-      </Layout>
-    );
-  }
-
-  const isLoading = loadingTeam || loadingBowlers || loadingBowlerLeagues || loadingLeague;
-  if (isLoading) {
-    return (
-      <Layout>
-        <PageLoadingState />
       </Layout>
     );
   }
@@ -249,14 +217,6 @@ export default function TeamViewPage() {
         </div>
       </div>
 
-      {/* Show any fetch errors */}
-      {(leagueError || bowlerLeaguesError || bowlersError) && (
-        <div className="mb-4">
-          {leagueError && <InlineErrorMessage error={leagueError} />}
-          {bowlerLeaguesError && <InlineErrorMessage error={bowlerLeaguesError} />}
-          {bowlersError && <InlineErrorMessage error={bowlersError} />}
-        </div>
-      )}
 
       <div className="rounded-md border">
         <Table>

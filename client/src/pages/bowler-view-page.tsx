@@ -66,38 +66,26 @@ export default function BowlerViewPage() {
   const bowlerId = parseInt(params.bowlerId!);
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
-  // Query for bowler with proper typing and caching
-  const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<ApiResponse<Bowler>>({
-    queryKey: [`/api/bowlers/${bowlerId}`],
-    queryFn: async () => {
-      const response = await fetch(`/api/bowlers/${bowlerId}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch bowler');
-      }
-      const data = await response.json();
-      if (!data.success) {
-        throw new Error(data.error?.message || 'Failed to fetch bowler');
-      }
-      return data;
-    },
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
-    retry: false,
-    enabled: !isNaN(bowlerId), // Only run if bowlerId is valid
-  });
-  const bowler = bowlerResponse?.data;
+  interface BowlerDetailsResponse {
+    bowler: Bowler;
+    bowlerLeagues: BowlerLeague[];
+    leagues: League[];
+  }
 
-  // Query to get bowler's league associations with proper typing and caching
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<ApiResponse<BowlerLeague[]>>({
-    queryKey: ["/api/bowler-leagues", { bowlerId }],
-    enabled: !!bowlerId && !isNaN(bowlerId),
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  const { data: detailsResponse, isLoading: loadingDetails } = useQuery<ApiResponse<BowlerDetailsResponse>>({
+    queryKey: [`/api/bowlers/${bowlerId}/details`],
+    staleTime: 1000 * 60 * 5,
     retry: false,
+    enabled: !isNaN(bowlerId),
   });
+
+  const bowler = detailsResponse?.data?.bowler;
+  const detailsLeagues = detailsResponse?.data?.leagues || [];
 
   const bowlerLeagues = useMemo(() => {
-    const allLeagues = bowlerLeaguesResponse?.data || [];
+    const allLeagues = detailsResponse?.data?.bowlerLeagues || [];
     return filterActiveBowlerLeagues(allLeagues, bowlerId);
-  }, [bowlerLeaguesResponse?.data, bowlerId]);
+  }, [detailsResponse?.data?.bowlerLeagues, bowlerId]);
 
   // Get all leagues (always fetch so we can show "add to league" option)
   const { data: leaguesResponse } = useQuery<ApiResponse<League[]>>({
@@ -175,7 +163,7 @@ export default function BowlerViewPage() {
     },
     onSuccess: () => {
       toast({ title: "Synced to BowlNow", description: `${bowler?.name} has been synced to BowlNow.` });
-      queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowlerId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowlerId}/details`] });
     },
     onError: (error: Error) => {
       toast({ title: "Sync Failed", description: error.message, variant: "destructive" });
@@ -201,6 +189,7 @@ export default function BowlerViewPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowlerId}/details`] });
       setAddLeagueId(null);
       setAddTeamId(null);
       setShowAddLeagueDialog(false);
@@ -212,7 +201,7 @@ export default function BowlerViewPage() {
   });
 
   // Show initial loading state only when critical data is loading
-  if (loadingBowler || loadingBowlerLeagues) {
+  if (loadingDetails) {
     return (
       <Layout>
         <PageLoadingState />

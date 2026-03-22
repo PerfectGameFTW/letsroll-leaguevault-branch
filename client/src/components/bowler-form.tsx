@@ -151,6 +151,9 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      if (defaultTeamId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/teams/${defaultTeamId}/details`] });
+      }
       toast({
         title: "Bowler added to team",
         description: "The existing bowler has been added to this team.",
@@ -196,6 +199,9 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
       if (result === null) return;
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      if (defaultTeamId) {
+        queryClient.invalidateQueries({ queryKey: [`/api/teams/${defaultTeamId}/details`] });
+      }
       toast({
         title: bowler ? "Bowler updated" : "Bowler created",
         description: bowler

@@ -80,6 +80,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
       queryClient.invalidateQueries({ queryKey: ["/api/bowlers"] });
       queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/teams/${teamId}/details`] });
       toast({
         title: "Success",
         description: "Bowler has been added to the team.",

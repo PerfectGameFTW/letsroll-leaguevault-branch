@@ -179,6 +179,43 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/:id/details", async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const bowler = await storage.getBowler(id);
+
+    if (!bowler) {
+      return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
+    }
+
+    if (req.user?.role !== 'system_admin') {
+      const hasAccess = await hasAccessToBowler(req, id);
+      if (!hasAccess) {
+        return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+      }
+    }
+
+    const [hasAccount, bowlerLeagues] = await Promise.all([
+      storage.isBowlerLinked(id),
+      storage.getBowlerLeagues({ bowlerId: id }),
+    ]);
+
+    const leagueIds = [...new Set(bowlerLeagues.map(bl => bl.leagueId))];
+    const leagues = leagueIds.length > 0
+      ? await storage.getLeaguesByIds(leagueIds)
+      : [];
+
+    sendSuccess(res, {
+      bowler: { ...bowler, hasAccount },
+      bowlerLeagues,
+      leagues,
+    });
+  } catch (error) {
+    log.error('Error fetching bowler details:', error);
+    sendError(res, 'Failed to fetch bowler details');
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
