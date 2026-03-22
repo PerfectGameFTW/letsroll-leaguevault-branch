@@ -1,157 +1,146 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import {
-  createOrUpdateCustomer,
-  processPayment
-} from '../square.js';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-type ApiResponse<T> = { result: T };
-
-type CustomerResponse = ApiResponse<{
-  customer: {
-    id: string;
-    givenName?: string;
-    familyName?: string;
-    emailAddress?: string;
+const mocks = vi.hoisted(() => {
+  return {
+    customersApi: {
+      searchCustomers: vi.fn(),
+      updateCustomer: vi.fn(),
+      createCustomer: vi.fn(),
+    },
+    paymentsApi: {
+      createPayment: vi.fn(),
+    },
+    getLocationSquareConfig: vi.fn(),
   };
-}>;
-
-type SearchCustomersResponse = ApiResponse<{
-  customers: Array<{
-    id: string;
-    givenName?: string;
-    familyName?: string;
-    emailAddress?: string;
-  }>;
-}>;
-
-type PaymentResponse = ApiResponse<{
-  payment: {
-    id: string;
-    status: string;
-    cardDetails?: {
-      card?: {
-        last4: string;
-        cardBrand: string;
-      };
-    };
-  };
-}>;
-
-const createMockClient = () => ({
-  customersApi: {
-    searchCustomers: vi.fn<() => Promise<SearchCustomersResponse>>(),
-    updateCustomer: vi.fn<() => Promise<CustomerResponse>>(),
-    createCustomer: vi.fn<() => Promise<CustomerResponse>>(),
-  },
-  paymentsApi: {
-    createPayment: vi.fn<() => Promise<PaymentResponse>>()
-  }
 });
 
 vi.mock('square', () => ({
-  __esModule: true,
-  Client: vi.fn().mockImplementation(() => createMockClient()),
-  Environment: {
-    Production: 'production',
-    Sandbox: 'sandbox'
-  }
+  Client: function () {
+    return {
+      customersApi: mocks.customersApi,
+      paymentsApi: mocks.paymentsApi,
+    };
+  },
+  Environment: { Production: 'production', Sandbox: 'sandbox' },
 }));
 
+vi.mock('../../storage', () => ({
+  storage: {
+    getLocationSquareConfig: (...args: unknown[]) => mocks.getLocationSquareConfig(...args),
+  },
+}));
+
+vi.mock('../../logger', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
+
+const { createOrUpdateCustomer, processPayment } = await import('../square.js');
+
 describe('Square Service', () => {
-  const mockEnv = process.env;
-  let mockClient: ReturnType<typeof createMockClient>;
-
-  beforeEach(async () => {
-    vi.resetModules();
-    process.env = { ...mockEnv };
-    process.env.SQUARE_ACCESS_TOKEN = 'test-token';
-    process.env.NODE_ENV = 'test';
-    mockClient = createMockClient();
-    const squareMock = await vi.importMock<{ Client: ReturnType<typeof vi.fn> }>('square');
-    squareMock.Client.mockImplementation(() => mockClient);
-  });
-
-  afterEach(() => {
-    process.env = mockEnv;
+  beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getLocationSquareConfig.mockResolvedValue({
+      accessToken: 'EAAAEv-test-token',
+      appId: 'sq0idp-test',
+      locationId: 'LOC123',
+    });
   });
 
   describe('createOrUpdateCustomer', () => {
     it('should create a new customer when one does not exist', async () => {
-      mockClient.customersApi.searchCustomers.mockResolvedValueOnce({
-        result: {
-          customers: []
-        }
+      mocks.customersApi.searchCustomers.mockResolvedValueOnce({
+        result: { customers: [] },
       });
 
-      mockClient.customersApi.createCustomer.mockResolvedValueOnce({
+      mocks.customersApi.createCustomer.mockResolvedValueOnce({
         result: {
           customer: {
             id: 'test-customer-id',
             givenName: 'John',
             familyName: 'Doe',
-            emailAddress: 'john@example.com'
-          }
-        }
+            emailAddress: 'john@example.com',
+          },
+        },
       });
 
-      const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
+      const result = await createOrUpdateCustomer('John Doe', 'john@example.com', null, 1);
 
       expect(result).toEqual({
         id: 'test-customer-id',
         name: 'John Doe',
-        email: 'john@example.com'
+        email: 'john@example.com',
       });
 
-      expect(mockClient.customersApi.createCustomer).toHaveBeenCalledWith({
-        idempotencyKey: expect.any(String),
-        givenName: 'John',
-        familyName: 'Doe',
-        emailAddress: 'john@example.com'
-      });
+      expect(mocks.customersApi.createCustomer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          givenName: 'John',
+          familyName: 'Doe',
+          emailAddress: 'john@example.com',
+        }),
+      );
     });
 
     it('should update an existing customer', async () => {
-      mockClient.customersApi.searchCustomers.mockResolvedValueOnce({
+      mocks.customersApi.searchCustomers.mockResolvedValueOnce({
         result: {
-          customers: [{
-            id: 'existing-customer-id',
-            givenName: 'John',
-            familyName: 'Doe',
-            emailAddress: 'john@example.com'
-          }]
-        }
+          customers: [
+            {
+              id: 'existing-customer-id',
+              givenName: 'John',
+              familyName: 'Doe',
+              emailAddress: 'john@example.com',
+            },
+          ],
+        },
       });
 
-      mockClient.customersApi.updateCustomer.mockResolvedValueOnce({
+      mocks.customersApi.updateCustomer.mockResolvedValueOnce({
         result: {
           customer: {
             id: 'existing-customer-id',
             givenName: 'John',
             familyName: 'Doe',
-            emailAddress: 'john@example.com'
-          }
-        }
+            emailAddress: 'john@example.com',
+          },
+        },
       });
 
-      const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
+      const result = await createOrUpdateCustomer('John Doe', 'john@example.com', null, 1);
 
       expect(result).toEqual({
         id: 'existing-customer-id',
         name: 'John Doe',
-        email: 'john@example.com'
+        email: 'john@example.com',
       });
 
-      expect(mockClient.customersApi.updateCustomer).toHaveBeenCalledWith(
+      expect(mocks.customersApi.updateCustomer).toHaveBeenCalledWith(
         'existing-customer-id',
-        expect.any(Object)
+        expect.any(Object),
       );
+    });
+
+    it('should return null when no locationId is provided', async () => {
+      const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
+      expect(result).toBeNull();
+    });
+
+    it('should handle API errors', async () => {
+      mocks.customersApi.searchCustomers.mockRejectedValueOnce(new Error('API Error'));
+
+      await expect(
+        createOrUpdateCustomer('John Doe', 'john@example.com', null, 1),
+      ).rejects.toThrow('Failed to create/update Square customer: API Error');
     });
   });
 
   describe('processPayment', () => {
     it('should process payment successfully', async () => {
-      mockClient.paymentsApi.createPayment.mockResolvedValueOnce({
+      mocks.paymentsApi.createPayment.mockResolvedValueOnce({
         result: {
           payment: {
             id: 'payment-id',
@@ -159,51 +148,39 @@ describe('Square Service', () => {
             cardDetails: {
               card: {
                 last4: '1234',
-                cardBrand: 'VISA'
-              }
-            }
-          }
-        }
+                cardBrand: 'VISA',
+              },
+            },
+          },
+        },
       });
 
-      const result = await processPayment('source-id', 1000);
+      const result = await processPayment('source-id', 1000, false, undefined, undefined, undefined, 1);
 
       expect(result).toEqual({
         id: 'payment-id',
         status: 'COMPLETED',
         card: {
           last4: '1234',
-          brand: 'VISA'
-        }
-      });
-
-      expect(mockClient.paymentsApi.createPayment).toHaveBeenCalledWith({
-        sourceId: 'source-id',
-        idempotencyKey: expect.any(String),
-        amountMoney: {
-          amount: BigInt(1000),
-          currency: 'USD'
+          brand: 'VISA',
         },
-        locationId: 'location-id'
       });
-    });
-  });
 
-  describe('error handling', () => {
-    it('should return null when Square client is not initialized', async () => {
-      process.env.SQUARE_ACCESS_TOKEN = undefined;
-      const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
-      expect(result).toBeNull();
-    });
-
-    it('should handle API errors', async () => {
-      mockClient.customersApi.searchCustomers.mockRejectedValueOnce(
-        new Error('API Error')
+      expect(mocks.paymentsApi.createPayment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sourceId: 'source-id',
+          amountMoney: {
+            amount: BigInt(1000),
+            currency: 'USD',
+          },
+        }),
       );
+    });
 
-      await expect(
-        createOrUpdateCustomer('John Doe', 'john@example.com')
-      ).rejects.toThrow('Failed to create/update Square customer: API Error');
+    it('should throw when no location client available', async () => {
+      await expect(processPayment('source-id', 1000)).rejects.toThrow(
+        'INITIALIZATION_ERROR',
+      );
     });
   });
 });

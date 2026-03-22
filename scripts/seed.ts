@@ -123,12 +123,48 @@ async function setupOrgAdmin() {
   }
 }
 
-function printSystemAdminInstructions() {
-  console.log('\n--- System admin setup ---');
-  console.log('To promote a user to system_admin, run:');
-  console.log("  UPDATE users SET role = 'system_admin' WHERE id = <USER_ID>;");
-  console.log('Or use the API (requires admin auth):');
-  console.log('  POST /api/system-admin/create/:id');
+async function promoteSystemAdmin() {
+  console.log('\n--- Promoting user to system admin ---');
+
+  const userId = process.argv[3];
+  if (!userId) {
+    console.error('Usage: tsx scripts/seed.ts system-admin <USER_ID>');
+    console.log('Provide the numeric user ID to promote.');
+    console.log('Alternative: run SQL directly:');
+    console.log("  UPDATE users SET role = 'system_admin' WHERE id = <USER_ID>;");
+    process.exit(1);
+  }
+
+  const loginResult = await post<{ id: number; email: string }>('/api/auth/login', {
+    email: 'admin@example.com',
+    password: 'fJ8#kL2@pQ5$rT9&',
+  });
+
+  if (!loginResult.ok || !loginResult.data.success) {
+    console.error('Cannot log in as admin. Falling back to API endpoint without auth.');
+  }
+
+  const cookies = loginResult.cookies;
+  const csrfResult = await get<{ csrfToken: string }>('/api/csrf-token', cookies);
+  const csrfToken = csrfResult.data.data?.csrfToken ?? '';
+
+  const res = await fetch(`${BASE_URL}/api/system-admin/create/${userId}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(cookies ? { Cookie: cookies } : {}),
+      ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
+    },
+  });
+
+  const data: ApiResponse = await res.json();
+  if (res.ok && data.success) {
+    console.log(`User ${userId} promoted to system admin`);
+  } else {
+    console.log('Failed to promote user:', data.error?.message ?? 'unknown error');
+    console.log('You can also run SQL directly:');
+    console.log(`  UPDATE users SET role = 'system_admin' WHERE id = ${userId};`);
+  }
 }
 
 const command = process.argv[2];
@@ -141,21 +177,20 @@ switch (command) {
     setupOrgAdmin();
     break;
   case 'system-admin':
-    printSystemAdminInstructions();
+    promoteSystemAdmin();
     break;
   case 'all':
     (async () => {
       await createFirstAdmin();
-      printSystemAdminInstructions();
       await setupOrgAdmin();
     })();
     break;
   default:
     console.log('Usage: tsx scripts/seed.ts <command>');
     console.log('Commands:');
-    console.log('  first-admin     Create the first admin user');
-    console.log('  org-admin       Set up an organization admin (test user)');
-    console.log('  system-admin    Print system admin setup instructions');
-    console.log('  all             Run all setup steps');
+    console.log('  first-admin           Create the first admin user');
+    console.log('  org-admin             Set up an organization admin (test user)');
+    console.log('  system-admin <ID>     Promote user to system admin via API');
+    console.log('  all                   Run first-admin + org-admin setup');
     break;
 }
