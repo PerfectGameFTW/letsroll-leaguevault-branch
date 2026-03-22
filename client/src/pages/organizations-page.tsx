@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { OrganizationFormDialog } from '@/components/organization-form-dialog';
 import { OrganizationConfirmDialogs } from '@/components/organization-confirm-dialogs';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { PageLoadingState, PageErrorState } from "@/components/page-states";
 
 export default function OrganizationsPage() {
   const [open, setOpen] = useState(false);
@@ -86,16 +87,12 @@ export default function OrganizationsPage() {
   if (isLoading) {
     return (
       <Layout>
-        <div className="container mx-auto py-10">
-          <h1 className="text-3xl font-bold mb-6">Organizations</h1>
-          <p>Loading organizations...</p>
-        </div>
+        <PageLoadingState message="Loading organizations..." />
       </Layout>
     );
   }
 
   if (error) {
-    // Check if it's an auth error - if so, show a more user-friendly message
     const errorMessage = (error as Error).message;
     const isAuthError = errorMessage.includes('not_authenticated') || 
                         errorMessage.includes('not authenticated') ||
@@ -105,24 +102,19 @@ export default function OrganizationsPage() {
       <Layout>
         <div className="container mx-auto py-10">
           <h1 className="text-3xl font-bold mb-6">Organizations</h1>
-          <div className="bg-destructive/10 border border-destructive p-4 rounded-md mb-6">
-            <h3 className="text-lg font-semibold text-destructive mb-2">
-              {isAuthError ? 'Authentication Required' : 'Error Loading Organizations'}
-            </h3>
-            <p className="text-muted-foreground">
-              {isAuthError 
-                ? 'You must be logged in to view organizations. Please log in and try again.'
-                : `Failed to load organizations: ${errorMessage}`
-              }
-            </p>
-            {isAuthError && (
-              <div className="mt-4">
-                <Button variant="default" onClick={() => window.location.href = '/login'}>
-                  Log In
-                </Button>
-              </div>
-            )}
-          </div>
+          <PageErrorState
+            message={isAuthError
+              ? 'You must be logged in to view organizations. Please log in and try again.'
+              : `Failed to load organizations: ${errorMessage}`
+            }
+          />
+          {isAuthError && (
+            <div className="mt-4">
+              <Button variant="default" onClick={() => window.location.href = '/login'}>
+                Log In
+              </Button>
+            </div>
+          )}
         </div>
       </Layout>
     );
