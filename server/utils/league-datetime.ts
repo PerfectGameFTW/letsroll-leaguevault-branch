@@ -1,6 +1,7 @@
 import { addWeeks, nextDay, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { toIsoDateStr, isDateSkippedOrCancelled } from '@shared/schedule-utils';
+import { DEFAULT_TIMEZONE } from '@shared/schema';
 
 const WEEKDAY_MAP: Record<string, 0 | 1 | 2 | 3 | 4 | 5 | 6> = {
   Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
@@ -11,7 +12,7 @@ export function getNextLeagueDateTime(
   afterDate: Date,
   weekDay: string,
   competitionStartTime: string | null | undefined,
-  timezone: string = 'America/Chicago',
+  timezone: string = DEFAULT_TIMEZONE,
   skipDates: string[] = [],
   cancelledDates: string[] = []
 ): Date {

@@ -1,7 +1,7 @@
 import schedule from "node-schedule";
 import { db } from "../db";
 import { eq, and, lte, gte, isNull, or, sql } from "drizzle-orm";
-import { paymentSchedules, payments, leagues, bowlers } from "@shared/schema";
+import { paymentSchedules, payments, leagues, bowlers, DEFAULT_TIMEZONE } from "@shared/schema";
 import { addWeeks, addMonths, setHours, setMinutes, setSeconds, setMilliseconds, isAfter, differenceInWeeks } from "date-fns";
 import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import { createOrderWithPayment, processPayment } from "./square";
@@ -207,7 +207,7 @@ class PaymentScheduler {
         // Skip charge if the payment date is a skip or cancelled date — just advance the schedule.
         // nextPaymentDate is stored as UTC; convert to league local time before comparing to
         // skip/cancel ISO date strings (which are stored in league-local calendar dates).
-        const leagueTz = league?.timezone ?? 'America/Chicago';
+        const leagueTz = league?.timezone ?? DEFAULT_TIMEZONE;
         const nextPaymentDateObj = new Date(scheduleRecord.nextPaymentDate);
         const firingDateLeagueLocal = league
           ? toZonedTime(nextPaymentDateObj, leagueTz)
@@ -292,7 +292,7 @@ class PaymentScheduler {
           const isUpfrontLeague = league?.paymentMode === 'upfront';
 
           let nextDate: Date;
-          const tz = league?.timezone ?? 'America/Chicago';
+          const tz = league?.timezone ?? DEFAULT_TIMEZONE;
           const currentPaymentDate = new Date(scheduleRecord.nextPaymentDate);
           if (scheduleRecord.frequency === 'weekly' && league) {
             nextDate = getNextLeagueDateTime(

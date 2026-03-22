@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
-import { insertLeagueSchema, type InsertLeague, type League, type Location } from "@shared/schema";
+import { insertLeagueSchema, type InsertLeague, type League, type Location, DEFAULT_WEEKLY_FEE_CENTS, DEFAULT_TIMEZONE, DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "@shared/schema";
 import { calculateSeasonEnd, getAllBowlingDates, getEffectiveBowlingWeeks } from "@shared/schedule-utils";
 import { LeagueSchedulePreview } from "@/components/league-schedule-preview";
 import { Loader2 } from "lucide-react";
@@ -67,11 +67,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       weekDay: "Monday",
       practiceStartTime: "",
       competitionStartTime: "",
-      timezone: "America/Chicago",
-      weeklyFee: 2000,
+      timezone: DEFAULT_TIMEZONE,
+      weeklyFee: DEFAULT_WEEKLY_FEE_CENTS,
       lineageFee: null,
       prizeFundFee: null,
-      finalTwoWeeksDueWeek: 6,
+      finalTwoWeeksDueWeek: DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK,
       paymentMode: "weekly",
       squareLineageItemId: null,
       squareLineageItemVariationId: null,

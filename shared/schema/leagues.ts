@@ -2,7 +2,7 @@ import { pgTable, text, serial, integer, boolean, timestamp, index, type AnyPgCo
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { WEEKDAYS, PAYMENT_MODES, nameSchema, positiveIntSchema, dateSchema, timeSchema } from "./constants";
+import { WEEKDAYS, PAYMENT_MODES, nameSchema, positiveIntSchema, dateSchema, timeSchema, DEFAULT_WEEKLY_FEE_CENTS, DEFAULT_TIMEZONE, DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "./constants";
 import { organizations } from "./organizations";
 import { locations } from "./locations";
 
@@ -14,7 +14,7 @@ export const leagues = pgTable("leagues", {
   seasonStart: timestamp("season_start", { mode: "string" }).notNull(),
   seasonEnd: timestamp("season_end", { mode: "string" }).notNull(),
   weekDay: text("week_day", { enum: WEEKDAYS }).notNull(),
-  weeklyFee: integer("weekly_fee").notNull().default(2000),
+  weeklyFee: integer("weekly_fee").notNull().default(DEFAULT_WEEKLY_FEE_CENTS),
   lineageFee: integer("lineage_fee"),
   prizeFundFee: integer("prize_fund_fee"),
   practiceStartTime: text("practice_start_time"),
@@ -26,8 +26,8 @@ export const leagues = pgTable("leagues", {
   squarePrizeFundItemVariationId: text("square_prize_fund_item_variation_id"),
   squarePrizeFundItemName: text("square_prize_fund_item_name"),
   squareCategoryId: text("square_category_id"),
-  timezone: text("timezone").default("America/Chicago"),
-  finalTwoWeeksDueWeek: integer("final_two_weeks_due_week").default(6),
+  timezone: text("timezone").default(DEFAULT_TIMEZONE),
+  finalTwoWeeksDueWeek: integer("final_two_weeks_due_week").default(DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK),
   paymentMode: text("payment_mode", { enum: PAYMENT_MODES }).notNull().default("weekly"),
   seasonNumber: integer("season_number").notNull().default(1),
   previousSeasonId: integer("previous_season_id").references((): AnyPgColumn => leagues.id, { onDelete: 'set null' }),
@@ -52,12 +52,12 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
   seasonStart: dateSchema,
   seasonEnd: dateSchema,
   weekDay: z.enum(WEEKDAYS),
-  weeklyFee: positiveIntSchema.default(2000),
+  weeklyFee: positiveIntSchema.default(DEFAULT_WEEKLY_FEE_CENTS),
   lineageFee: z.number().int().min(0).nullable().optional(),
   prizeFundFee: z.number().int().min(0).nullable().optional(),
   practiceStartTime: timeSchema.optional(),
   competitionStartTime: timeSchema.optional(),
-  timezone: z.string().default("America/Chicago"),
+  timezone: z.string().default(DEFAULT_TIMEZONE),
   squareLineageItemId: z.string().nullable().optional(),
   squareLineageItemVariationId: z.string().nullable().optional(),
   squareLineageItemName: z.string().nullable().optional(),

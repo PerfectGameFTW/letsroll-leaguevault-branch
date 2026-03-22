@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomBytes } from 'crypto';
 import { storage } from '../storage';
-import { insertLeagueSchema, updateLeagueSchema } from "@shared/schema";
+import { insertLeagueSchema, updateLeagueSchema, DEFAULT_TIMEZONE } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError } from '../utils/api';
 import { requireOrganizationAccess } from '../utils/access-control';
@@ -215,7 +215,7 @@ router.patch("/:id", async (req: any, res) => {
     const timezoneChanged = update.timezone && update.timezone !== league.timezone;
     if (timezoneChanged) {
       const activeSchedules = await storage.getActiveSchedulesByLeague(id);
-      const tz = updated.timezone ?? 'America/Chicago';
+      const tz = updated.timezone ?? DEFAULT_TIMEZONE;
 
       for (const sched of activeSchedules) {
         const nextDate = getNextLeagueDateTime(
@@ -417,7 +417,7 @@ router.post("/:id/new-season", async (req: any, res) => {
       prizeFundFee: sourceLeague.prizeFundFee ?? undefined,
       practiceStartTime: sourceLeague.practiceStartTime ?? undefined,
       competitionStartTime: sourceLeague.competitionStartTime ?? undefined,
-      timezone: sourceLeague.timezone ?? "America/Chicago",
+      timezone: sourceLeague.timezone ?? DEFAULT_TIMEZONE,
       squareLineageItemId: sourceLeague.squareLineageItemId,
       squareLineageItemVariationId: sourceLeague.squareLineageItemVariationId,
       squareLineageItemName: sourceLeague.squareLineageItemName,

@@ -83,9 +83,10 @@ export async function cleanup(): Promise<void> {
   try {
     await Promise.race([
       pool.end(),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Pool cleanup timeout')), 5000)
-      )
+      new Promise((_, reject) => {
+        const POOL_CLEANUP_TIMEOUT_MS = 5000;
+        setTimeout(() => reject(new Error('Pool cleanup timeout')), POOL_CLEANUP_TIMEOUT_MS);
+      })
     ]);
 
     log.info('Pool cleanup completed');

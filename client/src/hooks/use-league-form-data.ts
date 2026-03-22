@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { differenceInWeeks } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { DEFAULT_WEEKLY_FEE_CENTS, DEFAULT_TIMEZONE, DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "@shared/schema";
 import type { InsertLeague, League, PaymentMode } from "@shared/schema";
 
 interface UseLeagueFormDataOptions {
@@ -86,11 +87,11 @@ export function useLeagueFormData({
         weekDay: league.weekDay || "Monday",
         practiceStartTime: league.practiceStartTime || "",
         competitionStartTime: league.competitionStartTime || "",
-        timezone: league.timezone || "America/Chicago",
-        weeklyFee: league.weeklyFee || 2000,
+        timezone: league.timezone || DEFAULT_TIMEZONE,
+        weeklyFee: league.weeklyFee || DEFAULT_WEEKLY_FEE_CENTS,
         lineageFee: league.lineageFee ?? null,
         prizeFundFee: league.prizeFundFee ?? null,
-        finalTwoWeeksDueWeek: league.finalTwoWeeksDueWeek ?? 6,
+        finalTwoWeeksDueWeek: league.finalTwoWeeksDueWeek ?? DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK,
         paymentMode: (league.paymentMode as PaymentMode) || "weekly",
         squareLineageItemId: league.squareLineageItemId || null,
         squareLineageItemVariationId: league.squareLineageItemVariationId || null,
@@ -116,11 +117,11 @@ export function useLeagueFormData({
         weekDay: "Monday",
         practiceStartTime: "",
         competitionStartTime: "",
-        timezone: "America/Chicago",
-        weeklyFee: 2000,
+        timezone: DEFAULT_TIMEZONE,
+        weeklyFee: DEFAULT_WEEKLY_FEE_CENTS,
         lineageFee: null,
         prizeFundFee: null,
-        finalTwoWeeksDueWeek: 6,
+        finalTwoWeeksDueWeek: DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK,
         paymentMode: "weekly",
         squareLineageItemId: null,
         squareLineageItemVariationId: null,

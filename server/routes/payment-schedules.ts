@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertPaymentScheduleSchema } from '@shared/schema';
+import { insertPaymentScheduleSchema, DEFAULT_TIMEZONE } from '@shared/schema';
 import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { paymentScheduler } from '../services/payment-scheduler.js';
@@ -70,7 +70,7 @@ router.post('/', adminWriteLimiter, async (req, res) => {
           new Date(),
           league.weekDay,
           league.competitionStartTime,
-          league.timezone ?? 'America/Chicago',
+          league.timezone ?? DEFAULT_TIMEZONE,
           league.skipDates ?? [],
           league.cancelledDates ?? []
         );
@@ -120,7 +120,7 @@ router.get('/:bowlerId/:leagueId', async (req, res) => {
     const league = await storage.getLeague(leagueId);
     return sendSuccess(res, {
       ...schedule,
-      leagueTimezone: league?.timezone ?? 'America/Chicago',
+      leagueTimezone: league?.timezone ?? DEFAULT_TIMEZONE,
     });
   } catch (error) {
     log.error('Error fetching schedule:', error);
@@ -200,7 +200,7 @@ router.patch('/:id', adminWriteLimiter, async (req, res) => {
         new Date(),
         league.weekDay,
         league.competitionStartTime,
-        league.timezone ?? 'America/Chicago',
+        league.timezone ?? DEFAULT_TIMEZONE,
         league.skipDates ?? [],
         league.cancelledDates ?? []
       );

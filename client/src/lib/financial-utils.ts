@@ -1,4 +1,5 @@
 import { addWeeks, startOfToday, differenceInWeeks, parseISO, isValid } from "date-fns";
+import { DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "@shared/schema";
 import type { League, Payment } from "@shared/schema";
 import {
   getEffectiveBowlingWeeks,
@@ -122,7 +123,7 @@ export function calculateFinancials(league: League | null | undefined, payments:
     };
   }
 
-  const dueByWeek = league.finalTwoWeeksDueWeek ?? 6;
+  const dueByWeek = league.finalTwoWeeksDueWeek ?? DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK;
   const finalTwoWeeksAmount = league.weeklyFee * 2;
   const today = startOfToday();
 

@@ -19,8 +19,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { insertPaymentSchema, DEFAULT_WEEKLY_FEE_CENTS } from "@shared/schema";
 import type { InsertPayment, Bowler, League } from "@shared/schema";
-import { insertPaymentSchema } from "@shared/schema";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, AlertCircle, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -65,7 +65,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
-      amount: 2000,
+      amount: DEFAULT_WEEKLY_FEE_CENTS,
       weekOf: new Date().toISOString(),
       status: "paid",
       type: "cash",

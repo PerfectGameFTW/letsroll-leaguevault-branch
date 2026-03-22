@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import { format } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
+import { DEFAULT_TIMEZONE } from "@shared/schema";
 import type { League } from "@shared/schema";
 
 interface ScheduleData {
@@ -126,7 +127,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
             <div className="flex items-center justify-between pl-5">
               <span className="text-xs text-muted-foreground">Next payment</span>
               <span className="text-xs text-muted-foreground">
-                {formatInTimeZone(new Date(activeSchedule.nextPaymentDate), activeSchedule.leagueTimezone || 'America/Chicago', 'MMM d, yyyy h:mm a')}
+                {formatInTimeZone(new Date(activeSchedule.nextPaymentDate), activeSchedule.leagueTimezone || DEFAULT_TIMEZONE, 'MMM d, yyyy h:mm a')}
               </span>
             </div>
           )}

@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DEFAULT_TIMEZONE } from "@shared/schema";
 import type { InsertLeague } from "@shared/schema";
 
 interface LeagueTimingSectionProps {
@@ -51,7 +52,7 @@ export function LeagueTimingSection({ form }: LeagueTimingSectionProps) {
             <FormLabel>Timezone</FormLabel>
             <Select
               onValueChange={field.onChange}
-              value={field.value || 'America/Chicago'}
+              value={field.value || DEFAULT_TIMEZONE}
             >
               <FormControl>
                 <SelectTrigger>

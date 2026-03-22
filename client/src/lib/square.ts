@@ -155,7 +155,9 @@ export async function initializeSquare(locationId?: number | null) {
       }
     }
 
-    const timeoutMs = isProduction ? 15000 : 10000;
+    const SQUARE_INIT_TIMEOUT_PROD_MS = 15000;
+    const SQUARE_INIT_TIMEOUT_DEV_MS = 10000;
+    const timeoutMs = isProduction ? SQUARE_INIT_TIMEOUT_PROD_MS : SQUARE_INIT_TIMEOUT_DEV_MS;
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error(`Square initialization timed out after ${timeoutMs/1000} seconds`)), timeoutMs);
     });

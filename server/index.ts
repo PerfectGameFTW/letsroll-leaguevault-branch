@@ -301,7 +301,8 @@ async function shutdown() {
     await dbCleanup();
 
     await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Server close timeout')), 5000);
+      const SERVER_CLOSE_TIMEOUT_MS = 5000;
+      const timeout = setTimeout(() => reject(new Error('Server close timeout')), SERVER_CLOSE_TIMEOUT_MS);
       server.close((err) => {
         clearTimeout(timeout);
         if (err) reject(err);

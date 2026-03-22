@@ -51,3 +51,7 @@ export const timeSchema = z.union([
 export const nameSchema = z.string().min(2, "Name must be at least 2 characters");
 export const emailSchema = z.string().email("Invalid email address");
 export const positiveIntSchema = z.number().int().positive("Must be a positive number");
+
+export const DEFAULT_WEEKLY_FEE_CENTS = 2000;
+export const DEFAULT_TIMEZONE = "America/Chicago";
+export const DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK = 6;
