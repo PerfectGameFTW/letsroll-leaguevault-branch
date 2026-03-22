@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
-import { storage } from '../storage.js';
+import { storage } from '../storage';
 import { requireAdmin } from '../middleware/admin.js';
 
 const router = Router();

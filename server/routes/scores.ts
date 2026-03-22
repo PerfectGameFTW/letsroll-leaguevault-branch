@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { storage } from '../storage.js';
+import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { z } from 'zod';
 import { hasAccessToLeague } from '../utils/access-control.js';

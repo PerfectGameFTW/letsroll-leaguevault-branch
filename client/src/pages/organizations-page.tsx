@@ -12,7 +12,7 @@ import { Plus, Edit, Trash, Upload, X, Archive, RotateCcw, AlertTriangle, Extern
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import type { Organization, InsertOrganization, User } from '@shared/schema.js';
+import type { Organization, InsertOrganization, User } from '@shared/schema';
 import { Layout } from "@/components/layout";
 import { Badge } from '@/components/ui/badge';
 

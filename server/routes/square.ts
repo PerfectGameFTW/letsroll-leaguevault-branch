@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile } from '../services/square.js';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
-import { storage } from '../storage.js';
+import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { squarePaymentLimiter } from '../middleware/rate-limit.js';

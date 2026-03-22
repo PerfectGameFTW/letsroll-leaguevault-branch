@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { isOrgBNConfigured, syncBowlerToBN, syncAllBowlersToBN } from '../services/bowlnow.js';
-import { storage } from '../storage.js';
+import { storage } from '../storage';
 
 const router = Router();
 

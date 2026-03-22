@@ -3,14 +3,14 @@ import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { sendSuccess, sendError, sanitizeUser, sanitizeOrg, sanitizeOrgs } from '../utils/api.js';
-import { storage } from '../storage.js';
+import { storage } from '../storage';
 import { 
   insertOrganizationSchema, 
   partialOrganizationSchema, 
   users,
   type InsertOrganization,
   type Organization
-} from '@shared/schema.js';
+} from '@shared/schema';
 import { requireAdmin } from '../middleware/admin.js';
 import { hashPassword } from '../auth.js';
 import { requireOrganizationAccess } from '../utils/access-control.js';

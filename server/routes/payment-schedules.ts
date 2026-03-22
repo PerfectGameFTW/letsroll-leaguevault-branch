@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { storage } from '../storage.js';
-import { insertPaymentScheduleSchema } from '@shared/schema.js';
+import { storage } from '../storage';
+import { insertPaymentScheduleSchema } from '@shared/schema';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { paymentScheduler } from '../services/payment-scheduler.js';

@@ -1,5 +1,5 @@
-import { storage } from '../storage.js';
-import type { OrgIntegrations } from '@shared/schema.js';
+import { storage } from '../storage';
+import type { OrgIntegrations } from '@shared/schema';
 import { env } from '../config';
 
 const BN_API_BASE = 'https://services.leadconnectorhq.com';

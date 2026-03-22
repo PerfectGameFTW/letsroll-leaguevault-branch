@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { ZodError } from 'zod';
-import { type User, type Organization, type PaginationMeta } from '@shared/schema.js';
+import { type User, type Organization, type PaginationMeta } from '@shared/schema';
 
 export type SanitizedUser = Omit<User, 'password' | 'inviteToken' | 'inviteTokenExpiry'>;
 

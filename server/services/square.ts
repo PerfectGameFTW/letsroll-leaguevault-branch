@@ -1,7 +1,7 @@
 import { Client, Environment } from 'square';
 import type { ApiError } from 'square';
 import crypto from 'crypto';
-import { storage } from '../storage.js';
+import { storage } from '../storage';
 
 interface SquareCustomer {
   id: string;

@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { storage } from '../storage.js';
-import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema.js";
+import { storage } from '../storage';
+import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, sendPaginatedSuccess, parsePaginationParams } from '../utils/api.js';
 import { refundPayment as squareRefund } from '../services/square.js';
@@ -10,7 +10,7 @@ import { differenceInWeeks } from 'date-fns';
 import { paymentScheduler } from '../services/payment-scheduler.js';
 import { db } from '../db.js';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
-import { payments as paymentsTable } from '@shared/schema.js';
+import { payments as paymentsTable } from '@shared/schema';
 
 const router = Router();
 

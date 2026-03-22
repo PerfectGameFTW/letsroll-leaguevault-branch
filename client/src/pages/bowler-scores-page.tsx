@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
 import { Loader2, ArrowLeft } from "lucide-react";
-import type { Score, Bowler } from "@shared/schema.js";
+import type { Score, Bowler } from "@shared/schema";
 import { format } from "date-fns";
 import { Link, useParams } from "wouter";
 

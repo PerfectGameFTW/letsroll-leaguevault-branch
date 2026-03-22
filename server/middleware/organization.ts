@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { storage } from '../storage.js';
+import { storage } from '../storage';
 import { sendError } from '../utils/api.js';
 
 /**

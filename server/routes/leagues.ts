@@ -12,7 +12,7 @@ import { paymentScheduler } from '../services/payment-scheduler.js';
 import { getNextLeagueDateTime } from '../utils/league-datetime.js';
 import { calculateSeasonEnd } from '@shared/schedule-utils';
 import { db } from '../db.js';
-import { payments as paymentsTable } from '@shared/schema.js';
+import { payments as paymentsTable } from '@shared/schema';
 import { eq, isNull, and } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 

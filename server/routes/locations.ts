@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError } from '../utils/api.js';
-import { storage } from '../storage.js';
-import { insertLocationSchema, partialLocationSchema, locationSquareCredentialsSchema } from '@shared/schema.js';
+import { storage } from '../storage';
+import { insertLocationSchema, partialLocationSchema, locationSquareCredentialsSchema } from '@shared/schema';
 import { filterByOrganization } from '../middleware/organization.js';
 
 const router = Router();

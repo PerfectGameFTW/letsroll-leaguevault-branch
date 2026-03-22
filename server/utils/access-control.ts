@@ -1,4 +1,4 @@
-import { storage } from '../storage.js';
+import { storage } from '../storage';
 
 export function isSystemAdmin(user: any): boolean {
   return user?.role === 'system_admin';

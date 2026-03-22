@@ -7,7 +7,7 @@ import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import { createOrderWithPayment, processPayment } from "./square";
 import { logger } from "../logger";
 import { getNextLeagueDateTime } from "../utils/league-datetime.js";
-import { storage } from "../storage.js";
+import { storage } from "../storage";
 import { isDateSkippedOrCancelled, getEffectiveBowlingWeeks, countBowlingWeeksPassed } from "@shared/schedule-utils";
 
 class PaymentScheduler {

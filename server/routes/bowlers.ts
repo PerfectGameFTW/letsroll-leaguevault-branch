@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { storage } from '../storage.js';
-import { insertBowlerSchema, partialBowlerSchema } from "@shared/schema.js";
+import { storage } from '../storage';
+import { insertBowlerSchema, partialBowlerSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { createOrUpdateCustomer } from '../services/square.js';

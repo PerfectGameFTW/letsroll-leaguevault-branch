@@ -10,12 +10,20 @@ A full-stack bowling league management application with multi-tenant support for
 - **Payments**: Square SDK integration
 
 ## Key Files
-- `shared/schema.ts` - Database schema and Zod validation types
+- `shared/schema/` - Database schema split by domain (barrel re-exports from `shared/schema/index.ts`)
+  - `constants.ts` - Enums, shared Zod schemas (dateSchema, nameSchema, etc.)
+  - `organizations.ts`, `locations.ts`, `leagues.ts`, `teams.ts`, `bowlers.ts` - Domain tables + insert/partial schemas
+  - `payments.ts`, `users.ts`, `games.ts`, `email-templates.ts` - Additional domain tables
+  - `relations.ts` - All Drizzle ORM relation definitions
+  - `api-types.ts` - API response types (ApiResponse, PaginatedResult, SavedCard, etc.)
 - `server/db.ts` - Database connection pool (standard `pg` driver)
 - `server/index.ts` - Express server entry point (~200 lines, clean startup)
 - `server/routes/index.ts` - Route registration (no HTTP server creation, no duplicate auth setup)
 - `server/routes/` - Modular API routes
-- `server/storage.ts` - Database storage abstraction layer
+- `server/storage/` - Database storage split by domain (barrel re-exports from `server/storage/index.ts`)
+  - `types.ts` - IStorage interface
+  - `leagues.ts`, `teams.ts`, `bowlers.ts`, `payments.ts`, `games-scores.ts` - Domain storage functions
+  - `users.ts`, `organizations.ts`, `locations.ts`, `email-templates.ts` - Additional storage functions
 - `server/auth.ts` - Authentication with Passport.js (minimal logging, no sensitive data)
 - `server/utils/access-control.ts` - Centralized authorization helpers (hasAccessToLeague, hasAccessToBowler, etc.)
 - `client/src/App.tsx` - Frontend routing and route guards
@@ -27,7 +35,7 @@ A full-stack bowling league management application with multi-tenant support for
 ## Database
 - Uses Neon PostgreSQL (managed via Replit's DATABASE_URL environment variable)
 - Connection via `DATABASE_URL` environment variable (runtime-managed)
-- Schema changes: modify `shared/schema.ts`, then run `npm run db:push`
+- Schema changes: modify files in `shared/schema/`, then run `npm run db:push`
 - Driver: standard `pg` Pool
 - Indexes: payments(bowler_id, league_id, week_of), users(bowler_id), teams unique(league_id, number)
 
@@ -37,7 +45,7 @@ A full-stack bowling league management application with multi-tenant support for
 - When `page` is absent, returns the traditional `{ success, data }` array format (backward compatible)
 - Pagination infrastructure in `server/utils/api.ts`: `sendPaginatedSuccess()` and `parsePaginationParams()`
 - Storage layer: `getPaymentsPaginated()` method in `IStorage` / `DatabaseStorage`
-- Shared types: `PaginationMeta`, `PaginatedResult<T>` in `shared/schema.ts`
+- Shared types: `PaginationMeta`, `PaginatedResult<T>` in `shared/schema/api-types.ts`
 - Admin payments page (`client/src/pages/payments-page.tsx`) uses paginated API with page controls
 - Limit is capped at 100 per page server-side; default is 50
 

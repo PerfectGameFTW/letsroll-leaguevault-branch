@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/api.js';
-import { storage } from '../storage.js';
-import type { OrgIntegrations } from '@shared/schema.js';
+import { storage } from '../storage';
+import type { OrgIntegrations } from '@shared/schema';
 import { z } from 'zod';
 
 const router = Router();
