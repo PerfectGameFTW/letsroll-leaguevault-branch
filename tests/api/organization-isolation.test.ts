@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { login, apiGet, type AuthSession } from '../helpers';
+import { login, apiGet, type AuthSession, TEST_ORG_A_EMAIL, TEST_ORG_B_EMAIL, TEST_ORG_PASSWORD } from '../helpers';
 
 interface OrgUser {
   id: number;
@@ -14,16 +14,12 @@ interface League {
 }
 
 describe('Organization Isolation', () => {
-  const ORG_A_EMAIL = 'testadmin@example.com';
-  const ORG_B_EMAIL = 'testadmin2@example.com';
-  const PASSWORD = 'TestPassword123!';
-
   let sessionA: AuthSession;
   let sessionB: AuthSession;
 
   beforeAll(async () => {
-    sessionA = await login(ORG_A_EMAIL, PASSWORD);
-    sessionB = await login(ORG_B_EMAIL, PASSWORD);
+    sessionA = await login(TEST_ORG_A_EMAIL, TEST_ORG_PASSWORD);
+    sessionB = await login(TEST_ORG_B_EMAIL, TEST_ORG_PASSWORD);
   });
 
   describe('organization visibility', () => {
@@ -55,11 +51,11 @@ describe('Organization Isolation', () => {
 
     it('org A admin should NOT see org B users', async () => {
       expect(sessionB.user.organizationId).toBeTruthy();
-      const { status, data } = await apiGet<OrgUser[]>(
+      const { status } = await apiGet<OrgUser[]>(
         `/api/org-admin/users?organizationId=${sessionB.user.organizationId}`,
         sessionA,
       );
-      expect(status === 403 || (data.success === false)).toBe(true);
+      expect(status).toBe(403);
     });
   });
 
@@ -78,11 +74,11 @@ describe('Organization Isolation', () => {
 
     it('org B admin should NOT access org A leagues via org endpoint', async () => {
       expect(sessionA.user.organizationId).toBeTruthy();
-      const { status, data } = await apiGet<League[]>(
+      const { status } = await apiGet<League[]>(
         `/api/organizations/${sessionA.user.organizationId}/leagues`,
         sessionB,
       );
-      expect(status === 403 || (data.success === false)).toBe(true);
+      expect(status).toBe(403);
     });
   });
 });

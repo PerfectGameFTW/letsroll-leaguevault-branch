@@ -1,28 +1,38 @@
-import { describe, it, expect } from 'vitest';
-import { login, apiGet, apiPost } from '../helpers';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { login, apiGet, apiPost, apiDelete, type AuthSession, TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD, TEST_NEW_ORG_ADMIN_PASSWORD } from '../helpers';
 
 describe('Organizations API', () => {
-  const ADMIN_EMAIL = 'admin@example.com';
-  const ADMIN_PASSWORD = 'fJ8#kL2@pQ5$rT9&';
+  let adminSession: AuthSession;
+  const createdOrgIds: number[] = [];
+
+  beforeAll(async () => {
+    adminSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+  });
+
+  afterAll(async () => {
+    for (const id of createdOrgIds) {
+      const { status } = await apiDelete(`/api/organizations/${id}`, adminSession);
+      if (status >= 400) {
+        console.warn(`Cleanup: failed to delete org ${id}, status ${status}`);
+      }
+    }
+  });
 
   describe('when authenticated as admin', () => {
-    it('should log in as admin', async () => {
-      const session = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
-      expect(session.user.email).toBe(ADMIN_EMAIL);
-      expect(session.cookies).toBeTruthy();
-      expect(session.csrfToken).toBeTruthy();
+    it('should have a valid admin session', () => {
+      expect(adminSession.user.email).toBe(TEST_ADMIN_EMAIL);
+      expect(adminSession.cookies).toBeTruthy();
+      expect(adminSession.csrfToken).toBeTruthy();
     });
 
     it('should list organizations', async () => {
-      const session = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
-      const { status, data } = await apiGet('/api/organizations', session);
+      const { status, data } = await apiGet('/api/organizations', adminSession);
       expect(status).toBe(200);
       expect(data.success).toBe(true);
       expect(Array.isArray(data.data)).toBe(true);
     });
 
     it('should create an organization with admin', async () => {
-      const session = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
       const slug = `test-org-${Date.now()}`;
       const { status, data } = await apiPost(
         '/api/organizations',
@@ -31,21 +41,26 @@ describe('Organizations API', () => {
           slug,
           adminData: {
             email: `orgadmin-${Date.now()}@example.com`,
-            password: 'xM7&tN3!zP9$vB1#',
+            password: TEST_NEW_ORG_ADMIN_PASSWORD,
             name: 'Test Org Admin',
           },
         },
-        session,
+        adminSession,
       );
       expect(status).toBe(201);
       expect(data.success).toBe(true);
       expect(data.data).toHaveProperty('name', 'Vitest Test Organization');
       expect(data.data).toHaveProperty('slug', slug);
+
+      const created = data.data as { id?: number; organization?: { id: number } };
+      const orgId = created?.id ?? created?.organization?.id;
+      if (orgId) {
+        createdOrgIds.push(orgId);
+      }
     });
 
     it('should list organizations including newly created one', async () => {
-      const session = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
-      const { data } = await apiGet('/api/organizations', session);
+      const { data } = await apiGet('/api/organizations', adminSession);
       expect(data.success).toBe(true);
       const orgs = data.data as Array<{ name: string }>;
       expect(orgs.length).toBeGreaterThanOrEqual(1);
@@ -55,7 +70,7 @@ describe('Organizations API', () => {
   describe('when not authenticated', () => {
     it('should reject unauthenticated organization listing', async () => {
       const { status } = await apiGet('/api/organizations');
-      expect(status).toBeGreaterThanOrEqual(401);
+      expect(status).toBe(401);
     });
   });
 });

@@ -1,98 +1,47 @@
 #!/usr/bin/env tsx
-const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
-
-interface ApiResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: { message: string; code?: string };
-}
-
-async function post<T = unknown>(
-  path: string,
-  body: unknown,
-  cookies?: string,
-): Promise<{ ok: boolean; data: ApiResponse<T>; cookies: string }> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (cookies) headers['Cookie'] = cookies;
-
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-
-  const setCookie = res.headers.getSetCookie?.() ?? [];
-  const newCookies = setCookie.map(c => c.split(';')[0]).join('; ');
-
-  return {
-    ok: res.ok,
-    data: (await res.json()) as ApiResponse<T>,
-    cookies: newCookies || cookies || '',
-  };
-}
-
-async function get<T = unknown>(
-  path: string,
-  cookies?: string,
-): Promise<{ ok: boolean; data: ApiResponse<T> }> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (cookies) headers['Cookie'] = cookies;
-
-  const res = await fetch(`${BASE_URL}${path}`, { headers });
-  return { ok: res.ok, data: (await res.json()) as ApiResponse<T> };
-}
+import { login, apiPost, BASE_URL, TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD, TEST_ORG_B_EMAIL, TEST_ORG_PASSWORD } from '../tests/helpers';
 
 async function createFirstAdmin() {
   console.log('--- Creating first admin user ---');
-  const result = await post('/api/setup/create-first-admin', {
-    email: 'admin@example.com',
-    password: 'fJ8#kL2@pQ5$rT9&',
+  const { status, data } = await apiPost('/api/setup/create-first-admin', {
+    email: TEST_ADMIN_EMAIL,
+    password: TEST_ADMIN_PASSWORD,
     name: 'System Admin',
     phone: '555-123-4567',
   });
 
-  if (result.ok && result.data.success) {
-    console.log('First admin created:', (result.data.data as { email: string }).email);
+  if (status < 400 && data.success) {
+    console.log('First admin created:', (data.data as { email: string }).email);
   } else {
-    console.log('Could not create first admin:', result.data.error?.message ?? 'unknown error');
+    console.log('Could not create first admin:', data.error?.message ?? 'unknown error');
   }
 }
 
 async function setupOrgAdmin() {
   console.log('\n--- Setting up organization admin ---');
 
-  const loginResult = await post<{ id: number; email: string }>('/api/auth/login', {
-    email: 'admin@example.com',
-    password: 'fJ8#kL2@pQ5$rT9&',
-  });
-
-  if (!loginResult.ok || !loginResult.data.success) {
-    console.error('Cannot log in as system admin:', loginResult.data.error?.message);
-    return;
-  }
-
-  const adminCookies = loginResult.cookies;
+  const session = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
   console.log('Logged in as system admin');
 
   const newUser = {
-    email: 'testadmin2@example.com',
-    password: 'vT9!mR2$qF8*dG3&zK7#',
+    email: TEST_ORG_B_EMAIL,
+    password: TEST_ORG_PASSWORD,
     name: 'Test Admin B',
   };
 
-  const regResult = await post('/api/auth/register', newUser);
+  const regResult = await apiPost('/api/auth/register', newUser);
   let userId: number | null = null;
 
-  if (regResult.ok && regResult.data.success) {
+  if (regResult.status < 400 && regResult.data.success) {
     userId = (regResult.data.data as { id: number }).id;
     console.log('Registered new user, id:', userId);
   } else {
     console.log('Registration failed (user may already exist), attempting login...');
-    const userLogin = await post<{ id: number }>('/api/auth/login', {
+    const userLogin = await apiPost<{ id: number }>('/api/auth/login', {
       email: newUser.email,
       password: newUser.password,
     });
-    if (userLogin.ok && userLogin.data.success) {
+    if (userLogin.status < 400 && userLogin.data.success) {
       userId = userLogin.data.data!.id;
     }
   }
@@ -102,20 +51,17 @@ async function setupOrgAdmin() {
     return;
   }
 
-  const csrfResult = await get<{ csrfToken: string }>('/api/csrf-token', adminCookies);
-  const csrfToken = csrfResult.data.data?.csrfToken ?? '';
-
   const addRes = await fetch(`${BASE_URL}/api/org-admin/users/${userId}/add`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Cookie: adminCookies,
-      'x-csrf-token': csrfToken,
+      Cookie: session.cookies,
+      'x-csrf-token': session.csrfToken,
     },
     body: JSON.stringify({ organizationId: 2, isOrganizationAdmin: true }),
   });
 
-  const addData: ApiResponse = await addRes.json();
+  const addData = await addRes.json();
   if (addRes.ok && addData.success) {
     console.log(`User ${userId} added to organization 2 as admin`);
   } else {
@@ -135,29 +81,25 @@ async function promoteSystemAdmin() {
     process.exit(1);
   }
 
-  const loginResult = await post<{ id: number; email: string }>('/api/auth/login', {
-    email: 'admin@example.com',
-    password: 'fJ8#kL2@pQ5$rT9&',
-  });
-
-  if (!loginResult.ok || !loginResult.data.success) {
+  let session;
+  try {
+    session = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+  } catch {
     console.error('Cannot log in as admin. Falling back to API endpoint without auth.');
   }
 
-  const cookies = loginResult.cookies;
-  const csrfResult = await get<{ csrfToken: string }>('/api/csrf-token', cookies);
-  const csrfToken = csrfResult.data.data?.csrfToken ?? '';
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (session) {
+    headers['Cookie'] = session.cookies;
+    headers['x-csrf-token'] = session.csrfToken;
+  }
 
   const res = await fetch(`${BASE_URL}/api/system-admin/create/${userId}`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(cookies ? { Cookie: cookies } : {}),
-      ...(csrfToken ? { 'x-csrf-token': csrfToken } : {}),
-    },
+    headers,
   });
 
-  const data: ApiResponse = await res.json();
+  const data = await res.json();
   if (res.ok && data.success) {
     console.log(`User ${userId} promoted to system admin`);
   } else {

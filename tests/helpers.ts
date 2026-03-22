@@ -1,4 +1,11 @@
-const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:5000';
+const BASE_URL = process.env.TEST_BASE_URL || process.env.BASE_URL || 'http://localhost:5000';
+
+const TEST_ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || 'admin@example.com';
+const TEST_ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || 'admin-local-dev';
+const TEST_ORG_A_EMAIL = process.env.TEST_ORG_A_EMAIL || 'testadmin@example.com';
+const TEST_ORG_B_EMAIL = process.env.TEST_ORG_B_EMAIL || 'testadmin2@example.com';
+const TEST_ORG_PASSWORD = process.env.TEST_ORG_PASSWORD || 'org-local-dev';
+const TEST_NEW_ORG_ADMIN_PASSWORD = process.env.TEST_NEW_ORG_ADMIN_PASSWORD || 'new-org-admin-local-dev';
 
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -86,4 +93,50 @@ export async function apiPost<T = unknown>(
   return { status: res.status, data };
 }
 
-export { BASE_URL };
+export async function apiPatch<T = unknown>(
+  path: string,
+  body: unknown,
+  session?: AuthSession,
+): Promise<{ status: number; data: ApiResponse<T> }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (session) {
+    headers['Cookie'] = session.cookies;
+    headers['x-csrf-token'] = session.csrfToken;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(body),
+  });
+  const data: ApiResponse<T> = await res.json();
+  return { status: res.status, data };
+}
+
+export async function apiDelete<T = unknown>(
+  path: string,
+  session?: AuthSession,
+): Promise<{ status: number; data: ApiResponse<T> }> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (session) {
+    headers['Cookie'] = session.cookies;
+    headers['x-csrf-token'] = session.csrfToken;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'DELETE',
+    headers,
+  });
+  const data: ApiResponse<T> = await res.json();
+  return { status: res.status, data };
+}
+
+export {
+  BASE_URL,
+  TEST_ADMIN_EMAIL,
+  TEST_ADMIN_PASSWORD,
+  TEST_ORG_A_EMAIL,
+  TEST_ORG_B_EMAIL,
+  TEST_ORG_PASSWORD,
+  TEST_NEW_ORG_ADMIN_PASSWORD,
+};
