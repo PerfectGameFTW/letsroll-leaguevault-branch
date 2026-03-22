@@ -1,9 +1,9 @@
 import { Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function PageLoadingState({ message }: { message?: string }) {
+export function PageLoadingState({ message, fullPage = true }: { message?: string; fullPage?: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center h-[50vh]">
+    <div className={`flex flex-col items-center justify-center ${fullPage ? "h-[50vh]" : "py-12"}`}>
       <Loader2 className="h-8 w-8 animate-spin text-primary" />
       {message && <p className="mt-4 text-sm text-muted-foreground">{message}</p>}
     </div>

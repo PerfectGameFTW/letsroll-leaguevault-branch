@@ -134,7 +134,7 @@ export default function EmailTemplatesPage() {
         </div>
 
         {isLoading ? (
-          <PageLoadingState />
+          <PageLoadingState fullPage={false} />
         ) : (
           <div className="rounded-lg border divide-y">
             {templates.map((template) => {

@@ -147,7 +147,7 @@ const ClaimBowlerPage: FC = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           {isLoading ? (
-            <PageLoadingState />
+            <PageLoadingState fullPage={false} />
           ) : totalBowlers === 0 ? (
             <div className="text-center py-8 space-y-4">
               <p className="text-muted-foreground">
