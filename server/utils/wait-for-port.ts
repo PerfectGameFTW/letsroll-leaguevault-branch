@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import fetch from 'node-fetch';
 
 const PORT_STATUS_FILE = '.port-status';
 const TIMEOUT = 30000; // 30 seconds
