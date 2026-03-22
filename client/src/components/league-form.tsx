@@ -18,45 +18,20 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Badge } from "@/components/ui/badge";
+import { Form } from "@/components/ui/form";
 import { insertLeagueSchema, type InsertLeague, type League, type Location, type PaymentMode } from "@shared/schema";
-import { calculateSeasonEnd, getAllBowlingDates, getEffectiveBowlingWeeks, toIsoDateStr } from "@shared/schedule-utils";
+import { calculateSeasonEnd, getAllBowlingDates, getEffectiveBowlingWeeks } from "@shared/schedule-utils";
 import { LeagueSchedulePreview } from "@/components/league-schedule-preview";
-import { LeagueSquareCatalog } from "@/components/league-square-catalog";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ChevronDown, ChevronUp, CalendarX, SkipForward, Check } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { differenceInWeeks } from "date-fns";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-
-// Add a new array for weekday options
-const weekDayOptions = [
-  { value: "Monday", label: "Monday" },
-  { value: "Tuesday", label: "Tuesday" },
-  { value: "Wednesday", label: "Wednesday" },
-  { value: "Thursday", label: "Thursday" },
-  { value: "Friday", label: "Friday" },
-  { value: "Saturday", label: "Saturday" },
-  { value: "Sunday", label: "Sunday" },
-];
+import { LeagueBasicInfo } from "@/components/league-form-basic-info";
+import { LeagueScheduleSection } from "@/components/league-form-schedule";
+import { LeagueTimingSection } from "@/components/league-form-timing";
+import { LeagueFeeSection } from "@/components/league-form-fees";
 
 interface LeagueFormProps {
   open: boolean;
@@ -80,7 +55,6 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const isResettingForm = useRef(false);
 
-  // Initialize dates with noon time to avoid timezone issues
   const today = new Date();
   today.setHours(12, 0, 0, 0);
 
@@ -310,6 +284,28 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     },
   });
 
+  const handleLocationChange = (value: string) => {
+    setSelectedCategoryId(null);
+    form.setValue('squareCategoryId', null);
+    form.setValue('squareLineageItemId', null);
+    form.setValue('squareLineageItemVariationId', null);
+    form.setValue('squareLineageItemName', null);
+    form.setValue('squarePrizeFundItemId', null);
+    form.setValue('squarePrizeFundItemVariationId', null);
+    form.setValue('squarePrizeFundItemName', null);
+  };
+
+  const handleSeasonStartChange = () => {
+    setSkipDates([]);
+    setCancelledDates([]);
+  };
+
+  const handleBowlingWeeksChange = (w: number) => {
+    setBowlingWeeks(w);
+    setSkipDates([]);
+    setCancelledDates([]);
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={onClose}>
@@ -324,168 +320,19 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
               className="space-y-4"
             >
               <div className="space-y-4 pb-4">
-                {activeLocations.length > 0 && (
-                  <FormField
-                    control={form.control}
-                    name="locationId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Location</FormLabel>
-                        <Select
-                          onValueChange={(value) => {
-                            field.onChange(value === "none" ? null : parseInt(value));
-                            setSelectedCategoryId(null);
-                            form.setValue('squareCategoryId', null);
-                            form.setValue('squareLineageItemId', null);
-                            form.setValue('squareLineageItemVariationId', null);
-                            form.setValue('squareLineageItemName', null);
-                            form.setValue('squarePrizeFundItemId', null);
-                            form.setValue('squarePrizeFundItemVariationId', null);
-                            form.setValue('squarePrizeFundItemName', null);
-                          }}
-                          value={field.value ? String(field.value) : "none"}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a location" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="none">No Location</SelectItem>
-                            {activeLocations.map((location) => (
-                              <SelectItem key={location.id} value={String(location.id)}>
-                                {location.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Name</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                <LeagueBasicInfo
+                  form={form}
+                  activeLocations={activeLocations}
+                  onLocationChange={handleLocationChange}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Input {...field} value={field.value || ""} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                <LeagueScheduleSection
+                  form={form}
+                  bowlingWeeks={bowlingWeeks}
+                  computedSeasonEnd={computedSeasonEnd}
+                  onSeasonStartChange={handleSeasonStartChange}
+                  onBowlingWeeksChange={handleBowlingWeeksChange}
                 />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="seasonStart"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Season Start</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="date"
-                            {...field}
-                            value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                            onChange={(e) => {
-                              const [year, month, day] = e.target.value.split('-').map(Number);
-                              const date = new Date(year, month - 1, day, 12, 0, 0, 0);
-                              field.onChange(date.toISOString());
-                              setSkipDates([]);
-                              setCancelledDates([]);
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <div>
-                    <label className="text-sm font-medium">Season End</label>
-                    <div className="mt-1.5 flex h-9 items-center rounded-md border bg-muted/50 px-3 text-sm text-muted-foreground">
-                      {computedSeasonEnd
-                        ? computedSeasonEnd.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                        : '—'}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">Auto-calculated from schedule</p>
-                  </div>
-                </div>
-
-                {/* League Info Display */}
-                <div className="space-y-3">
-                  {/* Bowling Weeks Input */}
-                  <div>
-                    <label className="text-sm font-medium">Bowling Weeks</label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={52}
-                      value={bowlingWeeks || ''}
-                      onChange={(e) => {
-                        const w = parseInt(e.target.value) || 1;
-                        setBowlingWeeks(w);
-                        setSkipDates([]);
-                        setCancelledDates([]);
-                      }}
-                      placeholder="Number of bowling weeks"
-                      className="mt-1.5"
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Total planned bowling weeks (not counting holidays/cancellations)
-                    </p>
-                  </div>
-
-                  {/* Bowling Day Selection */}
-                  <FormField
-                    control={form.control}
-                    name="weekDay"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Bowling Day</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select bowling day" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {weekDayOptions.map((option) => (
-                              <SelectItem
-                                key={option.value}
-                                value={option.value}
-                              >
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
 
                 <LeagueSchedulePreview
                   scheduleDates={scheduleDates}
@@ -499,237 +346,17 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                   toggleDateType={toggleDateType}
                 />
 
-                {/* Competition Start Time */}
-                <div className="grid grid-cols-1 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="competitionStartTime"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>League Start Time</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="time"
-                            {...field}
-                            value={field.value || ''}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                <LeagueTimingSection form={form} />
 
-                <FormField
-                  control={form.control}
-                  name="timezone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Timezone</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value || 'America/Chicago'}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select timezone" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="America/New_York">Eastern (ET)</SelectItem>
-                          <SelectItem value="America/Chicago">Central (CT)</SelectItem>
-                          <SelectItem value="America/Denver">Mountain (MT)</SelectItem>
-                          <SelectItem value="America/Phoenix">Arizona (MST)</SelectItem>
-                          <SelectItem value="America/Los_Angeles">Pacific (PT)</SelectItem>
-                          <SelectItem value="America/Anchorage">Alaska (AKT)</SelectItem>
-                          <SelectItem value="Pacific/Honolulu">Hawaii (HST)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="paymentMode"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Payment Mode</FormLabel>
-                      <Select
-                        onValueChange={(value) => field.onChange(value as PaymentMode)}
-                        value={field.value || "weekly"}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="weekly">Weekly — bowlers pay each week</SelectItem>
-                          <SelectItem value="upfront">Full Season Upfront — full amount due at start</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {activeLocations.length > 0 && (
-                  <LeagueSquareCatalog
-                    form={form}
-                    locationId={watchedLocationId ?? null}
-                    selectedCategoryId={selectedCategoryId}
-                    onCategoryChange={setSelectedCategoryId}
-                  />
-                )}
-
-                <FormField
-                  control={form.control}
-                  name="weeklyFee"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Weekly Fee</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          {...field}
-                          value={field.value / 100}
-                          onChange={(e) =>
-                            field.onChange(Math.round(parseFloat(e.target.value) * 100))
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="lineageFee"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Lineage Fee</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={field.value != null ? field.value / 100 : ""}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              field.onChange(val === "" ? null : Math.round(parseFloat(val) * 100));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="prizeFundFee"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Prize Fund Fee</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={field.value != null ? field.value / 100 : ""}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              field.onChange(val === "" ? null : Math.round(parseFloat(val) * 100));
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                {(() => {
-                  const lf = form.watch('lineageFee');
-                  const pf = form.watch('prizeFundFee');
-                  const wf = form.watch('weeklyFee');
-                  if ((lf != null || pf != null) && wf > 0) {
-                    const total = (lf ?? 0) + (pf ?? 0);
-                    const matches = total === wf;
-                    return (
-                      <p className={`text-xs ${matches ? 'text-muted-foreground' : 'text-destructive'}`}>
-                        Lineage + Prize Fund = ${(total / 100).toFixed(2)} {matches ? '✓ matches weekly fee' : `— must equal $${(wf / 100).toFixed(2)}`}
-                      </p>
-                    );
-                  }
-                  return null;
-                })()}
-
-                {!isUpfront && (
-                  <FormField
-                    control={form.control}
-                    name="finalTwoWeeksDueWeek"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Final 2 Weeks Due By</FormLabel>
-                        <Select
-                          onValueChange={(value) => field.onChange(parseInt(value))}
-                          value={String(field.value ?? 6)}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select week" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {Array.from({ length: 10 }, (_, i) => i + 1).map((week) => (
-                              <SelectItem key={week} value={String(week)}>
-                                Week {week}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
-                {isUpfront && effectiveBowlingWeeks > 0 && watchedWeeklyFee > 0 && (
-                  <div className="rounded-lg border bg-muted/40 p-3 text-sm">
-                    <div className="font-medium">Full Season Total</div>
-                    <div className="text-muted-foreground mt-1">
-                      ${(watchedWeeklyFee / 100).toFixed(2)} &times; {effectiveBowlingWeeks} weeks ={" "}
-                      <span className="font-semibold text-foreground">
-                        ${((watchedWeeklyFee * effectiveBowlingWeeks) / 100).toFixed(2)}
-                      </span>{" "}
-                      due upfront per bowler
-                    </div>
-                  </div>
-                )}
-
-                <FormField
-                  control={form.control}
-                  name="active"
-                  render={({ field }) => (
-                    <FormItem className="flex items-center justify-between rounded-lg border p-3">
-                      <div className="space-y-0.5">
-                        <FormLabel>Active</FormLabel>
-                      </div>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                    </FormItem>
-                  )}
+                <LeagueFeeSection
+                  form={form}
+                  isUpfront={isUpfront}
+                  effectiveBowlingWeeks={effectiveBowlingWeeks}
+                  activeLocations={activeLocations}
+                  watchedLocationId={watchedLocationId}
+                  watchedWeeklyFee={watchedWeeklyFee}
+                  selectedCategoryId={selectedCategoryId}
+                  onCategoryChange={setSelectedCategoryId}
                 />
               </div>
 

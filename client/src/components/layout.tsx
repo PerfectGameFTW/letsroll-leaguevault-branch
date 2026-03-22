@@ -5,7 +5,7 @@ import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import type { League, Location, ApiResponse, Organization, User } from "@shared/schema";
-import { ErrorBoundary } from "react-error-boundary";
+import { ErrorBoundary } from "@/components/error-boundary";
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -178,22 +178,6 @@ const LeaguesDropdownContent = () => {
   );
 };
 
-const ErrorFallback = ({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) => {
-  return (
-    <div className="p-4 rounded-md bg-destructive/10 text-destructive space-y-2">
-      <p className="font-medium">Something went wrong:</p>
-      <p className="text-sm">{error.message}</p>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={resetErrorBoundary}
-        className="mt-2"
-      >
-        Try again
-      </Button>
-    </div>
-  );
-};
 
 const LoadingFallback = () => (
   <div className="p-4 flex items-center justify-center">
@@ -302,12 +286,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 )}
               </div>
             )}
-            <ErrorBoundary
-              FallbackComponent={ErrorFallback}
-              onReset={() => {
-                window.location.reload();
-              }}
-            >
+            <ErrorBoundary level="section" onReset={() => window.location.reload()}>
               <Suspense fallback={<LoadingFallback />}>
                 <nav className="mt-4 flex-1 space-y-1 px-2">
                   <div className="space-y-2">
@@ -385,12 +364,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
         <main className="py-2 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
-          <ErrorBoundary
-            FallbackComponent={ErrorFallback}
-            onReset={() => {
-              window.location.reload();
-            }}
-          >
+          <ErrorBoundary level="section" onReset={() => window.location.reload()}>
             <Suspense fallback={<LoadingFallback />}>
               {children}
             </Suspense>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -179,6 +180,7 @@ export default function LocationsPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Locations</h1>
         <Button onClick={() => { resetForm(); setOpen(true); }}>
@@ -434,6 +436,7 @@ export default function LocationsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </ErrorBoundary>
     </Layout>
   );
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
+import { ErrorBoundary } from "@/components/error-boundary";
 import {
   Select,
   SelectContent,
@@ -175,6 +176,7 @@ export default function WeeklyPaymentsPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="space-y-6">
         <Link
           href={`/leagues/${leagueId}`}
@@ -366,6 +368,7 @@ export default function WeeklyPaymentsPage() {
           </DialogContent>
         </Dialog>
       </div>
+      </ErrorBoundary>
     </Layout>
   );
 }

@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { BowlerForm } from "@/components/bowler-form";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { AssignBowlerForm } from "@/components/assign-bowler-form";
 import { ReorderBowlersDialog } from "@/components/reorder-bowlers-dialog";
 import {
@@ -30,14 +31,10 @@ const editTeamSchema = z.object({
   name: z.string().min(1, "Team name is required"),
 });
 
-interface ErrorBoundaryProps {
-  error: Error;
-}
-
-function ErrorMessage({ error }: ErrorBoundaryProps) {
+function InlineErrorMessage({ error }: { error: Error }) {
   return (
-    <div className="p-4 rounded-md bg-destructive/10 text-destructive">
-      <p className="font-medium">Error: {error.message}</p>
+    <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+      <span>Error: {error.message}</span>
     </div>
   );
 }
@@ -251,6 +248,7 @@ export default function TeamViewPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="mb-6">
         <Link
           href={`/leagues/${team.leagueId}/teams`}
@@ -283,9 +281,9 @@ export default function TeamViewPage() {
       {/* Show any fetch errors */}
       {(leagueError || bowlerLeaguesError || bowlersError) && (
         <div className="mb-4">
-          {leagueError && <ErrorMessage error={leagueError} />}
-          {bowlerLeaguesError && <ErrorMessage error={bowlerLeaguesError} />}
-          {bowlersError && <ErrorMessage error={bowlersError} />}
+          {leagueError && <InlineErrorMessage error={leagueError} />}
+          {bowlerLeaguesError && <InlineErrorMessage error={bowlerLeaguesError} />}
+          {bowlersError && <InlineErrorMessage error={bowlersError} />}
         </div>
       )}
 
@@ -449,6 +447,7 @@ export default function TeamViewPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </ErrorBoundary>
     </Layout>
   );
 }

@@ -10,6 +10,7 @@ import { getSeasonLengthWeeks, getWeeksPassedInSeason } from "@/lib/financial-ut
 import type { League, Payment, User, Bowler, BowlerLeague, Team, ApiResponse } from "@shared/schema";
 import { PaymentStatusSection } from "@/components/payment-status-section";
 import { queryClient } from "@/lib/queryClient";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const STALE_TIME = 1000 * 60 * 5;
 
@@ -281,6 +282,7 @@ export const BowlerDashboardPage: FC = () => {
         </div>
       )}
       
+      <ErrorBoundary level="section">
       <div className="space-y-6">
         <Card>
           <CardHeader className="pb-4">
@@ -341,6 +343,7 @@ export const BowlerDashboardPage: FC = () => {
           payments={paymentsResponse?.data || []}
         />
       </div>
+      </ErrorBoundary>
     </BowlerLayout>
   );
 };

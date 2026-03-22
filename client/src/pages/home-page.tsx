@@ -6,6 +6,7 @@ import { Link } from "wouter";
 import type { League, Payment, BowlerLeague, ApiResponse, Organization, User } from "@shared/schema";
 import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
 import { formatCurrency } from "@/lib/utils";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 function LoadingState() {
   return (
@@ -95,9 +96,8 @@ export default function HomePage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="space-y-8">
-        {/* Organization Logo on top left (will be added to Layout component) */}
-        
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {/* League Card */}
           <Link href="/leagues" className="block transition-transform hover:scale-105">
@@ -152,8 +152,11 @@ export default function HomePage() {
           </Link>
         </div>
 
-        <PastDueBowlersSection />
+        <ErrorBoundary level="section">
+          <PastDueBowlersSection />
+        </ErrorBoundary>
       </div>
+      </ErrorBoundary>
     </Layout>
   );
 }

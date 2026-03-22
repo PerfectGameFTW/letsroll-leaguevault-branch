@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { BowlerForm } from "@/components/bowler-form";
+import { ErrorBoundary } from "@/components/error-boundary";
 import {
   Table,
   TableBody,
@@ -104,6 +105,7 @@ export default function BowlersPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Bowlers</h1>
         <div className="flex items-center gap-2">
@@ -237,6 +239,7 @@ export default function BowlersPage() {
           setShowForm(false);
         }}
       />
+      </ErrorBoundary>
     </Layout>
   );
 }

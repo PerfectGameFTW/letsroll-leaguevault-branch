@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { LeagueForm } from "@/components/league-form";
+import { ErrorBoundary } from "@/components/error-boundary";
 import {
   Table,
   TableBody,
@@ -168,6 +169,7 @@ export default function LeaguesPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Leagues</h1>
         <Button onClick={() => {
@@ -424,6 +426,7 @@ export default function LeaguesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </ErrorBoundary>
     </Layout>
   );
 }

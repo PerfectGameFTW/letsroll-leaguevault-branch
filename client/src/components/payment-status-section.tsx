@@ -1,17 +1,6 @@
 import { FC, useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Loader2, CreditCard, Plus, Minus, CalendarDays, AlertTriangle, Wallet } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment, tokenizeCard } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -19,10 +8,11 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient, csrfFetch } from '@/lib/queryClient';
 import { formatCurrency } from "@/lib/utils";
 import { calculateFinancials } from "@/lib/financial-utils";
-import { format } from "date-fns";
-import { formatInTimeZone } from "date-fns-tz";
 import type { League, Bowler, Payment, SavedCard } from "@shared/schema";
 import { PaymentOverviewCard } from "@/components/payment-overview-card";
+import { PaymentSetupCardInput } from "@/components/payment-setup-card-input";
+import { PaymentCustomAmount } from "@/components/payment-custom-amount";
+import { PaymentSubmitSection } from "@/components/payment-submit-section";
 
 type PaymentSchedule = "weekly" | "custom";
 
@@ -131,14 +121,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     }
   }, [maxPayableWeeks]);
 
-  const incrementWeeks = useCallback(() => {
-    handleWeekChangeWrapper(selectedWeeks + 1);
-  }, [handleWeekChangeWrapper, selectedWeeks]);
-
-  const decrementWeeks = useCallback(() => {
-    handleWeekChangeWrapper(selectedWeeks - 1);
-  }, [handleWeekChangeWrapper, selectedWeeks]);
-
   const calculateTotalAmount = useCallback(() => {
     let base = 0;
     if (selectedSchedule === 'custom') {
@@ -154,20 +136,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
   const handleSubmitPayment = async () => {
     if (cardMode === 'new' && !card) {
-      toast({
-        title: "Payment Setup Error",
-        description: "Please enter your card details before proceeding.",
-        variant: "destructive",
-      });
+      toast({ title: "Payment Setup Error", description: "Please enter your card details before proceeding.", variant: "destructive" });
       return;
     }
-
     if (cardMode === 'saved' && !selectedSavedCardId) {
-      toast({
-        title: "Payment Setup Error",
-        description: "Please select a saved card.",
-        variant: "destructive",
-      });
+      toast({ title: "Payment Setup Error", description: "Please select a saved card.", variant: "destructive" });
       return;
     }
 
@@ -344,11 +317,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           errorMessage = error.message;
         }
       }
-      toast({
-        title: "Payment Failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      toast({ title: "Payment Failed", description: errorMessage, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }
@@ -418,297 +387,71 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
             )}
             
             {selectedSchedule === 'custom' && league.paymentMode !== 'upfront' && (
-              <div className="space-y-4 p-4 rounded-md border bg-background">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Label htmlFor="custom-weeks">Number of Weeks</Label>
-                    <span className="text-sm font-medium">
-                      {formatCurrency(fixedAmount !== null ? fixedAmount : weeklyFee * selectedWeeks)} total
-                    </span>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={decrementWeeks}
-                      disabled={selectedWeeks <= 1}
-                    >
-                      <Minus className="h-4 w-4" />
-                    </Button>
-                    <input
-                      id="custom-weeks"
-                      type="number"
-                      min="1"
-                      max={maxPayableWeeks}
-                      value={selectedWeeks}
-                      onChange={(e) => handleWeekChangeWrapper(parseInt(e.target.value, 10))}
-                      className="flex h-10 w-16 rounded-md border border-input bg-background px-3 py-2 text-sm text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={incrementWeeks}
-                      disabled={selectedWeeks >= maxPayableWeeks}
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                
-                <div>
-                  <Label className="text-sm text-muted-foreground mb-2 block">
-                    Quick Select
-                  </Label>
-                  <div className="flex flex-wrap gap-2">
-                    {seasonPresets.map((preset) => (
-                      <Button
-                        key={preset.label}
-                        variant={fixedAmount === null && selectedWeeks === preset.weeks ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handleWeekChangeWrapper(preset.weeks)}
-                      >
-                        {preset.label}
-                      </Button>
-                    ))}
-                    {financials.amountPastDue > 0 && (
-                      <Button
-                        variant={fixedAmountType === 'pastDue' ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          setFixedAmount(financials.amountPastDue);
-                          setFixedAmountType('pastDue');
-                          setSelectedWeeks(Math.max(1, Math.round(financials.amountPastDue / weeklyFee)));
-                          setIncludeFinalTwoWeeks(false);
-                        }}
-                      >
-                        Past Due Balance
-                      </Button>
-                    )}
-                    {financials.remainingBalance > 0 && (
-                      <Button
-                        variant={fixedAmountType === 'remaining' ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => {
-                          setFixedAmount(financials.remainingBalance);
-                          setFixedAmountType('remaining');
-                          setSelectedWeeks(maxPayableWeeks);
-                          setIncludeFinalTwoWeeks(false);
-                        }}
-                      >
-                        Season Remaining Balance
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {!financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0 && fixedAmountType !== 'remaining' && fixedAmountType !== 'pastDue' && !(fixedAmount === null && selectedWeeks === totalWeeks) && (
-              <div className="flex items-start space-x-3 rounded-md border p-4 bg-muted/50">
-                <Checkbox
-                  id="include-final-two-weeks"
-                  checked={includeFinalTwoWeeks}
-                  onCheckedChange={(checked) => setIncludeFinalTwoWeeks(checked === true)}
-                />
-                <div className="space-y-1">
-                  <Label htmlFor="include-final-two-weeks" className="text-sm font-medium cursor-pointer">
-                    Add Final 2 Weeks ({formatCurrency(financials.finalTwoWeeks.amount)})
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Add the final 2 weeks payment to this transaction. Due by Week {financials.finalTwoWeeks.dueByWeek}.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-lg font-medium">Payment Information</h3>
-                <p className="text-sm text-muted-foreground">
-                  {savedCards.length > 0
-                    ? "Use a saved card or enter new card details"
-                    : "Enter your card details (securely processed by Square)"}
-                </p>
-              </div>
-
-              {savedCards.length > 0 && (
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={cardMode === 'saved' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => {
-                      cleanupCard();
-                      setCardMode('saved');
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <Wallet className="h-4 w-4" />
-                    Saved Card
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={cardMode === 'new' ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => {
-                      if (cardMode === 'new') return;
-                      cleanupCard();
-                      setCardMode('new');
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <CreditCard className="h-4 w-4" />
-                    New Card
-                  </Button>
-                </div>
-              )}
-
-              {cardMode === 'saved' && savedCards.length > 0 ? (
-                <div className="space-y-3">
-                  <Select value={selectedSavedCardId} onValueChange={setSelectedSavedCardId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a saved card" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {savedCards.map((sc) => (
-                        <SelectItem key={sc.id} value={sc.id}>
-                          {sc.brand} ending in {sc.last4} (exp {sc.expMonth}/{sc.expYear})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : (
-                <>
-                  <div ref={cardContainerRef} className="min-h-[200px] border rounded-lg bg-card p-4">
-                    {!isInitialized && (
-                      <div className="flex items-center justify-center p-4">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        <p className="ml-2 text-sm text-muted-foreground">
-                          Loading credit card form...
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  {selectedSchedule === 'custom' && (
-                    <div className="flex items-center space-x-3">
-                      <Checkbox
-                        id="store-card-status"
-                        checked={storeCard}
-                        onCheckedChange={(checked) => setStoreCard(checked === true)}
-                      />
-                      <Label htmlFor="store-card-status" className="text-sm cursor-pointer">
-                        Save this card for future payments
-                      </Label>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {squareError && cardMode === 'new' && (
-                <div className="p-3 text-sm border border-destructive bg-destructive/10 text-destructive rounded-md">
-                  <p><strong>Credit Card Form Error:</strong> {squareError}</p>
-                  <p className="mt-1 text-xs">Consider using Cash or Check payment instead.</p>
-                </div>
-              )}
-              
-            </div>
-            
-            {league.paymentMode !== 'upfront' && (
-              <div className="pt-4 border-t">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-medium">Total Amount</span>
-                  <span className="text-lg font-bold">{formatCurrency(calculateTotalAmount())}</span>
-                </div>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {selectedSchedule === 'weekly' && 'Charged weekly'}
-                  {selectedSchedule === 'custom' && (
-                    fixedAmountType === 'pastDue'
-                      ? 'One-time payment for Past Due Balance'
-                      : fixedAmountType === 'remaining'
-                        ? 'One-time payment for Season Remaining Balance'
-                        : `One-time payment for ${selectedWeeks} weeks`
-                  )}
-                  {includeFinalTwoWeeks && ` + Final 2 Weeks (${formatCurrency(financials.finalTwoWeeks.amount)})`}
-                </p>
-              </div>
-            )}
-            
-            {league.paymentMode !== 'upfront' && showFinalTwoWeeksWarning && (
-              <div className="rounded-md border border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20 p-4 space-y-3">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                      Final 2 Weeks Not Included
-                    </p>
-                    <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
-                      You haven't included the Final 2 Weeks payment ({formatCurrency(financials.finalTwoWeeks.amount)}) due by Week {financials.finalTwoWeeks.dueByWeek}. 
-                      If not paid now, it will be automatically charged to your card on the week it's due.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setIncludeFinalTwoWeeks(true);
-                      setShowFinalTwoWeeksWarning(false);
-                    }}
-                  >
-                    Add Final 2 Weeks Now
-                  </Button>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handleSubmitPayment}
-                    disabled={isSubmitting}
-                  >
-                    Continue Without
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            <div className="flex flex-col sm:flex-row sm:justify-between gap-2">
-              <Button 
-                variant="outline"
-                onClick={() => {
-                  setShowPaymentSetup(false);
-                  setShowFinalTwoWeeksWarning(false);
+              <PaymentCustomAmount
+                weeklyFee={weeklyFee}
+                totalWeeks={totalWeeks}
+                selectedWeeks={selectedWeeks}
+                maxPayableWeeks={maxPayableWeeks}
+                fixedAmount={fixedAmount}
+                fixedAmountType={fixedAmountType}
+                financials={financials}
+                includeFinalTwoWeeks={includeFinalTwoWeeks}
+                seasonPresets={seasonPresets}
+                onWeekChange={handleWeekChangeWrapper}
+                onFixedAmount={(amount, type) => {
+                  setFixedAmount(amount);
+                  setFixedAmountType(type);
+                  if (type === 'pastDue' && amount !== null) {
+                    setSelectedWeeks(Math.max(1, Math.round(amount / weeklyFee)));
+                  } else if (type === 'remaining') {
+                    setSelectedWeeks(maxPayableWeeks);
+                  }
+                  setIncludeFinalTwoWeeks(false);
                 }}
-              >
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleSubmitPayment}
-                disabled={
-                  (cardMode === 'new' && !isInitialized) ||
-                  (cardMode === 'saved' && !selectedSavedCardId) ||
-                  isSubmitting
-                }
-                className="min-w-[200px]"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Processing...
-                  </>
-                ) : league.paymentMode === 'upfront' ? (
-                  `Pay ${formatCurrency(financials.fullSeasonAmount)}`
-                ) : (
-                  <>{selectedSchedule === 'custom' ? 'Make One-Time Payment' : 'Set Up Automatic Payments'}</>
-                )}
-              </Button>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2">
-              <div className="flex-1 border-t" />
-              <span>Secure payment powered by Square</span>
-              <div className="flex-1 border-t" />
-            </div>
+                onIncludeFinalTwoWeeksChange={setIncludeFinalTwoWeeks}
+              />
+            )}
+
+            <PaymentSetupCardInput
+              savedCards={savedCards}
+              cardMode={cardMode}
+              setCardMode={setCardMode}
+              selectedSavedCardId={selectedSavedCardId}
+              setSelectedSavedCardId={setSelectedSavedCardId}
+              cardContainerRef={cardContainerRef}
+              isInitialized={isInitialized}
+              squareError={squareError}
+              storeCard={storeCard}
+              setStoreCard={setStoreCard}
+              showStoreCardOption={selectedSchedule === 'custom'}
+              cleanupCard={cleanupCard}
+            />
+
+            <PaymentSubmitSection
+              league={league}
+              selectedSchedule={selectedSchedule}
+              fixedAmountType={fixedAmountType}
+              selectedWeeks={selectedWeeks}
+              includeFinalTwoWeeks={includeFinalTwoWeeks}
+              finalTwoWeeksAmount={financials.finalTwoWeeks.amount}
+              calculateTotalAmount={calculateTotalAmount}
+              showFinalTwoWeeksWarning={showFinalTwoWeeksWarning}
+              finalTwoWeeksDueByWeek={financials.finalTwoWeeks.dueByWeek}
+              isSubmitting={isSubmitting}
+              cardMode={cardMode}
+              isInitialized={isInitialized}
+              selectedSavedCardId={selectedSavedCardId}
+              fullSeasonAmount={financials.fullSeasonAmount}
+              onSubmit={handleSubmitPayment}
+              onCancel={() => {
+                setShowPaymentSetup(false);
+                setShowFinalTwoWeeksWarning(false);
+              }}
+              onAddFinalTwoWeeks={() => {
+                setIncludeFinalTwoWeeks(true);
+                setShowFinalTwoWeeksWarning(false);
+              }}
+            />
           </div>
         </CardContent>
       </Card>

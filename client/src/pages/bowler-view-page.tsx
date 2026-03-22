@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { Loader2, ArrowLeft, ExternalLink, Plus, RefreshCw } from "lucide-react";
 import {
   Table,
@@ -284,6 +285,7 @@ export default function BowlerViewPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="mb-6">
         {selectedAssociation && (
           <Link
@@ -468,6 +470,7 @@ export default function BowlerViewPage() {
           </TableBody>
         </Table>
       </div>
+      </ErrorBoundary>
     </Layout>
   );
 }

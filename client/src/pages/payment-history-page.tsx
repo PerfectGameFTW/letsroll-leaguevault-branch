@@ -1,20 +1,10 @@
-import { useState, useRef, useEffect, useMemo } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useQuery } from "@tanstack/react-query";
 import type { League, Payment, User, SavedCard, ApiResponse } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
-import { Loader2, ArrowLeft, CreditCard, Wallet } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 import { Link, useSearch } from "wouter";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -22,10 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { differenceInWeeks, format } from "date-fns";
+import { differenceInWeeks } from "date-fns";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -34,11 +21,12 @@ import { calculateFinancials } from "@/lib/financial-utils";
 import { formatCurrency } from "@/lib/utils";
 import { PaymentSummaryCards } from "@/components/payment-summary-cards";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { BowlerPaymentTable } from "@/components/bowler-payment-table";
+import { BowlerPaymentDialog } from "@/components/bowler-payment-dialog";
 
 export default function PaymentHistoryPage() {
   const { toast } = useToast();
   const search = useSearch();
-  // Seed from URL param once on mount; league validity is checked after data loads
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(() => {
     const id = new URLSearchParams(search).get('leagueId');
     return id ? Number(id) : null;
@@ -55,20 +43,12 @@ export default function PaymentHistoryPage() {
     }
   });
 
-  const cardCallbackRef = useRef<(el: HTMLDivElement | null) => void>(() => {});
-  cardCallbackRef.current = (el: HTMLDivElement | null) => {
-    if (el && payDialogType && cardMode === 'new') {
-      initializeCard(el);
-    }
-  };
-
   useEffect(() => {
     if (!payDialogType) {
       cleanupCard();
     }
   }, [payDialogType]);
 
-  // Get current user and their bowler ID
   const { data: currentUser, isLoading: loadingUser, error: userError } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
   });
@@ -90,13 +70,11 @@ export default function PaymentHistoryPage() {
     }
   }, [savedCards.length]);
 
-  // Get bowler details
   const { data: bowlerResponse, isLoading: loadingBowler, error: bowlerError } = useQuery<ApiResponse<{ name: string }>>({
     queryKey: [`/api/bowlers/${bowlerId}`],
     enabled: !!bowlerId,
   });
 
-  // Get league information for the bowler
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<ApiResponse<{ leagueId: number }[]>>({
     queryKey: ["/api/bowler-leagues", bowlerId],
     enabled: !!bowlerId,
@@ -105,8 +83,6 @@ export default function PaymentHistoryPage() {
   const bowlerLeagues = bowlerLeaguesResponse?.data ?? [];
   const hasMultipleLeagues = bowlerLeagues.length > 1;
 
-  // Once league data loads, validate selectedLeagueId belongs to this bowler.
-  // If invalid (e.g., stale URL param), fall back to the first available league.
   useEffect(() => {
     if (!bowlerLeagues.length) return;
     const validIds = bowlerLeagues.map(bl => bl.leagueId);
@@ -115,10 +91,8 @@ export default function PaymentHistoryPage() {
     }
   }, [bowlerLeagues.map(bl => bl.leagueId).join(',')]);
 
-  // Derive the active leagueId: prefer user-selected, fall back to first in list
   const leagueId = selectedLeagueId ?? bowlerLeagues[0]?.leagueId;
 
-  // Fetch all leagues (for dropdown names) when bowler belongs to multiple leagues
   const { data: allLeaguesResponse } = useQuery<ApiResponse<League[]>>({
     queryKey: ['/api/leagues'],
     enabled: !!bowlerId && hasMultipleLeagues,
@@ -133,13 +107,11 @@ export default function PaymentHistoryPage() {
     return map;
   }, [allLeaguesResponse?.data]);
 
-  // Get league details
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<ApiResponse<League>>({
     queryKey: [`/api/leagues/${leagueId}`],
     enabled: !!leagueId,
   });
 
-  // Get payment history
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<ApiResponse<Payment[]>>({
     queryKey: ["/api/payments", bowlerId, leagueId],
     enabled: !!bowlerId && !!leagueId,
@@ -182,10 +154,10 @@ export default function PaymentHistoryPage() {
     }
   }
 
-  const dialogAmount = payDialogType === 'pastdue' ? amountPastDue : remainingBalance;
-  const dialogLabel = payDialogType === 'pastdue' ? 'past due amount' : 'remaining balance';
-
   const handleDialogPayment = async () => {
+    const dialogAmount = payDialogType === 'pastdue' ? amountPastDue : remainingBalance;
+    const dialogLabel = payDialogType === 'pastdue' ? 'past due amount' : 'remaining balance';
+
     if (!bowlerId || !leagueId || !dialogAmount) {
       toast({ title: "Error", description: "Missing payment information.", variant: "destructive" });
       return;
@@ -248,7 +220,6 @@ export default function PaymentHistoryPage() {
     );
   }
 
-  // Show error if user is not authenticated
   if (userError) {
     return (
       <BowlerLayout bowlerName="Authentication Error" leagueName="Error">
@@ -262,7 +233,6 @@ export default function PaymentHistoryPage() {
     );
   }
   
-  // Show message if user has no associated bowler
   if (currentUser?.data && !currentUser.data.bowlerId) {
     return (
       <BowlerLayout bowlerName={currentUser.data.name || "Administrator"} leagueName="No Bowler Account">
@@ -281,7 +251,6 @@ export default function PaymentHistoryPage() {
     );
   }
 
-  // Show error if bowler is not found
   if (bowlerId && bowlerError) {
     return (
       <BowlerLayout bowlerName="Error" leagueName="Error">
@@ -292,7 +261,6 @@ export default function PaymentHistoryPage() {
     );
   }
 
-  // Show error if bowler has no associated leagues
   if (!bowlerLeaguesResponse?.data?.length) {
     return (
       <BowlerLayout bowlerName={bowlerName || 'Bowler'} leagueName="No League">
@@ -365,210 +333,46 @@ export default function PaymentHistoryPage() {
         </div>
 
         <ErrorBoundary level="section">
-        <PaymentSummaryCards
-          totalWeeksInSeason={totalWeeksInSeason}
-          fullSeasonAmount={fullSeasonAmount}
-          weeklyFee={league?.weeklyFee || 0}
-          weeksDueCount={weeksDueCount}
-          totalSeasonDues={totalSeasonDues}
-          weeksPaid={weeksPaid}
-          totalPaidAmount={totalPaidAmount}
-          amountPastDue={amountPastDue}
-          remainingBalance={remainingBalance}
-          finalTwoWeeks={finalTwoWeeks}
-          finalTwoWeeksPaidOnWeek={finalTwoWeeksPaidOnWeek}
-          onPayPastDue={() => setPayDialogType('pastdue')}
-          onPayRemaining={() => setPayDialogType('remaining')}
-        />
+          <PaymentSummaryCards
+            totalWeeksInSeason={totalWeeksInSeason}
+            fullSeasonAmount={fullSeasonAmount}
+            weeklyFee={league?.weeklyFee || 0}
+            weeksDueCount={weeksDueCount}
+            totalSeasonDues={totalSeasonDues}
+            weeksPaid={weeksPaid}
+            totalPaidAmount={totalPaidAmount}
+            amountPastDue={amountPastDue}
+            remainingBalance={remainingBalance}
+            finalTwoWeeks={finalTwoWeeks}
+            finalTwoWeeksPaidOnWeek={finalTwoWeeksPaidOnWeek}
+            onPayPastDue={() => setPayDialogType('pastdue')}
+            onPayRemaining={() => setPayDialogType('remaining')}
+          />
         </ErrorBoundary>
 
         <ErrorBoundary level="section">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Dialog open={!!payDialogType} onOpenChange={(open) => !open && setPayDialogType(null)}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>{payDialogType === 'pastdue' ? 'Pay Past Due Amount' : 'Pay Remaining Balance'}</DialogTitle>
-                <DialogDescription>
-                  {payDialogType === 'pastdue'
-                    ? `Pay your outstanding balance of ${formatCurrency(amountPastDue)}`
-                    : `Pay off your remaining season balance of ${formatCurrency(remainingBalance)}`}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="rounded-md border p-4 bg-muted/50">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-muted-foreground">Amount</span>
-                    <span className="text-lg font-bold">{formatCurrency(dialogAmount)}</span>
-                  </div>
-                </div>
-
-                {savedCards.length > 0 && (
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      variant={cardMode === 'saved' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        cleanupCard();
-                        setCardMode('saved');
-                      }}
-                      className="flex items-center gap-2"
-                    >
-                      <Wallet className="h-4 w-4" />
-                      Saved Card
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={cardMode === 'new' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => {
-                        cleanupCard();
-                        setCardMode('new');
-                      }}
-                      className="flex items-center gap-2"
-                    >
-                      <CreditCard className="h-4 w-4" />
-                      New Card
-                    </Button>
-                  </div>
-                )}
-
-                {cardMode === 'saved' && savedCards.length > 0 ? (
-                  <div className="space-y-3">
-                    <Select value={selectedSavedCardId} onValueChange={setSelectedSavedCardId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a saved card" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {savedCards.map((sc) => (
-                          <SelectItem key={sc.id} value={sc.id}>
-                            {sc.brand} ending in {sc.last4} (exp {sc.expMonth}/{sc.expYear})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <label className="text-sm font-medium mb-2 block">Card Details</label>
-                    <div
-                      ref={(el) => cardCallbackRef.current(el)}
-                      className="min-h-[80px] rounded-md border p-3"
-                    />
-                    <div className="flex items-center space-x-3">
-                      <Checkbox
-                        id="store-card-history"
-                        checked={storeCard}
-                        onCheckedChange={(checked) => setStoreCard(checked === true)}
-                      />
-                      <Label htmlFor="store-card-history" className="text-sm cursor-pointer">
-                        Save this card for future payments
-                      </Label>
-                    </div>
-                  </div>
-                )}
-
-                <Button
-                  onClick={handleDialogPayment}
-                  disabled={
-                    (cardMode === 'new' && !isInitialized) ||
-                    (cardMode === 'saved' && !selectedSavedCardId) ||
-                    isSubmitting
-                  }
-                  className="w-full"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="mr-2 h-4 w-4" />
-                      Pay {formatCurrency(dialogAmount)}
-                    </>
-                  )}
-                </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
+          <BowlerPaymentDialog
+            payDialogType={payDialogType}
+            onClose={() => setPayDialogType(null)}
+            amountPastDue={amountPastDue}
+            remainingBalance={remainingBalance}
+            savedCards={savedCards}
+            cardMode={cardMode}
+            setCardMode={setCardMode}
+            selectedSavedCardId={selectedSavedCardId}
+            setSelectedSavedCardId={setSelectedSavedCardId}
+            storeCard={storeCard}
+            setStoreCard={setStoreCard}
+            isInitialized={isInitialized}
+            isSubmitting={isSubmitting}
+            onSubmit={handleDialogPayment}
+            initializeCard={initializeCard}
+            cleanupCard={cleanupCard}
+          />
         </ErrorBoundary>
 
         <ErrorBoundary level="section">
-        <Card>
-          <CardHeader>
-            <CardTitle>Payment History</CardTitle>
-            <CardDescription>Record of all your payments</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Week</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bowlerPayments.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-4">
-                      No payments recorded
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  bowlerPayments.map((payment) => {
-                    const weekNumber = league.seasonStart
-                      ? Math.max(1, differenceInWeeks(new Date(payment.weekOf), new Date(league.seasonStart)) + 1)
-                      : '-';
-
-                    return (
-                      <TableRow key={payment.id}>
-                        <TableCell>
-                          {format(new Date(payment.weekOf), 'MM/dd/yy')}
-                        </TableCell>
-                        <TableCell>
-                          Week {weekNumber}
-                        </TableCell>
-                        <TableCell>
-                          {formatCurrency(payment.amount)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {payment.type === 'cash' ? 'Cash' :
-                              payment.type === 'check' ? `Check #${payment.checkNumber}` :
-                                payment.type === 'credit_card' ? 'Credit Card' :
-                                  'Other Payment'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={payment.status === 'refunded' ? 'destructive' : 'outline'}
-                            className={
-                              payment.status === 'paid' ? 'border-green-500 text-green-700 bg-green-50' :
-                              payment.status === 'failed' ? 'border-yellow-500 text-yellow-700 bg-yellow-50' :
-                              payment.status === 'pending' ? 'border-blue-500 text-blue-700 bg-blue-50' :
-                              ''
-                            }
-                          >
-                            {payment.status === 'paid' ? 'Paid' :
-                              payment.status === 'refunded' ? 'Refunded' :
-                              payment.status === 'failed' ? 'Failed' :
-                              payment.status === 'pending' ? 'Pending' :
-                              payment.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+          <BowlerPaymentTable payments={bowlerPayments} league={league} />
         </ErrorBoundary>
       </div>
     </BowlerLayout>

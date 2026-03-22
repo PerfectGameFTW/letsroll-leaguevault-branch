@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { PaymentForm } from "@/components/payment-form";
+import { ErrorBoundary } from "@/components/error-boundary";
 import {
   Table,
   TableBody,
@@ -186,6 +187,7 @@ export default function PaymentsPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Payments</h1>
@@ -456,6 +458,7 @@ export default function PaymentsPage() {
           </DialogContent>
         </Dialog>
       </div>
+      </ErrorBoundary>
     </Layout>
   );
 }

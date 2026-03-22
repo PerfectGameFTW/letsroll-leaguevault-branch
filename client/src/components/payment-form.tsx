@@ -10,8 +10,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useSquarePayment } from "@/hooks/use-square-payment";
+import { Form } from "@/components/ui/form";
 import {
-  Form,
   FormControl,
   FormField,
   FormItem,
@@ -19,23 +19,15 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { InsertPayment, Bowler, League } from "@shared/schema";
 import { insertPaymentSchema } from "@shared/schema";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
-import { Loader2, AlertCircle, CreditCard, Info, AlertTriangle, Wallet } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, AlertCircle, Info } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PaymentCreditCardSection } from "@/components/payment-credit-card-section";
 import { csrfFetch } from '@/lib/queryClient';
+import { PaymentFormFields } from "@/components/payment-form-fields";
+import { PaymentMethodTabs } from "@/components/payment-method-tabs";
 
 interface SavedCard {
   id: string;
@@ -78,7 +70,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       status: "paid",
       type: "cash",
       leagueId: leagueId,
-      storeCard: false, // Default value for the store card option
+      storeCard: false,
     },
   });
 
@@ -143,7 +135,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       return;
     }
 
-    // Prevent reinitializing an already initialized or in-progress initialization
     if (!cardContainerRef.current) {
       return;
     }
@@ -162,13 +153,11 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     
     const container = cardContainerRef.current;
     
-    // Create a timeout to detect if initialization gets stuck
     const initTimeout = setTimeout(() => {
       if (!isSquareReady) {
         setPaymentError('Failed to initialize payment form in a timely manner');
-        // Fall back to cash payment
         form.setValue("type", "cash", { shouldDirty: false });
-        initializationAttempted.current = false; // Allow retry on next attempt
+        initializationAttempted.current = false;
         toast({
           title: "Payment Option Changed",
           description: "Credit card processing unavailable at this time. Switched to cash payment.",
@@ -186,10 +175,9 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         .catch((error) => {
           setIsSquareReady(false);
           setPaymentError(error instanceof Error ? error.message : 'Failed to initialize payment form');
-          initializationAttempted.current = false; // Reset to allow retries
+          initializationAttempted.current = false;
           clearTimeout(initTimeout);
           
-          // Fall back to cash payment
           form.setValue("type", "cash", { shouldDirty: false });
           toast({
             title: "Payment Form Notice",
@@ -199,7 +187,6 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         });
     }, 300);
     
-    // Cleanup function
     return () => {
       clearTimeout(initTimeout);
     };
@@ -349,169 +336,12 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               </Alert>
             )}
 
-            <FormField
-              control={form.control}
-              name="bowlerId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Bowler</FormLabel>
-                  <FormControl>
-                    <select
-                      {...field}
-                      className="w-full p-2 border rounded"
-                      value={field.value || ""}
-                      onChange={(e) => {
-                        const value = e.target.value ? parseInt(e.target.value, 10) : undefined;
-                        field.onChange(value);
-                      }}
-                    >
-                      <option value="">Select a bowler</option>
-                      {bowlers.map((bowler) => (
-                        <option key={bowler.id} value={bowler.id}>
-                          {bowler.name}
-                        </option>
-                      ))}
-                    </select>
-                  </FormControl>
-                  <FormMessage>
-                    {form.formState.errors.bowlerId?.message ||
-                     (!field.value && "Please select a bowler")}
-                  </FormMessage>
-                </FormItem>
-              )}
-            />
+            <PaymentFormFields form={form} bowlers={bowlers} />
 
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Amount ($)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      {...field}
-                      onChange={(e) => {
-                        const dollars = parseFloat(e.target.value);
-                        field.onChange(Math.round(dollars * 100));
-                      }}
-                      value={(field.value / 100).toFixed(2)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="weekOf"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Week Of</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="date"
-                      {...field}
-                      value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
-                      onChange={(e) => field.onChange(new Date(e.target.value).toISOString())}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Replace Radio Buttons with Tabs for better UX */}
-            <div className="mb-4">
-              <Tabs 
-                value={paymentType === "credit_card" ? "credit" : (paymentType === "check" ? "check" : "cash")}
-                onValueChange={(value) => {
-                  if (value === "credit") {
-                    form.setValue("type", "credit_card");
-                  } else if (value === "check") {
-                    form.setValue("type", "check");
-                  } else {
-                    form.setValue("type", "cash");
-                  }
-                }}
-                className="w-full"
-              >
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger 
-                    value="cash" 
-                    className="flex items-center gap-2"
-                  >
-                    Cash
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    value="check" 
-                    className="flex items-center gap-2"
-                  >
-                    Check
-                  </TabsTrigger>
-                  <TabsTrigger 
-                    disabled={squareLoadFailed}
-                    value="credit" 
-                    className="flex items-center gap-2"
-                  >
-                    <CreditCard className="h-4 w-4" />
-                    Credit Card
-                  </TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="credit">
-                  {squareLoadFailed ? (
-                    <Alert variant="destructive" className="mb-4">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertTitle>Credit Card Processing Unavailable</AlertTitle>
-                      <AlertDescription>
-                        Credit card processing is temporarily unavailable. Please use cash or check payment methods instead.
-                      </AlertDescription>
-                    </Alert>
-                  ) : null}
-                </TabsContent>
-                
-                <TabsContent value="cash">
-                  <Alert className="mb-4">
-                    <Info className="h-4 w-4" />
-                    <AlertDescription>
-                      Recording a cash payment. The payment will be marked as paid immediately.
-                    </AlertDescription>
-                  </Alert>
-                </TabsContent>
-                
-                <TabsContent value="check">
-                  <Alert className="mb-4">
-                    <Info className="h-4 w-4" />
-                    <AlertDescription>
-                      Recording a check payment. Don't forget to add the check number below.
-                    </AlertDescription>
-                  </Alert>
-                </TabsContent>
-              </Tabs>
-            </div>
-            
-            {/* Hidden field for the form validation */}
-            <FormField
-              control={form.control}
-              name="type"
-              render={({ field }) => (
-                <FormItem className="hidden">
-                  <FormControl>
-                    <RadioGroup
-                      onValueChange={field.onChange}
-                      value={field.value}
-                      className="hidden"
-                    >
-                      <RadioGroupItem value="cash" id="cash" />
-                      <RadioGroupItem value="check" id="check" />
-                      <RadioGroupItem value="credit_card" id="credit_card" />
-                    </RadioGroup>
-                  </FormControl>
-                </FormItem>
-              )}
+            <PaymentMethodTabs
+              form={form}
+              paymentType={paymentType}
+              squareLoadFailed={squareLoadFailed}
             />
 
             {paymentType === "check" && (
