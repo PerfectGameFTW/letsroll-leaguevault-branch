@@ -11,19 +11,19 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
 
 export default function HomePage() {
-  const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError } = useQuery<ApiResponse<League[]>>({
+  const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError, refetch: refetchLeagues } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
     staleTime: 1000 * 30,
     retry: false,
   });
   
-  const { data: paymentsResponse, isLoading: loadingPayments, error: paymentsError } = useQuery<ApiResponse<Payment[]>>({
+  const { data: paymentsResponse, isLoading: loadingPayments, error: paymentsError, refetch: refetchPayments } = useQuery<ApiResponse<Payment[]>>({
     queryKey: ["/api/payments"],
     staleTime: 1000 * 30,
     retry: false,
   });
   
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError } = useQuery<ApiResponse<BowlerLeague[]>>({
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError, refetch: refetchBowlerLeagues } = useQuery<ApiResponse<BowlerLeague[]>>({
     queryKey: ["/api/bowler-leagues"],
     staleTime: 1000 * 30,
     retry: false,
@@ -51,7 +51,7 @@ export default function HomePage() {
 
   const error = leaguesError || paymentsError || bowlerLeaguesError;
   if (error) {
-    return <Layout><PageErrorState message={`Error loading data: ${(error as Error).message}`} /></Layout>;
+    return <Layout><PageErrorState message={`Error loading data: ${(error as Error).message}`} onRetry={() => { refetchLeagues(); refetchPayments(); refetchBowlerLeagues(); }} /></Layout>;
   }
 
   const leagues = leaguesResponse?.data || [];

@@ -59,7 +59,7 @@ export default function TeamViewPage() {
     bowlers: Bowler[];
   }
 
-  const { data: detailsResponse, isLoading: loadingDetails, error: detailsError } = useQuery<ApiResponse<TeamDetailsResponse>>({
+  const { data: detailsResponse, isLoading: loadingDetails, error: detailsError, refetch: refetchDetails } = useQuery<ApiResponse<TeamDetailsResponse>>({
     queryKey: [`/api/teams/${teamId}/details`],
     enabled: !!teamId,
     retry: false,
@@ -164,7 +164,7 @@ export default function TeamViewPage() {
   if (detailsError) {
     return (
       <Layout>
-        <PageErrorState message={`Error loading team: ${detailsError.message}`} />
+        <PageErrorState message={`Error loading team: ${detailsError.message}`} onRetry={() => refetchDetails()} />
       </Layout>
     );
   }

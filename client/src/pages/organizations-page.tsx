@@ -50,7 +50,7 @@ export default function OrganizationsPage() {
     },
   });
 
-  const { data, isLoading, error } = useQuery<{success: boolean, data: Organization[]}>({
+  const { data, isLoading, error, refetch } = useQuery<{success: boolean, data: Organization[]}>({
     queryKey: ['/api/organizations'],
     retry: 1,
     staleTime: 60000, // 1 minute
@@ -101,15 +101,18 @@ export default function OrganizationsPage() {
     return (
       <Layout>
         <div className="container mx-auto py-10">
-          <h1 className="text-3xl font-bold mb-6">Organizations</h1>
+          <h1 className="text-3xl font-bold mb-6">
+            {isAuthError ? 'Authentication Required' : 'Organizations'}
+          </h1>
           <PageErrorState
             message={isAuthError
               ? 'You must be logged in to view organizations. Please log in and try again.'
               : `Failed to load organizations: ${errorMessage}`
             }
+            onRetry={isAuthError ? undefined : () => refetch()}
           />
           {isAuthError && (
-            <div className="mt-4">
+            <div className="mt-2">
               <Button variant="default" onClick={() => window.location.href = '/login'}>
                 Log In
               </Button>

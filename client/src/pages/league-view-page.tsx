@@ -44,7 +44,7 @@ export default function LeagueViewPage() {
   const [newSeasonStart, setNewSeasonStart] = useState("");
   const [newSeasonEnd, setNewSeasonEnd] = useState("");
 
-  const { data: leagueResponse, isLoading, error } = useQuery<{ success: true; data: League }>({
+  const { data: leagueResponse, isLoading, error, refetch } = useQuery<{ success: true; data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
     queryFn: async () => {
       const response = await fetch(`/api/leagues/${leagueId}`);
@@ -129,7 +129,7 @@ export default function LeagueViewPage() {
   if (error) {
     return (
       <Layout>
-        <PageErrorState message={`Error loading league: ${error instanceof Error ? error.message : 'Unknown error occurred'}`} />
+        <PageErrorState message={`Error loading league: ${error instanceof Error ? error.message : 'Unknown error occurred'}`} onRetry={() => refetch()} />
       </Layout>
     );
   }

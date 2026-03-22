@@ -74,7 +74,7 @@ export default function BowlerScoresPage() {
   });
 
   // Use historical scores endpoint for complete history
-  const { data: scoresResponse, isLoading: loadingScores, error: scoresError } = useQuery<ApiResponse<ExtendedScore[]>>({
+  const { data: scoresResponse, isLoading: loadingScores, error: scoresError, refetch: refetchScores } = useQuery<ApiResponse<ExtendedScore[]>>({
     queryKey: ["/api/scores/history", parsedBowlerId],
     queryFn: async () => {
       if (!parsedBowlerId) throw new Error("Bowler ID is required");
@@ -191,7 +191,7 @@ export default function BowlerScoresPage() {
         <Card>
           <CardContent className="pt-6">
             {scoresError ? (
-              <PageErrorState message={`Error loading scores: ${scoresError.message}`} />
+              <PageErrorState message={`Error loading scores: ${scoresError.message}`} onRetry={() => refetchScores()} />
             ) : weeklyScores.length > 0 ? (
               <Table>
                 <TableHeader>

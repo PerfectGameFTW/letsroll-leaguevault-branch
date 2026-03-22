@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Check, X, Eye, EyeOff } from 'lucide-react';
+import { PageLoadingState } from "@/components/page-states";
 
 export default function SetPasswordPage() {
   const [, setLocation] = useLocation();
@@ -92,10 +93,7 @@ export default function SetPasswordPage() {
   if (validating) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex items-center gap-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Validating your invitation...</span>
-        </div>
+        <PageLoadingState message="Validating your invitation..." />
       </div>
     );
   }

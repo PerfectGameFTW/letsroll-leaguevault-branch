@@ -228,7 +228,6 @@ export default function BowlerViewPage() {
 
   return (
     <Layout>
-      <ErrorBoundary level="section">
       <div className="mb-6">
         {selectedAssociation && (
           <Link
@@ -415,7 +414,6 @@ export default function BowlerViewPage() {
           </TableBody>
         </Table>
       </div>
-      </ErrorBoundary>
       </ErrorBoundary>
     </Layout>
   );

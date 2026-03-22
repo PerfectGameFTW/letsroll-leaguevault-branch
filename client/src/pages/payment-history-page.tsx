@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { differenceInWeeks } from "date-fns";
 import { calculateFinalTwoWeeksPaidOnWeek } from "@/lib/financial-utils";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";

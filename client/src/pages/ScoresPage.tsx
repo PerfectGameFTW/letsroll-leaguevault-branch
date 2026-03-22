@@ -51,7 +51,7 @@ export default function ScoresPage() {
     );
   }
 
-  const { data: scoresResponse, isLoading, error } = useQuery<ApiResponse<LanePair[]>>({
+  const { data: scoresResponse, isLoading, error, refetch } = useQuery<ApiResponse<LanePair[]>>({
     queryKey: ['/api/scores', leagueId, weekNumber],
     enabled: true
   });
@@ -75,7 +75,7 @@ export default function ScoresPage() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to League
           </Link>
-          <PageErrorState message={`Error loading scores: ${error instanceof Error ? error.message : 'Unknown error'}`} />
+          <PageErrorState message={`Error loading scores: ${error instanceof Error ? error.message : 'Unknown error'}`} onRetry={() => refetch()} />
         </div>
       </Layout>
     );

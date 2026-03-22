@@ -251,7 +251,6 @@ export function getPaymentSummary(payments: Payment[]) {
     totalUnpaidAmount: unpaidPayments.reduce((sum, p) => sum + p.amount, 0),
   };
 }
-
 export interface BowlerViewFinancials {
   weeksDue: number;
   totalSeasonDues: number;
