@@ -14,11 +14,14 @@ import { Client, Environment } from "square";
 import { db } from "../db";
 import { bowlers } from "@shared/schema";
 import { eq, isNull } from "drizzle-orm";
+import { createLogger } from "../logger";
+
+const log = createLogger("SquareCustomerScript");
 
 const accessToken = (process.env.SQUARE_ACCESS_TOKEN || '').replace(/[^\x20-\x7E]/g, '').trim();
 
 if (!accessToken) {
-  console.error('ERROR: SQUARE_ACCESS_TOKEN is required. Set it to the target location\'s Square access token.');
+  log.error('SQUARE_ACCESS_TOKEN is required. Set it to the target location\'s Square access token.');
   process.exit(1);
 }
 
@@ -29,7 +32,7 @@ const squareClient = new Client({
   environment: isProductionToken ? Environment.Production : Environment.Sandbox,
 });
 
-console.log(`Running in ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'} mode.`);
+log.info(`Running in ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'} mode.`);
 
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -42,7 +45,7 @@ async function createSquareCustomers() {
       .from(bowlers)
       .where(isNull(bowlers.squareCustomerId));
 
-    console.log(`Found ${bowlersWithoutSquareId.length} bowlers without Square Customer IDs`);
+    log.info(`Found ${bowlersWithoutSquareId.length} bowlers without Square Customer IDs`);
 
     let successCount = 0;
     let errorCount = 0;
@@ -50,7 +53,7 @@ async function createSquareCustomers() {
     for (const bowler of bowlersWithoutSquareId) {
       try {
         if (!bowler.email) {
-          console.log(`Skipping bowler ${bowler.name} - no email address`);
+          log.info(`Skipping bowler ${bowler.name} - no email address`);
           errorCount++;
           continue;
         }
@@ -69,31 +72,26 @@ async function createSquareCustomers() {
             .set({ squareCustomerId: response.result.customer.id })
             .where(eq(bowlers.id, bowler.id));
 
-          console.log(`Created Square Customer for ${bowler.name} (ID: ${response.result.customer.id})`);
+          log.info(`Created Square Customer for ${bowler.name} (ID: ${response.result.customer.id})`);
           successCount++;
         }
 
         await sleep(100);
       } catch (error: any) {
-        console.error(`Error creating Square Customer for ${bowler.name}:`, error);
+        log.error(`Error creating Square Customer for ${bowler.name}:`, error);
         errorCount++;
 
         if (error.statusCode === 429) {
-          console.log('Rate limit hit, waiting 5 seconds...');
+          log.info('Rate limit hit, waiting 5 seconds...');
           await sleep(5000);
         }
       }
     }
 
-    console.log(`
-Import complete:
-- Total bowlers processed: ${bowlersWithoutSquareId.length}
-- Successfully created: ${successCount}
-- Errors: ${errorCount}
-    `);
+    log.info(`Import complete: Total bowlers processed: ${bowlersWithoutSquareId.length}, Successfully created: ${successCount}, Errors: ${errorCount}`);
 
   } catch (error) {
-    console.error('Fatal error during Square Customer creation:', error);
+    log.error('Fatal error during Square Customer creation:', error);
     process.exit(1);
   }
 }
@@ -101,6 +99,6 @@ Import complete:
 createSquareCustomers()
   .then(() => process.exit(0))
   .catch((error) => {
-    console.error('Unhandled error:', error);
+    log.error('Unhandled error:', error);
     process.exit(1);
   });
