@@ -56,35 +56,52 @@ function ensureApiPrefix(url: string): string {
   return url;
 }
 
+async function doApiRequest<T = any>(
+  url: string,
+  method: string,
+  data?: unknown | undefined,
+): Promise<{success: boolean; data: T; error?: {message: string; code?: string}}> {
+  const apiUrl = ensureApiPrefix(url);
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  };
+
+  const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase());
+  if (needsCsrf) {
+    headers['x-csrf-token'] = await getCsrfToken();
+  }
+
+  const res = await fetch(apiUrl, {
+    method,
+    headers,
+    body: data ? JSON.stringify(data) : undefined,
+    credentials: "include",
+  });
+
+  const validatedRes = await throwIfResNotOk(res);
+  const jsonData = await validatedRes.json();
+  return jsonData;
+}
+
 export async function apiRequest<T = any>(
   url: string,
   method: string,
   data?: unknown | undefined,
 ): Promise<{success: boolean; data: T; error?: {message: string; code?: string}}> {
   try {
-    const apiUrl = ensureApiPrefix(url);
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "Accept": "application/json",
-    };
-
-    const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase());
-    if (needsCsrf) {
-      headers['x-csrf-token'] = await getCsrfToken();
+    return await doApiRequest<T>(url, method, data);
+  } catch (error: any) {
+    if (error?.message?.startsWith('403:') && csrfToken === null) {
+      try {
+        await fetchCsrfToken();
+        return await doApiRequest<T>(url, method, data);
+      } catch (retryError) {
+        console.error(`[API] ${method} retry after CSRF refresh failed:`, retryError);
+        throw retryError;
+      }
     }
-
-    const res = await fetch(apiUrl, {
-      method,
-      headers,
-      body: data ? JSON.stringify(data) : undefined,
-      credentials: "include",
-    });
-
-    const validatedRes = await throwIfResNotOk(res);
-    const jsonData = await validatedRes.json();
-    return jsonData;
-  } catch (error) {
     console.error(`[API] ${method} request failed:`, error);
     throw error;
   }

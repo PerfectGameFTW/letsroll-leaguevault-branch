@@ -11,12 +11,12 @@ declare module 'express-session' {
 }
 
 const EXEMPT_PATHS = [
-  '/api/auth/login',
-  '/api/auth/register',
-  '/api/auth/set-password',
-  '/api/auth/validate-invite',
-  '/api/health',
-  '/api/csrf-token',
+  '/auth/login',
+  '/auth/register',
+  '/auth/set-password',
+  '/auth/validate-invite',
+  '/health',
+  '/csrf-token',
 ];
 
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
