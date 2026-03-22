@@ -30,7 +30,7 @@ export const leagues = pgTable("leagues", {
   finalTwoWeeksDueWeek: integer("final_two_weeks_due_week").default(6),
   paymentMode: text("payment_mode", { enum: PAYMENT_MODES }).notNull().default("weekly"),
   seasonNumber: integer("season_number").notNull().default(1),
-  previousSeasonId: integer("previous_season_id"),
+  previousSeasonId: integer("previous_season_id").references((): any => leagues.id),
   organizationId: integer("organization_id").references(() => organizations.id),
   locationId: integer("location_id").references(() => locations.id),
   totalBowlingWeeks: integer("total_bowling_weeks"),
@@ -88,6 +88,15 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
       return true;
     },
     { message: "Lineage fee and prize fund fee must both be set and sum to the weekly fee", path: ["lineageFee"] }
+  )
+  .refine(
+    (data) => {
+      if (data.finalTwoWeeksDueWeek != null && data.totalBowlingWeeks != null) {
+        return data.finalTwoWeeksDueWeek <= data.totalBowlingWeeks;
+      }
+      return true;
+    },
+    { message: "Final two weeks due week must not exceed total bowling weeks", path: ["finalTwoWeeksDueWeek"] }
   );
 
 export const updateLeagueSchema = z.object({

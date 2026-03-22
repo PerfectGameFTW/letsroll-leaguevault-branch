@@ -1,7 +1,7 @@
 import { pgTable, text, serial, integer, boolean, timestamp, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { PAYMENT_STATUSES, PAYMENT_TYPES, positiveIntSchema, dateSchema } from "./constants";
+import { PAYMENT_STATUSES, PAYMENT_TYPES, SCHEDULE_FREQUENCIES, positiveIntSchema, dateSchema } from "./constants";
 import { bowlers } from "./bowlers";
 import { leagues } from "./leagues";
 
@@ -41,7 +41,7 @@ export const paymentSchedules = pgTable("payment_schedules", {
   leagueId: integer("league_id")
     .notNull()
     .references(() => leagues.id, { onDelete: 'cascade' }),
-  frequency: text("frequency", { enum: ["weekly", "monthly", "upfront"] }).notNull(),
+  frequency: text("frequency", { enum: SCHEDULE_FREQUENCIES }).notNull(),
   amount: integer("amount").notNull(),
   nextPaymentDate: timestamp("next_payment_date", { mode: "string" }).notNull(),
   active: boolean("active").notNull().default(true),
@@ -76,7 +76,7 @@ export const insertPaymentSchema = basePaymentSchema.extend({
 export const insertPaymentScheduleSchema = basePaymentScheduleSchema.extend({
   bowlerId: positiveIntSchema,
   leagueId: positiveIntSchema,
-  frequency: z.enum(["weekly", "monthly", "upfront"]),
+  frequency: z.enum(SCHEDULE_FREQUENCIES),
   amount: positiveIntSchema,
   nextPaymentDate: dateSchema,
   active: z.boolean().default(true),
@@ -99,7 +99,7 @@ export const updatePaymentSchema = z.object({
 }).partial();
 
 export const updatePaymentScheduleSchema = z.object({
-  frequency: z.enum(["weekly", "monthly", "upfront"]),
+  frequency: z.enum(SCHEDULE_FREQUENCIES),
   amount: positiveIntSchema,
   nextPaymentDate: dateSchema,
   active: z.boolean(),

@@ -19,6 +19,9 @@ export const USER_ROLES = ['system_admin', 'org_admin', 'user'] as const;
 export const userRoleEnum = pgEnum('user_role', USER_ROLES);
 export type UserRole = (typeof USER_ROLES)[number];
 
+export const SCHEDULE_FREQUENCIES = ["weekly", "monthly", "upfront"] as const;
+export type ScheduleFrequency = (typeof SCHEDULE_FREQUENCIES)[number];
+
 export const PAYMENT_STATUSES = ["paid", "pending", "failed", "refunded"] as const;
 export const PaymentStatus = {
   PAID: PAYMENT_STATUSES[0],

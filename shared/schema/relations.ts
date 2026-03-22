@@ -31,6 +31,11 @@ export const leagueRelations = relations(leagues, ({ one, many }) => ({
     fields: [leagues.locationId],
     references: [locations.id],
   }),
+  previousSeason: one(leagues, {
+    fields: [leagues.previousSeasonId],
+    references: [leagues.id],
+    relationName: "seasonChain",
+  }),
   teams: many(teams),
   bowlerLeagues: many(bowlerLeagues),
   payments: many(payments),
