@@ -1,7 +1,7 @@
 import { eq, and, sql, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import {
-  bowlers, bowlerLeagues, leagues,
+  bowlers, bowlerLeagues, leagues, teams,
   type Bowler, type InsertBowler, type UpdateBowler,
   type BowlerLeague, type InsertBowlerLeague, type UpdateBowlerLeague,
 } from "@shared/schema";
@@ -101,6 +101,8 @@ export async function getBowlerLeague(id: number): Promise<BowlerLeague | undefi
 
 export async function createBowlerLeague(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague> {
   return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM ${teams} WHERE id = ${bowlerLeague.teamId} FOR UPDATE`);
+
     const [maxOrder] = await tx
       .select({ maxOrder: sql<number>`max(${bowlerLeagues.order})` })
       .from(bowlerLeagues)
@@ -135,6 +137,8 @@ export async function updateBowlerLeagueOrder(id: number, newOrder: number): Pro
     if (!targetBowlerLeague) {
       throw new Error('Bowler league not found');
     }
+
+    await tx.execute(sql`SELECT id FROM ${teams} WHERE id = ${targetBowlerLeague.teamId} FOR UPDATE`);
 
     const bowlerLeaguesInTeam = await tx
       .select()
