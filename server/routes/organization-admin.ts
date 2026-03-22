@@ -6,6 +6,9 @@ import { hashPassword } from '../auth';
 import { sendInviteEmail, sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email';
 import { z } from 'zod';
 import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit';
+import { createLogger } from '../logger';
+
+const log = createLogger("OrgAdmin");
 
 // Define error code type for type safety
 type ErrorCode = string;
@@ -103,7 +106,7 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
 
     return sendSuccess(res, usersWithBowlerInfo);
   } catch (error) {
-    console.error('[Org Admin Route] Error getting organization users:', error);
+    log.error('Error getting organization users:', error);
     return sendError(res, 'internal_error', 'Failed to get organization users', 500);
   }
 });
@@ -145,7 +148,7 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
     const updatedUser = await storage.updateUserRole(userId, newRole);
     return sendSuccess(res, updatedUser);
   } catch (error) {
-    console.error('[Org Admin Route] Error updating organization admin status:', error);
+    log.error('Error updating organization admin status:', error);
     return sendError(res, 'internal_error', 'Failed to update organization admin status', 500);
   }
 });
@@ -220,7 +223,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
     const refreshedUser = await storage.getUser(userId);
     return sendSuccess(res, refreshedUser);
   } catch (error) {
-    console.error('[Org Admin Route] Error adding user to organization:', error);
+    log.error('Error adding user to organization:', error);
     return sendError(res, 'internal_error', 'Failed to add user to organization', 500);
   }
 });
@@ -259,7 +262,7 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimit
     const updatedUser = await storage.setUserOrganization(userId, null);
     return sendSuccess(res, updatedUser);
   } catch (error) {
-    console.error('[Org Admin Route] Error removing user from organization:', error);
+    log.error('Error removing user from organization:', error);
     return sendError(res, 'internal_error', 'Failed to remove user from organization', 500);
   }
 });
@@ -295,7 +298,7 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
     const updatedUser = await storage.setUserLocation(userId, parseResult.data.locationId);
     return sendSuccess(res, updatedUser);
   } catch (error) {
-    console.error('[Org Admin Route] Error updating user location:', error);
+    log.error('Error updating user location:', error);
     return sendError(res, 'internal_error', 'Failed to update user location', 500);
   }
 });
@@ -371,7 +374,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
 
     return sendSuccess(res, { user: sanitizeUser(finalUser!), emailSent });
   } catch (error) {
-    console.error('[Org Admin Route] Error creating user:', error);
+    log.error('Error creating user:', error);
     return sendError(res, 'internal_error', 'Failed to create user', 500);
   }
 });
@@ -406,7 +409,7 @@ router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, inviteLimi
 
     return sendSuccess(res, { emailSent });
   } catch (error) {
-    console.error('[Org Admin Route] Error resending invite:', error);
+    log.error('Error resending invite:', error);
     return sendError(res, 'internal_error', 'Failed to resend invite', 500);
   }
 });

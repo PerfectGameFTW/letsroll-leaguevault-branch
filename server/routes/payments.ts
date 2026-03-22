@@ -11,6 +11,9 @@ import { paymentScheduler } from '../services/payment-scheduler.js';
 import { db } from '../db.js';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
 import { payments as paymentsTable } from '@shared/schema';
+import { createLogger } from '../logger';
+
+const log = createLogger("Payments");
 
 const router = Router();
 
@@ -67,7 +70,7 @@ router.get("/", async (req, res) => {
     
     sendSuccess(res, payments);
   } catch (error) {
-    console.error('[Payments Route] Get error:', error);
+    log.error('Get error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch payments');
   }
 });
@@ -128,18 +131,18 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
             if (activeSchedule) {
               await storage.deactivatePaymentSchedule(activeSchedule.id);
               await paymentScheduler.removeSchedule(activeSchedule.id);
-              console.log(`[Payments Route] Bowler ${payment.bowlerId} paid in full for league ${payment.leagueId}, auto-cancelled schedule ${activeSchedule.id}`);
+              log.info(`Bowler ${payment.bowlerId} paid in full for league ${payment.leagueId}, auto-cancelled schedule ${activeSchedule.id}`);
             }
           }
         }
       } catch (pifError) {
-        console.error('[Payments Route] Error checking paid-in-full:', pifError);
+        log.error('Error checking paid-in-full:', pifError);
       }
     }
 
     sendSuccess(res, created, 201);
   } catch (error) {
-    console.error('[Payments Route] Create error:', error);
+    log.error('Create error:', error);
     if (error instanceof z.ZodError) {
       sendError(res, error.errors.map(e => e.message).join(', '), 400, "VALIDATION_ERROR");
     } else {
@@ -178,7 +181,7 @@ router.patch("/:id", paymentWriteLimiter, async (req, res) => {
 
     sendSuccess(res, updated);
   } catch (error) {
-    console.error('[Payments Route] Update error:', error);
+    log.error('Update error:', error);
     if (error instanceof z.ZodError) {
       sendError(res, error.errors.map(e => e.message).join(', '), 400, "VALIDATION_ERROR");
     } else {
@@ -215,7 +218,7 @@ router.delete("/:id", paymentWriteLimiter, async (req, res) => {
 
     sendSuccess(res, { message: "Payment deleted successfully" }, 200);
   } catch (error) {
-    console.error('[Payments Route] Delete error:', error);
+    log.error('Delete error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to delete payment');
   }
 });
@@ -266,7 +269,7 @@ router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
     const refunded = await storage.refundPayment(id, squareRefundId, reason);
     sendSuccess(res, refunded);
   } catch (error) {
-    console.error('[Payments Route] Refund error:', error);
+    log.error('Refund error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to process refund');
   }
 });

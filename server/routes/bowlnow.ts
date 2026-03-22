@@ -2,6 +2,9 @@ import { Router, Response } from 'express';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { isOrgBNConfigured, syncBowlerToBN, syncAllBowlersToBN } from '../services/bowlnow.js';
 import { storage } from '../storage';
+import { createLogger } from '../logger';
+
+const log = createLogger("BowlNow");
 
 const router = Router();
 
@@ -57,7 +60,7 @@ router.post('/sync-bowler/:id', async (req: any, res: Response) => {
       sendError(res, result.error || 'Sync failed', 500);
     }
   } catch (error) {
-    console.error('[BowlNow Route] Error syncing bowler:', error);
+    log.error('Error syncing bowler:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to sync bowler');
   }
 });
@@ -79,7 +82,7 @@ router.post('/sync-all', async (req: any, res: Response) => {
     const results = await syncAllBowlersToBN(orgConfig);
     sendSuccess(res, results);
   } catch (error) {
-    console.error('[BowlNow Route] Error syncing all bowlers:', error);
+    log.error('Error syncing all bowlers:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to sync bowlers');
   }
 });

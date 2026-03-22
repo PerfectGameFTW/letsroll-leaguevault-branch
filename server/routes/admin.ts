@@ -5,6 +5,9 @@ import { z } from 'zod';
 import { User as SelectUser, updateEmailTemplateSchema } from '@shared/schema';
 import { requireAdmin } from '../middleware/admin';
 import { sendTestEmail } from '../services/email';
+import { createLogger } from '../logger';
+
+const log = createLogger("Admin");
 
 const router = Router();
 
@@ -20,7 +23,7 @@ router.get('/users', requireAdmin, async (req, res) => {
     const users = await storage.getUsers();
     sendSuccess(res, users.map(({ password, ...u }) => u));
   } catch (error) {
-    console.error('[Admin Routes] Error fetching users:', error);
+    log.error('Error fetching users:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch users');
   }
 });
@@ -36,7 +39,7 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
 
     const requestingUser = req.user as SelectUser;
     if (requestingUser.id === parsedData.userId) {
-      console.error('[Admin Routes] User attempted to change their own admin status');
+      log.error('User attempted to change their own admin status');
       return sendError(res, 'Cannot modify your own admin status', 403, 'SELF_MODIFICATION_DENIED');
     }
     
@@ -44,7 +47,7 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
     const updatedUser = await storage.updateUserRole(parsedData.userId, newRole);
     sendSuccess(res, updatedUser);
   } catch (error) {
-    console.error('[Admin Routes] Error updating admin status:', error);
+    log.error('Error updating admin status:', error);
     if (error instanceof z.ZodError) {
       // Convert Zod validation error to a readable format
       const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
@@ -110,7 +113,7 @@ router.get('/dashboard', requireAdmin, async (req, res) => {
 
     sendSuccess(res, stats);
   } catch (error) {
-    console.error('[Admin Routes] Error fetching admin dashboard stats:', error);
+    log.error('Error fetching admin dashboard stats:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch admin dashboard stats');
   }
 });
@@ -120,7 +123,7 @@ router.get('/email-templates', requireAdmin, async (req, res) => {
     const templates = await storage.getEmailTemplates();
     sendSuccess(res, templates);
   } catch (error) {
-    console.error('[Admin Routes] Error fetching email templates:', error);
+    log.error('Error fetching email templates:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch email templates');
   }
 });
@@ -137,7 +140,7 @@ router.get('/email-templates/:id', requireAdmin, async (req, res) => {
     }
     sendSuccess(res, template);
   } catch (error) {
-    console.error('[Admin Routes] Error fetching email template:', error);
+    log.error('Error fetching email template:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch email template');
   }
 });
@@ -159,7 +162,7 @@ router.patch('/email-templates/:id', requireAdmin, async (req, res) => {
     if (error instanceof z.ZodError) {
       return sendError(res, 'Invalid template data', 400, 'ValidationError');
     }
-    console.error('[Admin Routes] Error updating email template:', error);
+    log.error('Error updating email template:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to update email template');
   }
 });
@@ -189,7 +192,7 @@ router.post('/email-templates/:id/send-test', requireAdmin, async (req, res) => 
       sendError(res, 'Failed to send test email. Check SendGrid configuration.', 500, 'SendFailed');
     }
   } catch (error) {
-    console.error('[Admin Routes] Error sending test email:', error);
+    log.error('Error sending test email:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to send test email');
   }
 });

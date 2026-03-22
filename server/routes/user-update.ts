@@ -8,6 +8,9 @@ import { updateUserSchema } from '@shared/schema';
 import { createOrUpdateCustomer } from '../services/square';
 import { scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
+import { createLogger } from '../logger';
+
+const log = createLogger("UserUpdate");
 
 const scryptAsync = promisify(scrypt);
 
@@ -89,7 +92,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
 
             if (Object.keys(bowlerUpdate).length > 0) {
               await storage.updateBowler(bowler.id, { ...bowler, ...bowlerUpdate });
-              console.log('[User] Synced profile changes to bowler record:', bowler.id);
+              log.info('Synced profile changes to bowler record:', bowler.id);
             }
 
             if (updatedUser.email && (emailChanged || nameChanged || phoneChanged)) {
@@ -105,7 +108,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
                 resolvedSquareLocationId = sq?.id ?? null;
               }
               if (!resolvedSquareLocationId) {
-                console.log('[User] No Square-configured location found, skipping Square customer sync');
+                log.info('No Square-configured location found, skipping Square customer sync');
               }
               const squareCustomer = resolvedSquareLocationId
                 ? await createOrUpdateCustomer(
@@ -121,19 +124,19 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
                   ...bowlerUpdate,
                   squareCustomerId: squareCustomer.id,
                 });
-                console.log('[User] Linked Square customer to bowler:', squareCustomer.id);
+                log.info('Linked Square customer to bowler:', squareCustomer.id);
               }
             }
           }
         } catch (syncError) {
-          console.error('[User] Error syncing to bowler/Square (non-fatal):', syncError);
+          log.error('Error syncing to bowler/Square (non-fatal):', syncError);
         }
       }
     }
 
     return sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
-    console.error('[User] Error updating user:', error);
+    log.error('Error updating user:', error);
     return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
   }
 });
@@ -170,7 +173,7 @@ router.post('/change-password', requireAuth, async (req: Request, res: Response)
 
     return sendSuccess(res, { message: 'Password updated successfully' });
   } catch (error) {
-    console.error('[User] Error changing password:', error);
+    log.error('Error changing password:', error);
     return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
   }
 });

@@ -4,6 +4,9 @@ import { eq, sql, like } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 import { pool } from "../db";
+import { createLogger } from '../logger';
+
+const log = createLogger("AvatarMigration");
 
 const MIME_MAP: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -34,7 +37,7 @@ export async function migrateLocalAvatarsToDB(): Promise<void> {
     return;
   }
 
-  console.log(`[AvatarMigration] Found ${usersWithOldAvatars.length} avatars to migrate`);
+  log.info(`Found ${usersWithOldAvatars.length} avatars to migrate`);
 
   for (const user of usersWithOldAvatars) {
     if (!user.avatar) continue;
@@ -42,7 +45,7 @@ export async function migrateLocalAvatarsToDB(): Promise<void> {
     const filePath = path.join(process.cwd(), user.avatar);
 
     if (!fs.existsSync(filePath)) {
-      console.warn(`[AvatarMigration] File not found for user ${user.id}: ${filePath}, clearing avatar URL`);
+      log.warn(`File not found for user ${user.id}: ${filePath}, clearing avatar URL`);
       await db.update(users).set({ avatar: null }).where(eq(users.id, user.id));
       continue;
     }
@@ -64,11 +67,11 @@ export async function migrateLocalAvatarsToDB(): Promise<void> {
       const newAvatarUrl = `/api/user/avatar/${user.id}`;
       await db.update(users).set({ avatar: newAvatarUrl }).where(eq(users.id, user.id));
 
-      console.log(`[AvatarMigration] Migrated avatar for user ${user.id}`);
+      log.info(`Migrated avatar for user ${user.id}`);
     } catch (error) {
-      console.error(`[AvatarMigration] Failed to migrate avatar for user ${user.id}:`, error);
+      log.error(`Failed to migrate avatar for user ${user.id}:`, error);
     }
   }
 
-  console.log("[AvatarMigration] Migration complete");
+  log.info("Migration complete");
 }

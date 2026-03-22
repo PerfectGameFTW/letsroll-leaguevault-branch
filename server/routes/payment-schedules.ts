@@ -9,6 +9,9 @@ import { fromZonedTime } from 'date-fns-tz';
 import { adminWriteLimiter } from '../middleware/rate-limit.js';
 import { getNextLeagueDateTime } from '../utils/league-datetime.js';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
+import { createLogger } from '../logger';
+
+const log = createLogger("PaymentSchedules");
 
 const router = Router();
 
@@ -88,7 +91,7 @@ router.post('/', adminWriteLimiter, async (req, res) => {
 
     return sendSuccess(res, schedule, 201);
   } catch (error) {
-    console.error('[PaymentSchedules] Error creating schedule:', error);
+    log.error('Error creating schedule:', error);
     return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
   }
 });
@@ -121,7 +124,7 @@ router.get('/:bowlerId/:leagueId', async (req, res) => {
       leagueTimezone: league?.timezone ?? 'America/Chicago',
     });
   } catch (error) {
-    console.error('[PaymentSchedules] Error fetching schedule:', error);
+    log.error('Error fetching schedule:', error);
     return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
   }
 });
@@ -151,7 +154,7 @@ router.delete('/:id', adminWriteLimiter, async (req, res) => {
 
     return sendSuccess(res, { message: 'Payment schedule cancelled' });
   } catch (error) {
-    console.error('[PaymentSchedules] Error cancelling schedule:', error);
+    log.error('Error cancelling schedule:', error);
     return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
   }
 });
@@ -213,7 +216,7 @@ router.patch('/:id', adminWriteLimiter, async (req, res) => {
 
     return sendSuccess(res, updated);
   } catch (error) {
-    console.error('[PaymentSchedules] Error updating schedule:', error);
+    log.error('Error updating schedule:', error);
     return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
   }
 });

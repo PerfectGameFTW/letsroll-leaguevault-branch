@@ -3,6 +3,9 @@ import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { z } from 'zod';
 import { hasAccessToLeague } from '../utils/access-control.js';
+import { createLogger } from '../logger';
+
+const log = createLogger("Scores");
 
 const getLeagueScoresSchema = z.object({
   leagueId: z.string()
@@ -45,7 +48,7 @@ router.get('/league/:leagueId/week/:weekNumber', async (req, res) => {
     const scores = await storage.getScoresByLeagueAndWeek(leagueId, weekNumber);
     return sendSuccess(res, scores);
   } catch (error) {
-    console.error('[Scores] Error fetching scores:', error);
+    log.error('Error fetching scores:', error);
     return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
   }
 });
@@ -75,7 +78,7 @@ router.get('/history', async (req, res) => {
 
     return sendError(res, 'leagueId and weekNumber must be provided', 400);
   } catch (error) {
-    console.error('[Scores] Error fetching scores:', error);
+    log.error('Error fetching scores:', error);
     return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
   }
 });
@@ -95,7 +98,7 @@ router.post('/batch', async (req, res) => {
 
     return sendSuccess(res, results, 201);
   } catch (error) {
-    console.error('[Scores] Error creating scores:', error);
+    log.error('Error creating scores:', error);
     return sendError(res, error instanceof Error ? error.message : 'Failed to create scores', 500);
   }
 });

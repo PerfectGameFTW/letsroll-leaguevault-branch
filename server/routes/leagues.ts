@@ -15,6 +15,9 @@ import { db } from '../db.js';
 import { payments as paymentsTable } from '@shared/schema';
 import { eq, isNull, and } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
+import { createLogger } from '../logger';
+
+const log = createLogger("Leagues");
 
 const router = Router();
 
@@ -188,17 +191,17 @@ router.patch("/:id", async (req: any, res) => {
             WHERE league_id = ${id}
               AND status = 'paid'
           `);
-          console.log(`[Leagues Route] Backfilled payment splits for league ${id}: lineageFee=${lineageFee}, prizeFundFee=${prizeFundFee}`);
+          log.info(`Backfilled payment splits for league ${id}: lineageFee=${lineageFee}, prizeFundFee=${prizeFundFee}`);
         } else {
           await db.execute(sql`
             UPDATE payments
             SET lineage_amount = NULL, prize_fund_amount = NULL
             WHERE league_id = ${id}
           `);
-          console.log(`[Leagues Route] Cleared payment splits for league ${id} (fees not fully configured)`);
+          log.info(`Cleared payment splits for league ${id} (fees not fully configured)`);
         }
       } catch (backfillErr) {
-        console.error('[Leagues Route] Error backfilling payment splits:', backfillErr);
+        log.error('Error backfilling payment splits:', backfillErr);
       }
     }
 
@@ -459,7 +462,7 @@ router.post("/:id/new-season", async (req: any, res) => {
 
     sendSuccess(res, newLeague, 201);
   } catch (error) {
-    console.error('[Leagues Route] New season error:', error);
+    log.error('New season error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to create new season');
   }
 });

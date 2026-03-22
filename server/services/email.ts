@@ -1,6 +1,9 @@
 import sgMail from '@sendgrid/mail';
 import { storage } from '../storage';
 import { env } from '../config';
+import { createLogger } from '../logger';
+
+const log = createLogger("Email");
 
 const SENDGRID_API_KEY = env.SENDGRID_API_KEY;
 const FROM_EMAIL = 'noreply@leaguevault.app';
@@ -8,7 +11,7 @@ const FROM_NAME = 'LeagueVault';
 
 if (SENDGRID_API_KEY) {
   sgMail.setApiKey(SENDGRID_API_KEY);
-  console.log('[Email] SendGrid initialized');
+  log.info('SendGrid initialized');
 }
 
 export function getBaseUrl(): string {
@@ -88,14 +91,14 @@ export async function sendTemplatedEmail(
   variables: Record<string, string>
 ): Promise<boolean> {
   if (!SENDGRID_API_KEY) {
-    console.error('[Email] Cannot send email — SENDGRID_API_KEY not configured');
+    log.error('Cannot send email — SENDGRID_API_KEY not configured');
     return false;
   }
 
   try {
     const template = await storage.getEmailTemplateBySlug(slug);
     if (!template || !template.active) {
-      console.log(`[Email] Template '${slug}' not found or inactive, skipping`);
+      log.info(`Template '${slug}' not found or inactive, skipping`);
       return false;
     }
 
@@ -114,10 +117,10 @@ export async function sendTemplatedEmail(
     };
 
     await sgMail.send(msg);
-    console.log(`[Email] Templated email '${slug}' sent to:`, toEmail);
+    log.info(`Templated email '${slug}' sent to:`, toEmail);
     return true;
   } catch (error: any) {
-    console.error(`[Email] Failed to send templated email '${slug}':`, error?.response?.body || error.message);
+    log.error(`Failed to send templated email '${slug}':`, error?.response?.body || error.message);
     return false;
   }
 }
@@ -147,7 +150,7 @@ export async function sendInviteEmail(
   if (sent) return true;
 
   if (!SENDGRID_API_KEY) {
-    console.error('[Email] Cannot send invite — SENDGRID_API_KEY not configured');
+    log.error('Cannot send invite — SENDGRID_API_KEY not configured');
     return false;
   }
 
@@ -202,10 +205,10 @@ export async function sendInviteEmail(
 
   try {
     await sgMail.send(msg);
-    console.log('[Email] Invite email sent to:', toEmail);
+    log.info('Invite email sent to:', toEmail);
     return true;
   } catch (error: any) {
-    console.error('[Email] Failed to send invite email:', error?.response?.body || error.message);
+    log.error('Failed to send invite email:', error?.response?.body || error.message);
     return false;
   }
 }
@@ -216,7 +219,7 @@ export async function sendTestEmail(
   organization?: { id: number; name: string; logo?: string | null } | null
 ): Promise<boolean> {
   if (!SENDGRID_API_KEY) {
-    console.error('[Email] Cannot send test email — SENDGRID_API_KEY not configured');
+    log.error('Cannot send test email — SENDGRID_API_KEY not configured');
     return false;
   }
 
@@ -246,10 +249,10 @@ export async function sendTestEmail(
         clickTracking: { enable: false, enableText: false },
       },
     });
-    console.log(`[Email] Test email for '${template.slug}' sent to:`, toEmail);
+    log.info(`Test email for '${template.slug}' sent to:`, toEmail);
     return true;
   } catch (error: any) {
-    console.error(`[Email] Failed to send test email:`, error?.response?.body || error.message);
+    log.error(`Failed to send test email:`, error?.response?.body || error.message);
     return false;
   }
 }

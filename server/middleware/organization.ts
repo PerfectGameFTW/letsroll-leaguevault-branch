@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { storage } from '../storage';
 import { sendError } from '../utils/api.js';
+import { createLogger } from '../logger';
+
+const log = createLogger("OrgMiddleware");
 
 /**
  * Middleware to ensure a user can only access resources from their organization
@@ -93,7 +96,7 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
   }
 
   if (league.organizationId === null) {
-    console.warn(`[NullOrgAccess] league ${leagueId} granted to user ${req.user?.id}`);
+    log.warn(`league ${leagueId} granted to user ${req.user?.id}`);
     return true;
   }
 

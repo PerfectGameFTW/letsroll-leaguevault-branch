@@ -1,6 +1,9 @@
 import { storage } from '../storage';
 import type { OrgIntegrations } from '@shared/schema';
 import { env } from '../config';
+import { createLogger } from '../logger';
+
+const log = createLogger("BowlNowService");
 
 const BN_API_BASE = 'https://services.leadconnectorhq.com';
 const DEFAULT_BN_LOCATION_ID = 'zQw4JcOJlKfJWCWvJ2pw';
@@ -73,7 +76,7 @@ export async function findContactByEmail(email: string, orgConfig?: OrgIntegrati
     });
 
     if (!response.ok) {
-      console.error('[BowlNow] Error searching contacts:', response.status, await response.text());
+      log.error('Error searching contacts:', response.status, await response.text());
       return null;
     }
 
@@ -84,7 +87,7 @@ export async function findContactByEmail(email: string, orgConfig?: OrgIntegrati
     );
     return match || null;
   } catch (error) {
-    console.error('[BowlNow] Error finding contact by email:', error);
+    log.error('Error finding contact by email:', error);
     return null;
   }
 }
@@ -120,15 +123,15 @@ export async function createContact(contactData: {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[BowlNow] Error creating contact:', response.status, errorText);
+      log.error('Error creating contact:', response.status, errorText);
       return null;
     }
 
     const data = await response.json();
-    console.log('[BowlNow] Contact created:', data.contact?.id);
+    log.info('Contact created:', data.contact?.id);
     return data.contact;
   } catch (error) {
-    console.error('[BowlNow] Error creating contact:', error);
+    log.error('Error creating contact:', error);
     return null;
   }
 }
@@ -161,15 +164,15 @@ export async function updateContact(contactId: string, contactData: {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[BowlNow] Error updating contact:', response.status, errorText);
+      log.error('Error updating contact:', response.status, errorText);
       return null;
     }
 
     const data = await response.json();
-    console.log('[BowlNow] Contact updated:', contactId);
+    log.info('Contact updated:', contactId);
     return data.contact;
   } catch (error) {
-    console.error('[BowlNow] Error updating contact:', error);
+    log.error('Error updating contact:', error);
     return null;
   }
 }
@@ -279,7 +282,7 @@ export async function syncBowlerToBN(
 
     return { success: false, error: 'Failed to create or update contact in BowlNow' };
   } catch (error) {
-    console.error('[BowlNow] Error syncing bowler:', error);
+    log.error('Error syncing bowler:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
@@ -308,6 +311,6 @@ export async function syncAllBowlersToBN(
     }
   }
 
-  console.log(`[BowlNow] Sync complete: ${results.synced}/${results.total} synced, ${results.failed} failed`);
+  log.info(`Sync complete: ${results.synced}/${results.total} synced, ${results.failed} failed`);
   return results;
 }

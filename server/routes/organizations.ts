@@ -16,6 +16,9 @@ import { hashPassword } from '../auth.js';
 import { requireOrganizationAccess } from '../utils/access-control.js';
 import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email.js';
 import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit.js';
+import { createLogger } from '../logger';
+
+const log = createLogger("Organizations");
 
 const router = Router();
 
@@ -25,7 +28,7 @@ router.get('/', requireAdmin, async (req, res) => {
     const organizations = await storage.getOrganizations();
     sendSuccess(res, sanitizeOrgs(organizations));
   } catch (error) {
-    console.error('Error fetching organizations:', error);
+    log.error('Error fetching organizations:', error);
     sendError(res, 'Failed to fetch organizations', 500, 'ServerError');
   }
 });
@@ -60,7 +63,7 @@ router.get('/:id/logo', async (req, res) => {
 
     return res.redirect(logo);
   } catch (error) {
-    console.error('Error serving organization logo:', error);
+    log.error('Error serving organization logo:', error);
     res.status(500).send('Failed to serve logo');
   }
 });
@@ -84,7 +87,7 @@ router.get('/:id', async (req: any, res) => {
 
     sendSuccess(res, sanitizeOrg(organization));
   } catch (error) {
-    console.error(`Error fetching organization with ID ${req.params.id}:`, error);
+    log.error(`Error fetching organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to fetch organization', 500, 'ServerError');
   }
 });
@@ -109,7 +112,7 @@ router.get('/check-slug/:slug', async (req, res) => {
       message: organization ? 'Slug is already in use' : 'Slug is available'
     });
   } catch (error) {
-    console.error(`[Organizations] Error checking slug availability for ${req.params.slug}:`, error);
+    log.error(`Error checking slug availability for ${req.params.slug}:`, error);
     sendError(res, 'Failed to check slug availability', 500, 'SERVER_ERROR');
   }
 });
@@ -131,7 +134,7 @@ router.get('/slug/:slug', async (req, res) => {
       logo: organization.logo,
     });
   } catch (error) {
-    console.error(`Error fetching organization with slug ${req.params.slug}:`, error);
+    log.error(`Error fetching organization with slug ${req.params.slug}:`, error);
     sendError(res, 'Failed to fetch organization', 500, 'ServerError');
   }
 });
@@ -150,7 +153,7 @@ router.get('/slug/:slug/leagues', async (req, res) => {
     const activeLeagues = leagues.filter(l => l.active !== false);
     sendSuccess(res, activeLeagues);
   } catch (error) {
-    console.error(`Error fetching leagues for org slug ${req.params.slug}:`, error);
+    log.error(`Error fetching leagues for org slug ${req.params.slug}:`, error);
     sendError(res, 'Failed to fetch organization leagues', 500, 'ServerError');
   }
 });
@@ -159,7 +162,7 @@ router.get('/slug/:slug/leagues', async (req, res) => {
 router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res) => {
   try {
     const { adminData, ...orgData } = req.body;
-    console.log('[Organizations] Create request body keys:', Object.keys(orgData));
+    log.debug('Create request body keys:', Object.keys(orgData));
     const validatedData = insertOrganizationSchema.parse(orgData);
     
     // Check if organization with slug already exists
@@ -208,7 +211,7 @@ router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res
         
         return sendSuccess(res, { organization: sanitizeOrg(organization), adminUser: sanitizeUser(newAdminUser) }, 201);
       } catch (adminError) {
-        console.error('[Organizations] Error creating admin user:', adminError);
+        log.error('Error creating admin user:', adminError);
         return sendSuccess(res, { 
           organization: sanitizeOrg(organization), 
           warning: 'Organization created but there was an error creating the admin user'
@@ -220,10 +223,10 @@ router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res
   } catch (error) {
     if (error instanceof z.ZodError) {
       const fieldErrors = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
-      console.error('[Organizations] Validation error:', fieldErrors);
+      log.error('Validation error:', fieldErrors);
       return sendError(res, `Invalid organization data: ${fieldErrors}`, 400, 'ValidationError');
     }
-    console.error('Error creating organization:', error);
+    log.error('Error creating organization:', error);
     sendError(res, 'Failed to create organization', 500, 'ServerError');
   }
 });
@@ -277,7 +280,7 @@ router.patch('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
     if (error instanceof z.ZodError) {
       return sendError(res, 'Invalid organization data', 400, 'ValidationError');
     }
-    console.error(`Error updating organization with ID ${req.params.id}:`, error);
+    log.error(`Error updating organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to update organization', 500, 'ServerError');
   }
 });
@@ -298,7 +301,7 @@ router.patch('/:id/archive', requireAdmin, adminWriteLimiter, async (req, res) =
     const archived = await storage.archiveOrganization(id);
     sendSuccess(res, sanitizeOrg(archived));
   } catch (error) {
-    console.error(`Error archiving organization with ID ${req.params.id}:`, error);
+    log.error(`Error archiving organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to archive organization', 500, 'ServerError');
   }
 });
@@ -319,7 +322,7 @@ router.patch('/:id/restore', requireAdmin, adminWriteLimiter, async (req, res) =
     const restored = await storage.restoreOrganization(id);
     sendSuccess(res, sanitizeOrg(restored));
   } catch (error) {
-    console.error(`Error restoring organization with ID ${req.params.id}:`, error);
+    log.error(`Error restoring organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to restore organization', 500, 'ServerError');
   }
 });
@@ -340,7 +343,7 @@ router.delete('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
     await storage.deleteOrganization(id);
     sendSuccess(res, { message: 'Organization deleted successfully' });
   } catch (error) {
-    console.error(`Error deleting organization with ID ${req.params.id}:`, error);
+    log.error(`Error deleting organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to delete organization', 500, 'ServerError');
   }
 });
@@ -355,7 +358,7 @@ router.get('/user/me', async (req, res) => {
     const organizations = await storage.getUserOrganizations(req.user.id);
     sendSuccess(res, sanitizeOrgs(organizations));
   } catch (error) {
-    console.error('Error fetching user organizations:', error);
+    log.error('Error fetching user organizations:', error);
     sendError(res, 'Failed to fetch user organizations', 500, 'ServerError');
   }
 });
@@ -395,7 +398,7 @@ router.post('/user/:userId/set', requireAdmin, adminWriteLimiter, async (req, re
     if (error instanceof z.ZodError) {
       return sendError(res, 'Invalid data', 400, 'ValidationError');
     }
-    console.error(`Error setting organization for user ${req.params.userId}:`, error);
+    log.error(`Error setting organization for user ${req.params.userId}:`, error);
     sendError(res, 'Failed to set user organization', 500, 'ServerError');
   }
 });
@@ -420,7 +423,7 @@ router.get('/:id/leagues', async (req, res) => {
     const leagues = await storage.getOrganizationLeagues(id);
     sendSuccess(res, leagues);
   } catch (error) {
-    console.error(`Error fetching leagues for organization ${req.params.id}:`, error);
+    log.error(`Error fetching leagues for organization ${req.params.id}:`, error);
     sendError(res, 'Failed to fetch organization leagues', 500, 'ServerError');
   }
 });

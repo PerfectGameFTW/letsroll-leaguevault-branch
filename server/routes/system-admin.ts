@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
 import { storage } from '../storage';
 import { requireAdmin } from '../middleware/admin.js';
+import { createLogger } from '../logger';
+
+const log = createLogger("SystemAdmin");
 
 const router = Router();
 
@@ -25,7 +28,7 @@ router.post('/create/:id', requireAdmin, async (req: Request, res: Response) => 
     const updatedUser = await storage.updateUserRole(userId, 'system_admin');
     sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
-    console.error('[System Admin] Error creating system admin:', error);
+    log.error('Error creating system admin:', error);
     sendError(res, 'Failed to create system admin', 500, 'SERVER_ERROR');
   }
 });
@@ -36,7 +39,7 @@ router.get('/', requireAdmin, async (req: Request, res: Response) => {
     const systemAdmins = users.filter(user => user.role === 'system_admin');
     sendSuccess(res, systemAdmins.map(sanitizeUser));
   } catch (error) {
-    console.error('[System Admin] Error fetching system admins:', error);
+    log.error('Error fetching system admins:', error);
     sendError(res, 'Failed to fetch system admins', 500, 'SERVER_ERROR');
   }
 });
@@ -67,7 +70,7 @@ router.post('/revoke/:id', requireAdmin, async (req: Request, res: Response) => 
     const updatedUser = await storage.updateUserRole(userId, 'user');
     sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
-    console.error('[System Admin] Error revoking system admin:', error);
+    log.error('Error revoking system admin:', error);
     sendError(res, 'Failed to revoke system admin privileges', 500, 'SERVER_ERROR');
   }
 });

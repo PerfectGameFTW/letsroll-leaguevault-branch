@@ -7,6 +7,9 @@ import {
   type User,
   type OrgIntegrations,
 } from "@shared/schema";
+import { createLogger } from '../logger';
+
+const log = createLogger("StorageOrgs");
 
 export async function getOrganizations(): Promise<Organization[]> {
   return db.select().from(organizations).orderBy(organizations.name);
@@ -90,7 +93,7 @@ export async function getOrgIntegrations(orgId: number): Promise<OrgIntegrations
 
   const parsed = orgIntegrationsSchema.safeParse(org.integrations);
   if (!parsed.success) {
-    console.warn(`[Storage] Malformed integrations JSONB for org ${orgId}:`, parsed.error.format());
+    log.warn(`Malformed integrations JSONB for org ${orgId}:`, parsed.error.format());
     return null;
   }
   return parsed.data ?? null;
@@ -107,7 +110,7 @@ export async function updateOrgIntegrations(orgId: number, integrations: OrgInte
 }
 
 export async function getOrganizationUsers(organizationId: number): Promise<User[]> {
-  console.log('[Storage] Getting users for organization:', organizationId);
+  log.info('Getting users for organization:', organizationId);
 
   return db
     .select()

@@ -3,6 +3,9 @@ import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api';
 import { z } from 'zod';
 import { hasAccessToLeague } from '../utils/access-control.js';
+import { createLogger } from '../logger';
+
+const log = createLogger("Games");
 
 const router = Router();
 
@@ -36,7 +39,7 @@ router.get('/', async (req, res) => {
     const games = await storage.getGames(leagueId, weekNumber);
     sendSuccess(res, games);
   } catch (error) {
-    console.error('[Games] Error fetching games:', error);
+    log.error('Error fetching games:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch games', 500);
   }
 });

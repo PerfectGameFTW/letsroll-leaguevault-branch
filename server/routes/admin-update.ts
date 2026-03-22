@@ -4,6 +4,9 @@ import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
 import { storage } from '../storage';
 import { requireAdmin } from '../middleware/admin.js';
 import { env } from '../config';
+import { createLogger } from '../logger';
+
+const log = createLogger("AdminUpdate");
 
 const router = Router();
 
@@ -66,7 +69,7 @@ router.patch('/users/:id/admin-status', requireAdmin, async (req: Request, res: 
       sanitizeUser(updatedUser)
     );
   } catch (error) {
-    console.error('[Admin] Error updating user admin status:', error);
+    log.error('Error updating user admin status:', error);
     sendError(
       res,
       'Failed to update user admin status',
@@ -132,7 +135,7 @@ router.post('/first-system-admin/:id', async (req: Request, res: Response) => {
       sanitizeUser(updatedUser)
     );
   } catch (error) {
-    console.error('[Admin] Error creating first system admin:', error);
+    log.error('Error creating first system admin:', error);
     sendError(
       res,
       'Failed to create first system admin',

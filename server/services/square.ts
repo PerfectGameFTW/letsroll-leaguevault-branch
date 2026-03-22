@@ -2,6 +2,9 @@ import { Client, Environment } from 'square';
 import type { ApiError } from 'square';
 import crypto from 'crypto';
 import { storage } from '../storage';
+import { createLogger } from '../logger';
+
+const log = createLogger("SquareService");
 
 interface SquareCustomer {
   id: string;
@@ -28,10 +31,10 @@ export async function getSquareClientForLocation(lvLocationId: number): Promise<
     if (creds?.accessToken && creds.accessToken.trim().length > 0) {
       return buildSquareClient(creds.accessToken, creds.appId);
     }
-    console.warn(`[Square Service] No Square credentials configured for location ${lvLocationId}`);
+    log.warn(`No Square credentials configured for location ${lvLocationId}`);
     return null;
   } catch (err) {
-    console.warn(`[Square Service] Error fetching credentials for location ${lvLocationId}:`, err);
+    log.warn(`Error fetching credentials for location ${lvLocationId}:`, err);
     return null;
   }
 }
@@ -60,7 +63,7 @@ async function resolveSquareClient(locationId?: number | null): Promise<Client |
   if (locationId != null) {
     return getSquareClientForLocation(locationId);
   }
-  console.warn('[Square Service] resolveSquareClient called without locationId — no client available');
+  log.warn('resolveSquareClient called without locationId — no client available');
   return null;
 }
 
@@ -69,7 +72,7 @@ export async function saveCardOnFile(sourceId: string, customerId: string, locat
   if (!client) return null;
 
   try {
-    console.log('[Square Service] Saving card on file for customer:', customerId.substring(0, 10) + '...');
+    log.info('Saving card on file for customer:', customerId.substring(0, 10) + '...');
     const response = await client.cardsApi.createCard({
       idempotencyKey: crypto.createHash('sha256').update(`card:${sourceId}:${customerId}`).digest('hex'),
       sourceId,
@@ -88,7 +91,7 @@ export async function saveCardOnFile(sourceId: string, customerId: string, locat
     }
     return null;
   } catch (error) {
-    console.error('[Square Service] Failed to save card on file:', error instanceof Error ? error.message : error);
+    log.error('Failed to save card on file:', error instanceof Error ? error.message : error);
     return null;
   }
 }
@@ -203,12 +206,12 @@ export async function processPayment(sourceId: string, amount: number, storeCard
 export async function createOrUpdateCustomer(name: string, email: string, phone?: string | null, locationId?: number | null): Promise<SquareCustomer | null> {
   const client = await resolveSquareClient(locationId);
   if (!client) {
-    console.error('[Square Service] Square client not initialized');
+    log.error('Square client not initialized');
     return null;
   }
 
   try {
-    console.log('[Square Service] Searching for customer with email:', email);
+    log.info('Searching for customer with email:', email);
     const searchResponse = await client.customersApi.searchCustomers({
       query: {
         filter: {
@@ -229,7 +232,7 @@ export async function createOrUpdateCustomer(name: string, email: string, phone?
     const phoneNumber = phone || undefined;
 
     if (searchResponse.result.customers?.[0]?.id) {
-      console.log('[Square Service] Found existing customer, updating...');
+      log.info('Found existing customer, updating...');
       customerId = searchResponse.result.customers[0].id;
       const updateResponse = await client.customersApi.updateCustomer(customerId, {
         givenName: firstName,
@@ -242,9 +245,9 @@ export async function createOrUpdateCustomer(name: string, email: string, phone?
         throw new Error('API Error: Invalid update response');
       }
 
-      console.log('[Square Service] Customer updated successfully:', updateResponse.result.customer.id);
+      log.info('Customer updated successfully:', updateResponse.result.customer.id);
     } else {
-      console.log('[Square Service] No existing customer found, creating new...');
+      log.info('No existing customer found, creating new...');
       const customerResponse = await client.customersApi.createCustomer({
         idempotencyKey: crypto.createHash('sha256').update(`customer:${email.toLowerCase()}:${name}`).digest('hex'),
         givenName: firstName,
@@ -258,7 +261,7 @@ export async function createOrUpdateCustomer(name: string, email: string, phone?
       }
 
       customerId = customerResponse.result.customer.id;
-      console.log('[Square Service] New customer created successfully:', customerId);
+      log.info('New customer created successfully:', customerId);
     }
 
     return {
@@ -267,7 +270,7 @@ export async function createOrUpdateCustomer(name: string, email: string, phone?
       email
     };
   } catch (error) {
-    console.error('[Square Service] Customer operation error:', {
+    log.error('Customer operation error:', {
       error: error instanceof Error ? {
         name: error.name,
         message: error.message,
@@ -309,10 +312,10 @@ export async function listCatalogCategories(locationId?: number | null) {
         return true;
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-    console.log(`[Square Service] Categories: ${allObjects.length} raw -> ${deduped.length} deduped`);
+    log.info(`Categories: ${allObjects.length} raw -> ${deduped.length} deduped`);
     return deduped;
   } catch (error) {
-    console.error('[Square Service] Catalog categories error:', error);
+    log.error('Catalog categories error:', error);
     throw new Error('Failed to fetch catalog categories: ' + (error instanceof Error ? error.message : String(error)));
   }
 }
@@ -370,7 +373,7 @@ export async function listCatalogItems(categoryId?: string, locationId?: number 
       };
     });
   } catch (error) {
-    console.error('[Square Service] Catalog list error:', error);
+    log.error('Catalog list error:', error);
     throw new Error('Failed to fetch catalog items: ' + (error instanceof Error ? error.message : String(error)));
   }
 }
@@ -422,7 +425,7 @@ export async function createOrderWithPayment(
       throw new Error('Failed to create order');
     }
 
-    console.log('[Square Service] Order created:', order.id);
+    log.info('Order created:', order.id);
 
     const paymentRequest: any = {
       sourceId,
@@ -465,7 +468,7 @@ export async function createOrderWithPayment(
       },
     };
   } catch (error) {
-    console.error('[Square Service] Order+Payment error:', error);
+    log.error('Order+Payment error:', error);
     if (error instanceof Error && error.message.startsWith('{')) {
       throw error;
     }
@@ -517,13 +520,13 @@ export async function refundPayment(
       throw new Error('Refund response missing refund data');
     }
 
-    console.log(`[Square Service] Refund processed: ${refund.id}, status: ${refund.status}`);
+    log.info(`Refund processed: ${refund.id}, status: ${refund.status}`);
     return {
       refundId: refund.id,
       status: refund.status || 'PENDING',
     };
   } catch (error) {
-    console.error('[Square Service] Refund error:', error);
+    log.error('Refund error:', error);
     const apiError = error as ApiError;
     if (apiError.errors) {
       const messages = apiError.errors.map((e: any) => e.detail).join(', ');
@@ -550,7 +553,7 @@ export async function listCardsOnFile(customerId: string, locationId?: number | 
         expYear: Number(c.expYear) || 0,
       }));
   } catch (error) {
-    console.error('[Square Service] Failed to list cards on file:', error instanceof Error ? error.message : error);
+    log.error('Failed to list cards on file:', error instanceof Error ? error.message : error);
     return [];
   }
 }

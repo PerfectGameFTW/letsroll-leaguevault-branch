@@ -7,8 +7,11 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
-import { sanitizeUser } from "./utils/api.js";
+import { sanitizeUser, sendSuccess, sendError } from "./utils/api.js";
 import { env, isDev } from "./config";
+import { createLogger } from "./logger";
+
+const log = createLogger("Auth");
 
 function safeTokenCompare(provided: unknown, stored: unknown): boolean {
   if (typeof provided !== 'string' || typeof stored !== 'string') {
@@ -52,7 +55,7 @@ async function comparePasswords(supplied: string, stored: string) {
     const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
     return timingSafeEqual(hashedBuf, suppliedBuf);
   } catch (error) {
-    console.error('[Auth] Error comparing passwords:', error);
+    log.error('Error comparing passwords:', error);
     return false;
   }
 }
@@ -110,7 +113,7 @@ export function setupAuth(app: Express) {
 
         if (!isValidUser(user)) {
           const userId = user && typeof user === 'object' ? (user as Record<string, unknown>).id : undefined;
-          console.error('[Auth] Invalid user object structure for ID:', userId);
+          log.error('Invalid user object structure for ID:', { userId });
           await comparePasswords(password, DUMMY_HASH);
           return done(null, false, { message: "Invalid user data structure" });
         }
@@ -123,7 +126,7 @@ export function setupAuth(app: Express) {
 
         return done(null, user);
       } catch (error) {
-        console.error('[Auth] Login error:', error);
+        log.error('Login error:', error);
         return done(error);
       }
     }),
@@ -144,7 +147,7 @@ export function setupAuth(app: Express) {
       }
       done(null, user);
     } catch (error) {
-      console.error('[Auth] Deserialization error:', error);
+      log.error('Deserialization error:', error);
       done(error);
     }
   });
@@ -203,21 +206,12 @@ export function setupAuth(app: Express) {
           message: error.message
         }));
 
-        return res.status(400).json({
-          success: false,
-          error: {
-            message: "Registration validation failed",
-            details: validationErrors
-          }
-        });
+        return sendError(res, "Registration validation failed", 400, "VALIDATION_ERROR", validationErrors);
       }
 
       const existingUser = await storage.getUserByEmail(result.data.email);
       if (existingUser) {
-        return res.status(400).json({
-          success: false,
-          error: { message: "Email already registered" }
-        });
+        return sendError(res, "Email already registered", 400, "DUPLICATE_EMAIL");
       }
 
       const hashedPassword = await hashPassword(result.data.password);
@@ -254,7 +248,7 @@ export function setupAuth(app: Express) {
                   organization_logo_url: org?.logo ? `${baseUrl}/api/organizations/${org.id}/logo` : '',
                   league_name: league.name,
                   dashboard_link: `${baseUrl}/bowler-dashboard`,
-                }).catch(err => console.error('[Auth] Failed to send self_register_linked email:', err));
+                }).catch(err => log.error('Failed to send self_register_linked email:', err));
               }
             }
           }
@@ -265,76 +259,47 @@ export function setupAuth(app: Express) {
           sendTemplatedEmail('self_register_unlinked', result.data.email, {
             bowler_name: result.data.name,
             login_link: `${baseUrl}/login`,
-          }).catch(err => console.error('[Auth] Failed to send self_register_unlinked email:', err));
+          }).catch(err => log.error('Failed to send self_register_unlinked email:', err));
         }
       } catch (linkError) {
-        console.error('[Auth] Auto-link bowler after registration failed:', linkError);
+        log.error('Auto-link bowler after registration failed:', linkError);
       }
 
       // Log the user in after registration
       req.login(user, (err) => {
         if (err) {
-          console.error('[Auth] Session creation after registration failed:', err);
-          return res.status(500).json({
-            success: false,
-            error: { message: "Failed to login after registration" }
-          });
+          log.error('Session creation after registration failed:', err);
+          return sendError(res, "Failed to login after registration", 500, "SESSION_ERROR");
         }
-        res.status(201).json({
-          success: true,
-          data: sanitizeUser(user)
-        });
+        sendSuccess(res, sanitizeUser(user), 201);
       });
     } catch (error) {
-      console.error('[Auth] Registration error:', error);
+      log.error('Registration error:', error);
       if (error instanceof z.ZodError) {
-        return res.status(400).json({
-          success: false,
-          error: { 
-            message: "Validation failed",
-            details: error.errors.map(err => ({
-              field: err.path.join('.'),
-              message: err.message
-            }))
-          }
-        });
+        return sendError(res, "Validation failed", 400, "VALIDATION_ERROR", error.errors.map(err => ({
+          field: err.path.join('.'),
+          message: err.message
+        })));
       }
-      res.status(500).json({
-        success: false,
-        error: { 
-          message: error instanceof Error ? error.message : "Failed to register user"
-        }
-      });
+      sendError(res, error instanceof Error ? error.message : "Failed to register user", 500, "SERVER_ERROR");
     }
   });
 
   authRouter.post("/login", loginLimiter, (req, res, next) => {
     passport.authenticate("local", (err: any, user: any, info: any) => {
       if (err) {
-        console.error('[Auth] Login error:', err);
-        return res.status(500).json({
-          success: false,
-          error: { message: "Internal server error" }
-        });
+        log.error('Login error:', err);
+        return sendError(res, "Internal server error", 500, "SERVER_ERROR");
       }
       if (!user) {
-        return res.status(401).json({
-          success: false,
-          error: { message: info?.message || "Invalid credentials" }
-        });
+        return sendError(res, info?.message || "Invalid credentials", 401, "INVALID_CREDENTIALS");
       }
       req.login(user, (err) => {
         if (err) {
-          console.error('[Auth] Session creation error:', err);
-          return res.status(500).json({
-            success: false,
-            error: { message: "Failed to create session" }
-          });
+          log.error('Session creation error:', err);
+          return sendError(res, "Failed to create session", 500, "SESSION_ERROR");
         }
-        res.json({
-          success: true,
-          data: sanitizeUser(user)
-        });
+        sendSuccess(res, sanitizeUser(user));
       });
     })(req, res, next);
   });
@@ -342,39 +307,24 @@ export function setupAuth(app: Express) {
   authRouter.post("/logout", (req, res, next) => {
     req.logout((err) => {
       if (err) {
-        console.error('[Auth] Logout error:', err);
+        log.error('Logout error:', err);
         return next(err);
       }
-      res.json({ success: true });
+      sendSuccess(res, null);
     });
   });
 
   authRouter.get("/user", (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
-        return res.status(401).json({
-          success: false,
-          error: { 
-            message: "Not authenticated",
-            code: "AUTH_REQUIRED"
-          }
-        });
+        return sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
       }
 
       const user = req.user as SelectUser;
-      res.json({
-        success: true,
-        data: sanitizeUser(user)
-      });
+      sendSuccess(res, sanitizeUser(user));
     } catch (error) {
-      console.error('[Auth] Error in /api/user route:', error);
-      res.status(500).json({
-        success: false,
-        error: { 
-          message: "Internal server error",
-          code: "SERVER_ERROR"
-        }
-      });
+      log.error('Error in /api/user route:', error);
+      sendError(res, "Internal server error", 500, "SERVER_ERROR");
     }
   });
 
@@ -383,33 +333,21 @@ export function setupAuth(app: Express) {
       const { token, password } = req.body;
 
       if (!token || !password) {
-        return res.status(400).json({
-          success: false,
-          error: { message: "Token and password are required" }
-        });
+        return sendError(res, "Token and password are required", 400, "VALIDATION_ERROR");
       }
 
       const passwordResult = passwordSchema.safeParse(password);
       if (!passwordResult.success) {
-        return res.status(400).json({
-          success: false,
-          error: { message: passwordResult.error.errors[0].message }
-        });
+        return sendError(res, passwordResult.error.errors[0].message, 400, "VALIDATION_ERROR");
       }
 
       const user = await storage.getUserByInviteToken(token);
       if (!user || !user.inviteToken || !safeTokenCompare(token, user.inviteToken)) {
-        return res.status(400).json({
-          success: false,
-          error: { message: "Invalid or expired invitation link" }
-        });
+        return sendError(res, "Invalid or expired invitation link", 400, "INVALID_TOKEN");
       }
 
       if (user.inviteTokenExpiry && new Date(user.inviteTokenExpiry) < new Date()) {
-        return res.status(400).json({
-          success: false,
-          error: { message: "This invitation link has expired. Please ask your administrator to resend the invite." }
-        });
+        return sendError(res, "This invitation link has expired. Please ask your administrator to resend the invite.", 400, "TOKEN_EXPIRED");
       }
 
       const hashedPassword = await hashPassword(password);
@@ -437,28 +375,19 @@ export function setupAuth(app: Express) {
           }
         }
       } catch (linkError) {
-        console.error('[Auth] Auto-link bowler after set-password failed:', linkError);
+        log.error('Auto-link bowler after set-password failed:', linkError);
       }
 
       req.login(user, (err) => {
         if (err) {
-          console.error('[Auth] Auto-login after password set failed:', err);
-          return res.json({
-            success: true,
-            data: { message: "Password set successfully. Please log in." }
-          });
+          log.error('Auto-login after password set failed:', err);
+          return sendSuccess(res, { message: "Password set successfully. Please log in." });
         }
-        res.json({
-          success: true,
-          data: sanitizeUser(user)
-        });
+        sendSuccess(res, sanitizeUser(user));
       });
     } catch (error) {
-      console.error('[Auth] Set password error:', error);
-      res.status(500).json({
-        success: false,
-        error: { message: "Failed to set password" }
-      });
+      log.error('Set password error:', error);
+      sendError(res, "Failed to set password", 500, "SERVER_ERROR");
     }
   });
 
@@ -476,52 +405,34 @@ export function setupAuth(app: Express) {
   authRouter.post("/claim-bowler", claimLimiter, async (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
-        return res.status(401).json({
-          success: false,
-          error: { message: "Not authenticated" }
-        });
+        return sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
       }
 
       const user = req.user as SelectUser;
 
       if (user.bowlerId) {
-        return res.status(400).json({
-          success: false,
-          error: { message: "You are already linked to a bowler" }
-        });
+        return sendError(res, "You are already linked to a bowler", 400, "ALREADY_LINKED");
       }
 
       const { bowlerId } = req.body;
       if (!bowlerId || typeof bowlerId !== 'number') {
-        return res.status(400).json({
-          success: false,
-          error: { message: "Valid bowler ID is required" }
-        });
+        return sendError(res, "Valid bowler ID is required", 400, "VALIDATION_ERROR");
       }
 
       const bowler = await storage.getBowler(bowlerId);
       if (!bowler) {
-        return res.status(404).json({
-          success: false,
-          error: { message: "Bowler not found" }
-        });
+        return sendError(res, "Bowler not found", 404, "NOT_FOUND");
       }
 
       if (bowler.email && bowler.email.trim() !== '') {
         if (bowler.email.toLowerCase().trim() !== user.email.toLowerCase().trim()) {
-          return res.status(403).json({
-            success: false,
-            error: { message: "You can only claim a bowler profile that matches your email address" }
-          });
+          return sendError(res, "You can only claim a bowler profile that matches your email address", 403, "FORBIDDEN");
         }
       }
 
       const alreadyLinked = await storage.isBowlerLinked(bowlerId);
       if (alreadyLinked) {
-        return res.status(400).json({
-          success: false,
-          error: { message: "This bowler is already linked to another account" }
-        });
+        return sendError(res, "This bowler is already linked to another account", 400, "ALREADY_LINKED");
       }
 
       await Promise.all([
@@ -546,21 +457,15 @@ export function setupAuth(app: Express) {
             organization_logo_url: org?.logo ? `${baseUrl}/api/organizations/${org.id}/logo` : '',
             league_name: league.name,
             dashboard_link: `${baseUrl}/bowler-dashboard`,
-          }).catch(err => console.error('[Auth] Failed to send bowler_claimed email:', err));
+          }).catch(err => log.error('Failed to send bowler_claimed email:', err));
         }
       }
 
       const updatedUser = await storage.getUser(user.id);
-      res.json({
-        success: true,
-        data: sanitizeUser(updatedUser!)
-      });
+      sendSuccess(res, sanitizeUser(updatedUser!));
     } catch (error) {
-      console.error('[Auth] Claim bowler error:', error);
-      res.status(500).json({
-        success: false,
-        error: { message: "Failed to claim bowler" }
-      });
+      log.error('Claim bowler error:', error);
+      sendError(res, "Failed to claim bowler", 500, "SERVER_ERROR");
     }
   });
 
@@ -568,22 +473,22 @@ export function setupAuth(app: Express) {
     try {
       const token = req.query.token as string;
       if (!token) {
-        return res.status(400).json({ success: false, error: { message: "Token is required" } });
+        return sendError(res, "Token is required", 400, "VALIDATION_ERROR");
       }
 
       const user = await storage.getUserByInviteToken(token);
       if (!user || !user.inviteToken || !safeTokenCompare(token, user.inviteToken)) {
-        return res.json({ success: false, error: { message: "Invalid invitation link" } });
+        return sendError(res, "Invalid invitation link", 400, "INVALID_TOKEN");
       }
 
       if (user.inviteTokenExpiry && new Date(user.inviteTokenExpiry) < new Date()) {
-        return res.json({ success: false, error: { message: "This invitation link has expired" } });
+        return sendError(res, "This invitation link has expired", 400, "TOKEN_EXPIRED");
       }
 
-      return res.json({ success: true, data: { name: user.name, email: user.email } });
+      return sendSuccess(res, { name: user.name, email: user.email });
     } catch (error) {
-      console.error('[Auth] Validate invite error:', error);
-      res.status(500).json({ success: false, error: { message: "Failed to validate invite" } });
+      log.error('Validate invite error:', error);
+      sendError(res, "Failed to validate invite", 500, "SERVER_ERROR");
     }
   });
 

@@ -6,10 +6,13 @@ import {
   type PaymentSchedule, type InsertPaymentSchedule,
   type PaginatedResult,
 } from "@shared/schema";
+import { createLogger } from '../logger';
+
+const log = createLogger("StoragePayments");
 
 export async function getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date, organizationId?: number): Promise<Payment[]> {
   try {
-    console.log('[Storage] Getting payments with filters:', {
+    log.info('Getting payments with filters:', {
       bowlerId,
       leagueId,
       teamId,
@@ -58,7 +61,7 @@ export async function getPayments(bowlerId?: number, leagueId?: number, teamId?:
 
     const results = await query;
 
-    console.log('[Storage] Payment query results:', {
+    log.info('Payment query results:', {
       count: results.length,
       samples: results.slice(0, 2).map(p => ({
         id: p.id,
@@ -72,7 +75,7 @@ export async function getPayments(bowlerId?: number, leagueId?: number, teamId?:
 
     return results;
   } catch (error) {
-    console.error('[Storage] Error getting payments:', error);
+    log.error('Error getting payments:', error);
     throw error;
   }
 }
@@ -244,7 +247,7 @@ export async function updatePaymentScheduleFields(
 
 export async function updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void> {
   try {
-    console.log('[Storage] Updating payment schedule card:', {
+    log.info('Updating payment schedule card:', {
       bowlerId,
       leagueId,
       cardIdLength: cardId.length
@@ -261,9 +264,9 @@ export async function updatePaymentScheduleCard(bowlerId: number, leagueId: numb
         )
       );
 
-    console.log('[Storage] Successfully updated payment schedule card');
+    log.info('Successfully updated payment schedule card');
   } catch (error) {
-    console.error('[Storage] Error updating payment schedule card:', {
+    log.error('Error updating payment schedule card:', {
       error: error instanceof Error ? {
         name: error.name,
         message: error.message,

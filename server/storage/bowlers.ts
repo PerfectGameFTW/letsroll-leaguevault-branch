@@ -5,6 +5,9 @@ import {
   type Bowler, type InsertBowler, type UpdateBowler,
   type BowlerLeague, type InsertBowlerLeague, type UpdateBowlerLeague,
 } from "@shared/schema";
+import { createLogger } from '../logger';
+
+const log = createLogger("StorageBowlers");
 
 export async function getBowlers(teamId?: number, organizationId?: number): Promise<Bowler[]> {
   if (teamId !== undefined) {
@@ -160,7 +163,7 @@ export async function deleteBowlerLeague(id: number): Promise<boolean> {
       .returning();
     return result.length > 0;
   } catch (error) {
-    console.error('[Storage] Error deleting bowler league:', error);
+    log.error('Error deleting bowler league:', error);
     return false;
   }
 }

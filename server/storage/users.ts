@@ -1,6 +1,9 @@
 import { eq, isNull, isNotNull } from "drizzle-orm";
 import { db } from "../db.js";
 import { users, type User, type InsertUser, type UpdateUser, type UserRole } from "@shared/schema";
+import { createLogger } from '../logger';
+
+const log = createLogger("StorageUsers");
 
 export async function getUser(id: number): Promise<User | undefined> {
   const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -18,7 +21,7 @@ export async function createUser(user: InsertUser): Promise<User> {
 }
 
 export async function updateUser(id: number, userData: UpdateUser): Promise<User> {
-  console.log('[Storage] Updating user:', { id, userData });
+  log.info('Updating user:', { id, userData });
 
   const [updatedUser] = await db
     .update(users)
@@ -27,11 +30,11 @@ export async function updateUser(id: number, userData: UpdateUser): Promise<User
     .returning();
 
   if (!updatedUser) {
-    console.error('[Storage] Failed to update user:', id);
+    log.error('Failed to update user:', id);
     throw new Error(`Failed to update user with ID ${id}`);
   }
 
-  console.log('[Storage] Updated user successfully:', {
+  log.info('Updated user successfully:', {
     id: updatedUser.id,
     email: updatedUser.email,
   });
@@ -75,16 +78,16 @@ export async function hasAdminUsers(): Promise<boolean> {
 }
 
 export async function getUsers(): Promise<User[]> {
-  console.log('[Storage] Getting all users');
+  log.info('Getting all users');
   return db.select().from(users).orderBy(users.id);
 }
 
 export async function updateUserRole(userId: number, role: UserRole): Promise<User> {
-  console.log('[Storage] Updating role for user:', { userId, role });
+  log.info('Updating role for user:', { userId, role });
 
   const [existingUser] = await db.select().from(users).where(eq(users.id, userId));
   if (!existingUser) {
-    console.error('[Storage] User not found for role update:', userId);
+    log.error('User not found for role update:', userId);
     throw new Error(`User with ID ${userId} not found`);
   }
 
@@ -95,11 +98,11 @@ export async function updateUserRole(userId: number, role: UserRole): Promise<Us
     .returning();
 
   if (!updatedUser) {
-    console.error('[Storage] Failed to update role for user:', userId);
+    log.error('Failed to update role for user:', userId);
     throw new Error(`Failed to update role for user with ID ${userId}`);
   }
 
-  console.log('[Storage] Successfully updated role for user:', {
+  log.info('Successfully updated role for user:', {
     userId,
     role: updatedUser.role
   });

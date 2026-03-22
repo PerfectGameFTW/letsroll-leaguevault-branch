@@ -1,4 +1,7 @@
 import { storage } from '../storage';
+import { createLogger } from '../logger';
+
+const log = createLogger("AccessControl");
 
 export function isSystemAdmin(user: any): boolean {
   return user?.role === 'system_admin';
@@ -12,7 +15,7 @@ export function requireOrganizationAccess(req: any, resourceOrgId: number | null
   if (!req.user) return false;
   if (isSystemAdmin(req.user)) return true;
   if (resourceOrgId === null) {
-    console.warn(`[NullOrgAccess] ${resourceType ?? 'resource'} ${resourceId ?? '?'} has no organization — denying access to user ${req.user.id}`);
+    log.warn(`${resourceType ?? 'resource'} ${resourceId ?? '?'} has no organization — denying access to user ${req.user.id}`);
     return false;
   }
   return req.user.organizationId === resourceOrgId;
@@ -40,7 +43,7 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
   }
 
   if (league.organizationId === null) {
-    console.warn(`[NullOrgAccess] league ${leagueId} has no organization — denying access to user ${req.user.id}`);
+    log.warn(`league ${leagueId} has no organization — denying access to user ${req.user.id}`);
     return false;
   }
 
@@ -101,7 +104,7 @@ export async function hasAccessToBowler(req: any, bowlerId: number): Promise<boo
       return true;
     }
     if (league.organizationId === null) {
-      console.warn(`[NullOrgAccess] bowler ${bowlerId} via league ${league.id} has no organization — denying access to user ${req.user.id}`);
+      log.warn(`bowler ${bowlerId} via league ${league.id} has no organization — denying access to user ${req.user.id}`);
       continue;
     }
     if (req.user.organizationId && req.user.organizationId === league.organizationId) {
@@ -137,13 +140,13 @@ export async function hasAccessToPayment(req: any, paymentId: number): Promise<b
     }
 
     if (league.organizationId === null) {
-      console.warn(`[NullOrgAccess] payment ${paymentId} via league ${payment.leagueId} has no organization — denying access to user ${req.user.id}`);
+      log.warn(`payment ${paymentId} via league ${payment.leagueId} has no organization — denying access to user ${req.user.id}`);
       return false;
     }
 
     return req.user.organizationId === league.organizationId;
   } catch (error) {
-    console.error(`[AccessControl] Error checking payment access:`, error);
+    log.error(`Error checking payment access:`, error);
     return false;
   }
 }

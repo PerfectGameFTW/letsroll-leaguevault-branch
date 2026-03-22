@@ -5,6 +5,9 @@ import { storage } from '../storage';
 import { hashPassword } from '../auth.js';
 import { passwordSchema } from '@shared/password-validation.js';
 import { env } from '../config';
+import { createLogger } from '../logger';
+
+const log = createLogger("SetupAdmin");
 
 const router = Router();
 
@@ -94,7 +97,7 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
       201
     );
   } catch (error) {
-    console.error('[Setup] Error creating first admin user:', error);
+    log.error('Error creating first admin user:', error);
     sendError(
       res,
       'Failed to create admin user',

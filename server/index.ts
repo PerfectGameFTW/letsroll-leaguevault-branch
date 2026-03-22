@@ -11,6 +11,9 @@ import path from 'path';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
 import { ensureUserAvatarsTable, migrateLocalAvatarsToDB } from './migrations/migrate-avatars';
+import { createLogger } from './logger';
+
+const log = createLogger("Server");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -143,7 +146,7 @@ app.get('/api/health', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('[Server] Health check error:', error);
+    log.error('Health check error:', error);
     res.status(503).json({
       status: 'unhealthy',
       error: 'Service unavailable'
@@ -167,12 +170,12 @@ app.all('/api/*', (req, res) => {
 if (isDev) {
   setupVite(app, server)
     .then(() => {
-      console.log('[Server] Vite middleware ready');
+      log.info('Vite middleware ready');
       viteSetupComplete = true;
       startServer();
     })
     .catch((error) => {
-      console.error('[Server] Critical error setting up Vite:', error);
+      log.error('Critical error setting up Vite:', error);
       process.exit(1);
     });
 } else {
@@ -198,7 +201,7 @@ if (isDev) {
 Sentry.setupExpressErrorHandler(app);
 
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
-  console.error('[Error]', err);
+  log.error('Unhandled express error:', err);
   if (!res.headersSent) {
     const statusCode = (typeof err.status === 'number' && err.status >= 400 && err.status < 500)
       ? err.status
@@ -222,7 +225,7 @@ async function testDatabaseConnectionWithRetry(maxRetries = 3, backoffMs = 1000)
       await testConnection();
       return true;
     } catch (error) {
-      console.error(`[Server] Database connection attempt ${attempt}/${maxRetries} failed:`, error);
+      log.error(`Database connection attempt ${attempt}/${maxRetries} failed:`, error);
       if (attempt === maxRetries) return false;
       const delay = backoffMs * Math.pow(2, attempt - 1);
       await new Promise(resolve => setTimeout(resolve, delay));
@@ -235,9 +238,9 @@ async function startServer() {
   try {
     const dbConnected = await testDatabaseConnectionWithRetry();
     if (!dbConnected) {
-      console.warn('[Server] Database connection failed, starting without database');
+      log.warn('Database connection failed, starting without database');
     } else {
-      console.log('[Server] Database connected');
+      log.info('Database connected');
     }
 
     if (dbConnected) {
@@ -245,30 +248,30 @@ async function startServer() {
         await ensureUserAvatarsTable();
         await migrateLocalAvatarsToDB();
       } catch (error) {
-        console.error('[Server] Error running avatar migration:', error);
+        log.error('Error running avatar migration:', error);
       }
     }
 
     server.listen({ port: PORT, host: HOST }, () => {
-      console.log(`[Server] Running at http://${HOST}:${PORT}`);
+      log.info(`Running at http://${HOST}:${PORT}`);
     });
 
     if (dbConnected) {
       try {
         await paymentScheduler.initialize();
-        console.log('[Server] Schedulers initialized');
+        log.info('Schedulers initialized');
       } catch (error) {
-        console.error('[Server] Error initializing schedulers:', error);
+        log.error('Error initializing schedulers:', error);
       }
     }
   } catch (error) {
-    console.error('[Server] Critical startup error:', error);
+    log.error('Critical startup error:', error);
     process.exit(1);
   }
 }
 
 async function shutdown() {
-  console.log('[Server] Shutting down...');
+  log.info('Shutting down...');
   const startTime = Date.now();
 
   try {
@@ -276,7 +279,7 @@ async function shutdown() {
 
     await new Promise<void>((resolve) => {
       const timeout = setTimeout(() => {
-        console.warn(`[Server] Forcing shutdown with ${activeRequests} active requests`);
+        log.warn(`Forcing shutdown with ${activeRequests} active requests`);
         resolve();
       }, 10000);
 
@@ -302,10 +305,10 @@ async function shutdown() {
       });
     });
 
-    console.log(`[Server] Shutdown completed in ${Date.now() - startTime}ms`);
+    log.info(`Shutdown completed in ${Date.now() - startTime}ms`);
     process.exit(0);
   } catch (error) {
-    console.error('[Server] Error during shutdown:', error);
+    log.error('Error during shutdown:', error);
     process.exit(1);
   }
 }
@@ -315,11 +318,11 @@ process.on('SIGINT', shutdown);
 process.on('SIGHUP', shutdown);
 
 process.on('uncaughtException', (error) => {
-  console.error('[Server] Uncaught exception:', error);
+  log.error('Uncaught exception:', error);
   shutdown();
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('[Server] Unhandled rejection:', reason);
+  log.error('Unhandled rejection:', reason);
   shutdown();
 });

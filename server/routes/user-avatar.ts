@@ -4,6 +4,9 @@ import { userAvatars } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import multer from "multer";
 import { sendSuccess, sendError } from "../utils/api";
+import { createLogger } from '../logger';
+
+const log = createLogger("UserAvatar");
 
 const router = Router();
 
@@ -85,7 +88,7 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
 
     return sendSuccess(res, { avatarUrl });
   } catch (error) {
-    console.error("[UserAvatar] Upload error:", error);
+    log.error("Upload error:", error);
     return sendError(res, error instanceof Error ? error.message : "Upload failed", 500);
   }
 });
@@ -112,7 +115,7 @@ router.get("/avatar/:userId", async (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "public, max-age=3600");
     return res.send(imageBuffer);
   } catch (error) {
-    console.error("[UserAvatar] Serve avatar error:", error);
+    log.error("Serve avatar error:", error);
     return res.status(500).send("Failed to serve avatar");
   }
 });
@@ -133,7 +136,7 @@ router.get("/avatar", async (req: Request, res: Response) => {
 
     return sendSuccess(res, { avatarUrl: user.avatar });
   } catch (error) {
-    console.error("[UserAvatar] Get avatar error:", error);
+    log.error("Get avatar error:", error);
     return sendError(res, "Failed to get avatar", 500);
   }
 });
@@ -153,7 +156,7 @@ router.delete("/avatar", async (req: Request, res: Response) => {
 
     return sendSuccess(res, { message: "Avatar deleted successfully" });
   } catch (error) {
-    console.error("[UserAvatar] Delete avatar error:", error);
+    log.error("Delete avatar error:", error);
     return sendError(res, "Failed to delete avatar", 500);
   }
 });

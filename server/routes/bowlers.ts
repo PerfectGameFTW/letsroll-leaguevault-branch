@@ -6,6 +6,9 @@ import { sendSuccess, sendError } from '../utils/api.js';
 import { createOrUpdateCustomer } from '../services/square.js';
 import { hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
+import { createLogger } from '../logger';
+
+const log = createLogger("Bowlers");
 
 const router = Router();
 
@@ -92,7 +95,7 @@ router.get("/unlinked", async (req: any, res) => {
 
     sendSuccess(res, result);
   } catch (error) {
-    console.error('[Bowlers] Error fetching unlinked bowlers:', error);
+    log.error('Error fetching unlinked bowlers:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch unlinked bowlers');
   }
 });
@@ -154,7 +157,7 @@ router.get("/", async (req, res) => {
 
     sendSuccess(res, bowlersWithAccountStatus);
   } catch (error) {
-    console.error('[Bowlers] Error fetching bowlers:', error);
+    log.error('Error fetching bowlers:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowlers');
   }
 });
@@ -180,7 +183,7 @@ router.get("/:id", async (req, res) => {
     
     sendSuccess(res, { ...bowler, hasAccount });
   } catch (error) {
-    console.error('[Bowlers] Error fetching bowler:', error);
+    log.error('Error fetching bowler:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler');
   }
 });
@@ -246,18 +249,18 @@ router.post("/", async (req, res) => {
         const matchingUser = await storage.getUserByEmail(created.email);
         if (matchingUser && !matchingUser.bowlerId) {
           await storage.linkUserToBowler(matchingUser.id, created.id);
-          console.log(`[Bowlers] Auto-linked user ${matchingUser.id} to newly created bowler ${created.id}`);
+          log.info(`Auto-linked user ${matchingUser.id} to newly created bowler ${created.id}`);
           const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: created.id });
           if (bowlerLeagues.length > 0) {
             const league = await storage.getLeague(bowlerLeagues[0].leagueId);
             if (league?.organizationId && !matchingUser.organizationId) {
               await storage.setUserOrganization(matchingUser.id, league.organizationId);
-              console.log(`[Bowlers] Set user ${matchingUser.id} organization to ${league.organizationId}`);
+              log.info(`Set user ${matchingUser.id} organization to ${league.organizationId}`);
             }
           }
         }
       } catch (linkError) {
-        console.error('[Bowlers] Error auto-linking user to bowler:', linkError);
+        log.error('Error auto-linking user to bowler:', linkError);
       }
 
       try {
@@ -274,16 +277,16 @@ router.post("/", async (req, res) => {
             if (orgId) {
               const orgConfig = await storage.getOrgIntegrations(orgId);
               if (isOrgBNConfigured(orgConfig)) {
-                syncBowlerToBN(updated.id, orgConfig).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+                syncBowlerToBN(updated.id, orgConfig).catch(e => log.error('BowlNow sync error:', e));
               }
             }
             return sendSuccess(res, updated, 201);
           }
         } else {
-          console.log('[Bowlers] No Square-configured location found for org, skipping customer sync');
+          log.info('No Square-configured location found for org, skipping customer sync');
         }
       } catch (squareError) {
-        console.error('[Bowlers] Square API error:', squareError);
+        log.error('Square API error:', squareError);
       }
     }
 
@@ -291,12 +294,12 @@ router.post("/", async (req, res) => {
     if (createOrgId) {
       const createOrgConfig = await storage.getOrgIntegrations(createOrgId);
       if (isOrgBNConfigured(createOrgConfig)) {
-        syncBowlerToBN(created.id, createOrgConfig).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+        syncBowlerToBN(created.id, createOrgConfig).catch(e => log.error('BowlNow sync error:', e));
       }
     }
     sendSuccess(res, created, 201);
   } catch (error) {
-    console.error('[Bowlers] Error creating bowler:', error);
+    log.error('Error creating bowler:', error);
     if (error instanceof z.ZodError) {
       sendError(res, error.errors.map(e => e.message).join(', '), 400);
     } else {
@@ -334,10 +337,10 @@ router.patch("/:id", async (req, res) => {
           const matchingUser = await storage.getUserByEmail(updated.email);
           if (matchingUser && !matchingUser.bowlerId) {
             await storage.linkUserToBowler(matchingUser.id, id);
-            console.log(`[Bowlers] Auto-linked user ${matchingUser.id} to updated bowler ${id}`);
+            log.info(`Auto-linked user ${matchingUser.id} to updated bowler ${id}`);
           }
         } catch (linkError) {
-          console.error('[Bowlers] Error auto-linking user to bowler on update:', linkError);
+          log.error('Error auto-linking user to bowler on update:', linkError);
         }
       }
 
@@ -357,10 +360,10 @@ router.patch("/:id", async (req, res) => {
               });
             }
           } else {
-            console.log('[Bowlers] No Square-configured location found for org, skipping customer sync on update');
+            log.info('No Square-configured location found for org, skipping customer sync on update');
           }
         } catch (squareError) {
-          console.error('[Bowlers] Square customer sync error on update:', squareError);
+          log.error('Square customer sync error on update:', squareError);
         }
       }
     }
@@ -369,12 +372,12 @@ router.patch("/:id", async (req, res) => {
     if (updateOrgId) {
       const updateOrgConfig = await storage.getOrgIntegrations(updateOrgId);
       if (isOrgBNConfigured(updateOrgConfig)) {
-        syncBowlerToBN(updated.id, updateOrgConfig).catch(e => console.error('[Bowlers] BowlNow sync error:', e));
+        syncBowlerToBN(updated.id, updateOrgConfig).catch(e => log.error('BowlNow sync error:', e));
       }
     }
     sendSuccess(res, updated);
   } catch (error) {
-    console.error('[Bowlers] Error updating bowler:', error);
+    log.error('Error updating bowler:', error);
     if (error instanceof z.ZodError) {
       sendError(res, error.errors.map(e => e.message).join(', '), 400);
     } else {
@@ -402,7 +405,7 @@ router.delete("/:id", async (req, res) => {
     await storage.deleteBowler(id);
     sendSuccess(res, null, 204);
   } catch (error) {
-    console.error('[Bowlers] Error deleting bowler:', error);
+    log.error('Error deleting bowler:', error);
     sendError(res,
       error instanceof Error ?
         `Failed to delete bowler: ${error.message}` :

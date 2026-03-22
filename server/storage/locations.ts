@@ -6,6 +6,9 @@ import {
   type Location, type InsertLocation, type UpdateLocation,
   type LocationSquareCredentials,
 } from "@shared/schema";
+import { createLogger } from '../logger';
+
+const log = createLogger("StorageLocations");
 
 export async function getLocations(organizationId?: number | null): Promise<Location[]> {
   const query = db.select().from(locations);
@@ -68,7 +71,7 @@ export async function getLocationSquareConfig(locationId: number): Promise<Locat
 
   const parsed = locationSquareCredentialsSchema.safeParse(location.squareCredentials);
   if (!parsed.success) {
-    console.warn(`[Storage] Malformed squareCredentials JSONB for location ${locationId}:`, parsed.error.format());
+    log.warn(`Malformed squareCredentials JSONB for location ${locationId}:`, parsed.error.format());
     return null;
   }
   return parsed.data ?? null;

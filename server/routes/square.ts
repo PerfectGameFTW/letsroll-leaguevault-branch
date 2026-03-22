@@ -6,6 +6,9 @@ import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { squarePaymentLimiter } from '../middleware/rate-limit.js';
+import { createLogger } from '../logger';
+
+const log = createLogger("Square");
 
 const router = Router();
 
@@ -100,7 +103,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
     const customerId = bowler.squareCustomerId || undefined;
 
     if (req.body.storeCard && !customerId) {
-      console.warn('[Square Routes] Cannot store card — bowler has no Square customer ID:', bowlerId);
+      log.warn('Cannot store card — bowler has no Square customer ID:', bowlerId);
     }
 
     const lineItems: { catalogObjectId: string; quantity: string }[] = [];
@@ -144,7 +147,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       try {
         const savedCard = await saveCardOnFile(sourceId, customerId, lvLocationId);
         if (savedCard?.id) {
-          console.log('[Square Routes] Card saved on file:', savedCard.id.substring(0, 15) + '...');
+          log.info('Card saved on file:', savedCard.id.substring(0, 15) + '...');
           storedCardId = savedCard.id;
           try {
             await storage.updatePaymentScheduleCard(
@@ -153,11 +156,11 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
               savedCard.id
             );
           } catch (schedError) {
-            console.log('[Square Routes] No payment schedule to update (normal for one-time payments)');
+            log.info('No payment schedule to update (normal for one-time payments)');
           }
         }
       } catch (error) {
-        console.error('[Square Routes] Failed to save card on file:', error);
+        log.error('Failed to save card on file:', error);
       }
     }
 
@@ -187,7 +190,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       savedCardId: storedCardId ?? null,
     });
   } catch (error) {
-    console.error('[Square Routes] Payment processing error:', {
+    log.error('Payment processing error:', {
       error: error instanceof Error ? {
         name: error.name,
         message: error.message,
@@ -250,7 +253,7 @@ router.post('/customers', squarePaymentLimiter, async (req, res) => {
 
     res.json(customer);
   } catch (error) {
-    console.error('[Square Routes] Customer operation error:', {
+    log.error('Customer operation error:', {
       error: error instanceof Error ? {
         name: error.name,
         message: error.message,
@@ -279,7 +282,7 @@ router.get('/catalog/categories', async (req: any, res) => {
     const categories = await listCatalogCategories(lvLocationId);
     sendSuccess(res, categories);
   } catch (error) {
-    console.error('[Square Routes] Catalog categories error:', error);
+    log.error('Catalog categories error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch catalog categories');
   }
 });
@@ -303,7 +306,7 @@ router.get('/catalog/items', async (req: any, res) => {
     const items = await listCatalogItems(categoryId, lvLocationId);
     sendSuccess(res, items);
   } catch (error) {
-    console.error('[Square Routes] Catalog list error:', error);
+    log.error('Catalog list error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch catalog items');
   }
 });
@@ -341,10 +344,10 @@ router.post('/cards/:bowlerId', async (req, res) => {
       return sendError(res, 'Failed to save card on file', 500);
     }
 
-    console.log('[Square Routes] Card saved on file (no-charge):', savedCard.id.substring(0, 15) + '...');
+    log.info('Card saved on file (no-charge):', savedCard.id.substring(0, 15) + '...');
     return sendSuccess(res, { savedCardId: savedCard.id, last4: savedCard.last4, brand: savedCard.brand });
   } catch (error) {
-    console.error('[Square Routes] Save card error:', error);
+    log.error('Save card error:', error);
     return sendError(res, error instanceof Error ? error.message : 'Failed to save card');
   }
 });
@@ -373,7 +376,7 @@ router.get('/cards/:bowlerId', async (req, res) => {
     const cards = await listCardsOnFile(bowler.squareCustomerId, listLvLocationId);
     sendSuccess(res, cards);
   } catch (error) {
-    console.error('[Square Routes] List cards error:', error);
+    log.error('List cards error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to list cards');
   }
 });
@@ -412,7 +415,7 @@ router.get('/config', async (req: any, res) => {
     || ((squareAppId && !squareAppId.includes('sandbox-')) ? squareAppId : '')
     || viteAppId || squareAppId;
 
-  console.log('[Square Config] Serving config:', {
+  log.info('Serving config:', {
     prodAppIdSet: !!prodAppId,
     viteAppIdSet: !!viteAppId,
     squareAppIdSet: !!squareAppId,

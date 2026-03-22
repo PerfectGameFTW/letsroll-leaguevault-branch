@@ -4,6 +4,9 @@ import { insertBowlerLeagueSchema, updateBowlerLeagueSchema } from "@shared/sche
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
 import { hasAccessToLeague, hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
+import { createLogger } from '../logger';
+
+const log = createLogger("BowlerLeagues");
 
 const router = Router();
 
@@ -83,7 +86,7 @@ router.get("/", async (req, res) => {
 
     sendSuccess(res, bowlerLeagues);
   } catch (error) {
-    console.error('[BowlerLeagues] Error:', error);
+    log.error('Error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler leagues');
   }
 });
@@ -116,7 +119,7 @@ router.post("/", async (req, res) => {
     const created = await storage.createBowlerLeague(data);
     sendSuccess(res, created, 201);
   } catch (error) {
-    console.error('[BowlerLeagues] Error:', error);
+    log.error('Error:', error);
     if (error instanceof z.ZodError) {
       sendError(res, "Validation error", 400);
     } else {
@@ -161,7 +164,7 @@ router.patch("/:id", async (req, res) => {
     }
     sendSuccess(res, updated);
   } catch (error) {
-    console.error('[BowlerLeagues] Error:', error);
+    log.error('Error:', error);
     if (error instanceof z.ZodError) {
       sendError(res, "Validation error", 400);
     } else {
@@ -201,7 +204,7 @@ router.delete("/:id", async (req, res) => {
 
     sendSuccess(res, { message: "Bowler league deleted successfully" }, 200);
   } catch (error) {
-    console.error('[BowlerLeagues] Error:', error);
+    log.error('Error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to delete bowler league');
   }
 });
@@ -235,7 +238,7 @@ router.patch("/:id/order", async (req, res) => {
     const updated = await storage.updateBowlerLeagueOrder(id, newOrder);
     sendSuccess(res, updated);
   } catch (error) {
-    console.error('[BowlerLeagues] Error:', error);
+    log.error('Error:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league order');
   }
 });

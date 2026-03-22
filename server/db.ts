@@ -2,6 +2,9 @@ import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
 import { env } from "./config";
+import { createLogger } from './logger';
+
+const log = createLogger("Database");
 
 export const pool = new pg.Pool({ connectionString: env.DATABASE_URL });
 export const db = drizzle({ client: pool, schema });
@@ -9,13 +12,13 @@ export const db = drizzle({ client: pool, schema });
 let isShuttingDown = false;
 
 pool.on('error', (err, client) => {
-  console.error('[Database] Unexpected error on idle client', err);
+  log.error('Unexpected error on idle client', err);
 });
 
 pool.on('connect', (client) => {
-  console.log('[Database] New client connected to pool');
+  log.info('New client connected to pool');
   client.on('error', (err) => {
-    console.error('[Database] Error on client', err);
+    log.error('Error on client', err);
   });
 });
 
@@ -27,11 +30,11 @@ export async function testConnection(retries = 3, delay = 1000): Promise<boolean
     try {
       client = await pool.connect();
       await client.query('SELECT 1');
-      console.log('[Database] Connection test successful');
+      log.info('Connection test successful');
       return true;
     } catch (error) {
       lastError = error;
-      console.error(`[Database] Connection attempt ${attempt} failed:`, error);
+      log.error(`Connection attempt ${attempt} failed:`, error);
 
       if (attempt === retries) {
         throw lastError;
@@ -43,7 +46,7 @@ export async function testConnection(retries = 3, delay = 1000): Promise<boolean
         try {
           client.release();
         } catch (releaseError) {
-          console.error('[Database] Error releasing test connection:', releaseError);
+          log.error('Error releasing test connection:', releaseError);
         }
       }
     }
@@ -52,30 +55,30 @@ export async function testConnection(retries = 3, delay = 1000): Promise<boolean
 }
 
 export async function testCleanup(): Promise<void> {
-  console.log('[Database] Starting cleanup test...');
+  log.info('Starting cleanup test...');
 
   const client = await pool.connect();
 
   try {
     await client.query('SELECT 1');
-    console.log('[Database] Test query executed successfully');
+    log.info('Test query executed successfully');
   } finally {
     client.release();
-    console.log('[Database] Client released successfully');
+    log.info('Client released successfully');
   }
 
   await cleanup();
-  console.log('[Database] Cleanup test completed');
+  log.info('Cleanup test completed');
 }
 
 export async function cleanup(): Promise<void> {
   if (isShuttingDown) {
-    console.log('[Database] Cleanup already in progress');
+    log.info('Cleanup already in progress');
     return;
   }
 
   isShuttingDown = true;
-  console.log('[Database] Starting pool cleanup...');
+  log.info('Starting pool cleanup...');
 
   try {
     await Promise.race([
@@ -85,9 +88,9 @@ export async function cleanup(): Promise<void> {
       )
     ]);
 
-    console.log('[Database] Pool cleanup completed');
+    log.info('Pool cleanup completed');
   } catch (error) {
-    console.error('[Database] Error during pool cleanup:', error);
+    log.error('Error during pool cleanup:', error);
   } finally {
     isShuttingDown = false;
   }

@@ -5,6 +5,9 @@ import {
   type Game, type InsertGame, type UpdateGame,
   type Score, type InsertScore, type UpdateScore,
 } from "@shared/schema";
+import { createLogger } from '../logger';
+
+const log = createLogger("StorageGamesScores");
 
 export async function getGames(leagueId: number, weekNumber?: number): Promise<Game[]> {
   if (weekNumber !== undefined) {
@@ -86,7 +89,7 @@ export async function getScore(id: number): Promise<Score | undefined> {
 }
 
 export async function getBowlerScores(bowlerId: number): Promise<Score[]> {
-  console.log('[Storage] Fetching scores for bowler:', bowlerId);
+  log.info('Fetching scores for bowler:', bowlerId);
 
   const results = await db
     .select({
@@ -133,9 +136,9 @@ export async function getBowlerScores(bowlerId: number): Promise<Score[]> {
     .where(eq(scores.bowlerId, bowlerId))
     .orderBy(desc(games.date), games.gameNumber);
 
-  console.log('[Storage] Found scores:', results.length);
+  log.info('Found scores:', results.length);
   if (results.length > 0) {
-    console.log('[Storage] Sample score:', results[0]);
+    log.info('Sample score:', results[0]);
   }
 
   return results;
@@ -158,11 +161,11 @@ export async function deleteScore(id: number): Promise<void> {
 export async function createBatchScores(batchScores: InsertScore[]): Promise<Score[]> {
   try {
     if (batchScores.length === 0) {
-      console.log('[Storage/createBatchScores] No scores to create');
+      log.info('No scores to create');
       return [];
     }
 
-    console.log('[Storage/createBatchScores] Attempting to create batch scores:', {
+    log.info('Attempting to create batch scores:', {
       count: batchScores.length,
       sample: batchScores.slice(0, 2).map(score => ({
         gameId: score.gameId,
@@ -179,7 +182,7 @@ export async function createBatchScores(batchScores: InsertScore[]): Promise<Sco
     );
 
     if (invalidScores.length > 0) {
-      console.error('[Storage/createBatchScores] Invalid scores found:',
+      log.error('Invalid scores found:',
         invalidScores.map(score => ({
           gameId: score.gameId,
           bowlerId: score.bowlerId,
@@ -196,7 +199,7 @@ export async function createBatchScores(batchScores: InsertScore[]): Promise<Sco
       .values(batchScores)
       .returning();
 
-    console.log('[Storage/createBatchScores] Successfully created scores:', {
+    log.info('Successfully created scores:', {
       requested: batchScores.length,
       created: results.length,
       sample: results.slice(0, 2).map(score => ({
@@ -209,7 +212,7 @@ export async function createBatchScores(batchScores: InsertScore[]): Promise<Sco
 
     return results;
   } catch (error) {
-    console.error('[Storage/createBatchScores] Error creating batch scores:', {
+    log.error('Error creating batch scores:', {
       error: error instanceof Error ? {
         name: error.name,
         message: error.message,
@@ -237,7 +240,7 @@ export async function getGameScores(gameId: number): Promise<Score[]> {
 }
 
 export async function getScoresByLeagueAndWeek(leagueId: number, weekNumber: number): Promise<Score[]> {
-  console.log('[Storage] Fetching scores for league:', leagueId, 'week:', weekNumber);
+  log.info('Fetching scores for league:', leagueId, 'week:', weekNumber);
 
   const scoresWithDetails = await db
     .select({
@@ -284,7 +287,7 @@ export async function getScoresByLeagueAndWeek(leagueId: number, weekNumber: num
     )
     .orderBy(games.gameNumber, teams.number, scores.position);
 
-  console.log('[Storage] Found scores:', scoresWithDetails.length);
+  log.info('Found scores:', scoresWithDetails.length);
   return scoresWithDetails;
 }
 

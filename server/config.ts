@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { createLogger } from './logger';
+
+const log = createLogger("Config");
 
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL must be set. Did you forget to provision a database?"),
@@ -46,9 +49,9 @@ function validateEnv(): Env {
       });
 
     if (errors.length > 0) {
-      console.error("[Config] Environment validation failed:");
+      log.error("Environment validation failed:");
       for (const err of errors) {
-        console.error(`  - ${err.path.join(".")}: ${err.message}`);
+        log.error(`  - ${err.path.join(".")}: ${err.message}`);
       }
       process.exit(1);
     }
@@ -70,9 +73,9 @@ export const env = validateEnv();
 
 const missing = optionalWarnings.filter((w) => !env[w.key]);
 if (missing.length > 0) {
-  console.warn("[Config] Optional environment variables not set:");
+  log.warn("Optional environment variables not set:");
   for (const m of missing) {
-    console.warn(`  - ${m.key}: ${m.feature} will be disabled`);
+    log.warn(`  - ${m.key}: ${m.feature} will be disabled`);
   }
 }
 

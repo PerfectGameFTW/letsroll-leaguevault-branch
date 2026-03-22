@@ -4,6 +4,9 @@ import { sendSuccess, sendError } from '../utils/api.js';
 import { storage } from '../storage';
 import { insertLocationSchema, updateLocationSchema, locationSquareCredentialsSchema } from '@shared/schema';
 import { filterByOrganization } from '../middleware/organization.js';
+import { createLogger } from '../logger';
+
+const log = createLogger("Locations");
 
 const router = Router();
 
@@ -13,7 +16,7 @@ router.get('/', filterByOrganization, async (req: any, res) => {
     const locations = await storage.getLocations(organizationId);
     sendSuccess(res, locations);
   } catch (error) {
-    console.error('Error fetching locations:', error);
+    log.error('Error fetching locations:', error);
     sendError(res, 'Failed to fetch locations', 500, 'ServerError');
   }
 });
@@ -36,7 +39,7 @@ router.get('/:id', async (req: any, res) => {
 
     sendSuccess(res, location);
   } catch (error) {
-    console.error(`Error fetching location with ID ${req.params.id}:`, error);
+    log.error(`Error fetching location with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to fetch location', 500, 'ServerError');
   }
 });
@@ -61,7 +64,7 @@ router.post('/', async (req: any, res) => {
     if (error instanceof z.ZodError) {
       return sendError(res, 'Invalid location data', 400, 'ValidationError');
     }
-    console.error('Error creating location:', error);
+    log.error('Error creating location:', error);
     sendError(res, 'Failed to create location', 500, 'ServerError');
   }
 });
@@ -95,7 +98,7 @@ router.patch('/:id', async (req: any, res) => {
     if (error instanceof z.ZodError) {
       return sendError(res, 'Invalid location data', 400, 'ValidationError');
     }
-    console.error(`Error updating location with ID ${req.params.id}:`, error);
+    log.error(`Error updating location with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to update location', 500, 'ServerError');
   }
 });
@@ -119,7 +122,7 @@ router.patch('/:id/archive', async (req: any, res) => {
     const archived = await storage.archiveLocation(id);
     sendSuccess(res, archived);
   } catch (error) {
-    console.error(`Error archiving location with ID ${req.params.id}:`, error);
+    log.error(`Error archiving location with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to archive location', 500, 'ServerError');
   }
 });
@@ -143,7 +146,7 @@ router.patch('/:id/restore', async (req: any, res) => {
     const restored = await storage.restoreLocation(id);
     sendSuccess(res, restored);
   } catch (error) {
-    console.error(`Error restoring location with ID ${req.params.id}:`, error);
+    log.error(`Error restoring location with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to restore location', 500, 'ServerError');
   }
 });
@@ -167,7 +170,7 @@ router.delete('/:id', async (req: any, res) => {
     await storage.deleteLocation(id);
     sendSuccess(res, { message: 'Location deleted successfully' });
   } catch (error) {
-    console.error(`Error deleting location with ID ${req.params.id}:`, error);
+    log.error(`Error deleting location with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to delete location', 500, 'ServerError');
   }
 });
@@ -193,7 +196,7 @@ router.get('/:id/square-config', async (req: any, res) => {
       locationId: creds?.locationId || null,
     });
   } catch (error) {
-    console.error(`Error fetching Square config for location ${req.params.id}:`, error);
+    log.error(`Error fetching Square config for location ${req.params.id}:`, error);
     sendError(res, 'Failed to fetch Square configuration', 500, 'ServerError');
   }
 });
@@ -234,7 +237,7 @@ router.patch('/:id/square-config', async (req: any, res) => {
       locationId: creds.locationId || null,
     });
   } catch (error) {
-    console.error(`Error updating Square config for location ${req.params.id}:`, error);
+    log.error(`Error updating Square config for location ${req.params.id}:`, error);
     sendError(res, 'Failed to update Square configuration', 500, 'ServerError');
   }
 });

@@ -3,6 +3,9 @@ import { sendSuccess, sendError } from '../utils/api.js';
 import { storage } from '../storage';
 import type { OrgIntegrations } from '@shared/schema';
 import { z } from 'zod';
+import { createLogger } from '../logger';
+
+const log = createLogger("Integrations");
 
 const router = Router();
 
@@ -52,7 +55,7 @@ router.get('/', async (req: any, res: Response) => {
 
     sendSuccess(res, response);
   } catch (error) {
-    console.error('[Integrations] Error fetching integrations:', error);
+    log.error('Error fetching integrations:', error);
     sendError(res, 'Failed to fetch integrations');
   }
 });
@@ -112,7 +115,7 @@ router.patch('/', async (req: any, res: Response) => {
 
     sendSuccess(res, response);
   } catch (error) {
-    console.error('[Integrations] Error updating integrations:', error);
+    log.error('Error updating integrations:', error);
     sendError(res, 'Failed to update integrations');
   }
 });
