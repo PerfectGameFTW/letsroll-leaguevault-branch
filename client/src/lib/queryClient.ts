@@ -23,6 +23,10 @@ export function clearCsrfToken() {
   csrfToken = null;
 }
 
+export function initCsrfToken() {
+  getCsrfToken().catch(() => {});
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     let errorMessage;

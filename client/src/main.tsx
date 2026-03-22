@@ -4,6 +4,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { initCsrfToken } from "./lib/queryClient";
+
+initCsrfToken();
 
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
