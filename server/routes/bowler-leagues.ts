@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertBowlerLeagueSchema, partialBowlerLeagueSchema } from "@shared/schema";
+import { insertBowlerLeagueSchema, updateBowlerLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
 import { hasAccessToLeague, hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
@@ -149,7 +149,7 @@ router.patch("/:id", async (req, res) => {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
-    const update = partialBowlerLeagueSchema.parse(req.body);
+    const update = updateBowlerLeagueSchema.parse(req.body);
 
     if (update.teamId && !(await hasAccessToTeam(req, update.teamId))) {
       return sendError(res, "You don't have access to the target team", 403, 'FORBIDDEN');

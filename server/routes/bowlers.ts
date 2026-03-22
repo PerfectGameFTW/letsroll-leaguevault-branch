@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertBowlerSchema, partialBowlerSchema } from "@shared/schema";
+import { insertBowlerSchema, updateBowlerSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 import { createOrUpdateCustomer } from '../services/square.js';
@@ -308,7 +308,7 @@ router.post("/", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const update = partialBowlerSchema.parse(req.body);
+    const update = updateBowlerSchema.parse(req.body);
 
     const bowler = await storage.getBowler(id);
     if (!bowler) {

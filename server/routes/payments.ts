@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertPaymentSchema, partialPaymentSchema } from "@shared/schema";
+import { insertPaymentSchema, updatePaymentSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, sendPaginatedSuccess, parsePaginationParams } from '../utils/api.js';
 import { refundPayment as squareRefund } from '../services/square.js';
@@ -152,7 +152,7 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
 router.patch("/:id", paymentWriteLimiter, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const parsed = partialPaymentSchema.parse(req.body);
+    const parsed = updatePaymentSchema.parse(req.body);
 
     const update: Partial<z.infer<typeof insertPaymentSchema>> = Object.fromEntries(
       Object.entries(parsed).map(([k, v]) => [k, v === null ? undefined : v])

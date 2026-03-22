@@ -36,3 +36,4 @@ export const partialTeamSchema = updateTeamSchema;
 
 export type Team = typeof teams.$inferSelect;
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
+export type UpdateTeam = z.infer<typeof updateTeamSchema>;

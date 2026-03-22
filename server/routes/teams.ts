@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertTeamSchema, partialTeamSchema } from "@shared/schema";
+import { insertTeamSchema, updateTeamSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api.js';
 
@@ -147,7 +147,7 @@ router.patch("/:id", async (req, res) => {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
     
-    const update = partialTeamSchema.parse(req.body);
+    const update = updateTeamSchema.parse(req.body);
     const updated = await storage.updateTeam(id, update);
     sendSuccess(res, updated);
   } catch (error) {

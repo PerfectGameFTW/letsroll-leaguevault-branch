@@ -106,6 +106,8 @@ export const partialScoreSchema = updateScoreSchema;
 
 export type Game = typeof games.$inferSelect;
 export type InsertGame = z.infer<typeof insertGameSchema>;
+export type UpdateGame = z.infer<typeof updateGameSchema>;
 
 export type Score = typeof scores.$inferSelect;
 export type InsertScore = z.infer<typeof insertScoreSchema>;
+export type UpdateScore = z.infer<typeof updateScoreSchema>;

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { storage } from '../storage';
-import { insertLocationSchema, partialLocationSchema, locationSquareCredentialsSchema } from '@shared/schema';
+import { insertLocationSchema, updateLocationSchema, locationSquareCredentialsSchema } from '@shared/schema';
 import { filterByOrganization } from '../middleware/organization.js';
 
 const router = Router();
@@ -82,7 +82,7 @@ router.patch('/:id', async (req: any, res) => {
       return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
     }
 
-    const validatedData = partialLocationSchema.parse(req.body);
+    const validatedData = updateLocationSchema.parse(req.body);
     const cleanedData: Record<string, any> = {};
     for (const [key, value] of Object.entries(validatedData)) {
       if (value !== undefined && value !== null) {

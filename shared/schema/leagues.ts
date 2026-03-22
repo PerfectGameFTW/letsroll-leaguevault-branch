@@ -143,3 +143,4 @@ export const partialLeagueSchema = updateLeagueSchema;
 
 export type League = typeof leagues.$inferSelect;
 export type InsertLeague = z.infer<typeof insertLeagueSchema>;
+export type UpdateLeague = z.infer<typeof updateLeagueSchema>;

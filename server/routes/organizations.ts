@@ -6,7 +6,7 @@ import { sendSuccess, sendError, sanitizeUser, sanitizeOrg, sanitizeOrgs } from 
 import { storage } from '../storage';
 import { 
   insertOrganizationSchema, 
-  partialOrganizationSchema, 
+  updateOrganizationSchema, 
   users,
   type InsertOrganization,
   type Organization
@@ -241,7 +241,7 @@ router.patch('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
       return sendError(res, 'Organization not found', 404, 'NotFound');
     }
 
-    const validatedData = partialOrganizationSchema.parse(req.body);
+    const validatedData = updateOrganizationSchema.parse(req.body);
     
     // If slug is being updated, check if it's already in use
     if (validatedData.slug && validatedData.slug !== organization.slug) {

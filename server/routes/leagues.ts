@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomBytes } from 'crypto';
 import { storage } from '../storage';
-import { insertLeagueSchema, partialLeagueSchema } from "@shared/schema";
+import { insertLeagueSchema, updateLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError } from '../utils/api';
 import { requireOrganizationAccess } from '../utils/access-control';
@@ -162,7 +162,7 @@ router.patch("/:id", async (req: any, res) => {
       );
     }
 
-    const update = partialLeagueSchema.parse({
+    const update = updateLeagueSchema.parse({
       ...req.body,
       seasonStart: req.body.seasonStart ? new Date(req.body.seasonStart) : undefined,
       seasonEnd: derivedSeasonEnd ?? (req.body.seasonEnd ? new Date(req.body.seasonEnd) : undefined)

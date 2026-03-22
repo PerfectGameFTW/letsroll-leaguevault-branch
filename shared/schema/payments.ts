@@ -112,6 +112,8 @@ export const partialPaymentScheduleSchema = updatePaymentScheduleSchema;
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
+export type UpdatePayment = z.infer<typeof updatePaymentSchema>;
 
 export type PaymentSchedule = typeof paymentSchedules.$inferSelect;
 export type InsertPaymentSchedule = z.infer<typeof insertPaymentScheduleSchema>;
+export type UpdatePaymentSchedule = z.infer<typeof updatePaymentScheduleSchema>;
