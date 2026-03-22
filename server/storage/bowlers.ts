@@ -9,42 +9,36 @@ import { createLogger } from '../logger';
 
 const log = createLogger("StorageBowlers");
 
-export async function getBowlers(teamId?: number, organizationId?: number): Promise<Bowler[]> {
-  if (teamId !== undefined) {
+const bowlerColumns = {
+  id: bowlers.id,
+  name: bowlers.name,
+  email: bowlers.email,
+  phone: bowlers.phone,
+  active: bowlers.active,
+  order: bowlers.order,
+  squareCustomerId: bowlers.squareCustomerId,
+  bnContactId: bowlers.bnContactId,
+};
+
+export async function getBowlers(filters: { teamId?: number; organizationId: number }): Promise<Bowler[]> {
+  if (filters.teamId !== undefined) {
     return db
-      .select({
-        id: bowlers.id,
-        name: bowlers.name,
-        email: bowlers.email,
-        phone: bowlers.phone,
-        active: bowlers.active,
-        order: bowlers.order,
-        squareCustomerId: bowlers.squareCustomerId,
-        bnContactId: bowlers.bnContactId,
-      })
+      .select(bowlerColumns)
       .from(bowlers)
       .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
-      .where(eq(bowlerLeagues.teamId, teamId))
+      .where(eq(bowlerLeagues.teamId, filters.teamId))
       .orderBy(bowlers.order);
   }
-  if (organizationId !== undefined) {
-    return db
-      .selectDistinct({
-        id: bowlers.id,
-        name: bowlers.name,
-        email: bowlers.email,
-        phone: bowlers.phone,
-        active: bowlers.active,
-        order: bowlers.order,
-        squareCustomerId: bowlers.squareCustomerId,
-        bnContactId: bowlers.bnContactId,
-      })
-      .from(bowlers)
-      .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
-      .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
-      .where(eq(leagues.organizationId, organizationId))
-      .orderBy(bowlers.order);
-  }
+  return db
+    .selectDistinct(bowlerColumns)
+    .from(bowlers)
+    .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
+    .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
+    .where(eq(leagues.organizationId, filters.organizationId))
+    .orderBy(bowlers.order);
+}
+
+export async function getAllBowlers(): Promise<Bowler[]> {
   return db.select().from(bowlers).orderBy(bowlers.order);
 }
 

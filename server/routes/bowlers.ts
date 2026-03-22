@@ -43,7 +43,7 @@ router.get("/unlinked", async (req: any, res) => {
       }
       organizationId = req.user.organizationId;
     }
-    const allBowlers = await storage.getBowlers();
+    const allBowlers = await storage.getAllBowlers();
     const linkedBowlerIdsList = await storage.getLinkedBowlerIds();
     const allBowlerLeagues = await storage.getBowlerLeagues();
 
@@ -137,8 +137,12 @@ router.get("/", async (req, res) => {
       return sendSuccess(res, []);
     }
 
-    const orgFilter = (!teamId && effectiveOrgId !== null) ? effectiveOrgId : undefined;
-    const bowlers = await storage.getBowlers(teamId, orgFilter);
+    let bowlers;
+    if (isSystemAdmin && !effectiveOrgId && !teamId) {
+      bowlers = await storage.getAllBowlers();
+    } else {
+      bowlers = await storage.getBowlers({ teamId, organizationId: effectiveOrgId! });
+    }
     
     if (!bowlers || bowlers.length === 0) {
       return sendSuccess(res, []);
@@ -207,17 +211,17 @@ router.post("/", async (req, res) => {
     // Check for existing bowler with same email if provided
     if (bowler.email) {
       const isOrgUser = req.user?.role !== 'system_admin' && !!req.user?.organizationId;
-      const [existingBowlers, leagues, bowlerLeagues] = await Promise.all([
-        storage.getBowlers(),
+      const [existingBowlers, orgLeagues, bowlerLeaguesList] = await Promise.all([
+        isOrgUser ? storage.getBowlers({ organizationId: req.user!.organizationId }) : storage.getAllBowlers(),
         isOrgUser ? storage.getLeagues(req.user!.organizationId) : Promise.resolve(null),
         isOrgUser ? storage.getBowlerLeagues() : Promise.resolve(null),
       ]);
 
       let filteredBowlers = existingBowlers;
-      if (isOrgUser && leagues && leagues.length > 0) {
-        const leagueIdSet = new Set(leagues.map(l => l.id));
+      if (isOrgUser && orgLeagues && orgLeagues.length > 0) {
+        const leagueIdSet = new Set(orgLeagues.map(l => l.id));
         const organizationBowlerIds = new Set(
-          bowlerLeagues!
+          bowlerLeaguesList!
             .filter(bl => leagueIdSet.has(bl.leagueId))
             .map(bl => bl.bowlerId)
         );

@@ -298,7 +298,7 @@ export async function syncAllBowlersToBN(
     return { total: 0, synced: 0, failed: 0, errors: ['BowlNow not configured'] };
   }
 
-  const bowlers = await storage.getBowlers();
+  const bowlers = await storage.getAllBowlers();
   const results = { total: bowlers.length, synced: 0, failed: 0, errors: [] as string[] };
 
   for (const bowler of bowlers) {

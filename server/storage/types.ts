@@ -18,7 +18,8 @@ import type {
 } from "@shared/schema";
 
 export interface ILeagueStorage {
-  getLeagues(organizationId?: number | null): Promise<League[]>;
+  getLeagues(organizationId: number): Promise<League[]>;
+  getAllLeagues(): Promise<League[]>;
   getLeague(id: number): Promise<League | undefined>;
   getLeaguesByIds(ids: number[]): Promise<League[]>;
   createLeague(league: InsertLeague): Promise<League>;
@@ -40,7 +41,8 @@ export interface ITeamStorage {
 }
 
 export interface IBowlerStorage {
-  getBowlers(teamId?: number, organizationId?: number): Promise<Bowler[]>;
+  getBowlers(filters: { teamId?: number; organizationId: number }): Promise<Bowler[]>;
+  getAllBowlers(): Promise<Bowler[]>;
   getBowler(id: number): Promise<Bowler | undefined>;
   getBowlersByIds(ids: number[]): Promise<Bowler[]>;
   getBowlerByEmail(email: string, organizationId?: number): Promise<Bowler | undefined>;
@@ -59,6 +61,7 @@ export interface IBowlerStorage {
 
 export interface IPaymentStorage {
   getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date, organizationId?: number): Promise<Payment[]>;
+  getAllPayments(): Promise<Payment[]>;
   getPaymentsPaginated(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId?: number }, page: number, limit: number): Promise<PaginatedResult<Payment>>;
   getPaymentById(id: number): Promise<Payment | undefined>;
   getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined>;
@@ -127,7 +130,8 @@ export interface IOrganizationStorage {
 }
 
 export interface ILocationStorage {
-  getLocations(organizationId?: number | null): Promise<Location[]>;
+  getLocations(organizationId: number): Promise<Location[]>;
+  getAllLocations(): Promise<Location[]>;
   getLocation(id: number): Promise<Location | undefined>;
   createLocation(data: InsertLocation): Promise<Location>;
   updateLocation(id: number, data: UpdateLocation): Promise<Location>;

@@ -10,6 +10,41 @@ import { createLogger } from '../logger';
 
 const log = createLogger("StoragePayments");
 
+function buildPaymentConditions(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId?: number }) {
+  const conditions = [];
+
+  if (filters.bowlerId !== undefined) {
+    conditions.push(eq(payments.bowlerId, filters.bowlerId));
+  }
+  if (filters.leagueId !== undefined) {
+    conditions.push(eq(payments.leagueId, filters.leagueId));
+  }
+  if (filters.teamId !== undefined) {
+    const bowlerLeaguesSubquery = db
+      .select({ bowler_id: bowlerLeagues.bowlerId })
+      .from(bowlerLeagues)
+      .where(and(
+        eq(bowlerLeagues.teamId, filters.teamId),
+        filters.leagueId !== undefined ? eq(bowlerLeagues.leagueId, filters.leagueId) : undefined
+      ))
+      .as('bl');
+
+    conditions.push(sql`${payments.bowlerId} IN (SELECT "bowler_id" FROM ${bowlerLeaguesSubquery})`);
+  }
+  if (filters.weekOf !== undefined) {
+    const startDate = new Date(filters.weekOf);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(filters.weekOf);
+    endDate.setHours(23, 59, 59, 999);
+    conditions.push(sql`${payments.weekOf} BETWEEN ${startDate} AND ${endDate}`);
+  }
+  if (filters.organizationId !== undefined) {
+    conditions.push(sql`${payments.leagueId} IN (SELECT "id" FROM ${leagues} WHERE ${leagues.organizationId} = ${filters.organizationId})`);
+  }
+
+  return conditions;
+}
+
 export async function getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date, organizationId?: number): Promise<Payment[]> {
   try {
     log.info('Getting payments with filters:', {
@@ -20,36 +55,7 @@ export async function getPayments(bowlerId?: number, leagueId?: number, teamId?:
       organizationId,
     });
 
-    const conditions = [];
-
-    if (bowlerId !== undefined) {
-      conditions.push(eq(payments.bowlerId, bowlerId));
-    }
-    if (leagueId !== undefined) {
-      conditions.push(eq(payments.leagueId, leagueId));
-    }
-    if (teamId !== undefined) {
-      const bowlerLeaguesSubquery = db
-        .select({ bowler_id: bowlerLeagues.bowlerId })
-        .from(bowlerLeagues)
-        .where(and(
-          eq(bowlerLeagues.teamId, teamId),
-          leagueId !== undefined ? eq(bowlerLeagues.leagueId, leagueId) : undefined
-        ))
-        .as('bl');
-
-      conditions.push(sql`${payments.bowlerId} IN (SELECT "bowler_id" FROM ${bowlerLeaguesSubquery})`);
-    }
-    if (weekOf !== undefined) {
-      const startDate = new Date(weekOf);
-      startDate.setHours(0, 0, 0, 0);
-      const endDate = new Date(weekOf);
-      endDate.setHours(23, 59, 59, 999);
-      conditions.push(sql`${payments.weekOf} BETWEEN ${startDate} AND ${endDate}`);
-    }
-    if (organizationId !== undefined) {
-      conditions.push(sql`${payments.leagueId} IN (SELECT "id" FROM ${leagues} WHERE ${leagues.organizationId} = ${organizationId})`);
-    }
+    const conditions = buildPaymentConditions({ bowlerId, leagueId, teamId, weekOf, organizationId });
 
     const query = db.select().from(payments);
 
@@ -80,40 +86,16 @@ export async function getPayments(bowlerId?: number, leagueId?: number, teamId?:
   }
 }
 
+export async function getAllPayments(): Promise<Payment[]> {
+  return db.select().from(payments).orderBy(desc(payments.weekOf));
+}
+
 export async function getPaymentsPaginated(
   filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId?: number },
   page: number,
   limit: number
 ): Promise<PaginatedResult<Payment>> {
-  const conditions = [];
-
-  if (filters.bowlerId !== undefined) {
-    conditions.push(eq(payments.bowlerId, filters.bowlerId));
-  }
-  if (filters.leagueId !== undefined) {
-    conditions.push(eq(payments.leagueId, filters.leagueId));
-  }
-  if (filters.teamId !== undefined) {
-    const bowlerLeaguesSubquery = db
-      .select({ bowler_id: bowlerLeagues.bowlerId })
-      .from(bowlerLeagues)
-      .where(and(
-        eq(bowlerLeagues.teamId, filters.teamId),
-        filters.leagueId !== undefined ? eq(bowlerLeagues.leagueId, filters.leagueId) : undefined
-      ))
-      .as('bl');
-    conditions.push(sql`${payments.bowlerId} IN (SELECT "bowler_id" FROM ${bowlerLeaguesSubquery})`);
-  }
-  if (filters.weekOf !== undefined) {
-    const startDate = new Date(filters.weekOf);
-    startDate.setHours(0, 0, 0, 0);
-    const endDate = new Date(filters.weekOf);
-    endDate.setHours(23, 59, 59, 999);
-    conditions.push(sql`${payments.weekOf} BETWEEN ${startDate} AND ${endDate}`);
-  }
-  if (filters.organizationId !== undefined) {
-    conditions.push(sql`${payments.leagueId} IN (SELECT "id" FROM ${leagues} WHERE ${leagues.organizationId} = ${filters.organizationId})`);
-  }
+  const conditions = buildPaymentConditions(filters);
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 

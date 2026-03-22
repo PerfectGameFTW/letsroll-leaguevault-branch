@@ -2,17 +2,14 @@ import { eq, isNull, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import { leagues, type League, type InsertLeague, type UpdateLeague } from "@shared/schema";
 
-export async function getLeagues(organizationId?: number | null): Promise<League[]> {
-  const query = db.select().from(leagues);
+export async function getLeagues(organizationId: number): Promise<League[]> {
+  return db.select().from(leagues)
+    .where(eq(leagues.organizationId, organizationId))
+    .orderBy(leagues.id);
+}
 
-  if (organizationId !== undefined) {
-    if (organizationId === null) {
-      return query.where(isNull(leagues.organizationId)).orderBy(leagues.id);
-    }
-    return query.where(eq(leagues.organizationId, organizationId)).orderBy(leagues.id);
-  }
-
-  return query.orderBy(leagues.id);
+export async function getAllLeagues(): Promise<League[]> {
+  return db.select().from(leagues).orderBy(leagues.id);
 }
 
 export async function getLeague(id: number): Promise<League | undefined> {

@@ -42,7 +42,9 @@ router.get("/", async (req, res) => {
         teams = await storage.getTeams();
       } else {
         // Everyone else (including affiliated system admins): scope to their org
-        const leagues = await storage.getLeagues(scopedOrgId);
+        const leagues = scopedOrgId !== null
+          ? await storage.getLeagues(scopedOrgId)
+          : await storage.getAllLeagues();
         const teamPromises = leagues.map(league => storage.getTeams(league.id));
         const teamsArrays = await Promise.all(teamPromises);
         teams = teamsArrays.flat();

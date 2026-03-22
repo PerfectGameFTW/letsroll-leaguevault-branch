@@ -10,17 +10,14 @@ import { createLogger } from '../logger';
 
 const log = createLogger("StorageLocations");
 
-export async function getLocations(organizationId?: number | null): Promise<Location[]> {
-  const query = db.select().from(locations);
+export async function getLocations(organizationId: number): Promise<Location[]> {
+  return db.select().from(locations)
+    .where(eq(locations.organizationId, organizationId))
+    .orderBy(locations.name);
+}
 
-  if (organizationId !== undefined) {
-    if (organizationId === null) {
-      return query.where(isNull(locations.organizationId)).orderBy(locations.name);
-    }
-    return query.where(eq(locations.organizationId, organizationId)).orderBy(locations.name);
-  }
-
-  return query.orderBy(locations.name);
+export async function getAllLocations(): Promise<Location[]> {
+  return db.select().from(locations).orderBy(locations.name);
 }
 
 export async function getFirstSquareConfiguredLocation(orgId: number): Promise<Location | undefined> {

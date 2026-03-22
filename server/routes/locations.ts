@@ -13,7 +13,9 @@ const router = Router();
 router.get('/', filterByOrganization, async (req: any, res) => {
   try {
     const organizationId = req.organizationFilter;
-    const locations = await storage.getLocations(organizationId);
+    const locations = organizationId !== null && organizationId !== undefined
+      ? await storage.getLocations(organizationId)
+      : await storage.getAllLocations();
     sendSuccess(res, locations);
   } catch (error) {
     log.error('Error fetching locations:', error);

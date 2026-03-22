@@ -14,6 +14,7 @@ export type { IStorage };
 
 export class DatabaseStorage implements IStorage {
   getLeagues!: IStorage["getLeagues"];
+  getAllLeagues!: IStorage["getAllLeagues"];
   getLeague!: IStorage["getLeague"];
   getLeaguesByIds!: IStorage["getLeaguesByIds"];
   createLeague!: IStorage["createLeague"];
@@ -32,6 +33,7 @@ export class DatabaseStorage implements IStorage {
   deleteTeam!: IStorage["deleteTeam"];
 
   getBowlers!: IStorage["getBowlers"];
+  getAllBowlers!: IStorage["getAllBowlers"];
   getBowler!: IStorage["getBowler"];
   getBowlersByIds!: IStorage["getBowlersByIds"];
   getBowlerByEmail!: IStorage["getBowlerByEmail"];
@@ -48,6 +50,7 @@ export class DatabaseStorage implements IStorage {
   deleteBowlerLeague!: IStorage["deleteBowlerLeague"];
 
   getPayments!: IStorage["getPayments"];
+  getAllPayments!: IStorage["getAllPayments"];
   getPaymentsPaginated!: IStorage["getPaymentsPaginated"];
   getPaymentById!: IStorage["getPaymentById"];
   getPaymentByIdempotencyKey!: IStorage["getPaymentByIdempotencyKey"];
@@ -109,6 +112,7 @@ export class DatabaseStorage implements IStorage {
   updateOrgIntegrations!: IStorage["updateOrgIntegrations"];
 
   getLocations!: IStorage["getLocations"];
+  getAllLocations!: IStorage["getAllLocations"];
   getLocation!: IStorage["getLocation"];
   createLocation!: IStorage["createLocation"];
   updateLocation!: IStorage["updateLocation"];

@@ -62,12 +62,12 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
 router.get('/dashboard', requireAdmin, async (req, res) => {
   try {
     
-    // Fetch data for dashboard
+    // Fetch data for dashboard (system admin sees all)
     const [bowlers, leagues, teams, payments] = await Promise.all([
-      storage.getBowlers(),
-      storage.getLeagues(),
+      storage.getAllBowlers(),
+      storage.getAllLeagues(),
       storage.getTeams(),
-      storage.getPayments()
+      storage.getAllPayments()
     ]);
     
     // Get recent payments (last 5)

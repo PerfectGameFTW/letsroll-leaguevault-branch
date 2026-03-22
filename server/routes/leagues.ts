@@ -28,7 +28,9 @@ router.get("/", async (req: any, res) => {
   try {
     const organizationId = getOrganizationFilter(req);
     
-    let leagues = await storage.getLeagues(organizationId);
+    let leagues = organizationId !== null
+      ? await storage.getLeagues(organizationId)
+      : await storage.getAllLeagues();
     
     const locationId = req.query.locationId ? parseInt(req.query.locationId) : null;
     if (locationId) {
@@ -293,7 +295,7 @@ router.delete("/:id", async (req: any, res) => {
     const teams = await storage.getTeams(id);
 
     for (const team of teams) {
-      const teamBowlers = await storage.getBowlers(team.id);
+      const teamBowlers = await storage.getBowlers({ teamId: team.id, organizationId: league.organizationId! });
       for (const bowler of teamBowlers) {
         await storage.updateBowler(bowler.id, { active: false, order: 0 });
       }
@@ -479,7 +481,9 @@ router.get("/:id/season-history", async (req: any, res) => {
       return sendError(res, "League not found", 404, "NOT_FOUND");
     }
 
-    const allLeagues = await storage.getLeagues(league.organizationId || undefined);
+    const allLeagues = league.organizationId
+      ? await storage.getLeagues(league.organizationId)
+      : await storage.getAllLeagues();
     const seasons: any[] = [];
 
     let current: typeof league | undefined = league;
