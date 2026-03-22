@@ -60,9 +60,9 @@ export interface IBowlerStorage {
 }
 
 export interface IPaymentStorage {
-  getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date, organizationId?: number): Promise<Payment[]>;
+  getPayments(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId: number }): Promise<Payment[]>;
   getAllPayments(): Promise<Payment[]>;
-  getPaymentsPaginated(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId?: number }, page: number, limit: number): Promise<PaginatedResult<Payment>>;
+  getPaymentsPaginated(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId: number }, page: number, limit: number): Promise<PaginatedResult<Payment>>;
   getPaymentById(id: number): Promise<Payment | undefined>;
   getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined>;
   createPayment(payment: InsertPayment): Promise<Payment>;

@@ -45,28 +45,33 @@ router.get("/", async (req, res) => {
       return sendSuccess(res, []);
     }
 
-    const filters = {
+    const baseFilters = {
       bowlerId: req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined,
       leagueId,
       teamId: req.query.teamId ? parseInt(req.query.teamId as string) : undefined,
       weekOf: req.query.weekOf ? new Date(req.query.weekOf as string) : undefined,
-      organizationId: effectiveOrgId ?? undefined,
     };
 
     const paginationParams = parsePaginationParams(req.query);
+
+    if (isSystemAdmin && effectiveOrgId === null) {
+      if (paginationParams) {
+        const allPayments = await storage.getAllPayments();
+        const filtered = allPayments.slice((paginationParams.page - 1) * paginationParams.limit, paginationParams.page * paginationParams.limit);
+        return sendPaginatedSuccess(res, filtered, { page: paginationParams.page, limit: paginationParams.limit, total: allPayments.length, totalPages: Math.ceil(allPayments.length / paginationParams.limit) });
+      }
+      const payments = await storage.getAllPayments();
+      return sendSuccess(res, payments);
+    }
+
+    const filters = { ...baseFilters, organizationId: effectiveOrgId! };
 
     if (paginationParams) {
       const result = await storage.getPaymentsPaginated(filters, paginationParams.page, paginationParams.limit);
       return sendPaginatedSuccess(res, result.items, result.pagination);
     }
 
-    const payments = await storage.getPayments(
-      filters.bowlerId,
-      filters.leagueId,
-      filters.teamId,
-      filters.weekOf,
-      filters.organizationId,
-    );
+    const payments = await storage.getPayments(filters);
     
     sendSuccess(res, payments);
   } catch (error) {

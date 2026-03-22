@@ -10,9 +10,28 @@ import { createLogger } from '../logger';
 
 const log = createLogger("StoragePayments");
 
-function buildPaymentConditions(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId?: number }) {
+interface PaymentFilters {
+  bowlerId?: number;
+  leagueId?: number;
+  teamId?: number;
+  weekOf?: Date;
+  organizationId: number;
+}
+
+interface AllPaymentFilters {
+  bowlerId?: number;
+  leagueId?: number;
+  teamId?: number;
+  weekOf?: Date;
+  organizationId?: number;
+}
+
+function buildPaymentConditions(filters: AllPaymentFilters) {
   const conditions = [];
 
+  if (filters.organizationId !== undefined) {
+    conditions.push(sql`${payments.leagueId} IN (SELECT "id" FROM ${leagues} WHERE ${leagues.organizationId} = ${filters.organizationId})`);
+  }
   if (filters.bowlerId !== undefined) {
     conditions.push(eq(payments.bowlerId, filters.bowlerId));
   }
@@ -38,24 +57,21 @@ function buildPaymentConditions(filters: { bowlerId?: number; leagueId?: number;
     endDate.setHours(23, 59, 59, 999);
     conditions.push(sql`${payments.weekOf} BETWEEN ${startDate} AND ${endDate}`);
   }
-  if (filters.organizationId !== undefined) {
-    conditions.push(sql`${payments.leagueId} IN (SELECT "id" FROM ${leagues} WHERE ${leagues.organizationId} = ${filters.organizationId})`);
-  }
 
   return conditions;
 }
 
-export async function getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date, organizationId?: number): Promise<Payment[]> {
+export async function getPayments(filters: PaymentFilters): Promise<Payment[]> {
   try {
     log.info('Getting payments with filters:', {
-      bowlerId,
-      leagueId,
-      teamId,
-      weekOf: weekOf?.toISOString(),
-      organizationId,
+      bowlerId: filters.bowlerId,
+      leagueId: filters.leagueId,
+      teamId: filters.teamId,
+      weekOf: filters.weekOf?.toISOString(),
+      organizationId: filters.organizationId,
     });
 
-    const conditions = buildPaymentConditions({ bowlerId, leagueId, teamId, weekOf, organizationId });
+    const conditions = buildPaymentConditions(filters);
 
     const query = db.select().from(payments);
 
@@ -91,7 +107,7 @@ export async function getAllPayments(): Promise<Payment[]> {
 }
 
 export async function getPaymentsPaginated(
-  filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId?: number },
+  filters: PaymentFilters,
   page: number,
   limit: number
 ): Promise<PaginatedResult<Payment>> {

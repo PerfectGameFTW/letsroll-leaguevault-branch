@@ -70,7 +70,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
     }
     const fullSeasonAmount = league.weeklyFee * totalWeeks;
 
-    const existingPayments = await storage.getPayments(bowlerId, leagueId);
+    const existingPayments = await storage.getPayments({ bowlerId, leagueId, organizationId: league.organizationId! });
     const totalPaid = existingPayments
       .filter((p: any) => p.status === 'paid')
       .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);

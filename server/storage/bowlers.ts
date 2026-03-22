@@ -23,10 +23,14 @@ const bowlerColumns = {
 export async function getBowlers(filters: { teamId?: number; organizationId: number }): Promise<Bowler[]> {
   if (filters.teamId !== undefined) {
     return db
-      .select(bowlerColumns)
+      .selectDistinct(bowlerColumns)
       .from(bowlers)
       .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
-      .where(eq(bowlerLeagues.teamId, filters.teamId))
+      .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
+      .where(and(
+        eq(bowlerLeagues.teamId, filters.teamId),
+        eq(leagues.organizationId, filters.organizationId),
+      ))
       .orderBy(bowlers.order);
   }
   return db
