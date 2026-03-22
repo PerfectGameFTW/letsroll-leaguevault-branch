@@ -81,7 +81,7 @@ export function calculateFinancials(league: League | null | undefined, payments:
 
   const defaultFinalTwoWeeks: FinalTwoWeeksStatus = {
     amount: 0,
-    dueByWeek: 6,
+    dueByWeek: DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK,
     dueByDate: null,
     isPaid: false,
     isPastDue: false,
