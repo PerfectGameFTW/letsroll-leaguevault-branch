@@ -105,6 +105,25 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
   }
 });
 
+router.get("/avatar/:userId", async (req: Request, res: Response) => {
+  try {
+    const userId = parseInt(req.params.userId, 10);
+    if (isNaN(userId)) {
+      return sendError(res, "Invalid user ID", 400);
+    }
+
+    const files = fs.readdirSync(AVATARS_DIR).filter(f => f.startsWith(`${userId}.`));
+    if (files.length > 0) {
+      return res.redirect(301, `/uploads/avatars/${files[0]}`);
+    }
+
+    return sendError(res, "Avatar not found", 404, "NOT_FOUND");
+  } catch (error) {
+    log.error("Legacy avatar redirect error:", error);
+    return sendError(res, "Failed to serve avatar", 500);
+  }
+});
+
 router.get("/avatar", async (req: Request, res: Response) => {
   if (!req.user) {
     return sendError(res, "Authentication required", 401);
