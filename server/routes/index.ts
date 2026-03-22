@@ -21,6 +21,7 @@ import locationsRouter from './locations.js';
 import paymentSchedulesRouter from './payment-schedules.js';
 import bowlnowRouter from './bowlnow.js';
 import integrationsRouter from './integrations.js';
+import { requireAuth, requireOrgAdmin, requireSystemAdmin } from '../middleware/auth.js';
 import { createLogger } from '../logger';
 
 const log = createLogger("Routes");
@@ -38,27 +39,29 @@ export function registerRoutes(app: Express): void {
     app._router.handle(req, res);
   });
 
-  app.use('/api/leagues', leaguesRouter);
-  app.use('/api/teams', teamsRouter);
-  app.use('/api/bowlers', bowlersRouter);
-  app.use('/api/bowler-leagues', bowlerLeaguesRouter);
-  app.use('/api/payments', paymentsRouter);
-  app.use('/api/scores', scoresRouter);
-  app.use('/api/games', gamesRouter);
-  app.use('/api/square', squareRouter);
-  app.use('/api/admin', adminRouter);
-  app.use('/api/admin-update', adminUpdateRouter);
-  app.use('/api/organizations', organizationsRouter);
-  app.use('/api/org-admin', orgAdminRouter);
-  app.use('/api/user-bowlers', userBowlersRouter);
-  app.use('/api/setup', setupAdminRouter);
-  app.use('/api/system-admin', systemAdminRouter);
-  app.use('/api/user', userAvatarRouter);
-  app.use('/api/user-update', userUpdateRouter);
-  app.use('/api/locations', locationsRouter);
-  app.use('/api/payment-schedules', paymentSchedulesRouter);
-  app.use('/api/bn', bowlnowRouter);
-  app.use('/api/integrations', integrationsRouter);
+  // All resource routers require authentication at minimum.
+  // Role-specific routers (org-admin, system-admin) further restrict access.
+  app.use('/api/leagues', requireAuth, leaguesRouter);
+  app.use('/api/teams', requireAuth, teamsRouter);
+  app.use('/api/bowlers', requireAuth, bowlersRouter);
+  app.use('/api/bowler-leagues', requireAuth, bowlerLeaguesRouter);
+  app.use('/api/payments', requireAuth, paymentsRouter);
+  app.use('/api/scores', requireAuth, scoresRouter);
+  app.use('/api/games', requireAuth, gamesRouter);
+  app.use('/api/square', requireAuth, squareRouter);
+  app.use('/api/admin', requireOrgAdmin, adminRouter);
+  app.use('/api/admin-update', requireOrgAdmin, adminUpdateRouter);
+  app.use('/api/organizations', requireAuth, organizationsRouter);
+  app.use('/api/org-admin', requireOrgAdmin, orgAdminRouter);
+  app.use('/api/user-bowlers', requireAuth, userBowlersRouter);
+  app.use('/api/setup', setupAdminRouter); // setup routes have their own secret-based auth
+  app.use('/api/system-admin', requireSystemAdmin, systemAdminRouter);
+  app.use('/api/user', requireAuth, userAvatarRouter);
+  app.use('/api/user-update', requireAuth, userUpdateRouter);
+  app.use('/api/locations', requireAuth, locationsRouter);
+  app.use('/api/payment-schedules', requireAuth, paymentSchedulesRouter);
+  app.use('/api/bn', requireOrgAdmin, bowlnowRouter);
+  app.use('/api/integrations', requireOrgAdmin, integrationsRouter);
 
   log.info('API routes registered');
 }

@@ -26,7 +26,7 @@ export interface ApiResponse<T> {
   error?: {
     code: string;
     message: string;
-    details?: any;
+    details?: unknown;
   };
 }
 
@@ -46,7 +46,7 @@ export function sendPaginatedSuccess<T>(res: Response, data: T[], pagination: Pa
   });
 }
 
-export function parsePaginationParams(query: Record<string, any>): { page: number; limit: number } | null {
+export function parsePaginationParams(query: Record<string, unknown>): { page: number; limit: number } | null {
   const page = query.page ? parseInt(query.page as string) : undefined;
   const limit = query.limit ? parseInt(query.limit as string) : undefined;
 
@@ -67,7 +67,7 @@ export function sendError(
   message: string,
   status: number = 500,
   code: string = 'ServerError',
-  details?: any
+  details?: unknown
 ) {
   const response: ApiResponse<null> = {
     success: false,

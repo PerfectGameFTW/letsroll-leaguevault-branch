@@ -87,8 +87,11 @@ export function setupAuth(app: Express) {
       tableName: 'session'
     }),
     cookie: {
+      // Require HTTPS in production, or in Replit preview/deployment environments
       secure: !isDev || !!env.REPLIT_DEPLOYMENT || !!env.REPLIT_DOMAINS,
-      sameSite: env.REPLIT_DOMAINS ? "none" as const : "lax" as const,
+      // "none" is required for cross-site cookies (Replit dev preview) but must
+      // never be used in production — same-origin deployments should use "lax".
+      sameSite: (isDev && !!env.REPLIT_DOMAINS) ? "none" as const : "lax" as const,
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       httpOnly: true
     }

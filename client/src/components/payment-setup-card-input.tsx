@@ -18,7 +18,7 @@ interface PaymentSetupCardInputProps {
   setCardMode: (mode: 'new' | 'saved') => void;
   selectedSavedCardId: string;
   setSelectedSavedCardId: (id: string) => void;
-  cardContainerRef: RefObject<HTMLDivElement | null>;
+  cardContainerRef: RefObject<HTMLDivElement>;
   isInitialized: boolean;
   squareError: string | null;
   storeCard: boolean;

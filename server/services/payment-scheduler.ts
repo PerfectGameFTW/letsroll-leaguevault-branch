@@ -189,6 +189,26 @@ class PaymentScheduler {
     // Schedule new job
     const job = schedule.scheduleJob(new Date(scheduleRecord.nextPaymentDate), async () => {
       try {
+        // Atomically claim this payment by verifying nextPaymentDate hasn't changed.
+        // If another process already processed it, the UPDATE will match 0 rows and
+        // we skip to avoid duplicate charges.
+        const claimed = await db
+          .update(paymentSchedules)
+          .set({ lastPaymentDate: new Date().toISOString() })
+          .where(
+            and(
+              eq(paymentSchedules.id, scheduleRecord.id),
+              eq(paymentSchedules.nextPaymentDate, scheduleRecord.nextPaymentDate),
+              eq(paymentSchedules.active, true)
+            )
+          )
+          .returning({ id: paymentSchedules.id });
+
+        if (claimed.length === 0) {
+          logger.warn(`[PaymentScheduler] Skipping ${jobId} — already claimed by another process or deactivated`);
+          return;
+        }
+
         logger.info(`[PaymentScheduler] Executing scheduled payment for ${jobId}`, {
           amount: scheduleRecord.amount,
           bowlerId: scheduleRecord.bowlerId,

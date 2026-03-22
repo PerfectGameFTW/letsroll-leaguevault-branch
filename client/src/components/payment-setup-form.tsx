@@ -32,7 +32,7 @@ interface PaymentSetupFormProps {
   savedCards: SavedCard[];
   cardMode: 'new' | 'saved';
   selectedSavedCardId: string;
-  cardContainerRef: RefObject<HTMLDivElement | null>;
+  cardContainerRef: RefObject<HTMLDivElement>;
   isInitialized: boolean;
   squareError: string | null;
   storeCard: boolean;

@@ -7,8 +7,28 @@ import {
   type LocationSquareCredentials,
 } from "@shared/schema";
 import { createLogger } from '../logger';
+import { encrypt, decrypt, isEncrypted } from '../utils/crypto';
 
 const log = createLogger("StorageLocations");
+
+function encryptSquareCreds(creds: LocationSquareCredentials | null | undefined): LocationSquareCredentials | null | undefined {
+  if (!creds || !process.env.FIELD_ENCRYPTION_KEY) return creds;
+  return {
+    ...creds,
+    accessToken: creds.accessToken ? encrypt(creds.accessToken) : creds.accessToken,
+  };
+}
+
+function decryptSquareCreds(creds: LocationSquareCredentials | null | undefined): LocationSquareCredentials | null | undefined {
+  if (!creds || !creds.accessToken || !process.env.FIELD_ENCRYPTION_KEY) return creds;
+  if (!isEncrypted(creds.accessToken)) return creds; // plaintext (pre-encryption migration)
+  const decrypted = decrypt(creds.accessToken);
+  if (decrypted === null) {
+    log.error("Failed to decrypt Square accessToken — returning without token");
+    return { ...creds, accessToken: undefined };
+  }
+  return { ...creds, accessToken: decrypted };
+}
 
 export async function getLocations(organizationId: number): Promise<Location[]> {
   return db.select().from(locations)
@@ -37,12 +57,16 @@ export async function getLocation(id: number): Promise<Location | undefined> {
 }
 
 export async function createLocation(data: InsertLocation): Promise<Location> {
-  const [result] = await db.insert(locations).values(data).returning();
+  const encrypted = { ...data, squareCredentials: encryptSquareCreds(data.squareCredentials) };
+  const [result] = await db.insert(locations).values(encrypted).returning();
   return result;
 }
 
 export async function updateLocation(id: number, data: UpdateLocation): Promise<Location> {
-  const [result] = await db.update(locations).set(data).where(eq(locations.id, id)).returning();
+  const encrypted = data.squareCredentials !== undefined
+    ? { ...data, squareCredentials: encryptSquareCreds(data.squareCredentials) }
+    : data;
+  const [result] = await db.update(locations).set(encrypted).where(eq(locations.id, id)).returning();
   return result;
 }
 
@@ -74,10 +98,11 @@ export async function getLocationSquareConfig(locationId: number): Promise<Locat
     log.warn(`Malformed squareCredentials JSONB for location ${locationId}:`, parsed.error.format());
     return null;
   }
-  return parsed.data ?? null;
+  return decryptSquareCreds(parsed.data) ?? null;
 }
 
 export async function updateLocationSquareConfig(locationId: number, creds: LocationSquareCredentials): Promise<Location> {
-  const [result] = await db.update(locations).set({ squareCredentials: creds }).where(eq(locations.id, locationId)).returning();
+  const encrypted = encryptSquareCreds(creds);
+  const [result] = await db.update(locations).set({ squareCredentials: encrypted }).where(eq(locations.id, locationId)).returning();
   return result;
 }

@@ -12,12 +12,6 @@ const log = createLogger("Bowlers");
 
 const router = Router();
 
-router.use((req: any, res, next) => {
-  if (!req.isAuthenticated || !req.isAuthenticated()) {
-    return sendError(res, "Authentication required", 401, 'UNAUTHORIZED');
-  }
-  next();
-});
 
 router.get("/unlinked", async (req: any, res) => {
   try {

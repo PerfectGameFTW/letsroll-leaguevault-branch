@@ -10,6 +10,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(5000),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
 
+  FIELD_ENCRYPTION_KEY: z.string().length(64).optional(),
+
   SENDGRID_API_KEY: z.string().min(1).optional(),
   SENTRY_DSN: z.string().min(1).optional(),
   BN_API_KEY: z.string().min(1).optional(),
@@ -32,6 +34,7 @@ const envSchema = z.object({
 type Env = z.infer<typeof envSchema>;
 
 const optionalWarnings: { key: keyof Env; feature: string }[] = [
+  { key: "FIELD_ENCRYPTION_KEY", feature: "Square credential encryption (credentials will be stored unencrypted)" },
   { key: "SENDGRID_API_KEY", feature: "transactional emails (SendGrid)" },
   { key: "SENTRY_DSN", feature: "error tracking (Sentry)" },
   { key: "BN_API_KEY", feature: "CRM contact sync (BowlNow)" },
