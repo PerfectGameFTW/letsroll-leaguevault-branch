@@ -35,6 +35,15 @@ export const adminWriteLimiter = rateLimit({
   message: rateLimitMessage("Too many admin requests, please try again later"),
 });
 
+export const emailTestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: userKeyGenerator,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: rateLimitMessage("Too many test email requests, please try again later"),
+});
+
 export const inviteLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 15,

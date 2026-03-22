@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { User as SelectUser, updateEmailTemplateSchema } from '@shared/schema';
 import { requireAdmin } from '../middleware/admin';
 import { sendTestEmail } from '../services/email';
+import { emailTestLimiter } from '../middleware/rate-limit';
 import { createLogger } from '../logger';
 
 const log = createLogger("Admin");
@@ -164,7 +165,7 @@ router.patch('/email-templates/:id', requireAdmin, async (req, res) => {
   }
 });
 
-router.post('/email-templates/:id/send-test', requireAdmin, async (req, res) => {
+router.post('/email-templates/:id/send-test', requireAdmin, emailTestLimiter, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
