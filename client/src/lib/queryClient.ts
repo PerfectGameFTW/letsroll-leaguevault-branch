@@ -45,30 +45,7 @@ export async function csrfFetch(input: RequestInfo | URL, init?: RequestInit): P
     };
   }
 
-  const res = await fetch(input, init);
-
-  if (res.status === 403) {
-    const cloned = res.clone();
-    try {
-      const body = await cloned.json();
-      if (body?.error?.code === 'CSRF_ERROR') {
-        csrfToken = null;
-        const newToken = await fetchCsrfToken();
-        const existingHeaders = init?.headers instanceof Headers
-          ? Object.fromEntries(init.headers.entries())
-          : (init?.headers as Record<string, string>) || {};
-        return fetch(input, {
-          ...init,
-          headers: {
-            ...existingHeaders,
-            'x-csrf-token': newToken,
-          },
-        });
-      }
-    } catch {}
-  }
-
-  return res;
+  return fetch(input, init);
 }
 
 async function throwIfResNotOk(res: Response) {

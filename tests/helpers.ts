@@ -27,8 +27,8 @@ async function getCsrfToken(cookies: string): Promise<string> {
   const res = await fetch(`${BASE_URL}/api/csrf-token`, {
     headers: { Cookie: cookies },
   });
-  const data: ApiResponse<{ csrfToken: string }> = await res.json();
-  return data.data?.csrfToken ?? '';
+  const data: ApiResponse<{ token: string }> = await res.json();
+  return data.data?.token ?? '';
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {

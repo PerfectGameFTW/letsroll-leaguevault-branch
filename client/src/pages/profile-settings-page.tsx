@@ -11,7 +11,7 @@ import { Link, useLocation } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, clearCsrfToken } from "@/lib/queryClient";
 import {
   Form,
   FormControl,
@@ -130,6 +130,7 @@ export const ProfileSettingsPage: FC = () => {
     try {
       setIsLoggingOut(true);
       await apiRequest('/api/auth/logout', 'POST', {});
+      clearCsrfToken();
       window.location.href = '/login';
     } catch (error) {
       console.error('Logout failed:', error);

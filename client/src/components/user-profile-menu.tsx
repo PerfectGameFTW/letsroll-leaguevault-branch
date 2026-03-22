@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { apiRequest, queryClient, csrfFetch } from '@/lib/queryClient';
+import { apiRequest, queryClient, csrfFetch, clearCsrfToken } from '@/lib/queryClient';
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, ChangeEvent } from "react";
@@ -38,6 +38,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
   const handleLogout = async () => {
     try {
       await apiRequest('/api/auth/logout', 'POST', {});
+      clearCsrfToken();
       window.location.href = '/login';
       toast({
         title: "Logged out",

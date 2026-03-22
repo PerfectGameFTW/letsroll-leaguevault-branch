@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import type { Bowler, BowlerLeague } from "@shared/schema";
-import { queryClient, csrfFetch } from '@/lib/queryClient';
+import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from "@/hooks/use-toast";
 
 interface AssignBowlerFormProps {
@@ -34,7 +34,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
     queryFn: async () => {
-      const response = await csrfFetch("/api/bowlers");
+      const response = await fetch("/api/bowlers", { credentials: 'include' });
       if (!response.ok) {
         throw new Error("Failed to fetch bowlers");
       }
@@ -46,7 +46,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", leagueId],
     queryFn: async () => {
-      const response = await csrfFetch(`/api/bowler-leagues?leagueId=${leagueId}`);
+      const response = await fetch(`/api/bowler-leagues?leagueId=${leagueId}`, { credentials: 'include' });
       if (!response.ok) {
         throw new Error("Failed to fetch bowler leagues");
       }
@@ -70,38 +70,11 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   // Mutation for assigning bowler to team
   const mutation = useMutation({
     mutationFn: async (bowlerId: number) => {
-      try {
-        const response = await csrfFetch("/api/bowler-leagues", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            bowlerId,
-            leagueId,
-            teamId,
-          }),
-        });
-
-        const text = await response.text();
-
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch (e) {
-          console.error("[AssignBowler] Failed to parse response as JSON:", e);
-          throw new Error("Server returned invalid JSON");
-        }
-
-        if (!response.ok) {
-          throw new Error(data.error || "Failed to assign bowler");
-        }
-
-        return data;
-      } catch (error) {
-        console.error("[AssignBowler] Assignment failed:", error);
-        throw error;
-      }
+      return apiRequest("/api/bowler-leagues", "POST", {
+        bowlerId,
+        leagueId,
+        teamId,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
