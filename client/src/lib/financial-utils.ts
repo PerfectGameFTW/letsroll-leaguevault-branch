@@ -250,3 +250,68 @@ export function getPaymentSummary(payments: Payment[]) {
     totalUnpaidAmount: unpaidPayments.reduce((sum, p) => sum + p.amount, 0),
   };
 }
+
+export interface BowlerViewFinancials {
+  weeksDue: number;
+  totalSeasonDues: number;
+  totalWeeksInSeason: number;
+  fullSeasonAmount: number;
+  amountPastDue: number;
+  remainingBalance: number;
+  totalPaidAmount: number;
+  totalUnpaidAmount: number;
+}
+
+export function calculateBowlerViewFinancials(
+  league: League | null | undefined,
+  payments: Payment[]
+): BowlerViewFinancials {
+  const { totalPaidAmount, totalUnpaidAmount } = getPaymentSummary(payments);
+
+  let weeksDue = 0;
+  let totalSeasonDues = 0;
+  let totalWeeksInSeason = 0;
+  let fullSeasonAmount = 0;
+  let amountPastDue = 0;
+
+  if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
+    const seasonStart = typeof league.seasonStart === "string"
+      ? new Date(league.seasonStart)
+      : league.seasonStart;
+    const seasonEnd = typeof league.seasonEnd === "string"
+      ? new Date(league.seasonEnd)
+      : league.seasonEnd;
+    const today = startOfToday();
+
+    if (
+      seasonStart && seasonEnd &&
+      !isNaN(seasonStart.getTime()) && !isNaN(seasonEnd.getTime())
+    ) {
+      if (today < seasonStart) {
+        weeksDue = 0;
+      } else if (today > seasonEnd) {
+        weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
+      } else {
+        weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
+      }
+
+      totalSeasonDues = league.weeklyFee * weeksDue;
+      totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
+      fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
+      amountPastDue = totalSeasonDues - totalPaidAmount;
+    }
+  }
+
+  const remainingBalance = fullSeasonAmount - totalPaidAmount;
+
+  return {
+    weeksDue,
+    totalSeasonDues,
+    totalWeeksInSeason,
+    fullSeasonAmount,
+    amountPastDue,
+    remainingBalance,
+    totalPaidAmount,
+    totalUnpaidAmount,
+  };
+}

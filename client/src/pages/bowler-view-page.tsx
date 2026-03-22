@@ -40,7 +40,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { Bowler, Payment, Team, League, BowlerLeague } from "@shared/schema";
 import { format, isValid, parseISO } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { calculateFinancials, getPaymentSummary } from "@/lib/financial-utils";
+import { calculateBowlerViewFinancials } from "@/lib/financial-utils";
 import { filterActiveBowlerLeagues } from "@/lib/bowler-league-utils";
 
 interface ApiResponse<T> {
@@ -228,16 +228,16 @@ export default function BowlerViewPage() {
     );
   }
 
-  const { totalPaidAmount, totalUnpaidAmount } = getPaymentSummary(payments);
-  const financials = calculateFinancials(league, payments);
   const {
-    weeksPassed: weeksDue,
+    weeksDue,
+    totalSeasonDues,
     totalWeeksInSeason,
-    totalDueToDate: totalSeasonDues,
-    amountPastDue,
     fullSeasonAmount,
+    amountPastDue,
     remainingBalance,
-  } = financials;
+    totalPaidAmount,
+    totalUnpaidAmount,
+  } = calculateBowlerViewFinancials(league, payments);
 
 
   return (
