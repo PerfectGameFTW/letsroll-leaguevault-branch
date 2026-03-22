@@ -154,9 +154,9 @@ router.patch("/:id", paymentWriteLimiter, async (req, res) => {
     const id = parseInt(req.params.id);
     const parsed = updatePaymentSchema.parse(req.body);
 
-    const update: Partial<z.infer<typeof insertPaymentSchema>> = Object.fromEntries(
+    const update = Object.fromEntries(
       Object.entries(parsed).map(([k, v]) => [k, v === null ? undefined : v])
-    );
+    ) as z.infer<typeof updatePaymentSchema>;
 
     // If updating to check payment type, ensure check number is provided
     if (update.type === 'check' && !update.checkNumber) {
