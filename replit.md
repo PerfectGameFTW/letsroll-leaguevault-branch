@@ -267,6 +267,18 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
 - Fixed apiRequest argument order in league form mutations
 - Filtered archived leagues from navigation dropdown
 
+## Testing
+- **Framework**: Vitest (configured in `vitest.config.ts`)
+- **Run tests**: `npx vitest run` (all tests) or `npx vitest run tests/` (integration only)
+- **Watch mode**: `npx vitest`
+- **Test structure**:
+  - `tests/helpers.ts` - Shared test utilities (login, apiGet, apiPost with CSRF support)
+  - `tests/api/organizations.test.ts` - Organization CRUD API tests
+  - `tests/api/organization-isolation.test.ts` - Multi-tenant isolation tests
+  - `server/services/__tests__/square.test.ts` - Square SDK unit tests (vi.mock)
+- **Integration tests** require a running server and seeded users
+- **Seed utility**: `npx tsx scripts/seed.ts <command>` (first-admin | org-admin | system-admin | all)
+
 ## Previous Changes (2026-03-01)
 - Removed dead code: deprecated `server/routes.ts`, `client/src/pages/App.tsx`, unused `series`/`weeklyStats` tables
 - Consolidated authorization: all access control functions in `server/utils/access-control.ts`

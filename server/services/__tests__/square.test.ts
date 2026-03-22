@@ -1,10 +1,9 @@
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   createOrUpdateCustomer,
   processPayment
 } from '../square.js';
 
-// Define response types for type checking
 type ApiResponse<T> = { result: T };
 
 type CustomerResponse = ApiResponse<{
@@ -38,22 +37,20 @@ type PaymentResponse = ApiResponse<{
   };
 }>;
 
-// Create mock client factory with explicit return types
 const createMockClient = () => ({
   customersApi: {
-    searchCustomers: jest.fn<() => Promise<SearchCustomersResponse>>(),
-    updateCustomer: jest.fn<() => Promise<CustomerResponse>>(),
-    createCustomer: jest.fn<() => Promise<CustomerResponse>>(),
+    searchCustomers: vi.fn<() => Promise<SearchCustomersResponse>>(),
+    updateCustomer: vi.fn<() => Promise<CustomerResponse>>(),
+    createCustomer: vi.fn<() => Promise<CustomerResponse>>(),
   },
   paymentsApi: {
-    createPayment: jest.fn<() => Promise<PaymentResponse>>()
+    createPayment: vi.fn<() => Promise<PaymentResponse>>()
   }
 });
 
-// Mock Square SDK
-jest.mock('square', () => ({
+vi.mock('square', () => ({
   __esModule: true,
-  Client: jest.fn().mockImplementation(() => createMockClient()),
+  Client: vi.fn().mockImplementation(() => createMockClient()),
   Environment: {
     Production: 'production',
     Sandbox: 'sandbox'
@@ -64,30 +61,29 @@ describe('Square Service', () => {
   const mockEnv = process.env;
   let mockClient: ReturnType<typeof createMockClient>;
 
-  beforeEach(() => {
-    jest.resetModules();
+  beforeEach(async () => {
+    vi.resetModules();
     process.env = { ...mockEnv };
     process.env.SQUARE_ACCESS_TOKEN = 'test-token';
     process.env.NODE_ENV = 'test';
     mockClient = createMockClient();
-    (jest.requireMock('square') as any).Client.mockImplementation(() => mockClient);
+    const squareMock = await vi.importMock('square') as any;
+    squareMock.Client.mockImplementation(() => mockClient);
   });
 
   afterEach(() => {
     process.env = mockEnv;
-    jest.clearAllMocks();
+    vi.clearAllMocks();
   });
 
   describe('createOrUpdateCustomer', () => {
     it('should create a new customer when one does not exist', async () => {
-      // Mock empty search response
       mockClient.customersApi.searchCustomers.mockResolvedValueOnce({
         result: {
           customers: []
         }
       });
 
-      // Mock successful customer creation
       mockClient.customersApi.createCustomer.mockResolvedValueOnce({
         result: {
           customer: {
@@ -116,7 +112,6 @@ describe('Square Service', () => {
     });
 
     it('should update an existing customer', async () => {
-      // Mock existing customer search response
       mockClient.customersApi.searchCustomers.mockResolvedValueOnce({
         result: {
           customers: [{
@@ -128,7 +123,6 @@ describe('Square Service', () => {
         }
       });
 
-      // Mock successful customer update
       mockClient.customersApi.updateCustomer.mockResolvedValueOnce({
         result: {
           customer: {
