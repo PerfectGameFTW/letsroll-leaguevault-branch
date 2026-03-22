@@ -83,9 +83,14 @@ router.get("/:id/details", async (req, res) => {
     const bowlerLeagues = await storage.getBowlerLeagues({ teamId: id, leagueId: team.leagueId });
 
     const bowlerIds = [...new Set(bowlerLeagues.map(bl => bl.bowlerId))];
-    const bowlers = bowlerIds.length > 0
+    const rawBowlers = bowlerIds.length > 0
       ? await storage.getBowlersByIds(bowlerIds)
       : [];
+
+    const linkedStatuses = await Promise.all(
+      rawBowlers.map(b => storage.isBowlerLinked(b.id))
+    );
+    const bowlers = rawBowlers.map((b, i) => ({ ...b, hasAccount: linkedStatuses[i] }));
 
     sendSuccess(res, { team, league, bowlerLeagues, bowlers });
   } catch (error) {

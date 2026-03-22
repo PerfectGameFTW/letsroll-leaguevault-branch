@@ -96,31 +96,20 @@ export default function PaymentHistoryPage() {
 
   const leagueId = selectedLeagueId ?? bowlerLeagues[0]?.leagueId;
 
-  const { data: allLeaguesResponse } = useQuery<ApiResponse<League[]>>({
-    queryKey: ['/api/leagues'],
-    enabled: !!bowlerId && hasMultipleLeagues,
-    staleTime: 1000 * 60 * 5,
-  });
+  const detailsLeagues = bowlerDetailsResponse?.data?.leagues || [];
 
   const leagueMap = useMemo(() => {
     const map = new Map<number, League>();
-    if (allLeaguesResponse?.data) {
-      for (const l of allLeaguesResponse.data) map.set(l.id, l);
-    }
+    for (const l of detailsLeagues) map.set(l.id, l);
     return map;
-  }, [allLeaguesResponse?.data]);
-
-  const { data: leagueResponse, isLoading: loadingLeague } = useQuery<ApiResponse<League>>({
-    queryKey: [`/api/leagues/${leagueId}`],
-    enabled: !!leagueId,
-  });
+  }, [detailsLeagues]);
 
   const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<ApiResponse<Payment[]>>({
     queryKey: ["/api/payments", bowlerId, leagueId],
     enabled: !!bowlerId && !!leagueId,
   });
 
-  const league = leagueResponse?.data;
+  const league = leagueMap.get(leagueId!);
   const payments = paymentsResponse?.data || [];
   const bowlerName = bowlerDetailsResponse?.data?.bowler?.name || '';
 
@@ -201,7 +190,7 @@ export default function PaymentHistoryPage() {
     }
   };
 
-  if (loadingUser || loadingBowlerDetails || loadingLeague || loadingPayments) {
+  if (loadingUser || loadingBowlerDetails || loadingPayments) {
     return (
       <BowlerLayout bowlerName={bowlerName || 'Loading...'} leagueName={league?.name || 'Loading...'}>
         <PageLoadingState />
