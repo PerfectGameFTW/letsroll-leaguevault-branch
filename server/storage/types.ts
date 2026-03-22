@@ -17,33 +17,47 @@ import type {
   EmailTemplate, InsertEmailTemplate,
 } from "@shared/schema";
 
-export interface IStorage {
+export interface ILeagueStorage {
   getLeagues(organizationId?: number | null): Promise<League[]>;
   getLeague(id: number): Promise<League | undefined>;
+  getLeaguesByIds(ids: number[]): Promise<League[]>;
   createLeague(league: InsertLeague): Promise<League>;
   updateLeague(id: number, league: UpdateLeague): Promise<League>;
   deleteLeague(id: number): Promise<void>;
+  archiveLeague(id: number): Promise<League>;
+  restoreLeague(id: number): Promise<League>;
+  getOrganizationLeagues(organizationId: number): Promise<League[]>;
+}
 
+export interface ITeamStorage {
   getTeams(leagueId?: number): Promise<Team[]>;
   getTeam(id: number): Promise<Team | undefined>;
+  getTeamsByIds(ids: number[]): Promise<Team[]>;
+  getTeamByNumber(leagueId: number, teamNumber: number): Promise<Team | undefined>;
   createTeam(team: InsertTeam): Promise<Team>;
   updateTeam(id: number, team: UpdateTeam): Promise<Team>;
   deleteTeam(id: number): Promise<void>;
+}
 
+export interface IBowlerStorage {
   getBowlers(teamId?: number, organizationId?: number): Promise<Bowler[]>;
   getBowler(id: number): Promise<Bowler | undefined>;
+  getBowlersByIds(ids: number[]): Promise<Bowler[]>;
+  getBowlerByEmail(email: string, organizationId?: number): Promise<Bowler | undefined>;
   createBowler(bowler: InsertBowler): Promise<Bowler>;
   updateBowler(id: number, bowler: UpdateBowler): Promise<Bowler>;
   updateBowlerBnContactId(bowlerId: number, bnContactId: string): Promise<void>;
   deleteBowler(id: number): Promise<void>;
-
   getBowlerLeagues(filters?: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]>;
   getBowlerLeague(id: number): Promise<BowlerLeague | undefined>;
+  getBowlerLeaguesByBowlerIds(bowlerIds: number[]): Promise<BowlerLeague[]>;
   createBowlerLeague(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague>;
   updateBowlerLeague(id: number, bowlerLeague: UpdateBowlerLeague): Promise<BowlerLeague>;
   updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]>;
   deleteBowlerLeague(id: number): Promise<boolean>;
+}
 
+export interface IPaymentStorage {
   getPayments(bowlerId?: number, leagueId?: number, teamId?: number, weekOf?: Date, organizationId?: number): Promise<Payment[]>;
   getPaymentsPaginated(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId?: number }, page: number, limit: number): Promise<PaginatedResult<Payment>>;
   getPaymentById(id: number): Promise<Payment | undefined>;
@@ -52,40 +66,6 @@ export interface IStorage {
   updatePayment(id: number, payment: UpdatePayment): Promise<Payment>;
   refundPayment(id: number, squareRefundId?: string, reason?: string): Promise<Payment>;
   deletePayment(id: number): Promise<void>;
-
-  getGames(leagueId: number, weekNumber?: number): Promise<Game[]>;
-  getGame(id: number): Promise<Game | undefined>;
-  createGame(game: InsertGame): Promise<Game>;
-  updateGame(id: number, game: UpdateGame): Promise<Game>;
-  deleteGame(id: number): Promise<void>;
-
-  getScores(gameId: number, teamId?: number): Promise<Score[]>;
-  getScore(id: number): Promise<Score | undefined>;
-  getBowlerScores(bowlerId: number): Promise<Score[]>;
-  createScore(score: InsertScore): Promise<Score>;
-  updateScore(id: number, score: UpdateScore): Promise<Score>;
-  deleteScore(id: number): Promise<void>;
-
-  createBatchScores(scores: InsertScore[]): Promise<Score[]>;
-  getGameScores(gameId: number): Promise<Score[]>;
-  getTeamByNumber(leagueId: number, teamNumber: number): Promise<Team | undefined>;
-  getScoresByLeagueAndWeek(leagueId: number, weekNumber: number): Promise<Score[]>;
-
-  getUser(id: number): Promise<User | undefined>;
-  getUserByEmail(email: string): Promise<User | undefined>;
-  getUsers(): Promise<User[]>;
-  createUser(user: InsertUser): Promise<User>;
-  updateUser(id: number, userData: UpdateUser): Promise<User>;
-  linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
-  getLinkedBowlerIds(): Promise<number[]>;
-  isBowlerLinked(bowlerId: number): Promise<boolean>;
-  hasAdminUsers(): Promise<boolean>;
-  getLeaguesByIds(ids: number[]): Promise<League[]>;
-  getBowlersByIds(ids: number[]): Promise<Bowler[]>;
-  getTeamsByIds(ids: number[]): Promise<Team[]>;
-  getScoresByGameIds(gameIds: number[]): Promise<Score[]>;
-  getBowlerLeaguesByBowlerIds(bowlerIds: number[]): Promise<BowlerLeague[]>;
-  updateUserRole(userId: number, role: UserRole): Promise<User>;
   createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule>;
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
   getPaymentScheduleById(id: number): Promise<PaymentSchedule | undefined>;
@@ -93,10 +73,44 @@ export interface IStorage {
   deactivatePaymentSchedule(id: number): Promise<void>;
   updatePaymentScheduleFields(id: number, fields: Partial<Pick<PaymentSchedule, 'frequency' | 'amount' | 'nextPaymentDate' | 'squareCardId'>>): Promise<PaymentSchedule>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
+}
 
-  archiveLeague(id: number): Promise<League>;
-  restoreLeague(id: number): Promise<League>;
+export interface IGameScoreStorage {
+  getGames(leagueId: number, weekNumber?: number): Promise<Game[]>;
+  getGame(id: number): Promise<Game | undefined>;
+  createGame(game: InsertGame): Promise<Game>;
+  updateGame(id: number, game: UpdateGame): Promise<Game>;
+  deleteGame(id: number): Promise<void>;
+  getScores(gameId: number, teamId?: number): Promise<Score[]>;
+  getScore(id: number): Promise<Score | undefined>;
+  getScoresByGameIds(gameIds: number[]): Promise<Score[]>;
+  getScoresByLeagueAndWeek(leagueId: number, weekNumber: number): Promise<Score[]>;
+  getBowlerScores(bowlerId: number): Promise<Score[]>;
+  createScore(score: InsertScore): Promise<Score>;
+  updateScore(id: number, score: UpdateScore): Promise<Score>;
+  deleteScore(id: number): Promise<void>;
+  createBatchScores(scores: InsertScore[]): Promise<Score[]>;
+  getGameScores(gameId: number): Promise<Score[]>;
+}
 
+export interface IUserStorage {
+  getUser(id: number): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUsers(): Promise<User[]>;
+  createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, userData: UpdateUser): Promise<User>;
+  updateUserRole(userId: number, role: UserRole): Promise<User>;
+  linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
+  getLinkedBowlerIds(): Promise<number[]>;
+  isBowlerLinked(bowlerId: number): Promise<boolean>;
+  hasAdminUsers(): Promise<boolean>;
+  setUserLocation(userId: number, locationId: number | null): Promise<User>;
+  getUserByInviteToken(token: string): Promise<User | undefined>;
+  setUserInviteToken(userId: number, token: string, expiry: Date): Promise<User>;
+  clearUserInviteToken(userId: number): Promise<User>;
+}
+
+export interface IOrganizationStorage {
   getOrganizations(): Promise<Organization[]>;
   getOrganization(id: number): Promise<Organization | undefined>;
   getOrganizationBySlug(slug: string): Promise<Organization | undefined>;
@@ -107,18 +121,12 @@ export interface IStorage {
   restoreOrganization(id: number): Promise<Organization>;
   getUserOrganizations(userId: number): Promise<Organization[]>;
   setUserOrganization(userId: number, organizationId: number | null): Promise<User>;
-  getOrganizationLeagues(organizationId: number): Promise<League[]>;
+  getOrganizationUsers(organizationId: number): Promise<User[]>;
   getOrgIntegrations(orgId: number): Promise<OrgIntegrations | null>;
   updateOrgIntegrations(orgId: number, integrations: OrgIntegrations): Promise<Organization>;
+}
 
-  getOrganizationUsers(organizationId: number): Promise<User[]>;
-
-  setUserLocation(userId: number, locationId: number | null): Promise<User>;
-  getUserByInviteToken(token: string): Promise<User | undefined>;
-  setUserInviteToken(userId: number, token: string, expiry: Date): Promise<User>;
-  clearUserInviteToken(userId: number): Promise<User>;
-  getBowlerByEmail(email: string, organizationId?: number): Promise<Bowler | undefined>;
-
+export interface ILocationStorage {
   getLocations(organizationId?: number | null): Promise<Location[]>;
   getLocation(id: number): Promise<Location | undefined>;
   createLocation(data: InsertLocation): Promise<Location>;
@@ -129,9 +137,22 @@ export interface IStorage {
   getLocationSquareConfig(locationId: number): Promise<LocationSquareCredentials | null>;
   updateLocationSquareConfig(locationId: number, creds: LocationSquareCredentials): Promise<Location>;
   getFirstSquareConfiguredLocation(orgId: number): Promise<Location | undefined>;
+}
 
+export interface IEmailTemplateStorage {
   getEmailTemplates(): Promise<EmailTemplate[]>;
   getEmailTemplate(id: number): Promise<EmailTemplate | undefined>;
   getEmailTemplateBySlug(slug: string): Promise<EmailTemplate | undefined>;
   updateEmailTemplate(id: number, data: Partial<InsertEmailTemplate>): Promise<EmailTemplate>;
 }
+
+export interface IStorage extends
+  ILeagueStorage,
+  ITeamStorage,
+  IBowlerStorage,
+  IPaymentStorage,
+  IGameScoreStorage,
+  IUserStorage,
+  IOrganizationStorage,
+  ILocationStorage,
+  IEmailTemplateStorage {}

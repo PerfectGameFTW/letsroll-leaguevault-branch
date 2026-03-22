@@ -13,116 +13,131 @@ import * as emailTemplateStorage from "./email-templates";
 export type { IStorage };
 
 export class DatabaseStorage implements IStorage {
-  getLeagues = leagueStorage.getLeagues;
-  getLeague = leagueStorage.getLeague;
-  createLeague = leagueStorage.createLeague;
-  updateLeague = leagueStorage.updateLeague;
-  deleteLeague = leagueStorage.deleteLeague;
-  archiveLeague = leagueStorage.archiveLeague;
-  restoreLeague = leagueStorage.restoreLeague;
-  getOrganizationLeagues = leagueStorage.getOrganizationLeagues;
-  getLeaguesByIds = leagueStorage.getLeaguesByIds;
+  getLeagues!: IStorage["getLeagues"];
+  getLeague!: IStorage["getLeague"];
+  getLeaguesByIds!: IStorage["getLeaguesByIds"];
+  createLeague!: IStorage["createLeague"];
+  updateLeague!: IStorage["updateLeague"];
+  deleteLeague!: IStorage["deleteLeague"];
+  archiveLeague!: IStorage["archiveLeague"];
+  restoreLeague!: IStorage["restoreLeague"];
+  getOrganizationLeagues!: IStorage["getOrganizationLeagues"];
 
-  getTeams = teamStorage.getTeams;
-  getTeam = teamStorage.getTeam;
-  createTeam = teamStorage.createTeam;
-  updateTeam = teamStorage.updateTeam;
-  deleteTeam = teamStorage.deleteTeam;
-  getTeamByNumber = teamStorage.getTeamByNumber;
-  getTeamsByIds = teamStorage.getTeamsByIds;
+  getTeams!: IStorage["getTeams"];
+  getTeam!: IStorage["getTeam"];
+  getTeamsByIds!: IStorage["getTeamsByIds"];
+  getTeamByNumber!: IStorage["getTeamByNumber"];
+  createTeam!: IStorage["createTeam"];
+  updateTeam!: IStorage["updateTeam"];
+  deleteTeam!: IStorage["deleteTeam"];
 
-  getBowlers = bowlerStorage.getBowlers;
-  getBowler = bowlerStorage.getBowler;
-  createBowler = bowlerStorage.createBowler;
-  updateBowler = bowlerStorage.updateBowler;
-  updateBowlerBnContactId = bowlerStorage.updateBowlerBnContactId;
-  deleteBowler = bowlerStorage.deleteBowler;
-  getBowlerLeagues = bowlerStorage.getBowlerLeaguesFiltered;
-  getBowlerLeague = bowlerStorage.getBowlerLeague;
-  createBowlerLeague = bowlerStorage.createBowlerLeague;
-  updateBowlerLeague = bowlerStorage.updateBowlerLeague;
-  updateBowlerLeagueOrder = bowlerStorage.updateBowlerLeagueOrder;
-  deleteBowlerLeague = bowlerStorage.deleteBowlerLeague;
-  getBowlersByIds = bowlerStorage.getBowlersByIds;
-  getBowlerLeaguesByBowlerIds = bowlerStorage.getBowlerLeaguesByBowlerIds;
-  getBowlerByEmail = bowlerStorage.getBowlerByEmail;
+  getBowlers!: IStorage["getBowlers"];
+  getBowler!: IStorage["getBowler"];
+  getBowlersByIds!: IStorage["getBowlersByIds"];
+  getBowlerByEmail!: IStorage["getBowlerByEmail"];
+  createBowler!: IStorage["createBowler"];
+  updateBowler!: IStorage["updateBowler"];
+  updateBowlerBnContactId!: IStorage["updateBowlerBnContactId"];
+  deleteBowler!: IStorage["deleteBowler"];
+  getBowlerLeagues!: IStorage["getBowlerLeagues"];
+  getBowlerLeague!: IStorage["getBowlerLeague"];
+  getBowlerLeaguesByBowlerIds!: IStorage["getBowlerLeaguesByBowlerIds"];
+  createBowlerLeague!: IStorage["createBowlerLeague"];
+  updateBowlerLeague!: IStorage["updateBowlerLeague"];
+  updateBowlerLeagueOrder!: IStorage["updateBowlerLeagueOrder"];
+  deleteBowlerLeague!: IStorage["deleteBowlerLeague"];
 
-  getPayments = paymentStorage.getPayments;
-  getPaymentsPaginated = paymentStorage.getPaymentsPaginated;
-  getPaymentById = paymentStorage.getPaymentById;
-  getPaymentByIdempotencyKey = paymentStorage.getPaymentByIdempotencyKey;
-  createPayment = paymentStorage.createPayment;
-  updatePayment = paymentStorage.updatePayment;
-  refundPayment = paymentStorage.refundPayment;
-  deletePayment = paymentStorage.deletePayment;
-  createPaymentSchedule = paymentStorage.createPaymentSchedule;
-  getPaymentSchedule = paymentStorage.getPaymentSchedule;
-  getPaymentScheduleById = paymentStorage.getPaymentScheduleById;
-  getActiveSchedulesByLeague = paymentStorage.getActiveSchedulesByLeague;
-  deactivatePaymentSchedule = paymentStorage.deactivatePaymentSchedule;
-  updatePaymentScheduleFields = paymentStorage.updatePaymentScheduleFields;
-  updatePaymentScheduleCard = paymentStorage.updatePaymentScheduleCard;
+  getPayments!: IStorage["getPayments"];
+  getPaymentsPaginated!: IStorage["getPaymentsPaginated"];
+  getPaymentById!: IStorage["getPaymentById"];
+  getPaymentByIdempotencyKey!: IStorage["getPaymentByIdempotencyKey"];
+  createPayment!: IStorage["createPayment"];
+  updatePayment!: IStorage["updatePayment"];
+  refundPayment!: IStorage["refundPayment"];
+  deletePayment!: IStorage["deletePayment"];
+  createPaymentSchedule!: IStorage["createPaymentSchedule"];
+  getPaymentSchedule!: IStorage["getPaymentSchedule"];
+  getPaymentScheduleById!: IStorage["getPaymentScheduleById"];
+  getActiveSchedulesByLeague!: IStorage["getActiveSchedulesByLeague"];
+  deactivatePaymentSchedule!: IStorage["deactivatePaymentSchedule"];
+  updatePaymentScheduleFields!: IStorage["updatePaymentScheduleFields"];
+  updatePaymentScheduleCard!: IStorage["updatePaymentScheduleCard"];
 
-  getGames = gameScoreStorage.getGames;
-  getGame = gameScoreStorage.getGame;
-  createGame = gameScoreStorage.createGame;
-  updateGame = gameScoreStorage.updateGame;
-  deleteGame = gameScoreStorage.deleteGame;
-  getScores = gameScoreStorage.getScores;
-  getScore = gameScoreStorage.getScore;
-  getBowlerScores = gameScoreStorage.getBowlerScores;
-  createScore = gameScoreStorage.createScore;
-  updateScore = gameScoreStorage.updateScore;
-  deleteScore = gameScoreStorage.deleteScore;
-  createBatchScores = gameScoreStorage.createBatchScores;
-  getGameScores = gameScoreStorage.getGameScores;
-  getScoresByLeagueAndWeek = gameScoreStorage.getScoresByLeagueAndWeek;
-  getScoresByGameIds = gameScoreStorage.getScoresByGameIds;
+  getGames!: IStorage["getGames"];
+  getGame!: IStorage["getGame"];
+  createGame!: IStorage["createGame"];
+  updateGame!: IStorage["updateGame"];
+  deleteGame!: IStorage["deleteGame"];
+  getScores!: IStorage["getScores"];
+  getScore!: IStorage["getScore"];
+  getScoresByGameIds!: IStorage["getScoresByGameIds"];
+  getScoresByLeagueAndWeek!: IStorage["getScoresByLeagueAndWeek"];
+  getBowlerScores!: IStorage["getBowlerScores"];
+  createScore!: IStorage["createScore"];
+  updateScore!: IStorage["updateScore"];
+  deleteScore!: IStorage["deleteScore"];
+  createBatchScores!: IStorage["createBatchScores"];
+  getGameScores!: IStorage["getGameScores"];
 
-  getUser = userStorage.getUser;
-  getUserByEmail = userStorage.getUserByEmail;
-  getUsers = userStorage.getUsers;
-  createUser = userStorage.createUser;
-  updateUser = userStorage.updateUser;
-  linkUserToBowler = userStorage.linkUserToBowler;
-  getLinkedBowlerIds = userStorage.getLinkedBowlerIds;
-  isBowlerLinked = userStorage.isBowlerLinked;
-  hasAdminUsers = userStorage.hasAdminUsers;
-  updateUserRole = userStorage.updateUserRole;
-  setUserLocation = userStorage.setUserLocation;
-  getUserByInviteToken = userStorage.getUserByInviteToken;
-  setUserInviteToken = userStorage.setUserInviteToken;
-  clearUserInviteToken = userStorage.clearUserInviteToken;
+  getUser!: IStorage["getUser"];
+  getUserByEmail!: IStorage["getUserByEmail"];
+  getUsers!: IStorage["getUsers"];
+  createUser!: IStorage["createUser"];
+  updateUser!: IStorage["updateUser"];
+  updateUserRole!: IStorage["updateUserRole"];
+  linkUserToBowler!: IStorage["linkUserToBowler"];
+  getLinkedBowlerIds!: IStorage["getLinkedBowlerIds"];
+  isBowlerLinked!: IStorage["isBowlerLinked"];
+  hasAdminUsers!: IStorage["hasAdminUsers"];
+  setUserLocation!: IStorage["setUserLocation"];
+  getUserByInviteToken!: IStorage["getUserByInviteToken"];
+  setUserInviteToken!: IStorage["setUserInviteToken"];
+  clearUserInviteToken!: IStorage["clearUserInviteToken"];
 
-  getOrganizations = orgStorage.getOrganizations;
-  getOrganization = orgStorage.getOrganization;
-  getOrganizationBySlug = orgStorage.getOrganizationBySlug;
-  createOrganization = orgStorage.createOrganization;
-  updateOrganization = orgStorage.updateOrganization;
-  deleteOrganization = orgStorage.deleteOrganization;
-  archiveOrganization = orgStorage.archiveOrganization;
-  restoreOrganization = orgStorage.restoreOrganization;
-  getUserOrganizations = orgStorage.getUserOrganizations;
-  setUserOrganization = orgStorage.setUserOrganization;
-  getOrgIntegrations = orgStorage.getOrgIntegrations;
-  updateOrgIntegrations = orgStorage.updateOrgIntegrations;
-  getOrganizationUsers = orgStorage.getOrganizationUsers;
+  getOrganizations!: IStorage["getOrganizations"];
+  getOrganization!: IStorage["getOrganization"];
+  getOrganizationBySlug!: IStorage["getOrganizationBySlug"];
+  createOrganization!: IStorage["createOrganization"];
+  updateOrganization!: IStorage["updateOrganization"];
+  deleteOrganization!: IStorage["deleteOrganization"];
+  archiveOrganization!: IStorage["archiveOrganization"];
+  restoreOrganization!: IStorage["restoreOrganization"];
+  getUserOrganizations!: IStorage["getUserOrganizations"];
+  setUserOrganization!: IStorage["setUserOrganization"];
+  getOrganizationUsers!: IStorage["getOrganizationUsers"];
+  getOrgIntegrations!: IStorage["getOrgIntegrations"];
+  updateOrgIntegrations!: IStorage["updateOrgIntegrations"];
 
-  getLocations = locationStorage.getLocations;
-  getLocation = locationStorage.getLocation;
-  createLocation = locationStorage.createLocation;
-  updateLocation = locationStorage.updateLocation;
-  deleteLocation = locationStorage.deleteLocation;
-  archiveLocation = locationStorage.archiveLocation;
-  restoreLocation = locationStorage.restoreLocation;
-  getLocationSquareConfig = locationStorage.getLocationSquareConfig;
-  updateLocationSquareConfig = locationStorage.updateLocationSquareConfig;
-  getFirstSquareConfiguredLocation = locationStorage.getFirstSquareConfiguredLocation;
+  getLocations!: IStorage["getLocations"];
+  getLocation!: IStorage["getLocation"];
+  createLocation!: IStorage["createLocation"];
+  updateLocation!: IStorage["updateLocation"];
+  deleteLocation!: IStorage["deleteLocation"];
+  archiveLocation!: IStorage["archiveLocation"];
+  restoreLocation!: IStorage["restoreLocation"];
+  getLocationSquareConfig!: IStorage["getLocationSquareConfig"];
+  updateLocationSquareConfig!: IStorage["updateLocationSquareConfig"];
+  getFirstSquareConfiguredLocation!: IStorage["getFirstSquareConfiguredLocation"];
 
-  getEmailTemplates = emailTemplateStorage.getEmailTemplates;
-  getEmailTemplate = emailTemplateStorage.getEmailTemplate;
-  getEmailTemplateBySlug = emailTemplateStorage.getEmailTemplateBySlug;
-  updateEmailTemplate = emailTemplateStorage.updateEmailTemplate;
+  getEmailTemplates!: IStorage["getEmailTemplates"];
+  getEmailTemplate!: IStorage["getEmailTemplate"];
+  getEmailTemplateBySlug!: IStorage["getEmailTemplateBySlug"];
+  updateEmailTemplate!: IStorage["updateEmailTemplate"];
+
+  constructor() {
+    Object.assign(this, {
+      ...leagueStorage,
+      ...teamStorage,
+      ...bowlerStorage,
+      getBowlerLeagues: bowlerStorage.getBowlerLeaguesFiltered,
+      ...paymentStorage,
+      ...gameScoreStorage,
+      ...userStorage,
+      ...orgStorage,
+      ...locationStorage,
+      ...emailTemplateStorage,
+    });
+  }
 }
 
 export const storage = new DatabaseStorage();
