@@ -3,7 +3,6 @@ import { users, userAvatars } from "@shared/schema";
 import { eq, sql, like } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
-import { pool } from "../db";
 import { createLogger } from '../logger';
 
 const log = createLogger("AvatarMigration");
@@ -17,7 +16,7 @@ const MIME_MAP: Record<string, string> = {
 };
 
 export async function ensureUserAvatarsTable(): Promise<void> {
-  await pool.query(`
+  await db.execute(sql`
     CREATE TABLE IF NOT EXISTS user_avatars (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
