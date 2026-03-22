@@ -31,9 +31,9 @@ export interface TeamBowlerEntry {
 export function getTeamBowlers(
   bowlerLeagues: BowlerLeague[],
   bowlers: Bowler[],
-  teamId: number
+  teamId: number | undefined
 ): TeamBowlerEntry[] {
-  if (!bowlerLeagues.length || !bowlers.length) return [];
+  if (!teamId || !bowlerLeagues.length || !bowlers.length) return [];
 
   const uniqueBowlerAssociations = bowlerLeagues
     .filter((bl: BowlerLeague) => bl.active && bl.teamId === teamId)
