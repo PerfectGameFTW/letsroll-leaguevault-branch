@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db.js";
-import { emailTemplates, type EmailTemplate, type InsertEmailTemplate } from "@shared/schema";
+import { emailTemplates, type EmailTemplate, type UpdateEmailTemplate } from "@shared/schema";
 
 export async function getEmailTemplates(): Promise<EmailTemplate[]> {
   return db.select().from(emailTemplates);
@@ -16,7 +16,7 @@ export async function getEmailTemplateBySlug(slug: string): Promise<EmailTemplat
   return result;
 }
 
-export async function updateEmailTemplate(id: number, data: Partial<InsertEmailTemplate>): Promise<EmailTemplate> {
+export async function updateEmailTemplate(id: number, data: UpdateEmailTemplate): Promise<EmailTemplate> {
   const [result] = await db.update(emailTemplates).set(data).where(eq(emailTemplates.id, id)).returning();
   if (!result) {
     throw new Error(`Email template with ID ${id} not found`);

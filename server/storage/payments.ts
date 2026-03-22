@@ -3,7 +3,7 @@ import { db } from "../db.js";
 import {
   payments, paymentSchedules, leagues, bowlerLeagues,
   type Payment, type InsertPayment, type UpdatePayment,
-  type PaymentSchedule, type InsertPaymentSchedule,
+  type PaymentSchedule, type InsertPaymentSchedule, type UpdatePaymentSchedule,
   type PaginatedResult,
 } from "@shared/schema";
 import { createLogger } from '../logger';
@@ -235,7 +235,7 @@ export async function deactivatePaymentSchedule(id: number): Promise<void> {
 
 export async function updatePaymentScheduleFields(
   id: number,
-  fields: Partial<Pick<PaymentSchedule, 'frequency' | 'amount' | 'nextPaymentDate' | 'squareCardId'>>
+  fields: UpdatePaymentSchedule
 ): Promise<PaymentSchedule> {
   const [updated] = await db
     .update(paymentSchedules)

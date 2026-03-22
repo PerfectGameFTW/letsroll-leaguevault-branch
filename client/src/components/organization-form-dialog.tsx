@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
-import type { Organization, InsertOrganization } from '@shared/schema';
+import type { Organization, InsertOrganization, UpdateOrganization } from '@shared/schema';
 
 interface OrganizationFormDialogProps {
   open: boolean;
@@ -69,7 +69,7 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, org }: { id: number; org: Partial<InsertOrganization> }) => {
+    mutationFn: async ({ id, org }: { id: number; org: UpdateOrganization }) => {
       return apiRequest(`/api/organizations/${id}`, 'PATCH', org);
     },
     onSuccess: () => {

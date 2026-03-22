@@ -8,7 +8,6 @@ import {
   insertOrganizationSchema, 
   updateOrganizationSchema, 
   users,
-  type InsertOrganization,
   type Organization
 } from '@shared/schema';
 import { requireAdmin } from '../middleware/admin.js';
@@ -254,27 +253,7 @@ router.patch('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
       }
     }
 
-    // Create a strongly typed object with the correct fields
-    // This ensures null fields are converted to undefined for the storage interface
-    const formattedData: Partial<InsertOrganization> = {
-      name: validatedData.name,
-      slug: validatedData.slug,
-      active: validatedData.active,
-      address: validatedData.address === null ? undefined : validatedData.address,
-      city: validatedData.city === null ? undefined : validatedData.city,
-      state: validatedData.state === null ? undefined : validatedData.state,
-      zipCode: validatedData.zipCode === null ? undefined : validatedData.zipCode,
-      phone: validatedData.phone === null ? undefined : validatedData.phone,
-      email: validatedData.email === null ? undefined : validatedData.email,
-      logo: validatedData.logo === null ? undefined : validatedData.logo
-    };
-
-    // Filter out undefined values to avoid sending unnecessary fields
-    const cleanedData = Object.fromEntries(
-      Object.entries(formattedData).filter(([_, value]) => value !== undefined)
-    ) as Partial<InsertOrganization>;
-
-    const updatedOrganization = await storage.updateOrganization(id, cleanedData);
+    const updatedOrganization = await storage.updateOrganization(id, validatedData);
     sendSuccess(res, sanitizeOrg(updatedOrganization));
   } catch (error) {
     if (error instanceof z.ZodError) {

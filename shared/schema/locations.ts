@@ -57,8 +57,6 @@ export const updateLocationSchema = z.object({
   squareCredentials: locationSquareCredentialsSchema,
 }).partial();
 
-export const partialLocationSchema = updateLocationSchema;
-
 export type Location = typeof locations.$inferSelect;
 export type InsertLocation = z.infer<typeof insertLocationSchema>;
 export type UpdateLocation = z.infer<typeof updateLocationSchema>;

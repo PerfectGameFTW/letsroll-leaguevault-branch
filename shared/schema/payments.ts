@@ -107,9 +107,6 @@ export const updatePaymentScheduleSchema = z.object({
   lastPaymentDate: dateSchema.nullable(),
 }).partial();
 
-export const partialPaymentSchema = updatePaymentSchema;
-export const partialPaymentScheduleSchema = updatePaymentScheduleSchema;
-
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type UpdatePayment = z.infer<typeof updatePaymentSchema>;

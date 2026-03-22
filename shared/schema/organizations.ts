@@ -67,8 +67,6 @@ export const updateOrganizationSchema = z.object({
   integrations: orgIntegrationsSchema,
 }).partial();
 
-export const partialOrganizationSchema = updateOrganizationSchema;
-
 export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 export type UpdateOrganization = z.infer<typeof updateOrganizationSchema>;

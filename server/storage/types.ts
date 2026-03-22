@@ -9,12 +9,12 @@ import type {
   User, InsertUser, UpdateUser,
   Organization, InsertOrganization, UpdateOrganization,
   Location, InsertLocation, UpdateLocation,
-  PaymentSchedule, InsertPaymentSchedule,
+  PaymentSchedule, InsertPaymentSchedule, UpdatePaymentSchedule,
   UserRole,
   OrgIntegrations,
   LocationSquareCredentials,
   PaginatedResult,
-  EmailTemplate, InsertEmailTemplate,
+  EmailTemplate, UpdateEmailTemplate,
 } from "@shared/schema";
 
 export interface ILeagueStorage {
@@ -71,7 +71,7 @@ export interface IPaymentStorage {
   getPaymentScheduleById(id: number): Promise<PaymentSchedule | undefined>;
   getActiveSchedulesByLeague(leagueId: number): Promise<PaymentSchedule[]>;
   deactivatePaymentSchedule(id: number): Promise<void>;
-  updatePaymentScheduleFields(id: number, fields: Partial<Pick<PaymentSchedule, 'frequency' | 'amount' | 'nextPaymentDate' | 'squareCardId'>>): Promise<PaymentSchedule>;
+  updatePaymentScheduleFields(id: number, fields: UpdatePaymentSchedule): Promise<PaymentSchedule>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
 }
 
@@ -143,7 +143,7 @@ export interface IEmailTemplateStorage {
   getEmailTemplates(): Promise<EmailTemplate[]>;
   getEmailTemplate(id: number): Promise<EmailTemplate | undefined>;
   getEmailTemplateBySlug(slug: string): Promise<EmailTemplate | undefined>;
-  updateEmailTemplate(id: number, data: Partial<InsertEmailTemplate>): Promise<EmailTemplate>;
+  updateEmailTemplate(id: number, data: UpdateEmailTemplate): Promise<EmailTemplate>;
 }
 
 export interface IStorage extends

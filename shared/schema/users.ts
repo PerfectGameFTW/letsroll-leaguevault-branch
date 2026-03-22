@@ -55,7 +55,7 @@ export const updateUserSchema = z.object({
   organizationId: z.number().nullable(),
   locationId: z.number().nullable(),
   bowlerId: z.number().nullable(),
-  password: z.string(),
+  password: passwordSchema,
 }).partial();
 
 export type User = typeof users.$inferSelect;

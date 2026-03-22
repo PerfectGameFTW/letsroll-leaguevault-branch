@@ -101,9 +101,6 @@ export const updateScoreSchema = z.object({
   notes: z.array(z.string().max(500)),
 }).partial();
 
-export const partialGameSchema = updateGameSchema;
-export const partialScoreSchema = updateScoreSchema;
-
 export type Game = typeof games.$inferSelect;
 export type InsertGame = z.infer<typeof insertGameSchema>;
 export type UpdateGame = z.infer<typeof updateGameSchema>;
