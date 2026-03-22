@@ -35,6 +35,8 @@ A full-stack bowling league management application with multi-tenant support for
 - `client/src/components/organization-confirm-dialogs.tsx` - Extracted from organizations-page.tsx
 - `client/src/components/payment-summary-cards.tsx` - Extracted from payment-history-page.tsx
 - `client/src/components/payment-overview-card.tsx` - Extracted from payment-status-section.tsx
+- `client/src/components/league-square-catalog.tsx` - Extracted Square catalog section from league-form.tsx
+- `client/src/components/payment-credit-card-section.tsx` - Extracted credit card UI from payment-form.tsx
 - `client/src/hooks/` - Custom React hooks
 - `client/src/lib/financial-utils.ts` - Shared financial calculation utilities (weeks, dues, past-due)
 

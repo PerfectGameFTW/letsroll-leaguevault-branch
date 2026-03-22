@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,19 +21,38 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editId = editOrg?.id ?? null;
 
-  const [name, setName] = useState(editOrg?.name ?? '');
-  const [slug, setSlug] = useState(editOrg?.slug ?? '');
-  const [address, setAddress] = useState(editOrg?.address ?? '');
-  const [city, setCity] = useState(editOrg?.city ?? '');
-  const [state, setState] = useState(editOrg?.state ?? '');
-  const [zipCode, setZipCode] = useState(editOrg?.zipCode ?? '');
-  const [phone, setPhone] = useState(editOrg?.phone ?? '');
-  const [email, setEmail] = useState(editOrg?.email ?? '');
-  const [logo, setLogo] = useState<string | null>(editOrg?.logo ?? null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(editOrg?.logo ?? null);
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [zipCode, setZipCode] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [logo, setLogo] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPhone, setAdminPhone] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setName(editOrg?.name ?? '');
+      setSlug(editOrg?.slug ?? '');
+      setAddress(editOrg?.address ?? '');
+      setCity(editOrg?.city ?? '');
+      setState(editOrg?.state ?? '');
+      setZipCode(editOrg?.zipCode ?? '');
+      setPhone(editOrg?.phone ?? '');
+      setEmail(editOrg?.email ?? '');
+      setLogo(editOrg?.logo ?? null);
+      setLogoPreview(editOrg?.logo ?? null);
+      setAdminName('');
+      setAdminEmail('');
+      setAdminPhone('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }, [open, editOrg]);
 
   const createMutation = useMutation<any, Error, InsertOrganization, unknown>({
     mutationFn: async (org: InsertOrganization) => {

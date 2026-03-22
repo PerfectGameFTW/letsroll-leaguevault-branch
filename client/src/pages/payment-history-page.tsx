@@ -33,6 +33,7 @@ import { queryClient } from "@/lib/queryClient";
 import { calculateFinancials } from "@/lib/financial-utils";
 import { formatCurrency } from "@/lib/utils";
 import { PaymentSummaryCards } from "@/components/payment-summary-cards";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 export default function PaymentHistoryPage() {
   const { toast } = useToast();
@@ -363,6 +364,7 @@ export default function PaymentHistoryPage() {
           </p>
         </div>
 
+        <ErrorBoundary level="section">
         <PaymentSummaryCards
           totalWeeksInSeason={totalWeeksInSeason}
           fullSeasonAmount={fullSeasonAmount}
@@ -378,7 +380,9 @@ export default function PaymentHistoryPage() {
           onPayPastDue={() => setPayDialogType('pastdue')}
           onPayRemaining={() => setPayDialogType('remaining')}
         />
+        </ErrorBoundary>
 
+        <ErrorBoundary level="section">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Dialog open={!!payDialogType} onOpenChange={(open) => !open && setPayDialogType(null)}>
             <DialogContent className="sm:max-w-md">
@@ -489,8 +493,9 @@ export default function PaymentHistoryPage() {
             </DialogContent>
           </Dialog>
         </div>
+        </ErrorBoundary>
 
-        {/* Payment History Table */}
+        <ErrorBoundary level="section">
         <Card>
           <CardHeader>
             <CardTitle>Payment History</CardTitle>
@@ -564,6 +569,7 @@ export default function PaymentHistoryPage() {
             </Table>
           </CardContent>
         </Card>
+        </ErrorBoundary>
       </div>
     </BowlerLayout>
   );

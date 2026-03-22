@@ -14,6 +14,7 @@ import { Layout } from "@/components/layout";
 import { Badge } from '@/components/ui/badge';
 import { OrganizationFormDialog } from '@/components/organization-form-dialog';
 import { OrganizationConfirmDialogs } from '@/components/organization-confirm-dialogs';
+import { ErrorBoundary } from '@/components/error-boundary';
 
 export default function OrganizationsPage() {
   const [open, setOpen] = useState(false);
@@ -141,6 +142,7 @@ export default function OrganizationsPage() {
           </Button>
         </div>
 
+        <ErrorBoundary level="section">
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -247,7 +249,9 @@ export default function OrganizationsPage() {
             </Table>
           </CardContent>
         </Card>
+        </ErrorBoundary>
 
+        <ErrorBoundary level="section">
         <OrganizationFormDialog
           open={open}
           onClose={() => { setOpen(false); setEditOrg(null); }}
@@ -261,6 +265,7 @@ export default function OrganizationsPage() {
           setDeleteConfirmId={setDeleteConfirmId}
           organizations={organizations}
         />
+        </ErrorBoundary>
       </div>
     </Layout>
   );
