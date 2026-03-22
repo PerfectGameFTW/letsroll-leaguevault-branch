@@ -276,8 +276,10 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
   - `tests/api/organizations.test.ts` - Organization CRUD API tests
   - `tests/api/organization-isolation.test.ts` - Multi-tenant isolation tests
   - `server/services/__tests__/square.test.ts` - Square SDK unit tests (vi.mock)
-- **Integration tests** require a running server and seeded users
-- **Seed utility**: `npx tsx scripts/seed.ts <command>` (first-admin | org-admin | system-admin | all)
+- **Unit tests**: `npm test -- server/` (runs without external deps)
+- **Integration tests**: `npm test -- tests/` (requires running server + seeded users)
+  - Prerequisite: `npx tsx scripts/seed.ts all` to create test users
+- **Seed utility**: `npx tsx scripts/seed.ts <command>` (first-admin | org-admin | system-admin \<ID\> | all)
 
 ## Previous Changes (2026-03-01)
 - Removed dead code: deprecated `server/routes.ts`, `client/src/pages/App.tsx`, unused `series`/`weeklyStats` tables
