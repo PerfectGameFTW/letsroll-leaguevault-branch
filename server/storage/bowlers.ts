@@ -100,18 +100,20 @@ export async function getBowlerLeague(id: number): Promise<BowlerLeague | undefi
 }
 
 export async function createBowlerLeague(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague> {
-  const [maxOrder] = await db
-    .select({ maxOrder: sql<number>`max(${bowlerLeagues.order})` })
-    .from(bowlerLeagues)
-    .where(eq(bowlerLeagues.teamId, bowlerLeague.teamId));
+  return db.transaction(async (tx) => {
+    const [maxOrder] = await tx
+      .select({ maxOrder: sql<number>`max(${bowlerLeagues.order})` })
+      .from(bowlerLeagues)
+      .where(eq(bowlerLeagues.teamId, bowlerLeague.teamId));
 
-  const order = (maxOrder?.maxOrder ?? -1) + 1;
+    const order = (maxOrder?.maxOrder ?? -1) + 1;
 
-  const [result] = await db
-    .insert(bowlerLeagues)
-    .values({ ...bowlerLeague, order })
-    .returning();
-  return result;
+    const [result] = await tx
+      .insert(bowlerLeagues)
+      .values({ ...bowlerLeague, order })
+      .returning();
+    return result;
+  });
 }
 
 export async function updateBowlerLeague(id: number, bowlerLeague: UpdateBowlerLeague): Promise<BowlerLeague> {
@@ -124,36 +126,38 @@ export async function updateBowlerLeague(id: number, bowlerLeague: UpdateBowlerL
 }
 
 export async function updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]> {
-  const [targetBowlerLeague] = await db
-    .select()
-    .from(bowlerLeagues)
-    .where(eq(bowlerLeagues.id, id));
+  return db.transaction(async (tx) => {
+    const [targetBowlerLeague] = await tx
+      .select()
+      .from(bowlerLeagues)
+      .where(eq(bowlerLeagues.id, id));
 
-  if (!targetBowlerLeague) {
-    throw new Error('Bowler league not found');
-  }
+    if (!targetBowlerLeague) {
+      throw new Error('Bowler league not found');
+    }
 
-  const bowlerLeaguesInTeam = await db
-    .select()
-    .from(bowlerLeagues)
-    .where(eq(bowlerLeagues.teamId, targetBowlerLeague.teamId))
-    .orderBy(bowlerLeagues.order);
+    const bowlerLeaguesInTeam = await tx
+      .select()
+      .from(bowlerLeagues)
+      .where(eq(bowlerLeagues.teamId, targetBowlerLeague.teamId))
+      .orderBy(bowlerLeagues.order);
 
-  const updatedBowlerLeagues = bowlerLeaguesInTeam.map((bl, index) => ({
-    ...bl,
-    order: bl.id === id ? newOrder : index >= newOrder ? index + 1 : index,
-  }));
+    const updatedBowlerLeagues = bowlerLeaguesInTeam.map((bl, index) => ({
+      ...bl,
+      order: bl.id === id ? newOrder : index >= newOrder ? index + 1 : index,
+    }));
 
-  const promises = updatedBowlerLeagues.map((bl) =>
-    db
-      .update(bowlerLeagues)
-      .set({ order: bl.order })
-      .where(eq(bowlerLeagues.id, bl.id))
-      .returning()
-  );
+    const promises = updatedBowlerLeagues.map((bl) =>
+      tx
+        .update(bowlerLeagues)
+        .set({ order: bl.order })
+        .where(eq(bowlerLeagues.id, bl.id))
+        .returning()
+    );
 
-  const results = await Promise.all(promises);
-  return results.map((result) => result[0]);
+    const results = await Promise.all(promises);
+    return results.map((result) => result[0]);
+  });
 }
 
 export async function deleteBowlerLeague(id: number): Promise<boolean> {

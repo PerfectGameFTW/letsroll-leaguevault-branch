@@ -50,8 +50,10 @@ export async function updateLocation(id: number, data: UpdateLocation): Promise<
 }
 
 export async function deleteLocation(id: number): Promise<void> {
-  await db.update(leagues).set({ locationId: null }).where(eq(leagues.locationId, id));
-  await db.delete(locations).where(eq(locations.id, id));
+  await db.transaction(async (tx) => {
+    await tx.update(leagues).set({ locationId: null }).where(eq(leagues.locationId, id));
+    await tx.delete(locations).where(eq(locations.id, id));
+  });
 }
 
 export async function archiveLocation(id: number): Promise<Location> {

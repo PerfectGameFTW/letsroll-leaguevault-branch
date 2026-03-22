@@ -46,15 +46,17 @@ export async function restoreOrganization(id: number): Promise<Organization> {
 }
 
 export async function deleteOrganization(id: number): Promise<void> {
-  const orgLeagues = await db.select({ id: leagues.id }).from(leagues).where(eq(leagues.organizationId, id));
-  const leagueIds = orgLeagues.map(l => l.id);
-  if (leagueIds.length > 0) {
-    for (const leagueId of leagueIds) {
-      await db.delete(leagues).where(eq(leagues.id, leagueId));
+  await db.transaction(async (tx) => {
+    const orgLeagues = await tx.select({ id: leagues.id }).from(leagues).where(eq(leagues.organizationId, id));
+    const leagueIds = orgLeagues.map(l => l.id);
+    if (leagueIds.length > 0) {
+      for (const leagueId of leagueIds) {
+        await tx.delete(leagues).where(eq(leagues.id, leagueId));
+      }
     }
-  }
-  await db.update(users).set({ organizationId: null, role: 'user' }).where(eq(users.organizationId, id));
-  await db.delete(organizations).where(eq(organizations.id, id));
+    await tx.update(users).set({ organizationId: null, role: 'user' }).where(eq(users.organizationId, id));
+    await tx.delete(organizations).where(eq(organizations.id, id));
+  });
 }
 
 export async function getUserOrganizations(userId: number): Promise<Organization[]> {
