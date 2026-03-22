@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, type RefObject } from "react";
+import { type MutableRefObject, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -36,9 +36,9 @@ interface PaymentCreditCardSectionProps {
   isSquareReady: boolean;
   squareError: string | null;
   squareLoadFailed: boolean;
-  cardContainerRef: RefObject<HTMLDivElement | null>;
+  cardContainerRef: React.RefObject<HTMLDivElement>;
   onCleanupCard: () => void;
-  initializationAttempted: RefObject<boolean>;
+  initializationAttempted: MutableRefObject<boolean>;
   setIsSquareReady: (ready: boolean) => void;
 }
 

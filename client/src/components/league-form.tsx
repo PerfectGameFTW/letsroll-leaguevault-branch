@@ -578,7 +578,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                 {activeLocations.length > 0 && (
                   <LeagueSquareCatalog
                     form={form}
-                    locationId={watchedLocationId}
+                    locationId={watchedLocationId ?? null}
                     selectedCategoryId={selectedCategoryId}
                     onCategoryChange={setSelectedCategoryId}
                   />

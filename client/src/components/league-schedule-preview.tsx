@@ -5,7 +5,7 @@ interface ScheduleDate {
   date: Date;
   isoDate: string;
   type: 'normal' | 'skip' | 'cancelled';
-  bowlingWeekNumber: number;
+  bowlingWeekNumber: number | null;
 }
 
 interface LeagueSchedulePreviewProps {
