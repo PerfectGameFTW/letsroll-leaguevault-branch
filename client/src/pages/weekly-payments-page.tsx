@@ -254,9 +254,7 @@ export default function WeeklyPaymentsPage() {
             </CardHeader>
             <CardContent className="pt-6">
               {loadingPayments || loadingBowlers ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                </div>
+                <PageLoadingState fullPage={false} />
               ) : (
                 <div className="space-y-6">
                   <div className="rounded-md border">
