@@ -114,7 +114,7 @@ router.get("/avatar/:userId", async (req: Request, res: Response) => {
 
     const files = fs.readdirSync(AVATARS_DIR).filter(f => f.startsWith(`${userId}.`));
     if (files.length > 0) {
-      return res.redirect(301, `/uploads/avatars/${files[0]}`);
+      return res.redirect(302, `/uploads/avatars/${files[0]}`);
     }
 
     return sendError(res, "Avatar not found", 404, "NOT_FOUND");

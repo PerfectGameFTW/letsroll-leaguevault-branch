@@ -92,10 +92,17 @@ export async function migrateApiUrlsToDiskUrls(): Promise<void> {
 
   log.info(`Found ${usersWithApiUrls.length} users with old /api/user/avatar/ URLs to update`);
 
+  const PREFERRED_EXTS = ["jpg", "png", "webp", "gif"];
+
   for (const user of usersWithApiUrls) {
     const files = fs.readdirSync(AVATARS_DIR).filter(f => f.startsWith(`${user.id}.`));
     if (files.length > 0) {
-      const avatarUrl = `/uploads/avatars/${files[0]}`;
+      const sorted = files.sort((a, b) => {
+        const extA = a.split('.').pop() || '';
+        const extB = b.split('.').pop() || '';
+        return PREFERRED_EXTS.indexOf(extA) - PREFERRED_EXTS.indexOf(extB);
+      });
+      const avatarUrl = `/uploads/avatars/${sorted[0]}`;
       await db.update(users).set({ avatar: avatarUrl }).where(eq(users.id, user.id));
       log.info(`Updated avatar URL for user ${user.id} to ${avatarUrl}`);
     } else {
