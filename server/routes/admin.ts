@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage';
-import { sendSuccess, sendError } from '../utils/api';
+import { sendSuccess, sendError, handleZodError } from '../utils/api';
 import { z } from 'zod';
 import { User as SelectUser, updateEmailTemplateSchema } from '@shared/schema';
 import { requireAdmin } from '../middleware/admin';
@@ -49,12 +49,9 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
   } catch (error) {
     log.error('Error updating admin status:', error);
     if (error instanceof z.ZodError) {
-      // Convert Zod validation error to a readable format
-      const validationErrors = error.errors.map(err => `${err.path.join('.')}: ${err.message}`).join(', ');
-      sendError(res, validationErrors, 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to update admin status');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to update admin status');
   }
 });
 
@@ -160,7 +157,7 @@ router.patch('/email-templates/:id', requireAdmin, async (req, res) => {
     sendSuccess(res, updated);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return sendError(res, 'Invalid template data', 400, 'ValidationError');
+      return handleZodError(res, error);
     }
     log.error('Error updating email template:', error);
     sendError(res, error instanceof Error ? error.message : 'Failed to update email template');

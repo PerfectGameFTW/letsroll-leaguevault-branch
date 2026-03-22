@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
 import { insertLocationSchema, updateLocationSchema, locationSquareCredentialsSchema } from '@shared/schema';
 import { filterByOrganization } from '../middleware/organization.js';
@@ -70,7 +70,7 @@ router.post('/', async (req: any, res) => {
     sendSuccess(res, location, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return sendError(res, 'Invalid location data', 400, 'ValidationError');
+      return handleZodError(res, error);
     }
     log.error('Error creating location:', error);
     sendError(res, 'Failed to create location', 500, 'ServerError');
@@ -104,7 +104,7 @@ router.patch('/:id', async (req: any, res) => {
     sendSuccess(res, updatedLocation);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return sendError(res, 'Invalid location data', 400, 'ValidationError');
+      return handleZodError(res, error);
     }
     log.error(`Error updating location with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to update location', 500, 'ServerError');

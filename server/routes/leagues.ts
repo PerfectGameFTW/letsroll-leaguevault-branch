@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { storage } from '../storage';
 import { insertLeagueSchema, updateLeagueSchema } from "@shared/schema";
 import { z } from "zod";
-import { sendSuccess, sendError } from '../utils/api';
+import { sendSuccess, sendError, handleZodError } from '../utils/api';
 import { requireOrganizationAccess } from '../utils/access-control';
 import { getOrganizationFilter, filterByOrganization } from '../middleware/organization';
 import { hashPassword } from '../auth';
@@ -125,10 +125,9 @@ router.post("/", async (req: any, res) => {
     sendSuccess(res, created, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, 'Validation error', 400, 'VALIDATION_ERROR', error.format());
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to create league');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to create league');
   }
 });
 
@@ -240,10 +239,9 @@ router.patch("/:id", async (req: any, res) => {
     sendSuccess(res, updated);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, 'Validation error', 400, 'VALIDATION_ERROR', error.format());
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to update league');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to update league');
   }
 });
 

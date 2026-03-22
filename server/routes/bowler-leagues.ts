@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { storage } from '../storage';
 import { insertBowlerLeagueSchema, updateBowlerLeagueSchema } from "@shared/schema";
 import { z } from "zod";
-import { sendSuccess, sendError } from '../utils/api';
+import { sendSuccess, sendError, handleZodError } from '../utils/api';
 import { hasAccessToLeague, hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
 import { createLogger } from '../logger';
 
@@ -125,10 +125,9 @@ router.post("/", async (req, res) => {
   } catch (error) {
     log.error('Error:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, "Validation error", 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to create bowler league');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to create bowler league');
   }
 });
 
@@ -170,10 +169,9 @@ router.patch("/:id", async (req, res) => {
   } catch (error) {
     log.error('Error:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, "Validation error", 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league');
   }
 });
 

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { sendSuccess, sendError } from '../utils/api';
+import { sendSuccess, sendError, handleZodError } from '../utils/api';
 import { z } from 'zod';
 import { User as SelectUser } from '@shared/schema';
 import { hasAccessToBowler } from '../utils/access-control.js';
@@ -45,10 +45,9 @@ router.post('/link-bowler', requireAuth, async (req, res) => {
     sendSuccess(res, updatedUser);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, error.errors.map(e => e.message).join(', '), 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to link bowler to user');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to link bowler to user');
   }
 });
 

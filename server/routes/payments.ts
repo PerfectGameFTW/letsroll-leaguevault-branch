@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { storage } from '../storage';
 import { insertPaymentSchema, updatePaymentSchema } from "@shared/schema";
 import { z } from "zod";
-import { sendSuccess, sendError, sendPaginatedSuccess, parsePaginationParams } from '../utils/api.js';
+import { sendSuccess, sendError, sendPaginatedSuccess, parsePaginationParams, handleZodError } from '../utils/api.js';
 import { refundPayment as squareRefund } from '../services/square.js';
 import { hasAccessToPayment, requireOrganizationAccess } from '../utils/access-control.js';
 import { paymentWriteLimiter } from '../middleware/rate-limit.js';
@@ -148,10 +148,9 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
   } catch (error) {
     log.error('Create error:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, error.errors.map(e => e.message).join(', '), 400, "VALIDATION_ERROR");
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to create payment');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to create payment');
   }
 });
 
@@ -187,10 +186,9 @@ router.patch("/:id", paymentWriteLimiter, async (req, res) => {
   } catch (error) {
     log.error('Update error:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, error.errors.map(e => e.message).join(', '), 400, "VALIDATION_ERROR");
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to update payment');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to update payment');
   }
 });
 

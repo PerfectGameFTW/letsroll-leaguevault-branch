@@ -58,6 +58,10 @@ export function parsePaginationParams(query: Record<string, any>): { page: numbe
   return { page: safePage, limit: safeLimit };
 }
 
+export function handleZodError(res: Response, error: ZodError) {
+  sendError(res, 'Validation error', 400, 'VALIDATION_ERROR', error.format());
+}
+
 export function sendError(
   res: Response,
   message: string,

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { storage } from '../storage';
 import { insertTeamSchema, updateTeamSchema, type Team } from "@shared/schema";
 import { z } from "zod";
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 
 const router = Router();
 
@@ -113,10 +113,9 @@ router.post("/", async (req, res) => {
     sendSuccess(res, created, 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, error.errors.map(e => e.message).join(', '), 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to create team');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to create team');
   }
 });
 
@@ -153,10 +152,9 @@ router.patch("/:id", async (req, res) => {
     sendSuccess(res, updated);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      sendError(res, error.errors.map(e => e.message).join(', '), 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to update team');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to update team');
   }
 });
 

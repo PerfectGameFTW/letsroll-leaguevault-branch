@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { storage } from '../storage';
 import { insertBowlerSchema, updateBowlerSchema } from "@shared/schema";
 import { z } from "zod";
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { createOrUpdateCustomer } from '../services/square.js';
 import { hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
@@ -308,10 +308,9 @@ router.post("/", async (req, res) => {
   } catch (error) {
     log.error('Error creating bowler:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, error.errors.map(e => e.message).join(', '), 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to create bowler');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to create bowler');
   }
 });
 
@@ -386,10 +385,9 @@ router.patch("/:id", async (req, res) => {
   } catch (error) {
     log.error('Error updating bowler:', error);
     if (error instanceof z.ZodError) {
-      sendError(res, error.errors.map(e => e.message).join(', '), 400);
-    } else {
-      sendError(res, error instanceof Error ? error.message : 'Failed to update bowler');
+      return handleZodError(res, error);
     }
+    sendError(res, error instanceof Error ? error.message : 'Failed to update bowler');
   }
 });
 

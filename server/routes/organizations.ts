@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
-import { sendSuccess, sendError, sanitizeUser, sanitizeOrg, sanitizeOrgs } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser, sanitizeOrg, sanitizeOrgs, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
 import { 
   insertOrganizationSchema, 
@@ -221,9 +221,7 @@ router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res
     sendSuccess(res, sanitizeOrg(organization), 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const fieldErrors = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
-      log.error('Validation error:', fieldErrors);
-      return sendError(res, `Invalid organization data: ${fieldErrors}`, 400, 'ValidationError');
+      return handleZodError(res, error);
     }
     log.error('Error creating organization:', error);
     sendError(res, 'Failed to create organization', 500, 'ServerError');
@@ -257,7 +255,7 @@ router.patch('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
     sendSuccess(res, sanitizeOrg(updatedOrganization));
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return sendError(res, 'Invalid organization data', 400, 'ValidationError');
+      return handleZodError(res, error);
     }
     log.error(`Error updating organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to update organization', 500, 'ServerError');
@@ -375,7 +373,7 @@ router.post('/user/:userId/set', requireAdmin, adminWriteLimiter, async (req, re
     sendSuccess(res, updatedUser);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return sendError(res, 'Invalid data', 400, 'ValidationError');
+      return handleZodError(res, error);
     }
     log.error(`Error setting organization for user ${req.params.userId}:`, error);
     sendError(res, 'Failed to set user organization', 500, 'ServerError');

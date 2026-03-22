@@ -6,9 +6,6 @@ import {
   type PaymentSchedule, type InsertPaymentSchedule, type UpdatePaymentSchedule,
   type PaginatedResult,
 } from "@shared/schema";
-import { createLogger } from '../logger';
-
-const log = createLogger("StoragePayments");
 
 interface PaymentFilters {
   bowlerId?: number;
@@ -62,44 +59,17 @@ function buildPaymentConditions(filters: AllPaymentFilters) {
 }
 
 export async function getPayments(filters: PaymentFilters): Promise<Payment[]> {
-  try {
-    log.info('Getting payments with filters:', {
-      bowlerId: filters.bowlerId,
-      leagueId: filters.leagueId,
-      teamId: filters.teamId,
-      weekOf: filters.weekOf?.toISOString(),
-      organizationId: filters.organizationId,
-    });
+  const conditions = buildPaymentConditions(filters);
 
-    const conditions = buildPaymentConditions(filters);
+  const query = db.select().from(payments);
 
-    const query = db.select().from(payments);
-
-    if (conditions.length > 0) {
-      query.where(and(...conditions));
-    }
-
-    query.orderBy(desc(payments.weekOf));
-
-    const results = await query;
-
-    log.info('Payment query results:', {
-      count: results.length,
-      samples: results.slice(0, 2).map(p => ({
-        id: p.id,
-        amount: p.amount,
-        bowlerId: p.bowlerId,
-        type: p.type,
-        status: p.status,
-        weekOf: p.weekOf
-      }))
-    });
-
-    return results;
-  } catch (error) {
-    log.error('Error getting payments:', error);
-    throw error;
+  if (conditions.length > 0) {
+    query.where(and(...conditions));
   }
+
+  query.orderBy(desc(payments.weekOf));
+
+  return query;
 }
 
 export async function getAllPayments(filters?: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date }): Promise<Payment[]> {
@@ -286,34 +256,14 @@ export async function updatePaymentScheduleFields(
 }
 
 export async function updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void> {
-  try {
-    log.info('Updating payment schedule card:', {
-      bowlerId,
-      leagueId,
-      cardIdLength: cardId.length
-    });
-
-    await db
-      .update(paymentSchedules)
-      .set({ squareCardId: cardId })
-      .where(
-        and(
-          eq(paymentSchedules.bowlerId, bowlerId),
-          eq(paymentSchedules.leagueId, leagueId),
-          eq(paymentSchedules.active, true)
-        )
-      );
-
-    log.info('Successfully updated payment schedule card');
-  } catch (error) {
-    log.error('Error updating payment schedule card:', {
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error,
-      input: { bowlerId, leagueId, cardIdLength: cardId.length }
-    });
-    throw error;
-  }
+  await db
+    .update(paymentSchedules)
+    .set({ squareCardId: cardId })
+    .where(
+      and(
+        eq(paymentSchedules.bowlerId, bowlerId),
+        eq(paymentSchedules.leagueId, leagueId),
+        eq(paymentSchedules.active, true)
+      )
+    );
 }

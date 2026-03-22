@@ -5,9 +5,6 @@ import {
   type Bowler, type InsertBowler, type UpdateBowler,
   type BowlerLeague, type InsertBowlerLeague, type UpdateBowlerLeague,
 } from "@shared/schema";
-import { createLogger } from '../logger';
-
-const log = createLogger("StorageBowlers");
 
 const bowlerColumns = {
   id: bowlers.id,
@@ -163,15 +160,10 @@ export async function updateBowlerLeagueOrder(id: number, newOrder: number): Pro
 }
 
 export async function deleteBowlerLeague(id: number): Promise<boolean> {
-  try {
-    const result = await db.delete(bowlerLeagues)
-      .where(eq(bowlerLeagues.id, id))
-      .returning();
-    return result.length > 0;
-  } catch (error) {
-    log.error('Error deleting bowler league:', error);
-    return false;
-  }
+  const result = await db.delete(bowlerLeagues)
+    .where(eq(bowlerLeagues.id, id))
+    .returning();
+  return result.length > 0;
 }
 
 export async function getBowlersByIds(ids: number[]): Promise<Bowler[]> {
