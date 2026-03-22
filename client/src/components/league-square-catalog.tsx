@@ -97,17 +97,19 @@ export function LeagueSquareCatalog({
     return null;
   };
 
-  if (!locationId) return null;
-
   return (
     <div className="space-y-3 rounded-lg border p-3">
       <div className="text-sm font-medium">Square Catalog Items</div>
 
-      {isLoadingCatalog && (
+      {!locationId && (
+        <p className="text-sm text-muted-foreground">Select a location first to load Square catalog items.</p>
+      )}
+
+      {locationId && isLoadingCatalog && (
         <p className="text-sm text-muted-foreground">Loading catalog items&hellip;</p>
       )}
 
-      {!isLoadingCatalog && !hasCatalogItems && (
+      {locationId && !isLoadingCatalog && !hasCatalogItems && (
         <p className="text-sm text-muted-foreground">No Square catalog items found for this location. Make sure Square credentials are configured in the integrations settings.</p>
       )}
 
