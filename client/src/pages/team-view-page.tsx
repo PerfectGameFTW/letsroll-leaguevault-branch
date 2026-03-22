@@ -19,6 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { Loader2, Plus, ArrowLeft, Pencil, Trash2, CheckCircle2 } from "lucide-react";
+import { PageLoadingState, PageErrorState } from "@/components/page-states";
 import type { Team, Bowler, League, BowlerLeague, ApiResponse } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { useForm } from "react-hook-form";
@@ -219,9 +220,7 @@ export default function TeamViewPage() {
   if (teamError) {
     return (
       <Layout>
-        <div className="p-4 rounded-md bg-destructive/10 text-destructive">
-          <p className="font-medium">Error loading team: {teamError.message}</p>
-        </div>
+        <PageErrorState message={`Error loading team: ${teamError.message}`} />
       </Layout>
     );
   }
@@ -234,14 +233,11 @@ export default function TeamViewPage() {
     );
   }
 
-  // Show loading state
   const isLoading = loadingTeam || loadingBowlers || loadingBowlerLeagues || loadingLeague;
   if (isLoading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }

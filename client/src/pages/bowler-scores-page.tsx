@@ -11,7 +11,8 @@ import {
   TableRow,
 } from "@/components/ui/table.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card.js";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { PageLoadingState, PageErrorState } from "@/components/page-states";
 import type { Score, Bowler } from "@shared/schema";
 import { format } from "date-fns";
 import { Link, useParams } from "wouter";
@@ -130,9 +131,7 @@ export default function BowlerScoresPage() {
   if (isLoading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }
@@ -192,9 +191,7 @@ export default function BowlerScoresPage() {
         <Card>
           <CardContent className="pt-6">
             {scoresError ? (
-              <div className="text-center text-destructive py-8">
-                Error loading scores: {scoresError.message}
-              </div>
+              <PageErrorState message={`Error loading scores: ${scoresError.message}`} />
             ) : weeklyScores.length > 0 ? (
               <Table>
                 <TableHeader>

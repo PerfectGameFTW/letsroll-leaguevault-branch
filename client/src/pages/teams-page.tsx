@@ -13,7 +13,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, ArrowLeft } from "lucide-react";
+import { Plus, ArrowLeft } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import type { Team, League } from "@shared/schema";
 import { useParams, Link } from "wouter";
 
@@ -57,9 +58,7 @@ export default function TeamsPage() {
   if (loadingLeague || loadingTeams) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }

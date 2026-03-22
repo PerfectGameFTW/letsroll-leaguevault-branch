@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import { startOfToday } from "date-fns";
 import type { League, Payment, Bowler, BowlerLeague, ApiResponse } from "@shared/schema";
 import { useTeams } from "@/hooks/use-teams";
@@ -157,9 +158,7 @@ export default function WeeklyPaymentsPage() {
   if ((loadingLeague || loadingTeams) && !league) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }

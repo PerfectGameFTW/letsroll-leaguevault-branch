@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import type { League, Payment, User, SavedCard, ApiResponse } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import { Link, useSearch } from "wouter";
 import {
   Select,
@@ -213,9 +214,7 @@ export default function PaymentHistoryPage() {
   if (loadingUser || loadingBowler || loadingBowlerLeagues || loadingLeague || loadingPayments) {
     return (
       <BowlerLayout bowlerName={bowlerName || 'Loading...'} leagueName={league?.name || 'Loading...'}>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </BowlerLayout>
     );
   }

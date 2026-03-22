@@ -11,7 +11,7 @@ import { AuthRouteGuard } from "@/components/auth-route-guard";
 import { SystemAdminRouteGuard } from "@/components/system-admin-route-guard";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import type { ApiResponse } from "@shared/schema";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login-page";
@@ -44,11 +44,7 @@ const EmailTemplatesPage = lazy(() => import("@/pages/email-templates-page"));
 const IntegrationsPage = lazy(() => import("@/pages/integrations-page"));
 
 function PageLoader() {
-  return (
-    <div className="flex items-center justify-center h-[60vh]">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-    </div>
-  );
+  return <PageLoadingState />;
 }
 
 const RootRedirectHandler: FC = () => {

@@ -9,7 +9,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema";
 import { startOfToday } from "date-fns";
 import { Link, useParams } from "wouter";
@@ -77,9 +78,7 @@ export default function LeaguePastDuePage() {
   if (loadingLeague || loadingTeams || loadingBowlers || loadingPayments || loadingBowlerLeagues) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }

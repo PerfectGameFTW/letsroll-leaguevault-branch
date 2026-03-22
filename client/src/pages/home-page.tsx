@@ -1,33 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
-import { Loader2, AlertCircle, Trophy, Users, TrendingUp, DollarSign } from "lucide-react";
+import { Trophy, Users, TrendingUp, DollarSign } from "lucide-react";
 import { Link } from "wouter";
 import type { League, Payment, BowlerLeague, ApiResponse, Organization, User } from "@shared/schema";
 import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
 import { formatCurrency } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/error-boundary";
-
-function LoadingState() {
-  return (
-    <Layout>
-      <div className="flex items-center justify-center h-[50vh]">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    </Layout>
-  );
-}
-
-function ErrorState({ error }: { error: Error }) {
-  return (
-    <Layout>
-      <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
-        <AlertCircle className="h-5 w-5" />
-        <p>Error loading data: {error.message}</p>
-      </div>
-    </Layout>
-  );
-}
+import { PageLoadingState, PageErrorState } from "@/components/page-states";
 
 export default function HomePage() {
   const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError } = useQuery<ApiResponse<League[]>>({
@@ -65,13 +45,12 @@ export default function HomePage() {
 
   // Show loading state only when initial data is loading
   if (loadingLeagues || loadingPayments || loadingBowlerLeagues) {
-    return <LoadingState />;
+    return <Layout><PageLoadingState /></Layout>;
   }
 
-  // Handle errors
   const error = leaguesError || paymentsError || bowlerLeaguesError;
   if (error) {
-    return <ErrorState error={error as Error} />;
+    return <Layout><PageErrorState message={`Error loading data: ${(error as Error).message}`} /></Layout>;
   }
 
   const leagues = leaguesResponse?.data || [];

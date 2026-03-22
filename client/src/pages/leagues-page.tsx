@@ -33,7 +33,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Plus, Pencil, Archive, RotateCcw, Trash, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Archive, RotateCcw, Trash, AlertTriangle } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import type { League, Team, Location } from "@shared/schema";
 import { WEEKDAYS } from "@shared/schema";
 import type { ScoreWithRelations } from "@/lib/types/scores";
@@ -143,9 +144,7 @@ export default function LeaguesPage() {
   if (loadingLeagues || loadingTeams || loadingScores) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }

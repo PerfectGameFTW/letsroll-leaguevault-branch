@@ -2,7 +2,9 @@ import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { PageLoadingState, PageErrorState } from "@/components/page-states";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useQuery } from "@tanstack/react-query";
 import type { ApiResponse } from "@/lib/types/api";
 
@@ -60,9 +62,7 @@ export default function ScoresPage() {
   if (isLoading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }
@@ -78,10 +78,7 @@ export default function ScoresPage() {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to League
           </Link>
-          <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 flex-shrink-0" />
-            <p>Error loading scores: {error instanceof Error ? error.message : 'Unknown error'}</p>
-          </div>
+          <PageErrorState message={`Error loading scores: ${error instanceof Error ? error.message : 'Unknown error'}`} />
         </div>
       </Layout>
     );
@@ -89,6 +86,7 @@ export default function ScoresPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="space-y-6">
         <Link
           href={`/leagues/${rawLeagueId}`}
@@ -189,6 +187,7 @@ export default function ScoresPage() {
           ))}
         </div>
       </div>
+      </ErrorBoundary>
     </Layout>
   );
 }

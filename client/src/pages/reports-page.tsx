@@ -18,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Loader2 } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema"; // Added BowlerLeague type
 import { Link } from "wouter";
 import { calculateBowlerPastDue } from "@/lib/financial-utils";
@@ -86,12 +86,10 @@ export default function ReportsPage() {
   const bowlerLeagues = bowlerLeaguesResponse?.data || [];
 
 
-  if (loadingLeagues || loadingTeams || loadingBowlers || loadingPayments || loadingBowlerLeagues) { // Added loadingBowlerLeagues
+  if (loadingLeagues || loadingTeams || loadingBowlers || loadingPayments || loadingBowlerLeagues) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }

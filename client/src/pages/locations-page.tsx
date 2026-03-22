@@ -33,7 +33,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Plus, Edit, Trash, Archive, RotateCcw, AlertTriangle, Loader2 } from "lucide-react";
+import { Plus, Edit, Trash, Archive, RotateCcw, AlertTriangle } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import type { Location } from "@shared/schema";
@@ -167,9 +168,7 @@ export default function LocationsPage() {
   if (isLoading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }

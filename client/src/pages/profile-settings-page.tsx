@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Save, Lock, ArrowRight, LogOut, Pencil } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import { Link, useLocation } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { Separator } from "@/components/ui/separator";
@@ -148,12 +149,7 @@ export const ProfileSettingsPage: FC = () => {
   const isSystemAdmin = currentUser?.role === 'system_admin';
 
   if (isLoadingUser) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <p className="text-sm text-muted-foreground">Loading profile...</p>
-      </div>
-    );
+    return <PageLoadingState message="Loading profile..." />;
   }
 
   if (!currentUser) {

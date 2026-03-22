@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Mail, Pencil, Eye, EyeOff, Info, Send, Building2, ChevronDown } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { EmailTemplate, Organization, ApiResponse } from "@shared/schema";
@@ -133,9 +134,7 @@ export default function EmailTemplatesPage() {
         </div>
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
+          <PageLoadingState />
         ) : (
           <div className="rounded-lg border divide-y">
             {templates.map((template) => {

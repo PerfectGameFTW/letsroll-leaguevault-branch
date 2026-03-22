@@ -26,6 +26,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Loader2, Users, CircleDollarSign, Mail, RefreshCw, History } from "lucide-react";
+import { PageLoadingState, PageErrorState } from "@/components/page-states";
 
 import type { League } from "@shared/schema";
 import { useParams, Link, useLocation } from "wouter";
@@ -120,9 +121,7 @@ export default function LeagueViewPage() {
   if (isLoading) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }
@@ -130,10 +129,7 @@ export default function LeagueViewPage() {
   if (error) {
     return (
       <Layout>
-        <div className="text-center">
-          <h2 className="text-xl font-semibold text-destructive">Error loading league</h2>
-          <p className="text-muted-foreground">{error instanceof Error ? error.message : 'Unknown error occurred'}</p>
-        </div>
+        <PageErrorState message={`Error loading league: ${error instanceof Error ? error.message : 'Unknown error occurred'}`} />
       </Layout>
     );
   }

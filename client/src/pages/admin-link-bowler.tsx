@@ -4,6 +4,7 @@ import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Loader2, Check, ExternalLink } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { User, Bowler } from "@shared/schema";
@@ -67,10 +68,7 @@ export default function AdminLinkBowlerPage() {
   if (loadingUser || loadingBowlers) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="ml-2">Loading...</span>
-        </div>
+        <PageLoadingState message="Loading..." />
       </Layout>
     );
   }

@@ -2,7 +2,8 @@ import { useState, FC, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, ArrowRight, RefreshCw, AlertTriangle } from "lucide-react";
+import { ArrowRight, RefreshCw, AlertTriangle } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
@@ -166,15 +167,7 @@ export const BowlerDashboardPage: FC = () => {
   };
 
   if (isStillLoadingChain && !league) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
-        <div className="text-center">
-          <h3 className="text-lg font-medium">Loading dashboard data...</h3>
-          <p className="text-sm text-muted-foreground mt-1">Please wait while we retrieve your information.</p>
-        </div>
-      </div>
-    );
+    return <PageLoadingState message="Loading dashboard data..." />;
   }
 
   if (userError) {

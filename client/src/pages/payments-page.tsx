@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Loader2, Plus, Search, Trash2, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import type { Payment, Bowler, League, PaginationMeta, ApiResponse } from "@shared/schema";
 import { format } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -175,9 +176,7 @@ export default function PaymentsPage() {
   if ((loadingPayments || loadingBowlers) && !payments.length) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }

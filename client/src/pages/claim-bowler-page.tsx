@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, Search, User, ChevronRight, SkipForward } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -146,9 +147,7 @@ const ClaimBowlerPage: FC = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
+            <PageLoadingState />
           ) : totalBowlers === 0 ? (
             <div className="text-center py-8 space-y-4">
               <p className="text-muted-foreground">

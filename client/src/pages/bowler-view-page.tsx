@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
 import { Layout } from "@/components/layout";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { Loader2, ArrowLeft, ExternalLink, Plus, RefreshCw } from "lucide-react";
+import { ArrowLeft, ExternalLink, Plus, RefreshCw } from "lucide-react";
+import { PageLoadingState } from "@/components/page-states";
 import {
   Table,
   TableBody,
@@ -226,9 +227,7 @@ export default function BowlerViewPage() {
   if (loadingBowler || loadingBowlerLeagues) {
     return (
       <Layout>
-        <div className="flex items-center justify-center h-[50vh]">
-          <Loader2 className="h-8 w-8 animate-spin" />
-        </div>
+        <PageLoadingState />
       </Layout>
     );
   }
