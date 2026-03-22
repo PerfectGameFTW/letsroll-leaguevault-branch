@@ -3,6 +3,7 @@ import { z } from "zod";
 
 export const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 
+// League-level setting: how the league collects fees (weekly or upfront)
 export const PAYMENT_MODES = ["weekly", "upfront"] as const;
 export type PaymentMode = (typeof PAYMENT_MODES)[number];
 export const WeekDay = {
@@ -19,6 +20,7 @@ export const USER_ROLES = ['system_admin', 'org_admin', 'user'] as const;
 export const userRoleEnum = pgEnum('user_role', USER_ROLES);
 export type UserRole = (typeof USER_ROLES)[number];
 
+// Bowler-level schedule: how often an individual bowler's automatic payment recurs
 export const SCHEDULE_FREQUENCIES = ["weekly", "monthly", "upfront"] as const;
 export type ScheduleFrequency = (typeof SCHEDULE_FREQUENCIES)[number];
 
@@ -38,9 +40,6 @@ export const PaymentType = {
 } as const;
 
 export const dateSchema = z.coerce.date()
-  .refine((date) => !isNaN(date.getTime()), {
-    message: "Invalid date format",
-  })
   .transform((date) => date.toISOString());
 
 const timeFormatRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;

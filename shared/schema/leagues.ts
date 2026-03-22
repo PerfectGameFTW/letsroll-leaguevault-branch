@@ -146,6 +146,14 @@ export const updateLeagueSchema = z.object({
     return true;
   },
   { message: "Lineage fee and prize fund fee must both be set and sum to the weekly fee", path: ["lineageFee"] }
+).refine(
+  (data) => {
+    if (data.finalTwoWeeksDueWeek != null && data.totalBowlingWeeks != null) {
+      return data.finalTwoWeeksDueWeek <= data.totalBowlingWeeks;
+    }
+    return true;
+  },
+  { message: "Final two weeks due week must not exceed total bowling weeks", path: ["finalTwoWeeksDueWeek"] }
 );
 
 export type League = typeof leagues.$inferSelect;

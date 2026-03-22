@@ -36,6 +36,7 @@ export const leagueRelations = relations(leagues, ({ one, many }) => ({
     references: [leagues.id],
     relationName: "seasonChain",
   }),
+  nextSeasons: many(leagues, { relationName: "seasonChain" }),
   teams: many(teams),
   bowlerLeagues: many(bowlerLeagues),
   payments: many(payments),
@@ -90,6 +91,17 @@ export const scoreRelations = relations(scores, ({ one }) => ({
   team: one(teams, {
     fields: [scores.teamId],
     references: [teams.id],
+  }),
+}));
+
+export const paymentRelations = relations(payments, ({ one }) => ({
+  bowler: one(bowlers, {
+    fields: [payments.bowlerId],
+    references: [bowlers.id],
+  }),
+  league: one(leagues, {
+    fields: [payments.leagueId],
+    references: [leagues.id],
   }),
 }));
 

@@ -28,6 +28,6 @@ export type { Game, InsertGame, UpdateGame, Score, InsertScore, UpdateScore } fr
 export { emailTemplates, insertEmailTemplateSchema, updateEmailTemplateSchema } from "./email-templates";
 export type { InsertEmailTemplate, UpdateEmailTemplate, EmailTemplate } from "./email-templates";
 
-export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, gameRelations, scoreRelations, paymentScheduleRelations, userRelations } from "./relations";
+export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, gameRelations, scoreRelations, paymentRelations, paymentScheduleRelations, userRelations } from "./relations";
 
 export type { SavedCard, ApiResponse, PaginationMeta, PaginatedResult, ApiListResponse, WeeklyStat, SeriesWithStats, WeeklyStatWithBowler, DetailedScore } from "./api-types";
