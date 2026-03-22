@@ -1,4 +1,4 @@
-import { addWeeks, startOfToday, differenceInWeeks } from "date-fns";
+import { addWeeks, startOfToday, differenceInWeeks, parseISO, isValid } from "date-fns";
 import type { League, Payment } from "@shared/schema";
 import {
   getEffectiveBowlingWeeks,
@@ -276,16 +276,16 @@ export function calculateBowlerViewFinancials(
 
   if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
     const seasonStart = typeof league.seasonStart === "string"
-      ? new Date(league.seasonStart)
+      ? parseISO(league.seasonStart)
       : league.seasonStart;
     const seasonEnd = typeof league.seasonEnd === "string"
-      ? new Date(league.seasonEnd)
+      ? parseISO(league.seasonEnd)
       : league.seasonEnd;
     const today = startOfToday();
 
     if (
       seasonStart && seasonEnd &&
-      !isNaN(seasonStart.getTime()) && !isNaN(seasonEnd.getTime())
+      isValid(seasonStart) && isValid(seasonEnd) && isValid(today)
     ) {
       if (today < seasonStart) {
         weeksDue = 0;
