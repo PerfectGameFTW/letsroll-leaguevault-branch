@@ -48,6 +48,7 @@ router.get("/", async (req, res) => {
       const isUnaffiliatedSystemAdmin = req.user?.role === 'system_admin' && scopedOrgId === null;
 
       if (isUnaffiliatedSystemAdmin) {
+        // no filtering needed
       } else if (scopedOrgId !== null) {
         const orgLeagues = await storage.getLeagues(scopedOrgId);
         const orgLeagueIds = new Set(orgLeagues.map(l => l.id));

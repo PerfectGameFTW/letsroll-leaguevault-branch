@@ -1,4 +1,4 @@
-import { eq, isNull, inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import { leagues, type League, type InsertLeague, type UpdateLeague } from "@shared/schema";
 

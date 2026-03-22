@@ -1,4 +1,4 @@
-import { eq, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   locations, leagues,
