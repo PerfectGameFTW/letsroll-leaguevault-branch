@@ -1,4 +1,5 @@
 import { FC, useState, useMemo } from "react";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -132,6 +133,7 @@ const ClaimBowlerPage: FC = () => {
   };
 
   return (
+    <ErrorBoundary level="section">
     <div className="min-h-screen bg-background flex items-start sm:items-center justify-center p-4 pt-6 sm:pt-4">
       <Card className="w-full max-w-lg mt-4 sm:mt-0">
         <CardHeader className="space-y-1 pb-4">
@@ -245,6 +247,7 @@ const ClaimBowlerPage: FC = () => {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </ErrorBoundary>
   );
 };
 

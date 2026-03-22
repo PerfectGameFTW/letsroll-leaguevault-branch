@@ -2,13 +2,25 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { initializeSquare, resetSquarePayments, getPreWarmedCard, cardStyle } from "@/lib/square";
 
+export interface SquareCardTokenizeResult {
+  status: string;
+  token?: string;
+  errors?: Array<{ message: string }>;
+}
+
+export interface SquareCard {
+  tokenize(options?: Record<string, unknown>): Promise<SquareCardTokenizeResult>;
+  destroy(): void;
+  attach(container: HTMLElement): Promise<void>;
+}
+
 interface UseSquarePaymentOptions {
   onError?: (error: string) => void;
   locationId?: number | null;
 }
 
 interface UseSquarePaymentReturn {
-  card: any;
+  card: SquareCard | null;
   isInitialized: boolean;
   error: string | null;
   initializeCard: (container: HTMLDivElement) => Promise<void>;
@@ -16,12 +28,12 @@ interface UseSquarePaymentReturn {
 }
 
 export function useSquarePayment({ onError, locationId }: UseSquarePaymentOptions = {}): UseSquarePaymentReturn {
-  const [card, setCard] = useState<any>(null);
+  const [card, setCard] = useState<SquareCard | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const mountedRef = useRef(true);
-  const cardRef = useRef<any>(null);
+  const cardRef = useRef<SquareCard | null>(null);
   const initializingRef = useRef(false);
   const initializationAttempts = useRef(0);
   const onErrorRef = useRef(onError);

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
+import { ErrorBoundary } from "@/components/error-boundary";
 import {
   Card,
   CardContent,
@@ -141,6 +142,7 @@ export default function ReportsPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="space-y-8">
         <h1 className="text-2xl font-bold">Reports</h1>
 
@@ -218,6 +220,7 @@ export default function ReportsPage() {
           </div>
         </div>
       </div>
+      </ErrorBoundary>
     </Layout>
   );
 }

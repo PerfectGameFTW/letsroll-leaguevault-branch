@@ -1,4 +1,5 @@
 import { FC, useMemo } from "react";
+import { ErrorBoundary } from "@/components/error-boundary";
 import {
   Card,
   CardContent,
@@ -265,6 +266,7 @@ const SignUpPage: FC = () => {
   };
 
   return (
+    <ErrorBoundary level="section">
     <div className="min-h-screen bg-background flex items-start sm:items-center justify-center p-4 pt-6 sm:pt-4">
       <Card className="w-full max-w-md mt-4 sm:mt-0">
         <CardHeader className="space-y-1 pb-4 sm:pb-6">
@@ -392,6 +394,7 @@ const SignUpPage: FC = () => {
         </CardFooter>
       </Card>
     </div>
+    </ErrorBoundary>
   );
 };
 

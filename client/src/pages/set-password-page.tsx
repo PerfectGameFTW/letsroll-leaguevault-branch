@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useLocation, useSearch } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -116,6 +117,7 @@ export default function SetPasswordPage() {
   }
 
   return (
+    <ErrorBoundary level="section">
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
@@ -196,5 +198,6 @@ export default function SetPasswordPage() {
         </CardContent>
       </Card>
     </div>
+    </ErrorBoundary>
   );
 }

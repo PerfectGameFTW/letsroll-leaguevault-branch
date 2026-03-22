@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
+import { ErrorBoundary } from "@/components/error-boundary";
 import {
   Table,
   TableBody,
@@ -135,6 +136,7 @@ export default function PastDuePage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="space-y-6">
         <Link href="/reports" className="text-muted-foreground hover:text-foreground flex items-center">
           <ArrowLeft className="h-4 w-4 mr-2" />
@@ -187,6 +189,7 @@ export default function PastDuePage() {
           </Table>
         </div>
       </div>
+      </ErrorBoundary>
     </Layout>
   );
 }

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { TeamForm } from "@/components/team-form";
 import {
   Table,
@@ -73,6 +74,7 @@ export default function TeamsPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="space-y-4">
         <Link
           href="/leagues"
@@ -125,6 +127,7 @@ export default function TeamsPage() {
           leagueId={leagueId}
         />
       </div>
+      </ErrorBoundary>
     </Layout>
   );
 }

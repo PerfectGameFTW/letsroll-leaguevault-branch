@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -124,6 +125,7 @@ export default function EmailTemplatesPage() {
 
   return (
     <Layout>
+      <ErrorBoundary level="section">
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Email Templates</h1>
@@ -340,6 +342,7 @@ export default function EmailTemplatesPage() {
           </DialogContent>
         </Dialog>
       </div>
+      </ErrorBoundary>
     </Layout>
   );
 }

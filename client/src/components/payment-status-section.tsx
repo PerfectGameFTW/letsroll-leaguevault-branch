@@ -1,18 +1,13 @@
 import { FC, useRef, useEffect, useState, useMemo, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { CalendarDays } from "lucide-react";
 import { useSquarePayment } from "@/hooks/use-square-payment";
-import { createPayment, tokenizeCard } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient, csrfFetch } from '@/lib/queryClient';
-import { formatCurrency } from "@/lib/utils";
+import { useQuery } from "@tanstack/react-query";
+import { csrfFetch } from '@/lib/queryClient';
 import { calculateFinancials } from "@/lib/financial-utils";
 import type { League, Bowler, Payment, SavedCard } from "@shared/schema";
 import { PaymentOverviewCard } from "@/components/payment-overview-card";
-import { PaymentSetupCardInput } from "@/components/payment-setup-card-input";
-import { PaymentCustomAmount } from "@/components/payment-custom-amount";
-import { PaymentSubmitSection } from "@/components/payment-submit-section";
+import { PaymentSetupForm } from "@/components/payment-setup-form";
+import { useBowlerPaymentSubmit } from "@/hooks/use-bowler-payment-submit";
 
 type PaymentSchedule = "weekly" | "custom";
 
@@ -134,194 +129,24 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     return base;
   }, [selectedSchedule, weeklyFee, selectedWeeks, fixedAmount, includeFinalTwoWeeks]);
 
-  const handleSubmitPayment = async () => {
-    if (cardMode === 'new' && !card) {
-      toast({ title: "Payment Setup Error", description: "Please enter your card details before proceeding.", variant: "destructive" });
-      return;
-    }
-    if (cardMode === 'saved' && !selectedSavedCardId) {
-      toast({ title: "Payment Setup Error", description: "Please select a saved card.", variant: "destructive" });
-      return;
-    }
-
-    const isUpfront = league.paymentMode === 'upfront';
-    const isAutoPay = !isUpfront && selectedSchedule !== 'custom';
-    const finalTwoWeeksUnpaid = !financials.finalTwoWeeks.isPaid && financials.finalTwoWeeks.amount > 0;
-
-    if (!isUpfront && isAutoPay && finalTwoWeeksUnpaid && !includeFinalTwoWeeks && !showFinalTwoWeeksWarning) {
-      setShowFinalTwoWeeksWarning(true);
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      setShowFinalTwoWeeksWarning(false);
-
-      if (isUpfront) {
-        const upfrontAmount = financials.fullSeasonAmount;
-        let squareCardId: string;
-
-        if (cardMode === 'saved' && selectedSavedCardId) {
-          squareCardId = selectedSavedCardId;
-        } else {
-          const token = await tokenizeCard(card);
-          const saveResponse = await csrfFetch(`/api/square/cards/${bowler.id}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourceId: token }),
-          });
-          const saveData = await saveResponse.json();
-          if (!saveResponse.ok || !saveData.data?.savedCardId) {
-            throw new Error(saveData.error?.message || 'Your card could not be saved. Please try again.');
-          }
-          squareCardId = saveData.data.savedCardId;
-          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
-        }
-
-        const scheduleResponse = await csrfFetch('/api/payment-schedules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bowlerId: bowler.id,
-            leagueId: league.id,
-            frequency: 'upfront',
-            amount: upfrontAmount,
-            nextPaymentDate: new Date(),
-            squareCardId,
-            includeFinalTwoWeeks: false,
-          }),
-        });
-        if (!scheduleResponse.ok) {
-          const scheduleData = await scheduleResponse.json();
-          throw new Error(scheduleData.error?.message || 'Failed to set up payment schedule');
-        }
-        queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
-        toast({
-          title: "Payment Scheduled",
-          description: "Your card has been saved and your full season payment will be processed momentarily.",
-        });
-        setShowPaymentSetup(false);
-        queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-        return;
-      }
-      
-      const amount = calculateTotalAmount();
-      const hasOutstandingBalance = financials.amountPastDue > 0;
-      let squareCardId: string | null = null;
-      let paymentWasCharged = false;
-
-      if (isAutoPay && !hasOutstandingBalance) {
-        if (cardMode === 'saved' && selectedSavedCardId) {
-          squareCardId = selectedSavedCardId;
-        } else {
-          const token = await tokenizeCard(card);
-          const saveResponse = await csrfFetch(`/api/square/cards/${bowler.id}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourceId: token }),
-          });
-          const saveData = await saveResponse.json();
-          if (!saveResponse.ok) {
-            throw new Error(saveData.error?.message || 'Failed to save card');
-          }
-          squareCardId = saveData.data?.savedCardId || null;
-          if (!squareCardId) {
-            throw new Error('Your card could not be saved for auto-pay. Please try again.');
-          }
-          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
-        }
-      } else if (cardMode === 'saved' && selectedSavedCardId) {
-        const response = await csrfFetch('/api/square/payments', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sourceId: selectedSavedCardId,
-            amount,
-            bowlerId: bowler.id,
-            leagueId: league.id,
-            storeCard: false,
-          }),
-        });
-        const responseData = await response.json();
-        if (!response.ok) {
-          throw new Error(responseData.error?.message || 'Payment failed');
-        }
-        squareCardId = selectedSavedCardId;
-        paymentWasCharged = true;
-      } else {
-        const shouldStore = isAutoPay || storeCard;
-        const paymentResult = await createPayment(amount, card, bowler.id, league.id, shouldStore);
-        if (shouldStore) {
-          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
-        }
-        if (isAutoPay) {
-          squareCardId = paymentResult.savedCardId || null;
-          if (!squareCardId) {
-            throw new Error('Your card could not be saved for auto-pay. Please try again.');
-          }
-        }
-        paymentWasCharged = true;
-      }
-
-      if (isAutoPay && squareCardId) {
-        const recurringAmount = weeklyFee;
-        const scheduleResponse = await csrfFetch('/api/payment-schedules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bowlerId: bowler.id,
-            leagueId: league.id,
-            frequency: selectedSchedule,
-            amount: recurringAmount,
-            nextPaymentDate: new Date(),
-            squareCardId,
-            includeFinalTwoWeeks,
-          }),
-        });
-        if (!scheduleResponse.ok) {
-          const scheduleData = await scheduleResponse.json();
-          throw new Error(scheduleData.error?.message || 'Failed to set up payment schedule');
-        }
-        queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
-      }
-
-      if (isAutoPay) {
-        toast({
-          title: "Auto-Pay Activated",
-          description: paymentWasCharged
-            ? `Payment of ${formatCurrency(amount)} processed and ${selectedSchedule} auto-pay is now active.`
-            : `Your card has been saved and ${selectedSchedule} auto-pay is now active.`,
-        });
-      } else {
-        toast({
-          title: "Payment Successful",
-          description: includeFinalTwoWeeks
-            ? `Payment of ${formatCurrency(amount)} processed (includes Final 2 Weeks).`
-            : `Your payment of ${formatCurrency(amount)} has been processed.`,
-        });
-      }
-      
-      setIncludeFinalTwoWeeks(false);
-      setShowPaymentSetup(false);
-      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
-    } catch (error) {
-      console.error('[Payment Error]:', error);
-      let errorMessage = "Unable to process payment. Please try again.";
-      if (typeof error === 'string') {
-        errorMessage = error;
-      } else if (error instanceof Error) {
-        try {
-          const parsed = JSON.parse(error.message);
-          errorMessage = parsed.error?.message || error.message;
-        } catch {
-          errorMessage = error.message;
-        }
-      }
-      toast({ title: "Payment Failed", description: errorMessage, variant: "destructive" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  const handleSubmitPayment = useBowlerPaymentSubmit({
+    league,
+    bowler,
+    weeklyFee,
+    card,
+    cardMode,
+    selectedSavedCardId,
+    selectedSchedule,
+    storeCard,
+    includeFinalTwoWeeks,
+    showFinalTwoWeeksWarning,
+    financials,
+    calculateTotalAmount,
+    setIsSubmitting,
+    setShowFinalTwoWeeksWarning,
+    setIncludeFinalTwoWeeks,
+    setShowPaymentSetup,
+  });
 
   const seasonPresets = useMemo(() => {
     const seasonStarted = league.seasonStart && new Date(league.seasonStart) < new Date();
@@ -348,113 +173,55 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
   if (showPaymentSetup) {
     return (
-      <Card className="w-full">
-        <CardHeader className={league.paymentMode !== 'upfront' && paymentMode === 'autopay' ? 'pb-4' : undefined}>
-          <CardTitle>
-            {league.paymentMode === 'upfront' ? 'Full Season Payment' : paymentMode === 'onetime' ? 'Make One-Time Payment' : 'Set Up Automatic Payments'}
-          </CardTitle>
-          {(league.paymentMode === 'upfront' || paymentMode === 'onetime') && (
-            <CardDescription>
-              {league.paymentMode === 'upfront' ? 'Your full season dues will be charged in a single payment' : 'Enter your card to make a payment'}
-            </CardDescription>
-          )}
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
-            {league.paymentMode === 'upfront' ? (
-              <div className="rounded-md border bg-muted/30 p-4 space-y-2">
-                <div className="flex items-center justify-between py-1">
-                  <span className="text-sm text-muted-foreground">Weekly fee</span>
-                  <span className="text-sm">{formatCurrency(weeklyFee)} / week</span>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <span className="text-sm text-muted-foreground">Season length</span>
-                  <span className="text-sm">{totalWeeks} weeks</span>
-                </div>
-                <div className="border-t pt-3 flex items-center justify-between">
-                  <span className="font-semibold">Total due today</span>
-                  <span className="text-lg font-bold">{formatCurrency(financials.fullSeasonAmount)}</span>
-                </div>
-              </div>
-            ) : paymentMode === 'autopay' && (
-              <div className="flex items-center gap-3 rounded-md border bg-muted/30 p-4">
-                <CalendarDays className="h-5 w-5 text-muted-foreground shrink-0" />
-                <div>
-                  <p className="text-sm font-medium">Weekly auto-pay</p>
-                  <p className="text-sm text-muted-foreground">{formatCurrency(weeklyFee)} charged each league night</p>
-                </div>
-              </div>
-            )}
-            
-            {selectedSchedule === 'custom' && league.paymentMode !== 'upfront' && (
-              <PaymentCustomAmount
-                weeklyFee={weeklyFee}
-                totalWeeks={totalWeeks}
-                selectedWeeks={selectedWeeks}
-                maxPayableWeeks={maxPayableWeeks}
-                fixedAmount={fixedAmount}
-                fixedAmountType={fixedAmountType}
-                financials={financials}
-                includeFinalTwoWeeks={includeFinalTwoWeeks}
-                seasonPresets={seasonPresets}
-                onWeekChange={handleWeekChangeWrapper}
-                onFixedAmount={(amount, type) => {
-                  setFixedAmount(amount);
-                  setFixedAmountType(type);
-                  if (type === 'pastDue' && amount !== null) {
-                    setSelectedWeeks(Math.max(1, Math.round(amount / weeklyFee)));
-                  } else if (type === 'remaining') {
-                    setSelectedWeeks(maxPayableWeeks);
-                  }
-                  setIncludeFinalTwoWeeks(false);
-                }}
-                onIncludeFinalTwoWeeksChange={setIncludeFinalTwoWeeks}
-              />
-            )}
-
-            <PaymentSetupCardInput
-              savedCards={savedCards}
-              cardMode={cardMode}
-              setCardMode={setCardMode}
-              selectedSavedCardId={selectedSavedCardId}
-              setSelectedSavedCardId={setSelectedSavedCardId}
-              cardContainerRef={cardContainerRef}
-              isInitialized={isInitialized}
-              squareError={squareError}
-              storeCard={storeCard}
-              setStoreCard={setStoreCard}
-              showStoreCardOption={selectedSchedule === 'custom'}
-              cleanupCard={cleanupCard}
-            />
-
-            <PaymentSubmitSection
-              league={league}
-              selectedSchedule={selectedSchedule}
-              fixedAmountType={fixedAmountType}
-              selectedWeeks={selectedWeeks}
-              includeFinalTwoWeeks={includeFinalTwoWeeks}
-              finalTwoWeeksAmount={financials.finalTwoWeeks.amount}
-              calculateTotalAmount={calculateTotalAmount}
-              showFinalTwoWeeksWarning={showFinalTwoWeeksWarning}
-              finalTwoWeeksDueByWeek={financials.finalTwoWeeks.dueByWeek}
-              isSubmitting={isSubmitting}
-              cardMode={cardMode}
-              isInitialized={isInitialized}
-              selectedSavedCardId={selectedSavedCardId}
-              fullSeasonAmount={financials.fullSeasonAmount}
-              onSubmit={handleSubmitPayment}
-              onCancel={() => {
-                setShowPaymentSetup(false);
-                setShowFinalTwoWeeksWarning(false);
-              }}
-              onAddFinalTwoWeeks={() => {
-                setIncludeFinalTwoWeeks(true);
-                setShowFinalTwoWeeksWarning(false);
-              }}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <PaymentSetupForm
+        league={league}
+        weeklyFee={weeklyFee}
+        totalWeeks={totalWeeks}
+        paymentMode={paymentMode}
+        selectedSchedule={selectedSchedule}
+        selectedWeeks={selectedWeeks}
+        maxPayableWeeks={maxPayableWeeks}
+        fixedAmount={fixedAmount}
+        fixedAmountType={fixedAmountType}
+        includeFinalTwoWeeks={includeFinalTwoWeeks}
+        showFinalTwoWeeksWarning={showFinalTwoWeeksWarning}
+        financials={financials}
+        seasonPresets={seasonPresets}
+        savedCards={savedCards}
+        cardMode={cardMode}
+        selectedSavedCardId={selectedSavedCardId}
+        cardContainerRef={cardContainerRef}
+        isInitialized={isInitialized}
+        squareError={squareError}
+        storeCard={storeCard}
+        isSubmitting={isSubmitting}
+        onWeekChange={handleWeekChangeWrapper}
+        onFixedAmount={(amount, type) => {
+          setFixedAmount(amount);
+          setFixedAmountType(type);
+          if (type === 'pastDue' && amount !== null) {
+            setSelectedWeeks(Math.max(1, Math.round(amount / weeklyFee)));
+          } else if (type === 'remaining') {
+            setSelectedWeeks(maxPayableWeeks);
+          }
+          setIncludeFinalTwoWeeks(false);
+        }}
+        onIncludeFinalTwoWeeksChange={setIncludeFinalTwoWeeks}
+        setCardMode={setCardMode}
+        setSelectedSavedCardId={setSelectedSavedCardId}
+        setStoreCard={setStoreCard}
+        cleanupCard={cleanupCard}
+        calculateTotalAmount={calculateTotalAmount}
+        onSubmit={handleSubmitPayment}
+        onCancel={() => {
+          setShowPaymentSetup(false);
+          setShowFinalTwoWeeksWarning(false);
+        }}
+        onAddFinalTwoWeeks={() => {
+          setIncludeFinalTwoWeeks(true);
+          setShowFinalTwoWeeksWarning(false);
+        }}
+      />
     );
   }
   

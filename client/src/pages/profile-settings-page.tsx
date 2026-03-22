@@ -1,4 +1,5 @@
 import { FC, useState } from "react";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -173,6 +174,7 @@ export const ProfileSettingsPage: FC = () => {
 
   return (
     <BowlerLayout bowlerName={currentUser.name} leagueName="">
+      <ErrorBoundary level="section">
       {isSystemAdmin && (
         <div className="mb-6">
           <Link href="/">
@@ -403,6 +405,7 @@ export const ProfileSettingsPage: FC = () => {
           </CardContent>
         </Card>
       </div>
+      </ErrorBoundary>
     </BowlerLayout>
   );
 };
