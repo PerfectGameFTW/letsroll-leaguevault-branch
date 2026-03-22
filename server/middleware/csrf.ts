@@ -18,6 +18,7 @@ const EXEMPT_PATHS = [
   '/health',
   '/csrf-token',
   '/setup/create-first-admin',
+  '/logout',
 ];
 
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);

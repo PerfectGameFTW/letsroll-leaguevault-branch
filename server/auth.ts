@@ -10,6 +10,7 @@ import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { sanitizeUser, sendSuccess, sendError } from "./utils/api.js";
 import { env, isDev } from "./config";
 import { createLogger } from "./logger";
+import { csrfProtection } from "./middleware/csrf";
 
 const log = createLogger("Auth");
 
@@ -304,7 +305,7 @@ export function setupAuth(app: Express) {
     })(req, res, next);
   });
 
-  authRouter.post("/logout", (req, res, next) => {
+  authRouter.post("/logout", csrfProtection, (req, res, next) => {
     req.logout((err) => {
       if (err) {
         log.error('Logout error:', err);
@@ -402,7 +403,7 @@ export function setupAuth(app: Express) {
     }
   });
 
-  authRouter.post("/claim-bowler", claimLimiter, async (req, res) => {
+  authRouter.post("/claim-bowler", claimLimiter, csrfProtection, async (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
         return sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
