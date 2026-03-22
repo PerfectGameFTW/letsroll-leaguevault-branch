@@ -4,6 +4,7 @@ import { Layout } from "@/components/layout";
 import { Trophy, Users, TrendingUp, DollarSign } from "lucide-react";
 import { Link } from "wouter";
 import type { League, Payment, BowlerLeague, ApiResponse, Organization, User } from "@shared/schema";
+import { getPaymentSummary } from "@/lib/financial-utils";
 import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
 import { formatCurrency } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -65,8 +66,7 @@ export default function HomePage() {
   ).size;
   const totalLeagues = activeLeagueIds.size;
 
-  // Calculate lineage and prize fund totals from actual tracked amounts
-  const paidPayments = payments.filter(p => p.status === 'paid');
+  const { paidPayments } = getPaymentSummary(payments);
   const totalLineagePaid = paidPayments.reduce((sum, p) => sum + (p.lineageAmount ?? 0), 0);
   const totalPrizeFundPaid = paidPayments.reduce((sum, p) => sum + (p.prizeFundAmount ?? 0), 0);
 

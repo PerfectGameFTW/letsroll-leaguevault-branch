@@ -12,7 +12,7 @@ import {
 import { ArrowLeft } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema";
-import { startOfToday } from "date-fns";
+import { getTotalPaidAmount, calculateBowlerPastDue } from "@/lib/financial-utils";
 import { Link, useParams } from "wouter";
 
 export default function LeaguePastDuePage() {
@@ -122,18 +122,11 @@ export default function LeaguePastDuePage() {
       const team = teams?.find(t => t.id === bowlerLeague.teamId);
       if (!team) return null;
 
-      const bowlerPayments = payments
-        ?.filter(p => p.bowlerId === bowler.id && p.status === 'paid')
-        .reduce((sum, p) => sum + p.amount, 0) || 0;
+      const bowlerPaidAmount = getTotalPaidAmount(
+        (payments || []).filter(p => p.bowlerId === bowler.id)
+      );
 
-      const today = startOfToday();
-      const seasonStart = new Date(league.data.seasonStart);
-      const weeksPassed = Math.max(0, Math.floor(
-        (today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
-      ));
-
-      const dueToDate = league.data.weeklyFee * weeksPassed;
-      const pastDueAmount = Math.max(0, dueToDate - bowlerPayments);
+      const pastDueAmount = calculateBowlerPastDue(league.data, bowlerPaidAmount);
       const weeksPastDue = Math.floor(pastDueAmount / league.data.weeklyFee);
 
       return {

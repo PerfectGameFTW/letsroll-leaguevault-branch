@@ -1,4 +1,4 @@
-import { addWeeks, startOfToday, differenceInWeeks, parseISO, isValid } from "date-fns";
+import { addWeeks, startOfToday, differenceInWeeks } from "date-fns";
 import { DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "@shared/schema";
 import type { League, Payment } from "@shared/schema";
 import {
@@ -211,7 +211,7 @@ export function calculateBowlerPastDue(
   const today = startOfToday();
   const seasonStart = new Date(league.seasonStart);
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
-  const weeksPassed = Math.max(0, Math.floor(
+  const weeksPassed = Math.max(0, Math.round(
     (today.getTime() - seasonStart.getTime()) / msPerWeek
   ));
   const dueToDate = league.weeklyFee * weeksPassed;
@@ -276,31 +276,11 @@ export function calculateBowlerViewFinancials(
   let amountPastDue = 0;
 
   if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
-    const seasonStart = typeof league.seasonStart === "string"
-      ? parseISO(league.seasonStart)
-      : league.seasonStart;
-    const seasonEnd = typeof league.seasonEnd === "string"
-      ? parseISO(league.seasonEnd)
-      : league.seasonEnd;
-    const today = startOfToday();
-
-    if (
-      seasonStart && seasonEnd &&
-      isValid(seasonStart) && isValid(seasonEnd) && isValid(today)
-    ) {
-      if (today < seasonStart) {
-        weeksDue = 0;
-      } else if (today > seasonEnd) {
-        weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
-      } else {
-        weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
-      }
-
-      totalSeasonDues = league.weeklyFee * weeksDue;
-      totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
-      fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
-      amountPastDue = totalSeasonDues - totalPaidAmount;
-    }
+    weeksDue = getWeeksPassedInSeason(league);
+    totalWeeksInSeason = getSeasonLengthWeeks(league);
+    totalSeasonDues = league.weeklyFee * weeksDue;
+    fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
+    amountPastDue = Math.max(0, totalSeasonDues - totalPaidAmount);
   }
 
   const remainingBalance = fullSeasonAmount - totalPaidAmount;

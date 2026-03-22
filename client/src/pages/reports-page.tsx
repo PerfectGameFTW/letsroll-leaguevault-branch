@@ -21,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageLoadingState } from "@/components/page-states";
 import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema"; // Added BowlerLeague type
 import { Link } from "wouter";
-import { calculateBowlerPastDue } from "@/lib/financial-utils";
+import { calculateBowlerPastDue, getTotalPaidAmount } from "@/lib/financial-utils";
 
 export default function ReportsPage() {
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
@@ -118,9 +118,9 @@ export default function ReportsPage() {
     const pastDueBalance = leagueBowlers.reduce((sum, bowler) => {
       if (!bowler.active) return sum;
 
-      const bowlerPaidAmount = leaguePayments
-        .filter(p => p.bowlerId === bowler.id && p.status === 'paid')
-        .reduce((sum, p) => sum + p.amount, 0);
+      const bowlerPaidAmount = getTotalPaidAmount(
+        leaguePayments.filter(p => p.bowlerId === bowler.id)
+      );
 
       return sum + calculateBowlerPastDue(league, bowlerPaidAmount);
     }, 0);

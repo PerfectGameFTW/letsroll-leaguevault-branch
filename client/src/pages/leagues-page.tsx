@@ -39,7 +39,8 @@ import type { League, Team, Location } from "@shared/schema";
 import type { ScoreWithRelations } from "@/lib/types/scores";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { format, differenceInWeeks } from "date-fns";
+import { format } from "date-fns";
+import { getWeeksPassedInSeason } from "@/lib/financial-utils";
 import { getSeasonLabel } from "@/lib/season-utils";
 import { filterAndSortLeagues, buildLocationMap, countArchivedLeagues } from "@/lib/league-filter-utils";
 import { Link } from "wouter";
@@ -75,7 +76,7 @@ export default function LeaguesPage() {
 
   // Get weekly scores for the first league (if any)
   const firstLeague = leagues?.[0];
-  const currentWeek = firstLeague ? Math.ceil(differenceInWeeks(new Date(), new Date(firstLeague.seasonStart))) : 0;
+  const currentWeek = firstLeague ? getWeeksPassedInSeason(firstLeague) : 0;
 
   const { data: scoresResponse, isLoading: loadingScores } = useQuery<{ data: ScoreWithRelations[] }>({
     queryKey: ["/api/scores/history", firstLeague?.id],
