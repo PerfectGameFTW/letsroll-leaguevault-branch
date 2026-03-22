@@ -1,4 +1,4 @@
-import { eq, isNull } from "drizzle-orm";
+import { eq, isNull, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import { leagues, type League, type InsertLeague } from "@shared/schema";
 
@@ -54,6 +54,5 @@ export async function getOrganizationLeagues(organizationId: number): Promise<Le
 
 export async function getLeaguesByIds(ids: number[]): Promise<League[]> {
   if (ids.length === 0) return [];
-  const { inArray } = await import("drizzle-orm");
   return db.select().from(leagues).where(inArray(leagues.id, ids));
 }
