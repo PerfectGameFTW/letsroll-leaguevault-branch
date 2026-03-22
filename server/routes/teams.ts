@@ -80,16 +80,12 @@ router.get("/:id/details", async (req, res) => {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
 
-    const [bowlerLeagues, allBowlers] = await Promise.all([
-      storage.getBowlerLeagues({ teamId: id, leagueId: team.leagueId }),
-      storage.getBowlers({
-        teamId: id,
-        organizationId: league.organizationId ?? req.user?.organizationId ?? 0,
-      }),
-    ]);
+    const bowlerLeagues = await storage.getBowlerLeagues({ teamId: id, leagueId: team.leagueId });
 
-    const bowlerIds = new Set(bowlerLeagues.map(bl => bl.bowlerId));
-    const bowlers = allBowlers.filter(b => bowlerIds.has(b.id));
+    const bowlerIds = [...new Set(bowlerLeagues.map(bl => bl.bowlerId))];
+    const bowlers = bowlerIds.length > 0
+      ? await storage.getBowlersByIds(bowlerIds)
+      : [];
 
     sendSuccess(res, { team, league, bowlerLeagues, bowlers });
   } catch (error) {
