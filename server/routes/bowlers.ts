@@ -201,14 +201,18 @@ router.get("/:id/details", async (req, res) => {
     ]);
 
     const leagueIds = [...new Set(bowlerLeagues.map(bl => bl.leagueId))];
-    const leagues = leagueIds.length > 0
-      ? await storage.getLeaguesByIds(leagueIds)
-      : [];
+    const teamIds = [...new Set(bowlerLeagues.filter(bl => bl.teamId).map(bl => bl.teamId!))];
+
+    const [leagues, teams] = await Promise.all([
+      leagueIds.length > 0 ? storage.getLeaguesByIds(leagueIds) : Promise.resolve([]),
+      teamIds.length > 0 ? storage.getTeamsByIds(teamIds) : Promise.resolve([]),
+    ]);
 
     sendSuccess(res, {
       bowler: { ...bowler, hasAccount },
       bowlerLeagues,
       leagues,
+      teams,
     });
   } catch (error) {
     log.error('Error fetching bowler details:', error);

@@ -16,7 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import { startOfToday } from "date-fns";
-import type { League, Payment, Bowler, BowlerLeague, ApiResponse } from "@shared/schema";
+import type { League, Payment, Bowler, BowlerLeague, Team, ApiResponse } from "@shared/schema";
 import { useTeams } from "@/hooks/use-teams";
 import { useParams, Link } from "wouter";
 import { PaymentEntryRow } from "@/components/payment-entry-row";
@@ -104,30 +104,23 @@ export default function WeeklyPaymentsPage() {
     staleTime: 1000 * 60,
   });
 
-  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
-    queryKey: ["/api/bowler-leagues", selectedTeam, leagueId],
-    enabled: !!selectedTeam,
-    staleTime: 1000 * 60 * 5,
-  });
+  interface TeamDetailsResponse {
+    team: Team;
+    league: League;
+    bowlerLeagues: BowlerLeague[];
+    bowlers: Bowler[];
+  }
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
-    queryKey: ["/api/bowlers", bowlerLeaguesResponse?.data],
-    enabled: !!bowlerLeaguesResponse?.data?.length,
+  const { data: teamDetailsResponse, isLoading: loadingTeamDetails } = useQuery<{ data: TeamDetailsResponse }>({
+    queryKey: [`/api/teams/${selectedTeam}/details`],
+    enabled: !!selectedTeam,
     staleTime: 1000 * 60 * 5,
   });
 
   const league = leagueResponse?.data;
   const payments = paymentsResponse?.data || [];
-  const bowlerLeagues = bowlerLeaguesResponse?.data || [];
-  const allBowlers = bowlersResponse?.data || [];
-
-  const bowlers = allBowlers.filter(bowler => {
-    return bowlerLeagues.some(bl => 
-      bl.bowlerId === bowler.id && 
-      bl.teamId === parseInt(selectedTeam || '0', 10) &&
-      bl.leagueId === leagueId
-    );
-  });
+  const bowlerLeagues = teamDetailsResponse?.data?.bowlerLeagues || [];
+  const bowlers = teamDetailsResponse?.data?.bowlers || [];
 
   useEffect(() => {
     if (league?.weekDay && !selectedDate) {
@@ -253,7 +246,7 @@ export default function WeeklyPaymentsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
-              {loadingPayments || loadingBowlers ? (
+              {loadingPayments || loadingTeamDetails ? (
                 <PageLoadingState fullPage={false} />
               ) : (
                 <div className="space-y-6">

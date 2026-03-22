@@ -70,6 +70,7 @@ export default function BowlerViewPage() {
     bowler: Bowler;
     bowlerLeagues: BowlerLeague[];
     leagues: League[];
+    teams: Team[];
   }
 
   const { data: detailsResponse, isLoading: loadingDetails } = useQuery<ApiResponse<BowlerDetailsResponse>>({
@@ -125,21 +126,17 @@ export default function BowlerViewPage() {
     );
   }, [bowlerLeagues, selectedLeagueId, bowlerId]);
 
-  const { data: teamResponse } = useQuery<ApiResponse<Team>>({
-    queryKey: [`/api/teams/${selectedAssociation?.teamId}`],
-    enabled: !!selectedAssociation?.teamId,
-    staleTime: 1000 * 60 * 15, // Cache for 15 minutes
-    retry: false,
-  });
-  const team = teamResponse?.data;
+  const detailsTeams = detailsResponse?.data?.teams || [];
 
-  const { data: leagueResponse } = useQuery<ApiResponse<League>>({
-    queryKey: [`/api/leagues/${selectedLeagueId}`],
-    enabled: !!selectedLeagueId,
-    staleTime: 1000 * 60 * 30, // Cache for 30 minutes
-    retry: false,
-  });
-  const league = leagueResponse?.data;
+  const team = useMemo(() => {
+    if (!selectedAssociation?.teamId) return undefined;
+    return detailsTeams.find(t => t.id === selectedAssociation.teamId);
+  }, [detailsTeams, selectedAssociation?.teamId]);
+
+  const league = useMemo(() => {
+    if (!selectedLeagueId) return undefined;
+    return detailsLeagues.find(l => l.id === selectedLeagueId);
+  }, [detailsLeagues, selectedLeagueId]);
 
   const { data: paymentsResponse } = useQuery<ApiResponse<Payment[]>>({
     queryKey: [`/api/payments?bowlerId=${bowlerId}&leagueId=${selectedLeagueId}`, bowlerId, selectedLeagueId],

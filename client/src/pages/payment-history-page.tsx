@@ -75,6 +75,7 @@ export default function PaymentHistoryPage() {
     bowler: { name: string; hasAccount: boolean };
     bowlerLeagues: { leagueId: number }[];
     leagues: League[];
+    teams: { id: number; name: string }[];
   }
 
   const { data: bowlerDetailsResponse, isLoading: loadingBowlerDetails, error: bowlerError } = useQuery<ApiResponse<BowlerDetailsResponse>>({
@@ -249,7 +250,7 @@ export default function PaymentHistoryPage() {
     );
   }
 
-  if (!bowlerLeaguesResponse?.data?.length) {
+  if (!bowlerDetailsResponse?.data?.bowlerLeagues?.length) {
     return (
       <BowlerLayout bowlerName={bowlerName || 'Bowler'} leagueName="No League">
         <div className="text-center space-y-4">
