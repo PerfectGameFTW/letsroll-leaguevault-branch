@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
 import { hashPassword } from '../auth.js';
 import { passwordSchema } from '@shared/password-validation.js';
@@ -49,18 +49,7 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
     // Validate request data
     const validationResult = adminSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errorMessages = validationResult.error.errors.map(err => ({
-        field: err.path.join('.'),
-        message: err.message
-      }));
-      
-      return sendError(
-        res,
-        'Validation failed',
-        400,
-        'VALIDATION_ERROR',
-        { details: errorMessages }
-      );
+      return handleZodError(res, validationResult.error);
     }
 
     const userData = validationResult.data;

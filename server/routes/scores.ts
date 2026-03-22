@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { z } from 'zod';
 import { hasAccessToLeague } from '../utils/access-control.js';
 import { createLogger } from '../logger';
@@ -33,7 +33,7 @@ router.get('/league/:leagueId/week/:weekNumber', async (req, res) => {
     });
 
     if (!validationResult.success) {
-      return sendError(res, validationResult.error.errors.map(e => e.message).join(', '), 400);
+      return handleZodError(res, validationResult.error);
     }
 
     const { leagueId, weekNumber } = validationResult.data;
@@ -57,7 +57,7 @@ router.get('/history', async (req, res) => {
   try {
     const validationResult = getScoresQuerySchema.safeParse(req.query);
     if (!validationResult.success) {
-      return sendError(res, 'Invalid query parameters', 400);
+      return handleZodError(res, validationResult.error);
     }
 
     const { leagueId, weekNumber } = validationResult.data;

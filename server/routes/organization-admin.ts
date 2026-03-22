@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { randomBytes } from 'crypto';
 import { storage } from '../storage';
-import { sendSuccess, sendError, sanitizeUser } from '../utils/api';
+import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api';
 import { hashPassword } from '../auth';
 import { sendInviteEmail, sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email';
 import { z } from 'zod';
@@ -128,7 +128,7 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
       makeOrgAdmin: req.body.isOrganizationAdmin ?? req.body.makeOrgAdmin
     });
     if (!parseResult.success) {
-      return sendError(res, parseResult.error.message, 400, 'validation_error');
+      return handleZodError(res, parseResult.error);
     }
     
     const { makeOrgAdmin } = parseResult.data;
@@ -169,7 +169,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
     
     const parseResult = schema.safeParse(req.body);
     if (!parseResult.success) {
-      return sendError(res, parseResult.error.message, 400, 'validation_error');
+      return handleZodError(res, parseResult.error);
     }
     
     const { makeOrgAdmin } = parseResult.data;
@@ -281,7 +281,7 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
 
     const parseResult = schema.safeParse(req.body);
     if (!parseResult.success) {
-      return sendError(res, parseResult.error.message, 400, 'validation_error');
+      return handleZodError(res, parseResult.error);
     }
 
     const user = await storage.getUser(userId);
@@ -315,7 +315,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
 
     const parseResult = schema.safeParse(req.body);
     if (!parseResult.success) {
-      return sendError(res, parseResult.error.errors.map(e => e.message).join(', '), 400, 'validation_error');
+      return handleZodError(res, parseResult.error);
     }
 
     const { firstName, lastName, email, makeOrgAdmin, locationId } = parseResult.data;

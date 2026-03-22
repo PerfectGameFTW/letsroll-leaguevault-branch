@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { storage } from '../storage';
 import { insertPaymentScheduleSchema } from '@shared/schema';
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { paymentScheduler } from '../services/payment-scheduler.js';
 import { addMonths, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
@@ -81,8 +81,7 @@ router.post('/', adminWriteLimiter, async (req, res) => {
     });
 
     if (!validationResult.success) {
-      const msg = validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
-      return sendError(res, msg, 400, 'VALIDATION_ERROR');
+      return handleZodError(res, validationResult.error);
     }
 
     const schedule = await storage.createPaymentSchedule(validationResult.data);

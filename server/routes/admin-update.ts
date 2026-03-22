@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
 import { requireAdmin } from '../middleware/admin.js';
 import { env } from '../config';
@@ -33,18 +33,7 @@ router.patch('/users/:id/admin-status', requireAdmin, async (req: Request, res: 
       makeSystemAdmin: req.body.isAdmin ?? req.body.makeSystemAdmin
     });
     if (!validationResult.success) {
-      const errorMessages = validationResult.error.errors.map(err => ({
-        field: err.path.join('.'),
-        message: err.message
-      }));
-      
-      return sendError(
-        res,
-        'Validation failed',
-        400,
-        'VALIDATION_ERROR',
-        { details: errorMessages }
-      );
+      return handleZodError(res, validationResult.error);
     }
 
     const { makeSystemAdmin } = validationResult.data;

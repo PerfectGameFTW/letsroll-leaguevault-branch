@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { sendError, sendSuccess, sanitizeUser } from '../utils/api';
+import { sendError, sendSuccess, sanitizeUser, handleZodError } from '../utils/api';
 import { storage } from '../storage';
 import { hashPassword } from '../auth';
 import { passwordSchema } from '@shared/password-validation';
@@ -50,11 +50,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
 
     const validationResult = profileUpdateSchema.safeParse(req.body);
     if (!validationResult.success) {
-      const errorMessages = validationResult.error.errors.map(err => ({
-        field: err.path.join('.'),
-        message: err.message
-      }));
-      return sendError(res, 'Validation failed', 400, 'VALIDATION_ERROR', { details: errorMessages });
+      return handleZodError(res, validationResult.error);
     }
 
     const updateData = validationResult.data;
@@ -152,8 +148,7 @@ router.post('/change-password', requireAuth, async (req: Request, res: Response)
 
     const validationResult = schema.safeParse(req.body);
     if (!validationResult.success) {
-      const msg = validationResult.error.errors.map(e => e.message).join(', ');
-      return sendError(res, msg, 400, 'VALIDATION_ERROR');
+      return handleZodError(res, validationResult.error);
     }
 
     const { currentPassword, newPassword } = validationResult.data;

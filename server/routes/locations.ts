@@ -225,7 +225,7 @@ router.patch('/:id/square-config', async (req: any, res) => {
 
     const parseResult = locationSquareCredentialsSchema.safeParse(req.body);
     if (!parseResult.success) {
-      return sendError(res, 'Invalid Square credentials', 400, 'ValidationError');
+      return handleZodError(res, parseResult.error);
     }
 
     const incoming = parseResult.data ?? {};

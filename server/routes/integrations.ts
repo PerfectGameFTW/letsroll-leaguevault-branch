@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
 import type { OrgIntegrations } from '@shared/schema';
 import { z } from 'zod';
@@ -78,7 +78,7 @@ router.patch('/', async (req: any, res: Response) => {
 
     const parsed = updateIntegrationsSchema.safeParse(req.body);
     if (!parsed.success) {
-      return sendError(res, parsed.error.errors.map(e => e.message).join(', '), 400, 'VALIDATION_ERROR');
+      return handleZodError(res, parsed.error);
     }
 
     const existing = await storage.getOrgIntegrations(orgId);

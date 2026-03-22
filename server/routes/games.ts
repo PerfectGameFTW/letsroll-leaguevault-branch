@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { sendSuccess, sendError } from '../utils/api';
+import { sendSuccess, sendError, handleZodError } from '../utils/api';
 import { z } from 'zod';
 import { hasAccessToLeague } from '../utils/access-control.js';
 import { createLogger } from '../logger';
@@ -23,7 +23,7 @@ router.get('/', async (req, res) => {
   try {
     const validationResult = getGamesQuerySchema.safeParse(req.query);
     if (!validationResult.success) {
-      return sendError(res, 'Invalid or missing parameters', 400);
+      return handleZodError(res, validationResult.error);
     }
 
     const { leagueId, weekNumber } = validationResult.data;
