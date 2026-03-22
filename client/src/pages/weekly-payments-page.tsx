@@ -244,6 +244,7 @@ export default function WeeklyPaymentsPage() {
           </div>
         </div>
 
+        <ErrorBoundary level="section">
         {selectedDate && selectedTeamData && (
           <Card>
             <CardHeader>
@@ -298,6 +299,7 @@ export default function WeeklyPaymentsPage() {
             </CardContent>
           </Card>
         )}
+        </ErrorBoundary>
 
         <Dialog open={editingPayment !== null} onOpenChange={(open) => !open && setEditingPayment(null)}>
           <DialogContent>

@@ -144,7 +144,7 @@ export default function ReportsPage() {
       <div className="space-y-8">
         <h1 className="text-2xl font-bold">Reports</h1>
 
-        {/* Overall Financial Summary */}
+        <ErrorBoundary level="section">
         <div>
           <h2 className="text-xl font-semibold mb-4">Overall Financial Summary</h2>
           <div className="grid gap-4 md:grid-cols-2">
@@ -173,8 +173,9 @@ export default function ReportsPage() {
             </Link>
           </div>
         </div>
+        </ErrorBoundary>
 
-        {/* League-wise Financial Reports */}
+        <ErrorBoundary level="section">
         <div>
           <h2 className="text-xl font-semibold mb-4">League Financial Reports</h2>
           <div className="rounded-md border">
@@ -217,6 +218,7 @@ export default function ReportsPage() {
             </Table>
           </div>
         </div>
+        </ErrorBoundary>
       </div>
       </ErrorBoundary>
     </Layout>

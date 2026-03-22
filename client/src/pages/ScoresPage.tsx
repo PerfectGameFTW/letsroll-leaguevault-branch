@@ -46,10 +46,7 @@ export default function ScoresPage() {
   if (!leagueId || isNaN(leagueId) || !weekNumber || isNaN(weekNumber)) {
     return (
       <Layout>
-        <div className="p-4 rounded-md bg-destructive/10 text-destructive flex items-center gap-2">
-          <AlertCircle className="h-5 w-5" />
-          <p>Invalid league ID or week number provided</p>
-        </div>
+        <PageErrorState message="Invalid league ID or week number provided" />
       </Layout>
     );
   }

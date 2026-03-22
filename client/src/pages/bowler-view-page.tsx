@@ -338,7 +338,7 @@ export default function BowlerViewPage() {
           </div>
         </div>
 
-        {/* Financial Summary Cards */}
+        <ErrorBoundary level="section">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           <Card>
             <CardHeader className="pb-2">
@@ -408,8 +408,10 @@ export default function BowlerViewPage() {
             </CardContent>
           </Card>
         </div>
+        </ErrorBoundary>
       </div>
 
+      <ErrorBoundary level="section">
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -469,6 +471,7 @@ export default function BowlerViewPage() {
           </TableBody>
         </Table>
       </div>
+      </ErrorBoundary>
       </ErrorBoundary>
     </Layout>
   );

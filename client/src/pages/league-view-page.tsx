@@ -217,6 +217,7 @@ export default function LeagueViewPage() {
           </Card>
         )}
 
+        <ErrorBoundary level="section">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Link href={`/leagues/${leagueId}/teams`} className="block">
             <Card className="hover:bg-accent transition-colors">
@@ -256,7 +257,9 @@ export default function LeagueViewPage() {
             </Card>
           </Link>
         </div>
+        </ErrorBoundary>
 
+        <ErrorBoundary level="section">
         {league.active && (
           <div className="flex justify-end">
             <Button variant="outline" onClick={() => setShowNewSeason(true)}>
@@ -343,6 +346,7 @@ export default function LeagueViewPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </ErrorBoundary>
       </div>
       </ErrorBoundary>
     </Layout>
