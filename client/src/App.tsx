@@ -3,6 +3,7 @@ import { queryClient, prefetchQueries } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { lazy, Suspense, useEffect, FC } from "react";
+import { ErrorBoundary } from "@/components/error-boundary";
 import { AdminRouteGuard } from "@/components/admin-route-guard";
 import { OrganizationRouteGuard } from "@/components/organization-route-guard";
 import { OrganizationAdminRouteGuard } from "@/components/organization-admin-route-guard";
@@ -274,7 +275,9 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <Router />
+      <ErrorBoundary level="page">
+        <Router />
+      </ErrorBoundary>
       <Toaster />
     </QueryClientProvider>
   );

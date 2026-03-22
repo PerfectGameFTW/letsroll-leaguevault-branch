@@ -26,9 +26,15 @@ A full-stack bowling league management application with multi-tenant support for
   - `users.ts`, `organizations.ts`, `locations.ts`, `email-templates.ts` - Additional storage functions
 - `server/auth.ts` - Authentication with Passport.js (minimal logging, no sensitive data)
 - `server/utils/access-control.ts` - Centralized authorization helpers (hasAccessToLeague, hasAccessToBowler, etc.)
-- `client/src/App.tsx` - Frontend routing and route guards
+- `client/src/App.tsx` - Frontend routing and route guards (wrapped with ErrorBoundary)
 - `client/src/pages/` - Page components
 - `client/src/components/` - Reusable UI components
+- `client/src/components/error-boundary.tsx` - Reusable ErrorBoundary (page/section/inline levels)
+- `client/src/components/league-schedule-preview.tsx` - Extracted from league-form.tsx
+- `client/src/components/organization-form-dialog.tsx` - Extracted from organizations-page.tsx
+- `client/src/components/organization-confirm-dialogs.tsx` - Extracted from organizations-page.tsx
+- `client/src/components/payment-summary-cards.tsx` - Extracted from payment-history-page.tsx
+- `client/src/components/payment-overview-card.tsx` - Extracted from payment-status-section.tsx
 - `client/src/hooks/` - Custom React hooks
 - `client/src/lib/financial-utils.ts` - Shared financial calculation utilities (weeks, dues, past-due)
 

@@ -32,6 +32,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { calculateFinancials } from "@/lib/financial-utils";
 import { formatCurrency } from "@/lib/utils";
+import { PaymentSummaryCards } from "@/components/payment-summary-cards";
 
 export default function PaymentHistoryPage() {
   const { toast } = useToast();
@@ -362,120 +363,23 @@ export default function PaymentHistoryPage() {
           </p>
         </div>
 
-        {/* Six detailed payment cards */}
+        <PaymentSummaryCards
+          totalWeeksInSeason={totalWeeksInSeason}
+          fullSeasonAmount={fullSeasonAmount}
+          weeklyFee={league?.weeklyFee || 0}
+          weeksDueCount={weeksDueCount}
+          totalSeasonDues={totalSeasonDues}
+          weeksPaid={weeksPaid}
+          totalPaidAmount={totalPaidAmount}
+          amountPastDue={amountPastDue}
+          remainingBalance={remainingBalance}
+          finalTwoWeeks={finalTwoWeeks}
+          finalTwoWeeksPaidOnWeek={finalTwoWeeksPaidOnWeek}
+          onPayPastDue={() => setPayDialogType('pastdue')}
+          onPayRemaining={() => setPayDialogType('remaining')}
+        />
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Full Season Amount Due</CardTitle>
-              <CardDescription>
-                {totalWeeksInSeason} week{totalWeeksInSeason === 1 ? "" : "s"} at {formatCurrency(league?.weeklyFee || 0)}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(fullSeasonAmount)}</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Weekly Fee</CardTitle>
-              <CardDescription>Regular payment amount</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(league?.weeklyFee || 0)}</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Amount Due to Date</CardTitle>
-              <CardDescription>
-                {weeksDueCount} week{weeksDueCount === 1 ? "" : "s"} at {formatCurrency(league?.weeklyFee || 0)}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(totalSeasonDues)}</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Amount Paid to Date</CardTitle>
-              <CardDescription>
-                {weeksPaid} week{weeksPaid === 1 ? "" : "s"} at {formatCurrency(league?.weeklyFee || 0)}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(totalPaidAmount)}</p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className={amountPastDue > 0 ? "cursor-pointer transition-colors hover:border-destructive/50 hover:bg-destructive/5" : ""}
-            onClick={() => amountPastDue > 0 && setPayDialogType('pastdue')}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Amount Past Due to Date</CardTitle>
-              <CardDescription>{amountPastDue > 0 ? "Click to make a payment" : "No amount past due"}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-destructive">{formatCurrency(amountPastDue)}</p>
-            </CardContent>
-          </Card>
-
-          <Card
-            className={remainingBalance > 0 ? "cursor-pointer transition-colors hover:border-primary/50 hover:bg-primary/5" : ""}
-            onClick={() => remainingBalance > 0 && setPayDialogType('remaining')}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Full Season Remaining Balance</CardTitle>
-              <CardDescription>{remainingBalance > 0 ? "Click to pay off balance" : "Fully paid"}</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold">{formatCurrency(remainingBalance)}</p>
-            </CardContent>
-          </Card>
-
-          {finalTwoWeeks.amount > 0 && (
-            <Card className={`${
-              finalTwoWeeks.isPaid
-                ? 'border-green-500/50 bg-green-500/5'
-                : finalTwoWeeks.isPastDue
-                  ? 'border-destructive/50 bg-destructive/5'
-                  : ''
-            }`}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">Final 2 Weeks</CardTitle>
-                <CardDescription>
-                  Due by Week {finalTwoWeeks.dueByWeek}
-                  {finalTwoWeeks.dueByDate && ` (${format(finalTwoWeeks.dueByDate, 'MMM d, yyyy')})`}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className={`text-2xl font-bold ${
-                  finalTwoWeeks.isPaid
-                    ? 'text-green-600'
-                    : finalTwoWeeks.isPastDue
-                      ? 'text-destructive'
-                      : ''
-                }`}>
-                  {formatCurrency(finalTwoWeeks.amount)}
-                </p>
-                <p className={`text-sm font-medium mt-1 ${
-                  finalTwoWeeks.isPaid
-                    ? 'text-green-600'
-                    : finalTwoWeeks.isPastDue
-                      ? 'text-destructive'
-                      : 'text-muted-foreground'
-                }`}>
-                  {finalTwoWeeks.isPaid
-                    ? `Paid on Week ${finalTwoWeeksPaidOnWeek ?? '?'}`
-                    : finalTwoWeeks.isPastDue ? 'Past Due' : 'Due'}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
           <Dialog open={!!payDialogType} onOpenChange={(open) => !open && setPayDialogType(null)}>
             <DialogContent className="sm:max-w-md">
               <DialogHeader>
