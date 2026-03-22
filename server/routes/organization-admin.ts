@@ -47,7 +47,7 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
     }
     
     if (!organizationId) {
-      return sendError(res, 'bad_request', 'Organization ID is required', 400);
+      return sendError(res, 'Organization ID is required', 400, 'bad_request');
     }
     
     const users = await storage.getOrganizationUsers(organizationId);
@@ -107,7 +107,7 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
     return sendSuccess(res, usersWithBowlerInfo);
   } catch (error) {
     log.error('Error getting organization users:', error);
-    return sendError(res, 'internal_error', 'Failed to get organization users', 500);
+    return sendError(res, 'Failed to get organization users', 500, 'internal_error');
   }
 });
 
@@ -116,7 +116,7 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
-      return sendError(res, 'bad_request', 'Invalid user ID', 400);
+      return sendError(res, 'Invalid user ID', 400, 'bad_request');
     }
     
     // Validate request body
@@ -128,19 +128,19 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
       makeOrgAdmin: req.body.isOrganizationAdmin ?? req.body.makeOrgAdmin
     });
     if (!parseResult.success) {
-      return sendError(res, 'validation_error', parseResult.error.message, 400);
+      return sendError(res, parseResult.error.message, 400, 'validation_error');
     }
     
     const { makeOrgAdmin } = parseResult.data;
     
     const user = await storage.getUser(userId);
     if (!user) {
-      return sendError(res, 'not_found', 'User not found', 404);
+      return sendError(res, 'User not found', 404, 'not_found');
     }
     
     if (req.user.role === 'org_admin') {
       if (user.organizationId !== req.user.organizationId) {
-        return sendError(res, 'forbidden', 'You can only update users in your own organization', 403);
+        return sendError(res, 'You can only update users in your own organization', 403, 'forbidden');
       }
     }
     
@@ -149,7 +149,7 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
     return sendSuccess(res, updatedUser);
   } catch (error) {
     log.error('Error updating organization admin status:', error);
-    return sendError(res, 'internal_error', 'Failed to update organization admin status', 500);
+    return sendError(res, 'Failed to update organization admin status', 500, 'internal_error');
   }
 });
 
@@ -158,7 +158,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
-      return sendError(res, 'bad_request', 'Invalid user ID', 400);
+      return sendError(res, 'Invalid user ID', 400, 'bad_request');
     }
     
     // Validate request body
@@ -169,7 +169,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
     
     const parseResult = schema.safeParse(req.body);
     if (!parseResult.success) {
-      return sendError(res, 'validation_error', parseResult.error.message, 400);
+      return sendError(res, parseResult.error.message, 400, 'validation_error');
     }
     
     const { makeOrgAdmin } = parseResult.data;
@@ -179,7 +179,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
     if (req.user.role === 'system_admin' && req.body.organizationId !== undefined) {
       organizationId = parseInt(String(req.body.organizationId), 10);
       if (isNaN(organizationId)) {
-        return sendError(res, 'bad_request', 'Invalid organization ID', 400);
+        return sendError(res, 'Invalid organization ID', 400, 'bad_request');
       }
     } else {
       // Organization admins must use their own organization
@@ -187,12 +187,12 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
     }
     
     if (!organizationId) {
-      return sendError(res, 'bad_request', 'Organization ID is required', 400);
+      return sendError(res, 'Organization ID is required', 400, 'bad_request');
     }
     
     const user = await storage.getUser(userId);
     if (!user) {
-      return sendError(res, 'not_found', 'User not found', 404);
+      return sendError(res, 'User not found', 404, 'not_found');
     }
 
     // Check if user is already in an organization
@@ -208,7 +208,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
         return sendSuccess(res, user);
       }
       
-      return sendError(res, 'conflict', 'User is already in another organization', 409);
+      return sendError(res, 'User is already in another organization', 409, 'conflict');
     }
     
     // Use setUserOrganization to set the user's organization
@@ -224,7 +224,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
     return sendSuccess(res, refreshedUser);
   } catch (error) {
     log.error('Error adding user to organization:', error);
-    return sendError(res, 'internal_error', 'Failed to add user to organization', 500);
+    return sendError(res, 'Failed to add user to organization', 500, 'internal_error');
   }
 });
 
@@ -233,29 +233,29 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimit
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
-      return sendError(res, 'bad_request', 'Invalid user ID', 400);
+      return sendError(res, 'Invalid user ID', 400, 'bad_request');
     }
     
     // Get the user
     const user = await storage.getUser(userId);
     if (!user) {
-      return sendError(res, 'not_found', 'User not found', 404);
+      return sendError(res, 'User not found', 404, 'not_found');
     }
     
     // Organization admins can only remove users from their own organization
     if (req.user.role === 'org_admin') {
       if (user.organizationId !== req.user.organizationId) {
-        return sendError(res, 'forbidden', 'You can only remove users from your own organization', 403);
+        return sendError(res, 'You can only remove users from your own organization', 403, 'forbidden');
       }
       
       if (user.id === req.user.id) {
-        return sendError(res, 'forbidden', 'You cannot remove yourself from the organization', 403);
+        return sendError(res, 'You cannot remove yourself from the organization', 403, 'forbidden');
       }
     }
     
     // Check if user is in an organization
     if (!user.organizationId) {
-      return sendError(res, 'bad_request', 'User is not in any organization', 400);
+      return sendError(res, 'User is not in any organization', 400, 'bad_request');
     }
     
     // Remove user from organization
@@ -263,7 +263,7 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimit
     return sendSuccess(res, updatedUser);
   } catch (error) {
     log.error('Error removing user from organization:', error);
-    return sendError(res, 'internal_error', 'Failed to remove user from organization', 500);
+    return sendError(res, 'Failed to remove user from organization', 500, 'internal_error');
   }
 });
 
@@ -272,7 +272,7 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
-      return sendError(res, 'bad_request', 'Invalid user ID', 400);
+      return sendError(res, 'Invalid user ID', 400, 'bad_request');
     }
 
     const schema = z.object({
@@ -281,17 +281,17 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
 
     const parseResult = schema.safeParse(req.body);
     if (!parseResult.success) {
-      return sendError(res, 'validation_error', parseResult.error.message, 400);
+      return sendError(res, parseResult.error.message, 400, 'validation_error');
     }
 
     const user = await storage.getUser(userId);
     if (!user) {
-      return sendError(res, 'not_found', 'User not found', 404);
+      return sendError(res, 'User not found', 404, 'not_found');
     }
 
     if (req.user.role === 'org_admin') {
       if (user.organizationId !== req.user.organizationId) {
-        return sendError(res, 'forbidden', 'You can only update users in your own organization', 403);
+        return sendError(res, 'You can only update users in your own organization', 403, 'forbidden');
       }
     }
 
@@ -299,7 +299,7 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
     return sendSuccess(res, updatedUser);
   } catch (error) {
     log.error('Error updating user location:', error);
-    return sendError(res, 'internal_error', 'Failed to update user location', 500);
+    return sendError(res, 'Failed to update user location', 500, 'internal_error');
   }
 });
 
@@ -315,7 +315,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
 
     const parseResult = schema.safeParse(req.body);
     if (!parseResult.success) {
-      return sendError(res, 'validation_error', parseResult.error.errors.map(e => e.message).join(', '), 400);
+      return sendError(res, parseResult.error.errors.map(e => e.message).join(', '), 400, 'validation_error');
     }
 
     const { firstName, lastName, email, makeOrgAdmin, locationId } = parseResult.data;
@@ -329,12 +329,12 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
     }
 
     if (!organizationId) {
-      return sendError(res, 'bad_request', 'Organization ID is required', 400);
+      return sendError(res, 'Organization ID is required', 400, 'bad_request');
     }
 
     const existingUser = await storage.getUserByEmail(email);
     if (existingUser) {
-      return sendError(res, 'conflict', 'A user with this email address already exists', 409);
+      return sendError(res, 'A user with this email address already exists', 409, 'conflict');
     }
 
     const placeholderPassword = await hashPassword(randomBytes(32).toString('hex'));
@@ -375,7 +375,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
     return sendSuccess(res, { user: sanitizeUser(finalUser!), emailSent });
   } catch (error) {
     log.error('Error creating user:', error);
-    return sendError(res, 'internal_error', 'Failed to create user', 500);
+    return sendError(res, 'Failed to create user', 500, 'internal_error');
   }
 });
 
@@ -383,17 +383,17 @@ router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, inviteLimi
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
-      return sendError(res, 'bad_request', 'Invalid user ID', 400);
+      return sendError(res, 'Invalid user ID', 400, 'bad_request');
     }
 
     const user = await storage.getUser(userId);
     if (!user) {
-      return sendError(res, 'not_found', 'User not found', 404);
+      return sendError(res, 'User not found', 404, 'not_found');
     }
 
     if (req.user.role === 'org_admin') {
       if (user.organizationId !== req.user.organizationId) {
-        return sendError(res, 'forbidden', 'You can only manage users in your own organization', 403);
+        return sendError(res, 'You can only manage users in your own organization', 403, 'forbidden');
       }
     }
 
@@ -410,7 +410,7 @@ router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, inviteLimi
     return sendSuccess(res, { emailSent });
   } catch (error) {
     log.error('Error resending invite:', error);
-    return sendError(res, 'internal_error', 'Failed to resend invite', 500);
+    return sendError(res, 'Failed to resend invite', 500, 'internal_error');
   }
 });
 

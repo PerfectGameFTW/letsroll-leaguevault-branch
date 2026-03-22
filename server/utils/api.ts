@@ -59,35 +59,12 @@ export function parsePaginationParams(query: Record<string, any>): { page: numbe
 }
 
 export function sendError(
-  res: Response, 
-  codeOrMessage: string, 
-  messageOrStatus?: string | number, 
-  statusOrCode: number | string = 500,
+  res: Response,
+  message: string,
+  status: number = 500,
+  code: string = 'ServerError',
   details?: any
 ) {
-  let code: string;
-  let message: string;
-  let status: number;
-
-  // Handle different call patterns
-  if (typeof messageOrStatus === 'number') {
-    // Called as: sendError(res, code, status)
-    code = codeOrMessage;
-    message = code; // Use code as message
-    status = messageOrStatus;
-  } else if (typeof statusOrCode === 'number') {
-    // Called as: sendError(res, code, message, status)
-    code = codeOrMessage;
-    message = messageOrStatus as string || code;
-    status = statusOrCode as number;
-  } else {
-    // Called as: sendError(res, message, status, code)
-    // Legacy pattern
-    message = codeOrMessage;
-    status = typeof messageOrStatus === 'number' ? messageOrStatus : parseInt(messageOrStatus as string, 10) || 500;
-    code = typeof statusOrCode === 'string' ? statusOrCode : 'ServerError';
-  }
-  
   const response: ApiResponse<null> = {
     success: false,
     error: {
