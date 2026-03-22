@@ -18,7 +18,7 @@ router.get('/', filterByOrganization, async (req: any, res) => {
     if (organizationId !== null && organizationId !== undefined) {
       locations = await storage.getLocations(organizationId);
     } else if (isSystemAdmin) {
-      locations = await storage.getAllLocations();
+      locations = await storage.getAllLocationsSystemAdmin();
     } else {
       return sendSuccess(res, []);
     }

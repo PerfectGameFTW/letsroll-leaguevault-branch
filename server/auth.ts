@@ -227,7 +227,9 @@ export function setupAuth(app: Express) {
 
       let bowlerLinked = false;
       try {
-        const bowler = await storage.getBowlerByEmail(result.data.email, organizationId);
+        const bowler = organizationId
+          ? await storage.getBowlerByEmail(result.data.email, organizationId)
+          : await storage.getBowlerByEmailSystemAdmin(result.data.email);
         if (bowler) {
           const alreadyLinked = await storage.isBowlerLinked(bowler.id);
           if (!alreadyLinked) {
@@ -358,7 +360,7 @@ export function setupAuth(app: Express) {
       ]);
 
       try {
-        const bowler = await storage.getBowlerByEmail(user.email);
+        const bowler = await storage.getBowlerByEmailSystemAdmin(user.email);
         if (bowler) {
           const alreadyLinked = await storage.isBowlerLinked(bowler.id);
           if (!alreadyLinked) {

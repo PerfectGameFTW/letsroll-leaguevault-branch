@@ -26,6 +26,7 @@ A full-stack bowling league management application with multi-tenant support for
   - `users.ts`, `organizations.ts`, `locations.ts`, `email-templates.ts` - Additional storage functions
 - `server/auth.ts` - Authentication with Passport.js (minimal logging, no sensitive data)
 - `server/utils/access-control.ts` - Centralized authorization helpers (hasAccessToLeague, hasAccessToBowler, etc.)
+- **Storage naming convention**: Cross-org methods use `*SystemAdmin` suffix (e.g., `getAllBowlersSystemAdmin`). Org-scoped methods require `organizationId` parameter.
 - `client/src/App.tsx` - Frontend routing and route guards (wrapped with ErrorBoundary)
 - `client/src/pages/` - Page components
 - `client/src/components/` - Reusable UI components
@@ -191,11 +192,12 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
 - **Bowler-to-User Auto-Linking System**: Automatic linking between bowler records and user accounts
   - When a user sets their password via invite or self-registers, if their email matches a bowler record, they are automatically linked
   - When an admin creates/updates a bowler with an email matching an existing user, they are auto-linked
-  - `storage.getBowlerByEmail(email)` method added to IStorage/DatabaseStorage
+  - `storage.getBowlerByEmail(email, organizationId)` requires org scope; `getBowlerByEmailSystemAdmin(email)` for cross-org lookups
 - **Claim Bowler Page** (`/claim-bowler`): Self-service roster selection for bowlers without emails
   - After self-registration, users without an auto-linked bowler are redirected to pick their name from the roster
   - Shows unlinked bowlers (no email, no linked user) grouped by league and team
-  - `GET /api/bowlers/unlinked` endpoint, `POST /api/auth/claim-bowler` endpoint
+  - `GET /api/bowlers/unlinked` endpoint uses org-scoped queries for non-system-admin users
+  - `POST /api/auth/claim-bowler` endpoint
   - Skip option for users not yet on a roster
 - **Bulk League Invites**: Send registration invites to all bowlers in a league at once
   - "Send Registration Invites" button on league detail page (`/leagues/:id`)

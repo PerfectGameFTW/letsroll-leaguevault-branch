@@ -19,7 +19,7 @@ import type {
 
 export interface ILeagueStorage {
   getLeagues(organizationId: number): Promise<League[]>;
-  getAllLeagues(): Promise<League[]>;
+  getAllLeaguesSystemAdmin(): Promise<League[]>;
   getLeague(id: number): Promise<League | undefined>;
   getLeaguesByIds(ids: number[]): Promise<League[]>;
   createLeague(league: InsertLeague): Promise<League>;
@@ -27,7 +27,6 @@ export interface ILeagueStorage {
   deleteLeague(id: number): Promise<void>;
   archiveLeague(id: number): Promise<League>;
   restoreLeague(id: number): Promise<League>;
-  getOrganizationLeagues(organizationId: number): Promise<League[]>;
 }
 
 export interface ITeamStorage {
@@ -42,10 +41,11 @@ export interface ITeamStorage {
 
 export interface IBowlerStorage {
   getBowlers(filters: { teamId?: number; organizationId: number }): Promise<Bowler[]>;
-  getAllBowlers(): Promise<Bowler[]>;
+  getAllBowlersSystemAdmin(): Promise<Bowler[]>;
   getBowler(id: number): Promise<Bowler | undefined>;
   getBowlersByIds(ids: number[]): Promise<Bowler[]>;
-  getBowlerByEmail(email: string, organizationId?: number): Promise<Bowler | undefined>;
+  getBowlerByEmail(email: string, organizationId: number): Promise<Bowler | undefined>;
+  getBowlerByEmailSystemAdmin(email: string): Promise<Bowler | undefined>;
   createBowler(bowler: InsertBowler): Promise<Bowler>;
   updateBowler(id: number, bowler: UpdateBowler): Promise<Bowler>;
   updateBowlerBnContactId(bowlerId: number, bnContactId: string): Promise<void>;
@@ -61,8 +61,8 @@ export interface IBowlerStorage {
 
 export interface IPaymentStorage {
   getPayments(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId: number }): Promise<Payment[]>;
-  getAllPayments(filters?: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date }): Promise<Payment[]>;
-  getAllPaymentsPaginated(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date }, page: number, limit: number): Promise<PaginatedResult<Payment>>;
+  getAllPaymentsSystemAdmin(filters?: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date }): Promise<Payment[]>;
+  getAllPaymentsPaginatedSystemAdmin(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date }, page: number, limit: number): Promise<PaginatedResult<Payment>>;
   getPaymentsPaginated(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId: number }, page: number, limit: number): Promise<PaginatedResult<Payment>>;
   getPaymentById(id: number): Promise<Payment | undefined>;
   getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined>;
@@ -132,7 +132,7 @@ export interface IOrganizationStorage {
 
 export interface ILocationStorage {
   getLocations(organizationId: number): Promise<Location[]>;
-  getAllLocations(): Promise<Location[]>;
+  getAllLocationsSystemAdmin(): Promise<Location[]>;
   getLocation(id: number): Promise<Location | undefined>;
   createLocation(data: InsertLocation): Promise<Location>;
   updateLocation(id: number, data: UpdateLocation): Promise<Location>;

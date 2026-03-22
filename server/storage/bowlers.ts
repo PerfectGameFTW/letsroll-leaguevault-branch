@@ -39,7 +39,7 @@ export async function getBowlers(filters: { teamId?: number; organizationId: num
     .orderBy(bowlers.order);
 }
 
-export async function getAllBowlers(): Promise<Bowler[]> {
+export async function getAllBowlersSystemAdmin(): Promise<Bowler[]> {
   return db.select().from(bowlers).orderBy(bowlers.order);
 }
 
@@ -180,16 +180,17 @@ export async function getBowlerLeaguesByBowlerIds(bowlerIds: number[]): Promise<
     .orderBy(bowlerLeagues.order);
 }
 
-export async function getBowlerByEmail(email: string, organizationId?: number): Promise<Bowler | undefined> {
-  if (organizationId) {
-    const results = await db
-      .select({ bowler: bowlers })
-      .from(bowlers)
-      .innerJoin(bowlerLeagues, eq(bowlers.id, bowlerLeagues.bowlerId))
-      .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
-      .where(and(eq(bowlers.email, email), eq(leagues.organizationId, organizationId)));
-    return results[0]?.bowler;
-  }
+export async function getBowlerByEmail(email: string, organizationId: number): Promise<Bowler | undefined> {
+  const results = await db
+    .select({ bowler: bowlers })
+    .from(bowlers)
+    .innerJoin(bowlerLeagues, eq(bowlers.id, bowlerLeagues.bowlerId))
+    .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
+    .where(and(eq(bowlers.email, email), eq(leagues.organizationId, organizationId)));
+  return results[0]?.bowler;
+}
+
+export async function getBowlerByEmailSystemAdmin(email: string): Promise<Bowler | undefined> {
   const [result] = await db.select().from(bowlers).where(eq(bowlers.email, email));
   return result;
 }

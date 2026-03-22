@@ -5,10 +5,10 @@ import { leagues, type League, type InsertLeague, type UpdateLeague } from "@sha
 export async function getLeagues(organizationId: number): Promise<League[]> {
   return db.select().from(leagues)
     .where(eq(leagues.organizationId, organizationId))
-    .orderBy(leagues.id);
+    .orderBy(leagues.name);
 }
 
-export async function getAllLeagues(): Promise<League[]> {
+export async function getAllLeaguesSystemAdmin(): Promise<League[]> {
   return db.select().from(leagues).orderBy(leagues.id);
 }
 
@@ -39,14 +39,6 @@ export async function archiveLeague(id: number): Promise<League> {
 export async function restoreLeague(id: number): Promise<League> {
   const [result] = await db.update(leagues).set({ active: true }).where(eq(leagues.id, id)).returning();
   return result;
-}
-
-export async function getOrganizationLeagues(organizationId: number): Promise<League[]> {
-  return db
-    .select()
-    .from(leagues)
-    .where(eq(leagues.organizationId, organizationId))
-    .orderBy(leagues.name);
 }
 
 export async function getLeaguesByIds(ids: number[]): Promise<League[]> {

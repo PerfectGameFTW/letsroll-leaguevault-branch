@@ -33,7 +33,7 @@ router.get("/", async (req: any, res) => {
     if (organizationId !== null) {
       leagues = await storage.getLeagues(organizationId);
     } else if (isSystemAdmin) {
-      leagues = await storage.getAllLeagues();
+      leagues = await storage.getAllLeaguesSystemAdmin();
     } else {
       return sendSuccess(res, []);
     }
@@ -489,7 +489,7 @@ router.get("/:id/season-history", async (req: any, res) => {
     if (league.organizationId) {
       allLeagues = await storage.getLeagues(league.organizationId);
     } else if (req.user?.role === 'system_admin') {
-      allLeagues = await storage.getAllLeagues();
+      allLeagues = await storage.getAllLeaguesSystemAdmin();
     } else {
       allLeagues = [league];
     }

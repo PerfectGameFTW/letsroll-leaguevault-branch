@@ -43,31 +43,42 @@ router.get("/unlinked", async (req: any, res) => {
       }
       organizationId = req.user.organizationId;
     }
-    const allBowlers = await storage.getAllBowlers();
-    const linkedBowlerIdsList = await storage.getLinkedBowlerIds();
-    const allBowlerLeagues = await storage.getBowlerLeagues();
+    let scopedBowlers;
+    if (req.user?.role === 'system_admin' && !organizationId) {
+      scopedBowlers = await storage.getAllBowlersSystemAdmin();
+    } else if (organizationId) {
+      scopedBowlers = await storage.getBowlers({ organizationId });
+    } else {
+      return sendSuccess(res, []);
+    }
 
+    const linkedBowlerIdsList = await storage.getLinkedBowlerIds();
     const linkedBowlerIds = new Set(linkedBowlerIdsList);
 
-    const unlinkedBowlers = allBowlers.filter(
+    const unlinkedBowlers = scopedBowlers.filter(
       b => !linkedBowlerIds.has(b.id) && (!b.email || b.email.trim() === '')
     );
 
-    const leagueIds = [...new Set(allBowlerLeagues.map(bl => bl.leagueId))];
-    const teamIds = [...new Set(allBowlerLeagues.map(bl => bl.teamId))];
+    const bowlerIds = unlinkedBowlers.map(b => b.id);
+    const bowlerLeagueEntries = bowlerIds.length > 0
+      ? await storage.getBowlerLeaguesByBowlerIds(bowlerIds)
+      : [];
+
+    const leagueIds = [...new Set(bowlerLeagueEntries.map(bl => bl.leagueId))];
+    const teamIds = [...new Set(bowlerLeagueEntries.map(bl => bl.teamId))];
 
     const [leaguesData, teamsData] = await Promise.all([
-      Promise.all(leagueIds.map(id => storage.getLeague(id))),
-      Promise.all(teamIds.map(id => storage.getTeam(id))),
+      leagueIds.length > 0 ? storage.getLeaguesByIds(leagueIds) : Promise.resolve([]),
+      teamIds.length > 0 ? storage.getTeamsByIds(teamIds) : Promise.resolve([]),
     ]);
 
-    const leagueMap = new Map(leaguesData.filter(Boolean).map(l => [l!.id, l!]));
-    const teamMap = new Map(teamsData.filter(Boolean).map(t => [t!.id, t!]));
+    const leagueMap = new Map(leaguesData.map(l => [l.id, l]));
+    const teamMap = new Map(teamsData.map(t => [t.id, t]));
 
     const grouped: Record<string, { league: { id: number; name: string }; teams: Record<string, { team: { id: number; name: string; number: number }; bowlers: { id: number; name: string }[] }> }> = {};
 
     for (const bowler of unlinkedBowlers) {
-      const bowlerEntries = allBowlerLeagues.filter(bl => bl.bowlerId === bowler.id);
+      const bowlerEntries = bowlerLeagueEntries.filter(bl => bl.bowlerId === bowler.id);
       for (const entry of bowlerEntries) {
         const league = leagueMap.get(entry.leagueId);
         const team = teamMap.get(entry.teamId);
@@ -139,7 +150,7 @@ router.get("/", async (req, res) => {
 
     let bowlers;
     if (isSystemAdmin && effectiveOrgId === null) {
-      bowlers = await storage.getAllBowlers();
+      bowlers = await storage.getAllBowlersSystemAdmin();
     } else if (effectiveOrgId !== null) {
       bowlers = await storage.getBowlers({ teamId, organizationId: effectiveOrgId });
     } else {
@@ -215,7 +226,7 @@ router.post("/", async (req, res) => {
       const userOrgId: number | undefined = req.user?.organizationId ?? undefined;
       const isOrgUser = req.user?.role !== 'system_admin' && userOrgId !== undefined;
       const [existingBowlers, orgLeagues, bowlerLeaguesList] = await Promise.all([
-        isOrgUser ? storage.getBowlers({ organizationId: userOrgId }) : storage.getAllBowlers(),
+        isOrgUser ? storage.getBowlers({ organizationId: userOrgId }) : storage.getAllBowlersSystemAdmin(),
         isOrgUser ? storage.getLeagues(userOrgId) : Promise.resolve(null),
         isOrgUser ? storage.getBowlerLeagues() : Promise.resolve(null),
       ]);

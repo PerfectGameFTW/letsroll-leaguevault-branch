@@ -14,7 +14,7 @@ export type { IStorage };
 
 export class DatabaseStorage implements IStorage {
   getLeagues!: IStorage["getLeagues"];
-  getAllLeagues!: IStorage["getAllLeagues"];
+  getAllLeaguesSystemAdmin!: IStorage["getAllLeaguesSystemAdmin"];
   getLeague!: IStorage["getLeague"];
   getLeaguesByIds!: IStorage["getLeaguesByIds"];
   createLeague!: IStorage["createLeague"];
@@ -22,7 +22,6 @@ export class DatabaseStorage implements IStorage {
   deleteLeague!: IStorage["deleteLeague"];
   archiveLeague!: IStorage["archiveLeague"];
   restoreLeague!: IStorage["restoreLeague"];
-  getOrganizationLeagues!: IStorage["getOrganizationLeagues"];
 
   getTeams!: IStorage["getTeams"];
   getTeam!: IStorage["getTeam"];
@@ -33,10 +32,11 @@ export class DatabaseStorage implements IStorage {
   deleteTeam!: IStorage["deleteTeam"];
 
   getBowlers!: IStorage["getBowlers"];
-  getAllBowlers!: IStorage["getAllBowlers"];
+  getAllBowlersSystemAdmin!: IStorage["getAllBowlersSystemAdmin"];
   getBowler!: IStorage["getBowler"];
   getBowlersByIds!: IStorage["getBowlersByIds"];
   getBowlerByEmail!: IStorage["getBowlerByEmail"];
+  getBowlerByEmailSystemAdmin!: IStorage["getBowlerByEmailSystemAdmin"];
   createBowler!: IStorage["createBowler"];
   updateBowler!: IStorage["updateBowler"];
   updateBowlerBnContactId!: IStorage["updateBowlerBnContactId"];
@@ -50,8 +50,8 @@ export class DatabaseStorage implements IStorage {
   deleteBowlerLeague!: IStorage["deleteBowlerLeague"];
 
   getPayments!: IStorage["getPayments"];
-  getAllPayments!: IStorage["getAllPayments"];
-  getAllPaymentsPaginated!: IStorage["getAllPaymentsPaginated"];
+  getAllPaymentsSystemAdmin!: IStorage["getAllPaymentsSystemAdmin"];
+  getAllPaymentsPaginatedSystemAdmin!: IStorage["getAllPaymentsPaginatedSystemAdmin"];
   getPaymentsPaginated!: IStorage["getPaymentsPaginated"];
   getPaymentById!: IStorage["getPaymentById"];
   getPaymentByIdempotencyKey!: IStorage["getPaymentByIdempotencyKey"];
@@ -113,7 +113,7 @@ export class DatabaseStorage implements IStorage {
   updateOrgIntegrations!: IStorage["updateOrgIntegrations"];
 
   getLocations!: IStorage["getLocations"];
-  getAllLocations!: IStorage["getAllLocations"];
+  getAllLocationsSystemAdmin!: IStorage["getAllLocationsSystemAdmin"];
   getLocation!: IStorage["getLocation"];
   createLocation!: IStorage["createLocation"];
   updateLocation!: IStorage["updateLocation"];

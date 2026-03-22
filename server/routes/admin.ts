@@ -61,10 +61,10 @@ router.get('/dashboard', requireAdmin, async (req, res) => {
     
     // Fetch data for dashboard (system admin sees all)
     const [bowlers, leagues, teams, payments] = await Promise.all([
-      storage.getAllBowlers(),
-      storage.getAllLeagues(),
+      storage.getAllBowlersSystemAdmin(),
+      storage.getAllLeaguesSystemAdmin(),
       storage.getTeams(),
-      storage.getAllPayments()
+      storage.getAllPaymentsSystemAdmin()
     ]);
     
     // Get recent payments (last 5)

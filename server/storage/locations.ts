@@ -16,7 +16,7 @@ export async function getLocations(organizationId: number): Promise<Location[]> 
     .orderBy(locations.name);
 }
 
-export async function getAllLocations(): Promise<Location[]> {
+export async function getAllLocationsSystemAdmin(): Promise<Location[]> {
   return db.select().from(locations).orderBy(locations.name);
 }
 

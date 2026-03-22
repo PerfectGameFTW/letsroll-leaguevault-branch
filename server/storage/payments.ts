@@ -72,7 +72,7 @@ export async function getPayments(filters: PaymentFilters): Promise<Payment[]> {
   return query;
 }
 
-export async function getAllPayments(filters?: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date }): Promise<Payment[]> {
+export async function getAllPaymentsSystemAdmin(filters?: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date }): Promise<Payment[]> {
   const conditions = buildPaymentConditions(filters ?? {});
   const query = db.select().from(payments);
   if (conditions.length > 0) {
@@ -82,7 +82,7 @@ export async function getAllPayments(filters?: { bowlerId?: number; leagueId?: n
   return query;
 }
 
-export async function getAllPaymentsPaginated(
+export async function getAllPaymentsPaginatedSystemAdmin(
   filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date },
   page: number,
   limit: number

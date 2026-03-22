@@ -148,7 +148,7 @@ router.get('/slug/:slug/leagues', async (req, res) => {
       return sendError(res, 'Organization not found', 404, 'NotFound');
     }
 
-    const leagues = await storage.getOrganizationLeagues(organization.id);
+    const leagues = await storage.getLeagues(organization.id);
     const activeLeagues = leagues.filter(l => l.active !== false);
     sendSuccess(res, activeLeagues);
   } catch (error) {
@@ -397,7 +397,7 @@ router.get('/:id/leagues', async (req, res) => {
       return sendError(res, 'You do not have access to this organization', 403, 'Forbidden');
     }
 
-    const leagues = await storage.getOrganizationLeagues(id);
+    const leagues = await storage.getLeagues(id);
     sendSuccess(res, leagues);
   } catch (error) {
     log.error(`Error fetching leagues for organization ${req.params.id}:`, error);

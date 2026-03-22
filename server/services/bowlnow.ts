@@ -288,6 +288,7 @@ export async function syncBowlerToBN(
 }
 
 export async function syncAllBowlersToBN(
+  organizationId: number,
   orgConfig?: OrgIntegrations | null,
 ): Promise<{ total: number; synced: number; failed: number; errors: string[] }> {
   const hasOrgContext = orgConfig !== undefined;
@@ -298,7 +299,7 @@ export async function syncAllBowlersToBN(
     return { total: 0, synced: 0, failed: 0, errors: ['BowlNow not configured'] };
   }
 
-  const bowlers = await storage.getAllBowlers();
+  const bowlers = await storage.getBowlers({ organizationId });
   const results = { total: bowlers.length, synced: 0, failed: 0, errors: [] as string[] };
 
   for (const bowler of bowlers) {

@@ -79,7 +79,7 @@ router.post('/sync-all', async (req: any, res: Response) => {
     }
 
     const orgConfig = await storage.getOrgIntegrations(orgId);
-    const results = await syncAllBowlersToBN(orgConfig);
+    const results = await syncAllBowlersToBN(orgId, orgConfig);
     sendSuccess(res, results);
   } catch (error) {
     log.error('Error syncing all bowlers:', error);
