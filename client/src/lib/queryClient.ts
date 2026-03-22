@@ -1,19 +1,49 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+let csrfToken: string | null = null;
+let csrfFetchPromise: Promise<string> | null = null;
+
+async function fetchCsrfToken(): Promise<string> {
+  const res = await fetch('/api/csrf-token', { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch CSRF token');
+  const json = await res.json();
+  csrfToken = json.data.token;
+  return csrfToken!;
+}
+
+async function getCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  if (!csrfFetchPromise) {
+    csrfFetchPromise = fetchCsrfToken().finally(() => { csrfFetchPromise = null; });
+  }
+  return csrfFetchPromise;
+}
+
+export function clearCsrfToken() {
+  csrfToken = null;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     let errorMessage;
+    let errorCode: string | undefined;
     try {
       const contentType = res.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
         const errorData = await res.json();
         errorMessage = errorData.error?.message || errorData.message || (typeof errorData.error === 'string' ? errorData.error : null) || res.statusText;
+        errorCode = errorData.error?.code;
       } else {
         errorMessage = await res.text();
       }
     } catch (e) {
       errorMessage = res.statusText;
     }
+
+    if (res.status === 403 && errorCode === 'CSRF_ERROR') {
+      csrfToken = null;
+    }
+
     throw new Error(`${res.status}: ${errorMessage}`);
   }
   return res;
@@ -34,12 +64,19 @@ export async function apiRequest<T = any>(
   try {
     const apiUrl = ensureApiPrefix(url);
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+    };
+
+    const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase());
+    if (needsCsrf) {
+      headers['x-csrf-token'] = await getCsrfToken();
+    }
+
     const res = await fetch(apiUrl, {
       method,
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json"
-      },
+      headers,
       body: data ? JSON.stringify(data) : undefined,
       credentials: "include",
     });

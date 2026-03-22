@@ -12,6 +12,7 @@ import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
 import { ensureUserAvatarsTable, migrateLocalAvatarsToDB } from './migrations/migrate-avatars';
 import { createLogger } from './logger';
+import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
 
 const log = createLogger("Server");
 
@@ -123,12 +124,15 @@ app.use('/api', (req, res, next) => {
     }
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-csrf-token');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
   next();
 });
+
+app.get('/api/csrf-token', csrfTokenEndpoint);
+app.use('/api', csrfProtection);
 
 app.get('/api/health', async (req, res) => {
   try {
