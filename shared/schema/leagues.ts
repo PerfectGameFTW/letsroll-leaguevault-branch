@@ -11,8 +11,8 @@ export const leagues = pgTable("leagues", {
   name: text("name").notNull(),
   description: text("description"),
   active: boolean("active").notNull().default(true),
-  seasonStart: timestamp("season_start", { mode: "date" }).notNull(),
-  seasonEnd: timestamp("season_end", { mode: "date" }).notNull(),
+  seasonStart: timestamp("season_start").notNull(),
+  seasonEnd: timestamp("season_end").notNull(),
   weekDay: text("week_day", { enum: WEEKDAYS }).notNull(),
   weeklyFee: integer("weekly_fee").notNull().default(2000),
   lineageFee: integer("lineage_fee"),
@@ -90,7 +90,7 @@ export const insertLeagueSchema = baseLeagueSchema.extend({
     { message: "Lineage fee and prize fund fee must both be set and sum to the weekly fee", path: ["lineageFee"] }
   );
 
-export const partialLeagueSchema = z.object({
+export const updateLeagueSchema = z.object({
   name: nameSchema,
   description: z.string().nullable(),
   active: z.boolean(),
@@ -115,6 +115,8 @@ export const partialLeagueSchema = z.object({
   totalBowlingWeeks: z.number().int().positive().nullable(),
   skipDates: z.array(z.string()),
   cancelledDates: z.array(z.string()),
+  finalTwoWeeksDueWeek: z.number().int().min(1).nullable(),
+  organizationId: z.number().int().positive().nullable(),
 }).partial().refine(
   (data) => {
     if (data.seasonStart && data.seasonEnd) {
@@ -136,6 +138,8 @@ export const partialLeagueSchema = z.object({
   },
   { message: "Lineage fee and prize fund fee must both be set and sum to the weekly fee", path: ["lineageFee"] }
 );
+
+export const partialLeagueSchema = updateLeagueSchema;
 
 export type League = typeof leagues.$inferSelect;
 export type InsertLeague = z.infer<typeof insertLeagueSchema>;

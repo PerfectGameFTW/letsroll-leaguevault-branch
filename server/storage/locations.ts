@@ -2,6 +2,7 @@ import { eq, isNull } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   locations, leagues,
+  locationSquareCredentialsSchema,
   type Location, type InsertLocation,
   type LocationSquareCredentials,
 } from "@shared/schema";
@@ -58,7 +59,15 @@ export async function restoreLocation(id: number): Promise<Location> {
 
 export async function getLocationSquareConfig(locationId: number): Promise<LocationSquareCredentials | null> {
   const [location] = await db.select({ squareCredentials: locations.squareCredentials }).from(locations).where(eq(locations.id, locationId));
-  return location?.squareCredentials ?? null;
+
+  if (!location?.squareCredentials) return null;
+
+  const parsed = locationSquareCredentialsSchema.safeParse(location.squareCredentials);
+  if (!parsed.success) {
+    console.warn(`[Storage] Malformed squareCredentials JSONB for location ${locationId}:`, parsed.error.format());
+    return null;
+  }
+  return parsed.data ?? null;
 }
 
 export async function updateLocationSquareConfig(locationId: number, creds: LocationSquareCredentials): Promise<Location> {

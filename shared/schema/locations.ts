@@ -45,7 +45,19 @@ export const insertLocationSchema = baseLocationSchema.extend({
   squareCredentials: locationSquareCredentialsSchema,
 }).omit({ id: true });
 
-export const partialLocationSchema = z.object({ ...baseLocationSchema.shape, squareCredentials: locationSquareCredentialsSchema }).partial();
+export const updateLocationSchema = z.object({
+  name: nameSchema,
+  address: z.string().nullable(),
+  city: z.string().nullable(),
+  state: z.string().nullable(),
+  zipCode: z.string().nullable(),
+  phone: z.string().nullable(),
+  active: z.boolean(),
+  organizationId: z.number().int().positive(),
+  squareCredentials: locationSquareCredentialsSchema,
+}).partial();
+
+export const partialLocationSchema = updateLocationSchema;
 
 export type Location = typeof locations.$inferSelect;
 export type InsertLocation = z.infer<typeof insertLocationSchema>;

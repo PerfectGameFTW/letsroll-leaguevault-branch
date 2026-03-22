@@ -63,8 +63,26 @@ export const insertBowlerLeagueSchema = baseBowlerLeagueSchema.extend({
   order: z.number().min(0).default(0),
 }).omit({ id: true });
 
-export const partialBowlerSchema = z.object(baseBowlerSchema.shape).partial();
-export const partialBowlerLeagueSchema = z.object(baseBowlerLeagueSchema.shape).partial();
+export const updateBowlerSchema = z.object({
+  name: nameSchema,
+  email: z.union([emailSchema, z.literal("")]).nullable(),
+  phone: z.string().nullable(),
+  active: z.boolean(),
+  order: z.number().min(0),
+  squareCustomerId: z.string().nullable(),
+  bnContactId: z.string().nullable(),
+}).partial();
+
+export const updateBowlerLeagueSchema = z.object({
+  bowlerId: positiveIntSchema,
+  leagueId: positiveIntSchema,
+  teamId: positiveIntSchema,
+  active: z.boolean(),
+  order: z.number().min(0),
+}).partial();
+
+export const partialBowlerSchema = updateBowlerSchema;
+export const partialBowlerLeagueSchema = updateBowlerLeagueSchema;
 
 export type Bowler = typeof bowlers.$inferSelect;
 export type InsertBowler = z.infer<typeof insertBowlerSchema>;

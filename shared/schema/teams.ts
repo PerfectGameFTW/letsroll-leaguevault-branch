@@ -25,7 +25,14 @@ export const insertTeamSchema = baseTeamSchema.extend({
   active: z.boolean().default(true),
 }).omit({ id: true });
 
-export const partialTeamSchema = z.object(baseTeamSchema.shape).partial();
+export const updateTeamSchema = z.object({
+  name: nameSchema,
+  number: positiveIntSchema,
+  leagueId: positiveIntSchema,
+  active: z.boolean(),
+}).partial();
+
+export const partialTeamSchema = updateTeamSchema;
 
 export type Team = typeof teams.$inferSelect;
 export type InsertTeam = z.infer<typeof insertTeamSchema>;

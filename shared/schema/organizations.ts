@@ -53,7 +53,21 @@ export const insertOrganizationSchema = baseOrganizationSchema.extend({
   integrations: orgIntegrationsSchema,
 }).omit({ id: true, createdAt: true });
 
-export const partialOrganizationSchema = z.object(baseOrganizationSchema.shape).partial();
+export const updateOrganizationSchema = z.object({
+  name: nameSchema,
+  slug: z.string().min(2, "Slug must be at least 2 characters").regex(/^[a-z0-9-]+$/, "Slug must contain only lowercase letters, numbers, and hyphens"),
+  address: z.string().nullable(),
+  city: z.string().nullable(),
+  state: z.string().nullable(),
+  zipCode: z.string().nullable(),
+  phone: z.string().nullable(),
+  email: z.union([emailSchema, z.literal("")]).nullable(),
+  logo: z.string().nullable(),
+  active: z.boolean(),
+  integrations: orgIntegrationsSchema,
+}).partial();
+
+export const partialOrganizationSchema = updateOrganizationSchema;
 
 export type Organization = typeof organizations.$inferSelect;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;

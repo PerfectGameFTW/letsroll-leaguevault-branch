@@ -83,8 +83,32 @@ export const insertPaymentScheduleSchema = basePaymentScheduleSchema.extend({
   squareCardId: z.string(),
 }).omit({ id: true, createdAt: true, lastPaymentDate: true });
 
-export const partialPaymentSchema = z.object(basePaymentSchema.shape).partial();
-export const partialPaymentScheduleSchema = z.object(basePaymentScheduleSchema.shape).partial();
+export const updatePaymentSchema = z.object({
+  amount: positiveIntSchema,
+  lineageAmount: z.number().int().min(0).nullable(),
+  prizeFundAmount: z.number().int().min(0).nullable(),
+  weekOf: dateSchema,
+  status: z.enum(PAYMENT_STATUSES),
+  type: z.enum(PAYMENT_TYPES),
+  checkNumber: z.string().nullable(),
+  squarePaymentId: z.string().nullable(),
+  squareRefundId: z.string().nullable(),
+  refundReason: z.string().nullable(),
+  refundedAt: z.coerce.date().nullable(),
+  notes: z.string().nullable(),
+}).partial();
+
+export const updatePaymentScheduleSchema = z.object({
+  frequency: z.enum(["weekly", "monthly", "upfront"]),
+  amount: positiveIntSchema,
+  nextPaymentDate: dateSchema,
+  active: z.boolean(),
+  squareCardId: z.string(),
+  lastPaymentDate: z.coerce.date().nullable(),
+}).partial();
+
+export const partialPaymentSchema = updatePaymentSchema;
+export const partialPaymentScheduleSchema = updatePaymentScheduleSchema;
 
 export type Payment = typeof payments.$inferSelect;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;

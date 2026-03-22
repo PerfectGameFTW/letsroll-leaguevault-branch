@@ -2,6 +2,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   organizations, leagues, users,
+  orgIntegrationsSchema,
   type Organization, type InsertOrganization,
   type User,
   type OrgIntegrations,
@@ -84,7 +85,15 @@ export async function getOrgIntegrations(orgId: number): Promise<OrgIntegrations
     .select({ integrations: organizations.integrations })
     .from(organizations)
     .where(eq(organizations.id, orgId));
-  return (org?.integrations as OrgIntegrations | null) ?? null;
+
+  if (!org?.integrations) return null;
+
+  const parsed = orgIntegrationsSchema.safeParse(org.integrations);
+  if (!parsed.success) {
+    console.warn(`[Storage] Malformed integrations JSONB for org ${orgId}:`, parsed.error.format());
+    return null;
+  }
+  return parsed.data ?? null;
 }
 
 export async function updateOrgIntegrations(orgId: number, integrations: OrgIntegrations): Promise<Organization> {

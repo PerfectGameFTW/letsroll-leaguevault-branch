@@ -30,74 +30,28 @@ export async function getGame(id: number): Promise<Game | undefined> {
 }
 
 export async function createGame(game: InsertGame): Promise<Game> {
-  try {
-    console.log('[Storage] Creating game with input:', {
-      ...game,
-      date: game.date instanceof Date ? {
-        isoString: game.date.toISOString(),
-        type: 'Date',
-        timestamp: game.date.getTime()
-      } : {
-        value: String(game.date),
-        type: typeof game.date
-      }
-    });
-
-    let gameDate: Date;
-    if (game.date instanceof Date) {
-      gameDate = game.date;
-    } else {
-      gameDate = new Date(game.date);
-    }
-
-    if (isNaN(gameDate.getTime())) {
-      throw new Error('Invalid date provided to createGame');
-    }
-
-    console.log('[Storage] Validated game date:', {
-      isoString: gameDate.toISOString(),
-      utcString: gameDate.toUTCString(),
-      timestamp: gameDate.getTime()
-    });
-
-    const [result] = await db
-      .insert(games)
-      .values({
-        leagueId: game.leagueId,
-        weekNumber: game.weekNumber,
-        gameNumber: game.gameNumber,
-        date: gameDate.toISOString()
-      })
-      .returning();
-
-    console.log('[Storage] Successfully created game:', {
-      id: result.id,
-      date: result.date,
-      weekNumber: result.weekNumber,
-      gameNumber: result.gameNumber
-    });
-
-    return result;
-  } catch (error) {
-    console.error('[Storage] Error creating game:', {
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error,
-      input: {
-        ...game,
-        date: game.date instanceof Date ? game.date.toISOString() : String(game.date)
-      }
-    });
-    throw error;
+  const gameDate = game.date instanceof Date ? game.date : new Date(game.date);
+  if (isNaN(gameDate.getTime())) {
+    throw new Error('Invalid date provided to createGame');
   }
+
+  const [result] = await db
+    .insert(games)
+    .values({
+      leagueId: game.leagueId,
+      weekNumber: game.weekNumber,
+      gameNumber: game.gameNumber,
+      date: gameDate,
+    })
+    .returning();
+
+  return result;
 }
 
 export async function updateGame(id: number, game: Partial<InsertGame>): Promise<Game> {
   const updateData = {
     ...game,
-    date: game.date ? game.date.toISOString() : undefined
+    date: game.date ? (game.date instanceof Date ? game.date : new Date(game.date)) : undefined,
   };
   const [result] = await db.update(games).set(updateData).where(eq(games.id, id)).returning();
   return result;

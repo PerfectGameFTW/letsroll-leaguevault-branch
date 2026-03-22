@@ -14,7 +14,7 @@ export const games = pgTable("games", {
     .references(() => leagues.id, { onDelete: 'cascade' }),
   weekNumber: integer("week_number").notNull(),
   gameNumber: integer("game_number").notNull(),
-  date: timestamp("date", { mode: "string" }).notNull(),
+  date: timestamp("date").notNull(),
 }, (table) => ({
   leagueGameIdx: index("league_game_idx").on(table.leagueId, table.weekNumber, table.gameNumber),
   dateIdx: index("game_date_idx").on(table.date),
@@ -77,8 +77,32 @@ export const insertScoreSchema = baseScoreSchema.extend({
   notes: z.array(z.string().max(500)).default([]),
 }).omit({ id: true });
 
-export const partialGameSchema = z.object(baseGameSchema.shape).partial();
-export const partialScoreSchema = z.object(baseScoreSchema.shape).partial();
+export const updateGameSchema = z.object({
+  leagueId: positiveIntSchema,
+  weekNumber: positiveIntSchema,
+  gameNumber: z.number().int().min(1).max(3),
+  date: dateSchema,
+}).partial();
+
+export const updateScoreSchema = z.object({
+  gameId: positiveIntSchema,
+  bowlerId: positiveIntSchema,
+  teamId: positiveIntSchema,
+  score: z.number().int().min(0).max(300),
+  handicap: z.number().int().min(0).max(300),
+  average: z.number().int().min(0).max(300),
+  position: z.number().int().min(1).max(4),
+  isVacant: z.boolean(),
+  isAbsent: z.boolean(),
+  isSub: z.boolean(),
+  laneNumber: positiveIntSchema,
+  frames: z.array(z.string().regex(frameRegex, "Invalid frame notation")),
+  splits: z.array(z.string().regex(/^[0-9-]+$/, "Invalid split notation")),
+  notes: z.array(z.string().max(500)),
+}).partial();
+
+export const partialGameSchema = updateGameSchema;
+export const partialScoreSchema = updateScoreSchema;
 
 export type Game = typeof games.$inferSelect;
 export type InsertGame = z.infer<typeof insertGameSchema>;
