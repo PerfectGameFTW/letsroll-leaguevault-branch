@@ -56,11 +56,10 @@ router.get("/", async (req, res) => {
 
     if (isSystemAdmin && effectiveOrgId === null) {
       if (paginationParams) {
-        const allPayments = await storage.getAllPayments();
-        const filtered = allPayments.slice((paginationParams.page - 1) * paginationParams.limit, paginationParams.page * paginationParams.limit);
-        return sendPaginatedSuccess(res, filtered, { page: paginationParams.page, limit: paginationParams.limit, total: allPayments.length, totalPages: Math.ceil(allPayments.length / paginationParams.limit) });
+        const result = await storage.getAllPaymentsPaginated(baseFilters, paginationParams.page, paginationParams.limit);
+        return sendPaginatedSuccess(res, result.items, result.pagination);
       }
-      const payments = await storage.getAllPayments();
+      const payments = await storage.getAllPayments(baseFilters);
       return sendSuccess(res, payments);
     }
 

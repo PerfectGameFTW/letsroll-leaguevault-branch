@@ -47,10 +47,13 @@ router.get("/", async (req, res) => {
       const scopedOrgId: number | null = req.user?.organizationId ?? null;
       const isUnaffiliatedSystemAdmin = req.user?.role === 'system_admin' && scopedOrgId === null;
 
-      if (!isUnaffiliatedSystemAdmin && scopedOrgId !== null) {
+      if (isUnaffiliatedSystemAdmin) {
+      } else if (scopedOrgId !== null) {
         const orgLeagues = await storage.getLeagues(scopedOrgId);
         const orgLeagueIds = new Set(orgLeagues.map(l => l.id));
         bowlerLeagues = bowlerLeagues.filter(bl => orgLeagueIds.has(bl.leagueId));
+      } else {
+        bowlerLeagues = [];
       }
     }
 

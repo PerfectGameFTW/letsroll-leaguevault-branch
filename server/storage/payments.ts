@@ -102,8 +102,50 @@ export async function getPayments(filters: PaymentFilters): Promise<Payment[]> {
   }
 }
 
-export async function getAllPayments(): Promise<Payment[]> {
-  return db.select().from(payments).orderBy(desc(payments.weekOf));
+export async function getAllPayments(filters?: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date }): Promise<Payment[]> {
+  const conditions = buildPaymentConditions(filters ?? {});
+  const query = db.select().from(payments);
+  if (conditions.length > 0) {
+    query.where(and(...conditions));
+  }
+  query.orderBy(desc(payments.weekOf));
+  return query;
+}
+
+export async function getAllPaymentsPaginated(
+  filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date },
+  page: number,
+  limit: number
+): Promise<PaginatedResult<Payment>> {
+  const conditions = buildPaymentConditions(filters);
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const [countResult] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(payments)
+    .where(whereClause);
+  const total = Number(countResult?.count ?? 0);
+
+  const offset = (page - 1) * limit;
+  const query = db.select().from(payments);
+  if (whereClause) {
+    query.where(whereClause);
+  }
+  query.orderBy(desc(payments.weekOf));
+  query.limit(limit);
+  query.offset(offset);
+
+  const items = await query;
+
+  return {
+    items,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 }
 
 export async function getPaymentsPaginated(

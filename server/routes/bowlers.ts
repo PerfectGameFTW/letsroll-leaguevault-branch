@@ -210,10 +210,11 @@ router.post("/", async (req, res) => {
 
     // Check for existing bowler with same email if provided
     if (bowler.email) {
-      const isOrgUser = req.user?.role !== 'system_admin' && !!req.user?.organizationId;
+      const userOrgId: number | undefined = req.user?.organizationId ?? undefined;
+      const isOrgUser = req.user?.role !== 'system_admin' && userOrgId !== undefined;
       const [existingBowlers, orgLeagues, bowlerLeaguesList] = await Promise.all([
-        isOrgUser ? storage.getBowlers({ organizationId: req.user!.organizationId }) : storage.getAllBowlers(),
-        isOrgUser ? storage.getLeagues(req.user!.organizationId) : Promise.resolve(null),
+        isOrgUser ? storage.getBowlers({ organizationId: userOrgId }) : storage.getAllBowlers(),
+        isOrgUser ? storage.getLeagues(userOrgId) : Promise.resolve(null),
         isOrgUser ? storage.getBowlerLeagues() : Promise.resolve(null),
       ]);
 
