@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { differenceInWeeks } from "date-fns";
+import { calculateFinalTwoWeeksPaidOnWeek } from "@/lib/financial-utils";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -138,22 +138,10 @@ export default function PaymentHistoryPage() {
   const weeksDueCount = league?.weeklyFee ? Math.round(totalSeasonDues / league.weeklyFee) : 0;
   const weeksPaid = league?.weeklyFee ? Math.round(totalPaidAmount / league.weeklyFee) : 0;
 
-  let finalTwoWeeksPaidOnWeek: number | null = null;
-  if (finalTwoWeeks.isPaid && finalTwoWeeks.amount > 0 && league?.seasonStart) {
-    const seasonStart = new Date(league.seasonStart);
-    const totalPaidPayments = bowlerPayments.filter(p => p.status === 'paid');
-    const sortedPayments = [...totalPaidPayments].sort(
-      (a, b) => new Date(a.weekOf).getTime() - new Date(b.weekOf).getTime()
-    );
-    let runningTotal = 0;
-    for (const p of sortedPayments) {
-      runningTotal += p.amount;
-      if (runningTotal >= finalTwoWeeks.amount) {
-        finalTwoWeeksPaidOnWeek = Math.max(1, differenceInWeeks(new Date(p.weekOf), seasonStart) + 1);
-        break;
-      }
-    }
-  }
+  const finalTwoWeeksPaidOnWeek =
+    finalTwoWeeks.isPaid && finalTwoWeeks.amount > 0 && league?.seasonStart
+      ? calculateFinalTwoWeeksPaidOnWeek(bowlerPayments, finalTwoWeeks.amount, league.seasonStart)
+      : null;
 
   const handleDialogPayment = async () => {
     const dialogAmount = payDialogType === 'pastdue' ? amountPastDue : remainingBalance;

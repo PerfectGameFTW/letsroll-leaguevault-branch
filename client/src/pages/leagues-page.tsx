@@ -36,12 +36,12 @@ import {
 import { Plus, Pencil, Archive, RotateCcw, Trash, AlertTriangle } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import type { League, Team, Location } from "@shared/schema";
-import { WEEKDAYS } from "@shared/schema";
 import type { ScoreWithRelations } from "@/lib/types/scores";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInWeeks } from "date-fns";
 import { getSeasonLabel } from "@/lib/season-utils";
+import { filterAndSortLeagues, buildLocationMap, countArchivedLeagues } from "@/lib/league-filter-utils";
 import { Link } from "wouter";
 
 export default function LeaguesPage() {
@@ -150,21 +150,9 @@ export default function LeaguesPage() {
   }
 
   const allLeagues = leagues || [];
-  const locationMap = allLocations.reduce((acc, loc) => { acc[loc.id] = loc.name; return acc; }, {} as Record<number, string>);
-  let filteredLeagues = showArchived ? allLeagues : allLeagues.filter(l => l.active);
-  if (locationFilter !== 'all') {
-    if (locationFilter === 'none') {
-      filteredLeagues = filteredLeagues.filter(l => !l.locationId);
-    } else {
-      filteredLeagues = filteredLeagues.filter(l => l.locationId === parseInt(locationFilter));
-    }
-  }
-  filteredLeagues = filteredLeagues.slice().sort((a, b) => {
-    const aIdx = WEEKDAYS.indexOf(a.weekDay as typeof WEEKDAYS[number]);
-    const bIdx = WEEKDAYS.indexOf(b.weekDay as typeof WEEKDAYS[number]);
-    return aIdx - bIdx;
-  });
-  const archivedCount = allLeagues.filter(l => !l.active).length;
+  const locationMap = buildLocationMap(allLocations);
+  const filteredLeagues = filterAndSortLeagues(allLeagues, { showArchived, locationFilter });
+  const archivedCount = countArchivedLeagues(allLeagues);
 
   return (
     <Layout>

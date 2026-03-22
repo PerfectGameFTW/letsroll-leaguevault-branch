@@ -38,8 +38,10 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { Bowler, Payment, Team, League, BowlerLeague } from "@shared/schema";
-import { format, differenceInWeeks, startOfToday, isValid, parseISO } from "date-fns";
+import { format, isValid, parseISO } from "date-fns";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { calculateFinancials, getPaymentSummary } from "@/lib/financial-utils";
+import { filterActiveBowlerLeagues } from "@/lib/bowler-league-utils";
 
 interface ApiResponse<T> {
   success: boolean;
@@ -92,23 +94,9 @@ export default function BowlerViewPage() {
     retry: false,
   });
 
-  // Filter and deduplicate bowler leagues
   const bowlerLeagues = useMemo(() => {
     const allLeagues = bowlerLeaguesResponse?.data || [];
-    // First, filter active associations
-    const activeLeagues = allLeagues.filter(bl => 
-      bl.active && bl.bowlerId === bowlerId
-    );
-    // Then, ensure unique leagues by taking the most recently ordered association
-    return activeLeagues.reduce((unique: BowlerLeague[], current) => {
-      const existingIndex = unique.findIndex(bl => bl.leagueId === current.leagueId);
-      if (existingIndex === -1) {
-        unique.push(current);
-      } else if ((current.order ?? 0) > (unique[existingIndex].order ?? 0)) {
-        unique[existingIndex] = current;
-      }
-      return unique;
-    }, []).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return filterActiveBowlerLeagues(allLeagues, bowlerId);
   }, [bowlerLeaguesResponse?.data, bowlerId]);
 
   // Get all leagues (always fetch so we can show "add to league" option)
@@ -240,46 +228,16 @@ export default function BowlerViewPage() {
     );
   }
 
-  // Financial calculations based on selected league
-  const totalPaidPayments = payments.filter(p => p.status === 'paid') || [];
-  const totalPaidAmount = totalPaidPayments.reduce((sum, p) => sum + p.amount, 0);
-  const totalUnpaidPayments = payments.filter(p => p.status !== 'paid') || [];
-  const totalUnpaidAmount = totalUnpaidPayments.reduce((sum, p) => sum + p.amount, 0);
-
-  let weeksDue = 0;
-  let totalSeasonDues = 0;
-  let totalWeeksInSeason = 0;
-  let fullSeasonAmount = 0;
-  let amountPastDue = 0;
-
-  if (league?.seasonStart && league.seasonEnd && league.weeklyFee) {
-    // Validate dates and handle both string and Date types
-    const seasonStart = typeof league.seasonStart === 'string' ? parseISO(league.seasonStart) : league.seasonStart;
-    const seasonEnd = typeof league.seasonEnd === 'string' ? parseISO(league.seasonEnd) : league.seasonEnd;
-    const today = startOfToday();
-
-    if (seasonStart && seasonEnd && isValid(seasonStart) && isValid(seasonEnd) && isValid(today)) {
-      if (today < seasonStart) {
-        weeksDue = 0;
-      } else if (today > seasonEnd) {
-        weeksDue = Math.max(0, differenceInWeeks(seasonEnd, seasonStart));
-      } else {
-        weeksDue = Math.max(0, differenceInWeeks(today, seasonStart));
-      }
-
-      totalSeasonDues = league.weeklyFee * weeksDue;
-      totalWeeksInSeason = differenceInWeeks(seasonEnd, seasonStart);
-      fullSeasonAmount = league.weeklyFee * totalWeeksInSeason;
-      amountPastDue = totalSeasonDues - totalPaidAmount;
-    } else {
-      console.error('Invalid date format in league data:', {
-        seasonStart: league.seasonStart,
-        seasonEnd: league.seasonEnd
-      });
-    }
-  }
-
-  const remainingBalance = fullSeasonAmount - totalPaidAmount;
+  const { totalPaidAmount, totalUnpaidAmount } = getPaymentSummary(payments);
+  const financials = calculateFinancials(league, payments);
+  const {
+    weeksPassed: weeksDue,
+    totalWeeksInSeason,
+    totalDueToDate: totalSeasonDues,
+    amountPastDue,
+    fullSeasonAmount,
+    remainingBalance,
+  } = financials;
 
 
   return (

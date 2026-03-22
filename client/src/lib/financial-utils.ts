@@ -1,4 +1,4 @@
-import { addWeeks, startOfToday } from "date-fns";
+import { addWeeks, startOfToday, differenceInWeeks } from "date-fns";
 import type { League, Payment } from "@shared/schema";
 import {
   getEffectiveBowlingWeeks,
@@ -215,4 +215,38 @@ export function calculateBowlerPastDue(
   ));
   const dueToDate = league.weeklyFee * weeksPassed;
   return Math.max(0, dueToDate - bowlerPaidAmount);
+}
+
+export function calculateFinalTwoWeeksPaidOnWeek(
+  payments: Payment[],
+  finalTwoWeeksAmount: number,
+  seasonStart: string | Date
+): number | null {
+  if (finalTwoWeeksAmount <= 0) return null;
+
+  const start = new Date(seasonStart);
+  const paidPayments = payments.filter((p) => p.status === "paid");
+  const sorted = [...paidPayments].sort(
+    (a, b) => new Date(a.weekOf).getTime() - new Date(b.weekOf).getTime()
+  );
+
+  let runningTotal = 0;
+  for (const p of sorted) {
+    runningTotal += p.amount;
+    if (runningTotal >= finalTwoWeeksAmount) {
+      return Math.max(1, differenceInWeeks(new Date(p.weekOf), start) + 1);
+    }
+  }
+  return null;
+}
+
+export function getPaymentSummary(payments: Payment[]) {
+  const paidPayments = payments.filter((p) => p.status === "paid");
+  const unpaidPayments = payments.filter((p) => p.status !== "paid");
+  return {
+    paidPayments,
+    totalPaidAmount: paidPayments.reduce((sum, p) => sum + p.amount, 0),
+    unpaidPayments,
+    totalUnpaidAmount: unpaidPayments.reduce((sum, p) => sum + p.amount, 0),
+  };
 }

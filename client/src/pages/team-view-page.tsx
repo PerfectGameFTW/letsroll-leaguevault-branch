@@ -27,6 +27,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { getTeamBowlers } from "@/lib/bowler-league-utils";
 
 const editTeamSchema = z.object({
   name: z.string().min(1, "Team name is required"),
@@ -100,36 +101,10 @@ export default function TeamViewPage() {
 
   const bowlers = bowlersResponse?.data || [];
 
-  // Create team bowlers array with proper ordering and duplicate filtering
-  const teamBowlers = useMemo(() => {
-    if (!bowlerLeagues.length || !bowlers.length) return [];
-
-    // Get only the most recent active association for each bowler
-    const uniqueBowlerAssociations = bowlerLeagues
-      .filter((bl: BowlerLeague) => bl.active && bl.teamId === teamId)
-      .sort((a: BowlerLeague, b: BowlerLeague) => {
-        // Sort by joinedAt in descending order to get most recent first
-        return new Date(b.joinedAt).getTime() - new Date(a.joinedAt).getTime();
-      })
-      .reduce((acc: BowlerLeague[], bl: BowlerLeague) => {
-        // Only keep the first (most recent) association for each bowler
-        if (!acc.find(existing => existing.bowlerId === bl.bowlerId)) {
-          acc.push(bl);
-        }
-        return acc;
-      }, [])
-      // Sort by order field for display
-      .sort((a: BowlerLeague, b: BowlerLeague) => (a.order ?? 0) - (b.order ?? 0));
-
-    return uniqueBowlerAssociations
-      .map((bl: BowlerLeague) => ({
-        bowler: bowlers.find((b: Bowler) => b.id === bl.bowlerId),
-        bowlerLeague: bl,
-      }))
-      .filter((item): item is { bowler: Bowler; bowlerLeague: BowlerLeague } => {
-        return !!item.bowler;
-      });
-  }, [bowlerLeagues, bowlers, teamId]);
+  const teamBowlers = useMemo(
+    () => getTeamBowlers(bowlerLeagues, bowlers, teamId),
+    [bowlerLeagues, bowlers, teamId]
+  );
 
   const updateTeamMutation = useMutation({
     mutationFn: async (values: z.infer<typeof editTeamSchema>) => {
