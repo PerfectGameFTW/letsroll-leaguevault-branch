@@ -27,10 +27,16 @@ router.use(filterByOrganization);
 router.get("/", async (req: any, res) => {
   try {
     const organizationId = getOrganizationFilter(req);
+    const isSystemAdmin = req.user?.role === 'system_admin';
     
-    let leagues = organizationId !== null
-      ? await storage.getLeagues(organizationId)
-      : await storage.getAllLeagues();
+    let leagues: Awaited<ReturnType<typeof storage.getLeagues>>;
+    if (organizationId !== null) {
+      leagues = await storage.getLeagues(organizationId);
+    } else if (isSystemAdmin) {
+      leagues = await storage.getAllLeagues();
+    } else {
+      return sendSuccess(res, []);
+    }
     
     const locationId = req.query.locationId ? parseInt(req.query.locationId) : null;
     if (locationId) {
@@ -481,9 +487,14 @@ router.get("/:id/season-history", async (req: any, res) => {
       return sendError(res, "League not found", 404, "NOT_FOUND");
     }
 
-    const allLeagues = league.organizationId
-      ? await storage.getLeagues(league.organizationId)
-      : await storage.getAllLeagues();
+    let allLeagues;
+    if (league.organizationId) {
+      allLeagues = await storage.getLeagues(league.organizationId);
+    } else if (req.user?.role === 'system_admin') {
+      allLeagues = await storage.getAllLeagues();
+    } else {
+      allLeagues = [league];
+    }
     const seasons: any[] = [];
 
     let current: typeof league | undefined = league;

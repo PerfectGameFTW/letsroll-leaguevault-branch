@@ -40,14 +40,13 @@ router.get("/", async (req, res) => {
       if (req.user?.role === 'system_admin' && scopedOrgId === null) {
         // Unaffiliated system admin: see all teams
         teams = await storage.getTeams();
-      } else {
-        // Everyone else (including affiliated system admins): scope to their org
-        const leagues = scopedOrgId !== null
-          ? await storage.getLeagues(scopedOrgId)
-          : await storage.getAllLeagues();
+      } else if (scopedOrgId !== null) {
+        const leagues = await storage.getLeagues(scopedOrgId);
         const teamPromises = leagues.map(league => storage.getTeams(league.id));
         const teamsArrays = await Promise.all(teamPromises);
         teams = teamsArrays.flat();
+      } else {
+        teams = [];
       }
     }
     
