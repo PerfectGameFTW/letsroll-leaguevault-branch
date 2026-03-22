@@ -173,7 +173,7 @@ export async function refundPayment(id: number, squareRefundId?: string, reason?
       status: 'refunded',
       squareRefundId: squareRefundId || null,
       refundReason: reason || null,
-      refundedAt: new Date(),
+      refundedAt: new Date().toISOString(),
     })
     .where(eq(payments.id, id))
     .returning();

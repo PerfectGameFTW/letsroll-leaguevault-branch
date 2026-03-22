@@ -16,7 +16,7 @@ export const payments = pgTable("payments", {
   amount: integer("amount").notNull(),
   lineageAmount: integer("lineage_amount"),
   prizeFundAmount: integer("prize_fund_amount"),
-  weekOf: timestamp("week_of").notNull(),
+  weekOf: timestamp("week_of", { mode: "string" }).notNull(),
   status: text("status", { enum: PAYMENT_STATUSES }).notNull().default('paid'),
   type: text("type", { enum: PAYMENT_TYPES }).notNull(),
   checkNumber: text("check_number"),
@@ -24,9 +24,9 @@ export const payments = pgTable("payments", {
   idempotencyKey: text("idempotency_key").unique(),
   squareRefundId: text("square_refund_id"),
   refundReason: text("refund_reason"),
-  refundedAt: timestamp("refunded_at"),
+  refundedAt: timestamp("refunded_at", { mode: "string" }),
   notes: text("notes"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 }, (table) => ({
   bowlerIdx: index("payments_bowler_idx").on(table.bowlerId),
   leagueIdx: index("payments_league_idx").on(table.leagueId),
@@ -43,10 +43,10 @@ export const paymentSchedules = pgTable("payment_schedules", {
     .references(() => leagues.id, { onDelete: 'cascade' }),
   frequency: text("frequency", { enum: ["weekly", "monthly", "upfront"] }).notNull(),
   amount: integer("amount").notNull(),
-  nextPaymentDate: timestamp("next_payment_date").notNull(),
+  nextPaymentDate: timestamp("next_payment_date", { mode: "string" }).notNull(),
   active: boolean("active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  lastPaymentDate: timestamp("last_payment_date"),
+  createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
+  lastPaymentDate: timestamp("last_payment_date", { mode: "string" }),
   squareCardId: text("square_card_id").notNull(),
 }, (table) => ({
   bowlerScheduleIdx: index("bowler_schedule_idx").on(table.bowlerId, table.leagueId),
@@ -94,7 +94,7 @@ export const updatePaymentSchema = z.object({
   squarePaymentId: z.string().nullable(),
   squareRefundId: z.string().nullable(),
   refundReason: z.string().nullable(),
-  refundedAt: z.coerce.date().nullable(),
+  refundedAt: dateSchema.nullable(),
   notes: z.string().nullable(),
 }).partial();
 
@@ -104,7 +104,7 @@ export const updatePaymentScheduleSchema = z.object({
   nextPaymentDate: dateSchema,
   active: z.boolean(),
   squareCardId: z.string(),
-  lastPaymentDate: z.coerce.date().nullable(),
+  lastPaymentDate: dateSchema.nullable(),
 }).partial();
 
 export const partialPaymentSchema = updatePaymentSchema;

@@ -31,7 +31,7 @@ export const organizations = pgTable("organizations", {
   email: text("email"),
   logo: text("logo"),
   active: boolean("active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
   integrations: jsonb("integrations").$type<OrgIntegrations>(),
 }, (table) => ({
   slugIdx: uniqueIndex("organization_slug_idx").on(table.slug),

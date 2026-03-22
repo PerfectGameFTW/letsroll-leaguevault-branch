@@ -19,8 +19,8 @@ export const users = pgTable("users", {
   organizationId: integer("organization_id").references(() => organizations.id),
   locationId: integer("location_id").references(() => locations.id),
   inviteToken: text("invite_token"),
-  inviteTokenExpiry: timestamp("invite_token_expiry"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  inviteTokenExpiry: timestamp("invite_token_expiry", { mode: "string" }),
+  createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 }, (table) => ({
   organizationIdx: index("users_organization_idx").on(table.organizationId),
   bowlerIdx: index("users_bowler_idx").on(table.bowlerId),
@@ -45,6 +45,17 @@ export const insertUserSchema = baseUserSchema.extend({
   password: passwordSchema,
   bowlerId: z.number().nullable().optional(),
 }).omit({ id: true, createdAt: true });
+
+export const updateUserSchema = z.object({
+  email: emailSchema,
+  name: nameSchema,
+  phone: z.string().nullable(),
+  avatar: z.string().nullable(),
+  role: z.enum(USER_ROLES),
+  organizationId: z.number().nullable(),
+  locationId: z.number().nullable(),
+  bowlerId: z.number().nullable(),
+}).partial();
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;

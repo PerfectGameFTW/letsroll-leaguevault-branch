@@ -118,8 +118,8 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
               eq(paymentsTable.bowlerId, payment.bowlerId),
               eq(paymentsTable.leagueId, payment.leagueId),
               eq(paymentsTable.status, 'paid'),
-              gte(paymentsTable.weekOf, seasonStart),
-              lte(paymentsTable.weekOf, seasonEnd)
+              gte(paymentsTable.weekOf, seasonStart.toISOString()),
+              lte(paymentsTable.weekOf, seasonEnd.toISOString())
             ));
           const totalPaid = Number(totalPaidResult[0]?.total || 0);
 

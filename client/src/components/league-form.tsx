@@ -94,8 +94,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       name: "",
       description: "",
       active: true,
-      seasonStart: today,
-      seasonEnd: nextYear,
+      seasonStart: today.toISOString(),
+      seasonEnd: nextYear.toISOString(),
       weekDay: "Monday",
       practiceStartTime: "",
       competitionStartTime: "",
@@ -143,7 +143,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
 
   useEffect(() => {
     if (computedSeasonEnd) {
-      form.setValue('seasonEnd', computedSeasonEnd);
+      form.setValue('seasonEnd', computedSeasonEnd.toISOString());
     }
   }, [computedSeasonEnd]);
 
@@ -189,8 +189,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         name: league.name,
         description: league.description || "",
         active: league.active,
-        seasonStart: startDate,
-        seasonEnd: endDate,
+        seasonStart: startDate.toISOString(),
+        seasonEnd: endDate.toISOString(),
         weekDay: league.weekDay || "Monday",
         practiceStartTime: league.practiceStartTime || "",
         competitionStartTime: league.competitionStartTime || "",
@@ -219,8 +219,8 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         name: "",
         description: "",
         active: true,
-        seasonStart: today,
-        seasonEnd: nextYear,
+        seasonStart: today.toISOString(),
+        seasonEnd: nextYear.toISOString(),
         weekDay: "Monday",
         practiceStartTime: "",
         competitionStartTime: "",
@@ -260,7 +260,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
         league ? "PATCH" : "POST",
         {
           ...data,
-          seasonStart: data.seasonStart.toISOString(),
+          seasonStart: data.seasonStart,
           seasonEnd: derivedEnd instanceof Date ? derivedEnd.toISOString() : derivedEnd,
           totalBowlingWeeks: bowlingWeeks,
           skipDates,
@@ -404,11 +404,11 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
                           <Input
                             type="date"
                             {...field}
-                            value={field.value instanceof Date && !isNaN(field.value.getTime()) ? field.value.toISOString().split('T')[0] : ''}
+                            value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
                             onChange={(e) => {
                               const [year, month, day] = e.target.value.split('-').map(Number);
                               const date = new Date(year, month - 1, day, 12, 0, 0, 0);
-                              field.onChange(date);
+                              field.onChange(date.toISOString());
                               setSkipDates([]);
                               setCancelledDates([]);
                             }}

@@ -127,7 +127,7 @@ export async function getUserByInviteToken(token: string): Promise<User | undefi
 export async function setUserInviteToken(userId: number, token: string, expiry: Date): Promise<User> {
   const [updatedUser] = await db
     .update(users)
-    .set({ inviteToken: token, inviteTokenExpiry: expiry })
+    .set({ inviteToken: token, inviteTokenExpiry: expiry.toISOString() })
     .where(eq(users.id, userId))
     .returning();
   if (!updatedUser) {

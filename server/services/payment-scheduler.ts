@@ -64,7 +64,7 @@ class PaymentScheduler {
 
       const conditions = [
         eq(paymentSchedules.active, true),
-        lte(paymentSchedules.nextPaymentDate, new Date()),
+        lte(paymentSchedules.nextPaymentDate, new Date().toISOString()),
       ];
 
       if (organizationId !== undefined) {
@@ -173,7 +173,7 @@ class PaymentScheduler {
     logger.info(`[PaymentScheduler] Setting up job ${jobId}`, {
       nextPaymentDate: scheduleRecord.nextPaymentDate,
       currentTime: now,
-      timeDifference: scheduleRecord.nextPaymentDate.getTime() - now.getTime(),
+      timeDifference: new Date(scheduleRecord.nextPaymentDate).getTime() - now.getTime(),
       schedule: {
         id: scheduleRecord.id,
         amount: scheduleRecord.amount,
@@ -187,14 +187,14 @@ class PaymentScheduler {
     this.cancelJob(jobId);
 
     // Schedule new job
-    const job = schedule.scheduleJob(scheduleRecord.nextPaymentDate, async () => {
+    const job = schedule.scheduleJob(new Date(scheduleRecord.nextPaymentDate), async () => {
       try {
         logger.info(`[PaymentScheduler] Executing scheduled payment for ${jobId}`, {
           amount: scheduleRecord.amount,
           bowlerId: scheduleRecord.bowlerId,
           cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`,
           executionTime: new Date().toISOString(),
-          scheduledTime: scheduleRecord.nextPaymentDate.toISOString()
+          scheduledTime: scheduleRecord.nextPaymentDate
         });
 
         logger.info(`[PaymentScheduler] Initiating Square payment for ${jobId}`, {
@@ -208,9 +208,10 @@ class PaymentScheduler {
         // nextPaymentDate is stored as UTC; convert to league local time before comparing to
         // skip/cancel ISO date strings (which are stored in league-local calendar dates).
         const leagueTz = league?.timezone ?? 'America/Chicago';
+        const nextPaymentDateObj = new Date(scheduleRecord.nextPaymentDate);
         const firingDateLeagueLocal = league
-          ? toZonedTime(scheduleRecord.nextPaymentDate, leagueTz)
-          : scheduleRecord.nextPaymentDate;
+          ? toZonedTime(nextPaymentDateObj, leagueTz)
+          : nextPaymentDateObj;
         if (league && isDateSkippedOrCancelled(
           firingDateLeagueLocal,
           league.skipDates ?? [],
@@ -218,7 +219,7 @@ class PaymentScheduler {
         )) {
           const tz = leagueTz;
           const nextDate = getNextLeagueDateTime(
-            scheduleRecord.nextPaymentDate,
+            nextPaymentDateObj,
             league.weekDay,
             league.competitionStartTime,
             tz,
@@ -226,8 +227,8 @@ class PaymentScheduler {
             league.cancelledDates ?? []
           );
           logger.info(`[PaymentScheduler] Skipping charge on skip/cancelled date for ${jobId}, advancing to ${nextDate.toISOString()}`);
-          await storage.updatePaymentScheduleFields(scheduleRecord.id, { nextPaymentDate: nextDate });
-          this.schedulePayment({ ...scheduleRecord, nextPaymentDate: nextDate });
+          await storage.updatePaymentScheduleFields(scheduleRecord.id, { nextPaymentDate: nextDate.toISOString() });
+          this.schedulePayment({ ...scheduleRecord, nextPaymentDate: nextDate.toISOString() });
           return;
         }
 
@@ -292,9 +293,10 @@ class PaymentScheduler {
 
           let nextDate: Date;
           const tz = league?.timezone ?? 'America/Chicago';
+          const currentPaymentDate = new Date(scheduleRecord.nextPaymentDate);
           if (scheduleRecord.frequency === 'weekly' && league) {
             nextDate = getNextLeagueDateTime(
-              scheduleRecord.nextPaymentDate,
+              currentPaymentDate,
               league.weekDay,
               league.competitionStartTime,
               tz,
@@ -302,14 +304,14 @@ class PaymentScheduler {
               league.cancelledDates ?? []
             );
           } else if (scheduleRecord.frequency === 'monthly') {
-            nextDate = addMonths(scheduleRecord.nextPaymentDate, 1);
+            nextDate = addMonths(currentPaymentDate, 1);
             if (league?.competitionStartTime) {
               const [h, m] = league.competitionStartTime.split(':').map(Number);
               nextDate = setHours(setMinutes(setSeconds(setMilliseconds(nextDate, 0), 0), m), h);
               nextDate = fromZonedTime(nextDate, tz);
             }
           } else {
-            nextDate = addWeeks(scheduleRecord.nextPaymentDate, 1);
+            nextDate = addWeeks(currentPaymentDate, 1);
           }
 
           logger.info(`[PaymentScheduler] Updating schedule ${scheduleRecord.id}`, {
@@ -325,7 +327,7 @@ class PaymentScheduler {
             await tx
               .update(paymentSchedules)
               .set({
-                nextPaymentDate: nextDate,
+                nextPaymentDate: nextDate.toISOString(),
                 lastPaymentDate: scheduleRecord.nextPaymentDate,
               })
               .where(eq(paymentSchedules.id, scheduleRecord.id));
@@ -399,7 +401,7 @@ class PaymentScheduler {
 
           this.schedulePayment({
             ...scheduleRecord,
-            nextPaymentDate: nextDate,
+            nextPaymentDate: nextDate.toISOString(),
           });
         } else {
           // Handle failed payment
@@ -484,8 +486,8 @@ class PaymentScheduler {
           eq(payments.bowlerId, scheduleRecord.bowlerId),
           eq(payments.leagueId, scheduleRecord.leagueId),
           eq(payments.status, 'paid'),
-          gte(payments.weekOf, seasonStart),
-          lte(payments.weekOf, seasonEnd)
+          gte(payments.weekOf, seasonStart.toISOString()),
+          lte(payments.weekOf, seasonEnd.toISOString())
         ));
       const totalPaid = Number(totalPaidResult[0]?.total || 0);
 
@@ -573,7 +575,7 @@ class PaymentScheduler {
           prizeFundAmount: finalPrizeFundAmount,
           status: 'paid',
           type: 'credit_card',
-          weekOf: new Date(),
+          weekOf: new Date().toISOString(),
           squarePaymentId: finalPaymentResult.paymentId,
           notes: 'Auto-charged: Final 2 Weeks',
         });
@@ -589,7 +591,7 @@ class PaymentScheduler {
           amount: finalTwoWeeksAmount,
           status: 'failed',
           type: 'credit_card',
-          weekOf: new Date(),
+          weekOf: new Date().toISOString(),
           notes: `Auto-charge failed: Final 2 Weeks - ${finalPaymentResult.error}`,
         });
 
@@ -633,8 +635,8 @@ class PaymentScheduler {
           eq(payments.bowlerId, scheduleRecord.bowlerId),
           eq(payments.leagueId, scheduleRecord.leagueId),
           eq(payments.status, 'paid'),
-          gte(payments.weekOf, seasonStart),
-          lte(payments.weekOf, seasonEnd)
+          gte(payments.weekOf, seasonStart.toISOString()),
+          lte(payments.weekOf, seasonEnd.toISOString())
         ));
       const totalPaid = Number(totalPaidResult[0]?.total || 0);
 

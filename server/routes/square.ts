@@ -174,7 +174,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       amount,
       lineageAmount,
       prizeFundAmount,
-      weekOf,
+      weekOf: weekOf.toISOString(),
       status: 'paid',
       type: 'credit_card',
       squarePaymentId: payment.id,

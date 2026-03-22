@@ -14,7 +14,7 @@ export const games = pgTable("games", {
     .references(() => leagues.id, { onDelete: 'cascade' }),
   weekNumber: integer("week_number").notNull(),
   gameNumber: integer("game_number").notNull(),
-  date: timestamp("date").notNull(),
+  date: timestamp("date", { mode: "string" }).notNull(),
 }, (table) => ({
   leagueGameIdx: index("league_game_idx").on(table.leagueId, table.weekNumber, table.gameNumber),
   dateIdx: index("game_date_idx").on(table.date),

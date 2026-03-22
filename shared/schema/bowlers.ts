@@ -29,7 +29,7 @@ export const bowlerLeagues = pgTable("bowler_leagues", {
     .references(() => teams.id, { onDelete: 'cascade' }),
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
-  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  joinedAt: timestamp("joined_at", { mode: "string" }).notNull().defaultNow(),
 }, (table) => ({
   bowlerIdx: index().on(table.bowlerId),
   leagueIdx: index().on(table.leagueId),

@@ -38,7 +38,7 @@ export const dateSchema = z.coerce.date()
   .refine((date) => !isNaN(date.getTime()), {
     message: "Invalid date format",
   })
-  .transform((date) => new Date(date.toISOString()));
+  .transform((date) => date.toISOString());
 
 const timeFormatRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
 export const timeSchema = z.union([

@@ -30,10 +30,11 @@ export async function getGame(id: number): Promise<Game | undefined> {
 }
 
 export async function createGame(game: InsertGame): Promise<Game> {
-  const gameDate = game.date instanceof Date ? game.date : new Date(game.date);
-  if (isNaN(gameDate.getTime())) {
+  const gameDate = typeof game.date === 'string' ? new Date(game.date) : game.date;
+  if (gameDate instanceof Date && isNaN(gameDate.getTime())) {
     throw new Error('Invalid date provided to createGame');
   }
+  const dateStr = gameDate instanceof Date ? gameDate.toISOString() : String(game.date);
 
   const [result] = await db
     .insert(games)
@@ -41,7 +42,7 @@ export async function createGame(game: InsertGame): Promise<Game> {
       leagueId: game.leagueId,
       weekNumber: game.weekNumber,
       gameNumber: game.gameNumber,
-      date: gameDate,
+      date: dateStr,
     })
     .returning();
 
@@ -51,7 +52,7 @@ export async function createGame(game: InsertGame): Promise<Game> {
 export async function updateGame(id: number, game: Partial<InsertGame>): Promise<Game> {
   const updateData = {
     ...game,
-    date: game.date ? (game.date instanceof Date ? game.date : new Date(game.date)) : undefined,
+    date: game.date ? (typeof game.date === 'string' ? game.date : new Date(game.date).toISOString()) : undefined,
   };
   const [result] = await db.update(games).set(updateData).where(eq(games.id, id)).returning();
   return result;

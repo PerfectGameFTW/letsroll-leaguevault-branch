@@ -217,7 +217,7 @@ router.patch("/:id", async (req: any, res) => {
           updated.cancelledDates ?? []
         );
 
-        await storage.updatePaymentScheduleFields(sched.id, { nextPaymentDate: nextDate });
+        await storage.updatePaymentScheduleFields(sched.id, { nextPaymentDate: nextDate.toISOString() });
         await paymentScheduler.removeSchedule(sched.id);
         const updatedSched = await storage.getPaymentScheduleById(sched.id);
         if (updatedSched && updatedSched.active) {
@@ -400,8 +400,8 @@ router.post("/:id/new-season", async (req: any, res) => {
       name: sourceLeague.name,
       description: sourceLeague.description,
       active: true,
-      seasonStart: newSeasonStart,
-      seasonEnd: newSeasonEnd,
+      seasonStart: newSeasonStart.toISOString(),
+      seasonEnd: newSeasonEnd.toISOString(),
       weekDay: sourceLeague.weekDay,
       weeklyFee: sourceLeague.weeklyFee,
       lineageFee: sourceLeague.lineageFee ?? undefined,

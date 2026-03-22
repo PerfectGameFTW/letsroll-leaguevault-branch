@@ -73,7 +73,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     resolver: zodResolver(insertPaymentSchema),
     defaultValues: {
       amount: 2000,
-      weekOf: new Date(),
+      weekOf: new Date().toISOString(),
       status: "paid",
       type: "cash",
       leagueId: leagueId,
@@ -413,8 +413,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                     <Input
                       type="date"
                       {...field}
-                      value={field.value instanceof Date ? field.value.toISOString().split('T')[0] : ''}
-                      onChange={(e) => field.onChange(new Date(e.target.value))}
+                      value={field.value ? new Date(field.value).toISOString().split('T')[0] : ''}
+                      onChange={(e) => field.onChange(new Date(e.target.value).toISOString())}
                     />
                   </FormControl>
                   <FormMessage />
