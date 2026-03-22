@@ -56,7 +56,8 @@ function removeOldAvatarFiles(userId: number): void {
         fs.unlinkSync(path.join(AVATARS_DIR, file));
       }
     }
-  } catch {
+  } catch (error) {
+    log.warn(`Failed to remove old avatar files for user ${userId}:`, error);
   }
 }
 

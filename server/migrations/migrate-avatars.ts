@@ -20,7 +20,7 @@ export function ensureAvatarsDirectory(): void {
   fs.mkdirSync(AVATARS_DIR, { recursive: true });
 }
 
-export async function migrateAvatarsFromDBToDisk(): Promise<void> {
+export async function migrateAvatarsFromDBToDisk(): Promise<boolean> {
   const tableExists = await db.execute(sql`
     SELECT EXISTS (
       SELECT 1 FROM information_schema.tables
@@ -30,7 +30,7 @@ export async function migrateAvatarsFromDBToDisk(): Promise<void> {
 
   const exists = tableExists.rows?.[0]?.exists === true || tableExists.rows?.[0]?.exists === 't';
   if (!exists) {
-    return;
+    return true;
   }
 
   const rows = await db.execute(sql`SELECT user_id, data, mime_type FROM user_avatars`);
@@ -38,7 +38,7 @@ export async function migrateAvatarsFromDBToDisk(): Promise<void> {
   if (rows.rows.length === 0) {
     log.info("No avatars in DB to migrate, dropping user_avatars table");
     await db.execute(sql`DROP TABLE IF EXISTS user_avatars`);
-    return;
+    return true;
   }
 
   log.info(`Migrating ${rows.rows.length} avatars from DB to disk`);
@@ -72,11 +72,12 @@ export async function migrateAvatarsFromDBToDisk(): Promise<void> {
 
   if (failedCount > 0) {
     log.warn(`${failedCount} avatar(s) failed to migrate, keeping user_avatars table for retry on next startup`);
-    return;
+    return false;
   }
 
   await db.execute(sql`DROP TABLE IF EXISTS user_avatars`);
   log.info("All avatars migrated successfully, user_avatars table dropped");
+  return true;
 }
 
 export async function migrateApiUrlsToDiskUrls(): Promise<void> {

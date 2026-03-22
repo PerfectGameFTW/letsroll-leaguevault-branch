@@ -259,8 +259,10 @@ async function startServer() {
 
     if (dbConnected) {
       try {
-        await migrateAvatarsFromDBToDisk();
-        await migrateApiUrlsToDiskUrls();
+        const dbMigrationOk = await migrateAvatarsFromDBToDisk();
+        if (dbMigrationOk) {
+          await migrateApiUrlsToDiskUrls();
+        }
       } catch (error) {
         log.error('Error running avatar migration:', error);
       }
