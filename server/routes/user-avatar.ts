@@ -1,14 +1,15 @@
 import { Router, Request, Response } from "express";
-import { db } from "../db";
-import { userAvatars } from "@shared/schema";
-import { eq } from "drizzle-orm";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
 import { sendSuccess, sendError } from "../utils/api";
 import { createLogger } from '../logger';
 
 const log = createLogger("UserAvatar");
 
 const router = Router();
+
+const AVATARS_DIR = path.join(process.cwd(), "uploads", "avatars");
 
 const MAGIC_BYTES: { ext: string; mime: string; check: (buf: Buffer) => boolean }[] = [
   {
@@ -47,6 +48,18 @@ function detectImageTypeFromBuffer(buf: Buffer): { ext: string; mime: string } |
   return null;
 }
 
+function removeOldAvatarFiles(userId: number): void {
+  try {
+    const files = fs.readdirSync(AVATARS_DIR);
+    for (const file of files) {
+      if (file.startsWith(`${userId}.`)) {
+        fs.unlinkSync(path.join(AVATARS_DIR, file));
+      }
+    }
+  } catch {
+  }
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -72,17 +85,15 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
       return sendError(res, "Invalid file content. The file is not a valid JPEG, PNG, GIF, or WebP image.", 400);
     }
 
-    const base64Data = req.file.buffer.toString("base64");
+    fs.mkdirSync(AVATARS_DIR, { recursive: true });
 
-    await db
-      .insert(userAvatars)
-      .values({ userId, data: base64Data, mimeType: detected.mime })
-      .onConflictDoUpdate({
-        target: userAvatars.userId,
-        set: { data: base64Data, mimeType: detected.mime },
-      });
+    removeOldAvatarFiles(userId);
 
-    const avatarUrl = `/api/user/avatar/${userId}`;
+    const filename = `${userId}.${detected.ext}`;
+    const filePath = path.join(AVATARS_DIR, filename);
+    fs.writeFileSync(filePath, req.file.buffer);
+
+    const avatarUrl = `/uploads/avatars/${filename}`;
     const { storage } = await import("../storage");
     await storage.updateUser(userId, { avatar: avatarUrl });
 
@@ -90,33 +101,6 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
   } catch (error) {
     log.error("Upload error:", error);
     return sendError(res, "Upload failed", 500);
-  }
-});
-
-router.get("/avatar/:userId", async (req: Request, res: Response) => {
-  try {
-    const userId = parseInt(req.params.userId, 10);
-    if (isNaN(userId)) {
-      return sendError(res, "Invalid user ID", 400);
-    }
-
-    const [avatarRow] = await db
-      .select()
-      .from(userAvatars)
-      .where(eq(userAvatars.userId, userId));
-
-    if (!avatarRow) {
-      return sendError(res, "Avatar not found", 404, "NOT_FOUND");
-    }
-
-    const imageBuffer = Buffer.from(avatarRow.data, "base64");
-    res.setHeader("Content-Type", avatarRow.mimeType);
-    res.setHeader("Content-Length", imageBuffer.length.toString());
-    res.setHeader("Cache-Control", "public, max-age=3600");
-    return res.send(imageBuffer);
-  } catch (error) {
-    log.error("Serve avatar error:", error);
-    return sendError(res, "Failed to serve avatar", 500);
   }
 });
 
@@ -149,7 +133,7 @@ router.delete("/avatar", async (req: Request, res: Response) => {
   try {
     const userId = req.user.id;
 
-    await db.delete(userAvatars).where(eq(userAvatars.userId, userId));
+    removeOldAvatarFiles(userId);
 
     const { storage } = await import("../storage");
     await storage.updateUser(userId, { avatar: null });

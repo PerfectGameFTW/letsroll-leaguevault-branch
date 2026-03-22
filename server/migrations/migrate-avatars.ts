@@ -1,76 +1,97 @@
 import { db } from "../db";
-import { users, userAvatars } from "@shared/schema";
-import { eq, sql, like } from "drizzle-orm";
+import { users } from "@shared/schema";
+import { eq, like, sql } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 import { createLogger } from '../logger';
 
 const log = createLogger("AvatarMigration");
 
-const MIME_MAP: Record<string, string> = {
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
+const AVATARS_DIR = path.join(process.cwd(), "uploads", "avatars");
+
+const EXT_MAP: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/gif": "gif",
+  "image/webp": "webp",
 };
 
-export async function ensureUserAvatarsTable(): Promise<void> {
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS user_avatars (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
-      data TEXT NOT NULL,
-      mime_type TEXT NOT NULL
-    )
-  `);
+export function ensureAvatarsDirectory(): void {
+  fs.mkdirSync(AVATARS_DIR, { recursive: true });
 }
 
-export async function migrateLocalAvatarsToDB(): Promise<void> {
-  const usersWithOldAvatars = await db
-    .select({ id: users.id, avatar: users.avatar })
-    .from(users)
-    .where(like(users.avatar, "/uploads/avatars/%"));
+export async function migrateAvatarsFromDBToDisk(): Promise<void> {
+  const tableExists = await db.execute(sql`
+    SELECT EXISTS (
+      SELECT 1 FROM information_schema.tables
+      WHERE table_name = 'user_avatars'
+    ) AS "exists"
+  `);
 
-  if (usersWithOldAvatars.length === 0) {
+  const exists = tableExists.rows?.[0]?.exists === true || tableExists.rows?.[0]?.exists === 't';
+  if (!exists) {
     return;
   }
 
-  log.info(`Found ${usersWithOldAvatars.length} avatars to migrate`);
+  const rows = await db.execute(sql`SELECT user_id, data, mime_type FROM user_avatars`);
 
-  for (const user of usersWithOldAvatars) {
-    if (!user.avatar) continue;
+  if (rows.rows.length === 0) {
+    log.info("No avatars in DB to migrate, dropping user_avatars table");
+    await db.execute(sql`DROP TABLE IF EXISTS user_avatars`);
+    return;
+  }
 
-    const filePath = path.join(process.cwd(), user.avatar);
+  log.info(`Migrating ${rows.rows.length} avatars from DB to disk`);
 
-    if (!fs.existsSync(filePath)) {
-      log.warn(`File not found for user ${user.id}: ${filePath}, clearing avatar URL`);
-      await db.update(users).set({ avatar: null }).where(eq(users.id, user.id));
-      continue;
-    }
+  ensureAvatarsDirectory();
+
+  for (const row of rows.rows) {
+    const userId = row.user_id as number;
+    const base64Data = row.data as string;
+    const mimeType = row.mime_type as string;
 
     try {
-      const ext = path.extname(filePath).toLowerCase();
-      const mimeType = MIME_MAP[ext] || "image/jpeg";
-      const fileData = fs.readFileSync(filePath);
-      const base64Data = fileData.toString("base64");
+      const ext = EXT_MAP[mimeType] || "jpg";
+      const filename = `${userId}.${ext}`;
+      const filePath = path.join(AVATARS_DIR, filename);
 
-      await db
-        .insert(userAvatars)
-        .values({ userId: user.id, data: base64Data, mimeType })
-        .onConflictDoUpdate({
-          target: userAvatars.userId,
-          set: { data: base64Data, mimeType },
-        });
+      const buffer = Buffer.from(base64Data, "base64");
+      fs.writeFileSync(filePath, buffer);
 
-      const newAvatarUrl = `/api/user/avatar/${user.id}`;
-      await db.update(users).set({ avatar: newAvatarUrl }).where(eq(users.id, user.id));
+      const avatarUrl = `/uploads/avatars/${filename}`;
+      await db.update(users).set({ avatar: avatarUrl }).where(eq(users.id, userId));
 
-      log.info(`Migrated avatar for user ${user.id}`);
+      log.info(`Migrated avatar for user ${userId} to ${filename}`);
     } catch (error) {
-      log.error(`Failed to migrate avatar for user ${user.id}:`, error);
+      log.error(`Failed to migrate avatar for user ${userId}:`, error);
     }
   }
 
-  log.info("Migration complete");
+  await db.execute(sql`DROP TABLE IF EXISTS user_avatars`);
+  log.info("Migration complete, user_avatars table dropped");
+}
+
+export async function migrateApiUrlsToDiskUrls(): Promise<void> {
+  const usersWithApiUrls = await db
+    .select({ id: users.id, avatar: users.avatar })
+    .from(users)
+    .where(like(users.avatar, "/api/user/avatar/%"));
+
+  if (usersWithApiUrls.length === 0) {
+    return;
+  }
+
+  log.info(`Found ${usersWithApiUrls.length} users with old /api/user/avatar/ URLs to update`);
+
+  for (const user of usersWithApiUrls) {
+    const files = fs.readdirSync(AVATARS_DIR).filter(f => f.startsWith(`${user.id}.`));
+    if (files.length > 0) {
+      const avatarUrl = `/uploads/avatars/${files[0]}`;
+      await db.update(users).set({ avatar: avatarUrl }).where(eq(users.id, user.id));
+      log.info(`Updated avatar URL for user ${user.id} to ${avatarUrl}`);
+    } else {
+      await db.update(users).set({ avatar: null }).where(eq(users.id, user.id));
+      log.warn(`No disk file found for user ${user.id}, clearing avatar URL`);
+    }
+  }
 }

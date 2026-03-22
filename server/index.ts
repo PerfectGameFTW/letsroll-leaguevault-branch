@@ -10,7 +10,7 @@ import { storage } from './storage';
 import path from 'path';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
-import { ensureUserAvatarsTable, migrateLocalAvatarsToDB } from './migrations/migrate-avatars';
+import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDiskUrls } from './migrations/migrate-avatars';
 import { createLogger } from './logger';
 import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
 
@@ -112,6 +112,14 @@ app.use(helmet({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 setupAuth(app);
+
+app.use('/uploads/avatars', express.static(path.join(process.cwd(), 'uploads', 'avatars'), {
+  maxAge: '1h',
+  immutable: false,
+  setHeaders(res) {
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+  }
+}));
 
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json');
@@ -247,10 +255,12 @@ async function startServer() {
       log.info('Database connected');
     }
 
+    ensureAvatarsDirectory();
+
     if (dbConnected) {
       try {
-        await ensureUserAvatarsTable();
-        await migrateLocalAvatarsToDB();
+        await migrateAvatarsFromDBToDisk();
+        await migrateApiUrlsToDiskUrls();
       } catch (error) {
         log.error('Error running avatar migration:', error);
       }
