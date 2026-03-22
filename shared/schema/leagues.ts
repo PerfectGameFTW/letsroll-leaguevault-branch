@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, index, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -30,7 +30,7 @@ export const leagues = pgTable("leagues", {
   finalTwoWeeksDueWeek: integer("final_two_weeks_due_week").default(6),
   paymentMode: text("payment_mode", { enum: PAYMENT_MODES }).notNull().default("weekly"),
   seasonNumber: integer("season_number").notNull().default(1),
-  previousSeasonId: integer("previous_season_id").references(() => leagues.id, { onDelete: 'set null' }),
+  previousSeasonId: integer("previous_season_id").references((): AnyPgColumn => leagues.id, { onDelete: 'set null' }),
   organizationId: integer("organization_id").references(() => organizations.id),
   locationId: integer("location_id").references(() => locations.id),
   totalBowlingWeeks: integer("total_bowling_weeks"),
