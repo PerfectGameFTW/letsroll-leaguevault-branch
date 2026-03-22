@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { League, Payment, User, SavedCard, ApiResponse } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { ArrowLeft } from "lucide-react";
-import { PageLoadingState } from "@/components/page-states";
+import { PageLoadingState, PageErrorState } from "@/components/page-states";
 import { Link, useSearch } from "wouter";
 import {
   Select,
@@ -222,8 +222,8 @@ export default function PaymentHistoryPage() {
   if (userError) {
     return (
       <BowlerLayout bowlerName="Authentication Error" leagueName="Error">
-        <div className="text-center space-y-4">
-          <p className="text-destructive">Please log in to view payment history</p>
+        <PageErrorState message="Please log in to view payment history" />
+        <div className="text-center mt-4">
           <Link href="/login" className="inline-flex items-center px-4 py-2 rounded-md bg-primary text-white">
             Log In
           </Link>
