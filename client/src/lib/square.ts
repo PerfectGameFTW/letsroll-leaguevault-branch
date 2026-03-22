@@ -1,6 +1,11 @@
 import { loadScript } from "@/lib/utils";
 import { csrfFetch } from '@/lib/queryClient';
 
+const SDK_LOAD_MAX_ATTEMPTS = 3;
+const SDK_LOAD_RETRY_DELAY_MS = 1000;
+const INIT_MAX_RETRIES = 2;
+const INIT_RETRY_DELAY_MS = 2000;
+
 interface PaymentResult {
   id: string;
   status: string;
@@ -167,16 +172,16 @@ export async function initializeSquare(locationId?: number | null) {
       let attempts = 0;
       let lastError;
 
-      while (!scriptLoaded && attempts < 3) {
+      while (!scriptLoaded && attempts < SDK_LOAD_MAX_ATTEMPTS) {
         attempts++;
         try {
           await loadScript(sdkUrl);
           scriptLoaded = true;
         } catch (err) {
           lastError = err;
-          console.error(`[Square] Failed to load SDK on attempt ${attempts}/3:`, err);
-          if (attempts < 3) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+          console.error(`[Square] Failed to load SDK on attempt ${attempts}/${SDK_LOAD_MAX_ATTEMPTS}:`, err);
+          if (attempts < SDK_LOAD_MAX_ATTEMPTS) {
+            await new Promise(resolve => setTimeout(resolve, SDK_LOAD_RETRY_DELAY_MS));
           }
         }
       }
@@ -207,9 +212,8 @@ export async function initializeSquare(locationId?: number | null) {
     };
 
     let attemptCount = 0;
-    const maxRetries = 2;
 
-    while (attemptCount <= maxRetries) {
+    while (attemptCount <= INIT_MAX_RETRIES) {
       try {
         const result = await Promise.race([
           initializeFunction(),
@@ -218,8 +222,8 @@ export async function initializeSquare(locationId?: number | null) {
         return result;
       } catch (error) {
         attemptCount++;
-        if (attemptCount <= maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+        if (attemptCount <= INIT_MAX_RETRIES) {
+          await new Promise(resolve => setTimeout(resolve, INIT_RETRY_DELAY_MS));
         } else {
           console.error('[Square] All initialization attempts failed');
           throw error;

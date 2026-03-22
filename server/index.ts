@@ -274,6 +274,8 @@ async function startServer() {
   }
 }
 
+const DRAIN_POLL_INTERVAL_MS = 100;
+
 async function shutdown() {
   log.info('Shutting down...');
   const startTime = Date.now();
@@ -292,7 +294,7 @@ async function shutdown() {
           clearTimeout(timeout);
           resolve();
         } else {
-          setTimeout(waitForDrain, 100);
+          setTimeout(waitForDrain, DRAIN_POLL_INTERVAL_MS);
         }
       };
       waitForDrain();

@@ -7,7 +7,8 @@ const log = createLogger("WaitForPort");
 const PORT_STATUS_FILE = '.port-status';
 const TIMEOUT = 30000; // 30 seconds
 const POLL_INTERVAL = 100; // 100ms
-const MAX_RETRIES = 3; // Maximum number of retries for health checks
+const MAX_RETRIES = 3;
+const HEALTH_CHECK_RETRY_DELAY_MS = 1000;
 
 export interface WorkflowConfig {
   name: string;
@@ -79,7 +80,7 @@ async function readPortStatus(retryCount = 0): Promise<PortStatus | null> {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       log.debug('Port status file not found');
       if (retryCount < MAX_RETRIES) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, HEALTH_CHECK_RETRY_DELAY_MS));
         return readPortStatus(retryCount + 1);
       }
     }
@@ -97,7 +98,7 @@ async function checkHealth(port: number, retryCount = 0): Promise<boolean> {
 
     if (!response.ok) {
       if (retryCount < MAX_RETRIES) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, HEALTH_CHECK_RETRY_DELAY_MS));
         return checkHealth(port, retryCount + 1);
       }
       return false;
@@ -126,7 +127,7 @@ async function checkHealth(port: number, retryCount = 0): Promise<boolean> {
   } catch (error) {
     log.debug('Health check error:', error);
     if (retryCount < MAX_RETRIES) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, HEALTH_CHECK_RETRY_DELAY_MS));
       return checkHealth(port, retryCount + 1);
     }
     return false;
