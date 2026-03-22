@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { randomBytes } from 'crypto';
+import { randomBytes, timingSafeEqual } from 'crypto';
 import { createLogger } from '../logger';
 
 const log = createLogger("CSRF");
@@ -8,6 +8,13 @@ declare module 'express-session' {
   interface SessionData {
     csrfToken?: string;
   }
+}
+
+function safeTokenCompare(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a, 'utf-8');
+  const bBuf = Buffer.from(b, 'utf-8');
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
 }
 
 const EXEMPT_PATHS = [
@@ -64,7 +71,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
   }
 
   const headerToken = req.headers['x-csrf-token'] as string | undefined;
-  if (!headerToken || headerToken !== sessionToken) {
+  if (!headerToken || !safeTokenCompare(headerToken, sessionToken)) {
     log.warn(`CSRF token mismatch for ${req.method} ${req.path}`);
     return res.status(403).json({
       success: false,
