@@ -67,7 +67,7 @@ describe('Square Service', () => {
     process.env.SQUARE_ACCESS_TOKEN = 'test-token';
     process.env.NODE_ENV = 'test';
     mockClient = createMockClient();
-    const squareMock = await vi.importMock('square') as any;
+    const squareMock = await vi.importMock<{ Client: ReturnType<typeof vi.fn> }>('square');
     squareMock.Client.mockImplementation(() => mockClient);
   });
 

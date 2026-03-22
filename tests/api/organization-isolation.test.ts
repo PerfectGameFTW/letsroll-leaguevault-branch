@@ -22,21 +22,12 @@ describe('Organization Isolation', () => {
   let sessionB: AuthSession;
 
   beforeAll(async () => {
-    try {
-      sessionA = await login(ORG_A_EMAIL, PASSWORD);
-    } catch {
-      console.warn(`Skipping isolation tests: could not log in as ${ORG_A_EMAIL}`);
-    }
-    try {
-      sessionB = await login(ORG_B_EMAIL, PASSWORD);
-    } catch {
-      console.warn(`Skipping isolation tests: could not log in as ${ORG_B_EMAIL}`);
-    }
+    sessionA = await login(ORG_A_EMAIL, PASSWORD);
+    sessionB = await login(ORG_B_EMAIL, PASSWORD);
   });
 
   describe('organization visibility', () => {
     it('org A admin should see organizations', async () => {
-      if (!sessionA) return;
       const { status, data } = await apiGet<OrgUser[]>('/api/organizations', sessionA);
       expect(status).toBe(200);
       expect(data.success).toBe(true);
@@ -44,7 +35,6 @@ describe('Organization Isolation', () => {
     });
 
     it('org B admin should see organizations', async () => {
-      if (!sessionB) return;
       const { status, data } = await apiGet<OrgUser[]>('/api/organizations', sessionB);
       expect(status).toBe(200);
       expect(data.success).toBe(true);
@@ -54,7 +44,7 @@ describe('Organization Isolation', () => {
 
   describe('user isolation', () => {
     it('org A admin should see own organization users', async () => {
-      if (!sessionA?.user.organizationId) return;
+      expect(sessionA.user.organizationId).toBeTruthy();
       const { status, data } = await apiGet<OrgUser[]>(
         `/api/org-admin/users?organizationId=${sessionA.user.organizationId}`,
         sessionA,
@@ -64,7 +54,7 @@ describe('Organization Isolation', () => {
     });
 
     it('org A admin should NOT see org B users', async () => {
-      if (!sessionA || !sessionB?.user.organizationId) return;
+      expect(sessionB.user.organizationId).toBeTruthy();
       const { status, data } = await apiGet<OrgUser[]>(
         `/api/org-admin/users?organizationId=${sessionB.user.organizationId}`,
         sessionA,
@@ -75,21 +65,19 @@ describe('Organization Isolation', () => {
 
   describe('league isolation', () => {
     it('org A admin should see their leagues', async () => {
-      if (!sessionA) return;
       const { status, data } = await apiGet<League[]>('/api/leagues', sessionA);
       expect(status).toBe(200);
       expect(data.success).toBe(true);
     });
 
     it('org B admin should see their leagues', async () => {
-      if (!sessionB) return;
       const { status, data } = await apiGet<League[]>('/api/leagues', sessionB);
       expect(status).toBe(200);
       expect(data.success).toBe(true);
     });
 
     it('org B admin should NOT access org A leagues via org endpoint', async () => {
-      if (!sessionA?.user.organizationId || !sessionB) return;
+      expect(sessionA.user.organizationId).toBeTruthy();
       const { status, data } = await apiGet<League[]>(
         `/api/organizations/${sessionA.user.organizationId}/leagues`,
         sessionB,
