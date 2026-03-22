@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, csrfFetch } from '@/lib/queryClient';
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState, useRef, ChangeEvent } from "react";
@@ -102,7 +102,7 @@ export function UserProfileMenu({ user, showName = false }: UserProfileMenuProps
       const formData = new FormData();
       formData.append('avatar', file);
 
-      const response = await fetch('/api/user/avatar', {
+      const response = await csrfFetch('/api/user/avatar', {
         method: 'POST',
         body: formData,
         credentials: 'include',

@@ -27,6 +27,50 @@ export function initCsrfToken() {
   getCsrfToken().catch(() => {});
 }
 
+export async function csrfFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const method = (init?.method || 'GET').toUpperCase();
+  const needsCsrf = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method);
+
+  if (needsCsrf) {
+    const token = await getCsrfToken();
+    const existingHeaders = init?.headers instanceof Headers
+      ? Object.fromEntries(init.headers.entries())
+      : (init?.headers as Record<string, string>) || {};
+    init = {
+      ...init,
+      headers: {
+        ...existingHeaders,
+        'x-csrf-token': token,
+      },
+    };
+  }
+
+  const res = await fetch(input, init);
+
+  if (res.status === 403) {
+    const cloned = res.clone();
+    try {
+      const body = await cloned.json();
+      if (body?.error?.code === 'CSRF_ERROR') {
+        csrfToken = null;
+        const newToken = await fetchCsrfToken();
+        const existingHeaders = init?.headers instanceof Headers
+          ? Object.fromEntries(init.headers.entries())
+          : (init?.headers as Record<string, string>) || {};
+        return fetch(input, {
+          ...init,
+          headers: {
+            ...existingHeaders,
+            'x-csrf-token': newToken,
+          },
+        });
+      }
+    } catch {}
+  }
+
+  return res;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     let errorMessage;

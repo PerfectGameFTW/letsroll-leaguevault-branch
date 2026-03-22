@@ -16,7 +16,7 @@ import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment, tokenizeCard } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, csrfFetch } from '@/lib/queryClient';
 import { formatCurrency } from "@/lib/utils";
 import { calculateFinancials } from "@/lib/financial-utils";
 import { format } from "date-fns";
@@ -80,7 +80,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
     queryKey: [`/api/square/cards/${bowler.id}`, league.id],
     queryFn: async () => {
-      const res = await fetch(`/api/square/cards/${bowler.id}?leagueId=${league.id}`);
+      const res = await csrfFetch(`/api/square/cards/${bowler.id}?leagueId=${league.id}`);
       if (!res.ok) throw new Error('Failed to fetch saved cards');
       return res.json();
     },
@@ -192,7 +192,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           squareCardId = selectedSavedCardId;
         } else {
           const token = await tokenizeCard(card);
-          const saveResponse = await fetch(`/api/square/cards/${bowler.id}`, {
+          const saveResponse = await csrfFetch(`/api/square/cards/${bowler.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sourceId: token }),
@@ -205,7 +205,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
         }
 
-        const scheduleResponse = await fetch('/api/payment-schedules', {
+        const scheduleResponse = await csrfFetch('/api/payment-schedules', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -242,7 +242,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           squareCardId = selectedSavedCardId;
         } else {
           const token = await tokenizeCard(card);
-          const saveResponse = await fetch(`/api/square/cards/${bowler.id}`, {
+          const saveResponse = await csrfFetch(`/api/square/cards/${bowler.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sourceId: token }),
@@ -258,7 +258,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
         }
       } else if (cardMode === 'saved' && selectedSavedCardId) {
-        const response = await fetch('/api/square/payments', {
+        const response = await csrfFetch('/api/square/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -292,7 +292,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
 
       if (isAutoPay && squareCardId) {
         const recurringAmount = weeklyFee;
-        const scheduleResponse = await fetch('/api/payment-schedules', {
+        const scheduleResponse = await csrfFetch('/api/payment-schedules', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

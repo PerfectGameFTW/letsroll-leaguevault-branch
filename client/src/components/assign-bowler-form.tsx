@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import type { Bowler, BowlerLeague } from "@shared/schema";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, csrfFetch } from '@/lib/queryClient';
 import { useToast } from "@/hooks/use-toast";
 
 interface AssignBowlerFormProps {
@@ -34,7 +34,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ data: Bowler[] }>({
     queryKey: ["/api/bowlers"],
     queryFn: async () => {
-      const response = await fetch("/api/bowlers");
+      const response = await csrfFetch("/api/bowlers");
       if (!response.ok) {
         throw new Error("Failed to fetch bowlers");
       }
@@ -46,7 +46,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: BowlerLeague[] }>({
     queryKey: ["/api/bowler-leagues", leagueId],
     queryFn: async () => {
-      const response = await fetch(`/api/bowler-leagues?leagueId=${leagueId}`);
+      const response = await csrfFetch(`/api/bowler-leagues?leagueId=${leagueId}`);
       if (!response.ok) {
         throw new Error("Failed to fetch bowler leagues");
       }
@@ -71,7 +71,7 @@ export function AssignBowlerForm({ open, onClose, teamId, leagueId }: AssignBowl
   const mutation = useMutation({
     mutationFn: async (bowlerId: number) => {
       try {
-        const response = await fetch("/api/bowler-leagues", {
+        const response = await csrfFetch("/api/bowler-leagues", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

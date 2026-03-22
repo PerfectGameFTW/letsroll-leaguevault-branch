@@ -1,4 +1,5 @@
 import { loadScript } from "@/lib/utils";
+import { csrfFetch } from '@/lib/queryClient';
 
 interface PaymentResult {
   id: string;
@@ -315,7 +316,7 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
         storeCard
       };
 
-      const response = await fetch('/api/square/payments', {
+      const response = await csrfFetch('/api/square/payments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -382,7 +383,7 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
 
 export async function createSquareCustomer(name: string, email: string, teamId: number): Promise<SquareCustomer> {
   try {
-    const response = await fetch('/api/square/customers', {
+    const response = await csrfFetch('/api/square/customers', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

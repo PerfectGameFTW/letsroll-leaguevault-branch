@@ -35,6 +35,7 @@ import { Loader2, AlertCircle, CreditCard, Info, AlertTriangle, Wallet } from "l
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PaymentCreditCardSection } from "@/components/payment-credit-card-section";
+import { csrfFetch } from '@/lib/queryClient';
 
 interface SavedCard {
   id: string;
@@ -112,7 +113,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     queryKey: [`/api/square/cards/${selectedBowlerId}`, leagueId],
     queryFn: async () => {
       const params = leagueId ? `?leagueId=${leagueId}` : '';
-      const res = await fetch(`/api/square/cards/${selectedBowlerId}${params}`);
+      const res = await csrfFetch(`/api/square/cards/${selectedBowlerId}${params}`);
       if (!res.ok) throw new Error('Failed to fetch saved cards');
       return res.json();
     },
@@ -218,7 +219,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
       if (data.type === 'credit_card') {
         if (cardMode === 'saved' && selectedSavedCardId) {
-          const response = await fetch('/api/square/payments', {
+          const response = await csrfFetch('/api/square/payments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -263,7 +264,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           throw new Error(errorMessage);
         }
 
-        const response = await fetch('/api/square/payments', {
+        const response = await csrfFetch('/api/square/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -289,7 +290,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
         return;
       }
 
-      const response = await fetch('/api/payments', {
+      const response = await csrfFetch('/api/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

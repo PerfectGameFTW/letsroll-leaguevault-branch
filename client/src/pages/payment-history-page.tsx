@@ -29,7 +29,7 @@ import { differenceInWeeks, format } from "date-fns";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, csrfFetch } from '@/lib/queryClient';
 import { calculateFinancials } from "@/lib/financial-utils";
 import { formatCurrency } from "@/lib/utils";
 import { PaymentSummaryCards } from "@/components/payment-summary-cards";
@@ -205,7 +205,7 @@ export default function PaymentHistoryPage() {
       setIsSubmitting(true);
 
       if (cardMode === 'saved' && selectedSavedCardId) {
-        const response = await fetch('/api/square/payments', {
+        const response = await csrfFetch('/api/square/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
