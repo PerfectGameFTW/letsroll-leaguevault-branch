@@ -2,8 +2,8 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   games, scores, bowlers, teams, leagues,
-  type Game, type InsertGame,
-  type Score, type InsertScore,
+  type Game, type InsertGame, type UpdateGame,
+  type Score, type InsertScore, type UpdateScore,
 } from "@shared/schema";
 
 export async function getGames(leagueId: number, weekNumber?: number): Promise<Game[]> {
@@ -49,7 +49,7 @@ export async function createGame(game: InsertGame): Promise<Game> {
   return result;
 }
 
-export async function updateGame(id: number, game: Partial<InsertGame>): Promise<Game> {
+export async function updateGame(id: number, game: UpdateGame): Promise<Game> {
   const updateData = {
     ...game,
     date: game.date ? (typeof game.date === 'string' ? game.date : new Date(game.date).toISOString()) : undefined,
@@ -146,7 +146,7 @@ export async function createScore(score: InsertScore): Promise<Score> {
   return result;
 }
 
-export async function updateScore(id: number, score: Partial<InsertScore>): Promise<Score> {
+export async function updateScore(id: number, score: UpdateScore): Promise<Score> {
   const [result] = await db.update(scores).set(score).where(eq(scores.id, id)).returning();
   return result;
 }

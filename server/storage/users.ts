@@ -1,6 +1,6 @@
 import { eq, isNull, isNotNull } from "drizzle-orm";
 import { db } from "../db.js";
-import { users, type User, type InsertUser, type UserRole } from "@shared/schema";
+import { users, type User, type InsertUser, type UpdateUser, type UserRole } from "@shared/schema";
 
 export async function getUser(id: number): Promise<User | undefined> {
   const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -17,7 +17,7 @@ export async function createUser(user: InsertUser): Promise<User> {
   return result;
 }
 
-export async function updateUser(id: number, userData: Partial<InsertUser>): Promise<User> {
+export async function updateUser(id: number, userData: UpdateUser): Promise<User> {
   console.log('[Storage] Updating user:', { id, userData });
 
   const [updatedUser] = await db

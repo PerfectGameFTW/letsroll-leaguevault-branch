@@ -1,6 +1,6 @@
 import { eq, isNull, inArray } from "drizzle-orm";
 import { db } from "../db.js";
-import { leagues, type League, type InsertLeague } from "@shared/schema";
+import { leagues, type League, type InsertLeague, type UpdateLeague } from "@shared/schema";
 
 export async function getLeagues(organizationId?: number | null): Promise<League[]> {
   const query = db.select().from(leagues);
@@ -25,7 +25,7 @@ export async function createLeague(league: InsertLeague): Promise<League> {
   return result;
 }
 
-export async function updateLeague(id: number, league: Partial<InsertLeague>): Promise<League> {
+export async function updateLeague(id: number, league: UpdateLeague): Promise<League> {
   const [result] = await db.update(leagues).set(league).where(eq(leagues.id, id)).returning();
   return result;
 }

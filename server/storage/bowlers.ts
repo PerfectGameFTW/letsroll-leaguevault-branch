@@ -2,8 +2,8 @@ import { eq, and, sql, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   bowlers, bowlerLeagues, leagues,
-  type Bowler, type InsertBowler,
-  type BowlerLeague, type InsertBowlerLeague,
+  type Bowler, type InsertBowler, type UpdateBowler,
+  type BowlerLeague, type InsertBowlerLeague, type UpdateBowlerLeague,
 } from "@shared/schema";
 
 export async function getBowlers(teamId?: number, organizationId?: number): Promise<Bowler[]> {
@@ -55,7 +55,7 @@ export async function createBowler(bowler: InsertBowler): Promise<Bowler> {
   return result;
 }
 
-export async function updateBowler(id: number, bowler: Partial<InsertBowler>): Promise<Bowler> {
+export async function updateBowler(id: number, bowler: UpdateBowler): Promise<Bowler> {
   const [result] = await db.update(bowlers).set(bowler).where(eq(bowlers.id, id)).returning();
   return result;
 }
@@ -111,7 +111,7 @@ export async function createBowlerLeague(bowlerLeague: InsertBowlerLeague): Prom
   return result;
 }
 
-export async function updateBowlerLeague(id: number, bowlerLeague: Partial<InsertBowlerLeague>): Promise<BowlerLeague> {
+export async function updateBowlerLeague(id: number, bowlerLeague: UpdateBowlerLeague): Promise<BowlerLeague> {
   const [result] = await db
     .update(bowlerLeagues)
     .set(bowlerLeague)

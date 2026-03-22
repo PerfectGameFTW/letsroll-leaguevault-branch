@@ -4,6 +4,7 @@ import { sendError, sendSuccess, sanitizeUser } from '../utils/api';
 import { storage } from '../storage';
 import { hashPassword } from '../auth';
 import { passwordSchema } from '@shared/password-validation';
+import { updateUserSchema } from '@shared/schema';
 import { createOrUpdateCustomer } from '../services/square';
 import { scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
@@ -42,13 +43,9 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       return sendError(res, 'Unauthorized', 403, 'UNAUTHORIZED');
     }
 
-    const userUpdateSchema = z.object({
-      name: z.string().min(1).optional(),
-      email: z.string().email().optional(),
-      phone: z.string().nullable().optional(),
-    });
+    const profileUpdateSchema = updateUserSchema.pick({ name: true, email: true, phone: true });
 
-    const validationResult = userUpdateSchema.safeParse(req.body);
+    const validationResult = profileUpdateSchema.safeParse(req.body);
     if (!validationResult.success) {
       const errorMessages = validationResult.error.errors.map(err => ({
         field: err.path.join('.'),

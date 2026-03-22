@@ -3,7 +3,7 @@ import { db } from "../db.js";
 import {
   locations, leagues,
   locationSquareCredentialsSchema,
-  type Location, type InsertLocation,
+  type Location, type InsertLocation, type UpdateLocation,
   type LocationSquareCredentials,
 } from "@shared/schema";
 
@@ -24,7 +24,11 @@ export async function getFirstSquareConfiguredLocation(orgId: number): Promise<L
   const orgLocations = await db.select().from(locations)
     .where(eq(locations.organizationId, orgId))
     .orderBy(locations.id);
-  return orgLocations.find(loc => (loc.squareCredentials?.accessToken ?? '').trim().length > 0);
+  return orgLocations.find(loc => {
+    const parsed = locationSquareCredentialsSchema.safeParse(loc.squareCredentials);
+    if (!parsed.success || !parsed.data) return false;
+    return (parsed.data.accessToken ?? '').trim().length > 0;
+  });
 }
 
 export async function getLocation(id: number): Promise<Location | undefined> {
@@ -37,7 +41,7 @@ export async function createLocation(data: InsertLocation): Promise<Location> {
   return result;
 }
 
-export async function updateLocation(id: number, data: Partial<InsertLocation>): Promise<Location> {
+export async function updateLocation(id: number, data: UpdateLocation): Promise<Location> {
   const [result] = await db.update(locations).set(data).where(eq(locations.id, id)).returning();
   return result;
 }

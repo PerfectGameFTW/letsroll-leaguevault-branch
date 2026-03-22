@@ -3,7 +3,7 @@ import { db } from "../db.js";
 import {
   organizations, leagues, users,
   orgIntegrationsSchema,
-  type Organization, type InsertOrganization,
+  type Organization, type InsertOrganization, type UpdateOrganization,
   type User,
   type OrgIntegrations,
 } from "@shared/schema";
@@ -27,7 +27,7 @@ export async function createOrganization(organization: InsertOrganization): Prom
   return result;
 }
 
-export async function updateOrganization(id: number, organization: Partial<InsertOrganization>): Promise<Organization> {
+export async function updateOrganization(id: number, organization: UpdateOrganization): Promise<Organization> {
   const [result] = await db.update(organizations).set(organization).where(eq(organizations.id, id)).returning();
   return result;
 }

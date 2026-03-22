@@ -2,7 +2,7 @@ import { eq, and, desc, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   payments, paymentSchedules, leagues, bowlerLeagues,
-  type Payment, type InsertPayment,
+  type Payment, type InsertPayment, type UpdatePayment,
   type PaymentSchedule, type InsertPaymentSchedule,
   type PaginatedResult,
 } from "@shared/schema";
@@ -157,7 +157,7 @@ export async function createPayment(payment: InsertPayment): Promise<Payment> {
   return result;
 }
 
-export async function updatePayment(id: number, payment: Partial<InsertPayment>): Promise<Payment> {
+export async function updatePayment(id: number, payment: UpdatePayment): Promise<Payment> {
   const [result] = await db
     .update(payments)
     .set(payment)
