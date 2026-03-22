@@ -1,4 +1,4 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   organizations, leagues, users,
@@ -47,12 +47,11 @@ export async function restoreOrganization(id: number): Promise<Organization> {
 
 export async function deleteOrganization(id: number): Promise<void> {
   await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM ${organizations} WHERE id = ${id} FOR UPDATE`);
     const orgLeagues = await tx.select({ id: leagues.id }).from(leagues).where(eq(leagues.organizationId, id));
     const leagueIds = orgLeagues.map(l => l.id);
     if (leagueIds.length > 0) {
-      for (const leagueId of leagueIds) {
-        await tx.delete(leagues).where(eq(leagues.id, leagueId));
-      }
+      await tx.delete(leagues).where(inArray(leagues.id, leagueIds));
     }
     await tx.update(users).set({ organizationId: null, role: 'user' }).where(eq(users.organizationId, id));
     await tx.delete(organizations).where(eq(organizations.id, id));

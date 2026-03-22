@@ -149,16 +149,16 @@ export async function updateBowlerLeagueOrder(id: number, newOrder: number): Pro
       order: bl.id === id ? newOrder : index >= newOrder ? index + 1 : index,
     }));
 
-    const promises = updatedBowlerLeagues.map((bl) =>
-      tx
+    const results: BowlerLeague[] = [];
+    for (const bl of updatedBowlerLeagues) {
+      const [updated] = await tx
         .update(bowlerLeagues)
         .set({ order: bl.order })
         .where(eq(bowlerLeagues.id, bl.id))
-        .returning()
-    );
-
-    const results = await Promise.all(promises);
-    return results.map((result) => result[0]);
+        .returning();
+      results.push(updated);
+    }
+    return results;
   });
 }
 

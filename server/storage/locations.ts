@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   locations, leagues,
@@ -48,6 +48,7 @@ export async function updateLocation(id: number, data: UpdateLocation): Promise<
 
 export async function deleteLocation(id: number): Promise<void> {
   await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT id FROM ${locations} WHERE id = ${id} FOR UPDATE`);
     await tx.update(leagues).set({ locationId: null }).where(eq(leagues.locationId, id));
     await tx.delete(locations).where(eq(locations.id, id));
   });
