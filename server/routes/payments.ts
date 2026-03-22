@@ -75,7 +75,7 @@ router.get("/", async (req, res) => {
     sendSuccess(res, payments);
   } catch (error) {
     log.error('Get error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch payments');
+    sendError(res, 'Failed to fetch payments');
   }
 });
 
@@ -150,7 +150,7 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to create payment');
+    sendError(res, 'Failed to create payment');
   }
 });
 
@@ -188,7 +188,7 @@ router.patch("/:id", paymentWriteLimiter, async (req, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to update payment');
+    sendError(res, 'Failed to update payment');
   }
 });
 
@@ -221,7 +221,7 @@ router.delete("/:id", paymentWriteLimiter, async (req, res) => {
     sendSuccess(res, { message: "Payment deleted successfully" }, 200);
   } catch (error) {
     log.error('Delete error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to delete payment');
+    sendError(res, 'Failed to delete payment');
   }
 });
 
@@ -272,7 +272,7 @@ router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
     sendSuccess(res, refunded);
   } catch (error) {
     log.error('Refund error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to process refund');
+    sendError(res, 'Failed to process refund');
   }
 });
 

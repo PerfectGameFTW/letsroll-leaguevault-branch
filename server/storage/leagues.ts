@@ -1,6 +1,9 @@
 import { eq, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import { leagues, type League, type InsertLeague, type UpdateLeague } from "@shared/schema";
+import { createLogger } from '../logger';
+
+const log = createLogger("StorageLeagues");
 
 export async function getLeagues(organizationId: number): Promise<League[]> {
   return db.select().from(leagues)

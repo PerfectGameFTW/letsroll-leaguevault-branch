@@ -36,23 +36,23 @@ router.get('/:id/logo', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
-      return res.status(400).send('Invalid organization ID');
+      return sendError(res, 'Invalid organization ID', 400, 'INVALID_ID');
     }
     const organization = await storage.getOrganization(id);
     if (!organization || !organization.logo) {
-      return res.status(404).send('Logo not found');
+      return sendError(res, 'Logo not found', 404, 'NOT_FOUND');
     }
 
     const logo = organization.logo;
     if (logo.startsWith('data:')) {
       const matches = logo.match(/^data:([^;]+);base64,(.+)$/);
       if (!matches) {
-        return res.status(400).send('Invalid logo format');
+        return sendError(res, 'Invalid logo format', 400, 'INVALID_FORMAT');
       }
       const mimeType = matches[1];
       const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
       if (!allowedMimeTypes.includes(mimeType)) {
-        return res.status(400).send('Invalid logo MIME type');
+        return sendError(res, 'Invalid logo MIME type', 400, 'INVALID_MIME_TYPE');
       }
       const buffer = Buffer.from(matches[2], 'base64');
       res.set('Content-Type', mimeType);
@@ -63,7 +63,7 @@ router.get('/:id/logo', async (req, res) => {
     return res.redirect(logo);
   } catch (error) {
     log.error('Error serving organization logo:', error);
-    res.status(500).send('Failed to serve logo');
+    sendError(res, 'Failed to serve logo', 500);
   }
 });
 

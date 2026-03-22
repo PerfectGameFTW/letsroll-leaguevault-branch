@@ -40,7 +40,7 @@ router.get('/', async (req, res) => {
     sendSuccess(res, games);
   } catch (error) {
     log.error('Error fetching games:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch games', 500);
+    sendError(res, 'Failed to fetch games', 500);
   }
 });
 

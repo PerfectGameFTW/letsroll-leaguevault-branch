@@ -6,6 +6,9 @@ import {
   type PaymentSchedule, type InsertPaymentSchedule, type UpdatePaymentSchedule,
   type PaginatedResult,
 } from "@shared/schema";
+import { createLogger } from '../logger';
+
+const log = createLogger("StoragePayments");
 
 interface PaymentFilters {
   bowlerId?: number;

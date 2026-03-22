@@ -61,7 +61,7 @@ router.post('/sync-bowler/:id', async (req: any, res: Response) => {
     }
   } catch (error) {
     log.error('Error syncing bowler:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to sync bowler');
+    sendError(res, 'Failed to sync bowler');
   }
 });
 
@@ -83,7 +83,7 @@ router.post('/sync-all', async (req: any, res: Response) => {
     sendSuccess(res, results);
   } catch (error) {
     log.error('Error syncing all bowlers:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to sync bowlers');
+    sendError(res, 'Failed to sync bowlers');
   }
 });
 

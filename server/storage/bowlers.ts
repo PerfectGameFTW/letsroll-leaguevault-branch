@@ -5,6 +5,9 @@ import {
   type Bowler, type InsertBowler, type UpdateBowler,
   type BowlerLeague, type InsertBowlerLeague, type UpdateBowlerLeague,
 } from "@shared/schema";
+import { createLogger } from '../logger';
+
+const log = createLogger("StorageBowlers");
 
 const bowlerColumns = {
   id: bowlers.id,

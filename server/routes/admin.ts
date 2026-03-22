@@ -24,7 +24,7 @@ router.get('/users', requireAdmin, async (req, res) => {
     sendSuccess(res, users.map(({ password, ...u }) => u));
   } catch (error) {
     log.error('Error fetching users:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch users');
+    sendError(res, 'Failed to fetch users');
   }
 });
 
@@ -51,7 +51,7 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to update admin status');
+    sendError(res, 'Failed to update admin status');
   }
 });
 
@@ -111,7 +111,7 @@ router.get('/dashboard', requireAdmin, async (req, res) => {
     sendSuccess(res, stats);
   } catch (error) {
     log.error('Error fetching admin dashboard stats:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch admin dashboard stats');
+    sendError(res, 'Failed to fetch admin dashboard stats');
   }
 });
 
@@ -121,7 +121,7 @@ router.get('/email-templates', requireAdmin, async (req, res) => {
     sendSuccess(res, templates);
   } catch (error) {
     log.error('Error fetching email templates:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch email templates');
+    sendError(res, 'Failed to fetch email templates');
   }
 });
 
@@ -138,7 +138,7 @@ router.get('/email-templates/:id', requireAdmin, async (req, res) => {
     sendSuccess(res, template);
   } catch (error) {
     log.error('Error fetching email template:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch email template');
+    sendError(res, 'Failed to fetch email template');
   }
 });
 
@@ -160,7 +160,7 @@ router.patch('/email-templates/:id', requireAdmin, async (req, res) => {
       return handleZodError(res, error);
     }
     log.error('Error updating email template:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to update email template');
+    sendError(res, 'Failed to update email template');
   }
 });
 
@@ -190,7 +190,7 @@ router.post('/email-templates/:id/send-test', requireAdmin, async (req, res) => 
     }
   } catch (error) {
     log.error('Error sending test email:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to send test email');
+    sendError(res, 'Failed to send test email');
   }
 });
 

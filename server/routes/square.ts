@@ -260,7 +260,7 @@ router.post('/customers', squarePaymentLimiter, async (req, res) => {
         stack: error.stack
       } : error
     });
-    res.status(500).send(error instanceof Error ? error.message : 'Customer operation failed');
+    sendError(res, 'Customer operation failed', 500);
   }
 });
 
@@ -283,7 +283,7 @@ router.get('/catalog/categories', async (req: any, res) => {
     sendSuccess(res, categories);
   } catch (error) {
     log.error('Catalog categories error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch catalog categories');
+    sendError(res, 'Failed to fetch catalog categories');
   }
 });
 
@@ -307,7 +307,7 @@ router.get('/catalog/items', async (req: any, res) => {
     sendSuccess(res, items);
   } catch (error) {
     log.error('Catalog list error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch catalog items');
+    sendError(res, 'Failed to fetch catalog items');
   }
 });
 
@@ -348,7 +348,7 @@ router.post('/cards/:bowlerId', async (req, res) => {
     return sendSuccess(res, { savedCardId: savedCard.id, last4: savedCard.last4, brand: savedCard.brand });
   } catch (error) {
     log.error('Save card error:', error);
-    return sendError(res, error instanceof Error ? error.message : 'Failed to save card');
+    return sendError(res, 'Failed to save card');
   }
 });
 
@@ -377,7 +377,7 @@ router.get('/cards/:bowlerId', async (req, res) => {
     sendSuccess(res, cards);
   } catch (error) {
     log.error('List cards error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to list cards');
+    sendError(res, 'Failed to list cards');
   }
 });
 

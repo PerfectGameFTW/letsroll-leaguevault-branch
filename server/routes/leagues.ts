@@ -45,7 +45,7 @@ router.get("/", async (req: any, res) => {
     
     sendSuccess(res, leagues);
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch leagues');
+    sendError(res, 'Failed to fetch leagues');
   }
 });
 
@@ -64,7 +64,7 @@ router.get("/:id", async (req: any, res) => {
     
     sendSuccess(res, league);
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch league');
+    sendError(res, 'Failed to fetch league');
   }
 });
 
@@ -127,7 +127,7 @@ router.post("/", async (req: any, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to create league');
+    sendError(res, 'Failed to create league');
   }
 });
 
@@ -241,7 +241,7 @@ router.patch("/:id", async (req: any, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to update league');
+    sendError(res, 'Failed to update league');
   }
 });
 
@@ -259,7 +259,7 @@ router.patch("/:id/archive", async (req: any, res) => {
     const archived = await storage.archiveLeague(id);
     sendSuccess(res, archived);
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to archive league');
+    sendError(res, 'Failed to archive league');
   }
 });
 
@@ -277,7 +277,7 @@ router.patch("/:id/restore", async (req: any, res) => {
     const restored = await storage.restoreLeague(id);
     sendSuccess(res, restored);
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to restore league');
+    sendError(res, 'Failed to restore league');
   }
 });
 
@@ -309,7 +309,7 @@ router.delete("/:id", async (req: any, res) => {
     await storage.deleteLeague(id);
     sendSuccess(res, null, 204);
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to delete league');
+    sendError(res, 'Failed to delete league');
   }
 });
 
@@ -374,7 +374,7 @@ router.post("/:id/send-invites", async (req: any, res) => {
 
     sendSuccess(res, { sent, alreadyRegistered, noEmail });
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to send invites');
+    sendError(res, 'Failed to send invites');
   }
 });
 
@@ -469,7 +469,7 @@ router.post("/:id/new-season", async (req: any, res) => {
     sendSuccess(res, newLeague, 201);
   } catch (error) {
     log.error('New season error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to create new season');
+    sendError(res, 'Failed to create new season');
   }
 });
 
@@ -514,7 +514,7 @@ router.get("/:id/season-history", async (req: any, res) => {
 
     sendSuccess(res, seasons);
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch season history');
+    sendError(res, 'Failed to fetch season history');
   }
 });
 

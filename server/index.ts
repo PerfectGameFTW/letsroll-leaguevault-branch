@@ -216,8 +216,8 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
     res.status(statusCode).json({
       success: false,
       error: {
+        code: statusCode < 500 ? 'BAD_REQUEST' : 'INTERNAL_ERROR',
         message: clientMessage,
-        timestamp: new Date().toISOString()
       }
     });
   }

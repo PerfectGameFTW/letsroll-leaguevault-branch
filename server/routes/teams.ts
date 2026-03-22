@@ -52,7 +52,7 @@ router.get("/", async (req, res) => {
     
     sendSuccess(res, teams);
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch teams');
+    sendError(res, 'Failed to fetch teams');
   }
 });
 
@@ -84,7 +84,7 @@ router.get("/:id", async (req, res) => {
     
     sendSuccess(res, team);
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch team');
+    sendError(res, 'Failed to fetch team');
   }
 });
 
@@ -115,7 +115,7 @@ router.post("/", async (req, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to create team');
+    sendError(res, 'Failed to create team');
   }
 });
 
@@ -154,7 +154,7 @@ router.patch("/:id", async (req, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to update team');
+    sendError(res, 'Failed to update team');
   }
 });
 
@@ -189,7 +189,7 @@ router.delete("/:id", async (req, res) => {
     await storage.deleteTeam(id);
     sendSuccess(res, null, 204);
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to delete team');
+    sendError(res, 'Failed to delete team');
   }
 });
 

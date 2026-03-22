@@ -107,7 +107,7 @@ router.get("/unlinked", async (req: any, res) => {
     sendSuccess(res, result);
   } catch (error) {
     log.error('Error fetching unlinked bowlers:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch unlinked bowlers');
+    sendError(res, 'Failed to fetch unlinked bowlers');
   }
 });
 
@@ -175,7 +175,7 @@ router.get("/", async (req, res) => {
     sendSuccess(res, bowlersWithAccountStatus);
   } catch (error) {
     log.error('Error fetching bowlers:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowlers');
+    sendError(res, 'Failed to fetch bowlers');
   }
 });
 
@@ -201,7 +201,7 @@ router.get("/:id", async (req, res) => {
     sendSuccess(res, { ...bowler, hasAccount });
   } catch (error) {
     log.error('Error fetching bowler:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler');
+    sendError(res, 'Failed to fetch bowler');
   }
 });
 
@@ -321,7 +321,7 @@ router.post("/", async (req, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to create bowler');
+    sendError(res, 'Failed to create bowler');
   }
 });
 
@@ -398,7 +398,7 @@ router.patch("/:id", async (req, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to update bowler');
+    sendError(res, 'Failed to update bowler');
   }
 });
 
@@ -422,12 +422,7 @@ router.delete("/:id", async (req, res) => {
     sendSuccess(res, null, 204);
   } catch (error) {
     log.error('Error deleting bowler:', error);
-    sendError(res,
-      error instanceof Error ?
-        `Failed to delete bowler: ${error.message}` :
-        'Internal server error',
-      500
-    );
+    sendError(res, 'Failed to delete bowler', 500);
   }
 });
 

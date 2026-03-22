@@ -284,7 +284,7 @@ export function setupAuth(app: Express) {
           message: err.message
         })));
       }
-      sendError(res, error instanceof Error ? error.message : "Failed to register user", 500, "SERVER_ERROR");
+      sendError(res, "Failed to register user", 500, "SERVER_ERROR");
     }
   });
 

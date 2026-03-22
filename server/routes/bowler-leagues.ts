@@ -91,7 +91,7 @@ router.get("/", async (req, res) => {
     sendSuccess(res, bowlerLeagues);
   } catch (error) {
     log.error('Error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler leagues');
+    sendError(res, 'Failed to fetch bowler leagues');
   }
 });
 
@@ -127,7 +127,7 @@ router.post("/", async (req, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to create bowler league');
+    sendError(res, 'Failed to create bowler league');
   }
 });
 
@@ -171,7 +171,7 @@ router.patch("/:id", async (req, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league');
+    sendError(res, 'Failed to update bowler league');
   }
 });
 
@@ -207,7 +207,7 @@ router.delete("/:id", async (req, res) => {
     sendSuccess(res, { message: "Bowler league deleted successfully" }, 200);
   } catch (error) {
     log.error('Error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to delete bowler league');
+    sendError(res, 'Failed to delete bowler league');
   }
 });
 
@@ -241,7 +241,7 @@ router.patch("/:id/order", async (req, res) => {
     sendSuccess(res, updated);
   } catch (error) {
     log.error('Error:', error);
-    sendError(res, error instanceof Error ? error.message : 'Failed to update bowler league order');
+    sendError(res, 'Failed to update bowler league order');
   }
 });
 

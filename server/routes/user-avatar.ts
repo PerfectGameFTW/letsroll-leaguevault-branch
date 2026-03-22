@@ -89,7 +89,7 @@ router.post("/avatar", upload.single("avatar"), async (req: Request, res: Respon
     return sendSuccess(res, { avatarUrl });
   } catch (error) {
     log.error("Upload error:", error);
-    return sendError(res, error instanceof Error ? error.message : "Upload failed", 500);
+    return sendError(res, "Upload failed", 500);
   }
 });
 
@@ -106,7 +106,7 @@ router.get("/avatar/:userId", async (req: Request, res: Response) => {
       .where(eq(userAvatars.userId, userId));
 
     if (!avatarRow) {
-      return res.status(404).send("Avatar not found");
+      return sendError(res, "Avatar not found", 404, "NOT_FOUND");
     }
 
     const imageBuffer = Buffer.from(avatarRow.data, "base64");
@@ -116,7 +116,7 @@ router.get("/avatar/:userId", async (req: Request, res: Response) => {
     return res.send(imageBuffer);
   } catch (error) {
     log.error("Serve avatar error:", error);
-    return res.status(500).send("Failed to serve avatar");
+    return sendError(res, "Failed to serve avatar", 500);
   }
 });
 

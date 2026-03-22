@@ -47,7 +47,7 @@ router.post('/link-bowler', requireAuth, async (req, res) => {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
-    sendError(res, error instanceof Error ? error.message : 'Failed to link bowler to user');
+    sendError(res, 'Failed to link bowler to user');
   }
 });
 
@@ -71,7 +71,7 @@ router.get('/bowler', requireAuth, async (req, res) => {
     
     sendSuccess(res, bowler);
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to fetch bowler');
+    sendError(res, 'Failed to fetch bowler');
   }
 });
 
@@ -89,7 +89,7 @@ router.delete('/unlink-bowler', requireAuth, async (req, res) => {
     await storage.linkUserToBowler(user.id, undefined);
     sendSuccess(res, { message: 'Bowler unlinked successfully' });
   } catch (error) {
-    sendError(res, error instanceof Error ? error.message : 'Failed to unlink bowler');
+    sendError(res, 'Failed to unlink bowler');
   }
 });
 

@@ -18,7 +18,7 @@ const router = Router();
 // Middleware to check if the user is an organization admin or a system admin
 async function requireOrgAdminOrSystemAdmin(req: any, res: Response, next: any) {
   if (!req.isAuthenticated() || !req.user) {
-    return res.status(401).json({ success: false, error: { code: 'unauthorized', message: 'You must be logged in to access this resource' } });
+    return sendError(res, 'You must be logged in to access this resource', 401, 'UNAUTHORIZED');
   }
 
   // Allow system admins
@@ -30,7 +30,7 @@ async function requireOrgAdminOrSystemAdmin(req: any, res: Response, next: any) 
     return next();
   }
 
-  return res.status(403).json({ success: false, error: { code: 'forbidden', message: 'You do not have permission to access this resource' } });
+  return sendError(res, 'You do not have permission to access this resource', 403, 'FORBIDDEN');
 }
 
 // Get all users in the current user's organization

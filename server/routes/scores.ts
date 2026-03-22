@@ -49,7 +49,7 @@ router.get('/league/:leagueId/week/:weekNumber', async (req, res) => {
     return sendSuccess(res, scores);
   } catch (error) {
     log.error('Error fetching scores:', error);
-    return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
+    return sendError(res, 'Failed to fetch scores', 500);
   }
 });
 
@@ -79,7 +79,7 @@ router.get('/history', async (req, res) => {
     return sendError(res, 'leagueId and weekNumber must be provided', 400);
   } catch (error) {
     log.error('Error fetching scores:', error);
-    return sendError(res, error instanceof Error ? error.message : 'Failed to fetch scores', 500);
+    return sendError(res, 'Failed to fetch scores', 500);
   }
 });
 
@@ -99,7 +99,7 @@ router.post('/batch', async (req, res) => {
     return sendSuccess(res, results, 201);
   } catch (error) {
     log.error('Error creating scores:', error);
-    return sendError(res, error instanceof Error ? error.message : 'Failed to create scores', 500);
+    return sendError(res, 'Failed to create scores', 500);
   }
 });
 
