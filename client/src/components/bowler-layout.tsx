@@ -123,15 +123,15 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
         </div>
       </main>
 
-      <nav className="flex-none bg-white border-t border-slate-200 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
-        <div className="max-w-md mx-auto flex justify-between px-2 h-16 pb-[env(safe-area-inset-bottom)]">
+      <nav className="flex-none bg-white border-t border-slate-200 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <div className="max-w-xs mx-auto flex justify-between px-6 h-14">
           {navItems.map((item) => {
             const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?') || location.startsWith(item.baseHref + '/');
             return (
               <Link key={item.baseHref} href={item.href}>
                 <button
                   className={cn(
-                    "flex-1 flex flex-col items-center justify-center gap-1 min-w-[70px] h-16",
+                    "flex-1 flex flex-col items-center justify-center gap-1 min-w-[70px] h-14",
                     isActive ? "text-indigo-600" : "text-slate-500 hover:text-slate-800"
                   )}
                 >
