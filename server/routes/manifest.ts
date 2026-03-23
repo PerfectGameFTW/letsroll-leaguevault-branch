@@ -37,11 +37,11 @@ router.get('/manifest.json', (req: Request, res: Response) => {
   const shortName = orgName.length > 12 ? orgName.substring(0, 12) : orgName;
 
   const icons = [];
-  if (org.logo) {
-    const logoUrl = `/api/organizations/${org.id}/logo`;
+  if (org.appIcon || org.logo) {
+    const iconUrl = `/api/organizations/${org.id}/app-icon`;
     icons.push(
-      { src: logoUrl, sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: logoUrl, sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: iconUrl, sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: iconUrl, sizes: "512x512", type: "image/png", purpose: "any" },
     );
   } else {
     icons.push(...DEFAULT_MANIFEST.icons);
@@ -82,6 +82,7 @@ router.get('/api/org-context', (req: Request, res: Response) => {
       slug: org.slug,
       logo: org.logo,
       darkLogo: org.darkLogo,
+      appIcon: org.appIcon,
     },
   });
 });

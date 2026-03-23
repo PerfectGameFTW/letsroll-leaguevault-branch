@@ -22,6 +22,7 @@ router.get('/slug/:slug', async (req, res) => {
       slug: organization.slug,
       logo: organization.logo,
       darkLogo: organization.darkLogo,
+      appIcon: organization.appIcon,
     });
   } catch (error) {
     log.error(`Error fetching organization with slug ${req.params.slug}:`, error);
@@ -79,6 +80,41 @@ router.get('/:id/logo', async (req, res) => {
   } catch (error) {
     log.error('Error serving organization logo:', error);
     sendError(res, 'Failed to serve logo', 500);
+  }
+});
+
+router.get('/:id/app-icon', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid organization ID', 400, 'INVALID_ID');
+    }
+    const organization = await storage.getOrganization(id);
+    const iconData = organization?.appIcon || organization?.logo;
+    if (!organization || !iconData) {
+      return sendError(res, 'App icon not found', 404, 'NOT_FOUND');
+    }
+
+    if (iconData.startsWith('data:')) {
+      const matches = iconData.match(/^data:([^;]+);base64,(.+)$/);
+      if (!matches) {
+        return sendError(res, 'Invalid icon format', 400, 'INVALID_FORMAT');
+      }
+      const mimeType = matches[1];
+      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedMimeTypes.includes(mimeType)) {
+        return sendError(res, 'Invalid icon MIME type', 400, 'INVALID_MIME_TYPE');
+      }
+      const buffer = Buffer.from(matches[2], 'base64');
+      res.set('Content-Type', mimeType);
+      res.set('Cache-Control', 'public, max-age=86400');
+      return res.send(buffer);
+    }
+
+    return res.redirect(iconData);
+  } catch (error) {
+    log.error('Error serving organization app icon:', error);
+    sendError(res, 'Failed to serve app icon', 500);
   }
 });
 

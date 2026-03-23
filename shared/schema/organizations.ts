@@ -31,6 +31,7 @@ export const organizations = pgTable("organizations", {
   email: text("email"),
   logo: text("logo"),
   darkLogo: text("dark_logo"),
+  appIcon: text("app_icon"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
   integrations: jsonb("integrations").$type<OrgIntegrations>(),
@@ -51,6 +52,7 @@ export const insertOrganizationSchema = baseOrganizationSchema.extend({
   email: z.union([emailSchema, z.literal("")]).optional(),
   logo: z.string().optional(),
   darkLogo: z.string().optional(),
+  appIcon: z.string().optional(),
   active: z.boolean().default(true),
   integrations: orgIntegrationsSchema,
 }).omit({ id: true, createdAt: true });
@@ -66,6 +68,7 @@ export const updateOrganizationSchema = z.object({
   email: z.union([emailSchema, z.literal("")]).nullable(),
   logo: z.string().nullable(),
   darkLogo: z.string().nullable(),
+  appIcon: z.string().nullable(),
   active: z.boolean(),
   integrations: orgIntegrationsSchema,
 }).partial();
