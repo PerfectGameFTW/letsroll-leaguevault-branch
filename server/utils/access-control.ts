@@ -1,30 +1,18 @@
+import { Request } from 'express';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
 
 const log = createLogger("AccessControl");
 
-interface AuthUser {
-  id: number;
-  role: string;
-  organizationId?: number | null;
-  bowlerId?: number | null;
-}
-
-// Minimal request shape used by access-control functions.
-// Routes pass `req` typed as `any`, so structural compatibility is checked at call sites.
-interface AuthRequest {
-  user?: AuthUser;
-}
-
-export function isSystemAdmin(user: AuthUser | undefined): boolean {
+export function isSystemAdmin(user: Express.User | undefined): boolean {
   return user?.role === 'system_admin';
 }
 
-export function isOrgOrHigher(user: AuthUser | undefined): boolean {
+export function isOrgOrHigher(user: Express.User | undefined): boolean {
   return user?.role === 'org_admin' || user?.role === 'system_admin';
 }
 
-export function requireOrganizationAccess(req: AuthRequest, resourceOrgId: number | null, resourceType?: string, resourceId?: number | string): boolean {
+export function requireOrganizationAccess(req: Request, resourceOrgId: number | null, resourceType?: string, resourceId?: number | string): boolean {
   if (!req.user) return false;
   if (isSystemAdmin(req.user)) return true;
   if (resourceOrgId === null) {
@@ -34,7 +22,7 @@ export function requireOrganizationAccess(req: AuthRequest, resourceOrgId: numbe
   return req.user.organizationId === resourceOrgId;
 }
 
-export async function hasAccessToLeague(req: AuthRequest, leagueId: number): Promise<boolean> {
+export async function hasAccessToLeague(req: Request, leagueId: number): Promise<boolean> {
   if (!req.user) {
     return false;
   }
@@ -67,7 +55,7 @@ export async function hasAccessToLeague(req: AuthRequest, leagueId: number): Pro
   return req.user.organizationId === league.organizationId;
 }
 
-export async function hasAccessToTeam(req: AuthRequest, teamId: number): Promise<boolean> {
+export async function hasAccessToTeam(req: Request, teamId: number): Promise<boolean> {
   if (!req.user) {
     return false;
   }
@@ -84,7 +72,7 @@ export async function hasAccessToTeam(req: AuthRequest, teamId: number): Promise
   return hasAccessToLeague(req, team.leagueId);
 }
 
-export async function hasAccessToBowler(req: AuthRequest, bowlerId: number): Promise<boolean> {
+export async function hasAccessToBowler(req: Request, bowlerId: number): Promise<boolean> {
   if (!req.user) {
     return false;
   }
@@ -128,7 +116,7 @@ export async function hasAccessToBowler(req: AuthRequest, bowlerId: number): Pro
   return false;
 }
 
-export async function hasAccessToPayment(req: AuthRequest, paymentId: number): Promise<boolean> {
+export async function hasAccessToPayment(req: Request, paymentId: number): Promise<boolean> {
   if (!req.user) {
     return false;
   }
@@ -164,7 +152,7 @@ export async function hasAccessToPayment(req: AuthRequest, paymentId: number): P
   }
 }
 
-export async function filterPaymentsByOrganization(req: AuthRequest, payments: { leagueId: number }[]): Promise<{ leagueId: number }[]> {
+export async function filterPaymentsByOrganization(req: Request, payments: { leagueId: number }[]): Promise<{ leagueId: number }[]> {
   if (!req.user) {
     return [];
   }
