@@ -1,15 +1,10 @@
 import schedule from "node-schedule";
 import { db } from "../db";
 import { eq, and, lte, isNull } from "drizzle-orm";
-import { paymentSchedules, payments, leagues, DEFAULT_TIMEZONE, type PaymentSchedule } from "@shared/schema";
-import { addWeeks, addMonths, setHours, setMinutes, setSeconds, setMilliseconds } from "date-fns";
-import { fromZonedTime, toZonedTime } from "date-fns-tz";
+import { paymentSchedules, leagues, type PaymentSchedule } from "@shared/schema";
 import { logger } from "../logger";
-import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 import { storage } from "../storage";
-import { isDateSkippedOrCancelled } from "@shared/schedule-utils";
-import { executeScheduledPayment, computePaymentSplit } from "./payment-execution";
-import { checkAndChargeFinalTwoWeeks, checkPaidInFull } from "./payment-checks";
+import { processScheduledPaymentJob } from "./payment-lifecycle";
 
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
@@ -176,218 +171,13 @@ class PaymentScheduler {
     this.cancelJob(jobId);
 
     const job = schedule.scheduleJob(new Date(scheduleRecord.nextPaymentDate), async () => {
-      try {
-        const claimed = await db
-          .update(paymentSchedules)
-          .set({ lastPaymentDate: new Date().toISOString() })
-          .where(
-            and(
-              eq(paymentSchedules.id, scheduleRecord.id),
-              eq(paymentSchedules.nextPaymentDate, scheduleRecord.nextPaymentDate),
-              eq(paymentSchedules.active, true)
-            )
-          )
-          .returning({ id: paymentSchedules.id });
-
-        if (claimed.length === 0) {
-          logger.warn(`[PaymentScheduler] Skipping ${jobId} — already claimed by another process or deactivated`);
-          return;
-        }
-
-        logger.info(`[PaymentScheduler] Executing scheduled payment for ${jobId}`, {
-          amount: scheduleRecord.amount,
-          bowlerId: scheduleRecord.bowlerId,
-          cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`,
-          executionTime: new Date().toISOString(),
-          scheduledTime: scheduleRecord.nextPaymentDate
-        });
-
-        const league = await db.select().from(leagues).where(eq(leagues.id, scheduleRecord.leagueId)).then(r => r[0]);
-        const leagueTz = league?.timezone ?? DEFAULT_TIMEZONE;
-        const nextPaymentDateObj = new Date(scheduleRecord.nextPaymentDate);
-        const firingDateLeagueLocal = league
-          ? toZonedTime(nextPaymentDateObj, leagueTz)
-          : nextPaymentDateObj;
-
-        if (league && isDateSkippedOrCancelled(
-          firingDateLeagueLocal,
-          league.skipDates ?? [],
-          league.cancelledDates ?? []
-        )) {
-          const nextDate = getNextLeagueDateTime(
-            nextPaymentDateObj,
-            league.weekDay,
-            league.competitionStartTime,
-            leagueTz,
-            league.skipDates ?? [],
-            league.cancelledDates ?? []
-          );
-          logger.info(`[PaymentScheduler] Skipping charge on skip/cancelled date for ${jobId}, advancing to ${nextDate.toISOString()}`);
-          await storage.updatePaymentScheduleFields(scheduleRecord.id, { nextPaymentDate: nextDate.toISOString() });
-          this.schedulePayment({ ...scheduleRecord, nextPaymentDate: nextDate.toISOString() });
-          return;
-        }
-
-        const paymentResult = await executeScheduledPayment(scheduleRecord, league, jobId);
-
-        if (paymentResult.status === 'success') {
-          await this.handleSuccessfulPayment(scheduleRecord, league, paymentResult, jobId);
-        } else {
-          await this.handleFailedPayment(scheduleRecord, paymentResult, jobId);
-        }
-      } catch (error) {
-        logger.error(`[PaymentScheduler] Critical error processing payment for ${jobId}`, {
-          error: error instanceof Error ? {
-            name: error.name, message: error.message, stack: error.stack
-          } : error,
-          schedule: {
-            id: scheduleRecord.id,
-            bowlerId: scheduleRecord.bowlerId,
-            amount: scheduleRecord.amount,
-            cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`
-          },
-          executionTime: new Date().toISOString()
-        });
-      }
+      await processScheduledPaymentJob(scheduleRecord, jobId, {
+        schedulePayment: (record) => this.schedulePayment(record),
+        cancelJob: (id) => this.cancelJob(id),
+      });
     });
 
     this.jobs.set(jobId, job);
-  }
-
-  private async handleSuccessfulPayment(
-    scheduleRecord: PaymentSchedule,
-    league: typeof leagues.$inferSelect,
-    paymentResult: { paymentId?: string },
-    jobId: string
-  ) {
-    const isUpfrontLeague = league?.paymentMode === 'upfront';
-    const tz = league?.timezone ?? DEFAULT_TIMEZONE;
-    const currentPaymentDate = new Date(scheduleRecord.nextPaymentDate);
-
-    let nextDate: Date;
-    if (scheduleRecord.frequency === 'weekly' && league) {
-      nextDate = getNextLeagueDateTime(
-        currentPaymentDate,
-        league.weekDay,
-        league.competitionStartTime,
-        tz,
-        league.skipDates ?? [],
-        league.cancelledDates ?? []
-      );
-    } else if (scheduleRecord.frequency === 'monthly') {
-      nextDate = addMonths(currentPaymentDate, 1);
-      if (league?.competitionStartTime) {
-        const [h, m] = league.competitionStartTime.split(':').map(Number);
-        nextDate = setHours(setMinutes(setSeconds(setMilliseconds(nextDate, 0), 0), m), h);
-        nextDate = fromZonedTime(nextDate, tz);
-      }
-    } else {
-      nextDate = addWeeks(currentPaymentDate, 1);
-    }
-
-    logger.info(`[PaymentScheduler] Updating schedule ${scheduleRecord.id}`, {
-      currentPaymentDate: scheduleRecord.nextPaymentDate,
-      nextPaymentDate: nextDate,
-      updateTime: new Date().toISOString(),
-      frequency: scheduleRecord.frequency
-    });
-
-    await db.transaction(async (tx) => {
-      await tx
-        .update(paymentSchedules)
-        .set({
-          nextPaymentDate: nextDate.toISOString(),
-          lastPaymentDate: scheduleRecord.nextPaymentDate,
-        })
-        .where(eq(paymentSchedules.id, scheduleRecord.id));
-
-      logger.info(`[PaymentScheduler] Creating payment record for ${jobId}`, {
-        paymentId: paymentResult.paymentId,
-        recordTime: new Date().toISOString()
-      });
-
-      const { lineageAmount, prizeFundAmount } = computePaymentSplit(scheduleRecord.amount, league);
-      await tx.insert(payments).values({
-        bowlerId: scheduleRecord.bowlerId,
-        leagueId: scheduleRecord.leagueId,
-        amount: scheduleRecord.amount,
-        lineageAmount,
-        prizeFundAmount,
-        status: 'paid',
-        type: 'credit_card',
-        weekOf: scheduleRecord.nextPaymentDate,
-        squarePaymentId: paymentResult.paymentId,
-      });
-
-      logger.info(`[PaymentScheduler] Transaction completed for ${jobId}`, {
-        completionTime: new Date().toISOString(),
-        nextScheduledDate: nextDate
-      });
-    });
-
-    if (isUpfrontLeague) {
-      logger.info(`[PaymentScheduler] Upfront league — deactivating schedule after payment for ${jobId}`, {
-        scheduleId: scheduleRecord.id,
-        bowlerId: scheduleRecord.bowlerId,
-        leagueId: scheduleRecord.leagueId,
-      });
-      await storage.deactivatePaymentSchedule(scheduleRecord.id);
-      this.cancelJob(jobId);
-      return;
-    }
-
-    if (league) {
-      await checkAndChargeFinalTwoWeeks(scheduleRecord, league, jobId);
-    }
-
-    if (league) {
-      const paidInFull = await checkPaidInFull(
-        scheduleRecord,
-        league,
-        jobId,
-        (id) => this.cancelJob(id)
-      );
-      if (paidInFull) {
-        return;
-      }
-    }
-
-    logger.info(`[PaymentScheduler] Scheduling next payment for ${jobId}`, {
-      nextPaymentDate: nextDate,
-      schedulingTime: new Date().toISOString()
-    });
-
-    this.schedulePayment({
-      ...scheduleRecord,
-      nextPaymentDate: nextDate.toISOString(),
-    });
-  }
-
-  private async handleFailedPayment(
-    scheduleRecord: PaymentSchedule,
-    paymentResult: { error?: string },
-    jobId: string
-  ) {
-    logger.error(`[PaymentScheduler] Payment failed for ${jobId}`, {
-      error: paymentResult.error,
-      schedule: {
-        id: scheduleRecord.id,
-        bowlerId: scheduleRecord.bowlerId,
-        amount: scheduleRecord.amount,
-        cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`
-      },
-      failureTime: new Date().toISOString()
-    });
-
-    await db.insert(payments).values({
-      bowlerId: scheduleRecord.bowlerId,
-      leagueId: scheduleRecord.leagueId,
-      amount: scheduleRecord.amount,
-      status: 'failed',
-      type: 'credit_card',
-      weekOf: scheduleRecord.nextPaymentDate,
-      notes: `Failed payment: ${paymentResult.error}`,
-    });
   }
 
   public cancelAllJobs() {

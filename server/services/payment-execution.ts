@@ -11,12 +11,6 @@ export interface PaymentResult {
   cardId?: string;
 }
 
-interface ChargeContext {
-  scheduleRecord: PaymentSchedule;
-  league: typeof leagues.$inferSelect;
-  jobId: string;
-}
-
 async function fetchBowlerPaymentInfo(bowlerId: number) {
   const bowler = await db.select().from(bowlers).where(eq(bowlers.id, bowlerId)).then(r => r[0]);
   return {

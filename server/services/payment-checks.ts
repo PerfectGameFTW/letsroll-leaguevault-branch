@@ -1,15 +1,14 @@
 import { db } from "../db";
 import { eq } from "drizzle-orm";
-import { paymentSchedules, payments, leagues, bowlers, type PaymentSchedule } from "@shared/schema";
+import { leagues, bowlers, type PaymentSchedule } from "@shared/schema";
 import { differenceInWeeks } from "date-fns";
 import { logger } from "../logger";
 import { storage } from "../storage";
-import { isDateSkippedOrCancelled, getEffectiveBowlingWeeks, countBowlingWeeksPassed } from "@shared/schedule-utils";
+import { getEffectiveBowlingWeeks, countBowlingWeeksPassed } from "@shared/schedule-utils";
 import {
   executeSquareCharge,
   createPaymentRecord,
   getTotalPaidInSeason,
-  computePaymentSplit,
 } from "./payment-execution";
 
 export async function checkAndChargeFinalTwoWeeks(
