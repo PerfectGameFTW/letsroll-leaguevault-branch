@@ -121,6 +121,10 @@ app.use('/uploads/avatars', express.static(path.join(process.cwd(), 'uploads', '
   }
 }));
 
+app.get('/loaderio-19ef38424d52907d2a5ef69f13f4794b.txt', (_req, res) => {
+  res.type('text/plain').send('loaderio-19ef38424d52907d2a5ef69f13f4794b');
+});
+
 app.use('/api', (req, res, next) => {
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store');
