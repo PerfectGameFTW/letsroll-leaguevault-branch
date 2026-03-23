@@ -27,7 +27,7 @@ export interface PaymentDistributionChartProps {
   activeBowlersCount: number;
 }
 
-export function PaymentDistributionChart({ payments, activeBowlersCount }: PaymentDistributionChartProps) {
+export default function PaymentDistributionChart({ payments, activeBowlersCount }: PaymentDistributionChartProps) {
   // Count payments by type
   const paymentCounts = React.useMemo(() => {
     // Only consider paid payments
