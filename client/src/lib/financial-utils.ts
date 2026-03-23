@@ -1,4 +1,4 @@
-import { addWeeks, startOfToday, differenceInWeeks } from "date-fns";
+import { addWeeks, startOfToday, differenceInWeeks, isValid } from "date-fns";
 import { DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "@shared/schema";
 import type { League, Payment } from "@shared/schema";
 import {
@@ -46,6 +46,7 @@ export function getSeasonLengthWeeks(league: LeagueWithSchedule | null | undefin
   }
   const start = new Date(league.seasonStart);
   const end = new Date(league.seasonEnd);
+  if (!isValid(start) || !isValid(end)) return 0;
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / msPerWeek));
 }
@@ -64,6 +65,7 @@ export function getWeeksPassedInSeason(league: LeagueWithSchedule | null | undef
   }
   const seasonStart = new Date(league.seasonStart);
   const seasonEnd = new Date(league.seasonEnd);
+  if (!isValid(seasonStart) || !isValid(seasonEnd)) return 0;
   const today = startOfToday();
   const effectiveDate = today < seasonStart ? seasonStart : today > seasonEnd ? seasonEnd : today;
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
@@ -127,7 +129,7 @@ export function calculateFinancials(league: League | null | undefined, payments:
   const finalTwoWeeksAmount = league.weeklyFee * 2;
   const today = startOfToday();
 
-  let dueByDate: Date;
+  let dueByDate: Date | null;
   if (league.totalBowlingWeeks != null && league.weekDay) {
     const bowlingDueDate = getBowlingDateByWeekNumber(
       league.seasonStart,
@@ -140,8 +142,11 @@ export function calculateFinancials(league: League | null | undefined, payments:
   } else {
     dueByDate = addWeeks(new Date(league.seasonStart), dueByWeek);
   }
+  if (dueByDate && !isValid(dueByDate)) {
+    dueByDate = null;
+  }
 
-  const isPastDueDate = today >= dueByDate;
+  const isPastDueDate = dueByDate ? today >= dueByDate : false;
   const isPaid = totalPaid >= finalTwoWeeksAmount;
 
   const finalTwoWeeks: FinalTwoWeeksStatus = {
@@ -210,6 +215,7 @@ export function calculateBowlerPastDue(
 
   const today = startOfToday();
   const seasonStart = new Date(league.seasonStart);
+  if (!isValid(seasonStart)) return 0;
   const msPerWeek = 7 * 24 * 60 * 60 * 1000;
   const weeksPassed = Math.max(0, Math.round(
     (today.getTime() - seasonStart.getTime()) / msPerWeek

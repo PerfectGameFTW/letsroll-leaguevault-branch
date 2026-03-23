@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import { formatCurrency } from "@/lib/utils";
 
 interface FinalTwoWeeksInfo {
@@ -127,7 +127,7 @@ export function PaymentSummaryCards({
             <CardTitle className="text-lg">Final 2 Weeks</CardTitle>
             <CardDescription>
               Due by Week {finalTwoWeeks.dueByWeek}
-              {finalTwoWeeks.dueByDate && ` (${format(finalTwoWeeks.dueByDate, 'MMM d, yyyy')})`}
+              {finalTwoWeeks.dueByDate && isValid(finalTwoWeeks.dueByDate) && ` (${format(finalTwoWeeks.dueByDate, 'MMM d, yyyy')})`}
             </CardDescription>
           </CardHeader>
           <CardContent>
