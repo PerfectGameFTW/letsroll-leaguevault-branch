@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Plus, Eye, EyeOff, Search, RefreshCw } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Bowler } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Switch } from "@/components/ui/switch";
@@ -22,7 +23,6 @@ import { Link } from "wouter";
 import { useBowlers } from "@/hooks/use-bowlers";
 import { apiRequest } from "@/lib/queryClient";
 
-// Loading skeleton component
 function BowlerTableSkeleton() {
   return (
     <Table>
@@ -38,24 +38,12 @@ function BowlerTableSkeleton() {
       <TableBody>
         {[...Array(5)].map((_, i) => (
           <TableRow key={i}>
-            <TableCell>
-              <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-            </TableCell>
-            <TableCell>
-              <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-            </TableCell>
-            <TableCell>
-              <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-            </TableCell>
-            <TableCell>
-              <div className="h-4 w-24 bg-muted animate-pulse rounded" />
-            </TableCell>
-            <TableCell>
-              <div className="h-4 w-32 bg-muted animate-pulse rounded" />
-            </TableCell>
-            <TableCell>
-              <div className="h-6 w-16 bg-muted animate-pulse rounded-full" />
-            </TableCell>
+            <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+            <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+            <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+            <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+            <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+            <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
           </TableRow>
         ))}
       </TableBody>
