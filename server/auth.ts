@@ -315,6 +315,7 @@ export function setupAuth(app: Express) {
           log.error('Session creation error:', err);
           return sendError(res, "Failed to create session", 500, "SESSION_ERROR");
         }
+        log.info('Login successful', { userId: user.id, email: user.email, sessionId: req.sessionID, hostname: req.hostname, cookieDomain: req.session?.cookie?.domain || 'not set' });
         sendSuccess(res, sanitizeUser(user));
       });
     })(req, res, next);
@@ -333,6 +334,7 @@ export function setupAuth(app: Express) {
   authRouter.get("/user", (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
+        log.info('/api/user unauthenticated request', { sessionId: req.sessionID, hasSession: !!req.session, hasCookie: !!req.headers.cookie, hostname: req.hostname });
         return sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
       }
 
