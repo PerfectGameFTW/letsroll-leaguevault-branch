@@ -65,7 +65,6 @@ export async function warmUpSquareCard(): Promise<void> {
     if (!payments) return;
     if (preWarmedCard) return;
     preWarmedCard = await payments.card({ style: cardStyle });
-    console.log('[Square] Card object pre-warmed successfully');
   } catch (err) {
     console.error('[Square] Failed to pre-warm card:', err);
     preWarmedCard = null;
@@ -107,7 +106,6 @@ async function getSquareConfig(locationId?: number | null): Promise<{ appId: str
 
   squareConfig = { appId: data.appId, locationId: data.locationId || '' };
   squareConfigLocationId = locationId ?? null;
-  console.log('[Square] Using runtime config from server, isProduction:', !data.appId.includes('sandbox-'), locationId ? `(location ${locationId})` : '(global)');
   return squareConfig;
 }
 
@@ -136,7 +134,6 @@ export async function initializeSquare(locationId?: number | null) {
     const sdkUrl = getSdkUrl(config.appId);
     const isProduction = config.appId.length > 0 && !config.appId.includes('sandbox-');
 
-    console.log('[Square] SDK config:', { appIdSet: config.appId.length > 0, isProduction, sdkUrl });
 
     if (window.Square && !window.Square.payments) {
       document.querySelectorAll('script[src*="square.js"]').forEach(script => script.remove());
