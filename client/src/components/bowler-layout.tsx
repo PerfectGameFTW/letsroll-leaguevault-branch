@@ -100,11 +100,11 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
             alt={orgName}
             className="h-10 w-auto max-w-[200px] object-contain"
           />
-        ) : (
+        ) : organization ? (
           <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center shadow-inner">
             <span className="text-white font-bold text-sm tracking-wider">{orgInitials}</span>
           </div>
-        )}
+        ) : null}
       </header>
 
       <main className="flex-1 overflow-y-auto">
