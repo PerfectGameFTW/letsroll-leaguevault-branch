@@ -294,11 +294,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <span className="text-xs font-bold text-white">{orgInitials}</span>
               </div>
             )}
-            {!isCollapsed && (
-              <span className="font-semibold text-white tracking-tight text-lg whitespace-nowrap truncate">
-                {orgName}
-              </span>
-            )}
+            
           </div>
           <button
             onClick={toggleSidebar}
