@@ -123,8 +123,8 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
         </div>
       </main>
 
-      <nav className="flex-none bg-white border-t border-slate-200 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-        <div className="flex justify-center items-center gap-10 h-[56px] pt-1">
+      <nav className="flex-none bg-white border-t border-slate-200 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
+        <div className="flex justify-center items-center gap-10 pt-2 pb-2" style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom, 8px))' }}>
           {navItems.map((item) => {
             const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?') || location.startsWith(item.baseHref + '/');
             return (
