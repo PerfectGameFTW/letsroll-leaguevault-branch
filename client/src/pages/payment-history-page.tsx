@@ -18,14 +18,15 @@ import { PaymentSummaryCards } from "@/components/payment-summary-cards";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { BowlerPaymentTable } from "@/components/bowler-payment-table";
 import { BowlerPaymentDialog } from "@/components/bowler-payment-dialog";
+import { useSelectedLeague } from "@/hooks/use-selected-league";
 
 export default function PaymentHistoryPage() {
   const { toast } = useToast();
   const search = useSearch();
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(() => {
-    const id = new URLSearchParams(search).get('leagueId');
-    return id ? Number(id) : null;
-  });
+  const urlLeagueId = new URLSearchParams(search).get('leagueId');
+  const [selectedLeagueId, setSelectedLeagueId] = useSelectedLeague(
+    urlLeagueId ? Number(urlLeagueId) : undefined
+  );
   const [leagueSheetOpen, setLeagueSheetOpen] = useState(false);
   const [payDialogType, setPayDialogType] = useState<'pastdue' | 'remaining' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);

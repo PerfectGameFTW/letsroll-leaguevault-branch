@@ -13,6 +13,7 @@ import type { League, Payment, User, Bowler, BowlerLeague, Team, ApiResponse } f
 import { PaymentStatusSection } from "@/components/payment-status-section";
 import { queryClient } from "@/lib/queryClient";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { useSelectedLeague } from "@/hooks/use-selected-league";
 
 const STALE_TIME = 1000 * 60 * 5;
 
@@ -39,7 +40,7 @@ function ErrorCard({ title, description, onRetry }: { title: string; description
 }
 
 export const BowlerDashboardPage: FC = () => {
-  const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
+  const [selectedLeagueId, setSelectedLeagueId] = useSelectedLeague();
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const { data: userResponse, isLoading: isLoadingUser, error: userError } = useQuery<{ success: boolean; data: User }>({
