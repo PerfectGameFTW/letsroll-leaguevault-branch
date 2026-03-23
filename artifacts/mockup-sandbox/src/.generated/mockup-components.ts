@@ -8,5 +8,7 @@ export const modules: ModuleMap = {
   "./components/mockups/leaguevault-dashboard/MidnightClub.tsx": () => import("../components/mockups/leaguevault-dashboard/MidnightClub.tsx"),
   "./components/mockups/leaguevault-dashboard/PolishedPro.tsx": () => import("../components/mockups/leaguevault-dashboard/PolishedPro.tsx"),
   "./components/mockups/leaguevault-dashboard/RetroLanes.tsx": () => import("../components/mockups/leaguevault-dashboard/RetroLanes.tsx"),
-  "./components/mockups/leaguevault-dashboard/WarmProfessional.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmProfessional.tsx")
+  "./components/mockups/leaguevault-dashboard/WarmProfessional.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmProfessional.tsx"),
+  "./components/mockups/leaguevault-dashboard/WarmRicherDepth.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmRicherDepth.tsx"),
+  "./components/mockups/leaguevault-dashboard/WarmTightHierarchy.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmTightHierarchy.tsx")
 };
