@@ -8,6 +8,7 @@ export const modules: ModuleMap = {
   "./components/mockups/leaguevault-dashboard/ActivityFeed.tsx": () => import("../components/mockups/leaguevault-dashboard/ActivityFeed.tsx"),
   "./components/mockups/leaguevault-dashboard/BoldSport.tsx": () => import("../components/mockups/leaguevault-dashboard/BoldSport.tsx"),
   "./components/mockups/leaguevault-dashboard/DenseScorecard.tsx": () => import("../components/mockups/leaguevault-dashboard/DenseScorecard.tsx"),
+  "./components/mockups/leaguevault-dashboard/HybridDashboard.tsx": () => import("../components/mockups/leaguevault-dashboard/HybridDashboard.tsx"),
   "./components/mockups/leaguevault-dashboard/LeagueCentric.tsx": () => import("../components/mockups/leaguevault-dashboard/LeagueCentric.tsx"),
   "./components/mockups/leaguevault-dashboard/MidnightClub.tsx": () => import("../components/mockups/leaguevault-dashboard/MidnightClub.tsx"),
   "./components/mockups/leaguevault-dashboard/PolishedPro.tsx": () => import("../components/mockups/leaguevault-dashboard/PolishedPro.tsx"),
