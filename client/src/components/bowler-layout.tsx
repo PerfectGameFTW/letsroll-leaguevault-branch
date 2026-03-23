@@ -85,7 +85,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
     retry: false,
   });
 
-  const organization = userOrgResponse?.data || perfectGameOrgResponse?.data || (subdomainOrg ? { ...subdomainOrg, darkLogo: subdomainOrg.darkLogo } as Organization : undefined);
+  const organization = userOrgResponse?.data || (subdomainOrg ? { ...subdomainOrg, darkLogo: subdomainOrg.darkLogo } as Organization : undefined) || perfectGameOrgResponse?.data;
   const orgName = organization?.name || "Organization";
   const orgInitials = orgName.split(/\s+/).map(w => w[0]).join("").substring(0, 2).toUpperCase();
 
