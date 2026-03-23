@@ -40,8 +40,6 @@ fetch('/api/org-context', { credentials: 'include' })
       const iconUrl = `/api/organizations/${data.id}/app-icon`;
       const appleTouch = document.querySelector('link[rel="apple-touch-icon"]');
       if (appleTouch) appleTouch.setAttribute('href', iconUrl);
-      const favicon = document.querySelector('link[rel="icon"]');
-      if (favicon) favicon.setAttribute('href', iconUrl);
     }
   })
   .catch(() => {});
