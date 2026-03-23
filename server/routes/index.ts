@@ -11,6 +11,7 @@ import squareRouter from './square.js';
 import adminRouter from './admin.js';
 import adminUpdateRouter from './admin-update.js';
 import organizationsRouter from './organizations.js';
+import organizationsPublicRouter from './organizations-public.js';
 import orgAdminRouter from './organization-admin.js';
 import userBowlersRouter from './user-bowlers.js';
 import setupAdminRouter from './setup-admin.js';
@@ -39,8 +40,8 @@ export function registerRoutes(app: Express): void {
     app._router.handle(req, res);
   });
 
-  // All resource routers require authentication at minimum.
-  // Role-specific routers (org-admin, system-admin) further restrict access.
+  app.use('/api/organizations', organizationsPublicRouter);
+
   app.use('/api/leagues', requireAuth, leaguesRouter);
   app.use('/api/teams', requireAuth, teamsRouter);
   app.use('/api/bowlers', requireAuth, bowlersRouter);
