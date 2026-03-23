@@ -149,6 +149,14 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
   - Backend API fields renamed: `isOrganizationAdmin` → `makeOrgAdmin`, `isAdmin` → `makeSystemAdmin` (backward-compat fallback: server accepts old field names)
   - Old boolean columns dropped from database
 
+## Subdomain Multi-Tenancy
+- Each org can have a custom `subdomain` field (e.g., `perfectgame`) independent of the `slug` (e.g., `perfect-game`)
+- Subdomain middleware (`server/middleware/subdomain.ts`) resolves org by: subdomain field first, then slug fallback
+- Dynamic PWA manifest at `/manifest.json` uses org branding (name, logo, appIcon) on subdomains
+- Login/signup pages show org branding via `useSubdomainOrg` hook
+- Cookie domain set to `.leaguevault.app` in production for cross-subdomain session sharing
+- Org form dialog has a Subdomain field for admin configuration
+
 ## Previous Changes (2026-03-09)
 - **PWA (Progressive Web App)**: App is installable on mobile and desktop home screens
   - Web app manifest at `client/public/manifest.json` with LeagueVault branding

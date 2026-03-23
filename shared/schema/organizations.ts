@@ -23,6 +23,7 @@ export const organizations = pgTable("organizations", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  subdomain: text("subdomain"),
   address: text("address"),
   city: text("city"),
   state: text("state"),
@@ -37,6 +38,7 @@ export const organizations = pgTable("organizations", {
   integrations: jsonb("integrations").$type<OrgIntegrations>(),
 }, (table) => ({
   slugIdx: uniqueIndex("organization_slug_idx").on(table.slug),
+  subdomainIdx: uniqueIndex("organization_subdomain_idx").on(table.subdomain),
 }));
 
 const baseOrganizationSchema = createInsertSchema(organizations);
@@ -44,6 +46,7 @@ const baseOrganizationSchema = createInsertSchema(organizations);
 export const insertOrganizationSchema = baseOrganizationSchema.extend({
   name: nameSchema,
   slug: z.string().min(2, "Slug must be at least 2 characters").regex(/^[a-z0-9-]+$/, "Slug must contain only lowercase letters, numbers, and hyphens"),
+  subdomain: z.string().min(2, "Subdomain must be at least 2 characters").regex(/^[a-z0-9]+$/, "Subdomain must contain only lowercase letters and numbers (no hyphens)").nullable().optional(),
   address: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
@@ -60,6 +63,7 @@ export const insertOrganizationSchema = baseOrganizationSchema.extend({
 export const updateOrganizationSchema = z.object({
   name: nameSchema,
   slug: z.string().min(2, "Slug must be at least 2 characters").regex(/^[a-z0-9-]+$/, "Slug must contain only lowercase letters, numbers, and hyphens"),
+  subdomain: z.string().min(2, "Subdomain must be at least 2 characters").regex(/^[a-z0-9]+$/, "Subdomain must contain only lowercase letters and numbers (no hyphens)").nullable(),
   address: z.string().nullable(),
   city: z.string().nullable(),
   state: z.string().nullable(),

@@ -101,6 +101,7 @@ export class DatabaseStorage implements IStorage {
   getOrganizations!: IStorage["getOrganizations"];
   getOrganization!: IStorage["getOrganization"];
   getOrganizationBySlug!: IStorage["getOrganizationBySlug"];
+  getOrganizationBySubdomain!: IStorage["getOrganizationBySubdomain"];
   createOrganization!: IStorage["createOrganization"];
   updateOrganization!: IStorage["updateOrganization"];
   deleteOrganization!: IStorage["deleteOrganization"];

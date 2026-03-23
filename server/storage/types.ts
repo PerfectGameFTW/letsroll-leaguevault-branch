@@ -118,6 +118,7 @@ export interface IOrganizationStorage {
   getOrganizations(): Promise<Organization[]>;
   getOrganization(id: number): Promise<Organization | undefined>;
   getOrganizationBySlug(slug: string): Promise<Organization | undefined>;
+  getOrganizationBySubdomain(subdomain: string): Promise<Organization | undefined>;
   createOrganization(organization: InsertOrganization): Promise<Organization>;
   updateOrganization(id: number, organization: UpdateOrganization): Promise<Organization>;
   deleteOrganization(id: number): Promise<void>;

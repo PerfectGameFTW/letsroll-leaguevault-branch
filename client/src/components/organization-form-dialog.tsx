@@ -25,6 +25,7 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
 
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [subdomain, setSubdomain] = useState('');
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
@@ -45,6 +46,7 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
     if (open) {
       setName(editOrg?.name ?? '');
       setSlug(editOrg?.slug ?? '');
+      setSubdomain(editOrg?.subdomain ?? '');
       setAddress(editOrg?.address ?? '');
       setCity(editOrg?.city ?? '');
       setState(editOrg?.state ?? '');
@@ -121,6 +123,7 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
     const orgData = {
       name,
       slug,
+      subdomain: subdomain || null,
       address,
       city,
       state,
@@ -161,6 +164,16 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="slug" className="text-right">Slug</Label>
               <Input id="slug" required value={slug} onChange={(e) => setSlug(e.target.value)} className="col-span-3" placeholder="org-name" />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="subdomain" className="text-right">Subdomain</Label>
+              <div className="col-span-3">
+                <div className="flex items-center gap-1">
+                  <Input id="subdomain" value={subdomain} onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} className="flex-1" placeholder="orgname" />
+                  <span className="text-sm text-muted-foreground whitespace-nowrap">.leaguevault.app</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Custom subdomain for this org (lowercase letters and numbers only). Leave blank to use the slug.</p>
+              </div>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="phone" className="text-right">Phone</Label>

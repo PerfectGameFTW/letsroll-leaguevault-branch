@@ -48,24 +48,23 @@ function extractSubdomain(hostname: string): string | null {
 const orgCache = new Map<string, { org: Organization | null; expiry: number }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-async function lookupOrgBySlug(slug: string): Promise<Organization | null> {
-  const cached = orgCache.get(slug);
+async function lookupOrgBySubdomain(subdomain: string): Promise<Organization | null> {
+  const cached = orgCache.get(subdomain);
   if (cached && cached.expiry > Date.now()) {
     return cached.org;
   }
 
   try {
-    let org = await storage.getOrganizationBySlug(slug);
+    let org = await storage.getOrganizationBySubdomain(subdomain);
 
-    if (!org && !slug.includes('-')) {
-      const allOrgs = await storage.getOrganizations();
-      org = allOrgs.find(o => o.slug.replace(/-/g, '') === slug) || null;
+    if (!org) {
+      org = await storage.getOrganizationBySlug(subdomain) || null;
     }
 
-    orgCache.set(slug, { org: org || null, expiry: Date.now() + CACHE_TTL_MS });
+    orgCache.set(subdomain, { org: org || null, expiry: Date.now() + CACHE_TTL_MS });
     return org || null;
   } catch (err) {
-    log.error(`Failed to lookup org by slug "${slug}":`, err);
+    log.error(`Failed to lookup org by subdomain "${subdomain}":`, err);
     return null;
   }
 }
@@ -75,7 +74,7 @@ export function subdomainDetection(req: Request, _res: Response, next: NextFunct
     const devOverride = req.query.__org_slug as string | undefined;
     if (devOverride && SLUG_REGEX.test(devOverride)) {
       req.orgSlug = devOverride;
-      lookupOrgBySlug(devOverride).then((org) => {
+      lookupOrgBySubdomain(devOverride).then((org) => {
         req.subdomainOrg = org;
         next();
       }).catch(() => next());
@@ -94,7 +93,7 @@ export function subdomainDetection(req: Request, _res: Response, next: NextFunct
   }
 
   req.orgSlug = slug;
-  lookupOrgBySlug(slug).then((org) => {
+  lookupOrgBySubdomain(slug).then((org) => {
     req.subdomainOrg = org;
     next();
   }).catch(() => {
