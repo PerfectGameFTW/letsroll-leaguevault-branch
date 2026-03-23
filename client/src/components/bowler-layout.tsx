@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Organization, User, ApiResponse } from "@shared/schema";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { useSubdomainOrg } from "@/hooks/use-subdomain-org";
 
 interface BowlerLayoutProps {
   children: ReactNode;
@@ -55,6 +56,7 @@ const LoadingFallback = () => (
 export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leagueName, currentLeagueId }) => {
   const [location] = useLocation();
   const navItems = buildNavItems(currentLeagueId);
+  const { org: subdomainOrg } = useSubdomainOrg();
 
   const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
@@ -83,7 +85,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
     retry: false,
   });
 
-  const organization = userOrgResponse?.data || perfectGameOrgResponse?.data;
+  const organization = userOrgResponse?.data || perfectGameOrgResponse?.data || (subdomainOrg ? { ...subdomainOrg, darkLogo: subdomainOrg.darkLogo } as Organization : undefined);
   const orgName = organization?.name || "Organization";
   const orgInitials = orgName.split(/\s+/).map(w => w[0]).join("").substring(0, 2).toUpperCase();
 

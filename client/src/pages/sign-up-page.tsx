@@ -32,6 +32,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { getSubdomainSlug } from "@/lib/subdomain";
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 100;
@@ -130,6 +131,8 @@ const SignUpPage: FC = () => {
   const searchString = useSearch();
 
   const orgSlug = useMemo(() => {
+    const subdomainSlug = getSubdomainSlug();
+    if (subdomainSlug) return subdomainSlug;
     const params = new URLSearchParams(searchString);
     return params.get("org") || null;
   }, [searchString]);

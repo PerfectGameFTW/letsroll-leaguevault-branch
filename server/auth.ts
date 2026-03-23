@@ -1,6 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
-import { Express, Router } from "express";
+import { Express, Router, Request, Response, NextFunction } from "express";
 import session from "express-session";
 import rateLimit from "express-rate-limit";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -77,6 +77,8 @@ function isValidUser(user: any): user is SelectUser {
 }
 
 export function setupAuth(app: Express) {
+  const isProduction = !isDev;
+
   const sessionSettings: session.SessionOptions = {
     secret: env.SESSION_SECRET,
     resave: false,
@@ -88,18 +90,25 @@ export function setupAuth(app: Express) {
       tableName: 'session'
     }),
     cookie: {
-      // Require HTTPS in production, or in Replit preview/deployment environments
       secure: !isDev || !!env.REPLIT_DEPLOYMENT || !!env.REPLIT_DOMAINS,
-      // "none" is required for cross-site cookies (Replit dev preview) but must
-      // never be used in production — same-origin deployments should use "lax".
       sameSite: (isDev && !!env.REPLIT_DOMAINS) ? "none" as const : "lax" as const,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-      httpOnly: true
+      maxAge: 24 * 60 * 60 * 1000,
+      httpOnly: true,
     }
   };
 
   app.set("trust proxy", 1);
   app.use(session(sessionSettings));
+
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    if (isProduction && req.session?.cookie) {
+      const host = req.hostname || '';
+      if (host.endsWith('.leaguevault.app') || host === 'leaguevault.app') {
+        req.session.cookie.domain = '.leaguevault.app';
+      }
+    }
+    next();
+  });
   app.use(passport.initialize());
   app.use(passport.session());
 
@@ -248,7 +257,7 @@ export function setupAuth(app: Express) {
                   storage.setUserOrganization(user.id, league.organizationId),
                   storage.getOrganization(league.organizationId),
                 ]);
-                const baseUrl = getBaseUrl();
+                const baseUrl = getBaseUrl(org?.slug || req.orgSlug);
                 sendTemplatedEmail('self_register_linked', result.data.email, {
                   bowler_name: bowler.name,
                   organization_name: org?.name || '',
@@ -262,7 +271,7 @@ export function setupAuth(app: Express) {
         }
 
         if (!bowlerLinked) {
-          const baseUrl = getBaseUrl();
+          const baseUrl = getBaseUrl(req.orgSlug);
           sendTemplatedEmail('self_register_unlinked', result.data.email, {
             bowler_name: result.data.name,
             login_link: `${baseUrl}/login`,
@@ -457,7 +466,7 @@ export function setupAuth(app: Express) {
               : Promise.resolve(null),
             storage.getOrganization(league.organizationId),
           ]);
-          const baseUrl = getBaseUrl();
+          const baseUrl = getBaseUrl(org?.slug || req.orgSlug);
           sendTemplatedEmail('bowler_claimed', user.email, {
             bowler_name: bowler.name,
             organization_name: org?.name || '',

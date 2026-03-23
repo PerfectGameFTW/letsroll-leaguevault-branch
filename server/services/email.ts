@@ -1,6 +1,6 @@
 import sgMail from '@sendgrid/mail';
 import { storage } from '../storage';
-import { env } from '../config';
+import { env, isDev } from '../config';
 import { createLogger } from '../logger';
 
 const log = createLogger("Email");
@@ -14,13 +14,18 @@ if (SENDGRID_API_KEY) {
   log.info('SendGrid initialized');
 }
 
-export function getBaseUrl(): string {
-  if (env.REPLIT_DOMAINS) {
-    const domains = env.REPLIT_DOMAINS.split(',');
-    return `https://${domains[0]}`;
+export function getBaseUrl(orgSlug?: string | null): string {
+  if (isDev) {
+    if (env.REPLIT_DOMAINS) {
+      const domains = env.REPLIT_DOMAINS.split(',');
+      return `https://${domains[0]}`;
+    }
+    if (env.REPL_SLUG && env.REPL_OWNER) {
+      return `https://${env.REPL_SLUG}.${env.REPL_OWNER}.repl.co`;
+    }
   }
-  if (env.REPL_SLUG && env.REPL_OWNER) {
-    return `https://${env.REPL_SLUG}.${env.REPL_OWNER}.repl.co`;
+  if (orgSlug) {
+    return `https://${orgSlug}.leaguevault.app`;
   }
   return 'https://leaguevault.app';
 }
@@ -130,9 +135,10 @@ export async function sendInviteEmail(
   userName: string,
   inviteToken: string,
   organizationName?: string,
-  organizationId?: number
+  organizationId?: number,
+  orgSlug?: string | null
 ): Promise<boolean> {
-  const baseUrl = getBaseUrl();
+  const baseUrl = getBaseUrl(orgSlug);
   const setupUrl = `${baseUrl}/set-password?token=${inviteToken}`;
 
   const variables: Record<string, string> = {
@@ -262,7 +268,8 @@ export async function resendInviteEmail(
   userName: string,
   inviteToken: string,
   organizationName?: string,
-  organizationId?: number
+  organizationId?: number,
+  orgSlug?: string | null
 ): Promise<boolean> {
-  return sendInviteEmail(toEmail, userName, inviteToken, organizationName, organizationId);
+  return sendInviteEmail(toEmail, userName, inviteToken, organizationName, organizationId, orgSlug);
 }

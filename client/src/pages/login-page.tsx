@@ -24,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
+import { useSubdomainOrg } from "@/hooks/use-subdomain-org";
 
 const loginSchema = z.object({
   email: z
@@ -39,6 +40,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 const LoginPage: FC = () => {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const { org: subdomainOrg } = useSubdomainOrg();
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -83,11 +85,22 @@ const LoginPage: FC = () => {
     <div className="min-h-screen bg-background flex items-start sm:items-center justify-center p-4 pt-6 sm:pt-4">
       <Card className="w-full max-w-md mt-4 sm:mt-0">
         <CardHeader className="space-y-1 pb-4 sm:pb-6">
+          {subdomainOrg?.logo && (
+            <div className="flex justify-center mb-4">
+              <img
+                src={subdomainOrg.logo}
+                alt={subdomainOrg.name}
+                className="h-14 w-auto max-w-[200px] object-contain"
+              />
+            </div>
+          )}
           <CardTitle className="text-2xl font-bold text-center">
             Welcome Back
           </CardTitle>
           <CardDescription className="text-center">
-            Sign in to your bowling league account
+            {subdomainOrg
+              ? `Sign in to ${subdomainOrg.name}`
+              : "Sign in to your bowling league account"}
           </CardDescription>
         </CardHeader>
         <CardContent className="pb-4 sm:pb-6">

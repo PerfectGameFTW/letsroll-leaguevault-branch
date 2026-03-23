@@ -199,7 +199,7 @@ router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res
         await storage.setUserInviteToken(newAdminUser.id, inviteToken, inviteTokenExpiry);
 
         const firstName = adminData.name.split(' ')[0];
-        const baseUrl = getBaseUrl();
+        const baseUrl = getBaseUrl(organization.slug);
         const setupUrl = `${baseUrl}/set-password?token=${inviteToken}`;
         const variables: Record<string, string> = {
           admin_name: firstName,

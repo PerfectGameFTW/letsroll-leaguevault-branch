@@ -14,6 +14,8 @@ import { paymentScheduler } from './services/payment-scheduler';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDiskUrls } from './migrations/migrate-avatars';
 import { createLogger } from './logger';
 import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
+import { subdomainDetection } from './middleware/subdomain';
+import manifestRouter from './routes/manifest';
 
 const log = createLogger("Server");
 
@@ -46,6 +48,17 @@ function getAllowedOrigins(): string[] {
 
 const allowedOrigins = getAllowedOrigins();
 
+function isAllowedOrigin(origin: string): boolean {
+  if (allowedOrigins.includes(origin)) return true;
+  try {
+    const url = new URL(origin);
+    if (url.hostname.endsWith('.leaguevault.app') && url.protocol === 'https:') {
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
 let activeRequests = 0;
 let viteSetupComplete = false;
 
@@ -57,6 +70,7 @@ const requestTracker = (req: Request, res: Response, next: NextFunction) => {
 
 app.use(requestTracker);
 
+app.use(subdomainDetection);
 app.use(compression());
 
 app.use(helmet({
@@ -104,7 +118,7 @@ app.use(helmet({
       formAction: ["'self'"],
       frameAncestors: isDev
         ? ["*"]
-        : ["'self'", "https://leaguevault.app"],
+        : ["'self'", "https://leaguevault.app", "https://*.leaguevault.app"],
     },
   },
   frameguard: isDev ? false : { action: 'sameorigin' },
@@ -119,6 +133,8 @@ app.use(helmet({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 setupAuth(app);
+
+app.use(manifestRouter);
 
 app.use('/uploads/avatars', express.static(path.join(process.cwd(), 'uploads', 'avatars'), {
   maxAge: '1h',
@@ -138,8 +154,9 @@ app.use('/api', (req, res, next) => {
   const origin = req.headers.origin;
   if (origin) {
     res.setHeader('Vary', 'Origin');
-    if (allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');

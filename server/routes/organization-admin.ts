@@ -358,7 +358,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
 
     const organization = await storage.getOrganization(organizationId);
 
-    const baseUrl = getBaseUrl();
+    const baseUrl = getBaseUrl(organization?.slug);
     const setupUrl = `${baseUrl}/set-password?token=${inviteToken}`;
     const variables: Record<string, string> = {
       user_name: firstName,
@@ -405,7 +405,7 @@ router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, inviteLimi
     const organization = organizationId ? await storage.getOrganization(organizationId) : null;
 
     const firstName = user.name.split(' ')[0];
-    const emailSent = await sendInviteEmail(user.email, firstName, inviteToken, organization?.name, organization?.id);
+    const emailSent = await sendInviteEmail(user.email, firstName, inviteToken, organization?.name, organization?.id, organization?.slug);
 
     return sendSuccess(res, { emailSent });
   } catch (error) {
