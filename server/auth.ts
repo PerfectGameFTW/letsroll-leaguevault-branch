@@ -94,21 +94,12 @@ export function setupAuth(app: Express) {
       sameSite: (isDev && !!env.REPLIT_DOMAINS) ? "none" as const : "lax" as const,
       maxAge: 24 * 60 * 60 * 1000,
       httpOnly: true,
+      ...(isProduction ? { domain: '.leaguevault.app' } : {}),
     }
   };
 
   app.set("trust proxy", 1);
   app.use(session(sessionSettings));
-
-  app.use((req: Request, _res: Response, next: NextFunction) => {
-    if (isProduction && req.session?.cookie) {
-      const host = req.hostname || '';
-      if (host.endsWith('.leaguevault.app') || host === 'leaguevault.app') {
-        req.session.cookie.domain = '.leaguevault.app';
-      }
-    }
-    next();
-  });
   app.use(passport.initialize());
   app.use(passport.session());
 
