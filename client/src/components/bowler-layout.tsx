@@ -124,14 +124,14 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
       </main>
 
       <nav className="flex-none bg-white border-t border-slate-200 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-        <div className="flex justify-center items-end gap-10 h-[52px] pb-1">
+        <div className="flex justify-center items-center gap-10 h-[56px] pt-1">
           {navItems.map((item) => {
             const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?') || location.startsWith(item.baseHref + '/');
             return (
               <Link key={item.baseHref} href={item.href}>
                 <button
                   className={cn(
-                    "flex flex-col items-center justify-end gap-0.5 w-16",
+                    "flex flex-col items-center justify-center gap-0.5 w-16",
                     isActive ? "text-indigo-600" : "text-slate-400 active:text-slate-600"
                   )}
                 >
