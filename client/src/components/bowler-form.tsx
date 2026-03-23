@@ -42,6 +42,12 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { useState, useCallback, useEffect } from "react";
 
+interface CreateBowlerResponse {
+  id: number;
+  duplicate?: boolean;
+  existingBowler?: { id: number; name: string; email: string };
+}
+
 interface BowlerFormProps {
   open: boolean;
   onClose: () => void;
@@ -175,13 +181,12 @@ export function BowlerForm({ open, onClose, defaultTeamId, bowler, bowlerLeagues
         }
         return result;
       } else {
-        const result = await apiRequest<{ id: number }>("/api/bowlers", "POST", data);
+        const result = await apiRequest<CreateBowlerResponse>("/api/bowlers", "POST", data);
         if (!result.success) {
           throw new Error(result.error?.message || "Failed to create bowler");
         }
-        const resultWithDuplicate = result as typeof result & { duplicate?: boolean; existingBowler?: { id: number; name: string; email: string } };
-        if (resultWithDuplicate.duplicate && resultWithDuplicate.existingBowler) {
-          setDuplicateBowler(resultWithDuplicate.existingBowler);
+        if (result.data?.duplicate && result.data?.existingBowler) {
+          setDuplicateBowler(result.data.existingBowler);
           return null;
         }
         const newBowlerId = result.data?.id;
