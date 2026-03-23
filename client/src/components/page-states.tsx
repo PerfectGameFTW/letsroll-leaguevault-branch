@@ -1,5 +1,15 @@
 import { Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export function PageLoadingState({ message, fullPage = true }: { message?: string; fullPage?: boolean }) {
   return (
@@ -20,6 +30,99 @@ export function PageErrorState({ message, onRetry }: { message: string; onRetry?
           Retry
         </Button>
       )}
+    </div>
+  );
+}
+
+export function DashboardSkeleton() {
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <Card key={i}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-4 rounded" />
+            </CardHeader>
+            <CardContent>
+              <Skeleton className="h-8 w-16" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="space-y-4">
+        <Skeleton className="h-6 w-48" />
+        <div className="rounded-md border p-4 space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+              <Skeleton className="h-6 w-20 rounded-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function LeaguesTableSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <Skeleton className="h-8 w-32" />
+        <Skeleton className="h-9 w-28 rounded-md" />
+      </div>
+      <div className="rounded-md border">
+        <div className="flex items-center gap-4 p-3 border-b">
+          <Skeleton className="h-8 w-[180px] rounded-md" />
+          <div className="ml-auto flex items-center gap-2">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-5 w-9 rounded-full" />
+          </div>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[12%]">Weekday</TableHead>
+              <TableHead className="w-[20%]">Name</TableHead>
+              <TableHead>Location</TableHead>
+              <TableHead>Teams</TableHead>
+              <TableHead className="w-[15%]">Start Date</TableHead>
+              <TableHead className="w-[15%]">End Date</TableHead>
+              <TableHead>Duration</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {[...Array(5)].map((_, i) => (
+              <TableRow key={i}>
+                <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                <TableCell>
+                  <Skeleton className="h-4 w-28 mb-1" />
+                  <Skeleton className="h-3 w-20" />
+                </TableCell>
+                <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
+                <TableCell>
+                  <div className="flex space-x-2">
+                    <Skeleton className="h-8 w-8 rounded-md" />
+                    <Skeleton className="h-8 w-8 rounded-md" />
+                    <Skeleton className="h-8 w-8 rounded-md" />
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

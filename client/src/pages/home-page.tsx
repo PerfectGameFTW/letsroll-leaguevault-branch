@@ -8,7 +8,7 @@ import { getPaymentSummary } from "@/lib/financial-utils";
 import { PastDueBowlersSection } from "@/components/past-due-bowlers-section";
 import { formatCurrency } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { PageLoadingState, PageErrorState } from "@/components/page-states";
+import { DashboardSkeleton, PageErrorState } from "@/components/page-states";
 
 export default function HomePage() {
   const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError, refetch: refetchLeagues } = useQuery<ApiResponse<League[]>>({
@@ -44,9 +44,8 @@ export default function HomePage() {
     retry: false,
   });
 
-  // Show loading state only when initial data is loading
   if (loadingLeagues || loadingPayments || loadingBowlerLeagues) {
-    return <Layout><PageLoadingState /></Layout>;
+    return <Layout><DashboardSkeleton /></Layout>;
   }
 
   const error = leaguesError || paymentsError || bowlerLeaguesError;

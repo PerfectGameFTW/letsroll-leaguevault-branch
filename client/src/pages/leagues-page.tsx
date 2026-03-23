@@ -34,7 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Pencil, Archive, RotateCcw, Trash, AlertTriangle } from "lucide-react";
-import { PageLoadingState } from "@/components/page-states";
+import { LeaguesTableSkeleton } from "@/components/page-states";
 import type { League, Team, Location } from "@shared/schema";
 import type { ScoreWithRelations } from "@/lib/types/scores";
 import { apiRequest } from "@/lib/queryClient";
@@ -145,7 +145,7 @@ export default function LeaguesPage() {
   if (loadingLeagues || loadingTeams || loadingScores) {
     return (
       <Layout>
-        <PageLoadingState />
+        <LeaguesTableSkeleton />
       </Layout>
     );
   }
