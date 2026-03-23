@@ -1,4 +1,5 @@
 import { FC, useMemo } from "react";
+import { queryClient } from "@/lib/queryClient";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
   Card,
@@ -235,6 +236,8 @@ const SignUpPage: FC = () => {
       }
 
       const userData = await response.json();
+
+      queryClient.setQueryData(['/api/user'], userData);
 
       if (!userData.data.bowlerId) {
         toast({

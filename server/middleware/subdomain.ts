@@ -55,7 +55,13 @@ async function lookupOrgBySlug(slug: string): Promise<Organization | null> {
   }
 
   try {
-    const org = await storage.getOrganizationBySlug(slug);
+    let org = await storage.getOrganizationBySlug(slug);
+
+    if (!org && !slug.includes('-')) {
+      const allOrgs = await storage.getOrganizations();
+      org = allOrgs.find(o => o.slug.replace(/-/g, '') === slug) || null;
+    }
+
     orgCache.set(slug, { org: org || null, expiry: Date.now() + CACHE_TTL_MS });
     return org || null;
   } catch (err) {

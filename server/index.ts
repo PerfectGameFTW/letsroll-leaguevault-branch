@@ -184,14 +184,6 @@ app.get('/api/health', async (req, res) => {
         database_response_time: `${dbDuration}ms`,
         uptime: process.uptime(),
         hostname: req.hostname,
-        host_header: req.headers.host,
-        x_forwarded_host: req.headers['x-forwarded-host'] || 'not set',
-        x_forwarded_proto: req.headers['x-forwarded-proto'] || 'not set',
-        orgSlug: req.orgSlug || null,
-        hasSubdomainOrg: !!req.subdomainOrg,
-        cookieDomain: req.session?.cookie?.domain || 'not set',
-        cookieSecure: req.session?.cookie?.secure,
-        cookieSameSite: req.session?.cookie?.sameSite,
       }
     });
   } catch (error) {

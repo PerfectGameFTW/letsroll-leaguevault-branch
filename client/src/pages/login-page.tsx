@@ -67,7 +67,7 @@ const LoginPage: FC = () => {
 
       const userData = await response.json();
 
-      await queryClient.invalidateQueries({ queryKey: ['/api/user'] });
+      queryClient.setQueryData(['/api/user'], userData);
 
       setLocation("/");
     } catch (error) {
