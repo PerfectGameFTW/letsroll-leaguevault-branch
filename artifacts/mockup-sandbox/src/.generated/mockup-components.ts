@@ -3,5 +3,10 @@ type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/home-layouts/ActivityPriority.tsx": () => import("../components/mockups/home-layouts/ActivityPriority.tsx"),
   "./components/mockups/home-layouts/CommandCenter.tsx": () => import("../components/mockups/home-layouts/CommandCenter.tsx"),
-  "./components/mockups/home-layouts/SidebarStats.tsx": () => import("../components/mockups/home-layouts/SidebarStats.tsx")
+  "./components/mockups/home-layouts/SidebarStats.tsx": () => import("../components/mockups/home-layouts/SidebarStats.tsx"),
+  "./components/mockups/leaguevault-dashboard/BoldSport.tsx": () => import("../components/mockups/leaguevault-dashboard/BoldSport.tsx"),
+  "./components/mockups/leaguevault-dashboard/MidnightClub.tsx": () => import("../components/mockups/leaguevault-dashboard/MidnightClub.tsx"),
+  "./components/mockups/leaguevault-dashboard/PolishedPro.tsx": () => import("../components/mockups/leaguevault-dashboard/PolishedPro.tsx"),
+  "./components/mockups/leaguevault-dashboard/RetroLanes.tsx": () => import("../components/mockups/leaguevault-dashboard/RetroLanes.tsx"),
+  "./components/mockups/leaguevault-dashboard/WarmProfessional.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmProfessional.tsx")
 };
