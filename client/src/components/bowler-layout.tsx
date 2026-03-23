@@ -100,9 +100,9 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
     <div className="flex flex-col h-screen max-h-screen bg-[#f8fafc] overflow-hidden relative font-sans">
       <header className="flex-none bg-white border-b border-slate-200 px-4 h-16 flex items-center justify-between z-10 shadow-sm">
         <div className="flex items-center">
-          {(organization?.darkLogo || organization?.logo) ? (
+          {(organization?.logo || organization?.darkLogo) ? (
             <img
-              src={organization.darkLogo || organization.logo || ''}
+              src={organization.logo || organization.darkLogo || ''}
               alt={orgName}
               className="h-9 w-auto max-w-[120px] object-contain"
             />
