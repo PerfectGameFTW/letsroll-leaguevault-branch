@@ -1,17 +1,18 @@
-import { FC, ReactNode } from "react";
+import { FC, ReactNode, useState, useEffect, Suspense } from "react";
 import { useLocation, Link } from "wouter";
-import { Button } from "@/components/ui/button";
-import { Menu, LayoutDashboard, History, UserCircle, ChevronRight } from "lucide-react";
+import { LayoutDashboard, History, UserCircle, ChevronRight, Menu, Bell, Loader2, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Organization, User, ApiResponse } from "@shared/schema";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { UserProfileMenu } from "@/components/user-profile-menu";
+import { ErrorBoundary } from "@/components/error-boundary";
 
+interface BowlerLayoutProps {
+  children: ReactNode;
+  bowlerName: string;
+  leagueName: string;
+  currentLeagueId?: number;
+}
 
 interface NavItem {
   icon: typeof LayoutDashboard;
@@ -19,6 +20,26 @@ interface NavItem {
   href: string;
   baseHref: string;
 }
+
+const getStoredValue = (key: string, defaultValue: any) => {
+  try {
+    if (typeof window === 'undefined') return defaultValue;
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : defaultValue;
+  } catch {
+    return defaultValue;
+  }
+};
+
+const setStoredValue = (key: string, value: any) => {
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+  } catch (error) {
+    console.warn('[BowlerLayout] localStorage access error:', error);
+  }
+};
 
 function buildNavItems(currentLeagueId?: number): NavItem[] {
   const paymentHistoryHref = currentLeagueId
@@ -46,50 +67,47 @@ function buildNavItems(currentLeagueId?: number): NavItem[] {
   ];
 }
 
-const SideNav = ({ currentLeagueId }: { currentLeagueId?: number }) => {
-  const [location] = useLocation();
-  const navItems = buildNavItems(currentLeagueId);
-
-  return (
-    <nav className="space-y-2">
-      {navItems.map((item) => {
-        const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?');
-        return (
-          <Link key={item.baseHref} href={item.href}>
-            <button
-              className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
-                isActive && "bg-accent"
-              )}
-            >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-              {isActive && <ChevronRight className="ml-auto h-4 w-4" />}
-            </button>
-          </Link>
-        );
-      })}
-    </nav>
-  );
+const pageLabels: Record<string, string> = {
+  "/bowler-dashboard": "Overview",
+  "/payment-history": "Payment History",
+  "/profile": "Profile Settings",
 };
+
+function getPageLabel(path: string): string {
+  if (pageLabels[path]) return pageLabels[path];
+  if (path.startsWith("/payment-history")) return "Payment History";
+  return "Page";
+}
+
+const LoadingFallback = () => (
+  <div className="p-4 flex items-center justify-center">
+    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+  </div>
+);
 
 export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leagueName, currentLeagueId }) => {
   const [location] = useLocation();
-  const mobileNavItems = buildNavItems(currentLeagueId);
-  
-  // Fetch current user to get organization ID
+  const [isCollapsed, setIsCollapsed] = useState(() =>
+    getStoredValue("bowlerSidebarCollapsed", false)
+  );
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const navItems = buildNavItems(currentLeagueId);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location]);
+
   const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
     staleTime: 1000 * 60 * 5,
   });
-  
-  // Fetch Perfect Game organization for guaranteed logo
+
   const { data: perfectGameOrgResponse } = useQuery<ApiResponse<Organization>>({
     queryKey: ["/api/organizations/slug/perfect-game"],
-    staleTime: 1000 * 60 * 60, // Cache for an hour
+    staleTime: 1000 * 60 * 60,
     enabled: true
   });
-  
+
   const userOrgId = currentUserResponse?.data?.organizationId;
   const { data: userOrgResponse } = useQuery<ApiResponse<Organization>>({
     queryKey: ["/api/organizations", userOrgId],
@@ -105,99 +123,169 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
     enabled: !!userOrgId,
     retry: false,
   });
-  
-  // Determine which logo to use
-  const orgLogo = userOrgResponse?.data?.logo || perfectGameOrgResponse?.data?.logo;
-  const orgName = userOrgResponse?.data?.name || perfectGameOrgResponse?.data?.name || "Organization";
+
+  const organization = userOrgResponse?.data || perfectGameOrgResponse?.data;
+  const orgName = organization?.name || "Organization";
+  const orgInitials = orgName.split(/\s+/).map(w => w[0]).join("").substring(0, 2).toUpperCase();
+
+  const isSystemAdmin = currentUserResponse?.data?.role === 'system_admin';
+
+  const toggleSidebar = () => {
+    setIsCollapsed((prev: boolean) => !prev);
+  };
+
+  useEffect(() => {
+    setStoredValue("bowlerSidebarCollapsed", isCollapsed);
+  }, [isCollapsed]);
+
+  const pageLabel = getPageLabel(location);
 
   return (
-    <div className="flex min-h-screen">
-      {/* Desktop Navigation */}
-      <aside className="hidden lg:block w-64 border-r px-4 py-6">
-        <div className="mb-4">
-          <Link href="/">
-            {orgLogo && (
-              <img 
-                src={orgLogo}
-                alt={`${orgName} Logo`}
-                className="h-14 md:h-14 lg:h-16 w-auto mb-4 object-contain" 
-              />
-            )}
-            {!orgLogo && (
-              <div className="h-14 md:h-14 lg:h-16 mb-4" />
-            )}
-          </Link>
-          <h2 className="text-lg font-semibold">{bowlerName}</h2>
-          <p className="text-sm text-muted-foreground">{leagueName}</p>
-        </div>
-        <SideNav currentLeagueId={currentLeagueId} />
-      </aside>
-
-      {/* Mobile Navigation */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
-        <div className="flex items-center justify-between h-14 px-4">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-10 w-10"
-              >
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Toggle navigation menu</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-72 z-[200] mt-1 p-2">
-              {mobileNavItems.map((item) => {
-                const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?');
-                return (
-                  <Link key={item.baseHref} href={item.href}>
-                    <DropdownMenuItem
-                      className={cn(
-                        "flex items-center gap-3 cursor-pointer transition-colors text-base py-3 px-4 rounded-md",
-                        isActive && "bg-accent"
-                      )}
-                    >
-                      <item.icon className="h-5 w-5 shrink-0" />
-                      <span>{item.label}</span>
-                      {isActive && <ChevronRight className="ml-auto h-5 w-5" />}
-                    </DropdownMenuItem>
-                  </Link>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <Link href="/">
-            {orgLogo ? (
-              <img 
-                src={orgLogo}
-                alt={`${orgName} Logo`}
-                className="h-12 w-auto object-contain" 
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans flex overflow-hidden">
+      <aside
+        className={cn(
+          "transition-all duration-300 ease-in-out bg-[#0f172a] text-slate-300 flex flex-col border-r border-slate-800 shadow-xl z-50 shrink-0 fixed top-0 bottom-0 left-0",
+          mobileOpen ? "flex w-64" : "hidden lg:flex",
+          !mobileOpen && (isCollapsed ? "w-20" : "w-64")
+        )}
+      >
+        <div className="border-b border-slate-800/60 shrink-0">
+          <div className="flex items-center justify-center px-3 py-3">
+            {(organization?.darkLogo || organization?.logo) ? (
+              <img
+                src={organization.darkLogo || organization.logo || ''}
+                alt={orgName}
+                className="w-full h-auto max-h-12 object-contain"
               />
             ) : (
-              <div className="h-12" />
+              <div className="w-10 h-10 rounded-md bg-indigo-500 flex items-center justify-center shadow-sm">
+                <span className="text-sm font-bold text-white">{orgInitials}</span>
+              </div>
             )}
-          </Link>
-
-          {/* Empty div to maintain center alignment */}
-          <div className="w-8" />
+          </div>
+          <div className="flex justify-end px-3 pb-2">
+            <button
+              onClick={toggleSidebar}
+              className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <main className="flex-1 px-4 py-6 lg:py-6">
-        <div className="max-w-7xl mx-auto mt-14 lg:mt-0">
-          {children}
+        <nav className="flex-1 py-6 px-3 flex flex-col gap-1 overflow-y-auto">
+          {navItems.map((item) => {
+            const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?') || location.startsWith(item.baseHref + '/');
+
+            return (
+              <Link key={item.baseHref} href={item.href}>
+                <button
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-md transition-all duration-200 group",
+                    isCollapsed ? "justify-center p-2.5" : "px-3 py-2.5",
+                    isActive
+                      ? "bg-indigo-500/10 text-indigo-400"
+                      : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  )}
+                  title={isCollapsed ? item.label : undefined}
+                >
+                  <item.icon className={cn(
+                    "w-5 h-5 shrink-0",
+                    isActive ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
+                  )} />
+                  {!isCollapsed && (
+                    <span className="font-medium text-sm">{item.label}</span>
+                  )}
+                </button>
+              </Link>
+            );
+          })}
+
+          {isSystemAdmin && (
+            <>
+              <div className={cn("border-t border-slate-800/60 my-3", isCollapsed && "mx-1")} />
+              <Link href="/">
+                <button
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-md transition-all duration-200 group",
+                    isCollapsed ? "justify-center p-2.5" : "px-3 py-2.5",
+                    "text-slate-300 hover:bg-slate-800 hover:text-white"
+                  )}
+                  title={isCollapsed ? "Admin Dashboard" : undefined}
+                >
+                  <ArrowRight className="w-5 h-5 shrink-0 text-slate-400 group-hover:text-slate-300 rotate-180" />
+                  {!isCollapsed && (
+                    <span className="font-medium text-sm">Admin Dashboard</span>
+                  )}
+                </button>
+              </Link>
+            </>
+          )}
+        </nav>
+
+        <div className="p-4 border-t border-slate-800/60 shrink-0">
+          {currentUserResponse?.data && (
+            <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
+              <UserProfileMenu user={currentUserResponse.data} />
+              {!isCollapsed && (
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-sm font-medium text-white truncate">
+                    {currentUserResponse.data.name || currentUserResponse.data.email}
+                  </span>
+                  <span className="text-xs text-slate-500 truncate">
+                    {currentUserResponse.data.email}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <main className={cn(
+        "flex-1 flex flex-col min-h-screen transition-all duration-300",
+        isCollapsed ? "lg:ml-20" : "lg:ml-64"
+      )}>
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.02)] z-10 sticky top-0">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileOpen(prev => !prev)}
+              className="lg:hidden p-2 rounded-md hover:bg-slate-100 text-slate-500 transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center text-slate-500">
+              <span className="text-sm font-medium">My Account</span>
+              <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
+              <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-5">
+            <button className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors">
+              <Bell className="w-5 h-5" />
+            </button>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+          <div className="max-w-[1400px] mx-auto">
+            <ErrorBoundary level="section" onReset={() => window.location.reload()}>
+              <Suspense fallback={<LoadingFallback />}>
+                {children}
+              </Suspense>
+            </ErrorBoundary>
+          </div>
         </div>
       </main>
+
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden transition-opacity duration-300"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
     </div>
   );
 };
-
-interface BowlerLayoutProps {
-  children: ReactNode;
-  bowlerName: string;
-  leagueName: string;
-  currentLeagueId?: number;
-}
