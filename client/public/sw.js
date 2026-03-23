@@ -1,4 +1,4 @@
-const CACHE_NAME = 'leaguevault-v1';
+const CACHE_NAME = 'leaguevault-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
@@ -43,6 +43,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (url.pathname.startsWith('/assets/') || event.request.destination === 'script') {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return caches.match(event.request).then((cached) => {
+          return cached || new Response('', { status: 503 });
+        });
+      })
+    );
+    return;
+  }
+
   if (event.request.destination === 'image' ||
       event.request.destination === 'font' ||
       event.request.destination === 'style') {
@@ -60,12 +71,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return caches.match('/');
+      })
+    );
+    return;
+  }
+
   event.respondWith(
     fetch(event.request).then((response) => {
-      if (response.ok && event.request.method === 'GET') {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-      }
       return response;
     }).catch(() => {
       return caches.match(event.request).then((cached) => {
