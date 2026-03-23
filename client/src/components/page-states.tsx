@@ -36,18 +36,20 @@ export function PageErrorState({ message, onRetry }: { message: string; onRetry?
 
 export function DashboardSkeleton() {
   return (
-    <div className="space-y-8">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <Card key={i}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-4 w-4 rounded" />
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-8 w-16" />
-            </CardContent>
-          </Card>
+    <div className="flex flex-col gap-6">
+      <div className="flex justify-between items-end">
+        <div>
+          <Skeleton className="h-8 w-64 mb-2" />
+          <Skeleton className="h-4 w-80" />
+        </div>
+        <Skeleton className="h-10 w-36 rounded-md" />
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm">
+            <Skeleton className="h-3 w-20 mb-2" />
+            <Skeleton className="h-7 w-12" />
+          </div>
         ))}
       </div>
       <div className="space-y-4">
@@ -60,6 +62,18 @@ export function DashboardSkeleton() {
                 <Skeleton className="h-4 w-24" />
               </div>
               <Skeleton className="h-6 w-20 rounded-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <Skeleton className="h-6 w-32 mb-3" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <Skeleton className="h-4 w-28 mb-3" />
+              <Skeleton className="h-4 w-20 mb-3" />
+              <Skeleton className="h-1.5 w-full rounded-full" />
             </div>
           ))}
         </div>

@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, Search, ChevronDown, Settings } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -16,7 +16,6 @@ import {
 import { UserProfileMenu } from "@/components/user-profile-menu";
 
 
-// Safe localStorage access function with memoization
 const getStoredValue = (key: string, defaultValue: any) => {
   try {
     if (typeof window === 'undefined') return defaultValue;
@@ -80,7 +79,8 @@ const navItems: NavItem[] = [
   {
     icon: Trophy,
     label: "Leagues",
-    href: "/leagues"
+    href: "/leagues",
+    hasDropdown: true
   },
   {
     icon: Users,
@@ -109,6 +109,40 @@ const navItems: NavItem[] = [
     href: "/bowler-dashboard"
   }
 ];
+
+const pageLabels: Record<string, string> = {
+  "/": "Overview",
+  "/home": "Overview",
+  "/organizations": "Organizations",
+  "/locations": "Locations",
+  "/users": "Users",
+  "/email-templates": "Email Templates",
+  "/leagues": "Leagues",
+  "/bowlers": "Bowlers",
+  "/payments": "Payments",
+  "/reports": "Reports",
+  "/integrations": "Integrations",
+  "/bowler-dashboard": "Bowler Dashboard",
+  "/profile": "Profile",
+};
+
+function getPageLabel(path: string): string {
+  if (pageLabels[path]) return pageLabels[path];
+  if (path.startsWith("/leagues/")) return "League Details";
+  if (path.startsWith("/bowlers/")) return "Bowler Details";
+  if (path.startsWith("/teams/")) return "Team Details";
+  if (path.startsWith("/reports/")) return "Report";
+  return "Page";
+}
+
+function getParentLabel(path: string): string | null {
+  if (path === "/" || path === "/home") return null;
+  if (path.startsWith("/leagues/")) return "Leagues";
+  if (path.startsWith("/bowlers/")) return "Bowlers";
+  if (path.startsWith("/teams/")) return "Teams";
+  if (path.startsWith("/reports/")) return "Reports";
+  return "Dashboard";
+}
 
 const LeagueLoadingFallback = () => (
   <div className="w-[200px] p-4 flex items-center justify-center">
@@ -190,15 +224,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     getStoredValue("sidebarCollapsed", false)
   );
 
-  // Fetch current user to check for admin status and organization
   const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
-  
-  // Get user's organization ID
+
   const userOrgId = currentUserResponse?.data?.organizationId;
-  
+
   const { data: organizationResponse } = useQuery<ApiResponse<Organization>>({
     queryKey: ["/api/organizations", userOrgId],
     queryFn: async () => {
@@ -212,13 +244,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
     enabled: !!userOrgId,
     staleTime: 1000 * 60 * 5,
   });
-  
-  // Fallback to fetch Perfect Game organization for testing logo
+
   const { data: perfectGameOrgResponse } = useQuery<ApiResponse<Organization>>({
     queryKey: ["/api/organizations/slug/perfect-game"],
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
-  
+
   const userRole = currentUserResponse?.data?.role;
   const isAdmin = userRole === 'system_admin';
   const isSystemAdmin = userRole === 'system_admin';
@@ -233,144 +264,182 @@ export function Layout({ children }: { children: React.ReactNode }) {
     setStoredValue("sidebarCollapsed", isCollapsed);
   }, [isCollapsed]);
 
-  const sidebarWidth = useMemo(() =>
-    isCollapsed ? "w-16" : "w-64"
-  , [isCollapsed]);
-
-  const mainContentPadding = useMemo(() =>
-    isCollapsed ? "pl-16" : "pl-64"
-  , [isCollapsed]);
-
   const [location] = useLocation();
 
+  const organization = organizationResponse?.data || perfectGameOrgResponse?.data;
+  const orgName = organization?.name || "LeagueVault";
+  const orgInitials = orgName.split(/\s+/).map(w => w[0]).join("").substring(0, 2).toUpperCase();
+
+  const parentLabel = getParentLabel(location);
+  const pageLabel = getPageLabel(location);
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div
+    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans flex overflow-hidden">
+      <aside
         className={cn(
-          "fixed top-0 bottom-0 left-0 z-50 bg-white border-r transition-all duration-300",
-          sidebarWidth
+          "transition-all duration-300 ease-in-out bg-[#0f172a] text-slate-300 flex flex-col border-r border-slate-800 shadow-xl z-50 shrink-0 fixed top-0 bottom-0 left-0",
+          isCollapsed ? "w-20" : "w-64"
         )}
       >
-        <div className="flex flex-col h-full">
-          <div className="flex-1 flex flex-col pt-5 pb-4">
-            {!isCollapsed ? (
-              <div className="flex items-center px-4 mb-2 justify-between">
-                {currentUserResponse?.data && (
-                  <UserProfileMenu user={currentUserResponse.data} />
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="p-0 w-8 h-8"
-                  onClick={toggleSidebar}
-                  aria-label="Collapse sidebar"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-              </div>
+        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800/60 shrink-0">
+          <div className="flex items-center gap-3 overflow-hidden">
+            {organization?.logo ? (
+              <img
+                src={organization.logo}
+                alt={orgName}
+                className="w-8 h-8 rounded-md object-contain shrink-0"
+              />
             ) : (
-              <div className="px-4 mb-2 flex flex-col items-center">
-                {currentUserResponse?.data && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="p-2 mb-1"
-                      onClick={toggleSidebar}
-                      aria-label="Expand sidebar"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </Button>
-                    <UserProfileMenu user={currentUserResponse.data} />
-                  </>
-                )}
+              <div className="w-8 h-8 rounded-md bg-indigo-500 flex items-center justify-center shrink-0 shadow-sm">
+                <span className="text-xs font-bold text-white">{orgInitials}</span>
               </div>
             )}
+            {!isCollapsed && (
+              <span className="font-semibold text-white tracking-tight text-lg whitespace-nowrap truncate">
+                {orgName}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={toggleSidebar}
+            className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors shrink-0"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        </div>
+
+        <ErrorBoundary level="section" onReset={() => window.location.reload()}>
+          <Suspense fallback={<LoadingFallback />}>
+            <nav className="flex-1 py-6 px-3 flex flex-col gap-1 overflow-y-auto">
+              {navItems.map((item) => {
+                if (item.adminOnly && !isAdmin) return null;
+                if (item.orgAdminOnly && !canSeeOrgAdminItems) return null;
+                if (item.href === '/bowler-dashboard' && !isSystemAdmin) return null;
+
+                const isActive = location === item.href ||
+                  (item.href !== "/" && location.startsWith(item.href + "/"));
+                const isDashboardActive = item.href === "/" && (location === "/" || location === "/home");
+
+                if (item.hasDropdown && !isCollapsed) {
+                  return (
+                    <NavigationMenu key={item.href}>
+                      <NavigationMenuList>
+                        <NavigationMenuItem>
+                          <NavigationMenuTrigger
+                            className={cn(
+                              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-all duration-200 w-full",
+                              isActive
+                                ? "bg-indigo-500/10 text-indigo-400"
+                                : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                            )}
+                          >
+                            <item.icon className={cn("w-5 h-5 shrink-0", isActive ? "text-indigo-400" : "text-slate-400")} />
+                            {item.label}
+                          </NavigationMenuTrigger>
+                          <NavigationMenuContent>
+                            <Suspense fallback={<LeagueLoadingFallback />}>
+                              <LeaguesDropdownContent />
+                            </Suspense>
+                          </NavigationMenuContent>
+                        </NavigationMenuItem>
+                      </NavigationMenuList>
+                    </NavigationMenu>
+                  );
+                }
+
+                return (
+                  <Link key={item.href} href={item.href}>
+                    <button
+                      className={cn(
+                        "flex w-full items-center gap-3 rounded-md transition-all duration-200 group",
+                        isCollapsed ? "justify-center p-2.5" : "px-3 py-2.5",
+                        (isActive || isDashboardActive)
+                          ? "bg-indigo-500/10 text-indigo-400"
+                          : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                      )}
+                      title={isCollapsed ? item.label : undefined}
+                    >
+                      <item.icon className={cn(
+                        "w-5 h-5 shrink-0",
+                        (isActive || isDashboardActive) ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
+                      )} />
+                      {!isCollapsed && (
+                        <span className="font-medium text-sm">{item.label}</span>
+                      )}
+                    </button>
+                  </Link>
+                );
+              })}
+            </nav>
+          </Suspense>
+        </ErrorBoundary>
+
+        <div className="p-4 border-t border-slate-800/60 shrink-0">
+          {currentUserResponse?.data && (
+            <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
+              <UserProfileMenu user={currentUserResponse.data} />
+              {!isCollapsed && (
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-sm font-medium text-white truncate">
+                    {currentUserResponse.data.name || currentUserResponse.data.email}
+                  </span>
+                  <span className="text-xs text-slate-500 truncate">
+                    {currentUserResponse.data.email}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </aside>
+
+      <main className={cn(
+        "flex-1 flex flex-col min-h-screen transition-all duration-300",
+        isCollapsed ? "ml-20" : "ml-64"
+      )}>
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.02)] z-10 sticky top-0">
+          <div className="flex items-center text-slate-500">
+            {parentLabel ? (
+              <>
+                <span className="text-sm font-medium">{parentLabel}</span>
+                <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
+                <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
+              </>
+            ) : (
+              <>
+                <span className="text-sm font-medium">Dashboard</span>
+                <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
+                <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
+              </>
+            )}
+          </div>
+
+          <div className="flex items-center gap-5">
+            <div className="relative group hidden md:block">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+              <input
+                type="text"
+                placeholder="Search leagues or bowlers..."
+                className="pl-9 pr-4 py-2 text-sm bg-slate-50 border border-slate-200 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:bg-white transition-all w-64"
+              />
+            </div>
+
+            <button className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors">
+              <Bell className="w-5 h-5" />
+            </button>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+          <div className="max-w-[1400px] mx-auto">
             <ErrorBoundary level="section" onReset={() => window.location.reload()}>
               <Suspense fallback={<LoadingFallback />}>
-                <nav className="mt-4 flex-1 space-y-1 px-2">
-                  <div className="space-y-2">
-                    {navItems.map((item) => {
-                      if (item.adminOnly && !isAdmin) return null;
-                      if (item.orgAdminOnly && !canSeeOrgAdminItems) return null;
-                      if (item.href === '/bowler-dashboard' && !isSystemAdmin) return null;
-                      
-                      const isActive = location === item.href;
-                      if (item.hasDropdown && !isCollapsed) {
-                        return (
-                          <NavigationMenu key={item.href}>
-                            <NavigationMenuList>
-                              <NavigationMenuItem>
-                                <NavigationMenuTrigger
-                                  className={cn(
-                                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all hover:bg-accent",
-                                    isActive && "bg-accent"
-                                  )}
-                                >
-                                  <item.icon className="h-4 w-4" />
-                                  {item.label}
-                                </NavigationMenuTrigger>
-                                <NavigationMenuContent>
-                                  <Suspense fallback={<LeagueLoadingFallback />}>
-                                    <LeaguesDropdownContent />
-                                  </Suspense>
-                                </NavigationMenuContent>
-                              </NavigationMenuItem>
-                            </NavigationMenuList>
-                          </NavigationMenu>
-                        );
-                      }
-
-                      return (
-                        <Link key={item.href} href={item.href}>
-                          <button
-                            className={cn(
-                              "flex w-full items-center gap-3 rounded-lg transition-all hover:bg-accent",
-                              isCollapsed ? "justify-center p-2" : "px-3 py-2",
-                              isActive && "bg-accent"
-                            )}
-                            title={isCollapsed ? item.label : undefined}
-                          >
-                            <item.icon className="h-4 w-4" />
-                            {!isCollapsed && (
-                              <>
-                                <span className="text-sm">{item.label}</span>
-                                {isActive && <ChevronRight className="ml-auto h-4 w-4" />}
-                              </>
-                            )}
-                          </button>
-                        </Link>
-                      );
-                    })}
-                    
-                  </div>
-                </nav>
+                {children}
               </Suspense>
             </ErrorBoundary>
           </div>
         </div>
-      </div>
-
-      <div className={cn("transition-all duration-300", mainContentPadding)}>
-        <header className="py-4 md:py-5 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto flex justify-center items-center">
-          <div className="flex items-center h-14 md:h-14 lg:h-16">
-            {(organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo) && (
-              <img
-                src={organizationResponse?.data?.logo || perfectGameOrgResponse?.data?.logo || ''}
-                alt={(organizationResponse?.data?.name || perfectGameOrgResponse?.data?.name || "Organization") + " Logo"}
-                className="h-14 md:h-14 lg:h-16 w-auto object-contain"
-              />
-            )}
-          </div>
-        </header>
-        <main className="py-2 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
-          <ErrorBoundary level="section" onReset={() => window.location.reload()}>
-            <Suspense fallback={<LoadingFallback />}>
-              {children}
-            </Suspense>
-          </ErrorBoundary>
-        </main>
-      </div>
+      </main>
     </div>
   );
 }

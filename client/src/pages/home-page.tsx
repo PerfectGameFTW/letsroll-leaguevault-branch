@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Layout } from "@/components/layout";
-import { Trophy, Users, TrendingUp, DollarSign } from "lucide-react";
+import { Trophy, Users, Activity, ArrowUpRight, DollarSign } from "lucide-react";
 import { Link } from "wouter";
 import type { League, Payment, BowlerLeague, ApiResponse, Organization, User } from "@shared/schema";
 import { getPaymentSummary } from "@/lib/financial-utils";
@@ -10,19 +9,95 @@ import { formatCurrency } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { DashboardSkeleton, PageErrorState } from "@/components/page-states";
 
+function CollectionRateCircle({ rate }: { rate: number }) {
+  return (
+    <div className="relative w-9 h-9">
+      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+        <path
+          className="text-slate-100"
+          strokeWidth="4"
+          stroke="currentColor"
+          fill="none"
+          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+        />
+        <path
+          className="text-indigo-500"
+          strokeDasharray={`${rate}, 100`}
+          strokeWidth="4"
+          stroke="currentColor"
+          fill="none"
+          strokeLinecap="round"
+          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function LeagueHealthCard({ name, bowlerCount, collectionRate }: {
+  name: string;
+  bowlerCount: number;
+  collectionRate: number;
+}) {
+  const status = collectionRate >= 98 ? "green" : collectionRate >= 90 ? "amber" : "red";
+
+  return (
+    <Link href="/leagues">
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow group cursor-pointer">
+        <div className="flex justify-between items-start mb-3">
+          <div className="font-semibold text-slate-800 text-sm leading-tight">
+            {name}
+          </div>
+          <div
+            className={`w-2.5 h-2.5 rounded-full shrink-0 mt-0.5 ${
+              status === "green"
+                ? "bg-emerald-500"
+                : status === "amber"
+                ? "bg-amber-400"
+                : "bg-red-500"
+            }`}
+          />
+        </div>
+        <div className="flex items-center gap-2 mb-3">
+          <Users className="w-3.5 h-3.5 text-slate-400" />
+          <span className="text-sm text-slate-600">
+            <span className="font-semibold text-slate-800">{bowlerCount}</span> bowlers
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs text-slate-500">Collection</div>
+          <div className="text-sm font-bold text-slate-900">{collectionRate}%</div>
+        </div>
+        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden mt-1.5">
+          <div
+            className={`h-full rounded-full transition-all ${
+              status === "green"
+                ? "bg-emerald-500"
+                : status === "amber"
+                ? "bg-amber-400"
+                : "bg-red-500"
+            }`}
+            style={{ width: `${collectionRate}%` }}
+          />
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 export default function HomePage() {
   const { data: leaguesResponse, isLoading: loadingLeagues, error: leaguesError, refetch: refetchLeagues } = useQuery<ApiResponse<League[]>>({
     queryKey: ["/api/leagues"],
     staleTime: 1000 * 30,
     retry: false,
   });
-  
+
   const { data: paymentsResponse, isLoading: loadingPayments, error: paymentsError, refetch: refetchPayments } = useQuery<ApiResponse<Payment[]>>({
     queryKey: ["/api/payments"],
     staleTime: 1000 * 30,
     retry: false,
   });
-  
+
   const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues, error: bowlerLeaguesError, refetch: refetchBowlerLeagues } = useQuery<ApiResponse<BowlerLeague[]>>({
     queryKey: ["/api/bowler-leagues"],
     staleTime: 1000 * 30,
@@ -31,15 +106,6 @@ export default function HomePage() {
 
   const { data: userResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
-    staleTime: 1000 * 60 * 5,
-    retry: false,
-  });
-
-  const organizationId = userResponse?.data?.organizationId;
-
-  const { data: orgResponse } = useQuery<ApiResponse<Organization>>({
-    queryKey: [`/api/organizations/${organizationId}`],
-    enabled: !!organizationId,
     staleTime: 1000 * 60 * 5,
     retry: false,
   });
@@ -57,83 +123,155 @@ export default function HomePage() {
   const payments = paymentsResponse?.data || [];
   const bowlerLeaguesData = bowlerLeaguesResponse?.data || [];
 
-  const activeLeagueIds = new Set(leagues.filter((l: League) => l.active).map((l: League) => l.id));
-  const activeBowlers = new Set(
+  const activeLeagues = leagues.filter((l: League) => l.active);
+  const activeLeagueIds = new Set(activeLeagues.map((l: League) => l.id));
+  const activeBowlerIds = new Set(
     bowlerLeaguesData
       .filter((bl: BowlerLeague) => bl.active && activeLeagueIds.has(bl.leagueId))
       .map((bl: BowlerLeague) => bl.bowlerId)
-  ).size;
+  );
+  const activeBowlers = activeBowlerIds.size;
   const totalLeagues = activeLeagueIds.size;
 
   const { paidPayments } = getPaymentSummary(payments);
   const totalLineagePaid = paidPayments.reduce((sum, p) => sum + (p.lineageAmount ?? 0), 0);
   const totalPrizeFundPaid = paidPayments.reduce((sum, p) => sum + (p.prizeFundAmount ?? 0), 0);
+  const totalCollected = paidPayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalExpected = payments.reduce((sum, p) => sum + p.amount, 0);
+  const collectionRate = totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 100;
 
-  // Get the organization data with the logo
-  const organization = orgResponse?.data;
+  const leagueHealthData = activeLeagues.map(league => {
+    const leagueBowlerCount = new Set(
+      bowlerLeaguesData
+        .filter((bl: BowlerLeague) => bl.leagueId === league.id && bl.active)
+        .map((bl: BowlerLeague) => bl.bowlerId)
+    ).size;
+
+    const leaguePayments = payments.filter(p => p.leagueId === league.id);
+    const leaguePaid = leaguePayments.filter(p => p.status === 'paid').reduce((s, p) => s + p.amount, 0);
+    const leagueTotal = leaguePayments.reduce((s, p) => s + p.amount, 0);
+    const rate = leagueTotal > 0 ? Math.round((leaguePaid / leagueTotal) * 100) : 100;
+
+    return {
+      name: league.name,
+      bowlerCount: leagueBowlerCount,
+      collectionRate: rate,
+    };
+  }).filter(l => l.bowlerCount > 0);
+
+  const seasonWeeks = 32;
+  const now = new Date();
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+  const currentWeek = Math.min(seasonWeeks, Math.max(1, Math.ceil((now.getTime() - yearStart.getTime()) / (7 * 24 * 60 * 60 * 1000))));
+
+  const userName = userResponse?.data?.name?.split(' ')[0] || "Admin";
 
   return (
     <Layout>
       <ErrorBoundary level="section">
-      <div className="space-y-8">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {/* League Card */}
-          <Link href="/leagues" className="block transition-transform hover:scale-105">
-            <Card className="cursor-pointer hover:border-primary h-full">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Leagues</CardTitle>
-                <Trophy className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{totalLeagues}</div>
-              </CardContent>
-            </Card>
-          </Link>
-          
-          {/* Active Bowlers Card */}
-          <Link href="/bowlers" className="block transition-transform hover:scale-105">
-            <Card className="cursor-pointer hover:border-primary h-full">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Active Bowlers</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{activeBowlers}</div>
-              </CardContent>
-            </Card>
-          </Link>
+        <div className="flex flex-col gap-6">
+          <div className="flex justify-between items-end">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                Welcome back, {userName}
+              </h1>
+              <p className="text-slate-500 mt-1">
+                Here's what's happening with your leagues today.
+              </p>
+            </div>
+            <Link href="/reports">
+              <button className="px-4 py-2 bg-[#0f172a] text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors shadow-sm">
+                Generate Report
+              </button>
+            </Link>
+          </div>
 
-          {/* Lineage Paid Card */}
-          <Link href="/payments" className="block transition-transform hover:scale-105">
-            <Card className="cursor-pointer hover:border-primary h-full">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Lineage Paid</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(totalLineagePaid)}</div>
-              </CardContent>
-            </Card>
-          </Link>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            <Link href="/leagues">
+              <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Active Leagues
+                </div>
+                <div className="flex items-end justify-between">
+                  <div className="text-2xl font-bold text-slate-900">{totalLeagues}</div>
+                  <Activity className="w-3.5 h-3.5 text-emerald-500 mb-1" />
+                </div>
+              </div>
+            </Link>
+            <Link href="/bowlers">
+              <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Active Bowlers
+                </div>
+                <div className="flex items-end justify-between">
+                  <div className="text-2xl font-bold text-slate-900">{activeBowlers}</div>
+                  <div className="text-xs font-medium text-emerald-600 flex items-center">
+                    <ArrowUpRight className="w-3 h-3 mr-0.5" />
+                  </div>
+                </div>
+              </div>
+            </Link>
+            <Link href="/payments">
+              <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Lineage Collected
+                </div>
+                <div className="flex items-end justify-between">
+                  <div className="text-2xl font-bold text-slate-900">{formatCurrency(totalLineagePaid)}</div>
+                </div>
+              </div>
+            </Link>
+            <Link href="/payments">
+              <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Prize Fund
+                </div>
+                <div className="flex items-end justify-between">
+                  <div className="text-2xl font-bold text-slate-900">{formatCurrency(totalPrizeFundPaid)}</div>
+                  <DollarSign className="w-3.5 h-3.5 text-slate-400 mb-1" />
+                </div>
+              </div>
+            </Link>
+            <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow flex items-center justify-between">
+              <div>
+                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Collection Rate
+                </div>
+                <div className="text-2xl font-bold text-slate-900">{collectionRate}%</div>
+              </div>
+              <CollectionRateCircle rate={collectionRate} />
+            </div>
+            <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow flex flex-col justify-center">
+              <div className="flex justify-between items-end mb-2">
+                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                  Season
+                </div>
+                <div className="text-xs font-bold text-slate-700">Wk {currentWeek}/{seasonWeeks}</div>
+              </div>
+              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-slate-800 rounded-full"
+                  style={{ width: `${(currentWeek / seasonWeeks) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
 
-          {/* Prize Fund Card */}
-          <Link href="/payments" className="block transition-transform hover:scale-105">
-            <Card className="cursor-pointer hover:border-primary h-full">
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Prize Fund Paid</CardTitle>
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(totalPrizeFundPaid)}</div>
-              </CardContent>
-            </Card>
-          </Link>
+          <ErrorBoundary level="section">
+            <PastDueBowlersSection />
+          </ErrorBoundary>
+
+          {leagueHealthData.length > 0 && (
+            <div>
+              <h2 className="text-lg font-bold text-slate-900 mb-3">League Health</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {leagueHealthData.map((league, idx) => (
+                  <LeagueHealthCard key={idx} {...league} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-
-        <ErrorBoundary level="section">
-          <PastDueBowlersSection />
-        </ErrorBoundary>
-      </div>
       </ErrorBoundary>
     </Layout>
   );
