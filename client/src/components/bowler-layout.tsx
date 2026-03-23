@@ -106,7 +106,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
             <img
               src={organization.logo || organization.darkLogo || ''}
               alt={orgName}
-              className="h-9 w-auto max-w-[140px] object-contain"
+              className="h-12 w-auto max-w-[200px] object-contain"
             />
           ) : (
             <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center shadow-inner">
