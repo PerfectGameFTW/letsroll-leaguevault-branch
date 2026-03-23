@@ -124,7 +124,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
       </main>
 
       <nav className="flex-none bg-white border-t border-slate-200 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]">
-        <div className="flex justify-center items-center gap-10 pt-2 pb-2" style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom, 8px))' }}>
+        <div className="flex justify-center items-center gap-14 pt-2 pb-2" style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom, 8px))' }}>
           {navItems.map((item) => {
             const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?') || location.startsWith(item.baseHref + '/');
             return (
@@ -139,7 +139,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
                     "flex items-center justify-center w-10 h-7 rounded-full transition-all duration-200",
                     isActive ? "bg-indigo-50" : "bg-transparent"
                   )}>
-                    <item.icon className="w-6 h-6" />
+                    <item.icon className="w-7 h-7" />
                   </div>
                   <span className={cn(
                     "text-[10px] tracking-wide",
