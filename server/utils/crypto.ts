@@ -46,7 +46,7 @@ export function decrypt(ciphertext: string): string | null {
     const authTag = Buffer.from(tagHex, "hex");
     const data = Buffer.from(dataHex, "hex");
     if (iv.length !== IV_LENGTH || authTag.length !== TAG_LENGTH) return null;
-    const decipher = createDecipheriv(ALGORITHM, key, iv);
+    const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: TAG_LENGTH });
     decipher.setAuthTag(authTag);
     return decipher.update(data).toString("utf8") + decipher.final("utf8");
   } catch (err) {
