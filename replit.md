@@ -16,7 +16,8 @@ A full-stack bowling league management application with multi-tenant support for
   - `payments.ts`, `users.ts`, `games.ts`, `email-templates.ts` - Additional domain tables
   - `relations.ts` - All Drizzle ORM relation definitions
   - `api-types.ts` - API response types (ApiResponse, PaginatedResult, SavedCard, etc.)
-- `server/db.ts` - Database connection pool (standard `pg` driver)
+- `server/utils/cache.ts` - In-memory TTL cache for read-heavy queries (leagues, bowlers, user deserialization)
+- `server/db.ts` - Database connection pool (pg driver, max 50 connections, 5s connect timeout)
 - `server/index.ts` - Express server entry point (~200 lines, clean startup)
 - `server/routes/index.ts` - Route registration (no HTTP server creation, no duplicate auth setup)
 - `server/routes/` - Modular API routes
@@ -45,8 +46,10 @@ A full-stack bowling league management application with multi-tenant support for
 - Uses Neon PostgreSQL (managed via Replit's DATABASE_URL environment variable)
 - Connection via `DATABASE_URL` environment variable (runtime-managed)
 - Schema changes: modify files in `shared/schema/`, then run `npm run db:push`
-- Driver: standard `pg` Pool
+- Driver: standard `pg` Pool (max 50 connections, 30s idle timeout, 5s connection timeout)
 - Indexes: payments(bowler_id, league_id, week_of), users(bowler_id), teams unique(league_id, number)
+- In-memory TTL cache (30s for leagues/bowlers, 60s for user deserialization) with invalidation on all mutation paths
+- Response compression via `compression` middleware (gzip)
 
 ## Server-Side Pagination
 - `GET /api/payments` supports optional `page` and `limit` query params for server-side pagination

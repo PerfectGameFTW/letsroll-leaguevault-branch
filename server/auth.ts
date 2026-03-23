@@ -8,6 +8,7 @@ import { promisify } from "util";
 import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { sanitizeUser, sendSuccess, sendError } from "./utils/api.js";
+import { cacheFetch, cacheInvalidate } from "./utils/cache";
 import { env, isDev } from "./config";
 import { createLogger } from "./logger";
 import { csrfProtection } from "./middleware/csrf";
@@ -145,7 +146,7 @@ export function setupAuth(app: Express) {
 
   passport.deserializeUser(async (id: number, done) => {
     try {
-      const user = await storage.getUser(id);
+      const user = await cacheFetch(`user:${id}`, 60_000, () => storage.getUser(id));
       if (!user || !isValidUser(user)) {
         return done(null, null);
       }

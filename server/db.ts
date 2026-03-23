@@ -6,7 +6,12 @@ import { createLogger } from './logger';
 
 const log = createLogger("Database");
 
-export const pool = new pg.Pool({ connectionString: env.DATABASE_URL });
+export const pool = new pg.Pool({
+  connectionString: env.DATABASE_URL,
+  max: 50,
+  idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 5_000,
+});
 export const db = drizzle({ client: pool, schema });
 
 let isShuttingDown = false;

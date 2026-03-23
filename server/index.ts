@@ -1,6 +1,7 @@
 import { env, isDev } from "./config";
 import * as Sentry from "@sentry/node";
 import express, { type Request, Response, NextFunction } from "express";
+import compression from "compression";
 import helmet from "helmet";
 import { registerRoutes } from "./routes/index";
 import { setupVite } from "./vite";
@@ -55,6 +56,8 @@ const requestTracker = (req: Request, res: Response, next: NextFunction) => {
 };
 
 app.use(requestTracker);
+
+app.use(compression());
 
 app.use(helmet({
   contentSecurityPolicy: {

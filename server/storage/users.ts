@@ -2,6 +2,7 @@ import { eq, isNull, isNotNull } from "drizzle-orm";
 import { db } from "../db.js";
 import { users, type User, type InsertUser, type UpdateUser, type UserRole } from "@shared/schema";
 import { createLogger } from '../logger';
+import { cacheInvalidate } from '../utils/cache';
 
 const log = createLogger("StorageUsers");
 
@@ -39,6 +40,7 @@ export async function updateUser(id: number, userData: UpdateUser): Promise<User
     email: updatedUser.email,
   });
 
+  cacheInvalidate(`user:${id}`);
   return updatedUser;
 }
 
@@ -48,6 +50,7 @@ export async function linkUserToBowler(userId: number, bowlerId: number | undefi
     .set({ bowlerId: bowlerId ?? null })
     .where(eq(users.id, userId))
     .returning();
+  cacheInvalidate(`user:${userId}`);
   return updatedUser;
 }
 
@@ -107,6 +110,7 @@ export async function updateUserRole(userId: number, role: UserRole): Promise<Us
     role: updatedUser.role
   });
 
+  cacheInvalidate(`user:${userId}`);
   return updatedUser;
 }
 
@@ -119,6 +123,7 @@ export async function setUserLocation(userId: number, locationId: number | null)
   if (!updatedUser) {
     throw new Error(`User with ID ${userId} not found`);
   }
+  cacheInvalidate(`user:${userId}`);
   return updatedUser;
 }
 

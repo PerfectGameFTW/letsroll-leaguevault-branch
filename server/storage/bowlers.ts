@@ -6,8 +6,11 @@ import {
   type BowlerLeague, type InsertBowlerLeague, type UpdateBowlerLeague,
 } from "@shared/schema";
 import { createLogger } from '../logger';
+import { cacheFetch, cacheInvalidate } from '../utils/cache';
 
 const log = createLogger("StorageBowlers");
+
+const BOWLERS_TTL = 30_000;
 
 const bowlerColumns = {
   id: bowlers.id,
@@ -21,25 +24,31 @@ const bowlerColumns = {
 };
 
 export async function getBowlers(filters: { teamId?: number; organizationId: number }): Promise<Bowler[]> {
-  if (filters.teamId !== undefined) {
+  const cacheKey = filters.teamId !== undefined
+    ? `bowlers:team:${filters.teamId}:org:${filters.organizationId}`
+    : `bowlers:org:${filters.organizationId}`;
+
+  return cacheFetch(cacheKey, BOWLERS_TTL, () => {
+    if (filters.teamId !== undefined) {
+      return db
+        .selectDistinct(bowlerColumns)
+        .from(bowlers)
+        .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
+        .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
+        .where(and(
+          eq(bowlerLeagues.teamId, filters.teamId),
+          eq(leagues.organizationId, filters.organizationId),
+        ))
+        .orderBy(bowlers.order);
+    }
     return db
       .selectDistinct(bowlerColumns)
       .from(bowlers)
       .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
       .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
-      .where(and(
-        eq(bowlerLeagues.teamId, filters.teamId),
-        eq(leagues.organizationId, filters.organizationId),
-      ))
+      .where(eq(leagues.organizationId, filters.organizationId))
       .orderBy(bowlers.order);
-  }
-  return db
-    .selectDistinct(bowlerColumns)
-    .from(bowlers)
-    .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
-    .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
-    .where(eq(leagues.organizationId, filters.organizationId))
-    .orderBy(bowlers.order);
+  });
 }
 
 export async function getAllBowlersSystemAdmin(): Promise<Bowler[]> {
@@ -53,20 +62,24 @@ export async function getBowler(id: number): Promise<Bowler | undefined> {
 
 export async function createBowler(bowler: InsertBowler): Promise<Bowler> {
   const [result] = await db.insert(bowlers).values(bowler).returning();
+  cacheInvalidate('bowlers:');
   return result;
 }
 
 export async function updateBowler(id: number, bowler: UpdateBowler): Promise<Bowler> {
   const [result] = await db.update(bowlers).set(bowler).where(eq(bowlers.id, id)).returning();
+  cacheInvalidate('bowlers:');
   return result;
 }
 
 export async function updateBowlerBnContactId(bowlerId: number, bnContactId: string): Promise<void> {
   await db.update(bowlers).set({ bnContactId }).where(eq(bowlers.id, bowlerId));
+  cacheInvalidate('bowlers:');
 }
 
 export async function deleteBowler(id: number): Promise<void> {
   await db.delete(bowlers).where(eq(bowlers.id, id));
+  cacheInvalidate('bowlers:');
 }
 
 export async function getBowlerLeaguesFiltered(filters?: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]> {
@@ -112,6 +125,7 @@ export async function createBowlerLeague(bowlerLeague: InsertBowlerLeague): Prom
       .insert(bowlerLeagues)
       .values({ ...bowlerLeague, order })
       .returning();
+    cacheInvalidate('bowlers:');
     return result;
   });
 }
@@ -122,6 +136,7 @@ export async function updateBowlerLeague(id: number, bowlerLeague: UpdateBowlerL
     .set(bowlerLeague)
     .where(eq(bowlerLeagues.id, id))
     .returning();
+  cacheInvalidate('bowlers:');
   return result;
 }
 
@@ -158,6 +173,7 @@ export async function updateBowlerLeagueOrder(id: number, newOrder: number): Pro
         .returning();
       results.push(updated);
     }
+    cacheInvalidate('bowlers:');
     return results;
   });
 }
@@ -166,6 +182,7 @@ export async function deleteBowlerLeague(id: number): Promise<boolean> {
   const result = await db.delete(bowlerLeagues)
     .where(eq(bowlerLeagues.id, id))
     .returning();
+  cacheInvalidate('bowlers:');
   return result.length > 0;
 }
 
