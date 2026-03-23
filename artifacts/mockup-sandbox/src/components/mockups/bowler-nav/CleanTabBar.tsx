@@ -7,21 +7,33 @@ import {
   TrendingUp, 
   Calendar, 
   ChevronRight, 
+  ChevronDown,
   LogOut, 
   Bell, 
-  ArrowLeft 
+  ArrowLeft,
+  X,
+  Check
 } from 'lucide-react';
+
+const leagues = [
+  { id: 1, name: 'Tuesday Night Scratch League', team: 'Pin Crushers', week: 14, totalWeeks: 30 },
+  { id: 2, name: 'Friday Fun League', team: 'Strike Force', week: 8, totalWeeks: 24 },
+  { id: 3, name: 'Sunday Mixed Doubles', team: 'Gutter Balls', week: 6, totalWeeks: 20 },
+];
 
 export const CleanTabBar: React.FC = () => {
   const [activeTab, setActiveTab] = useState('overview');
-  const [isAdmin] = useState(true); // Mocking system admin status for the back link
+  const [isAdmin] = useState(true);
+  const [selectedLeagueId, setSelectedLeagueId] = useState(1);
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  const selectedLeague = leagues.find(l => l.id === selectedLeagueId)!;
 
   const renderContent = () => {
     switch (activeTab) {
       case 'overview':
         return (
           <div className="space-y-6 pb-24">
-            {/* System Admin Back Link */}
             {isAdmin && (
               <button className="flex items-center text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors mb-2">
                 <ArrowLeft className="w-4 h-4 mr-1" />
@@ -29,24 +41,28 @@ export const CleanTabBar: React.FC = () => {
               </button>
             )}
 
-            {/* Greeting Section */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
               <h2 className="text-2xl font-bold text-slate-900 mb-1">Hi, Mike Johnson</h2>
-              <p className="text-slate-500">Tuesday Night Scratch League</p>
+              <button
+                onClick={() => setSheetOpen(true)}
+                className="flex items-center gap-1 text-slate-500 hover:text-slate-700 transition-colors"
+              >
+                <span>{selectedLeague.name}</span>
+                <ChevronDown className="w-4 h-4" />
+              </button>
               
               <div className="mt-4 flex flex-wrap gap-3">
                 <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-700 text-sm font-medium">
                   <span className="w-2 h-2 rounded-full bg-indigo-500 mr-2"></span>
-                  Pin Crushers
+                  {selectedLeague.team}
                 </div>
                 <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
                   <Calendar className="w-4 h-4 mr-1.5" />
-                  Week 14 of 30
+                  Week {selectedLeague.week} of {selectedLeague.totalWeeks}
                 </div>
               </div>
             </div>
 
-            {/* Payment Status Cards */}
             <div>
               <h3 className="text-lg font-semibold text-slate-800 mb-3 px-1">Financial Overview</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -92,7 +108,6 @@ export const CleanTabBar: React.FC = () => {
               </div>
             </div>
 
-            {/* Recent Payments Table */}
             <div>
               <div className="flex items-center justify-between mb-3 px-1">
                 <h3 className="text-lg font-semibold text-slate-800">Recent Payments</h3>
@@ -157,21 +172,15 @@ export const CleanTabBar: React.FC = () => {
 
   return (
     <div className="flex flex-col h-screen max-h-screen bg-[#f8fafc] overflow-hidden relative font-sans">
-      {/* Top Header */}
       <header className="flex-none bg-white border-b border-slate-200 px-4 h-16 flex items-center justify-between z-10 shadow-sm">
-        {/* Org Logo */}
-        <div className="flex items-center">
+        <div className="w-9" />
+
+        <div className="absolute left-1/2 transform -translate-x-1/2">
           <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center shadow-inner">
             <span className="text-white font-bold text-sm tracking-wider">PG</span>
           </div>
         </div>
 
-        {/* Center Name (visible on slightly larger screens or standard) */}
-        <div className="hidden sm:block absolute left-1/2 transform -translate-x-1/2">
-          <h1 className="text-base font-semibold text-slate-900">Mike Johnson</h1>
-        </div>
-
-        {/* Right Actions */}
         <div className="flex items-center gap-3">
           <button className="w-9 h-9 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 transition-colors relative">
             <Bell className="w-5 h-5" />
@@ -183,47 +192,99 @@ export const CleanTabBar: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Scrollable Content */}
       <main className="flex-1 overflow-y-auto w-full">
         <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-6">
           {renderContent()}
         </div>
       </main>
 
-      {/* Fixed Bottom Tab Bar */}
       <div className="flex-none bg-white border-t border-slate-200 pb-safe z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
         <div className="max-w-md mx-auto flex justify-between px-2 h-16">
-          <button 
-            onClick={() => setActiveTab('overview')}
-            className={`flex-1 flex flex-col items-center justify-center gap-1 min-w-[70px] ${activeTab === 'overview' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            <div className={`flex items-center justify-center w-10 h-8 rounded-full transition-all duration-200 ${activeTab === 'overview' ? 'bg-indigo-50' : 'bg-transparent'}`}>
-              <LayoutDashboard className="w-5 h-5" />
-            </div>
-            <span className="text-[10px] font-semibold tracking-wide">Overview</span>
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('history')}
-            className={`flex-1 flex flex-col items-center justify-center gap-1 min-w-[70px] ${activeTab === 'history' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            <div className={`flex items-center justify-center w-10 h-8 rounded-full transition-all duration-200 ${activeTab === 'history' ? 'bg-indigo-50' : 'bg-transparent'}`}>
-              <History className="w-5 h-5" />
-            </div>
-            <span className="text-[10px] font-semibold tracking-wide">History</span>
-          </button>
-          
-          <button 
-            onClick={() => setActiveTab('profile')}
-            className={`flex-1 flex flex-col items-center justify-center gap-1 min-w-[70px] ${activeTab === 'profile' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}
-          >
-            <div className={`flex items-center justify-center w-10 h-8 rounded-full transition-all duration-200 ${activeTab === 'profile' ? 'bg-indigo-50' : 'bg-transparent'}`}>
-              <UserCircle className="w-5 h-5" />
-            </div>
-            <span className="text-[10px] font-semibold tracking-wide">Profile</span>
-          </button>
+          {(['overview', 'history', 'profile'] as const).map((tab) => {
+            const icons = { overview: LayoutDashboard, history: History, profile: UserCircle };
+            const labels = { overview: 'Overview', history: 'History', profile: 'Profile' };
+            const Icon = icons[tab];
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 flex flex-col items-center justify-center gap-1 min-w-[70px] ${activeTab === tab ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}
+              >
+                <div className={`flex items-center justify-center w-10 h-8 rounded-full transition-all duration-200 ${activeTab === tab ? 'bg-indigo-50' : 'bg-transparent'}`}>
+                  <Icon className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-semibold tracking-wide">{labels[tab]}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      {sheetOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 z-40 transition-opacity duration-300"
+            onClick={() => setSheetOpen(false)}
+          />
+          <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">
+            <div className="bg-white rounded-t-2xl shadow-xl max-h-[70vh] overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <h3 className="text-lg font-semibold text-slate-900">Switch League</h3>
+                <button
+                  onClick={() => setSheetOpen(false)}
+                  className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto">
+                {leagues.map((league) => {
+                  const isSelected = league.id === selectedLeagueId;
+                  return (
+                    <button
+                      key={league.id}
+                      onClick={() => {
+                        setSelectedLeagueId(league.id);
+                        setSheetOpen(false);
+                      }}
+                      className={`w-full text-left px-5 py-4 flex items-center justify-between transition-colors ${
+                        isSelected ? 'bg-indigo-50' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div>
+                        <div className={`font-medium ${isSelected ? 'text-indigo-700' : 'text-slate-900'}`}>
+                          {league.name}
+                        </div>
+                        <div className="text-sm text-slate-500 mt-0.5">
+                          {league.team} &bull; Week {league.week} of {league.totalWeeks}
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 ml-3">
+                          <Check className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="h-8" />
+            </div>
+          </div>
+        </>
+      )}
+
+      <style>{`
+        @keyframes slide-up {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        .animate-slide-up {
+          animation: slide-up 0.3s ease-out;
+        }
+      `}</style>
     </div>
   );
 };
