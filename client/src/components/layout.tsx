@@ -280,27 +280,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
           isCollapsed ? "w-20" : "w-64"
         )}
       >
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800/60 shrink-0">
-          <div className="flex items-center gap-3 overflow-hidden">
+        <div className="border-b border-slate-800/60 shrink-0">
+          <div className="flex items-center justify-center px-3 py-3">
             {organization?.logo ? (
               <img
                 src={organization.logo}
                 alt={orgName}
-                className="w-8 h-8 rounded-md object-contain shrink-0"
+                className="w-full h-auto max-h-12 object-contain"
               />
             ) : (
-              <div className="w-8 h-8 rounded-md bg-indigo-500 flex items-center justify-center shrink-0 shadow-sm">
-                <span className="text-xs font-bold text-white">{orgInitials}</span>
+              <div className="w-10 h-10 rounded-md bg-indigo-500 flex items-center justify-center shadow-sm">
+                <span className="text-sm font-bold text-white">{orgInitials}</span>
               </div>
             )}
-            
           </div>
-          <button
-            onClick={toggleSidebar}
-            className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors shrink-0"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+          <div className="flex justify-end px-3 pb-2">
+            <button
+              onClick={toggleSidebar}
+              className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         <ErrorBoundary level="section" onReset={() => window.location.reload()}>
