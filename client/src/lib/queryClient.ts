@@ -81,7 +81,7 @@ function ensureApiPrefix(url: string): string {
   return url;
 }
 
-async function doApiRequest<T = any>(
+async function doApiRequest<T = unknown>(
   url: string,
   method: string,
   data?: unknown | undefined,
@@ -110,7 +110,7 @@ async function doApiRequest<T = any>(
   return jsonData;
 }
 
-export async function apiRequest<T = any>(
+export async function apiRequest<T = unknown>(
   url: string,
   method: string,
   data?: unknown | undefined,

@@ -257,7 +257,7 @@ export async function initializeSquare(locationId?: number | null): Promise<Squa
   }
 }
 
-export async function tokenizeCard(cardInstance: SquareCard): Promise<string> {
+export async function tokenizeCard(cardInstance: SquareCard | null): Promise<string> {
   if (!cardInstance) {
     throw new Error(JSON.stringify({
       error: { message: 'Card element not initialized', code: 'INITIALIZATION_ERROR' }
@@ -272,7 +272,7 @@ export async function tokenizeCard(cardInstance: SquareCard): Promise<string> {
   }));
 }
 
-export async function createPayment(amount: number, cardInstance: SquareCard, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
+export async function createPayment(amount: number, cardInstance: SquareCard | null, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
   try {
     if (!cardInstance) {
       throw new Error(JSON.stringify({
