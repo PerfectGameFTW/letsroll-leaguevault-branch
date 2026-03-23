@@ -1,6 +1,6 @@
 import { FC, ReactNode, Suspense } from "react";
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, History, UserCircle, Bell, Loader2, ArrowLeft } from "lucide-react";
+import { LayoutDashboard, History, UserCircle, Loader2, ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Organization, User, ApiResponse } from "@shared/schema";
@@ -88,47 +88,25 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
   const orgInitials = orgName.split(/\s+/).map(w => w[0]).join("").substring(0, 2).toUpperCase();
 
   const isSystemAdmin = currentUserResponse?.data?.role === 'system_admin';
-  const user = currentUserResponse?.data;
-  const userInitials = (user?.name || user?.email || "U")
-    .split(/\s+/)
-    .map(w => w[0])
-    .join("")
-    .substring(0, 2)
-    .toUpperCase();
 
   return (
-    <div className="flex flex-col h-screen max-h-screen bg-[#f8fafc] overflow-hidden relative font-sans">
-      <header className="flex-none bg-white border-b border-slate-200 px-4 h-16 flex items-center justify-between z-10 shadow-sm">
-        <div className="w-9" />
-
-        <div className="absolute left-1/2 transform -translate-x-1/2">
-          {(organization?.logo || organization?.darkLogo) ? (
-            <img
-              src={organization.logo || organization.darkLogo || ''}
-              alt={orgName}
-              className="h-12 w-auto max-w-[200px] object-contain"
-            />
-          ) : (
-            <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center shadow-inner">
-              <span className="text-white font-bold text-sm tracking-wider">{orgInitials}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <button className="w-9 h-9 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 transition-colors relative">
-            <Bell className="w-5 h-5" />
-          </button>
-          <Link href="/profile">
-            <div className="w-9 h-9 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-sm border border-indigo-200 cursor-pointer">
-              {userInitials}
-            </div>
-          </Link>
-        </div>
+    <div className="fixed inset-0 flex flex-col bg-[#f8fafc] font-sans">
+      <header className="flex-none bg-white border-b border-slate-200 px-4 h-14 flex items-center justify-center z-10 shadow-sm relative">
+        {(organization?.logo || organization?.darkLogo) ? (
+          <img
+            src={organization.logo || organization.darkLogo || ''}
+            alt={orgName}
+            className="h-10 w-auto max-w-[200px] object-contain"
+          />
+        ) : (
+          <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center shadow-inner">
+            <span className="text-white font-bold text-sm tracking-wider">{orgInitials}</span>
+          </div>
+        )}
       </header>
 
-      <main className="flex-1 overflow-y-auto w-full">
-        <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-6 pb-24">
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto w-full px-4 sm:px-6 py-6 pb-4">
           {isSystemAdmin && (
             <Link href="/">
               <button className="flex items-center text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors mb-4">
@@ -145,8 +123,8 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
         </div>
       </main>
 
-      <div className="flex-none bg-white border-t border-slate-200 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
-        <div className="max-w-md mx-auto flex justify-between px-2 h-16">
+      <nav className="flex-none bg-white border-t border-slate-200 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]">
+        <div className="max-w-md mx-auto flex justify-between px-2 h-16 pb-[env(safe-area-inset-bottom)]">
           {navItems.map((item) => {
             const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?') || location.startsWith(item.baseHref + '/');
             return (
@@ -169,7 +147,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
             );
           })}
         </div>
-      </div>
+      </nav>
     </div>
   );
 };
