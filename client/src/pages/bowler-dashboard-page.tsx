@@ -2,7 +2,7 @@ import { useState, FC, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, RefreshCw, AlertTriangle } from "lucide-react";
+import { ArrowRight, RefreshCw, AlertTriangle, Calendar } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from "wouter";
@@ -278,55 +278,49 @@ export const BowlerDashboardPage: FC = () => {
       
       <ErrorBoundary level="section">
       <div className="space-y-6">
-        <Card>
-          <CardHeader className="pb-4">
-            <CardTitle className="text-3xl font-bold">{bowler.name}</CardTitle>
-            {isSystemAdmin && (
-              <p className="text-sm text-muted-foreground mt-1">
-                You are viewing this account as a System Administrator
-              </p>
-            )}
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {hasMultipleLeagues ? (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-muted-foreground">Active League</label>
-                  <Select
-                    value={String(activeBowlerLeague?.leagueId ?? activeBowlerLeagues[0]?.leagueId)}
-                    onValueChange={(val) => setSelectedLeagueId(Number(val))}
-                  >
-                    <SelectTrigger className="w-full md:w-72">
-                      <SelectValue placeholder="Select a league" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activeBowlerLeagues.map(bl => {
-                        const l = leagueMap.get(bl.leagueId);
-                        return (
-                          <SelectItem key={bl.leagueId} value={String(bl.leagueId)}>
-                            {l?.name ?? `League #${bl.leagueId}`}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-base text-muted-foreground">{teamName}</p>
-                  {currentWeek !== null && (
-                    <p className="text-sm text-muted-foreground">Week {currentWeek} of {totalWeeks}</p>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-0.5">
-                  <p className="text-lg">{leagueName}</p>
-                  <p className="text-base text-muted-foreground">{teamName}</p>
-                  {currentWeek !== null && (
-                    <p className="text-sm text-muted-foreground">Week {currentWeek} of {totalWeeks}</p>
-                  )}
-                </div>
-              )}
+        <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+          <h2 className="text-2xl font-bold text-slate-900 mb-1">Hi, {bowler.name}</h2>
+          {isSystemAdmin && (
+            <p className="text-sm text-slate-400 mb-1">Viewing as System Administrator</p>
+          )}
+          {hasMultipleLeagues ? (
+            <div className="mb-3">
+              <Select
+                value={String(activeBowlerLeague?.leagueId ?? activeBowlerLeagues[0]?.leagueId)}
+                onValueChange={(val) => setSelectedLeagueId(Number(val))}
+              >
+                <SelectTrigger className="w-full md:w-72 mt-1">
+                  <SelectValue placeholder="Select a league" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeBowlerLeagues.map(bl => {
+                    const l = leagueMap.get(bl.leagueId);
+                    return (
+                      <SelectItem key={bl.leagueId} value={String(bl.leagueId)}>
+                        {l?.name ?? `League #${bl.leagueId}`}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
             </div>
-          </CardContent>
-        </Card>
+          ) : (
+            <p className="text-slate-500">{leagueName}</p>
+          )}
+
+          <div className="mt-4 flex flex-wrap gap-3">
+            <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-700 text-sm font-medium">
+              <span className="w-2 h-2 rounded-full bg-indigo-500 mr-2"></span>
+              {teamName}
+            </div>
+            {currentWeek !== null && (
+              <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-sm font-medium">
+                <Calendar className="w-4 h-4 mr-1.5" />
+                Week {currentWeek} of {totalWeeks}
+              </div>
+            )}
+          </div>
+        </div>
 
         <PaymentStatusSection
           key={league.id}
