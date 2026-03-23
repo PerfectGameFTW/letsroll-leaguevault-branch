@@ -14,7 +14,8 @@ export function toIsoDateStr(date: Date): string {
 
 export function toLocalMidnight(date: string | Date): Date {
   if (typeof date === "string") {
-    const [year, month, day] = date.split("T")[0].split("-").map(Number);
+    const datePart = date.replace(" ", "T").split("T")[0];
+    const [year, month, day] = datePart.split("-").map(Number);
     return new Date(year, month - 1, day, 12, 0, 0, 0);
   }
   const d = new Date(date);
