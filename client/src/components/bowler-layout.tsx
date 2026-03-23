@@ -33,7 +33,7 @@ function buildNavItems(currentLeagueId?: number): NavItem[] {
     },
     {
       icon: History,
-      label: "History",
+      label: "Payments",
       href: paymentHistoryHref,
       baseHref: "/payment-history",
     },
@@ -123,25 +123,28 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
         </div>
       </main>
 
-      <nav className="flex-none bg-white border-t border-slate-200 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.02)]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
-        <div className="max-w-xs mx-auto flex justify-between px-6 h-14">
+      <nav className="flex-none bg-white border-t border-slate-200 z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.06)]" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+        <div className="flex justify-center items-end gap-10 h-[52px] pb-1">
           {navItems.map((item) => {
             const isActive = location === item.baseHref || location.startsWith(item.baseHref + '?') || location.startsWith(item.baseHref + '/');
             return (
               <Link key={item.baseHref} href={item.href}>
                 <button
                   className={cn(
-                    "flex-1 flex flex-col items-center justify-center gap-1 min-w-[70px] h-14",
-                    isActive ? "text-indigo-600" : "text-slate-500 hover:text-slate-800"
+                    "flex flex-col items-center justify-end gap-0.5 w-16",
+                    isActive ? "text-indigo-600" : "text-slate-400 active:text-slate-600"
                   )}
                 >
                   <div className={cn(
-                    "flex items-center justify-center w-10 h-8 rounded-full transition-all duration-200",
+                    "flex items-center justify-center w-10 h-7 rounded-full transition-all duration-200",
                     isActive ? "bg-indigo-50" : "bg-transparent"
                   )}>
-                    <item.icon className="w-5 h-5" />
+                    <item.icon className="w-[22px] h-[22px]" />
                   </div>
-                  <span className="text-[10px] font-semibold tracking-wide">{item.label}</span>
+                  <span className={cn(
+                    "text-[10px] tracking-wide",
+                    isActive ? "font-bold" : "font-medium"
+                  )}>{item.label}</span>
                 </button>
               </Link>
             );
