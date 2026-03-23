@@ -2,9 +2,9 @@ import { useState, FC, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, RefreshCw, AlertTriangle, Calendar } from "lucide-react";
+import { ArrowRight, RefreshCw, AlertTriangle, Calendar, ChevronDown } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LeagueBottomSheet } from "@/components/league-bottom-sheet";
 import { Link } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { getSeasonLengthWeeks, getWeeksPassedInSeason } from "@/lib/financial-utils";
@@ -40,6 +40,7 @@ function ErrorCard({ title, description, onRetry }: { title: string; description
 
 export const BowlerDashboardPage: FC = () => {
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const { data: userResponse, isLoading: isLoadingUser, error: userError } = useQuery<{ success: boolean; data: User }>({
     queryKey: ['/api/user'],
@@ -132,6 +133,30 @@ export const BowlerDashboardPage: FC = () => {
     const weeksPassed = getWeeksPassedInSeason(league);
     return Math.max(1, Math.min(weeksPassed + 1, totalWeeks));
   }, [league, totalWeeks]);
+
+  const totalWeeksMap = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const bl of activeBowlerLeagues) {
+      const l = leagueMap.get(bl.leagueId);
+      if (l) map.set(bl.leagueId, getSeasonLengthWeeks(l) || 30);
+    }
+    return map;
+  }, [activeBowlerLeagues, leagueMap]);
+
+  const currentWeekMap = useMemo(() => {
+    const map = new Map<number, number | null>();
+    for (const bl of activeBowlerLeagues) {
+      const l = leagueMap.get(bl.leagueId);
+      if (!l?.seasonStart) {
+        map.set(bl.leagueId, null);
+      } else {
+        const tw = totalWeeksMap.get(bl.leagueId) || 30;
+        const wp = getWeeksPassedInSeason(l);
+        map.set(bl.leagueId, Math.max(1, Math.min(wp + 1, tw)));
+      }
+    }
+    return map;
+  }, [activeBowlerLeagues, leagueMap, totalWeeksMap]);
 
   const weeklyFee = useMemo(() => {
     return league?.weeklyFee || DEFAULT_WEEKLY_FEE_CENTS;
@@ -284,26 +309,13 @@ export const BowlerDashboardPage: FC = () => {
             <p className="text-sm text-slate-400 mb-1">Viewing as System Administrator</p>
           )}
           {hasMultipleLeagues ? (
-            <div className="mb-3">
-              <Select
-                value={String(activeBowlerLeague?.leagueId ?? activeBowlerLeagues[0]?.leagueId)}
-                onValueChange={(val) => setSelectedLeagueId(Number(val))}
-              >
-                <SelectTrigger className="w-full md:w-72 mt-1">
-                  <SelectValue placeholder="Select a league" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeBowlerLeagues.map(bl => {
-                    const l = leagueMap.get(bl.leagueId);
-                    return (
-                      <SelectItem key={bl.leagueId} value={String(bl.leagueId)}>
-                        {l?.name ?? `League #${bl.leagueId}`}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
+            <button
+              onClick={() => setSheetOpen(true)}
+              className="flex items-center gap-1 text-slate-500 hover:text-slate-700 transition-colors"
+            >
+              <span>{leagueName}</span>
+              <ChevronDown className="w-4 h-4" />
+            </button>
           ) : (
             <p className="text-slate-500">{leagueName}</p>
           )}
@@ -332,6 +344,18 @@ export const BowlerDashboardPage: FC = () => {
         />
       </div>
       </ErrorBoundary>
+
+      <LeagueBottomSheet
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        activeBowlerLeagues={activeBowlerLeagues}
+        leagueMap={leagueMap}
+        teamMap={teamMap}
+        selectedLeagueId={activeBowlerLeague?.leagueId ?? null}
+        onSelectLeague={(id) => setSelectedLeagueId(id)}
+        totalWeeksMap={totalWeeksMap}
+        currentWeekMap={currentWeekMap}
+      />
     </BowlerLayout>
   );
 };

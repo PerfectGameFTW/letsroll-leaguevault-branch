@@ -5,13 +5,7 @@ import type { League, Payment, User, SavedCard, ApiResponse, BowlerDetailsRespon
 import { BowlerLayout } from "@/components/bowler-layout";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
 import { Link, useSearch } from "wouter";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ChevronDown, X, Check } from "lucide-react";
 import { differenceInWeeks } from "date-fns";
 import { calculateFinalTwoWeeksPaidOnWeek } from "@/lib/financial-utils";
 import { useSquarePayment } from "@/hooks/use-square-payment";
@@ -32,6 +26,7 @@ export default function PaymentHistoryPage() {
     const id = new URLSearchParams(search).get('leagueId');
     return id ? Number(id) : null;
   });
+  const [leagueSheetOpen, setLeagueSheetOpen] = useState(false);
   const [payDialogType, setPayDialogType] = useState<'pastdue' | 'remaining' | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
@@ -298,33 +293,20 @@ export default function PaymentHistoryPage() {
     <BowlerLayout bowlerName={bowlerName} leagueName={league.name} currentLeagueId={leagueId}>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold mb-2">Payment History</h1>
-          {hasMultipleLeagues && (
-            <div className="mb-4">
-              <label className="text-sm font-medium text-muted-foreground">League</label>
-              <Select
-                value={String(selectedLeagueId ?? leagueId ?? '')}
-                onValueChange={(val) => setSelectedLeagueId(Number(val))}
-              >
-                <SelectTrigger className="w-full md:w-72 mt-1">
-                  <SelectValue placeholder="Select a league" />
-                </SelectTrigger>
-                <SelectContent>
-                  {bowlerLeagues.map(bl => {
-                    const l = leagueMap.get(bl.leagueId);
-                    return (
-                      <SelectItem key={bl.leagueId} value={String(bl.leagueId)}>
-                        {l?.name ?? `League #${bl.leagueId}`}
-                      </SelectItem>
-                    );
-                  })}
-                </SelectContent>
-              </Select>
-            </div>
+          <h1 className="text-2xl font-bold mb-1">Payment History</h1>
+          {hasMultipleLeagues ? (
+            <button
+              onClick={() => setLeagueSheetOpen(true)}
+              className="flex items-center gap-1 text-slate-500 hover:text-slate-700 transition-colors mb-4"
+            >
+              <span>{league.name}</span>
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          ) : (
+            <p className="text-muted-foreground mb-4">
+              {league.name}
+            </p>
           )}
-          <p className="text-muted-foreground mb-6">
-            Track your payments and balance for {league.name}
-          </p>
         </div>
 
         <ErrorBoundary level="section">
@@ -370,6 +352,65 @@ export default function PaymentHistoryPage() {
           <BowlerPaymentTable payments={bowlerPayments} league={league} />
         </ErrorBoundary>
       </div>
+
+      {leagueSheetOpen && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/40 z-40 transition-opacity duration-300"
+            onClick={() => setLeagueSheetOpen(false)}
+          />
+          <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">
+            <div className="bg-white rounded-t-2xl shadow-xl max-h-[70vh] overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                <h3 className="text-lg font-semibold text-slate-900">Switch League</h3>
+                <button
+                  onClick={() => setLeagueSheetOpen(false)}
+                  className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="overflow-y-auto">
+                {bowlerLeagues.map((bl) => {
+                  const l = leagueMap.get(bl.leagueId);
+                  const isSelected = bl.leagueId === leagueId;
+                  return (
+                    <button
+                      key={bl.leagueId}
+                      onClick={() => {
+                        setSelectedLeagueId(bl.leagueId);
+                        setLeagueSheetOpen(false);
+                      }}
+                      className={`w-full text-left px-5 py-4 flex items-center justify-between transition-colors ${
+                        isSelected ? 'bg-indigo-50' : 'hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className={`font-medium ${isSelected ? 'text-indigo-700' : 'text-slate-900'}`}>
+                        {l?.name ?? `League #${bl.leagueId}`}
+                      </div>
+                      {isSelected && (
+                        <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 ml-3">
+                          <Check className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="h-8" />
+            </div>
+          </div>
+          <style>{`
+            @keyframes slide-up {
+              from { transform: translateY(100%); }
+              to { transform: translateY(0); }
+            }
+            .animate-slide-up {
+              animation: slide-up 0.3s ease-out;
+            }
+          `}</style>
+        </>
+      )}
     </BowlerLayout>
   );
 }
