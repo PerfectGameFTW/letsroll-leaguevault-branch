@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import type { League, Payment, User, SavedCard, ApiResponse, BowlerDetailsResponse } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
-import { ArrowLeft } from "lucide-react";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
 import { Link, useSearch } from "wouter";
 import {
@@ -298,14 +297,6 @@ export default function PaymentHistoryPage() {
   return (
     <BowlerLayout bowlerName={bowlerName} leagueName={league.name} currentLeagueId={leagueId}>
       <div className="space-y-6">
-        <Link
-          href="/bowler-dashboard"
-          className="text-muted-foreground hover:text-foreground flex items-center mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Dashboard
-        </Link>
-
         <div>
           <h1 className="text-2xl font-bold mb-2">Payment History</h1>
           {hasMultipleLeagues && (
