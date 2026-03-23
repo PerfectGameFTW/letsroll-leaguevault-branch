@@ -3,7 +3,7 @@ import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { ApiResponse } from '@shared/schema';
+import type { ApiResponse, User } from '@shared/schema';
 
 interface AuthRouteGuardProps {
   children: ReactNode;
@@ -14,7 +14,7 @@ export const AuthRouteGuard: FC<AuthRouteGuardProps> = ({ children }) => {
   const { toast } = useToast();
 
   // Fetch current user to check authentication status
-  const { data: currentUserResponse, isLoading, error } = useQuery<ApiResponse<any>>({
+  const { data: currentUserResponse, isLoading, error } = useQuery<ApiResponse<User>>({
     queryKey: ['/api/user'],
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
   });

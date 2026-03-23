@@ -117,8 +117,9 @@ export async function apiRequest<T = any>(
 ): Promise<{success: boolean; data: T; error?: {message: string; code?: string}}> {
   try {
     return await doApiRequest<T>(url, method, data);
-  } catch (error: any) {
-    if (error?.message?.startsWith('403:') && csrfToken === null) {
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : '';
+    if (errMsg.startsWith('403:') && csrfToken === null) {
       try {
         await fetchCsrfToken();
         return await doApiRequest<T>(url, method, data);
@@ -147,11 +148,11 @@ export const getQueryFn: QueryFunction = async ({ queryKey, signal }) => {
     const validatedRes = await throwIfResNotOk(res);
     const data = await validatedRes.json();
     return data;
-  } catch (error: any) {
-    if (error?.name === 'AbortError') {
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
       return undefined;
     }
-    const is401 = typeof error?.message === 'string' && error.message.startsWith('401');
+    const is401 = error instanceof Error && error.message.startsWith('401');
     if (!is401) {
       console.error(`[Query] Error fetching ${queryKey[0]}:`, error);
     }

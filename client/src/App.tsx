@@ -12,7 +12,7 @@ import { SystemAdminRouteGuard } from "@/components/system-admin-route-guard";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { PageLoadingState } from "@/components/page-states";
-import type { ApiResponse } from "@shared/schema";
+import type { ApiResponse, User } from "@shared/schema";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login-page";
 
@@ -50,7 +50,7 @@ function PageLoader() {
 const RootRedirectHandler: FC = () => {
   const [, navigate] = useLocation();
   
-  const { data: currentUserResponse, isLoading, error } = useQuery<ApiResponse<any>>({
+  const { data: currentUserResponse, isLoading, error } = useQuery<ApiResponse<User>>({
     queryKey: ['/api/user'],
     staleTime: 1000 * 60 * 5,
   });
@@ -84,7 +84,7 @@ const RootRedirectHandler: FC = () => {
 };
 
 function Router() {
-  const { data: userData } = useQuery<ApiResponse<any>>({
+  const { data: userData } = useQuery<ApiResponse<User>>({
     queryKey: ['/api/user'],
     staleTime: 1000 * 60 * 5,
   });

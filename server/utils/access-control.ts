@@ -50,7 +50,7 @@ export async function hasAccessToLeague(req: AuthRequest, leagueId: number): Pro
 
   if (req.user.bowlerId) {
     const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: req.user.bowlerId });
-    if (bowlerLeagues.some((bl: any) => bl.leagueId === leagueId)) {
+    if (bowlerLeagues.some((bl) => bl.leagueId === leagueId)) {
       return true;
     }
   }

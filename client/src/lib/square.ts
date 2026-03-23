@@ -27,18 +27,39 @@ interface SquareCustomer {
   email: string;
 }
 
+interface SquarePayments {
+  card(options?: { style?: Record<string, Record<string, string>> }): Promise<SquareCard>;
+}
+
+interface SquareCard {
+  attach(selectorOrElement: string | HTMLElement): Promise<void>;
+  tokenize(options?: Record<string, unknown>): Promise<TokenizeResult>;
+  destroy(): void;
+}
+
+interface TokenizeResult {
+  status: string;
+  token?: string;
+  errors?: Array<{ message: string }>;
+}
+
+interface SquareConfigResponse {
+  appId: string;
+  locationId?: string;
+}
+
 declare global {
   interface Window {
     Square?: {
-      payments?: (appId: string, locationId: string) => Promise<any>;
+      payments?: (appId: string, locationId: string) => Promise<SquarePayments>;
     };
   }
 }
 
-let payments: any = null;
+let payments: SquarePayments | null = null;
 let squareConfig: { appId: string; locationId: string } | null = null;
-let squareConfigLocationId: number | null | undefined = undefined; // tracks which location the cached config/payments are for
-let preWarmedCard: any = null;
+let squareConfigLocationId: number | null | undefined = undefined;
+let preWarmedCard: SquareCard | null = null;
 
 const cardStyle = {
   input: {
@@ -71,7 +92,7 @@ export async function warmUpSquareCard(): Promise<void> {
   }
 }
 
-export function getPreWarmedCard(): any {
+export function getPreWarmedCard(): SquareCard | null {
   const card = preWarmedCard;
   preWarmedCard = null;
   return card;
@@ -90,10 +111,10 @@ async function getSquareConfig(locationId?: number | null): Promise<{ appId: str
   if (squareConfig && squareConfigLocationId === (locationId ?? null)) return squareConfig;
 
   const url = locationId ? `/api/square/config?locationId=${locationId}` : '/api/square/config';
-  let data: any;
+  let data: SquareConfigResponse;
   try {
     const res = await fetch(url);
-    data = await res.json();
+    data = await res.json() as SquareConfigResponse;
   } catch (err) {
     console.error('[Square] Failed to fetch config from server:', err);
     throw new Error('Payment is temporarily unavailable. Please try again or contact support.');
@@ -116,7 +137,7 @@ function getSdkUrl(appId: string): string {
     : "https://sandbox.web.squarecdn.com/v1/square.js";
 }
 
-export async function initializeSquare(locationId?: number | null) {
+export async function initializeSquare(locationId?: number | null): Promise<SquarePayments> {
   try {
     // Reset if the location has changed
     if (payments && squareConfigLocationId !== (locationId ?? null)) {
@@ -137,13 +158,13 @@ export async function initializeSquare(locationId?: number | null) {
 
     if (window.Square && !window.Square.payments) {
       document.querySelectorAll('script[src*="square.js"]').forEach(script => script.remove());
-      (window as any).Square = undefined;
+      (window as { Square?: typeof window.Square }).Square = undefined;
     }
 
     const existingSdkScript = document.querySelector('script[src*="square"]') as HTMLScriptElement | null;
     if (existingSdkScript && existingSdkScript.src !== sdkUrl) {
       existingSdkScript.remove();
-      (window as any).Square = undefined;
+      (window as { Square?: typeof window.Square }).Square = undefined;
     }
 
     if (window.Square?.payments) {
@@ -153,14 +174,14 @@ export async function initializeSquare(locationId?: number | null) {
       } catch (initError) {
         console.error('[Square] Failed to initialize with existing SDK, will reload:', initError);
         document.querySelectorAll('script[src*="square.js"]').forEach(script => script.remove());
-        (window as any).Square = undefined;
+        (window as { Square?: typeof window.Square }).Square = undefined;
       }
     }
 
     const SQUARE_INIT_TIMEOUT_PROD_MS = 15000;
     const SQUARE_INIT_TIMEOUT_DEV_MS = 10000;
     const timeoutMs = isProduction ? SQUARE_INIT_TIMEOUT_PROD_MS : SQUARE_INIT_TIMEOUT_DEV_MS;
-    const timeoutPromise = new Promise((_, reject) => {
+    const timeoutPromise = new Promise<SquarePayments>((_, reject) => {
       setTimeout(() => reject(new Error(`Square initialization timed out after ${timeoutMs/1000} seconds`)), timeoutMs);
     });
 
@@ -236,7 +257,7 @@ export async function initializeSquare(locationId?: number | null) {
   }
 }
 
-export async function tokenizeCard(cardInstance: any): Promise<string> {
+export async function tokenizeCard(cardInstance: SquareCard): Promise<string> {
   if (!cardInstance) {
     throw new Error(JSON.stringify({
       error: { message: 'Card element not initialized', code: 'INITIALIZATION_ERROR' }
@@ -251,7 +272,7 @@ export async function tokenizeCard(cardInstance: any): Promise<string> {
   }));
 }
 
-export async function createPayment(amount: number, cardInstance: any, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
+export async function createPayment(amount: number, cardInstance: SquareCard, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
   try {
     if (!cardInstance) {
       throw new Error(JSON.stringify({
@@ -351,7 +372,7 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
       return responseData;
     } else {
       const errors = result.errors || [];
-      const errorMessage = errors.map((e: any) => e.message).join(', ') || 'Card validation failed';
+      const errorMessage = errors.map((e: { message: string }) => e.message).join(', ') || 'Card validation failed';
       throw new Error(JSON.stringify({
         error: {
           message: "Please check your card details and try again.",
