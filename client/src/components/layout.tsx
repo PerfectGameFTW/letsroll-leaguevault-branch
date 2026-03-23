@@ -282,9 +282,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       >
         <div className="border-b border-slate-800/60 shrink-0">
           <div className="flex items-center justify-center px-3 py-3">
-            {organization?.logo ? (
+            {(organization?.darkLogo || organization?.logo) ? (
               <img
-                src={organization.logo}
+                src={organization.darkLogo || organization.logo || ''}
                 alt={orgName}
                 className="w-full h-auto max-h-12 object-contain"
               />

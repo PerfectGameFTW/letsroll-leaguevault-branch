@@ -131,6 +131,7 @@ router.get('/slug/:slug', async (req, res) => {
       name: organization.name,
       slug: organization.slug,
       logo: organization.logo,
+      darkLogo: organization.darkLogo,
     });
   } catch (error) {
     log.error(`Error fetching organization with slug ${req.params.slug}:`, error);

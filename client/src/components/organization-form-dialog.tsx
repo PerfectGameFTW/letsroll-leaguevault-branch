@@ -19,6 +19,7 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const darkFileInputRef = useRef<HTMLInputElement>(null);
   const editId = editOrg?.id ?? null;
 
   const [name, setName] = useState('');
@@ -31,6 +32,8 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
   const [email, setEmail] = useState('');
   const [logo, setLogo] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [darkLogo, setDarkLogo] = useState<string | null>(null);
+  const [darkLogoPreview, setDarkLogoPreview] = useState<string | null>(null);
   const [adminName, setAdminName] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
   const [adminPhone, setAdminPhone] = useState('');
@@ -47,10 +50,13 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
       setEmail(editOrg?.email ?? '');
       setLogo(editOrg?.logo ?? null);
       setLogoPreview(editOrg?.logo ?? null);
+      setDarkLogo(editOrg?.darkLogo ?? null);
+      setDarkLogoPreview(editOrg?.darkLogo ?? null);
       setAdminName('');
       setAdminEmail('');
       setAdminPhone('');
       if (fileInputRef.current) fileInputRef.current.value = '';
+      if (darkFileInputRef.current) darkFileInputRef.current.value = '';
     }
   }, [open, editOrg]);
 
@@ -116,6 +122,7 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
       phone,
       email,
       logo: logo || undefined,
+      darkLogo: darkLogo ?? undefined,
     };
 
     if (editId) {
@@ -248,6 +255,58 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
                       />
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">Upload your organization logo (PNG, JPG, SVG - max 2MB).</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-4 items-start gap-4">
+              <Label htmlFor="darkLogo" className="text-right pt-2">Dark Logo</Label>
+              <div className="col-span-3 space-y-2">
+                {darkLogoPreview ? (
+                  <div className="relative w-40 h-40 rounded-md overflow-hidden border bg-slate-900">
+                    <img src={darkLogoPreview} alt="Dark background logo" className="w-full h-full object-contain" />
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-1 right-1 h-6 w-6 rounded-full"
+                      onClick={() => {
+                        setDarkLogo(null);
+                        setDarkLogoPreview(null);
+                        if (darkFileInputRef.current) darkFileInputRef.current.value = '';
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="w-full">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        ref={darkFileInputRef}
+                        type="file"
+                        id="darkLogo"
+                        accept="image/*"
+                        className="flex-1"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 2 * 1024 * 1024) {
+                            toast({ title: "File too large", description: "The logo file must be less than 2MB.", variant: "destructive" });
+                            return;
+                          }
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            const base64 = event.target?.result as string;
+                            setDarkLogo(base64);
+                            setDarkLogoPreview(base64);
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Logo for dark backgrounds (sidebar navigation). Use a light/white version.</p>
                   </div>
                 )}
               </div>
