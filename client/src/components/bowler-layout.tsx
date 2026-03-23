@@ -139,7 +139,7 @@ export const BowlerLayout: FC<BowlerLayoutProps> = ({ children, bowlerName, leag
                     "flex items-center justify-center w-10 h-7 rounded-full transition-all duration-200",
                     isActive ? "bg-indigo-50" : "bg-transparent"
                   )}>
-                    <item.icon className="w-[22px] h-[22px]" />
+                    <item.icon className="w-6 h-6" />
                   </div>
                   <span className={cn(
                     "text-[10px] tracking-wide",
