@@ -1,8 +1,9 @@
 import { FC, useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { useSquarePayment } from "@/hooks/use-square-payment";
+import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
-import { csrfFetch } from '@/lib/queryClient';
+import { csrfFetch, queryClient } from '@/lib/queryClient';
 import { calculateFinancials } from "@/lib/financial-utils";
 import type { League, Bowler, Payment, SavedCard } from "@shared/schema";
 import { PaymentOverviewCard } from "@/components/payment-overview-card";
@@ -129,6 +130,60 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     return base;
   }, [selectedSchedule, weeklyFee, selectedWeeks, fixedAmount, includeFinalTwoWeeks]);
 
+  const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
+    try {
+      setIsSubmitting(true);
+      const amount = calculateTotalAmount();
+      const response = await csrfFetch('/api/square/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceId: token,
+          amount,
+          bowlerId: bowler.id,
+          leagueId: league.id,
+          storeCard: false,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.status !== 'COMPLETED') {
+        throw new Error(data.error?.message || 'Payment failed');
+      }
+      toast({ title: "Payment Successful", description: `${walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay'} payment of $${(amount / 100).toFixed(2)} completed.` });
+      queryClient.invalidateQueries({ queryKey: [`/api/bowler-dashboard`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
+      setShowPaymentSetup(false);
+    } catch (err: any) {
+      toast({ title: "Payment Failed", description: err?.message || 'Payment could not be processed', variant: "destructive" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [bowler.id, league.id, calculateTotalAmount, toast, setIsSubmitting, setShowPaymentSetup]);
+
+  const {
+    applePayAvailable,
+    googlePayAvailable,
+    applePayRef,
+    googlePayRef,
+    handleApplePayClick,
+    handleGooglePayClick,
+    isProcessing: isWalletProcessing,
+    cleanup: cleanupWallet,
+    debugStatus: walletDebugStatus,
+  } = useWalletPayments({
+    locationId: league.locationId ?? null,
+    amountCents: calculateTotalAmount(),
+    enabled: showPaymentSetup && (selectedSchedule === 'custom' || league.paymentMode === 'upfront'),
+    onTokenReceived: handleWalletPayment,
+    onError: (error) => toast({ title: "Wallet Payment Error", description: error, variant: "destructive" }),
+  });
+
+  useEffect(() => {
+    if (!showPaymentSetup) {
+      cleanupWallet();
+    }
+  }, [showPaymentSetup, cleanupWallet]);
+
   const handleSubmitPayment = useBowlerPaymentSubmit({
     league,
     bowler,
@@ -221,6 +276,14 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           setIncludeFinalTwoWeeks(true);
           setShowFinalTwoWeeksWarning(false);
         }}
+        applePayAvailable={applePayAvailable}
+        googlePayAvailable={googlePayAvailable}
+        applePayRef={applePayRef}
+        googlePayRef={googlePayRef}
+        onApplePayClick={handleApplePayClick}
+        onGooglePayClick={handleGooglePayClick}
+        isWalletProcessing={isWalletProcessing}
+        walletDebugStatus={walletDebugStatus}
       />
     );
   }

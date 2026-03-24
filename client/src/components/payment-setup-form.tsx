@@ -7,6 +7,8 @@ import { PaymentCustomAmount } from "@/components/payment-custom-amount";
 import { PaymentSetupCardInput } from "@/components/payment-setup-card-input";
 import { PaymentSubmitSection } from "@/components/payment-submit-section";
 
+type RefDiv = React.RefObject<HTMLDivElement>;
+
 type PaymentSchedule = "weekly" | "custom";
 
 interface PaymentSetupFormProps {
@@ -48,6 +50,14 @@ interface PaymentSetupFormProps {
   onSubmit: () => void;
   onCancel: () => void;
   onAddFinalTwoWeeks: () => void;
+  applePayAvailable: boolean;
+  googlePayAvailable: boolean;
+  applePayRef: RefDiv;
+  googlePayRef: RefDiv;
+  onApplePayClick: () => void;
+  onGooglePayClick: () => void;
+  isWalletProcessing: boolean;
+  walletDebugStatus: string;
 }
 
 export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
@@ -83,6 +93,14 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   onSubmit,
   onCancel,
   onAddFinalTwoWeeks,
+  applePayAvailable,
+  googlePayAvailable,
+  applePayRef,
+  googlePayRef,
+  onApplePayClick,
+  onGooglePayClick,
+  isWalletProcessing,
+  walletDebugStatus,
 }) => {
   return (
     <Card className="w-full">
@@ -153,6 +171,14 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
             setStoreCard={setStoreCard}
             showStoreCardOption={selectedSchedule === 'custom'}
             cleanupCard={cleanupCard}
+            applePayAvailable={applePayAvailable}
+            googlePayAvailable={googlePayAvailable}
+            applePayRef={applePayRef}
+            googlePayRef={googlePayRef}
+            onApplePayClick={onApplePayClick}
+            onGooglePayClick={onGooglePayClick}
+            isWalletProcessing={isWalletProcessing}
+            walletDebugStatus={walletDebugStatus}
           />
 
           <PaymentSubmitSection

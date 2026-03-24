@@ -25,6 +25,14 @@ interface PaymentSetupCardInputProps {
   setStoreCard: (v: boolean) => void;
   showStoreCardOption: boolean;
   cleanupCard: () => void;
+  applePayAvailable: boolean;
+  googlePayAvailable: boolean;
+  applePayRef: RefObject<HTMLDivElement>;
+  googlePayRef: RefObject<HTMLDivElement>;
+  onApplePayClick: () => void;
+  onGooglePayClick: () => void;
+  isWalletProcessing: boolean;
+  walletDebugStatus: string;
 }
 
 export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
@@ -40,7 +48,16 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
   setStoreCard,
   showStoreCardOption,
   cleanupCard,
+  applePayAvailable,
+  googlePayAvailable,
+  applePayRef,
+  googlePayRef,
+  onApplePayClick,
+  onGooglePayClick,
+  isWalletProcessing,
+  walletDebugStatus,
 }) => {
+  const showWallet = applePayAvailable || googlePayAvailable;
   return (
     <div className="space-y-4">
       <div>
@@ -51,6 +68,44 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
             : "Enter your card details (securely processed by Square)"}
         </p>
       </div>
+
+      {showWallet && (
+        <div className="space-y-3">
+          {applePayAvailable && (
+            <div
+              ref={applePayRef}
+              onClick={onApplePayClick}
+              className="min-h-[48px] cursor-pointer"
+              style={{ display: applePayAvailable ? 'block' : 'none' }}
+            />
+          )}
+          {googlePayAvailable && (
+            <div
+              ref={googlePayRef}
+              onClick={onGooglePayClick}
+              className="min-h-[48px] cursor-pointer"
+              style={{ display: googlePayAvailable ? 'block' : 'none' }}
+            />
+          )}
+          {isWalletProcessing && (
+            <div className="flex items-center justify-center gap-2 py-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm text-muted-foreground">Processing wallet payment...</span>
+            </div>
+          )}
+          <div className="relative flex items-center gap-4 py-2">
+            <div className="flex-1 border-t" />
+            <span className="text-xs text-muted-foreground">or pay with card</span>
+            <div className="flex-1 border-t" />
+          </div>
+        </div>
+      )}
+
+      {walletDebugStatus && (
+        <div className="p-2 text-xs bg-yellow-50 border border-yellow-200 rounded text-yellow-800 dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-200">
+          <strong>Wallet Debug:</strong> {walletDebugStatus}
+        </div>
+      )}
 
       {savedCards.length > 0 && (
         <div className="flex gap-2">
