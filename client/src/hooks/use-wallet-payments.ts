@@ -65,20 +65,38 @@ export function useWalletPayments({
     }
   }, [amountCents]);
 
+  const prevLocationIdRef = useRef<number | null | undefined>(undefined);
+
+  const destroyInstances = useCallback(() => {
+    try { applePayInstanceRef.current?.destroy(); } catch {}
+    try { googlePayInstanceRef.current?.destroy(); } catch {}
+    applePayInstanceRef.current = null;
+    googlePayInstanceRef.current = null;
+    paymentRequestRef.current = null;
+    initializedRef.current = false;
+    setApplePayAvailable(false);
+    setGooglePayAvailable(false);
+  }, []);
+
   useEffect(() => {
     if (!enabled) {
       if (initializedRef.current) {
-        try { applePayInstanceRef.current?.destroy(); } catch {}
-        try { googlePayInstanceRef.current?.destroy(); } catch {}
-        applePayInstanceRef.current = null;
-        googlePayInstanceRef.current = null;
-        paymentRequestRef.current = null;
-        initializedRef.current = false;
-        setApplePayAvailable(false);
-        setGooglePayAvailable(false);
+        destroyInstances();
       }
+      prevLocationIdRef.current = locationId;
       return;
     }
+
+    if (!locationId) {
+      prevLocationIdRef.current = locationId;
+      return;
+    }
+
+    const locationChanged = prevLocationIdRef.current !== undefined && prevLocationIdRef.current !== locationId;
+    if (locationChanged && initializedRef.current) {
+      destroyInstances();
+    }
+    prevLocationIdRef.current = locationId;
 
     if (initializedRef.current) return;
 
@@ -127,7 +145,7 @@ export function useWalletPayments({
 
     const timer = setTimeout(init, 400);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [enabled, locationId]);
+  }, [enabled, locationId, destroyInstances]);
 
   const handleApplePayClick = useCallback(async () => {
     if (!applePayInstanceRef.current || isProcessing) return;
@@ -177,16 +195,7 @@ export function useWalletPayments({
     }
   }, [isProcessing, amountCents]);
 
-  const cleanup = useCallback(() => {
-    try { applePayInstanceRef.current?.destroy(); } catch {}
-    try { googlePayInstanceRef.current?.destroy(); } catch {}
-    applePayInstanceRef.current = null;
-    googlePayInstanceRef.current = null;
-    paymentRequestRef.current = null;
-    initializedRef.current = false;
-    setApplePayAvailable(false);
-    setGooglePayAvailable(false);
-  }, []);
+  const cleanup = destroyInstances;
 
   return {
     applePayAvailable,

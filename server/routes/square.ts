@@ -442,6 +442,13 @@ router.post('/apple-pay/register-domain', async (req: any, res) => {
           return sendError(res, 'Domain does not match your organization', 403, 'FORBIDDEN');
         }
       }
+
+      if (locationId) {
+        const location = await storage.getLocation(parseInt(locationId));
+        if (!location || location.organizationId !== req.user.organizationId) {
+          return sendError(res, 'Location does not belong to your organization', 403, 'FORBIDDEN');
+        }
+      }
     }
 
     const lvLocationId = locationId ? parseInt(locationId) : null;
