@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
 import { Organization } from '@shared/schema';
+import { isSystemAdmin } from '../utils/access-control';
 
 const log = createLogger("Subdomain");
 
@@ -98,6 +99,56 @@ export function subdomainDetection(req: Request, _res: Response, next: NextFunct
     next();
   }).catch(() => {
     req.subdomainOrg = null;
+    next();
+  });
+}
+
+export function orgSessionGuard(req: Request, res: Response, next: NextFunction) {
+  const subdomainOrg = req.subdomainOrg;
+  if (!subdomainOrg || !req.isAuthenticated() || !req.user) {
+    return next();
+  }
+
+  if (isSystemAdmin(req.user)) {
+    return next();
+  }
+
+  const user = req.user;
+
+  if (user.organizationId === subdomainOrg.id) {
+    return next();
+  }
+
+  if (user.bowlerId) {
+    storage.getBowlerLeagues({ bowlerId: user.bowlerId }).then((entries) => {
+      if (entries.length > 0) {
+        const leagueIds = entries.map(e => e.leagueId);
+        storage.getLeaguesByIds(leagueIds).then((leagues) => {
+          const belongsToOrg = leagues.some(l => l.organizationId === subdomainOrg.id);
+          if (belongsToOrg) {
+            storage.setUserOrganization(user.id, subdomainOrg.id).catch(err =>
+              log.error('Failed to set user organization from bowler linkage:', err)
+            );
+            return next();
+          }
+          destroySessionAndContinue(req, res, next);
+        }).catch(() => destroySessionAndContinue(req, res, next));
+      } else {
+        destroySessionAndContinue(req, res, next);
+      }
+    }).catch(() => destroySessionAndContinue(req, res, next));
+    return;
+  }
+
+  destroySessionAndContinue(req, res, next);
+}
+
+function destroySessionAndContinue(req: Request, res: Response, next: NextFunction) {
+  req.logout((err) => {
+    if (err) {
+      log.error('Failed to logout user during org session guard:', err);
+      return res.status(401).json({ success: false, error: { message: 'Not authenticated', code: 'AUTH_REQUIRED' } });
+    }
     next();
   });
 }

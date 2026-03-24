@@ -14,7 +14,7 @@ import { paymentScheduler } from './services/payment-scheduler';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDiskUrls } from './migrations/migrate-avatars';
 import { createLogger } from './logger';
 import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
-import { subdomainDetection } from './middleware/subdomain';
+import { subdomainDetection, orgSessionGuard } from './middleware/subdomain';
 import manifestRouter from './routes/manifest';
 
 const log = createLogger("Server");
@@ -133,6 +133,7 @@ app.use(helmet({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
 setupAuth(app);
+app.use(orgSessionGuard);
 
 app.use(manifestRouter);
 

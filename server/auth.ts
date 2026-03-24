@@ -9,6 +9,7 @@ import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { sanitizeUser, sendSuccess, sendError } from "./utils/api.js";
 import { cacheFetch, cacheInvalidate } from "./utils/cache";
+import { isSystemAdmin } from "./utils/access-control";
 import { env, isDev } from "./config";
 import { createLogger } from "./logger";
 import { csrfProtection } from "./middleware/csrf";
@@ -301,11 +302,27 @@ export function setupAuth(app: Express) {
       if (!user) {
         return sendError(res, info?.message || "Invalid credentials", 401, "INVALID_CREDENTIALS");
       }
-      req.login(user, (err) => {
+      req.login(user, async (err) => {
         if (err) {
           log.error('Session creation error:', err);
           return sendError(res, "Failed to create session", 500, "SESSION_ERROR");
         }
+
+        if (req.subdomainOrg && !user.organizationId && user.bowlerId) {
+          try {
+            const entries = await storage.getBowlerLeagues({ bowlerId: user.bowlerId });
+            if (entries.length > 0) {
+              const leagues = await storage.getLeaguesByIds(entries.map(e => e.leagueId));
+              if (leagues.some(l => l.organizationId === req.subdomainOrg!.id)) {
+                await storage.setUserOrganization(user.id, req.subdomainOrg.id);
+                user.organizationId = req.subdomainOrg.id;
+              }
+            }
+          } catch (orgErr) {
+            log.error('Failed to set org on login:', orgErr);
+          }
+        }
+
         log.info('Login successful', { userId: user.id, email: user.email, sessionId: req.sessionID, hostname: req.hostname, cookieDomain: req.session?.cookie?.domain || 'not set' });
         sendSuccess(res, sanitizeUser(user));
       });
@@ -322,7 +339,7 @@ export function setupAuth(app: Express) {
     });
   });
 
-  authRouter.get("/user", (req, res) => {
+  authRouter.get("/user", async (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
         log.info('/api/user unauthenticated request', { sessionId: req.sessionID, hasSession: !!req.session, hasCookie: !!req.headers.cookie, hostname: req.hostname });
@@ -330,6 +347,37 @@ export function setupAuth(app: Express) {
       }
 
       const user = req.user as SelectUser;
+      const subdomainOrg = req.subdomainOrg;
+
+      if (subdomainOrg && !isSystemAdmin(user)) {
+        if (user.organizationId !== subdomainOrg.id) {
+          let belongsViaBowler = false;
+          if (user.bowlerId) {
+            try {
+              const entries = await storage.getBowlerLeagues({ bowlerId: user.bowlerId });
+              if (entries.length > 0) {
+                const leagues = await storage.getLeaguesByIds(entries.map(e => e.leagueId));
+                belongsViaBowler = leagues.some(l => l.organizationId === subdomainOrg.id);
+                if (belongsViaBowler) {
+                  await storage.setUserOrganization(user.id, subdomainOrg.id);
+                }
+              }
+            } catch (err) {
+              log.error('Error checking bowler org linkage in /api/auth/user:', err);
+            }
+          }
+          if (!belongsViaBowler) {
+            return new Promise<void>((resolve) => {
+              req.logout((err) => {
+                if (err) log.error('Logout error in /api/auth/user org guard:', err);
+                sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
+                resolve();
+              });
+            });
+          }
+        }
+      }
+
       sendSuccess(res, sanitizeUser(user));
     } catch (error) {
       log.error('Error in /api/user route:', error);

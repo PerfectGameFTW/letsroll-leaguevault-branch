@@ -156,6 +156,13 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
 - Login/signup pages show org branding via `useSubdomainOrg` hook
 - Cookie domain set to `.leaguevault.app` in production for cross-subdomain session sharing
 - Org form dialog has a Subdomain field for admin configuration
+- **Org session isolation**: `orgSessionGuard` middleware (`server/middleware/subdomain.ts`) prevents sessions from leaking across org subdomains
+  - Runs after passport session deserialization on all routes
+  - Also enforced inline in `/api/auth/user` since auth routes are registered before the global middleware
+  - System admins bypass the guard (they manage all orgs)
+  - Users with bowler linkage to the subdomain org are auto-assigned to that org
+  - Non-matching users are logged out and see the org-branded login page
+  - Fails closed: if logout errors, returns 401 instead of continuing
 
 ## Previous Changes (2026-03-09)
 - **PWA (Progressive Web App)**: App is installable on mobile and desktop home screens
