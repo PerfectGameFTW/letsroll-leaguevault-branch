@@ -93,6 +93,7 @@ All server-side env vars are validated at startup by `server/config.ts` (Zod-bas
 - `SQUARE_PRODUCTION_LOCATION_ID` - Square production location ID (shared env var)
 - `SQUARE_APP_ID` / `VITE_SQUARE_APP_ID` - Square app ID (fallback)
 - `SQUARE_LOCATION_ID` / `VITE_SQUARE_LOCATION_ID` - Square location (fallback)
+- **Note**: All Square credentials are **production mode** (not sandbox). Apple Pay/Google Pay testing must be done on the live deployed app.
 - `SESSION_SECRET` - Express session secret
 - `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
 - `BN_API_KEY` - BowlNow sub-account API key for CRM contact sync
@@ -174,17 +175,24 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
   - Safe area insets and overscroll behavior for native mobile feel
 - **Apple Pay & Google Pay**: One-time wallet payments via Square Web Payments SDK
   - `client/src/hooks/use-wallet-payments.ts` — hook for initializing and tokenizing Apple Pay / Google Pay
-  - Wallet buttons rendered by Square SDK inside `PaymentCreditCardSection` above the card form
+  - **Bowler-facing flow** (primary): Wallet buttons in `payment-status-section.tsx` → `payment-setup-form.tsx` → `payment-setup-card-input.tsx`
+    - Wallet ref containers are always rendered (hidden via `display: none`) so Square SDK can attach; shown when available
+    - Gated to one-time payments and upfront league payments only (`selectedSchedule === 'custom' || league.paymentMode === 'upfront'`) — wallet cannot create autopay schedules
+    - On successful wallet payment, card is automatically saved on file (`storeCard: true`) for future autopay use
+    - "or pay with card" divider appears between wallet buttons and card form when wallet is available
+  - **Admin-facing flow**: Wallet buttons in `PaymentCreditCardSection` above the card form
   - Wallet tokens go to the same `/api/square/payments` endpoint (no backend changes needed)
   - Payment request amount auto-updates when the form amount changes
   - Graceful fallback: buttons only appear when the device/browser supports them
+  - Hook has defensive checks: validates `attach` method exists on SDK-returned objects before calling
+  - Debug status banner (temporary): shows wallet init state for troubleshooting on-device
+  - **Platform support**: Apple Pay works only in Safari on iOS; Google Pay works only in Chrome on Android
   - Apple Pay requires domain verification: `/.well-known/apple-developer-merchantid-domain-association` route (serves static file from `.well-known/` directory first, falls back to `APPLE_PAY_DOMAIN_VERIFICATION` env var). Download the verification file from Square Dashboard → Apple Pay and place it at `.well-known/apple-developer-merchantid-domain-association`.
   - Apple Pay domain registration: `POST /api/square/apple-pay/register-domain` (admin-only, per-domain)
   - Apple Pay bulk registration: `POST /api/square/apple-pay/register-all-domains` (system admin, all org subdomains)
   - Auto-registration: org create/update in `server/routes/organizations.ts` fires fire-and-forget `registerApplePayDomain()` when subdomain/slug changes
   - `registerApplePayDomain()` in `server/services/square.ts` — calls Square's `POST /v2/apple-pay/domains`
   - Google Pay requires `pay.google.com` in CSP scriptSrc, frameSrc, connectSrc
-  - Wallet payments are one-time only — cannot be saved for recurring/auto-pay
 - **Saved Card Payments**: Bowlers can save credit cards during one-time payments and use them for future payments
   - `listCardsOnFile(customerId)` function in `server/services/square.ts` — retrieves enabled cards from Square
   - `GET /api/square/cards/:bowlerId` endpoint to list saved cards for a bowler
