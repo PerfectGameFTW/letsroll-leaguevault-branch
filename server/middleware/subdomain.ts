@@ -103,53 +103,49 @@ export function subdomainDetection(req: Request, _res: Response, next: NextFunct
   });
 }
 
+export async function checkUserBelongsToOrg(
+  user: Express.User,
+  orgId: number
+): Promise<boolean> {
+  if (isSystemAdmin(user)) return true;
+  if (user.organizationId === orgId) return true;
+
+  if (user.bowlerId) {
+    try {
+      const entries = await storage.getBowlerLeagues({ bowlerId: user.bowlerId });
+      if (entries.length > 0) {
+        const leagues = await storage.getLeaguesByIds(entries.map(e => e.leagueId));
+        if (leagues.some(l => l.organizationId === orgId)) {
+          await storage.setUserOrganization(user.id, orgId);
+          (user as any).organizationId = orgId;
+          return true;
+        }
+      }
+    } catch (err) {
+      log.error('Error checking bowler org linkage:', err);
+    }
+  }
+
+  return false;
+}
+
 export function orgSessionGuard(req: Request, res: Response, next: NextFunction) {
   const subdomainOrg = req.subdomainOrg;
   if (!subdomainOrg || !req.isAuthenticated() || !req.user) {
     return next();
   }
 
-  if (isSystemAdmin(req.user)) {
-    return next();
-  }
-
-  const user = req.user;
-
-  if (user.organizationId === subdomainOrg.id) {
-    return next();
-  }
-
-  if (user.bowlerId) {
-    storage.getBowlerLeagues({ bowlerId: user.bowlerId }).then((entries) => {
-      if (entries.length > 0) {
-        const leagueIds = entries.map(e => e.leagueId);
-        storage.getLeaguesByIds(leagueIds).then((leagues) => {
-          const belongsToOrg = leagues.some(l => l.organizationId === subdomainOrg.id);
-          if (belongsToOrg) {
-            storage.setUserOrganization(user.id, subdomainOrg.id).catch(err =>
-              log.error('Failed to set user organization from bowler linkage:', err)
-            );
-            return next();
-          }
-          destroySessionAndContinue(req, res, next);
-        }).catch(() => destroySessionAndContinue(req, res, next));
-      } else {
-        destroySessionAndContinue(req, res, next);
+  checkUserBelongsToOrg(req.user, subdomainOrg.id).then((belongs) => {
+    if (belongs) return next();
+    req.logout((err) => {
+      if (err) {
+        log.error('Failed to logout user during org session guard:', err);
+        return res.status(401).json({ success: false, error: { message: 'Not authenticated', code: 'AUTH_REQUIRED' } });
       }
-    }).catch(() => destroySessionAndContinue(req, res, next));
-    return;
-  }
-
-  destroySessionAndContinue(req, res, next);
-}
-
-function destroySessionAndContinue(req: Request, res: Response, next: NextFunction) {
-  req.logout((err) => {
-    if (err) {
-      log.error('Failed to logout user during org session guard:', err);
-      return res.status(401).json({ success: false, error: { message: 'Not authenticated', code: 'AUTH_REQUIRED' } });
-    }
-    next();
+      next();
+    });
+  }).catch(() => {
+    res.status(401).json({ success: false, error: { message: 'Not authenticated', code: 'AUTH_REQUIRED' } });
   });
 }
 

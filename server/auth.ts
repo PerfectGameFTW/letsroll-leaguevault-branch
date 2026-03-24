@@ -9,8 +9,8 @@ import { storage } from "./storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { sanitizeUser, sendSuccess, sendError } from "./utils/api.js";
 import { cacheFetch, cacheInvalidate } from "./utils/cache";
-import { isSystemAdmin } from "./utils/access-control";
 import { env, isDev } from "./config";
+import { checkUserBelongsToOrg } from "./middleware/subdomain";
 import { createLogger } from "./logger";
 import { csrfProtection } from "./middleware/csrf";
 
@@ -308,18 +308,11 @@ export function setupAuth(app: Express) {
           return sendError(res, "Failed to create session", 500, "SESSION_ERROR");
         }
 
-        if (req.subdomainOrg && !user.organizationId && user.bowlerId) {
+        if (req.subdomainOrg && !user.organizationId) {
           try {
-            const entries = await storage.getBowlerLeagues({ bowlerId: user.bowlerId });
-            if (entries.length > 0) {
-              const leagues = await storage.getLeaguesByIds(entries.map(e => e.leagueId));
-              if (leagues.some(l => l.organizationId === req.subdomainOrg!.id)) {
-                await storage.setUserOrganization(user.id, req.subdomainOrg.id);
-                user.organizationId = req.subdomainOrg.id;
-              }
-            }
+            await checkUserBelongsToOrg(user, req.subdomainOrg.id);
           } catch (orgErr) {
-            log.error('Failed to set org on login:', orgErr);
+            log.error('Failed to check org on login:', orgErr);
           }
         }
 
@@ -349,32 +342,16 @@ export function setupAuth(app: Express) {
       const user = req.user as SelectUser;
       const subdomainOrg = req.subdomainOrg;
 
-      if (subdomainOrg && !isSystemAdmin(user)) {
-        if (user.organizationId !== subdomainOrg.id) {
-          let belongsViaBowler = false;
-          if (user.bowlerId) {
-            try {
-              const entries = await storage.getBowlerLeagues({ bowlerId: user.bowlerId });
-              if (entries.length > 0) {
-                const leagues = await storage.getLeaguesByIds(entries.map(e => e.leagueId));
-                belongsViaBowler = leagues.some(l => l.organizationId === subdomainOrg.id);
-                if (belongsViaBowler) {
-                  await storage.setUserOrganization(user.id, subdomainOrg.id);
-                }
-              }
-            } catch (err) {
-              log.error('Error checking bowler org linkage in /api/auth/user:', err);
-            }
-          }
-          if (!belongsViaBowler) {
-            return new Promise<void>((resolve) => {
-              req.logout((err) => {
-                if (err) log.error('Logout error in /api/auth/user org guard:', err);
-                sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
-                resolve();
-              });
+      if (subdomainOrg) {
+        const belongs = await checkUserBelongsToOrg(user, subdomainOrg.id);
+        if (!belongs) {
+          return new Promise<void>((resolve) => {
+            req.logout((err) => {
+              if (err) log.error('Logout error in /api/auth/user org guard:', err);
+              sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
+              resolve();
             });
-          }
+          });
         }
       }
 
