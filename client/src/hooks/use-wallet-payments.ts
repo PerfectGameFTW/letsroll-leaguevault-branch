@@ -112,7 +112,7 @@ export function useWalletPayments({
         setDebugStatus(`init:loc=${locationId}`);
         const payments = await initializeSquare(locationId);
         if (cancelled || !mountedRef.current) return;
-        setDebugStatus('square-ready');
+        setDebugStatus(`square-ready`);
 
         const amount = amountCents > 0 ? (amountCents / 100).toFixed(2) : '1.00';
         const paymentRequest = payments.paymentRequest({
@@ -128,8 +128,10 @@ export function useWalletPayments({
           setDebugStatus('trying-apple');
           const applePay = await payments.applePay(paymentRequest);
           if (!applePay || typeof applePay.attach !== 'function') {
-            const keys = applePay ? Object.getOwnPropertyNames(Object.getPrototypeOf(applePay) || applePay).join(',') : 'null';
-            appleResult = `not-supported(keys=${keys})`;
+            const ownKeys = applePay ? Object.keys(applePay).join(',') : 'null';
+            const ownNames = applePay ? Object.getOwnPropertyNames(applePay).join(',') : 'null';
+            const json = applePay ? JSON.stringify(applePay).substring(0, 200) : 'null';
+            appleResult = `no-attach(own=${ownKeys}|names=${ownNames}|json=${json})`;
           } else if (cancelled || !mountedRef.current) {
             appleResult = `no-attach(c=${cancelled},m=${mountedRef.current})`;
           } else if (!applePayRef.current) {
