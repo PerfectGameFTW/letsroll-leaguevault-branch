@@ -83,13 +83,26 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
           type="button"
           onClick={onApplePayClick}
           disabled={isWalletProcessing}
-          className="w-full h-12 rounded-md bg-black text-white flex items-center justify-center gap-2 hover:bg-gray-900 transition-colors disabled:opacity-50"
-          style={{ WebkitAppearance: 'none', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
+          className="apple-pay-button w-full"
+          style={{
+            WebkitAppearance: 'none',
+            appearance: 'none',
+            backgroundColor: '#000',
+            border: 'none',
+            borderRadius: '6px',
+            height: '48px',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 0,
+            opacity: isWalletProcessing ? 0.5 : 1,
+          }}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="white">
-            <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+          <svg xmlns="http://www.w3.org/2000/svg" width="65" height="28" viewBox="0 0 165.52 105.97" fill="white">
+            <path d="M31.54 14.2a10.74 10.74 0 0 0 2.47-7.7 10.93 10.93 0 0 0-7.13 3.69 10.23 10.23 0 0 0-2.53 7.42 9.04 9.04 0 0 0 7.19-3.41zM33.97 21.48c-3.98-.23-7.37 2.26-9.26 2.26s-4.81-2.14-7.95-2.08a11.76 11.76 0 0 0-10 6.05c-4.27 7.4-1.1 18.36 3.03 24.38 2.04 2.95 4.44 6.26 7.62 6.14 3.03-.12 4.21-1.97 7.89-1.97s4.74 1.97 7.95 1.91c3.29-.06 5.37-2.95 7.41-5.93a26.6 26.6 0 0 0 3.35-6.87 11.08 11.08 0 0 1-6.63-10.12 11.24 11.24 0 0 1 5.37-9.44 11.52 11.52 0 0 0-9.08-4.92l-.7.49z"/>
+            <path d="M76.65 4.56c12.06 0 20.45 8.3 20.45 20.39S88.83 45.4 76.53 45.4h-13.3v21.17H54.6V4.56zm-13.42 33h11.04c8.4 0 13.18-4.53 13.18-12.57S82.67 12.4 74.33 12.4H63.23zM99.1 53.04c0-7.95 6.09-12.82 16.88-13.42l12.45-.72v-3.5c0-5.06-3.41-8.09-9.11-8.09-5.37 0-8.81 2.7-9.62 6.87h-7.68c.48-8.06 7.14-14 17.66-14 10.37 0 16.94 5.49 16.94 14.12v29.55h-7.92v-7.07h-.18c-2.32 4.69-7.44 7.71-12.72 7.71-7.89 0-13.18-4.87-13.18-11.93l-.52.48zm29.33-4.06V45.4l-11.21.66c-6.33.42-9.92 3.17-9.92 7.53s3.77 7.17 8.93 7.17c6.69 0 12.2-4.57 12.2-11.78zM143.12 84.98c-1.07 3.53-4.87 11.99-10.61 11.99-1.16 0-2.14-.18-2.14-.18v-7.17s.96.12 1.61.12c2.5 0 3.89-1.07 5.31-4.63l.96-2.5-16.22-43.54h8.69l11.69 36.29h.18l11.69-36.29h8.45z"/>
           </svg>
-          <span style={{ fontSize: '16px', fontWeight: 500 }}>Pay</span>
         </button>
       )}
       {!applePayAvailable && (
