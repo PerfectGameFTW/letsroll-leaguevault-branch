@@ -153,7 +153,15 @@ app.get('/loaderio-19ef38424d52907d2a5ef69f13f4794b.txt', (_req, res) => {
   res.type('text/plain').send('loaderio-19ef38424d52907d2a5ef69f13f4794b');
 });
 
-app.get('/.well-known/apple-developer-merchantid-domain-association', (_req, res) => {
+app.get('/.well-known/apple-developer-merchantid-domain-association', async (_req, res) => {
+  const staticPath = path.join(import.meta.dirname, '..', '.well-known', 'apple-developer-merchantid-domain-association');
+  try {
+    const { readFile } = await import('fs/promises');
+    const content = await readFile(staticPath, 'utf-8');
+    return res.type('text/plain').send(content);
+  } catch {
+    // Fall back to env var if static file not present
+  }
   const verification = process.env.APPLE_PAY_DOMAIN_VERIFICATION;
   if (verification) {
     res.type('text/plain').send(verification);

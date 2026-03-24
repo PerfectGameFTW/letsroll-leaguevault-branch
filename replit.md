@@ -178,7 +178,7 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
   - Wallet tokens go to the same `/api/square/payments` endpoint (no backend changes needed)
   - Payment request amount auto-updates when the form amount changes
   - Graceful fallback: buttons only appear when the device/browser supports them
-  - Apple Pay requires domain verification: `/.well-known/apple-developer-merchantid-domain-association` route (served from `APPLE_PAY_DOMAIN_VERIFICATION` env var)
+  - Apple Pay requires domain verification: `/.well-known/apple-developer-merchantid-domain-association` route (serves static file from `.well-known/` directory first, falls back to `APPLE_PAY_DOMAIN_VERIFICATION` env var). Download the verification file from Square Dashboard → Apple Pay and place it at `.well-known/apple-developer-merchantid-domain-association`.
   - Apple Pay domain registration: `POST /api/square/apple-pay/register-domain` (admin-only, per-domain)
   - Apple Pay bulk registration: `POST /api/square/apple-pay/register-all-domains` (system admin, all org subdomains)
   - Auto-registration: org create/update in `server/routes/organizations.ts` fires fire-and-forget `registerApplePayDomain()` when subdomain/slug changes
