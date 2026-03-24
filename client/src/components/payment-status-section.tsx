@@ -146,8 +146,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         }),
       });
       const data = await response.json();
-      if (!response.ok || data.status !== 'COMPLETED') {
-        throw new Error(data.error?.message || 'Payment failed');
+      if (!response.ok) {
+        throw new Error(data.error?.message || data.message || `Payment failed (HTTP ${response.status})`);
+      }
+      if (data.status && data.status !== 'COMPLETED') {
+        throw new Error(`Payment not completed (status: ${data.status})`);
       }
       const walletLabel = walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay';
       toast({ title: "Payment Successful", description: `${walletLabel} payment of $${(amount / 100).toFixed(2)} completed. Your card has been saved for future payments.` });

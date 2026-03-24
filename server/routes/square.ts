@@ -189,16 +189,18 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       dbPaymentId: dbPayment.id,
       savedCardId: storedCardId ?? null,
     });
-  } catch (error) {
-    log.error('Payment processing error:', {
-      error: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : error
-    });
+  } catch (error: any) {
+    const errDetail = error instanceof Error ? {
+      name: error.name,
+      message: error.message,
+      stack: error.stack?.split('\n').slice(0, 5).join('\n'),
+    } : error;
+    const squareErrors = error?.errors || error?.body?.errors;
+    log.error('Payment processing error:', { error: errDetail, squareErrors });
     let userMessage = 'Payment processing failed. Please try again.';
-    if (error instanceof Error && error.message.startsWith('{')) {
+    if (squareErrors?.[0]?.detail) {
+      userMessage = squareErrors[0].detail;
+    } else if (error instanceof Error && error.message.startsWith('{')) {
       try {
         const parsed = JSON.parse(error.message);
         userMessage = parsed.error?.message || userMessage;
