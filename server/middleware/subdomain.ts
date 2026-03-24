@@ -110,14 +110,18 @@ export async function checkUserBelongsToOrg(
   if (isSystemAdmin(user)) return true;
   if (user.organizationId === orgId) return true;
 
+  if (user.organizationId) {
+    return false;
+  }
+
   if (user.bowlerId) {
     try {
       const entries = await storage.getBowlerLeagues({ bowlerId: user.bowlerId });
       if (entries.length > 0) {
         const leagues = await storage.getLeaguesByIds(entries.map(e => e.leagueId));
         if (leagues.some(l => l.organizationId === orgId)) {
-          await storage.setUserOrganization(user.id, orgId);
-          (user as any).organizationId = orgId;
+          const updated = await storage.setUserOrganization(user.id, orgId);
+          Object.assign(user, { organizationId: updated.organizationId });
           return true;
         }
       }
