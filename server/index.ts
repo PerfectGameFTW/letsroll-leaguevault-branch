@@ -156,15 +156,19 @@ app.get('/loaderio-19ef38424d52907d2a5ef69f13f4794b.txt', (_req, res) => {
 app.get('/.well-known/apple-developer-merchantid-domain-association', async (_req, res) => {
   const staticPath = path.join(import.meta.dirname, '..', '.well-known', 'apple-developer-merchantid-domain-association');
   try {
-    const { readFile } = await import('fs/promises');
-    const content = await readFile(staticPath, 'utf-8');
-    return res.type('text/plain').send(content);
+    const { access } = await import('fs/promises');
+    await access(staticPath);
+    res.set('Content-Type', 'application/octet-stream');
+    res.set('Content-Disposition', 'attachment; filename="apple-developer-merchantid-domain-association"');
+    return res.sendFile(path.resolve(staticPath));
   } catch {
     // Fall back to env var if static file not present
   }
   const verification = process.env.APPLE_PAY_DOMAIN_VERIFICATION;
   if (verification) {
-    res.type('text/plain').send(verification);
+    res.set('Content-Type', 'application/octet-stream');
+    res.set('Content-Disposition', 'attachment; filename="apple-developer-merchantid-domain-association"');
+    res.send(verification);
     return;
   }
   res.status(404).type('text/plain').send('Not configured');
