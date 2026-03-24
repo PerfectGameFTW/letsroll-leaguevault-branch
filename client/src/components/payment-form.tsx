@@ -251,7 +251,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     handleGooglePayClick,
     isProcessing: isWalletProcessing,
     cleanup: cleanupWallet,
-    debugStatus: walletDebugStatus,
+    applePayTokenizeOnly,
+    googlePayTokenizeOnly,
   } = useWalletPayments({
     locationId: leagueInfo?.locationId ?? null,
     amountCents: watchedAmount || 0,
@@ -354,7 +355,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 onApplePayClick={handleApplePayClick}
                 onGooglePayClick={handleGooglePayClick}
                 isWalletProcessing={isWalletProcessing}
-                walletDebugStatus={walletDebugStatus}
+                applePayTokenizeOnly={applePayTokenizeOnly}
+                googlePayTokenizeOnly={googlePayTokenizeOnly}
               />
             )}
 

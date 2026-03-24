@@ -32,7 +32,8 @@ interface PaymentSetupCardInputProps {
   onApplePayClick: () => void;
   onGooglePayClick: () => void;
   isWalletProcessing: boolean;
-  walletDebugStatus: string;
+  applePayTokenizeOnly: boolean;
+  googlePayTokenizeOnly: boolean;
 }
 
 export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
@@ -55,7 +56,8 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
   onApplePayClick,
   onGooglePayClick,
   isWalletProcessing,
-  walletDebugStatus,
+  applePayTokenizeOnly,
+  googlePayTokenizeOnly,
 }) => {
   const showWallet = applePayAvailable || googlePayAvailable;
   return (
@@ -69,13 +71,14 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
         </p>
       </div>
 
-      <div
-        ref={applePayRef}
-        onClick={applePayAvailable ? onApplePayClick : undefined}
-        className={applePayAvailable ? "min-h-[48px] cursor-pointer" : ""}
-        style={{ display: (applePayAvailable && applePayRef.current?.children.length) ? 'block' : 'none' }}
-      />
-      {applePayAvailable && (
+      {applePayAvailable && !applePayTokenizeOnly && (
+        <div
+          ref={applePayRef}
+          onClick={onApplePayClick}
+          className="min-h-[48px] cursor-pointer"
+        />
+      )}
+      {applePayAvailable && applePayTokenizeOnly && (
         <button
           type="button"
           onClick={onApplePayClick}
@@ -89,12 +92,19 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
           <span style={{ fontSize: '16px', fontWeight: 500 }}>Pay</span>
         </button>
       )}
-      <div
-        ref={googlePayRef}
-        onClick={googlePayAvailable ? onGooglePayClick : undefined}
-        className={googlePayAvailable ? "min-h-[48px] cursor-pointer" : ""}
-        style={{ display: googlePayAvailable ? 'block' : 'none' }}
-      />
+      {!applePayAvailable && (
+        <div ref={applePayRef} style={{ display: 'none' }} />
+      )}
+      {googlePayAvailable && !googlePayTokenizeOnly && (
+        <div
+          ref={googlePayRef}
+          onClick={onGooglePayClick}
+          className="min-h-[48px] cursor-pointer"
+        />
+      )}
+      {!googlePayAvailable && (
+        <div ref={googlePayRef} style={{ display: 'none' }} />
+      )}
       {isWalletProcessing && (
         <div className="flex items-center justify-center gap-2 py-2">
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -106,12 +116,6 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
           <div className="flex-1 border-t" />
           <span className="text-xs text-muted-foreground">or pay with card</span>
           <div className="flex-1 border-t" />
-        </div>
-      )}
-
-      {walletDebugStatus && (
-        <div className="p-2 text-xs bg-yellow-50 border border-yellow-200 rounded text-yellow-800 dark:bg-yellow-900/30 dark:border-yellow-700 dark:text-yellow-200">
-          <strong>Wallet Debug:</strong> {walletDebugStatus}
         </div>
       )}
 

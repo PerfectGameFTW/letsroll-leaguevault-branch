@@ -13,6 +13,8 @@ interface UseWalletPaymentsOptions {
 interface UseWalletPaymentsReturn {
   applePayAvailable: boolean;
   googlePayAvailable: boolean;
+  applePayTokenizeOnly: boolean;
+  googlePayTokenizeOnly: boolean;
   applePayRef: React.RefObject<HTMLDivElement>;
   googlePayRef: React.RefObject<HTMLDivElement>;
   handleApplePayClick: () => Promise<void>;
@@ -31,6 +33,8 @@ export function useWalletPayments({
 }: UseWalletPaymentsOptions): UseWalletPaymentsReturn {
   const [applePayAvailable, setApplePayAvailable] = useState(false);
   const [googlePayAvailable, setGooglePayAvailable] = useState(false);
+  const [applePayTokenizeOnly, setApplePayTokenizeOnly] = useState(false);
+  const [googlePayTokenizeOnly, setGooglePayTokenizeOnly] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [debugStatus, setDebugStatus] = useState('waiting');
 
@@ -78,6 +82,8 @@ export function useWalletPayments({
     initializedRef.current = false;
     setApplePayAvailable(false);
     setGooglePayAvailable(false);
+    setApplePayTokenizeOnly(false);
+    setGooglePayTokenizeOnly(false);
   }, []);
 
   useEffect(() => {
@@ -144,6 +150,7 @@ export function useWalletPayments({
           } else {
             applePayInstanceRef.current = applePay;
             setApplePayAvailable(true);
+            setApplePayTokenizeOnly(true);
             appleResult = 'tokenize-only';
           }
         } catch (appleErr: any) {
@@ -172,6 +179,7 @@ export function useWalletPayments({
           } else {
             googlePayInstanceRef.current = googlePay;
             setGooglePayAvailable(true);
+            setGooglePayTokenizeOnly(true);
             googleResult = 'tokenize-only';
           }
         } catch (googleErr: any) {
@@ -247,6 +255,8 @@ export function useWalletPayments({
   return {
     applePayAvailable,
     googlePayAvailable,
+    applePayTokenizeOnly,
+    googlePayTokenizeOnly,
     applePayRef,
     googlePayRef,
     handleApplePayClick,

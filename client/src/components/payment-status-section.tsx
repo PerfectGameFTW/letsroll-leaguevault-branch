@@ -171,7 +171,8 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     handleGooglePayClick,
     isProcessing: isWalletProcessing,
     cleanup: cleanupWallet,
-    debugStatus: walletDebugStatus,
+    applePayTokenizeOnly,
+    googlePayTokenizeOnly,
   } = useWalletPayments({
     locationId: league.locationId ?? null,
     amountCents: calculateTotalAmount(),
@@ -285,7 +286,8 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         onApplePayClick={handleApplePayClick}
         onGooglePayClick={handleGooglePayClick}
         isWalletProcessing={isWalletProcessing}
-        walletDebugStatus={walletDebugStatus}
+        applePayTokenizeOnly={applePayTokenizeOnly}
+        googlePayTokenizeOnly={googlePayTokenizeOnly}
       />
     );
   }

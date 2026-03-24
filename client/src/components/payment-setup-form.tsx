@@ -57,7 +57,8 @@ interface PaymentSetupFormProps {
   onApplePayClick: () => void;
   onGooglePayClick: () => void;
   isWalletProcessing: boolean;
-  walletDebugStatus: string;
+  applePayTokenizeOnly: boolean;
+  googlePayTokenizeOnly: boolean;
 }
 
 export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
@@ -100,7 +101,8 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   onApplePayClick,
   onGooglePayClick,
   isWalletProcessing,
-  walletDebugStatus,
+  applePayTokenizeOnly,
+  googlePayTokenizeOnly,
 }) => {
   return (
     <Card className="w-full">
@@ -178,7 +180,8 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
             onApplePayClick={onApplePayClick}
             onGooglePayClick={onGooglePayClick}
             isWalletProcessing={isWalletProcessing}
-            walletDebugStatus={walletDebugStatus}
+            applePayTokenizeOnly={applePayTokenizeOnly}
+            googlePayTokenizeOnly={googlePayTokenizeOnly}
           />
 
           <PaymentSubmitSection
