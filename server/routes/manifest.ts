@@ -34,7 +34,7 @@ router.get('/manifest.json', (req: Request, res: Response) => {
   }
 
   const orgName = org.name || 'LeagueVault';
-  const shortName = orgName.length > 12 ? orgName.substring(0, 12) : orgName;
+  const shortName = 'LeagueVault';
 
   const icons = [];
   if (org.appIcon || org.logo) {
