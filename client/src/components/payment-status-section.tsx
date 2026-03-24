@@ -142,16 +142,18 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
           amount,
           bowlerId: bowler.id,
           leagueId: league.id,
-          storeCard: false,
+          storeCard: true,
         }),
       });
       const data = await response.json();
       if (!response.ok || data.status !== 'COMPLETED') {
         throw new Error(data.error?.message || 'Payment failed');
       }
-      toast({ title: "Payment Successful", description: `${walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay'} payment of $${(amount / 100).toFixed(2)} completed.` });
+      const walletLabel = walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay';
+      toast({ title: "Payment Successful", description: `${walletLabel} payment of $${(amount / 100).toFixed(2)} completed. Your card has been saved for future payments.` });
       queryClient.invalidateQueries({ queryKey: [`/api/bowler-dashboard`] });
       queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`, league.id] });
       setShowPaymentSetup(false);
     } catch (err: any) {
       toast({ title: "Payment Failed", description: err?.message || 'Payment could not be processed', variant: "destructive" });
