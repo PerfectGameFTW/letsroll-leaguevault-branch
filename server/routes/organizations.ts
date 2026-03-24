@@ -16,8 +16,39 @@ import { requireOrganizationAccess } from '../utils/access-control.js';
 import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email.js';
 import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger';
+import { registerApplePayDomain } from '../services/square.js';
 
 const log = createLogger("Organizations");
+
+async function autoRegisterApplePayDomain(org: Organization) {
+  const domain = org.subdomain || org.slug;
+  if (!domain) return;
+
+  const fullDomain = `${domain}.leaguevault.app`;
+  try {
+    const leagues = await storage.getLeagues(org.id);
+    const locationIds = new Set<number>();
+    for (const league of leagues) {
+      if (league.locationId) locationIds.add(league.locationId);
+    }
+
+    if (locationIds.size === 0) {
+      log.info(`No locations with Square credentials for org ${org.id}, skipping Apple Pay domain registration`);
+      return;
+    }
+
+    for (const locationId of locationIds) {
+      const result = await registerApplePayDomain(fullDomain, locationId);
+      if (result.success) {
+        log.info(`Apple Pay domain registered for ${fullDomain} (location ${locationId})`);
+      } else {
+        log.warn(`Apple Pay domain registration failed for ${fullDomain} (location ${locationId}): ${result.message}`);
+      }
+    }
+  } catch (error) {
+    log.error(`Apple Pay auto-registration error for ${fullDomain}:`, error);
+  }
+}
 
 const router = Router();
 
@@ -172,7 +203,11 @@ router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res
     }
 
     const organization = await storage.createOrganization(validatedData);
-    
+
+    if (organization.subdomain || organization.slug) {
+      autoRegisterApplePayDomain(organization).catch(() => {});
+    }
+
     if (adminData && adminData.email && adminData.name) {
       try {
         const existingUser = await storage.getUserByEmail(adminData.email);
@@ -253,6 +288,13 @@ router.patch('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
     }
 
     const updatedOrganization = await storage.updateOrganization(id, validatedData);
+
+    const subdomainChanged = validatedData.subdomain !== undefined && validatedData.subdomain !== organization.subdomain;
+    const slugChanged = validatedData.slug !== undefined && validatedData.slug !== organization.slug;
+    if (subdomainChanged || slugChanged) {
+      autoRegisterApplePayDomain(updatedOrganization).catch(() => {});
+    }
+
     sendSuccess(res, sanitizeOrg(updatedOrganization));
   } catch (error) {
     if (error instanceof z.ZodError) {

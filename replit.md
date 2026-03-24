@@ -179,9 +179,11 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
   - Payment request amount auto-updates when the form amount changes
   - Graceful fallback: buttons only appear when the device/browser supports them
   - Apple Pay requires domain verification: `/.well-known/apple-developer-merchantid-domain-association` route (served from `APPLE_PAY_DOMAIN_VERIFICATION` env var)
-  - Apple Pay domain registration: `POST /api/square/apple-pay/register-domain` (admin-only)
+  - Apple Pay domain registration: `POST /api/square/apple-pay/register-domain` (admin-only, per-domain)
+  - Apple Pay bulk registration: `POST /api/square/apple-pay/register-all-domains` (system admin, all org subdomains)
+  - Auto-registration: org create/update in `server/routes/organizations.ts` fires fire-and-forget `registerApplePayDomain()` when subdomain/slug changes
   - `registerApplePayDomain()` in `server/services/square.ts` — calls Square's `POST /v2/apple-pay/domains`
-  - Google Pay requires `pay.google.com` in CSP frame-src and connect-src
+  - Google Pay requires `pay.google.com` in CSP scriptSrc, frameSrc, connectSrc
   - Wallet payments are one-time only — cannot be saved for recurring/auto-pay
 - **Saved Card Payments**: Bowlers can save credit cards during one-time payments and use them for future payments
   - `listCardsOnFile(customerId)` function in `server/services/square.ts` — retrieves enabled cards from Square

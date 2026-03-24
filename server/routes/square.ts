@@ -381,6 +381,47 @@ router.get('/cards/:bowlerId', async (req, res) => {
   }
 });
 
+router.post('/apple-pay/register-all-domains', async (req: any, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
+    }
+
+    const organizations = await storage.getOrganizations();
+    const results: { domain: string; success: boolean; message: string }[] = [];
+
+    for (const org of organizations) {
+      const domain = org.subdomain || org.slug;
+      if (!domain) continue;
+
+      const fullDomain = `${domain}.leaguevault.app`;
+      const leagues = await storage.getLeagues(org.id);
+      const locationIds = new Set<number>();
+      for (const league of leagues) {
+        if (league.locationId) locationIds.add(league.locationId);
+      }
+
+      if (locationIds.size === 0) {
+        results.push({ domain: fullDomain, success: false, message: 'No locations with Square credentials' });
+        continue;
+      }
+
+      for (const locationId of locationIds) {
+        const result = await registerApplePayDomain(fullDomain, locationId);
+        results.push({ domain: fullDomain, ...result });
+      }
+    }
+
+    const registered = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+    log.info(`Apple Pay bulk registration: ${registered} succeeded, ${failed} failed`);
+    sendSuccess(res, { results, registered, failed });
+  } catch (error) {
+    log.error('Apple Pay bulk registration error:', error);
+    sendError(res, 'Failed to bulk register domains', 500);
+  }
+});
+
 router.post('/apple-pay/register-domain', async (req: any, res) => {
   try {
     if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
