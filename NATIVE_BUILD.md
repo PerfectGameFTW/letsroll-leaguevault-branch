@@ -191,7 +191,7 @@ npx cap sync
 | Setting | Value |
 |---------|-------|
 | Bundle ID | `app.leaguevault.mobile` |
-| App Name | `LeagueVault` |
+| App Name | `Bowling Leagues` |
 | Production URL | `https://leaguevault.app` |
 | Web Assets Dir | `dist/public` |
 | iOS Min Target | iOS 14.0 |

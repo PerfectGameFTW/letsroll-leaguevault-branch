@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { initCsrfToken } from "./lib/queryClient";
+import { isNativeApp } from './lib/capacitor';
 
 initCsrfToken();
 
@@ -26,8 +27,6 @@ root.render(
     <App />
   </StrictMode>
 );
-
-import { isNativeApp } from './lib/capacitor';
 
 if ('serviceWorker' in navigator && !isNativeApp()) {
   window.addEventListener('load', () => {
