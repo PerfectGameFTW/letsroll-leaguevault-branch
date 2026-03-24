@@ -322,6 +322,19 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
   - Prerequisite: `npx tsx scripts/seed.ts all` to create test users
 - **Seed utility**: `npx tsx scripts/seed.ts <command>` (first-admin | org-admin | system-admin \<ID\> | all)
 
+## Capacitor (Native Mobile Apps)
+- **Capacitor** wraps the web app for iOS App Store and Google Play Store distribution
+- Native projects: `ios/` (Xcode) and `android/` (Android Studio/Gradle)
+- Config: `capacitor.config.ts` — loads live production URL (`https://leaguevault.app`) so web updates don't require app store re-submission
+- Bundle ID: `app.leaguevault.mobile`
+- Platform detection: `client/src/lib/capacitor.ts` — `isNativeApp()`, `getPlatform()`, `isIOS()`, `isAndroid()`
+- Service worker registration is skipped inside native apps
+- Native permissions configured: Camera, Photo Library (iOS Info.plist + Android Manifest)
+- CORS: `capacitor://localhost` and `ionic://localhost` added to allowed origins in `server/index.ts`
+- Build guide: `NATIVE_BUILD.md` — step-by-step instructions for building and submitting to stores
+- Capacitor plugins installed: `@capacitor/status-bar`, `@capacitor/splash-screen`, `@capacitor/camera`, `@capacitor/preferences`
+- Key commands: `npx cap sync` (sync web assets to native), `npx cap open ios`, `npx cap open android`
+
 ## Previous Changes (2026-03-01)
 - Removed dead code: deprecated `server/routes.ts`, `client/src/pages/App.tsx`, unused `series`/`weeklyStats` tables
 - Consolidated authorization: all access control functions in `server/utils/access-control.ts`

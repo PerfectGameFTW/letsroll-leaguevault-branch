@@ -50,6 +50,8 @@ const allowedOrigins = getAllowedOrigins();
 
 function isAllowedOrigin(origin: string): boolean {
   if (allowedOrigins.includes(origin)) return true;
+  if (origin === 'capacitor://localhost' || origin === 'ionic://localhost') return true;
+  if (origin === 'http://localhost') return true;
   try {
     const url = new URL(origin);
     if (url.hostname.endsWith('.leaguevault.app') && url.protocol === 'https:') {

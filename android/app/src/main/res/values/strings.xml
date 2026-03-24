@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">LeagueVault</string>
+    <string name="title_activity_main">LeagueVault</string>
+    <string name="package_name">app.leaguevault.mobile</string>
+    <string name="custom_url_scheme">app.leaguevault.mobile</string>
+</resources>

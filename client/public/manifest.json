@@ -1,7 +1,7 @@
 {
-  "name": "LeagueVault",
-  "short_name": "LeagueVault",
-  "description": "Bowling League Management System",
+  "name": "Bowling Leagues",
+  "short_name": "Leagues",
+  "description": "Bowling League Management",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",

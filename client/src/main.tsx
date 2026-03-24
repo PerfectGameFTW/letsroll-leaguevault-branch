@@ -27,7 +27,9 @@ root.render(
   </StrictMode>
 );
 
-if ('serviceWorker' in navigator) {
+import { isNativeApp } from './lib/capacitor';
+
+if ('serviceWorker' in navigator && !isNativeApp()) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
