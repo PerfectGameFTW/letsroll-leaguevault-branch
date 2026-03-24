@@ -81,6 +81,7 @@ app.use(helmet({
         "'self'",
         "https://web.squarecdn.com",
         "https://sandbox.web.squarecdn.com",
+        "https://pay.google.com",
         ...(isDev ? ["'unsafe-inline'", "'unsafe-eval'"] : []),
       ],
       styleSrc: [
@@ -100,6 +101,8 @@ app.use(helmet({
         "https://pci-connect.squareupsandbox.com",
         "https://square-fonts-production-f.squarecdn.com",
         "https://d1g145x70srn7h.cloudfront.net",
+        "https://pay.google.com",
+        "https://google.com",
         "https://*.ingest.sentry.io",
         "https://*.ingest.us.sentry.io",
         ...(isDev ? ["ws:", "wss:"] : []),
@@ -110,6 +113,7 @@ app.use(helmet({
         "https://sandbox.web.squarecdn.com",
         "https://pci-connect.squareup.com",
         "https://pci-connect.squareupsandbox.com",
+        "https://pay.google.com",
       ],
       imgSrc: ["'self'", "data:", "blob:", "https://web.squarecdn.com", "https://sandbox.web.squarecdn.com"],
       fontSrc: ["'self'", "data:", "https://square-fonts-production-f.squarecdn.com", "https://d1g145x70srn7h.cloudfront.net"],
@@ -147,6 +151,15 @@ app.use('/uploads/avatars', express.static(path.join(process.cwd(), 'uploads', '
 
 app.get('/loaderio-19ef38424d52907d2a5ef69f13f4794b.txt', (_req, res) => {
   res.type('text/plain').send('loaderio-19ef38424d52907d2a5ef69f13f4794b');
+});
+
+app.get('/.well-known/apple-developer-merchantid-domain-association', (_req, res) => {
+  const verification = process.env.APPLE_PAY_DOMAIN_VERIFICATION;
+  if (verification) {
+    res.type('text/plain').send(verification);
+    return;
+  }
+  res.status(404).type('text/plain').send('Not configured');
 });
 
 app.use('/api', (req, res, next) => {

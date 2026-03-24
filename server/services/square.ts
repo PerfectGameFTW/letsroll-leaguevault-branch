@@ -558,6 +558,24 @@ export async function listCardsOnFile(customerId: string, locationId?: number | 
   }
 }
 
+export async function registerApplePayDomain(domain: string, locationId?: number | null): Promise<{ success: boolean; message: string }> {
+  const client = await resolveSquareClient(locationId);
+  if (!client) {
+    return { success: false, message: 'Square client not configured for this location' };
+  }
+
+  try {
+    await client.applePayApi.registerDomain({ domainName: domain });
+    log.info(`Apple Pay domain registered: ${domain}`);
+    return { success: true, message: `Domain ${domain} registered for Apple Pay` };
+  } catch (error) {
+    const apiError = error as ApiError;
+    const detail = (apiError as any)?.result?.errors?.[0]?.detail;
+    log.error('Apple Pay domain registration error:', detail || error);
+    return { success: false, message: detail || 'Failed to register domain for Apple Pay' };
+  }
+}
+
 export default {
   createOrUpdateCustomer,
   processPayment,
@@ -567,4 +585,5 @@ export default {
   listCatalogCategories,
   createOrderWithPayment,
   refundPayment,
+  registerApplePayDomain,
 };

@@ -27,8 +27,27 @@ interface SquareCustomer {
   email: string;
 }
 
+export interface SquarePaymentRequestDetails {
+  countryCode: string;
+  currencyCode: string;
+  total: { amount: string; label: string };
+}
+
+export interface SquarePaymentRequest {
+  update(details: { total: { amount: string; label: string } }): void;
+}
+
+export interface SquareWalletPayment {
+  attach(selectorOrElement: string | HTMLElement): Promise<void>;
+  tokenize(): Promise<TokenizeResult>;
+  destroy(): void;
+}
+
 interface SquarePayments {
   card(options?: { style?: Record<string, Record<string, string>> }): Promise<SquareCard>;
+  paymentRequest(details: SquarePaymentRequestDetails): SquarePaymentRequest;
+  applePay(paymentRequest: SquarePaymentRequest): Promise<SquareWalletPayment>;
+  googlePay(paymentRequest: SquarePaymentRequest): Promise<SquareWalletPayment>;
 }
 
 interface SquareCard {

@@ -172,6 +172,17 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
   - Service worker registered in `client/src/main.tsx`
   - Apple-specific meta tags for iOS home screen support
   - Safe area insets and overscroll behavior for native mobile feel
+- **Apple Pay & Google Pay**: One-time wallet payments via Square Web Payments SDK
+  - `client/src/hooks/use-wallet-payments.ts` — hook for initializing and tokenizing Apple Pay / Google Pay
+  - Wallet buttons rendered by Square SDK inside `PaymentCreditCardSection` above the card form
+  - Wallet tokens go to the same `/api/square/payments` endpoint (no backend changes needed)
+  - Payment request amount auto-updates when the form amount changes
+  - Graceful fallback: buttons only appear when the device/browser supports them
+  - Apple Pay requires domain verification: `/.well-known/apple-developer-merchantid-domain-association` route (served from `APPLE_PAY_DOMAIN_VERIFICATION` env var)
+  - Apple Pay domain registration: `POST /api/square/apple-pay/register-domain` (admin-only)
+  - `registerApplePayDomain()` in `server/services/square.ts` — calls Square's `POST /v2/apple-pay/domains`
+  - Google Pay requires `pay.google.com` in CSP frame-src and connect-src
+  - Wallet payments are one-time only — cannot be saved for recurring/auto-pay
 - **Saved Card Payments**: Bowlers can save credit cards during one-time payments and use them for future payments
   - `listCardsOnFile(customerId)` function in `server/services/square.ts` — retrieves enabled cards from Square
   - `GET /api/square/cards/:bowlerId` endpoint to list saved cards for a bowler

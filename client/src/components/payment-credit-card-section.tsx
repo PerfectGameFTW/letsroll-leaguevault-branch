@@ -40,6 +40,13 @@ interface PaymentCreditCardSectionProps {
   onCleanupCard: () => void;
   initializationAttempted: MutableRefObject<boolean>;
   setIsSquareReady: (ready: boolean) => void;
+  applePayAvailable: boolean;
+  googlePayAvailable: boolean;
+  applePayRef: React.RefObject<HTMLDivElement>;
+  googlePayRef: React.RefObject<HTMLDivElement>;
+  onApplePayClick: () => Promise<void>;
+  onGooglePayClick: () => Promise<void>;
+  isWalletProcessing: boolean;
 }
 
 export function PaymentCreditCardSection({
@@ -56,7 +63,16 @@ export function PaymentCreditCardSection({
   onCleanupCard,
   initializationAttempted,
   setIsSquareReady,
+  applePayAvailable,
+  googlePayAvailable,
+  applePayRef,
+  googlePayRef,
+  onApplePayClick,
+  onGooglePayClick,
+  isWalletProcessing,
 }: PaymentCreditCardSectionProps) {
+  const hasWalletOptions = applePayAvailable || googlePayAvailable;
+
   if (squareLoadFailed) {
     return (
       <Alert variant="destructive" className="mb-4">
@@ -71,6 +87,38 @@ export function PaymentCreditCardSection({
 
   return (
     <div className="space-y-4">
+      <div className="space-y-2">
+        <div
+          ref={applePayRef}
+          className={applePayAvailable ? 'min-h-[40px]' : 'hidden'}
+          onClick={onApplePayClick}
+        />
+        <div
+          ref={googlePayRef}
+          className={googlePayAvailable ? 'min-h-[40px]' : 'hidden'}
+          onClick={onGooglePayClick}
+        />
+        {isWalletProcessing && (
+          <div className="flex items-center justify-center py-2">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
+            <span className="text-sm text-muted-foreground">Processing wallet payment...</span>
+          </div>
+        )}
+      </div>
+
+      {hasWalletOptions && (
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-background px-2 text-muted-foreground">
+              Or pay with card
+            </span>
+          </div>
+        </div>
+      )}
+
       {savedCards.length > 0 && (
         <div className="flex gap-2">
           <Button

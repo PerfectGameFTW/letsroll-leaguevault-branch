@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile } from '../services/square.js';
+import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile, registerApplePayDomain } from '../services/square.js';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api.js';
@@ -378,6 +378,31 @@ router.get('/cards/:bowlerId', async (req, res) => {
   } catch (error) {
     log.error('List cards error:', error);
     sendError(res, 'Failed to list cards');
+  }
+});
+
+router.post('/apple-pay/register-domain', async (req: any, res) => {
+  try {
+    if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
+      return sendError(res, 'Admin access required', 403, 'FORBIDDEN');
+    }
+
+    const { domain, locationId } = req.body;
+    if (!domain || typeof domain !== 'string') {
+      return sendError(res, 'Domain is required', 400, 'VALIDATION_ERROR');
+    }
+
+    const lvLocationId = locationId ? parseInt(locationId) : null;
+    const result = await registerApplePayDomain(domain, lvLocationId);
+
+    if (result.success) {
+      sendSuccess(res, result);
+    } else {
+      sendError(res, result.message, 400, 'REGISTRATION_FAILED');
+    }
+  } catch (error) {
+    log.error('Apple Pay domain registration error:', error);
+    sendError(res, 'Failed to register domain for Apple Pay', 500);
   }
 });
 

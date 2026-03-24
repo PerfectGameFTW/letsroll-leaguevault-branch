@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useToast } from "@/hooks/use-toast";
@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useSquarePayment } from "@/hooks/use-square-payment";
+import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { Form } from "@/components/ui/form";
 import {
   FormControl,
@@ -21,7 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { insertPaymentSchema, DEFAULT_WEEKLY_FEE_CENTS } from "@shared/schema";
 import type { InsertPayment, Bowler, League } from "@shared/schema";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, AlertCircle, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PaymentCreditCardSection } from "@/components/payment-credit-card-section";
@@ -47,6 +48,7 @@ interface PaymentFormProps {
 
 export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [isSquareReady, setIsSquareReady] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -100,6 +102,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
   const paymentType = form.watch("type");
   const selectedBowlerId = form.watch("bowlerId");
+  const watchedAmount = form.watch("amount");
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
     queryKey: [`/api/square/cards/${selectedBowlerId}`, leagueId],
@@ -200,6 +203,68 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [open]);
 
+  const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
+    const bowlerId = form.getValues('bowlerId');
+    const amount = form.getValues('amount');
+    const currentLeagueId = form.getValues('leagueId');
+
+    if (!bowlerId || !amount || !currentLeagueId) {
+      setPaymentError('Please select a bowler and enter an amount before paying');
+      return;
+    }
+
+    try {
+      const response = await csrfFetch('/api/square/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceId: token,
+          amount,
+          bowlerId,
+          leagueId: currentLeagueId,
+          storeCard: false,
+        }),
+      });
+
+      const responseData = await response.json();
+      if (!response.ok) {
+        throw new Error(responseData.error?.message || 'Payment failed');
+      }
+
+      const label = walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay';
+      toast({ title: "Success", description: `Payment processed via ${label}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
+      onClose();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Payment failed';
+      setPaymentError(errorMessage);
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
+    }
+  }, [form, toast, queryClient, onClose]);
+
+  const {
+    applePayAvailable,
+    googlePayAvailable,
+    applePayRef,
+    googlePayRef,
+    handleApplePayClick,
+    handleGooglePayClick,
+    isProcessing: isWalletProcessing,
+    cleanup: cleanupWallet,
+  } = useWalletPayments({
+    locationId: leagueInfo?.locationId ?? null,
+    amountCents: watchedAmount || 0,
+    enabled: open && paymentType === 'credit_card',
+    onTokenReceived: handleWalletPayment,
+    onError: (error) => setPaymentError(error),
+  });
+
+  useEffect(() => {
+    if (!open) {
+      cleanupWallet();
+    }
+  }, [open, cleanupWallet]);
+
   const onSubmit = usePaymentFormSubmit({
     form,
     card,
@@ -281,6 +346,13 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 onCleanupCard={cleanupCard}
                 initializationAttempted={initializationAttempted}
                 setIsSquareReady={setIsSquareReady}
+                applePayAvailable={applePayAvailable}
+                googlePayAvailable={googlePayAvailable}
+                applePayRef={applePayRef}
+                googlePayRef={googlePayRef}
+                onApplePayClick={handleApplePayClick}
+                onGooglePayClick={handleGooglePayClick}
+                isWalletProcessing={isWalletProcessing}
               />
             )}
 
@@ -296,6 +368,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 type="submit"
                 disabled={
                   form.formState.isSubmitting || 
+                  isWalletProcessing ||
                   (paymentType === "credit_card" && cardMode === 'new' && !isSquareReady) ||
                   (paymentType === "credit_card" && cardMode === 'saved' && !selectedSavedCardId)
                 }
