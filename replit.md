@@ -159,7 +159,7 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
 ## Subdomain Multi-Tenancy
 - Each org can have a custom `subdomain` field (e.g., `perfectgame`) independent of the `slug` (e.g., `perfect-game`)
 - Subdomain middleware (`server/middleware/subdomain.ts`) resolves org by: subdomain field first, then slug fallback
-- Dynamic PWA manifest at `/manifest.json` uses org branding (name, logo, appIcon) on subdomains
+- Dynamic PWA manifest at `/manifest.json` always uses "LeagueVault" as the app name; uses org's custom app icon on subdomains if configured
 - Login/signup pages show org branding via `useSubdomainOrg` hook
 - Cookie domain set to `.leaguevault.app` in production for cross-subdomain session sharing
 - Org form dialog has a Subdomain field for admin configuration
@@ -328,11 +328,16 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
   - Prerequisite: `npx tsx scripts/seed.ts all` to create test users
 - **Seed utility**: `npx tsx scripts/seed.ts <command>` (first-admin | org-admin | system-admin \<ID\> | all)
 
+## Branding
+- **App name is always "LeagueVault"** — in app stores, on the home screen icon, and in the PWA manifest (including on org subdomains)
+- White-labeling applies inside the app after login: org logos, colors, and content are customized per bowling center
+- Login/signup pages on org subdomains show org branding via `useSubdomainOrg` hook
+
 ## Capacitor (Native Mobile Apps)
 - **Capacitor** wraps the web app for iOS App Store and Google Play Store distribution
 - Native projects: `ios/` (Xcode) and `android/` (Android Studio/Gradle)
 - Config: `capacitor.config.ts` — loads live production URL (`https://leaguevault.app`) so web updates don't require app store re-submission
-- Bundle ID: `app.leaguevault.mobile`
+- Bundle ID: `app.leaguevault.mobile`, App Name: `LeagueVault`
 - Platform detection: `client/src/lib/capacitor.ts` — `isNativeApp()`, `getPlatform()`, `isIOS()`, `isAndroid()`
 - Service worker registration is skipped inside native apps
 - Native permissions configured: Camera, Photo Library (iOS Info.plist + Android Manifest)

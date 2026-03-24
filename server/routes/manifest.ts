@@ -5,8 +5,8 @@ const log = createLogger("Manifest");
 const router = Router();
 
 const DEFAULT_MANIFEST = {
-  name: "Bowling Leagues",
-  short_name: "Leagues",
+  name: "LeagueVault",
+  short_name: "LeagueVault",
   description: "Bowling League Management",
   start_url: "/",
   display: "standalone" as const,
@@ -33,9 +33,6 @@ router.get('/manifest.json', (req: Request, res: Response) => {
     return res.json(DEFAULT_MANIFEST);
   }
 
-  const orgName = org.name || 'Bowling Leagues';
-  const shortName = org.name ? org.name.substring(0, 12) : 'Leagues';
-
   const icons = [];
   if (org.appIcon || org.logo) {
     const iconUrl = `/api/organizations/${org.id}/app-icon`;
@@ -48,9 +45,9 @@ router.get('/manifest.json', (req: Request, res: Response) => {
   }
 
   const manifest = {
-    name: orgName,
-    short_name: shortName,
-    description: `${orgName} - Bowling League Management`,
+    name: "LeagueVault",
+    short_name: "LeagueVault",
+    description: "Bowling League Management",
     start_url: "/bowler-dashboard",
     display: "standalone" as const,
     background_color: "#ffffff",
