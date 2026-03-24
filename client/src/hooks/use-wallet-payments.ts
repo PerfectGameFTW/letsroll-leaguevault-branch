@@ -88,6 +88,7 @@ export function useWalletPayments({
     }
 
     if (!locationId) {
+      console.log('[WalletPayments] Skipping init — no locationId yet');
       prevLocationIdRef.current = locationId;
       return;
     }
@@ -104,9 +105,10 @@ export function useWalletPayments({
 
     async function init() {
       try {
-        console.log('[WalletPayments] Initializing with locationId:', locationId);
+        console.log('[WalletPayments] Initializing with locationId:', locationId, 'enabled:', enabled, 'amountCents:', amountCents);
         const payments = await initializeSquare(locationId);
         if (cancelled || !mountedRef.current) return;
+        console.log('[WalletPayments] Square payments initialized, creating payment request...');
 
         const amount = amountCents > 0 ? (amountCents / 100).toFixed(2) : '1.00';
         const paymentRequest = payments.paymentRequest({
@@ -115,34 +117,44 @@ export function useWalletPayments({
           total: { amount, label: 'Total' },
         });
         paymentRequestRef.current = paymentRequest;
+        console.log('[WalletPayments] Payment request created, initializing wallets...');
 
         try {
+          console.log('[WalletPayments] Attempting Apple Pay init...');
           const applePay = await payments.applePay(paymentRequest);
+          console.log('[WalletPayments] Apple Pay object created, attaching...', 'ref exists:', !!applePayRef.current);
           if (!cancelled && mountedRef.current && applePayRef.current) {
             await applePay.attach(applePayRef.current);
             applePayInstanceRef.current = applePay;
             setApplePayAvailable(true);
-            console.log('[WalletPayments] Apple Pay initialized successfully');
+            console.log('[WalletPayments] Apple Pay initialized and attached successfully');
+          } else {
+            console.log('[WalletPayments] Apple Pay skipped attach - cancelled:', cancelled, 'mounted:', mountedRef.current, 'ref:', !!applePayRef.current);
           }
-        } catch (appleErr) {
-          console.warn('[WalletPayments] Apple Pay not available:', appleErr);
+        } catch (appleErr: any) {
+          console.warn('[WalletPayments] Apple Pay not available:', appleErr?.message || appleErr);
         }
 
         try {
+          console.log('[WalletPayments] Attempting Google Pay init...');
           const googlePay = await payments.googlePay(paymentRequest);
+          console.log('[WalletPayments] Google Pay object created, attaching...', 'ref exists:', !!googlePayRef.current);
           if (!cancelled && mountedRef.current && googlePayRef.current) {
             await googlePay.attach(googlePayRef.current);
             googlePayInstanceRef.current = googlePay;
             setGooglePayAvailable(true);
-            console.log('[WalletPayments] Google Pay initialized successfully');
+            console.log('[WalletPayments] Google Pay initialized and attached successfully');
+          } else {
+            console.log('[WalletPayments] Google Pay skipped attach - cancelled:', cancelled, 'mounted:', mountedRef.current, 'ref:', !!googlePayRef.current);
           }
-        } catch (googleErr) {
-          console.warn('[WalletPayments] Google Pay not available:', googleErr);
+        } catch (googleErr: any) {
+          console.warn('[WalletPayments] Google Pay not available:', googleErr?.message || googleErr);
         }
 
         if (!cancelled) initializedRef.current = true;
-      } catch (err) {
-        console.error('[WalletPayments] Failed to initialize:', err);
+        console.log('[WalletPayments] Initialization complete');
+      } catch (err: any) {
+        console.error('[WalletPayments] Failed to initialize:', err?.message || err);
       }
     }
 
