@@ -3,6 +3,12 @@
 ## Overview
 A full-stack bowling league management application with multi-tenant support for managing leagues, teams, bowlers, scores, and financial payments.
 
+## Dependency Philosophy
+- Always use the latest stable versions of all dependencies, runtimes, and tooling.
+- When a newer version of a package requires a runtime upgrade (e.g., Node.js), upgrade the runtime rather than downgrading the package.
+- Keep all related packages on the same major version (e.g., all Capacitor packages on v8).
+- Current runtime: **Node.js 22 LTS** (upgraded to support Capacitor CLI v8).
+
 ## Architecture
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui + TanStack Query + wouter
 - **Backend**: Express + Passport.js + Drizzle ORM
