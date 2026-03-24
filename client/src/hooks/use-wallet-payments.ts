@@ -123,38 +123,51 @@ export function useWalletPayments({
         paymentRequestRef.current = paymentRequest;
 
         let appleResult = 'skip';
+        let appleAttached = false;
         try {
           setDebugStatus('trying-apple');
           const applePay = await payments.applePay(paymentRequest);
-          if (!cancelled && mountedRef.current && applePayRef.current) {
+          if (cancelled || !mountedRef.current) {
+            appleResult = `no-attach(c=${cancelled},m=${mountedRef.current})`;
+          } else if (!applePayRef.current) {
+            appleResult = 'ref-not-ready';
+          } else {
             await applePay.attach(applePayRef.current);
             applePayInstanceRef.current = applePay;
             setApplePayAvailable(true);
+            appleAttached = true;
             appleResult = 'OK';
-          } else {
-            appleResult = `no-attach(c=${cancelled},m=${mountedRef.current},r=${!!applePayRef.current})`;
           }
         } catch (appleErr: any) {
           appleResult = `ERR:${appleErr?.message || appleErr}`;
         }
 
         let googleResult = 'skip';
+        let googleAttached = false;
         try {
           setDebugStatus('trying-google');
           const googlePay = await payments.googlePay(paymentRequest);
-          if (!cancelled && mountedRef.current && googlePayRef.current) {
+          if (cancelled || !mountedRef.current) {
+            googleResult = `no-attach(c=${cancelled},m=${mountedRef.current})`;
+          } else if (!googlePayRef.current) {
+            googleResult = 'ref-not-ready';
+          } else {
             await googlePay.attach(googlePayRef.current);
             googlePayInstanceRef.current = googlePay;
             setGooglePayAvailable(true);
+            googleAttached = true;
             googleResult = 'OK';
-          } else {
-            googleResult = `no-attach(c=${cancelled},m=${mountedRef.current},r=${!!googlePayRef.current})`;
           }
         } catch (googleErr: any) {
           googleResult = `ERR:${googleErr?.message || googleErr}`;
         }
 
-        if (!cancelled) initializedRef.current = true;
+        if (!cancelled) {
+          const anyRefMissing = appleResult === 'ref-not-ready' || googleResult === 'ref-not-ready';
+          if (!anyRefMissing) {
+            initializedRef.current = true;
+          }
+        }
         setDebugStatus(`done|apple:${appleResult}|google:${googleResult}`);
       } catch (err: any) {
         setDebugStatus(`FAIL:${err?.message || err}`);

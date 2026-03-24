@@ -69,35 +69,29 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
         </p>
       </div>
 
+      <div
+        ref={applePayRef}
+        onClick={applePayAvailable ? onApplePayClick : undefined}
+        className={applePayAvailable ? "min-h-[48px] cursor-pointer" : ""}
+        style={{ display: applePayAvailable ? 'block' : 'none' }}
+      />
+      <div
+        ref={googlePayRef}
+        onClick={googlePayAvailable ? onGooglePayClick : undefined}
+        className={googlePayAvailable ? "min-h-[48px] cursor-pointer" : ""}
+        style={{ display: googlePayAvailable ? 'block' : 'none' }}
+      />
+      {isWalletProcessing && (
+        <div className="flex items-center justify-center gap-2 py-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span className="text-sm text-muted-foreground">Processing wallet payment...</span>
+        </div>
+      )}
       {showWallet && (
-        <div className="space-y-3">
-          {applePayAvailable && (
-            <div
-              ref={applePayRef}
-              onClick={onApplePayClick}
-              className="min-h-[48px] cursor-pointer"
-              style={{ display: applePayAvailable ? 'block' : 'none' }}
-            />
-          )}
-          {googlePayAvailable && (
-            <div
-              ref={googlePayRef}
-              onClick={onGooglePayClick}
-              className="min-h-[48px] cursor-pointer"
-              style={{ display: googlePayAvailable ? 'block' : 'none' }}
-            />
-          )}
-          {isWalletProcessing && (
-            <div className="flex items-center justify-center gap-2 py-2">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm text-muted-foreground">Processing wallet payment...</span>
-            </div>
-          )}
-          <div className="relative flex items-center gap-4 py-2">
-            <div className="flex-1 border-t" />
-            <span className="text-xs text-muted-foreground">or pay with card</span>
-            <div className="flex-1 border-t" />
-          </div>
+        <div className="relative flex items-center gap-4 py-2">
+          <div className="flex-1 border-t" />
+          <span className="text-xs text-muted-foreground">or pay with card</span>
+          <div className="flex-1 border-t" />
         </div>
       )}
 
