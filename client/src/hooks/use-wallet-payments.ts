@@ -104,6 +104,7 @@ export function useWalletPayments({
 
     async function init() {
       try {
+        console.log('[WalletPayments] Initializing with locationId:', locationId);
         const payments = await initializeSquare(locationId);
         if (cancelled || !mountedRef.current) return;
 
@@ -121,9 +122,10 @@ export function useWalletPayments({
             await applePay.attach(applePayRef.current);
             applePayInstanceRef.current = applePay;
             setApplePayAvailable(true);
+            console.log('[WalletPayments] Apple Pay initialized successfully');
           }
-        } catch {
-          // Apple Pay not available on this device/browser
+        } catch (appleErr) {
+          console.warn('[WalletPayments] Apple Pay not available:', appleErr);
         }
 
         try {
@@ -132,9 +134,10 @@ export function useWalletPayments({
             await googlePay.attach(googlePayRef.current);
             googlePayInstanceRef.current = googlePay;
             setGooglePayAvailable(true);
+            console.log('[WalletPayments] Google Pay initialized successfully');
           }
-        } catch {
-          // Google Pay not available on this device/browser
+        } catch (googleErr) {
+          console.warn('[WalletPayments] Google Pay not available:', googleErr);
         }
 
         if (!cancelled) initializedRef.current = true;

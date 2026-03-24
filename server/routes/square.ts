@@ -476,7 +476,7 @@ router.get('/config', async (req: any, res) => {
         if (loc) {
           const isAuthorized =
             req.user?.role === 'system_admin' ||
-            (req.user?.role === 'org_admin' && req.user?.organizationId != null && req.user.organizationId === loc.organizationId);
+            (req.user?.organizationId != null && req.user.organizationId === loc.organizationId);
           if (isAuthorized) {
             const creds = await storage.getLocationSquareConfig(lvLocationId);
             if (creds?.appId && creds?.accessToken && creds.appId.trim().length > 0) {
@@ -507,7 +507,8 @@ router.get('/config', async (req: any, res) => {
     isProduction: appId.length > 0 && !appId.includes('sandbox-'),
   });
 
-  res.json({ appId, locationId: '' });
+  const locationId = process.env.SQUARE_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || '';
+  res.json({ appId, locationId });
 });
 
 export default router;
