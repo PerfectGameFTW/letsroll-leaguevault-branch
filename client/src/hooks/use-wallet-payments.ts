@@ -127,7 +127,9 @@ export function useWalletPayments({
         try {
           setDebugStatus('trying-apple');
           const applePay = await payments.applePay(paymentRequest);
-          if (cancelled || !mountedRef.current) {
+          if (!applePay || typeof applePay.attach !== 'function') {
+            appleResult = `not-supported(obj=${typeof applePay},attach=${typeof applePay?.attach})`;
+          } else if (cancelled || !mountedRef.current) {
             appleResult = `no-attach(c=${cancelled},m=${mountedRef.current})`;
           } else if (!applePayRef.current) {
             appleResult = 'ref-not-ready';
@@ -147,7 +149,9 @@ export function useWalletPayments({
         try {
           setDebugStatus('trying-google');
           const googlePay = await payments.googlePay(paymentRequest);
-          if (cancelled || !mountedRef.current) {
+          if (!googlePay || typeof googlePay.attach !== 'function') {
+            googleResult = `not-supported(obj=${typeof googlePay},attach=${typeof googlePay?.attach})`;
+          } else if (cancelled || !mountedRef.current) {
             googleResult = `no-attach(c=${cancelled},m=${mountedRef.current})`;
           } else if (!googlePayRef.current) {
             googleResult = 'ref-not-ready';
