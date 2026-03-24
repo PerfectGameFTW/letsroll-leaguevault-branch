@@ -152,9 +152,10 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
     const weekOf = new Date();
     weekOf.setHours(0, 0, 0, 0);
+
     const idempotencyKey = crypto
       .createHash('sha256')
-      .update(`${bowlerId}:${leagueId}:${amount}:${weekOf.toISOString().split('T')[0]}`)
+      .update(`${bowlerId}:${leagueId}:${amount}:${sourceId}`)
       .digest('hex');
 
     const existingPayment = await storage.getPaymentByIdempotencyKey(idempotencyKey);
@@ -162,8 +163,8 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
     // so truncate the base key to 39 chars to stay within the limit in all cases.
     const squareIdempotencyKey = idempotencyKey.substring(0, 39);
     if (existingPayment) {
-      log.info('Payment deduplicated:', { dbPaymentId: existingPayment.id, squarePaymentId: existingPayment.squarePaymentId, bowlerId, leagueId, amount });
-      return res.json({ dbPaymentId: existingPayment.id, id: existingPayment.squarePaymentId, deduplicated: true });
+      log.info('Payment deduplicated (same token resubmitted):', { dbPaymentId: existingPayment.id, squarePaymentId: existingPayment.squarePaymentId, bowlerId, leagueId, amount });
+      return res.json({ dbPaymentId: existingPayment.id, id: existingPayment.squarePaymentId, status: 'COMPLETED', deduplicated: true });
     }
 
     let payment;

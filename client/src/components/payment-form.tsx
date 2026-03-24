@@ -232,7 +232,11 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       }
 
       const label = walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay';
-      toast({ title: "Success", description: `Payment processed via ${label}` });
+      if (responseData.deduplicated) {
+        toast({ title: "Already Processed", description: `This ${label} payment was already recorded.` });
+      } else {
+        toast({ title: "Success", description: `Payment processed via ${label}` });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       onClose();
     } catch (error) {

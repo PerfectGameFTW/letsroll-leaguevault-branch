@@ -153,7 +153,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         throw new Error(`Payment not completed (status: ${data.status})`);
       }
       const walletLabel = walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay';
-      toast({ title: "Payment Successful", description: `${walletLabel} payment of $${(amount / 100).toFixed(2)} completed. Your card has been saved for future payments.` });
+      if (data.deduplicated) {
+        toast({ title: "Already Processed", description: `This ${walletLabel} payment was already recorded.` });
+      } else {
+        toast({ title: "Payment Successful", description: `${walletLabel} payment of $${(amount / 100).toFixed(2)} completed. Your card has been saved for future payments.` });
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/payments'] });
       queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
       queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`, league.id] });
