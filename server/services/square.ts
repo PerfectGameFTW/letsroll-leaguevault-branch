@@ -558,6 +558,48 @@ export async function listCardsOnFile(customerId: string, locationId?: number | 
   }
 }
 
+export async function getSquarePayment(squarePaymentId: string, locationId?: number | null): Promise<{
+  id: string;
+  status: string;
+  amountMoney: { amount: string; currency: string };
+  createdAt: string;
+  updatedAt: string;
+  sourceType: string;
+  cardBrand?: string;
+  last4?: string;
+  orderId?: string;
+} | null> {
+  const client = await resolveSquareClient(locationId);
+  if (!client) {
+    log.warn('Cannot verify payment — no Square client for location:', locationId);
+    return null;
+  }
+
+  try {
+    const response = await client.paymentsApi.getPayment(squarePaymentId);
+    const payment = response.result.payment;
+    if (!payment) return null;
+
+    return {
+      id: payment.id!,
+      status: payment.status || 'UNKNOWN',
+      amountMoney: {
+        amount: String(payment.amountMoney?.amount ?? 0),
+        currency: payment.amountMoney?.currency || 'USD',
+      },
+      createdAt: payment.createdAt || '',
+      updatedAt: payment.updatedAt || '',
+      sourceType: payment.sourceType || 'UNKNOWN',
+      cardBrand: payment.cardDetails?.card?.cardBrand,
+      last4: payment.cardDetails?.card?.last4,
+      orderId: payment.orderId,
+    };
+  } catch (error) {
+    log.error('Failed to retrieve Square payment:', squarePaymentId, error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
 export async function registerApplePayDomain(domain: string, locationId?: number | null): Promise<{ success: boolean; message: string }> {
   const client = await resolveSquareClient(locationId);
   if (!client) {
@@ -586,4 +628,5 @@ export default {
   createOrderWithPayment,
   refundPayment,
   registerApplePayDomain,
+  getSquarePayment,
 };

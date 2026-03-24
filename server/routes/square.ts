@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile, registerApplePayDomain } from '../services/square.js';
+import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile, registerApplePayDomain, getSquarePayment } from '../services/square.js';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api.js';
@@ -19,9 +19,78 @@ router.use((req: any, res: any, next: any) => {
   next();
 });
 
+router.get('/payments/:paymentId/verify', async (req: any, res) => {
+  try {
+    const userRole = req.user?.role;
+    if (userRole !== 'system_admin' && userRole !== 'admin') {
+      return sendError(res, "Admin access required", 403, 'FORBIDDEN');
+    }
+
+    const dbPayment = await storage.getPaymentById(parseInt(req.params.paymentId));
+    if (!dbPayment) {
+      return sendError(res, "Payment not found", 404, 'NOT_FOUND');
+    }
+
+    if (!dbPayment.squarePaymentId) {
+      return res.json({
+        dbPayment: { id: dbPayment.id, amount: dbPayment.amount, status: dbPayment.status, type: dbPayment.type, createdAt: dbPayment.createdAt },
+        squarePayment: null,
+        message: 'No Square payment ID associated with this payment (cash/check payment)',
+      });
+    }
+
+    const league = await storage.getLeague(dbPayment.leagueId);
+    const locationId = league?.locationId ?? null;
+
+    const squarePayment = await getSquarePayment(dbPayment.squarePaymentId, locationId);
+
+    log.info('Payment verification:', {
+      dbPaymentId: dbPayment.id,
+      squarePaymentId: dbPayment.squarePaymentId,
+      squareFound: !!squarePayment,
+      squareStatus: squarePayment?.status,
+      dbStatus: dbPayment.status,
+    });
+
+    res.json({
+      dbPayment: {
+        id: dbPayment.id,
+        amount: dbPayment.amount,
+        status: dbPayment.status,
+        type: dbPayment.type,
+        squarePaymentId: dbPayment.squarePaymentId,
+        createdAt: dbPayment.createdAt,
+        bowlerId: dbPayment.bowlerId,
+        leagueId: dbPayment.leagueId,
+      },
+      squarePayment,
+      match: squarePayment ? {
+        statusMatch: (dbPayment.status === 'paid' && squarePayment.status === 'COMPLETED') ||
+                     (dbPayment.status !== 'paid' && squarePayment.status !== 'COMPLETED'),
+        amountMatch: String(dbPayment.amount) === squarePayment.amountMoney.amount,
+      } : null,
+      message: squarePayment
+        ? `Square payment found: ${squarePayment.status}, $${(parseInt(squarePayment.amountMoney.amount) / 100).toFixed(2)}`
+        : 'Square payment NOT found — payment may have failed or been processed under different credentials',
+    });
+  } catch (error: any) {
+    log.error('Payment verification error:', error);
+    sendError(res, 'Failed to verify payment', 500);
+  }
+});
+
 router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
   try {
     const { sourceId, amount, bowlerId, leagueId } = req.body;
+
+    log.info('Payment request received:', {
+      bowlerId,
+      leagueId,
+      amount,
+      sourceIdPrefix: sourceId?.substring(0, 10) + '...',
+      storeCard: req.body.storeCard,
+      userId: req.user?.id,
+    });
 
     if (!sourceId || !bowlerId || !leagueId) {
       return sendError(res, "Missing required payment fields", 400, 'VALIDATION_ERROR');
@@ -93,6 +162,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
     // so truncate the base key to 39 chars to stay within the limit in all cases.
     const squareIdempotencyKey = idempotencyKey.substring(0, 39);
     if (existingPayment) {
+      log.info('Payment deduplicated:', { dbPaymentId: existingPayment.id, squarePaymentId: existingPayment.squarePaymentId, bowlerId, leagueId, amount });
       return res.json({ dbPaymentId: existingPayment.id, id: existingPayment.squarePaymentId, deduplicated: true });
     }
 
@@ -120,6 +190,13 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
     const buyerEmail = bowler.email || undefined;
 
+    log.info('Processing Square payment:', {
+      bowlerId, leagueId, amount,
+      locationId: lvLocationId,
+      hasLineItems: lineItems.length > 0,
+      hasCustomerId: !!customerId,
+    });
+
     if (lineItems.length > 0) {
       payment = await createOrderWithPayment(
         sourceId,
@@ -142,6 +219,12 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
         lvLocationId
       );
     }
+
+    log.info('Square payment completed:', {
+      squarePaymentId: payment.id,
+      squareStatus: payment.status,
+      bowlerId, leagueId, amount,
+    });
 
     if (req.body.storeCard && customerId && sourceId && !sourceId.startsWith('ccof:')) {
       try {
@@ -182,6 +265,12 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       type: 'credit_card',
       squarePaymentId: payment.id,
       idempotencyKey,
+    });
+
+    log.info('Payment recorded in DB:', {
+      dbPaymentId: dbPayment.id,
+      squarePaymentId: payment.id,
+      bowlerId, leagueId, amount,
     });
 
     res.json({

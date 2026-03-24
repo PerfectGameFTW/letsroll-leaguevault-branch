@@ -154,7 +154,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       }
       const walletLabel = walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay';
       toast({ title: "Payment Successful", description: `${walletLabel} payment of $${(amount / 100).toFixed(2)} completed. Your card has been saved for future payments.` });
-      queryClient.invalidateQueries({ queryKey: [`/api/bowler-dashboard`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/payments'] });
       queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
       queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`, league.id] });
       setShowPaymentSetup(false);
