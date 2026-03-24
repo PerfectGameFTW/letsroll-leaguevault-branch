@@ -50,7 +50,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [showFinalTwoWeeksWarning, setShowFinalTwoWeeksWarning] = useState(false);
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
-  const [isDeletingCard, setIsDeletingCard] = useState(false);
 
   const { card, isInitialized, error: squareError, initializeCard, cleanupCard } = useSquarePayment({
     locationId: league.locationId ?? null,
@@ -240,26 +239,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   });
   const activeSchedule = scheduleResponse?.success ? scheduleResponse.data : undefined;
 
-  const handleDeleteCard = useCallback(async (cardId: string) => {
-    setIsDeletingCard(true);
-    try {
-      const res = await csrfFetch(`/api/square/cards/${bowler.id}/${cardId}?leagueId=${league.id}`, {
-        method: 'DELETE',
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error?.message || 'Failed to remove card');
-      }
-      toast({ title: "Card Removed", description: "The saved card has been removed from your account." });
-      queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`, league.id] });
-      setSelectedSavedCardId('');
-    } catch (err: any) {
-      toast({ title: "Error", description: err?.message || 'Failed to remove card', variant: "destructive" });
-    } finally {
-      setIsDeletingCard(false);
-    }
-  }, [bowler.id, league.id, toast]);
-
   if (showPaymentSetup) {
     return (
       <PaymentSetupForm
@@ -319,8 +298,6 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
         isWalletProcessing={isWalletProcessing}
         applePayTokenizeOnly={applePayTokenizeOnly}
         googlePayTokenizeOnly={googlePayTokenizeOnly}
-        onDeleteCard={handleDeleteCard}
-        isDeletingCard={isDeletingCard}
       />
     );
   }

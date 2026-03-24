@@ -59,8 +59,6 @@ interface PaymentSetupFormProps {
   isWalletProcessing: boolean;
   applePayTokenizeOnly: boolean;
   googlePayTokenizeOnly: boolean;
-  onDeleteCard?: (cardId: string) => void;
-  isDeletingCard?: boolean;
 }
 
 export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
@@ -105,8 +103,6 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
   isWalletProcessing,
   applePayTokenizeOnly,
   googlePayTokenizeOnly,
-  onDeleteCard,
-  isDeletingCard,
 }) => {
   return (
     <Card className="w-full">
@@ -186,8 +182,6 @@ export const PaymentSetupForm: FC<PaymentSetupFormProps> = ({
             isWalletProcessing={isWalletProcessing}
             applePayTokenizeOnly={applePayTokenizeOnly}
             googlePayTokenizeOnly={googlePayTokenizeOnly}
-            onDeleteCard={onDeleteCard}
-            isDeletingCard={isDeletingCard}
           />
 
           <PaymentSubmitSection

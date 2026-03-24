@@ -7,13 +7,13 @@ import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Save, Lock, ArrowRight, LogOut, Pencil } from "lucide-react";
+import { Loader2, Save, Lock, ArrowRight, LogOut, Pencil, CreditCard, Trash2 } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import { Link, useLocation } from "wouter";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient, clearCsrfToken } from "@/lib/queryClient";
+import { apiRequest, queryClient, clearCsrfToken, csrfFetch } from "@/lib/queryClient";
 import {
   Form,
   FormControl,
@@ -22,7 +22,17 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import type { User, ApiResponse } from "@shared/schema";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import type { User, SavedCard, ApiResponse } from "@shared/schema";
 
 const profileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -51,12 +61,48 @@ export const ProfileSettingsPage: FC = () => {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [cardToDelete, setCardToDelete] = useState<SavedCard | null>(null);
+  const [isDeletingCard, setIsDeletingCard] = useState(false);
 
   const { data: userResponse, isLoading: isLoadingUser } = useQuery<ApiResponse<User>>({
     queryKey: ['/api/user'],
     staleTime: STALE_TIME,
   });
   const currentUser = userResponse?.data;
+  const bowlerId = currentUser?.bowlerId;
+
+  const { data: savedCardsResponse, isLoading: isLoadingCards } = useQuery<{ success: boolean; data: SavedCard[] }>({
+    queryKey: [`/api/square/cards/${bowlerId}`],
+    queryFn: async () => {
+      const res = await csrfFetch(`/api/square/cards/${bowlerId}`);
+      if (!res.ok) throw new Error('Failed to load saved cards');
+      return res.json();
+    },
+    enabled: !!bowlerId,
+    retry: false,
+  });
+  const savedCards = savedCardsResponse?.data || [];
+
+  const handleDeleteCard = async (card: SavedCard) => {
+    if (!bowlerId) return;
+    setIsDeletingCard(true);
+    try {
+      const res = await csrfFetch(`/api/square/cards/${bowlerId}/${card.id}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error?.message || 'Failed to remove card');
+      }
+      toast({ title: "Card Removed", description: `Your ${card.brand} card ending in ${card.last4} has been removed.` });
+      queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || 'Failed to remove card', variant: "destructive" });
+    } finally {
+      setIsDeletingCard(false);
+      setCardToDelete(null);
+    }
+  };
 
   const profileForm = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
@@ -372,6 +418,79 @@ export const ProfileSettingsPage: FC = () => {
             )}
           </CardContent>
         </Card>
+        {bowlerId && (
+          <Card>
+            <CardHeader className="pb-4">
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5" />
+                Saved Payment Methods
+              </CardTitle>
+              <CardDescription className="mt-1.5">Manage your saved credit cards</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingCards ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading saved cards...
+                </div>
+              ) : savedCards.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No saved cards on file. Cards saved during payment will appear here.</p>
+              ) : (
+                <div className="space-y-3">
+                  {savedCards.map((card) => (
+                    <div key={card.id} className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="flex items-center gap-3">
+                        <CreditCard className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">{card.brand} ending in {card.last4}</p>
+                          <p className="text-xs text-muted-foreground">Expires {String(card.expMonth).padStart(2, '0')}/{card.expYear}</p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => setCardToDelete(card)}
+                        disabled={isDeletingCard}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        <AlertDialog open={!!cardToDelete} onOpenChange={(open) => { if (!open && !isDeletingCard) setCardToDelete(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove saved card?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently remove your {cardToDelete?.brand} card ending in {cardToDelete?.last4} from your account. You can always add a new card later during payment.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeletingCard}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                disabled={isDeletingCard}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  if (cardToDelete) handleDeleteCard(cardToDelete);
+                }}
+              >
+                {isDeletingCard ? (
+                  <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Removing...</>
+                ) : (
+                  'Remove Card'
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         <Separator />
 
         <Card>
