@@ -213,14 +213,22 @@ export function useWalletPayments({
       const result = await applePayInstanceRef.current.tokenize();
       if (result.status === 'OK' && result.token) {
         await onTokenReceivedRef.current(result.token, 'apple_pay');
-      } else if (result.status === 'CANCEL') {
-        // User cancelled - do nothing
+      } else if (result.status === 'CANCEL' || result.status === 'Cancel') {
       } else {
-        const errorMsg = result.errors?.map(e => e.message).join(', ') || 'Apple Pay payment was not completed';
-        onErrorRef.current(errorMsg);
+        const isCancelLike = result.errors?.some((e: any) =>
+          e.message?.toLowerCase().includes('cancel') ||
+          e.type?.toLowerCase().includes('cancel')
+        );
+        if (!isCancelLike) {
+          const errorMsg = result.errors?.map((e: any) => e.message).join(', ') || 'Apple Pay payment was not completed';
+          onErrorRef.current(errorMsg);
+        }
       }
-    } catch (err) {
-      onErrorRef.current(err instanceof Error ? err.message : 'Apple Pay failed');
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('abort')) {
+        onErrorRef.current(msg || 'Apple Pay failed');
+      }
     } finally {
       if (mountedRef.current) setIsProcessing(false);
     }
@@ -237,14 +245,22 @@ export function useWalletPayments({
       const result = await googlePayInstanceRef.current.tokenize();
       if (result.status === 'OK' && result.token) {
         await onTokenReceivedRef.current(result.token, 'google_pay');
-      } else if (result.status === 'CANCEL') {
-        // User cancelled - do nothing
+      } else if (result.status === 'CANCEL' || result.status === 'Cancel') {
       } else {
-        const errorMsg = result.errors?.map(e => e.message).join(', ') || 'Google Pay payment was not completed';
-        onErrorRef.current(errorMsg);
+        const isCancelLike = result.errors?.some((e: any) =>
+          e.message?.toLowerCase().includes('cancel') ||
+          e.type?.toLowerCase().includes('cancel')
+        );
+        if (!isCancelLike) {
+          const errorMsg = result.errors?.map((e: any) => e.message).join(', ') || 'Google Pay payment was not completed';
+          onErrorRef.current(errorMsg);
+        }
       }
-    } catch (err) {
-      onErrorRef.current(err instanceof Error ? err.message : 'Google Pay failed');
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('abort')) {
+        onErrorRef.current(msg || 'Google Pay failed');
+      }
     } finally {
       if (mountedRef.current) setIsProcessing(false);
     }
