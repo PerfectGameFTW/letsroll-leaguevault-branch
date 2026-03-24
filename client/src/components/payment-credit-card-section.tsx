@@ -1,4 +1,4 @@
-import { type MutableRefObject, type RefObject } from "react";
+import { type MutableRefObject, type RefObject, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -13,8 +13,18 @@ import {
   FormField,
   FormItem,
 } from "@/components/ui/form";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Loader2, CreditCard, AlertTriangle, Wallet } from "lucide-react";
+import { Loader2, CreditCard, AlertTriangle, Wallet, Trash2 } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 import type { InsertPayment } from "@shared/schema";
 
@@ -49,6 +59,8 @@ interface PaymentCreditCardSectionProps {
   isWalletProcessing: boolean;
   applePayTokenizeOnly?: boolean;
   googlePayTokenizeOnly?: boolean;
+  onDeleteCard?: (cardId: string) => void;
+  isDeletingCard?: boolean;
 }
 
 export function PaymentCreditCardSection({
@@ -74,8 +86,11 @@ export function PaymentCreditCardSection({
   isWalletProcessing,
   applePayTokenizeOnly,
   googlePayTokenizeOnly,
+  onDeleteCard,
+  isDeletingCard,
 }: PaymentCreditCardSectionProps) {
   const hasWalletOptions = applePayAvailable || googlePayAvailable;
+  const [cardToDelete, setCardToDelete] = useState<SavedCard | null>(null);
 
   if (squareLoadFailed) {
     return (
@@ -208,27 +223,80 @@ export function PaymentCreditCardSection({
 
       {cardMode === 'saved' && savedCards.length > 0 && (
         <div className="space-y-3">
-          <Select
-            value={selectedSavedCardId}
-            onValueChange={setSelectedSavedCardId}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select a saved card" />
-            </SelectTrigger>
-            <SelectContent>
-              {savedCards.map((sc) => (
-                <SelectItem key={sc.id} value={sc.id}>
-                  {sc.brand} •••• {sc.last4} (exp {String(sc.expMonth).padStart(2, '0')}/{sc.expYear})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <Select
+                value={selectedSavedCardId}
+                onValueChange={setSelectedSavedCardId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a saved card" />
+                </SelectTrigger>
+                <SelectContent>
+                  {savedCards.map((sc) => (
+                    <SelectItem key={sc.id} value={sc.id}>
+                      {sc.brand} •••• {sc.last4} (exp {String(sc.expMonth).padStart(2, '0')}/{sc.expYear})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {onDeleteCard && selectedSavedCardId && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 shrink-0"
+                disabled={isDeletingCard}
+                onClick={() => {
+                  const card = savedCards.find(c => c.id === selectedSavedCardId);
+                  if (card) setCardToDelete(card);
+                }}
+              >
+                {isDeletingCard ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+          </div>
           <Alert>
             <Wallet className="h-4 w-4" />
             <AlertDescription>
               Payment will be charged to the selected saved card.
             </AlertDescription>
           </Alert>
+
+          <AlertDialog open={!!cardToDelete} onOpenChange={(open) => { if (!open) setCardToDelete(null); }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove saved card?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently remove the {cardToDelete?.brand} card ending in {cardToDelete?.last4} from this bowler's account.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeletingCard}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  disabled={isDeletingCard}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={() => {
+                    if (cardToDelete && onDeleteCard) {
+                      onDeleteCard(cardToDelete.id);
+                      setCardToDelete(null);
+                    }
+                  }}
+                >
+                  {isDeletingCard ? (
+                    <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Removing...</>
+                  ) : (
+                    'Remove Card'
+                  )}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       )}
 

@@ -618,11 +618,28 @@ export async function registerApplePayDomain(domain: string, locationId?: number
   }
 }
 
+export async function disableCard(cardId: string, customerId: string, locationId?: number | null): Promise<void> {
+  const client = await resolveSquareClient(locationId);
+  if (!client) {
+    throw new Error('No Square client available for this location');
+  }
+
+  const listResponse = await client.cardsApi.listCards(undefined, customerId);
+  const cards = listResponse.result.cards || [];
+  const cardBelongsToCustomer = cards.some(c => c.id === cardId);
+  if (!cardBelongsToCustomer) {
+    throw new Error('Card does not belong to this customer');
+  }
+
+  await client.cardsApi.disableCard(cardId);
+}
+
 export default {
   createOrUpdateCustomer,
   processPayment,
   saveCardOnFile,
   listCardsOnFile,
+  disableCard,
   listCatalogItems,
   listCatalogCategories,
   createOrderWithPayment,

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile, registerApplePayDomain, getSquarePayment } from '../services/square.js';
+import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile, disableCard, registerApplePayDomain, getSquarePayment } from '../services/square.js';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api.js';
@@ -470,6 +470,41 @@ router.get('/cards/:bowlerId', async (req, res) => {
   } catch (error) {
     log.error('List cards error:', error);
     sendError(res, 'Failed to list cards');
+  }
+});
+
+router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
+  try {
+    const bowlerId = parseInt(req.params.bowlerId);
+    if (isNaN(bowlerId)) {
+      return sendError(res, 'Invalid bowler ID', 400);
+    }
+
+    const { cardId } = req.params;
+    if (!cardId || typeof cardId !== 'string') {
+      return sendError(res, 'Invalid card ID', 400);
+    }
+
+    if (!await hasAccessToBowler(req, bowlerId)) {
+      return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+    }
+
+    const bowler = await storage.getBowler(bowlerId);
+    if (!bowler?.squareCustomerId) {
+      return sendError(res, 'Bowler does not have a Square customer account', 400);
+    }
+
+    const delLeagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : null;
+    const delLeague = delLeagueId ? await storage.getLeague(delLeagueId) : null;
+    const delLvLocationId = delLeague?.locationId ?? null;
+
+    await disableCard(cardId, bowler.squareCustomerId, delLvLocationId);
+    log.info('Card disabled:', cardId.substring(0, 15) + '...');
+    sendSuccess(res, { disabled: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to remove card';
+    log.error('Disable card error:', message);
+    sendError(res, message, message.includes('does not belong') ? 403 : 500);
   }
 });
 

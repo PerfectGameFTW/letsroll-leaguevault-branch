@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import type { League, Payment, User, SavedCard, ApiResponse, BowlerDetailsResponse } from "@shared/schema";
@@ -33,6 +33,7 @@ export default function PaymentHistoryPage() {
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
   const [storeCard, setStoreCard] = useState(false);
+  const [isDeletingCard, setIsDeletingCard] = useState(false);
   const { card, isInitialized, initializeCard, cleanupCard } = useSquarePayment({
     onError: (error) => {
       console.error('[Square Payment Error]:', error);
@@ -53,17 +54,48 @@ export default function PaymentHistoryPage() {
   const bowlerId = currentUser?.data?.bowlerId;
 
   const { data: savedCardsResponse } = useQuery<ApiResponse<SavedCard[]>>({
-    queryKey: [`/api/square/cards/${bowlerId}`],
+    queryKey: [`/api/square/cards/${bowlerId}`, selectedLeagueId],
+    queryFn: async () => {
+      const params = selectedLeagueId ? `?leagueId=${selectedLeagueId}` : '';
+      const res = await csrfFetch(`/api/square/cards/${bowlerId}${params}`);
+      if (!res.ok) throw new Error('Failed to fetch saved cards');
+      return res.json();
+    },
     enabled: !!bowlerId,
     staleTime: 1000 * 60 * 5,
     retry: false,
   });
   const savedCards = savedCardsResponse?.data || [];
 
+  const handleDeleteCard = useCallback(async (cardId: string) => {
+    if (!bowlerId) return;
+    setIsDeletingCard(true);
+    try {
+      const params = selectedLeagueId ? `?leagueId=${selectedLeagueId}` : '';
+      const res = await csrfFetch(`/api/square/cards/${bowlerId}/${cardId}${params}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error?.message || 'Failed to remove card');
+      }
+      toast({ title: "Card Removed", description: "The saved card has been removed from your account." });
+      queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`, selectedLeagueId] });
+      setSelectedSavedCardId('');
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || 'Failed to remove card', variant: "destructive" });
+    } finally {
+      setIsDeletingCard(false);
+    }
+  }, [bowlerId, selectedLeagueId, toast]);
+
   useEffect(() => {
     if (savedCards.length > 0) {
       setCardMode('saved');
       setSelectedSavedCardId(savedCards[0].id);
+    } else {
+      setCardMode('new');
+      setSelectedSavedCardId('');
     }
   }, [savedCards.length]);
 
@@ -346,6 +378,8 @@ export default function PaymentHistoryPage() {
             onSubmit={handleDialogPayment}
             initializeCard={initializeCard}
             cleanupCard={cleanupCard}
+            onDeleteCard={handleDeleteCard}
+            isDeletingCard={isDeletingCard}
           />
         </ErrorBoundary>
 

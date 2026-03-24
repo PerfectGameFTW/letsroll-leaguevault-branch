@@ -56,6 +56,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const [squareLoadFailed, setSquareLoadFailed] = useState(false);
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
+  const [isDeletingCard, setIsDeletingCard] = useState(false);
   const initializationAttempted = useRef(false);
 
   const { data: leagueData } = useQuery<{ success: boolean; data: League }>({
@@ -117,6 +118,28 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     retry: false,
   });
   const savedCards = savedCardsResponse?.data || [];
+
+  const handleDeleteCard = useCallback(async (cardId: string) => {
+    if (!selectedBowlerId) return;
+    setIsDeletingCard(true);
+    try {
+      const params = leagueId ? `?leagueId=${leagueId}` : '';
+      const res = await csrfFetch(`/api/square/cards/${selectedBowlerId}/${cardId}${params}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error?.message || 'Failed to remove card');
+      }
+      toast({ title: "Card Removed", description: "The saved card has been removed." });
+      queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${selectedBowlerId}`, leagueId] });
+      setSelectedSavedCardId('');
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || 'Failed to remove card', variant: "destructive" });
+    } finally {
+      setIsDeletingCard(false);
+    }
+  }, [selectedBowlerId, leagueId, toast, queryClient]);
 
   useEffect(() => {
     if (savedCards.length > 0 && paymentType === 'credit_card') {
@@ -361,6 +384,8 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 isWalletProcessing={isWalletProcessing}
                 applePayTokenizeOnly={applePayTokenizeOnly}
                 googlePayTokenizeOnly={googlePayTokenizeOnly}
+                onDeleteCard={handleDeleteCard}
+                isDeletingCard={isDeletingCard}
               />
             )}
 
