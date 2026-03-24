@@ -47,6 +47,7 @@ interface PaymentCreditCardSectionProps {
   onApplePayClick: () => Promise<void>;
   onGooglePayClick: () => Promise<void>;
   isWalletProcessing: boolean;
+  walletDebugStatus?: string;
 }
 
 export function PaymentCreditCardSection({
@@ -70,6 +71,7 @@ export function PaymentCreditCardSection({
   onApplePayClick,
   onGooglePayClick,
   isWalletProcessing,
+  walletDebugStatus,
 }: PaymentCreditCardSectionProps) {
   const hasWalletOptions = applePayAvailable || googlePayAvailable;
 
@@ -87,6 +89,11 @@ export function PaymentCreditCardSection({
 
   return (
     <div className="space-y-4">
+      {walletDebugStatus && (
+        <div className="text-[10px] font-mono bg-yellow-50 border border-yellow-200 text-yellow-800 px-2 py-1 rounded break-all">
+          wallet: {walletDebugStatus}
+        </div>
+      )}
       <div className="space-y-2">
         <div
           ref={applePayRef}
