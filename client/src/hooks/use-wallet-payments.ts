@@ -127,21 +127,24 @@ export function useWalletPayments({
         try {
           setDebugStatus('trying-apple');
           const applePay = await payments.applePay(paymentRequest);
-          if (!applePay || typeof applePay.attach !== 'function') {
-            const ownKeys = applePay ? Object.keys(applePay).join(',') : 'null';
-            const ownNames = applePay ? Object.getOwnPropertyNames(applePay).join(',') : 'null';
-            const json = applePay ? JSON.stringify(applePay).substring(0, 200) : 'null';
-            appleResult = `no-attach(own=${ownKeys}|names=${ownNames}|json=${json})`;
+          if (!applePay || (typeof applePay.attach !== 'function' && typeof applePay.tokenize !== 'function')) {
+            appleResult = `not-available`;
           } else if (cancelled || !mountedRef.current) {
-            appleResult = `no-attach(c=${cancelled},m=${mountedRef.current})`;
-          } else if (!applePayRef.current) {
-            appleResult = 'ref-not-ready';
+            appleResult = `cancelled`;
+          } else if (typeof applePay.attach === 'function') {
+            if (!applePayRef.current) {
+              appleResult = 'ref-not-ready';
+            } else {
+              await applePay.attach(applePayRef.current);
+              applePayInstanceRef.current = applePay;
+              setApplePayAvailable(true);
+              appleAttached = true;
+              appleResult = 'attached';
+            }
           } else {
-            await applePay.attach(applePayRef.current);
             applePayInstanceRef.current = applePay;
             setApplePayAvailable(true);
-            appleAttached = true;
-            appleResult = 'OK';
+            appleResult = 'tokenize-only';
           }
         } catch (appleErr: any) {
           appleResult = `ERR:${appleErr?.message || appleErr}`;
@@ -152,18 +155,24 @@ export function useWalletPayments({
         try {
           setDebugStatus('trying-google');
           const googlePay = await payments.googlePay(paymentRequest);
-          if (!googlePay || typeof googlePay.attach !== 'function') {
-            googleResult = `not-supported(obj=${typeof googlePay},attach=${typeof googlePay?.attach})`;
+          if (!googlePay || (typeof googlePay.attach !== 'function' && typeof googlePay.tokenize !== 'function')) {
+            googleResult = `not-available`;
           } else if (cancelled || !mountedRef.current) {
-            googleResult = `no-attach(c=${cancelled},m=${mountedRef.current})`;
-          } else if (!googlePayRef.current) {
-            googleResult = 'ref-not-ready';
+            googleResult = `cancelled`;
+          } else if (typeof googlePay.attach === 'function') {
+            if (!googlePayRef.current) {
+              googleResult = 'ref-not-ready';
+            } else {
+              await googlePay.attach(googlePayRef.current);
+              googlePayInstanceRef.current = googlePay;
+              setGooglePayAvailable(true);
+              googleAttached = true;
+              googleResult = 'attached';
+            }
           } else {
-            await googlePay.attach(googlePayRef.current);
             googlePayInstanceRef.current = googlePay;
             setGooglePayAvailable(true);
-            googleAttached = true;
-            googleResult = 'OK';
+            googleResult = 'tokenize-only';
           }
         } catch (googleErr: any) {
           googleResult = `ERR:${googleErr?.message || googleErr}`;
