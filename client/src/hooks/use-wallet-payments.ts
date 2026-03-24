@@ -128,7 +128,8 @@ export function useWalletPayments({
           setDebugStatus('trying-apple');
           const applePay = await payments.applePay(paymentRequest);
           if (!applePay || typeof applePay.attach !== 'function') {
-            appleResult = `not-supported(obj=${typeof applePay},attach=${typeof applePay?.attach})`;
+            const keys = applePay ? Object.getOwnPropertyNames(Object.getPrototypeOf(applePay) || applePay).join(',') : 'null';
+            appleResult = `not-supported(keys=${keys})`;
           } else if (cancelled || !mountedRef.current) {
             appleResult = `no-attach(c=${cancelled},m=${mountedRef.current})`;
           } else if (!applePayRef.current) {
