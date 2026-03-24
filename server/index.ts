@@ -160,6 +160,35 @@ app.get('/loaderio-19ef38424d52907d2a5ef69f13f4794b.txt', (_req, res) => {
   res.type('text/plain').send('loaderio-19ef38424d52907d2a5ef69f13f4794b');
 });
 
+app.get('/.well-known/apple-app-site-association', (_req, res) => {
+  res.set('Content-Type', 'application/json');
+  res.json({
+    applinks: {
+      apps: [],
+      details: [
+        {
+          appID: 'TEAM_ID.app.leaguevault.mobile',
+          paths: ['*'],
+        },
+      ],
+    },
+  });
+});
+
+app.get('/.well-known/assetlinks.json', (_req, res) => {
+  res.set('Content-Type', 'application/json');
+  res.json([
+    {
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: {
+        namespace: 'android_app',
+        package_name: 'app.leaguevault.mobile',
+        sha256_cert_fingerprints: [],
+      },
+    },
+  ]);
+});
+
 app.get('/.well-known/apple-developer-merchantid-domain-association', async (_req, res) => {
   const staticPath = path.join(import.meta.dirname, '..', '.well-known', 'apple-developer-merchantid-domain-association');
   try {

@@ -200,6 +200,31 @@ npx cap sync
 
 ---
 
+## Deep Linking / Universal Links
+
+The app is configured to handle links to `leaguevault.app` and all subdomains (`*.leaguevault.app`).
+
+### iOS Setup
+
+The entitlements file (`ios/App/App/App.entitlements`) declares associated domains. After getting your Apple Developer Team ID:
+
+1. Open `server/index.ts` and replace `TEAM_ID` in the `apple-app-site-association` endpoint with your actual Apple Developer Team ID.
+2. The server serves `/.well-known/apple-app-site-association` automatically.
+3. In Xcode, verify **Signing & Capabilities → Associated Domains** shows `applinks:leaguevault.app`.
+
+### Android Setup
+
+The `AndroidManifest.xml` has intent filters with `autoVerify="true"` for `leaguevault.app`.
+
+1. After generating your signing keystore, get the SHA-256 fingerprint:
+   ```bash
+   keytool -list -v -keystore your-keystore.jks
+   ```
+2. Open `server/index.ts` and add the SHA-256 fingerprint to the `sha256_cert_fingerprints` array in the `assetlinks.json` endpoint.
+3. The server serves `/.well-known/assetlinks.json` automatically.
+
+---
+
 ## Troubleshooting
 
 ### iOS: "No signing certificate" error
