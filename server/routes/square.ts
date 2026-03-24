@@ -433,6 +433,17 @@ router.post('/apple-pay/register-domain', async (req: any, res) => {
       return sendError(res, 'Domain is required', 400, 'VALIDATION_ERROR');
     }
 
+    if (req.user.role === 'org_admin' && req.user.organizationId) {
+      const org = await storage.getOrganization(req.user.organizationId);
+      if (org) {
+        const orgDomain = org.subdomain || org.slug;
+        const expectedDomain = `${orgDomain}.leaguevault.app`;
+        if (domain !== expectedDomain) {
+          return sendError(res, 'Domain does not match your organization', 403, 'FORBIDDEN');
+        }
+      }
+    }
+
     const lvLocationId = locationId ? parseInt(locationId) : null;
     const result = await registerApplePayDomain(domain, lvLocationId);
 
