@@ -1,4 +1,4 @@
-import { FC, useRef } from "react";
+import { FC, useRef, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -31,6 +31,15 @@ interface BowlerPaymentDialogProps {
   onSubmit: () => void;
   initializeCard: (el: HTMLDivElement) => void;
   cleanupCard: () => void;
+  applePayAvailable?: boolean;
+  googlePayAvailable?: boolean;
+  applePayTokenizeOnly?: boolean;
+  googlePayTokenizeOnly?: boolean;
+  applePayRef?: RefObject<HTMLDivElement>;
+  googlePayRef?: RefObject<HTMLDivElement>;
+  onApplePayClick?: () => Promise<void>;
+  onGooglePayClick?: () => Promise<void>;
+  isWalletProcessing?: boolean;
 }
 
 export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
@@ -50,7 +59,17 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
   onSubmit,
   initializeCard,
   cleanupCard,
+  applePayAvailable = false,
+  googlePayAvailable = false,
+  applePayTokenizeOnly = false,
+  googlePayTokenizeOnly = false,
+  applePayRef,
+  googlePayRef,
+  onApplePayClick,
+  onGooglePayClick,
+  isWalletProcessing = false,
 }) => {
+  const showWallet = applePayAvailable || googlePayAvailable;
   const cardCallbackRef = useRef<(el: HTMLDivElement | null) => void>(() => {});
   cardCallbackRef.current = (el: HTMLDivElement | null) => {
     if (el && payDialogType && cardMode === 'new') {
@@ -78,6 +97,107 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
               <span className="text-lg font-bold">{formatCurrency(dialogAmount)}</span>
             </div>
           </div>
+
+          {applePayAvailable && !applePayTokenizeOnly && applePayRef && (
+            <div
+              ref={applePayRef}
+              onClick={onApplePayClick}
+              className="min-h-[48px] cursor-pointer"
+            />
+          )}
+          {applePayAvailable && applePayTokenizeOnly && onApplePayClick && (
+            <button
+              type="button"
+              onClick={onApplePayClick}
+              disabled={isWalletProcessing}
+              style={{
+                WebkitAppearance: 'none',
+                appearance: 'none',
+                backgroundColor: '#000',
+                border: 'none',
+                borderRadius: '5px',
+                width: '100%',
+                height: '48px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '2px',
+                padding: 0,
+                opacity: isWalletProcessing ? 0.5 : 1,
+              }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="19" height="24" viewBox="0 0 17 20" fill="white" style={{ position: 'relative', top: '-1px' }}>
+                <path d="M13.55 10.63a4.27 4.27 0 0 1 2.04-3.59 4.4 4.4 0 0 0-3.46-1.87c-1.46-.15-2.88.87-3.63.87s-1.91-.85-3.15-.83a4.65 4.65 0 0 0-3.91 2.38c-1.68 2.91-.43 7.2 1.19 9.56.8 1.15 1.74 2.44 2.98 2.4 1.2-.05 1.65-.77 3.1-.77s1.86.77 3.12.74c1.29-.02 2.1-1.16 2.88-2.32a10.4 10.4 0 0 0 1.31-2.69 4.13 4.13 0 0 1-2.47-3.88zM11.17 3.46A4.17 4.17 0 0 0 12.14 0a4.25 4.25 0 0 0-2.75 1.42 3.98 3.98 0 0 0-1 2.89 3.52 3.52 0 0 0 2.78-0.85z"/>
+              </svg>
+              <span style={{
+                color: '#fff',
+                fontFamily: '-apple-system, "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif',
+                fontSize: '22px',
+                fontWeight: 400,
+                letterSpacing: '0.4px',
+              }}>Pay</span>
+            </button>
+          )}
+          {!applePayAvailable && applePayRef && (
+            <div ref={applePayRef} style={{ display: 'none' }} />
+          )}
+          {googlePayAvailable && !googlePayTokenizeOnly && googlePayRef && (
+            <div
+              ref={googlePayRef}
+              onClick={onGooglePayClick}
+              className="min-h-[48px] cursor-pointer"
+            />
+          )}
+          {googlePayAvailable && googlePayTokenizeOnly && onGooglePayClick && (
+            <button
+              type="button"
+              onClick={onGooglePayClick}
+              disabled={isWalletProcessing}
+              style={{
+                WebkitAppearance: 'none',
+                appearance: 'none',
+                backgroundColor: '#000',
+                border: '1px solid #747775',
+                borderRadius: '5px',
+                width: '100%',
+                height: '48px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                padding: 0,
+                opacity: isWalletProcessing ? 0.5 : 1,
+              }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="41" height="17" viewBox="0 0 41 17" fill="none">
+                <path d="M19.4 8.5V13.1H18V1.8H21.5C22.4 1.8 23.2 2.1 23.8 2.7C24.5 3.3 24.8 4 24.8 4.9C24.8 5.8 24.5 6.5 23.8 7.1C23.2 7.7 22.4 8 21.5 8H19.4V8.5ZM19.4 3.2V7H21.5C22.1 7 22.6 6.8 23 6.4C23.4 6 23.6 5.5 23.6 4.9C23.6 4.4 23.4 3.9 23 3.5C22.6 3.1 22.1 2.9 21.5 2.9H19.4V3.2Z" fill="white"/>
+                <path d="M28.8 4.8C29.9 4.8 30.8 5.1 31.4 5.7C32 6.3 32.4 7.1 32.4 8.1V13.1H31.1V12H31C30.4 12.9 29.7 13.3 28.7 13.3C27.9 13.3 27.2 13 26.6 12.5C26.1 12 25.8 11.3 25.8 10.5C25.8 9.7 26.1 9 26.7 8.5C27.3 8 28.1 7.7 29.1 7.7C29.9 7.7 30.6 7.9 31.1 8.2V7.9C31.1 7.3 30.9 6.8 30.5 6.4C30.1 6 29.5 5.8 29 5.8C28.2 5.8 27.5 6.2 27.1 6.9L25.9 6.1C26.6 5.2 27.6 4.8 28.8 4.8ZM27.1 10.6C27.1 11 27.3 11.4 27.6 11.7C28 12 28.3 12.1 28.8 12.1C29.5 12.1 30 11.8 30.5 11.3C31 10.8 31.2 10.2 31.2 9.5C30.7 9.2 30 9 29.2 9C28.6 9 28.1 9.2 27.7 9.5C27.3 9.9 27.1 10.2 27.1 10.6Z" fill="white"/>
+                <path d="M38.6 5L34.4 14.6H33L34.7 11L32 5H33.5L35.5 10L37.5 5H38.6Z" fill="white"/>
+                <path d="M13 7.2C13 6.7 13 6.2 12.9 5.7H6.6V8.5H10.2C10 9.5 9.5 10.3 8.7 10.8V12.7H10.9C12.3 11.4 13 9.5 13 7.2Z" fill="#4285F4"/>
+                <path d="M6.6 14.5C8.5 14.5 10.1 13.9 10.9 12.7L8.7 10.8C8 11.3 7.4 11.5 6.6 11.5C4.8 11.5 3.3 10.2 2.7 8.5H0.5V10.4C1.6 12.7 3.9 14.5 6.6 14.5Z" fill="#34A853"/>
+                <path d="M2.7 8.5C2.5 8 2.4 7.5 2.4 6.9C2.4 6.3 2.5 5.8 2.7 5.3V3.4H0.5C-0.2 4.8 -0.2 9 0.5 10.4L2.7 8.5Z" fill="#FBBC04"/>
+                <path d="M6.6 2.3C7.5 2.3 8.3 2.6 9 3.2L11 1.3C10 0.4 8.4-0.1 6.6-0.1C3.9-0.1 1.6 1.7 0.5 3.4L2.7 5.3C3.3 3.6 4.8 2.3 6.6 2.3Z" fill="#EA4335"/>
+              </svg>
+            </button>
+          )}
+          {!googlePayAvailable && googlePayRef && (
+            <div ref={googlePayRef} style={{ display: 'none' }} />
+          )}
+          {isWalletProcessing && (
+            <div className="flex items-center justify-center gap-2 py-2">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm text-muted-foreground">Processing wallet payment...</span>
+            </div>
+          )}
+          {showWallet && (
+            <div className="relative flex items-center gap-4 py-2">
+              <div className="flex-1 border-t" />
+              <span className="text-xs text-muted-foreground">or pay with card</span>
+              <div className="flex-1 border-t" />
+            </div>
+          )}
 
           {savedCards.length > 0 && (
             <div className="flex gap-2">
@@ -150,7 +270,8 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
             disabled={
               (cardMode === 'new' && !isInitialized) ||
               (cardMode === 'saved' && !selectedSavedCardId) ||
-              isSubmitting
+              isSubmitting ||
+              isWalletProcessing
             }
             className="w-full"
           >

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import type { League, Payment, User, SavedCard, ApiResponse, BowlerDetailsResponse } from "@shared/schema";
@@ -9,6 +9,7 @@ import { ChevronDown, X, Check } from "lucide-react";
 import { differenceInWeeks } from "date-fns";
 import { calculateFinalTwoWeeksPaidOnWeek } from "@/lib/financial-utils";
 import { useSquarePayment } from "@/hooks/use-square-payment";
+import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, csrfFetch } from '@/lib/queryClient';
@@ -45,6 +46,8 @@ export default function PaymentHistoryPage() {
       cleanupCard();
     }
   }, [payDialogType]);
+
+  const [isWalletProcessing, setIsWalletProcessing] = useState(false);
 
   const { data: currentUser, isLoading: loadingUser, error: userError } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
@@ -162,6 +165,71 @@ export default function PaymentHistoryPage() {
     finalTwoWeeks.isPaid && finalTwoWeeks.amount > 0 && league?.seasonStart
       ? calculateFinalTwoWeeksPaidOnWeek(bowlerPayments, finalTwoWeeks.amount, league.seasonStart)
       : null;
+
+  const dialogAmountCents = payDialogType === 'pastdue' ? amountPastDue : remainingBalance;
+
+  const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
+    if (!bowlerId || !leagueId || !dialogAmountCents) return;
+    try {
+      setIsWalletProcessing(true);
+      const response = await csrfFetch('/api/square/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceId: token,
+          amount: dialogAmountCents,
+          bowlerId,
+          leagueId,
+          storeCard: true,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error?.message || data.message || `Payment failed (HTTP ${response.status})`);
+      }
+      const walletLabel = walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay';
+      const dialogLabel = payDialogType === 'pastdue' ? 'past due amount' : 'remaining balance';
+      if (data.deduplicated) {
+        toast({ title: "Already Processed", description: `This ${walletLabel} payment was already recorded.` });
+      } else {
+        toast({ title: "Payment Successful", description: `${walletLabel} payment of ${formatCurrency(dialogAmountCents)} ${dialogLabel} completed.` });
+      }
+      setPayDialogType(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/payments", { bowlerId, leagueId }] });
+      queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowlerId}/details`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+    } catch (error) {
+      console.error('[Wallet Payment Error]:', error);
+      toast({ title: "Payment Failed", description: error instanceof Error ? error.message : "Unable to process payment.", variant: "destructive" });
+    } finally {
+      setIsWalletProcessing(false);
+    }
+  }, [bowlerId, leagueId, dialogAmountCents, payDialogType, toast]);
+
+  const {
+    applePayAvailable,
+    googlePayAvailable,
+    applePayTokenizeOnly,
+    googlePayTokenizeOnly,
+    applePayRef,
+    googlePayRef,
+    handleApplePayClick,
+    handleGooglePayClick,
+    isProcessing: isWalletBusy,
+    cleanup: cleanupWallet,
+  } = useWalletPayments({
+    locationId: league?.locationId,
+    amountCents: dialogAmountCents,
+    enabled: !!payDialogType && !!league?.locationId,
+    onTokenReceived: handleWalletPayment,
+    onError: (error) => toast({ title: "Wallet Payment Error", description: error, variant: "destructive" }),
+  });
+
+  useEffect(() => {
+    if (!payDialogType) {
+      cleanupWallet();
+    }
+  }, [payDialogType, cleanupWallet]);
 
   const handleDialogPayment = async () => {
     const dialogAmount = payDialogType === 'pastdue' ? amountPastDue : remainingBalance;
@@ -355,6 +423,15 @@ export default function PaymentHistoryPage() {
             onSubmit={handleDialogPayment}
             initializeCard={initializeCard}
             cleanupCard={cleanupCard}
+            applePayAvailable={applePayAvailable}
+            googlePayAvailable={googlePayAvailable}
+            applePayTokenizeOnly={applePayTokenizeOnly}
+            googlePayTokenizeOnly={googlePayTokenizeOnly}
+            applePayRef={applePayRef}
+            googlePayRef={googlePayRef}
+            onApplePayClick={handleApplePayClick}
+            onGooglePayClick={handleGooglePayClick}
+            isWalletProcessing={isWalletBusy || isWalletProcessing}
           />
         </ErrorBoundary>
 
