@@ -460,10 +460,18 @@ router.get('/cards/:bowlerId', async (req, res) => {
       return sendSuccess(res, []);
     }
 
-    // Derive location from optional leagueId query param
+    let listLvLocationId: number | null = null;
     const listLeagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : null;
-    const listLeague = listLeagueId ? await storage.getLeague(listLeagueId) : null;
-    const listLvLocationId = listLeague?.locationId ?? null;
+    if (listLeagueId) {
+      const listLeague = await storage.getLeague(listLeagueId);
+      listLvLocationId = listLeague?.locationId ?? null;
+    } else {
+      const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: bowlerId });
+      if (bowlerLeagues.length > 0) {
+        const firstLeague = await storage.getLeague(bowlerLeagues[0].leagueId);
+        listLvLocationId = firstLeague?.locationId ?? null;
+      }
+    }
 
     const cards = await listCardsOnFile(bowler.squareCustomerId, listLvLocationId);
     sendSuccess(res, cards);
@@ -494,9 +502,18 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
       return sendError(res, 'Bowler does not have a Square customer account', 400);
     }
 
+    let delLvLocationId: number | null = null;
     const delLeagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : null;
-    const delLeague = delLeagueId ? await storage.getLeague(delLeagueId) : null;
-    const delLvLocationId = delLeague?.locationId ?? null;
+    if (delLeagueId) {
+      const delLeague = await storage.getLeague(delLeagueId);
+      delLvLocationId = delLeague?.locationId ?? null;
+    } else {
+      const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: bowlerId });
+      if (bowlerLeagues.length > 0) {
+        const firstLeague = await storage.getLeague(bowlerLeagues[0].leagueId);
+        delLvLocationId = firstLeague?.locationId ?? null;
+      }
+    }
 
     await disableCard(cardId, bowler.squareCustomerId, delLvLocationId);
     log.info('Card disabled:', cardId.substring(0, 15) + '...');
