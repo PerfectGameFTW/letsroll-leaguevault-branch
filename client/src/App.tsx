@@ -269,6 +269,10 @@ function Router() {
 }
 
 function App() {
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('app-mounted'));
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorBoundary level="page">
