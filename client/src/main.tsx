@@ -30,13 +30,15 @@ root.render(
 
 const splash = document.getElementById('splash-screen');
 if (splash) {
+  let dismissed = false;
   const dismissSplash = () => {
+    if (dismissed) return;
+    dismissed = true;
     splash.classList.add('fade-out');
     splash.addEventListener('transitionend', () => splash.remove());
     setTimeout(() => splash.remove(), 600);
   };
   window.addEventListener('app-mounted', dismissSplash, { once: true });
-  setTimeout(dismissSplash, 5000);
 }
 
 if ('serviceWorker' in navigator && !isNativeApp()) {
