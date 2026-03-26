@@ -28,19 +28,6 @@ root.render(
   </StrictMode>
 );
 
-const splash = document.getElementById('splash-screen');
-if (splash) {
-  let dismissed = false;
-  const dismissSplash = () => {
-    if (dismissed) return;
-    dismissed = true;
-    splash.classList.add('fade-out');
-    splash.addEventListener('transitionend', () => splash.remove());
-    setTimeout(() => splash.remove(), 600);
-  };
-  window.addEventListener('app-mounted', dismissSplash, { once: true });
-}
-
 if ('serviceWorker' in navigator && !isNativeApp()) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
