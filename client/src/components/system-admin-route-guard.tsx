@@ -1,4 +1,4 @@
-import { FC, ReactNode, useEffect } from 'react';
+import { FC, ReactNode, useEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
@@ -13,17 +13,16 @@ interface SystemAdminRouteGuardProps {
 export const SystemAdminRouteGuard: FC<SystemAdminRouteGuardProps> = ({ children }) => {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const redirectingRef = useRef(false);
 
-  // Fetch current user to check for admin status
   const { data: currentUserResponse, isLoading, error } = useQuery<ApiResponse<User>>({
     queryKey: ['/api/user'],
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 
   const isSystemAdmin = currentUserResponse?.data?.role === 'system_admin';
 
   useEffect(() => {
-    // If user data is loaded and user is not a system admin, redirect to home
     if (!isLoading && !error && !isSystemAdmin) {
       toast({
         title: 'Access Denied',
@@ -34,24 +33,16 @@ export const SystemAdminRouteGuard: FC<SystemAdminRouteGuardProps> = ({ children
     }
   }, [isSystemAdmin, isLoading, error, navigate, toast]);
 
-  // Show loading state while checking authentication
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   useEffect(() => {
-    if (error) {
+    if (error && !redirectingRef.current) {
+      redirectingRef.current = true;
       apiRequest('/api/auth/logout', 'POST', {}).catch(() => {}).finally(() => {
         window.location.href = '/login';
       });
     }
   }, [error]);
 
-  if (error) {
+  if (isLoading || error) {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -59,6 +50,5 @@ export const SystemAdminRouteGuard: FC<SystemAdminRouteGuardProps> = ({ children
     );
   }
 
-  // If user is authenticated and is a system admin, render the children
   return isSystemAdmin ? <>{children}</> : null;
 };
