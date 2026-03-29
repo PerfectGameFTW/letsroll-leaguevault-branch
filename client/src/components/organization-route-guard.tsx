@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/queryClient';
 import type { ApiResponse, User } from '@shared/schema';
 
 interface OrganizationRouteGuardProps {
@@ -42,12 +43,18 @@ export const OrganizationRouteGuard: FC<OrganizationRouteGuardProps> = ({ childr
     );
   }
 
-  // Show error state if authentication check fails
+  useEffect(() => {
+    if (error) {
+      apiRequest('/api/auth/logout', 'POST', {}).catch(() => {}).finally(() => {
+        window.location.href = '/login';
+      });
+    }
+  }, [error]);
+
   if (error) {
     return (
-      <div className="p-6 rounded-lg bg-destructive/10 text-destructive max-w-md mx-auto mt-8">
-        <h2 className="text-xl font-semibold mb-2">Authentication Error</h2>
-        <p>Unable to verify your authentication status. Please try logging in again.</p>
+      <div className="flex items-center justify-center h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
