@@ -118,8 +118,12 @@ router.get('/:bowlerId/:leagueId', async (req, res) => {
     }
 
     const league = await storage.getLeague(leagueId);
+    const normalizedNextPaymentDate = schedule.nextPaymentDate.endsWith('Z')
+      ? schedule.nextPaymentDate
+      : new Date(schedule.nextPaymentDate + 'Z').toISOString();
     return sendSuccess(res, {
       ...schedule,
+      nextPaymentDate: normalizedNextPaymentDate,
       leagueTimezone: league?.timezone ?? DEFAULT_TIMEZONE,
     });
   } catch (error) {
