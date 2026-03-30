@@ -1,14 +1,17 @@
 import { FC } from "react";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 
 const PrivacyPolicyPage: FC = () => {
+  const [, setLocation] = useLocation();
+
   const handleBack = () => {
     if (window.history.length > 1) {
       window.history.back();
     } else {
-      window.location.href = "/login";
+      setLocation("/login");
     }
   };
 
