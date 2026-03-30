@@ -154,9 +154,15 @@ const LoginPage: FC = () => {
               Sign up
             </Link>
           </p>
-          <Link href="/privacy-policy" className="text-xs text-muted-foreground hover:underline">
-            Privacy Policy
-          </Link>
+          <div className="flex gap-3">
+            <Link href="/privacy-policy" className="text-xs text-muted-foreground hover:underline">
+              Privacy Policy
+            </Link>
+            <span className="text-xs text-muted-foreground">·</span>
+            <Link href="/delete-account" className="text-xs text-muted-foreground hover:underline">
+              Delete Account
+            </Link>
+          </div>
         </CardFooter>
       </Card>
     </div>

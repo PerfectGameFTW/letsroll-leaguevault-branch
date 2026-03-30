@@ -22,6 +22,7 @@ import locationsRouter from './locations.js';
 import paymentSchedulesRouter from './payment-schedules.js';
 import bowlnowRouter from './bowlnow.js';
 import integrationsRouter from './integrations.js';
+import accountRouter from './account.js';
 import { requireAuth, requireOrgAdmin, requireSystemAdmin } from '../middleware/auth.js';
 import { createLogger } from '../logger';
 
@@ -63,6 +64,7 @@ export function registerRoutes(app: Express): void {
   app.use('/api/payment-schedules', requireAuth, paymentSchedulesRouter);
   app.use('/api/bn', requireOrgAdmin, bowlnowRouter);
   app.use('/api/integrations', requireOrgAdmin, integrationsRouter);
+  app.use('/api/account', accountRouter);
 
   log.info('API routes registered');
 }

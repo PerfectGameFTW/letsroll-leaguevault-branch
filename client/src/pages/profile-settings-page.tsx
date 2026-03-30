@@ -519,6 +519,26 @@ export const ProfileSettingsPage: FC = () => {
             </Button>
           </CardContent>
         </Card>
+
+        <Separator />
+
+        <Card>
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Delete Account
+            </CardTitle>
+            <CardDescription className="mt-1.5">Permanently delete your account and all associated data</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Link href="/delete-account">
+              <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive/10 flex items-center gap-2">
+                <Trash2 className="h-4 w-4" />
+                Request Account Deletion
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
       </div>
       </ErrorBoundary>
     </BowlerLayout>

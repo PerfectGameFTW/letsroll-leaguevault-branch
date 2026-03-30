@@ -43,6 +43,7 @@ const ClaimBowlerPage = lazy(() => import("@/pages/claim-bowler-page"));
 const EmailTemplatesPage = lazy(() => import("@/pages/email-templates-page"));
 const IntegrationsPage = lazy(() => import("@/pages/integrations-page"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy-page"));
+const DeleteAccountPage = lazy(() => import("@/pages/delete-account-page"));
 
 function PageLoader() {
   return <PageLoadingState />;
@@ -111,6 +112,7 @@ function Router() {
         <Route path="/login" component={LoginPage} />
         <Route path="/set-password" component={SetPasswordPage} />
         <Route path="/privacy-policy" component={PrivacyPolicyPage} />
+        <Route path="/delete-account" component={DeleteAccountPage} />
         <Route path="/claim-bowler">
           <AuthRouteGuard>
             <ClaimBowlerPage />
