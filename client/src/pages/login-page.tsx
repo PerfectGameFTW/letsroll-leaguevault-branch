@@ -147,13 +147,16 @@ const LoginPage: FC = () => {
             </form>
           </Form>
         </CardContent>
-        <CardFooter className="flex justify-center pt-0">
+        <CardFooter className="flex flex-col items-center gap-2 pt-0">
           <p className="text-sm text-muted-foreground">
             Don't have an account?{" "}
             <Link href="/sign-up" className="text-primary hover:underline">
               Sign up
             </Link>
           </p>
+          <Link href="/privacy-policy" className="text-xs text-muted-foreground hover:underline">
+            Privacy Policy
+          </Link>
         </CardFooter>
       </Card>
     </div>

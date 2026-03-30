@@ -390,13 +390,16 @@ const SignUpPage: FC = () => {
             </form>
           </Form>
         </CardContent>
-        <CardFooter className="flex justify-center pt-0">
+        <CardFooter className="flex flex-col items-center gap-2 pt-0">
           <p className="text-sm text-muted-foreground">
             Already have an account?{" "}
             <Link href="/login" className="text-primary hover:underline">
               Sign in
             </Link>
           </p>
+          <Link href="/privacy-policy" className="text-xs text-muted-foreground hover:underline">
+            Privacy Policy
+          </Link>
         </CardFooter>
       </Card>
     </div>
