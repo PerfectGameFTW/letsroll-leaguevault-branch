@@ -6,7 +6,7 @@ import type { InsertPayment } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
 import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
 
-type PaymentCard = SquareCard | CardPointeCard | null;
+export type PaymentCard = SquareCard | CardPointeCard | null;
 
 interface UsePaymentFormSubmitOptions {
   form: UseFormReturn<InsertPayment>;
@@ -15,6 +15,7 @@ interface UsePaymentFormSubmitOptions {
   selectedSavedCardId: string;
   setPaymentError: (error: string | null) => void;
   onClose: () => void;
+  isCardPointe?: boolean;
 }
 
 export function usePaymentFormSubmit({
@@ -24,6 +25,7 @@ export function usePaymentFormSubmit({
   selectedSavedCardId,
   setPaymentError,
   onClose,
+  isCardPointe = false,
 }: UsePaymentFormSubmitOptions) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
