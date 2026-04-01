@@ -80,7 +80,7 @@ router.get("/", async (req, res) => {
         return {
           ...bl,
           bowler: bowler ? { id: bowler.id, name: bowler.name, email: bowler.email, active: bowler.active } : null,
-          team: team ? { id: team.id, name: team.name, number: team.number, leagueId: team.leagueId } : null,
+          team: team ? { id: team.id, name: team.name, number: team.number, leagueId: team.leagueId, displayOrder: team.displayOrder } : null,
           league: league ? { id: league.id, name: league.name, description: league.description, active: league.active } : null,
         };
       });

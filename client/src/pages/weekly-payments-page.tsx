@@ -44,7 +44,7 @@ interface EnrichedBowlerLeague {
   leagueId: number;
   teamId: number;
   bowler: { id: number; name: string; email: string | null; active: boolean } | null;
-  team: { id: number; name: string; number: number; leagueId: number } | null;
+  team: { id: number; name: string; number: number; leagueId: number; displayOrder: number } | null;
   league: { id: number; name: string; description: string | null; active: boolean } | null;
 }
 
@@ -110,10 +110,12 @@ export default function WeeklyPaymentsPage() {
     return [...enrichedBowlerLeagues]
       .filter(bl => bl.bowler)
       .sort((a, b) => {
+        const aOrder = a.team?.displayOrder ?? Infinity;
+        const bOrder = b.team?.displayOrder ?? Infinity;
+        if (aOrder !== bOrder) return aOrder - bOrder;
         const aTeam = a.team?.number ?? Infinity;
         const bTeam = b.team?.number ?? Infinity;
-        const teamDiff = aTeam - bTeam;
-        if (teamDiff !== 0) return teamDiff;
+        if (aTeam !== bTeam) return aTeam - bTeam;
         return (a.bowler?.name ?? "").localeCompare(b.bowler?.name ?? "");
       });
   }, [enrichedBowlerLeagues]);
