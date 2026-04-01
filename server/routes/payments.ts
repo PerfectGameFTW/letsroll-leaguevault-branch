@@ -263,14 +263,15 @@ router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
     const { reason } = req.body || {};
     let providerRefundId: string | undefined;
 
-    if (payment.squarePaymentId && payment.type === 'credit_card') {
+    const providerPaymentRef = payment.cardpointeRetref || payment.squarePaymentId;
+    if (providerPaymentRef && payment.type === 'credit_card') {
       const league = await storage.getLeague(payment.leagueId);
       const locationId = league?.locationId ?? null;
       const provider = await getPaymentProvider(locationId);
       if (!provider) {
         return sendError(res, "Payment provider not available for refund processing", 500, "PROVIDER_NOT_CONFIGURED");
       }
-      const refundResult = await provider.refundPayment(payment.squarePaymentId, payment.amount, reason);
+      const refundResult = await provider.refundPayment(providerPaymentRef, payment.amount, reason);
       providerRefundId = refundResult.refundId;
     }
 

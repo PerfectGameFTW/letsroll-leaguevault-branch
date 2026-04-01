@@ -19,6 +19,7 @@ import {
   parseCardPointeAmount,
   mapCardBrand,
   extractLast4,
+  detectBrandFromToken,
   type CardPointeCredentials,
 } from './cardpointe';
 import { storage } from '../storage';
@@ -61,19 +62,32 @@ export class CardPointePaymentProvider implements PaymentProvider {
     _idempotencyKey?: string,
   ): Promise<PaymentResult> {
     const creds = await this.getCredentials();
-    const result = await authorizeTransaction(creds, {
+
+    const authParams: Parameters<typeof authorizeTransaction>[1] = {
       account: sourceId,
       amount: formatAmountForCardPointe(amount),
       capture: 'Y',
       email: buyerEmail,
-    });
+    };
+
+    if (sourceId.includes('/')) {
+      const [profileId, acctId] = sourceId.split('/');
+      authParams.profile = `${profileId}/${acctId}`;
+      authParams.account = acctId;
+    }
+
+    const result = await authorizeTransaction(creds, authParams);
 
     return {
       id: result.retref,
       status: 'COMPLETED',
       card: {
         last4: extractLast4(result.account),
-        brand: mapCardBrand(result.token ? undefined : undefined),
+        brand: mapCardBrand(result.acctid ? undefined : detectBrandFromToken(result.token || result.account)),
+      },
+      providerRef: {
+        cardpointeRetref: result.retref,
+        cardpointeAuthcode: result.authcode,
       },
     };
   }
@@ -189,11 +203,16 @@ export class CardPointePaymentProvider implements PaymentProvider {
   }
 
   async createOrUpdateCustomer(
-    _name: string,
-    _email: string,
+    name: string,
+    email: string,
     _phone?: string | null,
   ): Promise<PaymentCustomer | null> {
-    return null;
+    log.info('CardPointe createOrUpdateCustomer: profiles are created when cards are saved, returning placeholder');
+    return {
+      id: `cp_customer_${Date.now()}`,
+      name,
+      email,
+    };
   }
 
   async getPayment(

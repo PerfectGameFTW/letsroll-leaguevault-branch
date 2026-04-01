@@ -246,6 +246,14 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
           } catch (schedError) {
             log.info('No payment schedule to update (normal for one-time payments)');
           }
+          if (provider.providerName === 'cardpointe' && savedCard.id.includes('/')) {
+            const profileId = savedCard.id.split('/')[0];
+            try {
+              await storage.updateBowler(bowlerId, { cardpointeProfileId: profileId });
+            } catch (profileError) {
+              log.error('Failed to persist CardPointe profile ID on bowler:', profileError);
+            }
+          }
         }
       } catch (error) {
         log.error('Failed to save card on file:', error);
@@ -269,6 +277,8 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       status: 'paid',
       type: 'credit_card',
       squarePaymentId: payment.id,
+      cardpointeRetref: payment.providerRef?.cardpointeRetref,
+      cardpointeAuthcode: payment.providerRef?.cardpointeAuthcode,
       idempotencyKey,
     });
 

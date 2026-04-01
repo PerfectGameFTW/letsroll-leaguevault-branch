@@ -311,3 +311,14 @@ export function extractLast4(account: string): string {
   const cleaned = account.replace(/[^0-9X*]/g, '');
   return cleaned.slice(-4);
 }
+
+export function detectBrandFromToken(token: string): string | undefined {
+  if (!token) return undefined;
+  const clean = token.replace(/\D/g, '');
+  if (!clean) return undefined;
+  if (clean.startsWith('4')) return 'VISA';
+  if (clean.startsWith('5') || clean.startsWith('2')) return 'MC';
+  if (clean.startsWith('3') && (clean[1] === '4' || clean[1] === '7')) return 'AMEX';
+  if (clean.startsWith('6')) return 'DISC';
+  return undefined;
+}

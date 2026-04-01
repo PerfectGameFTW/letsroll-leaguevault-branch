@@ -168,6 +168,8 @@ async function handleSuccessfulPayment(
       type: 'credit_card',
       weekOf: scheduleRecord.nextPaymentDate,
       squarePaymentId: paymentResult.paymentId,
+      cardpointeRetref: paymentResult.providerRef?.cardpointeRetref,
+      cardpointeAuthcode: paymentResult.providerRef?.cardpointeAuthcode,
     });
 
     logger.info(`[PaymentScheduler] Transaction completed for ${jobId}`, {

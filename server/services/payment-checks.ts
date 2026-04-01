@@ -109,7 +109,9 @@ export async function checkAndChargeFinalTwoWeeks(
         league,
         finalPaymentResult.paymentId,
         'Auto-charged: Final 2 Weeks',
-        new Date().toISOString()
+        new Date().toISOString(),
+        undefined,
+        finalPaymentResult.providerRef,
       );
 
       logger.info(`[PaymentScheduler] Final 2 weeks auto-charge successful for ${jobId}`, {

@@ -5,12 +5,18 @@ import { logger } from "../logger";
 import { getPaymentProvider } from "./payment-provider-factory";
 import type { PaymentProvider, OrderLineItem } from "./payment-provider";
 
-export interface PaymentResult {
+export interface ChargeResult {
   status: 'success' | 'error';
   paymentId?: string;
   error?: string;
   cardId?: string;
+  providerRef?: {
+    cardpointeRetref?: string;
+    cardpointeAuthcode?: string;
+  };
 }
+
+export type PaymentResult = ChargeResult;
 
 async function fetchBowlerPaymentInfo(bowlerId: number) {
   const bowler = await db.select().from(bowlers).where(eq(bowlers.id, bowlerId)).then(r => r[0]);
@@ -41,7 +47,7 @@ export async function executeCharge(
   lineItems: OrderLineItem[],
   squareCustomerId: string | undefined,
   buyerEmail: string | undefined
-): Promise<PaymentResult> {
+): Promise<ChargeResult> {
   if (lineItems.length > 0) {
     try {
       const orderResult = await provider.createOrderWithPayment(
@@ -55,7 +61,7 @@ export async function executeCharge(
       if (!orderResult.id) {
         return { status: 'error', error: 'Order payment succeeded but no payment ID returned' };
       }
-      return { status: 'success', paymentId: orderResult.id };
+      return { status: 'success', paymentId: orderResult.id, providerRef: orderResult.providerRef };
     } catch (error) {
       return { status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
     }
@@ -69,7 +75,7 @@ export async function executeCharge(
       undefined,
     );
     if (processResult?.id) {
-      return { status: 'success', paymentId: processResult.id };
+      return { status: 'success', paymentId: processResult.id, providerRef: processResult.providerRef };
     }
     return { status: 'error', error: 'Payment processing failed' };
   }
@@ -146,7 +152,8 @@ export async function createPaymentRecord(
   paymentId?: string,
   notes?: string,
   weekOf?: string,
-  tx?: typeof db
+  tx?: typeof db,
+  providerRef?: { cardpointeRetref?: string; cardpointeAuthcode?: string },
 ): Promise<void> {
   const target = tx ?? db;
   const { lineageAmount, prizeFundAmount } = computePaymentSplit(amount, league);
@@ -161,6 +168,8 @@ export async function createPaymentRecord(
     type: 'credit_card',
     weekOf: weekOf ?? scheduleRecord.nextPaymentDate,
     squarePaymentId: paymentId,
+    cardpointeRetref: providerRef?.cardpointeRetref,
+    cardpointeAuthcode: providerRef?.cardpointeAuthcode,
     notes,
   });
 }

@@ -6,6 +6,10 @@ export interface PaymentResult {
     last4: string;
     brand: string;
   };
+  providerRef?: {
+    cardpointeRetref?: string;
+    cardpointeAuthcode?: string;
+  };
 }
 
 export interface RefundResult {

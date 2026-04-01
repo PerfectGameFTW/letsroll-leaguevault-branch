@@ -22,6 +22,7 @@ A full-stack bowling league management application with multi-tenant support for
   - `server/services/cardpointe-provider.ts` - CardPointePaymentProvider implementing PaymentProvider interface
   - `shared/schema/locations.ts` - `paymentProvider` field + `cardpointeCredentials` JSONB on locations table
   - `shared/schema/bowlers.ts` - `cardpointeProfileId` for stored card profiles
+  - `shared/schema/payments.ts` - `cardpointeRetref` / `cardpointeAuthcode` for CardPointe transaction references
 
 ## Key Files
 - `shared/schema/` - Database schema split by domain (barrel re-exports from `shared/schema/index.ts`)
