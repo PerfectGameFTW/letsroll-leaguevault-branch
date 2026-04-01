@@ -156,6 +156,16 @@ router.post('/', (req: any, res, next) => {
       return sendError(res, 'Invalid file type. Please upload a CSV or XLSX file.', 400);
     }
 
+    const allowedMimeTypes = [
+      'text/csv',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'application/octet-stream',
+    ];
+    if (!allowedMimeTypes.includes(req.file.mimetype)) {
+      return sendError(res, 'Invalid file type. The uploaded file does not appear to be a valid CSV or XLSX file.', 400);
+    }
+
     const organizationId: number | undefined = req.user?.organizationId;
     if (!organizationId) {
       return sendError(res, 'Organization context required', 403, 'FORBIDDEN');
