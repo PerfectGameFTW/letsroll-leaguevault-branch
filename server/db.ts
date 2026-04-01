@@ -59,6 +59,29 @@ export async function testConnection(retries = 3, delay = 1000): Promise<boolean
   return false;
 }
 
+export async function ensureSessionTable(): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS "session" (
+        "sid" varchar NOT NULL COLLATE "default",
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL,
+        CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
+      )
+    `);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire")
+    `);
+    log.info('Session table verified/created successfully');
+  } catch (error) {
+    log.error('Failed to create session table:', error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function testCleanup(): Promise<void> {
   log.info('Starting cleanup test...');
 

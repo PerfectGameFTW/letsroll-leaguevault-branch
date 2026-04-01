@@ -5,7 +5,7 @@ import compression from "compression";
 import helmet from "helmet";
 import { registerRoutes } from "./routes/index";
 import { setupVite } from "./vite";
-import { testConnection, cleanup as dbCleanup } from "./db";
+import { testConnection, cleanup as dbCleanup, ensureSessionTable } from "./db";
 import { createServer } from 'http';
 import { storage } from './storage';
 import path from 'path';
@@ -339,11 +339,17 @@ async function testDatabaseConnectionWithRetry(maxRetries = 3, backoffMs = 1000)
 
 async function startServer() {
   try {
-    const dbConnected = await testDatabaseConnectionWithRetry();
+    let dbConnected = await testDatabaseConnectionWithRetry();
     if (!dbConnected) {
       log.warn('Database connection failed, starting without database');
     } else {
       log.info('Database connected');
+      try {
+        await ensureSessionTable();
+      } catch (error) {
+        log.error('Failed to ensure session table exists - authentication will not work:', error);
+        dbConnected = false;
+      }
     }
 
     ensureAvatarsDirectory();
