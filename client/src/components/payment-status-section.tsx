@@ -1,5 +1,7 @@
 import { FC, useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { useSquarePayment } from "@/hooks/use-square-payment";
+import { useCardPointePayment } from "@/hooks/use-cardpointe-payment";
+import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
@@ -51,17 +53,29 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
 
-  const { card, isInitialized, error: squareError, initializeCard, cleanupCard } = useSquarePayment({
+  const { config: providerConfig, isCardPointe, supportsWallets } = usePaymentProvider(league.locationId ?? null);
+
+  const { card: sqCard, isInitialized: sqInit, error: sqError, initializeCard: sqInitCard, cleanupCard: sqCleanup } = useSquarePayment({
     locationId: league.locationId ?? null,
     onError: (error) => {
       console.error('[Square Payment Error]:', error);
-      toast({
-        title: "Payment Setup Error",
-        description: error,
-        variant: "destructive",
-      });
+      toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
     }
   });
+
+  const { card: cpCard, isInitialized: cpInit, error: cpError, initializeCard: cpInitCard, cleanupCard: cpCleanup } = useCardPointePayment({
+    tokenizerUrl: providerConfig?.tokenizerUrl,
+    onError: (error) => {
+      console.error('[CardPointe Payment Error]:', error);
+      toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
+    }
+  });
+
+  const card = isCardPointe ? cpCard : sqCard;
+  const isInitialized = isCardPointe ? cpInit : sqInit;
+  const squareError = isCardPointe ? cpError : sqError;
+  const initializeCard = isCardPointe ? cpInitCard : sqInitCard;
+  const cleanupCard = isCardPointe ? cpCleanup : sqCleanup;
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
     queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id],
@@ -186,7 +200,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   } = useWalletPayments({
     locationId: league.locationId ?? null,
     amountCents: calculateTotalAmount(),
-    enabled: showPaymentSetup && (selectedSchedule === 'custom' || league.paymentMode === 'upfront'),
+    enabled: showPaymentSetup && supportsWallets && (selectedSchedule === 'custom' || league.paymentMode === 'upfront'),
     onTokenReceived: handleWalletPayment,
     onError: (error) => toast({ title: "Wallet Payment Error", description: error, variant: "destructive" }),
   });

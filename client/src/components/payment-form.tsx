@@ -10,6 +10,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useSquarePayment } from "@/hooks/use-square-payment";
+import { useCardPointePayment } from "@/hooks/use-cardpointe-payment";
+import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { Form } from "@/components/ui/form";
 import {
@@ -76,12 +78,14 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     },
   });
 
+  const { config: providerConfig, isCardPointe, supportsWallets } = usePaymentProvider(leagueInfo?.locationId ?? null);
+
   const {
-    card,
-    isInitialized,
+    card: squareCard,
+    isInitialized: squareInitialized,
     error: squareError,
-    initializeCard,
-    cleanupCard,
+    initializeCard: squareInitializeCard,
+    cleanupCard: squareCleanupCard,
   } = useSquarePayment({
     locationId: leagueInfo?.locationId ?? null,
     onError: (error) => {
@@ -93,6 +97,30 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       });
     },
   });
+
+  const {
+    card: cpCard,
+    isInitialized: cpInitialized,
+    error: cpError,
+    initializeCard: cpInitializeCard,
+    cleanupCard: cpCleanupCard,
+  } = useCardPointePayment({
+    tokenizerUrl: providerConfig?.tokenizerUrl,
+    onError: (error) => {
+      form.setValue("type", "cash");
+      toast({
+        title: "Payment Form Notice",
+        description: "Credit card form unavailable. Please try another payment method.",
+        variant: "default",
+      });
+    },
+  });
+
+  const card = isCardPointe ? cpCard : squareCard;
+  const isInitialized = isCardPointe ? cpInitialized : squareInitialized;
+  const cardError = isCardPointe ? cpError : squareError;
+  const initializeCard = isCardPointe ? cpInitializeCard : squareInitializeCard;
+  const cleanupCard = isCardPointe ? cpCleanupCard : squareCleanupCard;
 
   useEffect(() => {
     if (leagueId) {
@@ -260,7 +288,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   } = useWalletPayments({
     locationId: leagueInfo?.locationId ?? null,
     amountCents: watchedAmount || 0,
-    enabled: open && paymentType === 'credit_card',
+    enabled: open && paymentType === 'credit_card' && supportsWallets,
     onTokenReceived: handleWalletPayment,
     onError: (error) => setPaymentError(error),
   });
@@ -346,14 +374,14 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 selectedSavedCardId={selectedSavedCardId}
                 setSelectedSavedCardId={setSelectedSavedCardId}
                 isSquareReady={isSquareReady}
-                squareError={squareError}
+                squareError={cardError}
                 squareLoadFailed={squareLoadFailed}
                 cardContainerRef={cardContainerRef}
                 onCleanupCard={cleanupCard}
                 initializationAttempted={initializationAttempted}
                 setIsSquareReady={setIsSquareReady}
-                applePayAvailable={applePayAvailable}
-                googlePayAvailable={googlePayAvailable}
+                applePayAvailable={supportsWallets && applePayAvailable}
+                googlePayAvailable={supportsWallets && googlePayAvailable}
                 applePayRef={applePayRef}
                 googlePayRef={googlePayRef}
                 onApplePayClick={handleApplePayClick}

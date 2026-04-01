@@ -9,6 +9,8 @@ import { ChevronDown, X, Check } from "lucide-react";
 import { differenceInWeeks } from "date-fns";
 import { calculateFinalTwoWeeksPaidOnWeek } from "@/lib/financial-utils";
 import { useSquarePayment } from "@/hooks/use-square-payment";
+import { useCardPointePayment } from "@/hooks/use-cardpointe-payment";
+import { usePaymentProvider } from "@/hooks/use-payment-provider";
 import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
@@ -34,12 +36,27 @@ export default function PaymentHistoryPage() {
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
   const [storeCard, setStoreCard] = useState(false);
-  const { card, isInitialized, initializeCard, cleanupCard } = useSquarePayment({
+  const { config: providerConfig, isCardPointe, supportsWallets } = usePaymentProvider(league?.locationId ?? null);
+
+  const { card: sqCard, isInitialized: sqInit, initializeCard: sqInitCard, cleanupCard: sqCleanup } = useSquarePayment({
     onError: (error) => {
       console.error('[Square Payment Error]:', error);
       toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
     }
   });
+
+  const { card: cpCard, isInitialized: cpInit, initializeCard: cpInitCard, cleanupCard: cpCleanup } = useCardPointePayment({
+    tokenizerUrl: providerConfig?.tokenizerUrl,
+    onError: (error) => {
+      console.error('[CardPointe Payment Error]:', error);
+      toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
+    }
+  });
+
+  const card = isCardPointe ? cpCard : sqCard;
+  const isInitialized = isCardPointe ? cpInit : sqInit;
+  const initializeCard = isCardPointe ? cpInitCard : sqInitCard;
+  const cleanupCard = isCardPointe ? cpCleanup : sqCleanup;
 
   useEffect(() => {
     if (!payDialogType) {
@@ -220,7 +237,7 @@ export default function PaymentHistoryPage() {
   } = useWalletPayments({
     locationId: league?.locationId,
     amountCents: dialogAmountCents,
-    enabled: !!payDialogType && !!league?.locationId,
+    enabled: !!payDialogType && !!league?.locationId && supportsWallets,
     onTokenReceived: handleWalletPayment,
     onError: (error) => toast({ title: "Wallet Payment Error", description: error, variant: "destructive" }),
   });

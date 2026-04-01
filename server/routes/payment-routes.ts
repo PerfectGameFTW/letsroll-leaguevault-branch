@@ -746,6 +746,18 @@ router.get('/config', async (req: any, res) => {
             req.user?.role === 'system_admin' ||
             (req.user?.organizationId != null && req.user.organizationId === loc.organizationId);
           if (isAuthorized) {
+            if (loc.paymentProvider === 'cardpointe') {
+              const cpCreds = await storage.getLocationCardPointeConfig(lvLocationId);
+              if (cpCreds?.merchantId && cpCreds.merchantId.trim().length > 0) {
+                return res.json({
+                  paymentProvider: 'cardpointe',
+                  tokenizerUrl: cpCreds.siteUrl
+                    ? `https://${cpCreds.siteUrl.replace(/^https?:\/\//, '')}/itoke/ajax-tokenizer.html`
+                    : null,
+                });
+              }
+            }
+
             const creds = await storage.getLocationSquareConfig(lvLocationId);
             if (creds?.appId && creds?.accessToken && creds.appId.trim().length > 0) {
               return res.json({

@@ -4,10 +4,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import { csrfFetch } from "@/lib/queryClient";
 import type { InsertPayment } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
+import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
+
+type PaymentCard = SquareCard | CardPointeCard | null;
 
 interface UsePaymentFormSubmitOptions {
   form: UseFormReturn<InsertPayment>;
-  card: SquareCard | null;
+  card: PaymentCard;
   cardMode: 'new' | 'saved';
   selectedSavedCardId: string;
   setPaymentError: (error: string | null) => void;
@@ -58,29 +61,42 @@ export function usePaymentFormSubmit({
           throw new Error('Credit card form not initialized');
         }
 
-        const tokenizationOptions = data.storeCard ? {
-          cardOnFile: true,
-          verificationMethod: 'EXTERNAL',
-          verificationDetails: {
-            amount: data.amount.toString(),
-            currencyCode: 'USD',
-            intent: 'STORE'
-          }
-        } : undefined;
-        
-        const result = await card.tokenize(tokenizationOptions);
+        let sourceToken: string;
+        const isSquareCard = 'tokenize' in card && card.tokenize.length !== 0 || ('destroy' in card && 'attach' in card);
+        const cardAny = card as any;
 
-        if (result.status !== 'OK' || !result.token) {
-          const errors = result.errors || [];
-          const errorMessage = errors.map((e: { message: string }) => e.message).join(', ') || 'Card validation failed';
-          throw new Error(errorMessage);
+        if (cardAny.tokenize) {
+          const result = await cardAny.tokenize(
+            isSquareCard && data.storeCard ? {
+              cardOnFile: true,
+              verificationMethod: 'EXTERNAL',
+              verificationDetails: {
+                amount: data.amount.toString(),
+                currencyCode: 'USD',
+                intent: 'STORE'
+              }
+            } : undefined
+          );
+
+          if ('status' in result) {
+            if (result.status !== 'OK' || !result.token) {
+              const errors = result.errors || [];
+              const errorMessage = errors.map((e: { message: string }) => e.message).join(', ') || 'Card validation failed';
+              throw new Error(errorMessage);
+            }
+            sourceToken = result.token;
+          } else {
+            sourceToken = result.token;
+          }
+        } else {
+          throw new Error('Card tokenization not available');
         }
 
         const response = await csrfFetch('/api/payments-provider/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            sourceId: result.token,
+            sourceId: sourceToken,
             amount: data.amount,
             bowlerId: data.bowlerId,
             leagueId: data.leagueId,

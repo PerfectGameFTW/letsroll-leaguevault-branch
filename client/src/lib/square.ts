@@ -276,13 +276,16 @@ export async function initializeSquare(locationId?: number | null): Promise<Squa
   }
 }
 
-export async function tokenizeCard(cardInstance: SquareCard | null): Promise<string> {
+export async function tokenizeCard(cardInstance: any): Promise<string> {
   if (!cardInstance) {
     throw new Error(JSON.stringify({
       error: { message: 'Card element not initialized', code: 'INITIALIZATION_ERROR' }
     }));
   }
   const result = await cardInstance.tokenize();
+  if (result.token && (result.status === 'OK' || !('status' in result))) {
+    return result.token;
+  }
   if (result.status === 'OK' && result.token) {
     return result.token;
   }
@@ -291,7 +294,7 @@ export async function tokenizeCard(cardInstance: SquareCard | null): Promise<str
   }));
 }
 
-export async function createPayment(amount: number, cardInstance: SquareCard | null, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
+export async function createPayment(amount: number, cardInstance: any, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
   try {
     if (!cardInstance) {
       throw new Error(JSON.stringify({
@@ -350,7 +353,7 @@ export async function createPayment(amount: number, cardInstance: SquareCard | n
       }
     }
 
-    if (result.status === 'OK' && result.token) {
+    if (result.token && (!('status' in result) || result.status === 'OK')) {
       const paymentData = {
         sourceId: result.token,
         amount,

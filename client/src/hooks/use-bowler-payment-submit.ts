@@ -5,12 +5,15 @@ import { queryClient, csrfFetch } from '@/lib/queryClient';
 import { formatCurrency } from "@/lib/utils";
 import type { League, Bowler } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
+import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
+
+type PaymentCard = SquareCard | CardPointeCard | null;
 
 interface UseBowlerPaymentSubmitOptions {
   league: League;
   bowler: Bowler;
   weeklyFee: number;
-  card: SquareCard | null;
+  card: PaymentCard;
   cardMode: 'new' | 'saved';
   selectedSavedCardId: string;
   selectedSchedule: 'weekly' | 'custom';

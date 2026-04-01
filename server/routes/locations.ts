@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
-import { insertLocationSchema, updateLocationSchema, locationSquareCredentialsSchema } from '@shared/schema';
+import { insertLocationSchema, updateLocationSchema, locationSquareCredentialsSchema, locationCardPointeCredentialsSchema, PAYMENT_PROVIDERS } from '@shared/schema';
 import { filterByOrganization } from '../middleware/organization.js';
 import { createLogger } from '../logger';
 import { clearProviderCache } from '../services/payment-provider-factory';
@@ -252,6 +252,104 @@ router.patch('/:id/square-config', async (req: any, res) => {
   } catch (error) {
     log.error(`Error updating Square config for location ${req.params.id}:`, error);
     sendError(res, 'Failed to update Square configuration', 500, 'ServerError');
+  }
+});
+
+router.get('/:id/cardpointe-config', async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
+
+    const location = await storage.getLocation(id);
+    if (!location) return sendError(res, 'Location not found', 404, 'NotFound');
+
+    const isOrgAdmin = req.user?.role === 'org_admin' || req.user?.role === 'system_admin';
+    const hasAccess = req.user?.role === 'system_admin' || req.user?.organizationId === location.organizationId;
+    if (!isOrgAdmin || !hasAccess) {
+      return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
+    }
+
+    const creds = await storage.getLocationCardPointeConfig(id);
+    sendSuccess(res, {
+      merchantId: creds?.merchantId || null,
+      apiUsernameConfigured: !!(creds?.apiUsername && creds.apiUsername.trim().length > 0),
+      apiPasswordConfigured: !!(creds?.apiPassword && creds.apiPassword.trim().length > 0),
+      siteUrl: creds?.siteUrl || null,
+    });
+  } catch (error) {
+    log.error(`Error fetching CardPointe config for location ${req.params.id}:`, error);
+    sendError(res, 'Failed to fetch CardPointe configuration', 500, 'ServerError');
+  }
+});
+
+router.patch('/:id/cardpointe-config', async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
+
+    const location = await storage.getLocation(id);
+    if (!location) return sendError(res, 'Location not found', 404, 'NotFound');
+
+    const isOrgAdmin = req.user?.role === 'org_admin' || req.user?.role === 'system_admin';
+    const hasAccess = req.user?.role === 'system_admin' || req.user?.organizationId === location.organizationId;
+    if (!isOrgAdmin || !hasAccess) {
+      return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
+    }
+
+    const parseResult = locationCardPointeCredentialsSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      return handleZodError(res, parseResult.error);
+    }
+
+    const incoming = parseResult.data ?? {};
+    const existing = await storage.getLocationCardPointeConfig(id);
+    const creds = {
+      merchantId: incoming.merchantId !== undefined ? (incoming.merchantId || undefined) : (existing?.merchantId || undefined),
+      apiUsername: incoming.apiUsername !== undefined ? (incoming.apiUsername || undefined) : (existing?.apiUsername || undefined),
+      apiPassword: incoming.apiPassword !== undefined ? (incoming.apiPassword || undefined) : (existing?.apiPassword || undefined),
+      siteUrl: incoming.siteUrl !== undefined ? (incoming.siteUrl || undefined) : (existing?.siteUrl || undefined),
+    };
+
+    await storage.updateLocationCardPointeConfig(id, creds);
+    clearProviderCache(id);
+    sendSuccess(res, {
+      merchantId: creds.merchantId || null,
+      apiUsernameConfigured: !!(creds.apiUsername && creds.apiUsername.trim().length > 0),
+      apiPasswordConfigured: !!(creds.apiPassword && creds.apiPassword.trim().length > 0),
+      siteUrl: creds.siteUrl || null,
+    });
+  } catch (error) {
+    log.error(`Error updating CardPointe config for location ${req.params.id}:`, error);
+    sendError(res, 'Failed to update CardPointe configuration', 500, 'ServerError');
+  }
+});
+
+router.patch('/:id/payment-provider', async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
+
+    const location = await storage.getLocation(id);
+    if (!location) return sendError(res, 'Location not found', 404, 'NotFound');
+
+    const isOrgAdmin = req.user?.role === 'org_admin' || req.user?.role === 'system_admin';
+    const hasAccess = req.user?.role === 'system_admin' || req.user?.organizationId === location.organizationId;
+    if (!isOrgAdmin || !hasAccess) {
+      return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
+    }
+
+    const schema = z.object({ paymentProvider: z.enum(PAYMENT_PROVIDERS) });
+    const parseResult = schema.safeParse(req.body);
+    if (!parseResult.success) {
+      return handleZodError(res, parseResult.error);
+    }
+
+    await storage.updateLocation(id, { paymentProvider: parseResult.data.paymentProvider });
+    clearProviderCache(id);
+    sendSuccess(res, { paymentProvider: parseResult.data.paymentProvider });
+  } catch (error) {
+    log.error(`Error updating payment provider for location ${req.params.id}:`, error);
+    sendError(res, 'Failed to update payment provider', 500, 'ServerError');
   }
 });
 

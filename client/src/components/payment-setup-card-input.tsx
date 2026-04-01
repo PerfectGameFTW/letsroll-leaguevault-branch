@@ -67,7 +67,7 @@ export const PaymentSetupCardInput: FC<PaymentSetupCardInputProps> = ({
         <p className="text-sm text-muted-foreground">
           {savedCards.length > 0
             ? "Use a saved card or enter new card details"
-            : "Enter your card details (securely processed by Square)"}
+            : "Enter your card details securely"}
         </p>
       </div>
 
