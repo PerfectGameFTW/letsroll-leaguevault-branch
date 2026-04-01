@@ -1,6 +1,5 @@
-import { ApiError } from "square";
 import { logger } from "../logger";
-import { getSquareClientForLocation } from "../services/square";
+import { getPaymentProvider } from "../services/payment-provider-factory";
 
 interface CreatePaymentParams {
   amount: number;
@@ -22,55 +21,43 @@ export async function createSquarePayment({
   customerId,
 }: CreatePaymentParams) {
   try {
-    const client = await getSquareClientForLocation(locationId);
-    if (!client) {
+    const provider = await getPaymentProvider(locationId);
+    if (!provider) {
       return {
         status: "error" as const,
-        error: "Square is not configured for this location",
+        error: "Payment provider is not configured for this location",
       };
     }
 
-    const idempotencyKey = `${bowlerId}-${leagueId}-${Date.now()}`;
-
-    logger.info(`Creating Square payment for location ${locationId}`, {
+    logger.info(`Creating payment for location ${locationId}`, {
       amount,
       bowlerId,
       leagueId,
+      provider: provider.providerName,
     });
 
-    const payment = await client.paymentsApi.createPayment({
-      sourceId: cardId,
-      idempotencyKey,
-      amountMoney: {
-        amount: BigInt(amount),
-        currency: "USD",
-      },
-      autocomplete: true,
-      ...(buyerEmail && { buyerEmailAddress: buyerEmail }),
-      ...(customerId && { customerId }),
-    });
+    const result = await provider.processPayment(
+      cardId,
+      amount,
+      false,
+      customerId,
+      buyerEmail,
+    );
 
-    if (payment.result?.payment?.id) {
-      logger.info("Square payment created successfully", {
-        paymentId: payment.result.payment.id,
+    if (result?.id) {
+      logger.info("Payment created successfully", {
+        paymentId: result.id,
         status: "success"
       });
       return {
         status: "success" as const,
-        paymentId: payment.result.payment.id,
+        paymentId: result.id,
       };
     }
 
     throw new Error("Payment creation failed");
   } catch (error) {
-    logger.error("Square payment creation failed:", error);
-
-    if (error instanceof ApiError) {
-      return {
-        status: "error" as const,
-        error: error.result.errors?.[0]?.detail || "Payment processing failed",
-      };
-    }
+    logger.error("Payment creation failed:", error);
 
     return {
       status: "error" as const,

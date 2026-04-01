@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { processPayment, createOrUpdateCustomer, listCatalogItems, listCatalogCategories, createOrderWithPayment, saveCardOnFile, listCardsOnFile, disableCard, registerApplePayDomain, getSquarePayment } from '../services/square.js';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { squarePaymentLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger';
+import { getPaymentProvider } from '../services/payment-provider-factory';
+import { hasCatalogSupport, hasWalletSupport } from '../services/payment-provider';
 
 const log = createLogger("Square");
 
@@ -35,20 +36,21 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
       return res.json({
         dbPayment: { id: dbPayment.id, amount: dbPayment.amount, status: dbPayment.status, type: dbPayment.type, createdAt: dbPayment.createdAt },
         squarePayment: null,
-        message: 'No Square payment ID associated with this payment (cash/check payment)',
+        message: 'No payment ID associated with this payment (cash/check payment)',
       });
     }
 
     const league = await storage.getLeague(dbPayment.leagueId);
     const locationId = league?.locationId ?? null;
 
-    const squarePayment = await getSquarePayment(dbPayment.squarePaymentId, locationId);
+    const provider = await getPaymentProvider(locationId);
+    const providerPayment = provider ? await provider.getPayment(dbPayment.squarePaymentId) : null;
 
     log.info('Payment verification:', {
       dbPaymentId: dbPayment.id,
       squarePaymentId: dbPayment.squarePaymentId,
-      squareFound: !!squarePayment,
-      squareStatus: squarePayment?.status,
+      providerFound: !!providerPayment,
+      providerStatus: providerPayment?.status,
       dbStatus: dbPayment.status,
     });
 
@@ -63,15 +65,15 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
         bowlerId: dbPayment.bowlerId,
         leagueId: dbPayment.leagueId,
       },
-      squarePayment,
-      match: squarePayment ? {
-        statusMatch: (dbPayment.status === 'paid' && squarePayment.status === 'COMPLETED') ||
-                     (dbPayment.status !== 'paid' && squarePayment.status !== 'COMPLETED'),
-        amountMatch: String(dbPayment.amount) === squarePayment.amountMoney.amount,
+      squarePayment: providerPayment,
+      match: providerPayment ? {
+        statusMatch: (dbPayment.status === 'paid' && providerPayment.status === 'COMPLETED') ||
+                     (dbPayment.status !== 'paid' && providerPayment.status !== 'COMPLETED'),
+        amountMatch: String(dbPayment.amount) === providerPayment.amountMoney.amount,
       } : null,
-      message: squarePayment
-        ? `Square payment found: ${squarePayment.status}, $${(parseInt(squarePayment.amountMoney.amount) / 100).toFixed(2)}`
-        : 'Square payment NOT found — payment may have failed or been processed under different credentials',
+      message: providerPayment
+        ? `Payment found: ${providerPayment.status}, $${(parseInt(providerPayment.amountMoney.amount) / 100).toFixed(2)}`
+        : 'Payment NOT found — payment may have failed or been processed under different credentials',
     });
   } catch (error: any) {
     log.error('Payment verification error:', error);
@@ -159,22 +161,22 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       .digest('hex');
 
     const existingPayment = await storage.getPaymentByIdempotencyKey(idempotencyKey);
-    // Square limits idempotency_key to 45 chars; service appends "-order" (6) or "-pay" (4),
-    // so truncate the base key to 39 chars to stay within the limit in all cases.
-    const squareIdempotencyKey = idempotencyKey.substring(0, 39);
+    const truncatedIdempotencyKey = idempotencyKey.substring(0, 39);
     if (existingPayment) {
       log.info('Payment deduplicated (same token resubmitted):', { dbPaymentId: existingPayment.id, squarePaymentId: existingPayment.squarePaymentId, bowlerId, leagueId, amount });
       return res.json({ dbPaymentId: existingPayment.id, id: existingPayment.squarePaymentId, status: 'COMPLETED', deduplicated: true });
     }
 
-    let payment;
-    let storedCardId: string | undefined;
-
     const lvLocationId = league.locationId ?? null;
+    const provider = await getPaymentProvider(lvLocationId);
+    if (!provider) {
+      return sendError(res, "Payment system is not configured for this location", 500, 'PROVIDER_NOT_CONFIGURED');
+    }
+
     const customerId = bowler.squareCustomerId || undefined;
 
     if (req.body.storeCard && !customerId) {
-      log.warn('Cannot store card — bowler has no Square customer ID:', bowlerId);
+      log.warn('Cannot store card — bowler has no customer ID:', bowlerId);
     }
 
     const lineItems: { catalogObjectId: string; quantity: string }[] = [];
@@ -191,45 +193,47 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
     const buyerEmail = bowler.email || undefined;
 
-    log.info('Processing Square payment:', {
+    log.info('Processing payment:', {
       bowlerId, leagueId, amount,
       locationId: lvLocationId,
+      provider: provider.providerName,
       hasLineItems: lineItems.length > 0,
       hasCustomerId: !!customerId,
     });
 
+    let payment;
+    let storedCardId: string | undefined;
+
     if (lineItems.length > 0) {
-      payment = await createOrderWithPayment(
+      payment = await provider.createOrderWithPayment(
         sourceId,
         amount,
         lineItems,
-        lvLocationId,
         req.body.storeCard,
         customerId,
         buyerEmail,
-        squareIdempotencyKey
+        truncatedIdempotencyKey
       );
     } else {
-      payment = await processPayment(
+      payment = await provider.processPayment(
         sourceId,
         amount,
         req.body.storeCard,
         customerId,
         buyerEmail,
-        squareIdempotencyKey,
-        lvLocationId
+        truncatedIdempotencyKey,
       );
     }
 
-    log.info('Square payment completed:', {
-      squarePaymentId: payment.id,
-      squareStatus: payment.status,
+    log.info('Payment completed:', {
+      paymentId: payment.id,
+      paymentStatus: payment.status,
       bowlerId, leagueId, amount,
     });
 
-    if (req.body.storeCard && customerId && sourceId && !sourceId.startsWith('ccof:')) {
+    if (req.body.storeCard && customerId && sourceId && !provider.validateCardId(sourceId)) {
       try {
-        const savedCard = await saveCardOnFile(sourceId, customerId, lvLocationId);
+        const savedCard = await provider.saveCardOnFile(sourceId, customerId);
         if (savedCard?.id) {
           log.info('Card saved on file:', savedCard.id.substring(0, 15) + '...');
           storedCardId = savedCard.id;
@@ -270,7 +274,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
     log.info('Payment recorded in DB:', {
       dbPaymentId: dbPayment.id,
-      squarePaymentId: payment.id,
+      paymentId: payment.id,
       bowlerId, leagueId, amount,
     });
 
@@ -302,7 +306,6 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
 router.post('/customers', squarePaymentLimiter, async (req, res) => {
   try {
-    // If a team ID is provided, verify the user has access to it
     if (req.body.teamId) {
       const team = await storage.getTeam(req.body.teamId);
       
@@ -310,7 +313,6 @@ router.post('/customers', squarePaymentLimiter, async (req, res) => {
         return sendError(res, "Team not found", 404, 'NOT_FOUND');
       }
       
-      // Check if user has access to this team's league
       const league = await storage.getLeague(team.leagueId);
       
       if (!league) {
@@ -327,16 +329,18 @@ router.post('/customers', squarePaymentLimiter, async (req, res) => {
       }
     }
 
-    // Derive location ID from league context if available
     const teamLvLocationId = req.body.teamId
       ? (await storage.getLeague((await storage.getTeam(req.body.teamId))?.leagueId ?? 0))?.locationId ?? null
       : null;
 
-    const customer = await createOrUpdateCustomer(
+    const provider = await getPaymentProvider(teamLvLocationId);
+    if (!provider) {
+      throw new Error('Payment provider not configured for this location');
+    }
+
+    const customer = await provider.createOrUpdateCustomer(
       req.body.name,
       req.body.email,
-      undefined,
-      teamLvLocationId
     );
 
     if (!customer) {
@@ -361,7 +365,6 @@ router.get('/catalog/categories', async (req: any, res) => {
     const locationIdParam = req.query.locationId as string | undefined;
     const lvLocationId = locationIdParam ? parseInt(locationIdParam) : null;
 
-    // Authorization: verify the requesting user has access to this location's org
     if (lvLocationId && !isNaN(lvLocationId)) {
       const loc = await storage.getLocation(lvLocationId);
       if (!loc) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
@@ -371,7 +374,12 @@ router.get('/catalog/categories', async (req: any, res) => {
       if (!isAuthorized) return sendError(res, 'Forbidden', 403, 'FORBIDDEN');
     }
 
-    const categories = await listCatalogCategories(lvLocationId);
+    const provider = await getPaymentProvider(lvLocationId);
+    if (!provider || !hasCatalogSupport(provider)) {
+      return sendSuccess(res, []);
+    }
+
+    const categories = await provider.listCatalogCategories();
     sendSuccess(res, categories);
   } catch (error) {
     log.error('Catalog categories error:', error);
@@ -385,7 +393,6 @@ router.get('/catalog/items', async (req: any, res) => {
     const locationIdParam = req.query.locationId as string | undefined;
     const lvLocationId = locationIdParam ? parseInt(locationIdParam) : null;
 
-    // Authorization: verify the requesting user has access to this location's org
     if (lvLocationId && !isNaN(lvLocationId)) {
       const loc = await storage.getLocation(lvLocationId);
       if (!loc) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
@@ -395,7 +402,12 @@ router.get('/catalog/items', async (req: any, res) => {
       if (!isAuthorized) return sendError(res, 'Forbidden', 403, 'FORBIDDEN');
     }
 
-    const items = await listCatalogItems(categoryId, lvLocationId);
+    const provider = await getPaymentProvider(lvLocationId);
+    if (!provider || !hasCatalogSupport(provider)) {
+      return sendSuccess(res, []);
+    }
+
+    const items = await provider.listCatalogItems(categoryId);
     sendSuccess(res, items);
   } catch (error) {
     log.error('Catalog list error:', error);
@@ -423,15 +435,19 @@ router.post('/cards/:bowlerId', async (req, res) => {
 
     const bowler = await storage.getBowler(bowlerId);
     if (!bowler?.squareCustomerId) {
-      return sendError(res, 'Bowler does not have a Square customer account', 400);
+      return sendError(res, 'Bowler does not have a payment customer account', 400);
     }
 
-    // Derive location from optional leagueId context
     const cardLeagueId = req.body.leagueId ? parseInt(req.body.leagueId) : null;
     const cardLeague = cardLeagueId ? await storage.getLeague(cardLeagueId) : null;
     const cardLvLocationId = cardLeague?.locationId ?? null;
 
-    const savedCard = await saveCardOnFile(sourceId, bowler.squareCustomerId, cardLvLocationId);
+    const provider = await getPaymentProvider(cardLvLocationId);
+    if (!provider) {
+      return sendError(res, 'Payment provider not configured for this location', 500);
+    }
+
+    const savedCard = await provider.saveCardOnFile(sourceId, bowler.squareCustomerId);
     if (!savedCard?.id) {
       return sendError(res, 'Failed to save card on file', 500);
     }
@@ -473,7 +489,12 @@ router.get('/cards/:bowlerId', async (req, res) => {
       }
     }
 
-    const cards = await listCardsOnFile(bowler.squareCustomerId, listLvLocationId);
+    const provider = await getPaymentProvider(listLvLocationId);
+    if (!provider) {
+      return sendSuccess(res, []);
+    }
+
+    const cards = await provider.listCardsOnFile(bowler.squareCustomerId);
     sendSuccess(res, cards);
   } catch (error) {
     log.error('List cards error:', error);
@@ -499,7 +520,7 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
 
     const bowler = await storage.getBowler(bowlerId);
     if (!bowler?.squareCustomerId) {
-      return sendError(res, 'Bowler does not have a Square customer account', 400);
+      return sendError(res, 'Bowler does not have a payment customer account', 400);
     }
 
     let delLvLocationId: number | null = null;
@@ -515,7 +536,12 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
       }
     }
 
-    await disableCard(cardId, bowler.squareCustomerId, delLvLocationId);
+    const provider = await getPaymentProvider(delLvLocationId);
+    if (!provider) {
+      return sendError(res, 'Payment provider not configured for this location', 500);
+    }
+
+    await provider.disableCard(cardId, bowler.squareCustomerId);
     log.info('Card disabled:', cardId.substring(0, 15) + '...');
     sendSuccess(res, { disabled: true });
   } catch (error) {
@@ -539,20 +565,25 @@ router.post('/apple-pay/register-all-domains', async (req: any, res) => {
       if (!domain) continue;
 
       const fullDomain = `${domain}.leaguevault.app`;
-      const leagues = await storage.getLeagues(org.id);
+      const orgLeagues = await storage.getLeagues(org.id);
       const locationIds = new Set<number>();
-      for (const league of leagues) {
+      for (const league of orgLeagues) {
         if (league.locationId) locationIds.add(league.locationId);
       }
 
       if (locationIds.size === 0) {
-        results.push({ domain: fullDomain, success: false, message: 'No locations with Square credentials' });
+        results.push({ domain: fullDomain, success: false, message: 'No locations with payment credentials' });
         continue;
       }
 
       for (const locationId of locationIds) {
-        const result = await registerApplePayDomain(fullDomain, locationId);
-        results.push({ domain: fullDomain, ...result });
+        const provider = await getPaymentProvider(locationId);
+        if (provider && hasWalletSupport(provider)) {
+          const result = await provider.registerApplePayDomain(fullDomain);
+          results.push({ domain: fullDomain, ...result });
+        } else {
+          results.push({ domain: fullDomain, success: false, message: 'Provider does not support Apple Pay' });
+        }
       }
     }
 
@@ -596,7 +627,12 @@ router.post('/apple-pay/register-domain', async (req: any, res) => {
     }
 
     const lvLocationId = locationId ? parseInt(locationId) : null;
-    const result = await registerApplePayDomain(domain, lvLocationId);
+    const provider = await getPaymentProvider(lvLocationId);
+    if (!provider || !hasWalletSupport(provider)) {
+      return sendError(res, 'Payment provider does not support Apple Pay', 400, 'UNSUPPORTED_FEATURE');
+    }
+
+    const result = await provider.registerApplePayDomain(domain);
 
     if (result.success) {
       sendSuccess(res, result);
@@ -610,7 +646,6 @@ router.post('/apple-pay/register-domain', async (req: any, res) => {
 });
 
 router.get('/config', async (req: any, res) => {
-  // Attempt per-location config if locationId is supplied
   const locationIdParam = req.query.locationId as string | undefined;
   if (locationIdParam) {
     const lvLocationId = parseInt(locationIdParam);
@@ -624,7 +659,11 @@ router.get('/config', async (req: any, res) => {
           if (isAuthorized) {
             const creds = await storage.getLocationSquareConfig(lvLocationId);
             if (creds?.appId && creds?.accessToken && creds.appId.trim().length > 0) {
-              return res.json({ appId: creds.appId.trim(), locationId: creds.locationId?.trim() || '' });
+              return res.json({
+                appId: creds.appId.trim(),
+                locationId: creds.locationId?.trim() || '',
+                paymentProvider: loc.paymentProvider ?? 'square',
+              });
             }
           }
         }
@@ -651,8 +690,8 @@ router.get('/config', async (req: any, res) => {
     isProduction: appId.length > 0 && !appId.includes('sandbox-'),
   });
 
-  const locationId = process.env.SQUARE_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || '';
-  res.json({ appId, locationId });
+  const squareLocationId = process.env.SQUARE_LOCATION_ID || process.env.VITE_SQUARE_LOCATION_ID || '';
+  res.json({ appId, locationId: squareLocationId, paymentProvider: 'square' });
 });
 
 export default router;

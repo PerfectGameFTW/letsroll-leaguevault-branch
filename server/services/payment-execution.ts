@@ -1,8 +1,9 @@
 import { db } from "../db";
 import { eq, and, lte, gte, sql } from "drizzle-orm";
 import { payments, leagues, bowlers, type PaymentSchedule } from "@shared/schema";
-import { createOrderWithPayment, processPayment } from "./square";
 import { logger } from "../logger";
+import { getPaymentProvider } from "./payment-provider-factory";
+import type { PaymentProvider, OrderLineItem } from "./payment-provider";
 
 export interface PaymentResult {
   status: 'success' | 'error';
@@ -22,8 +23,8 @@ async function fetchBowlerPaymentInfo(bowlerId: number) {
 function buildLineItems(
   league: typeof leagues.$inferSelect,
   quantity: string
-): { catalogObjectId: string; quantity: string }[] {
-  const lineItems: { catalogObjectId: string; quantity: string }[] = [];
+): OrderLineItem[] {
+  const lineItems: OrderLineItem[] = [];
   if (league.squareLineageItemVariationId) {
     lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity });
   }
@@ -33,44 +34,60 @@ function buildLineItems(
   return lineItems;
 }
 
-export async function executeSquareCharge(
+export async function executeCharge(
+  provider: PaymentProvider,
   cardId: string,
   amount: number,
-  lineItems: { catalogObjectId: string; quantity: string }[],
-  locationId: number | null,
+  lineItems: OrderLineItem[],
   squareCustomerId: string | undefined,
   buyerEmail: string | undefined
 ): Promise<PaymentResult> {
   if (lineItems.length > 0) {
     try {
-      const orderResult = await createOrderWithPayment(
+      const orderResult = await provider.createOrderWithPayment(
         cardId,
         amount,
         lineItems,
-        locationId,
         false,
         squareCustomerId,
         buyerEmail
       );
+      if (!orderResult.id) {
+        return { status: 'error', error: 'Order payment succeeded but no payment ID returned' };
+      }
       return { status: 'success', paymentId: orderResult.id };
     } catch (error) {
       return { status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
     }
   } else {
-    const processResult = await processPayment(
+    const processResult = await provider.processPayment(
       cardId,
       amount,
       false,
       squareCustomerId,
       buyerEmail,
       undefined,
-      locationId
     );
     if (processResult?.id) {
       return { status: 'success', paymentId: processResult.id };
     }
     return { status: 'error', error: 'Payment processing failed' };
   }
+}
+
+export async function executeSquareCharge(
+  cardId: string,
+  amount: number,
+  lineItems: OrderLineItem[],
+  locationId: number | null,
+  squareCustomerId: string | undefined,
+  buyerEmail: string | undefined
+): Promise<PaymentResult> {
+  const provider = await getPaymentProvider(locationId);
+  if (!provider) {
+    return { status: 'error', error: 'No payment provider configured for this location' };
+  }
+  return executeCharge(provider, cardId, amount, lineItems, squareCustomerId, buyerEmail);
 }
 
 export async function executeScheduledPayment(
@@ -80,24 +97,29 @@ export async function executeScheduledPayment(
 ): Promise<PaymentResult> {
   const { buyerEmail, squareCustomerId } = await fetchBowlerPaymentInfo(scheduleRecord.bowlerId);
 
-  if (!squareCustomerId && scheduleRecord.squareCardId?.startsWith('ccof:')) {
-    logger.warn(`[PaymentScheduler] Card-on-file charge for ${jobId} has no squareCustomerId — Square may reject the payment`, {
+  const locationId = league?.locationId ?? null;
+  const provider = await getPaymentProvider(locationId);
+  if (!provider) {
+    return { status: 'error', error: 'No payment provider configured for this location' };
+  }
+
+  if (!squareCustomerId && provider.validateCardId(scheduleRecord.squareCardId)) {
+    logger.warn(`[PaymentScheduler] Card-on-file charge for ${jobId} has no customer ID — provider may reject the payment`, {
       bowlerId: scheduleRecord.bowlerId,
     });
   }
 
-  const locationId = league?.locationId ?? null;
   const weeklyFee = league?.weeklyFee || 0;
   const scheduledQty = weeklyFee > 0 && scheduleRecord.amount % weeklyFee === 0
     ? String(scheduleRecord.amount / weeklyFee)
     : '1';
   const lineItems = buildLineItems(league, scheduledQty);
 
-  return executeSquareCharge(
+  return executeCharge(
+    provider,
     scheduleRecord.squareCardId!,
     scheduleRecord.amount,
     lineItems,
-    locationId,
     squareCustomerId,
     buyerEmail
   );

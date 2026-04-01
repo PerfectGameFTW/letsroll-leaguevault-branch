@@ -5,6 +5,7 @@ import { paymentSchedules, leagues, type PaymentSchedule } from "@shared/schema"
 import { logger } from "../logger";
 import { storage } from "../storage";
 import { processScheduledPaymentJob } from "./payment-lifecycle";
+import { getPaymentProvider } from "./payment-provider-factory";
 
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
@@ -42,6 +43,29 @@ class PaymentScheduler {
     }
 
     return true;
+  }
+
+  private async validateCardForProvider(cardId: string | null, leagueId: number): Promise<boolean> {
+    if (!cardId) {
+      logger.warn('[PaymentScheduler] Missing card token');
+      return false;
+    }
+
+    const league = await db.select().from(leagues).where(eq(leagues.id, leagueId)).limit(1).then(r => r[0]);
+    const locationId = league?.locationId ?? null;
+    const provider = await getPaymentProvider(locationId);
+    if (!provider) {
+      logger.warn(`[PaymentScheduler] No payment provider for location ${locationId}`);
+      return false;
+    }
+
+    const isValid = provider.validateCardId(cardId);
+    logger.info('[PaymentScheduler] Card token validation', {
+      tokenPrefix: cardId.substring(0, 5),
+      isValid,
+      provider: provider.providerName,
+    });
+    return isValid;
   }
 
   async initialize(organizationId?: number | null) {
@@ -87,18 +111,25 @@ class PaymentScheduler {
           nextPaymentDate: s.nextPaymentDate,
           amount: s.amount,
           cardId: s.squareCardId ? `${s.squareCardId.substring(0, 10)}...` : 'none',
-          isValidCard: s.squareCardId?.startsWith('ccof:'),
           organizationId: organizationFilteredSchedules.find(item => item.schedule.id === s.id)?.leagueOrganizationId ?? null
         }))
       });
 
-      const validSchedules = activeSchedules.filter(s => {
-        const isValidCard = s.squareCardId && s.squareCardId.startsWith('ccof:');
-        if (!isValidCard) {
-          logger.error(`[PaymentScheduler] Invalid card token for schedule ${s.id}`);
-        }
-        return isValidCard;
-      });
+      const validationResults = await Promise.all(
+        activeSchedules.map(async s => ({
+          schedule: s,
+          isValid: await this.validateCardForProvider(s.squareCardId, s.leagueId),
+        }))
+      );
+
+      const validSchedules = validationResults
+        .filter(r => {
+          if (!r.isValid) {
+            logger.error(`[PaymentScheduler] Invalid card token for schedule ${r.schedule.id}`);
+          }
+          return r.isValid;
+        })
+        .map(r => r.schedule);
 
       validSchedules.forEach(s => {
         logger.info(`[PaymentScheduler] Scheduling payment for schedule ${s.id}`, {
@@ -139,7 +170,7 @@ class PaymentScheduler {
       return false;
     }
     const isValid = cardId.startsWith('ccof:');
-    logger.info('[PaymentScheduler] Card token validation', {
+    logger.info('[PaymentScheduler] Card token validation (legacy)', {
       tokenPrefix: cardId.substring(0, 5),
       isValid,
       validationTime: new Date().toISOString()
@@ -151,7 +182,8 @@ class PaymentScheduler {
     const jobId = `payment-${scheduleRecord.id}`;
     const now = new Date();
 
-    if (!this.validateCardId(scheduleRecord.squareCardId)) {
+    if (!scheduleRecord.squareCardId) {
+      logger.warn(`[PaymentScheduler] Missing card token for schedule ${scheduleRecord.id}`);
       return;
     }
 
@@ -202,26 +234,27 @@ class PaymentScheduler {
     }
   }
 
-  async addSchedule(schedule: PaymentSchedule, organizationId?: number | null) {
-    if (!this.validateCardId(schedule.squareCardId)) {
+  async addSchedule(scheduleRecord: PaymentSchedule, organizationId?: number | null) {
+    const isValid = await this.validateCardForProvider(scheduleRecord.squareCardId, scheduleRecord.leagueId);
+    if (!isValid) {
       return;
     }
     
     if (organizationId !== undefined) {
-      const allowed = await this.checkLeagueOrgAccess(schedule.leagueId, organizationId, 'addSchedule');
+      const allowed = await this.checkLeagueOrgAccess(scheduleRecord.leagueId, organizationId, 'addSchedule');
       if (!allowed) return;
     }
 
     logger.info(`[PaymentScheduler] Adding new payment schedule`, {
-      scheduleId: schedule.id,
-      amount: schedule.amount,
-      nextPaymentDate: schedule.nextPaymentDate,
-      frequency: schedule.frequency,
-      bowlerId: schedule.bowlerId,
-      cardId: `${schedule.squareCardId?.substring(0, 10)}...`,
+      scheduleId: scheduleRecord.id,
+      amount: scheduleRecord.amount,
+      nextPaymentDate: scheduleRecord.nextPaymentDate,
+      frequency: scheduleRecord.frequency,
+      bowlerId: scheduleRecord.bowlerId,
+      cardId: `${scheduleRecord.squareCardId?.substring(0, 10)}...`,
       addedAt: new Date().toISOString()
     });
-    this.schedulePayment(schedule);
+    this.schedulePayment(scheduleRecord);
   }
 
   async removeSchedule(scheduleId: number, organizationId?: number | null) {
@@ -250,7 +283,8 @@ class PaymentScheduler {
   }
 
   async updateSchedule(schedule: PaymentSchedule, organizationId?: number | null) {
-    if (!this.validateCardId(schedule.squareCardId)) {
+    const isValid = await this.validateCardForProvider(schedule.squareCardId, schedule.leagueId);
+    if (!isValid) {
       logger.error(`[PaymentScheduler] Cannot update schedule with invalid card ID`, {
         scheduleId: schedule.id,
         bowlerId: schedule.bowlerId,

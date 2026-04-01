@@ -5,7 +5,7 @@ import { storage } from '../storage';
 import { hashPassword } from '../auth';
 import { passwordSchema } from '@shared/password-validation';
 import { updateUserSchema } from '@shared/schema';
-import { createOrUpdateCustomer } from '../services/square';
+import { getPaymentProvider } from '../services/payment-provider-factory';
 import { scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 import { createLogger } from '../logger';
@@ -104,14 +104,16 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
                 resolvedSquareLocationId = sq?.id ?? null;
               }
               if (!resolvedSquareLocationId) {
-                log.info('No Square-configured location found, skipping Square customer sync');
+                log.info('No payment-configured location found, skipping customer sync');
               }
-              const squareCustomer = resolvedSquareLocationId
-                ? await createOrUpdateCustomer(
+              const userProvider = resolvedSquareLocationId
+                ? await getPaymentProvider(resolvedSquareLocationId)
+                : null;
+              const squareCustomer = userProvider
+                ? await userProvider.createOrUpdateCustomer(
                     updatedUser.name,
                     updatedUser.email,
                     updatedUser.phone,
-                    resolvedSquareLocationId
                   )
                 : null;
               if (squareCustomer && squareCustomer.id !== bowler.squareCustomerId) {

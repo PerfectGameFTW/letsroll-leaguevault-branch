@@ -16,7 +16,8 @@ import { requireOrganizationAccess } from '../utils/access-control.js';
 import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email.js';
 import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger';
-import { registerApplePayDomain } from '../services/square.js';
+import { getPaymentProvider } from '../services/payment-provider-factory';
+import { hasWalletSupport } from '../services/payment-provider';
 
 const log = createLogger("Organizations");
 
@@ -38,11 +39,14 @@ async function autoRegisterApplePayDomain(org: Organization) {
     }
 
     for (const locationId of locationIds) {
-      const result = await registerApplePayDomain(fullDomain, locationId);
-      if (result.success) {
-        log.info(`Apple Pay domain registered for ${fullDomain} (location ${locationId})`);
-      } else {
-        log.warn(`Apple Pay domain registration failed for ${fullDomain} (location ${locationId}): ${result.message}`);
+      const provider = await getPaymentProvider(locationId);
+      if (provider && hasWalletSupport(provider)) {
+        const result = await provider.registerApplePayDomain(fullDomain);
+        if (result.success) {
+          log.info(`Apple Pay domain registered for ${fullDomain} (location ${locationId})`);
+        } else {
+          log.warn(`Apple Pay domain registration failed for ${fullDomain} (location ${locationId}): ${result.message}`);
+        }
       }
     }
   } catch (error) {

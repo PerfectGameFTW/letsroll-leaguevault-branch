@@ -3,7 +3,7 @@ import { storage } from '../storage';
 import { insertPaymentSchema, updatePaymentSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, sendPaginatedSuccess, parsePaginationParams, handleZodError } from '../utils/api.js';
-import { refundPayment as squareRefund } from '../services/square.js';
+import { getPaymentProvider } from '../services/payment-provider-factory';
 import { hasAccessToPayment, requireOrganizationAccess } from '../utils/access-control.js';
 import { paymentWriteLimiter } from '../middleware/rate-limit.js';
 import { differenceInWeeks } from 'date-fns';
@@ -261,14 +261,20 @@ router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
     }
 
     const { reason } = req.body || {};
-    let squareRefundId: string | undefined;
+    let providerRefundId: string | undefined;
 
     if (payment.squarePaymentId && payment.type === 'credit_card') {
-      const refundResult = await squareRefund(payment.squarePaymentId, payment.amount, reason);
-      squareRefundId = refundResult.refundId;
+      const league = await storage.getLeague(payment.leagueId);
+      const locationId = league?.locationId ?? null;
+      const provider = await getPaymentProvider(locationId);
+      if (!provider) {
+        return sendError(res, "Payment provider not available for refund processing", 500, "PROVIDER_NOT_CONFIGURED");
+      }
+      const refundResult = await provider.refundPayment(payment.squarePaymentId, payment.amount, reason);
+      providerRefundId = refundResult.refundId;
     }
 
-    const refunded = await storage.refundPayment(id, squareRefundId, reason);
+    const refunded = await storage.refundPayment(id, providerRefundId, reason);
     sendSuccess(res, refunded);
   } catch (error) {
     log.error('Refund error:', error);

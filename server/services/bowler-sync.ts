@@ -1,5 +1,5 @@
 import { storage } from '../storage';
-import { createOrUpdateCustomer } from './square.js';
+import { getPaymentProvider } from './payment-provider-factory';
 import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
 import { createLogger } from '../logger';
 import type { Bowler } from '@shared/schema';
@@ -36,12 +36,12 @@ export async function runBowlerPostCreateSync(
         ? await storage.getFirstSquareConfiguredLocation(organizationId)
         : null;
       if (squareLocation?.id) {
-        const squareCustomer = await createOrUpdateCustomer(
+        const syncProvider = await getPaymentProvider(squareLocation.id);
+        const squareCustomer = syncProvider ? await syncProvider.createOrUpdateCustomer(
           current.name,
           current.email,
           current.phone,
-          squareLocation.id,
-        );
+        ) : null;
         if (squareCustomer) {
           current = await storage.updateBowler(current.id, {
             ...current,

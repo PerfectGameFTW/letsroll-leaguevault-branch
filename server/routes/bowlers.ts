@@ -3,7 +3,7 @@ import { storage } from '../storage';
 import { insertBowlerSchema, updateBowlerSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
-import { createOrUpdateCustomer } from '../services/square.js';
+import { getPaymentProvider } from '../services/payment-provider-factory';
 import { hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
@@ -363,7 +363,8 @@ router.patch("/:id", async (req, res) => {
           const patchOrgId = (req as any).user?.organizationId;
           const patchSquareLocation = patchOrgId ? await storage.getFirstSquareConfiguredLocation(patchOrgId) : null;
           if (patchSquareLocation?.id) {
-            const squareCustomer = await createOrUpdateCustomer(updated.name, updated.email, undefined, patchSquareLocation.id);
+            const patchProvider = await getPaymentProvider(patchSquareLocation.id);
+            const squareCustomer = patchProvider ? await patchProvider.createOrUpdateCustomer(updated.name, updated.email) : null;
             if (squareCustomer && squareCustomer.id !== updated.squareCustomerId) {
               updated = await storage.updateBowler(id, {
                 ...updated,

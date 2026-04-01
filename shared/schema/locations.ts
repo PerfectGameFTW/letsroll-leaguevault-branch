@@ -4,6 +4,9 @@ import { z } from "zod";
 import { nameSchema } from "./constants";
 import { organizations } from "./organizations";
 
+export const PAYMENT_PROVIDERS = ['square', 'cardpointe'] as const;
+export type PaymentProviderType = (typeof PAYMENT_PROVIDERS)[number];
+
 export interface LocationSquareCredentials {
   appId?: string;
   accessToken?: string;
@@ -27,6 +30,7 @@ export const locations = pgTable("locations", {
   active: boolean("active").notNull().default(true),
   organizationId: integer("organization_id").notNull().references(() => organizations.id),
   squareCredentials: jsonb("square_credentials").$type<LocationSquareCredentials>(),
+  paymentProvider: text("payment_provider").$type<PaymentProviderType>().default('square'),
 }, (table) => ({
   organizationIdx: index("locations_organization_idx").on(table.organizationId),
 }));
@@ -43,6 +47,7 @@ export const insertLocationSchema = baseLocationSchema.extend({
   active: z.boolean().default(true),
   organizationId: z.number().int().positive(),
   squareCredentials: locationSquareCredentialsSchema,
+  paymentProvider: z.enum(PAYMENT_PROVIDERS).default('square').optional(),
 }).omit({ id: true });
 
 export const updateLocationSchema = z.object({
@@ -55,6 +60,7 @@ export const updateLocationSchema = z.object({
   active: z.boolean(),
   organizationId: z.number().int().positive(),
   squareCredentials: locationSquareCredentialsSchema,
+  paymentProvider: z.enum(PAYMENT_PROVIDERS),
 }).partial();
 
 export type Location = typeof locations.$inferSelect;

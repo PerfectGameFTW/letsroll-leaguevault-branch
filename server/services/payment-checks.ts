@@ -6,10 +6,12 @@ import { logger } from "../logger";
 import { storage } from "../storage";
 import { getEffectiveBowlingWeeks, countBowlingWeeksPassed } from "@shared/schedule-utils";
 import {
-  executeSquareCharge,
+  executeCharge,
   createPaymentRecord,
   getTotalPaidInSeason,
 } from "./payment-execution";
+import { getPaymentProvider } from "./payment-provider-factory";
+import type { OrderLineItem } from "./payment-provider";
 
 export async function checkAndChargeFinalTwoWeeks(
   scheduleRecord: PaymentSchedule,
@@ -66,17 +68,23 @@ export async function checkAndChargeFinalTwoWeeks(
       leagueId: scheduleRecord.leagueId,
     });
 
+    const locationId = league?.locationId ?? null;
+    const provider = await getPaymentProvider(locationId);
+    if (!provider) {
+      logger.error(`[PaymentScheduler] No payment provider for final 2 weeks charge ${jobId}`);
+      return;
+    }
+
     const bowler = await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]);
     const buyerEmail = bowler?.email || undefined;
     const squareCustomerId = bowler?.squareCustomerId || undefined;
-    if (!squareCustomerId && scheduleRecord.squareCardId?.startsWith('ccof:')) {
-      logger.warn(`[PaymentScheduler] Final-two-weeks card-on-file charge for ${jobId} has no squareCustomerId — Square may reject the payment`, {
+    if (!squareCustomerId && provider.validateCardId(scheduleRecord.squareCardId)) {
+      logger.warn(`[PaymentScheduler] Final-two-weeks card-on-file charge for ${jobId} has no customer ID — provider may reject the payment`, {
         bowlerId: scheduleRecord.bowlerId,
       });
     }
 
-    const locationId = league?.locationId ?? null;
-    const lineItems: { catalogObjectId: string; quantity: string }[] = [];
+    const lineItems: OrderLineItem[] = [];
     if (league.squareLineageItemVariationId) {
       lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity: '2' });
     }
@@ -84,11 +92,11 @@ export async function checkAndChargeFinalTwoWeeks(
       lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '2' });
     }
 
-    const finalPaymentResult = await executeSquareCharge(
+    const finalPaymentResult = await executeCharge(
+      provider,
       scheduleRecord.squareCardId!,
       finalTwoWeeksAmount,
       lineItems,
-      locationId,
       squareCustomerId,
       buyerEmail
     );

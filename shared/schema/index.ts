@@ -4,8 +4,8 @@ export type { PaymentMode, UserRole } from "./constants";
 export { organizations, orgIntegrationsSchema, insertOrganizationSchema, updateOrganizationSchema } from "./organizations";
 export type { OrgIntegrations, Organization, InsertOrganization, UpdateOrganization } from "./organizations";
 
-export { locations, locationSquareCredentialsSchema, insertLocationSchema, updateLocationSchema } from "./locations";
-export type { LocationSquareCredentials, Location, InsertLocation, UpdateLocation } from "./locations";
+export { locations, locationSquareCredentialsSchema, insertLocationSchema, updateLocationSchema, PAYMENT_PROVIDERS } from "./locations";
+export type { LocationSquareCredentials, Location, InsertLocation, UpdateLocation, PaymentProviderType } from "./locations";
 
 export { leagues, insertLeagueSchema, updateLeagueSchema } from "./leagues";
 export type { League, InsertLeague, UpdateLeague } from "./leagues";
