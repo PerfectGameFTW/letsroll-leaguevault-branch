@@ -6,20 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
+import { Loader2, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
-import { startOfToday } from "date-fns";
+import { format, startOfToday } from "date-fns";
 import type { League, Payment, ApiResponse } from "@shared/schema";
+import { getBowlingDateByWeekNumber, getEffectiveBowlingWeeks } from "@shared/schedule-utils";
 import { useParams, Link } from "wouter";
 import { PaymentEntryRow } from "@/components/payment-entry-row";
 import { PaymentHistoryTable } from "@/components/payment-history-table";
-import { useWeeklyPayments, getNearestBowlingDay, getWeekNumber, isDateDisabled } from "@/hooks/use-weekly-payments";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { useWeeklyPayments, getNearestBowlingDay, getWeekNumber } from "@/hooks/use-weekly-payments";
 import {
   Table,
   TableBody,
@@ -28,7 +23,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -51,7 +45,7 @@ interface EnrichedBowlerLeague {
 export default function WeeklyPaymentsPage() {
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
-  const [selectedDate, setSelectedDate] = useState<Date>();
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
 
   const {
     paymentEntries,
@@ -155,8 +149,16 @@ export default function WeeklyPaymentsPage() {
     return map;
   }, [sortedBowlerLeagues]);
 
+  const maxWeek = useMemo(() => {
+    if (!league?.totalBowlingWeeks || !league?.weekDay) return 0;
+    return getEffectiveBowlingWeeks(
+      league.totalBowlingWeeks,
+      league.cancelledDates ?? []
+    );
+  }, [league?.totalBowlingWeeks, league?.weekDay, league?.cancelledDates]);
+
   useEffect(() => {
-    if (league?.weekDay && !selectedDate) {
+    if (league?.weekDay && selectedWeek === null) {
       const today = startOfToday();
       const nearestBowlingDay = getNearestBowlingDay(
         today,
@@ -164,17 +166,21 @@ export default function WeeklyPaymentsPage() {
         league.skipDates ?? [],
         league.cancelledDates ?? []
       );
-      setSelectedDate(nearestBowlingDay);
+      const weekNum = getWeekNumber(nearestBowlingDay, league);
+      setSelectedWeek(weekNum > 0 ? weekNum : 1);
     }
-  }, [league?.weekDay, selectedDate]);
+  }, [league?.weekDay, selectedWeek]);
 
-  let disabledDates: { before: Date; after: Date } | undefined;
-  if (league) {
-    disabledDates = {
-      before: new Date(league.seasonStart),
-      after: new Date(league.seasonEnd),
-    };
-  }
+  const selectedDate = useMemo(() => {
+    if (!league?.weekDay || !league?.seasonStart || selectedWeek === null) return undefined;
+    return getBowlingDateByWeekNumber(
+      league.seasonStart,
+      league.weekDay,
+      selectedWeek,
+      league.skipDates ?? [],
+      league.cancelledDates ?? []
+    ) ?? undefined;
+  }, [league?.seasonStart, league?.weekDay, league?.skipDates, league?.cancelledDates, selectedWeek]);
 
   if ((loadingLeague || loadingBowlerLeagues) && !league) {
     return (
@@ -207,44 +213,35 @@ export default function WeeklyPaymentsPage() {
         <div className="flex flex-col space-y-4">
           <h1 className="text-2xl font-bold">{league.name}: Weekly Payments</h1>
 
-          <div className="flex gap-4">
-            <div className="w-[200px]">
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !selectedDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedDate ? (
-                      `Week ${getWeekNumber(selectedDate, league)}`
-                    ) : (
-                      <span>Select a week</span>
-                    )}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={setSelectedDate}
-                    disabled={(date) => {
-                      if (disabledDates) {
-                        const beforeDisabled = date < disabledDates.before;
-                        const afterDisabled = date > disabledDates.after;
-                        const dayDisabled = isDateDisabled(date, league);
-                        return beforeDisabled || afterDisabled || dayDisabled;
-                      }
-                      return false;
-                    }}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => setSelectedWeek(w => Math.max(1, (w ?? 1) - 1))}
+                disabled={selectedWeek === null || selectedWeek <= 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <div className="min-w-[100px] text-center font-medium text-sm px-2">
+                {selectedWeek !== null ? `Week ${selectedWeek}` : "—"}
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9"
+                onClick={() => setSelectedWeek(w => Math.min(maxWeek, (w ?? 1) + 1))}
+                disabled={selectedWeek === null || selectedWeek >= maxWeek}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
             </div>
+            {selectedDate && (
+              <span className="text-sm text-muted-foreground">
+                {format(selectedDate, "MMM d, yyyy")}
+              </span>
+            )}
           </div>
         </div>
 
@@ -253,7 +250,7 @@ export default function WeeklyPaymentsPage() {
           <Card>
             <CardHeader>
               <CardTitle>
-                Week {getWeekNumber(selectedDate, league)}
+                Week {selectedWeek}
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
