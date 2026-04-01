@@ -78,7 +78,7 @@ export default function SetPasswordPage() {
 
       const data = await response.json();
       if (data.success) {
-        toast({ title: 'Password set successfully', description: 'Welcome to LeagueVault!' });
+        toast({ title: 'Password set successfully', description: userName ? 'Welcome to LeagueVault!' : 'You can now log in with your new password.' });
         window.location.href = '/';
       } else {
         toast({ title: 'Error', description: data.error?.message || 'Failed to set password', variant: 'destructive' });
@@ -103,11 +103,14 @@ export default function SetPasswordPage() {
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Invalid Invitation</CardTitle>
+            <CardTitle className="text-2xl">Link Expired or Invalid</CardTitle>
             <CardDescription>{errorMessage}</CardDescription>
           </CardHeader>
-          <CardContent className="text-center">
+          <CardContent className="flex flex-col items-center gap-3">
             <Button onClick={() => window.location.href = '/login'}>Go to Login</Button>
+            <a href="/forgot-password" className="text-sm text-primary hover:underline">
+              Request a new password reset link
+            </a>
           </CardContent>
         </Card>
       </div>
@@ -119,9 +122,13 @@ export default function SetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Set Your Password</CardTitle>
+          <CardTitle className="text-2xl">
+            {userName ? 'Set Your Password' : 'Reset Your Password'}
+          </CardTitle>
           <CardDescription>
-            Welcome, {userName}! Create a password for your account ({userEmail}).
+            {userName
+              ? `Welcome, ${userName}! Create a password for your account (${userEmail}).`
+              : `Create a new password for your account (${userEmail}).`}
           </CardDescription>
         </CardHeader>
         <CardContent>

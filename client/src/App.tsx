@@ -38,6 +38,7 @@ const OrganizationsPage = lazy(() => import("@/pages/organizations-page"));
 const LocationsPage = lazy(() => import("@/pages/locations-page"));
 const UsersPage = lazy(() => import("@/pages/users-page"));
 const SetPasswordPage = lazy(() => import("@/pages/set-password-page"));
+const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password-page"));
 const ProfileSettingsPage = lazy(() => import("@/pages/profile-settings-page"));
 const ClaimBowlerPage = lazy(() => import("@/pages/claim-bowler-page"));
 const EmailTemplatesPage = lazy(() => import("@/pages/email-templates-page"));
@@ -111,6 +112,7 @@ function Router() {
         <Route path="/signup" component={SignUpPage} />
         <Route path="/login" component={LoginPage} />
         <Route path="/set-password" component={SetPasswordPage} />
+        <Route path="/forgot-password" component={ForgotPasswordPage} />
         <Route path="/privacy-policy" component={PrivacyPolicyPage} />
         <Route path="/delete-account" component={DeleteAccountPage} />
         <Route path="/claim-bowler">

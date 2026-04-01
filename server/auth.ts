@@ -429,6 +429,60 @@ export async function setupAuth(app: Express) {
     }
   });
 
+  const forgotPasswordLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      success: false,
+      error: { message: "Too many password reset requests, please try again later", code: "RATE_LIMITED" }
+    }
+  });
+
+  authRouter.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || typeof email !== 'string') {
+        return sendError(res, "Email is required", 400, "VALIDATION_ERROR");
+      }
+
+      sendSuccess(res, { message: "If an account exists with that email, a password reset link has been sent." });
+
+      try {
+        const user = await storage.getUserByEmail(email.trim().toLowerCase());
+        if (!user) return;
+        if (!user.password) return;
+
+        const token = randomBytes(32).toString("hex");
+        const expiry = new Date(Date.now() + 60 * 60 * 1000);
+        await storage.setUserInviteToken(user.id, token, expiry);
+
+        const org = user.organizationId ? await storage.getOrganization(user.organizationId) : null;
+        const baseUrl = getBaseUrl(org?.slug);
+        const resetUrl = `${baseUrl}/set-password?token=${token}`;
+
+        const sent = await sendTemplatedEmail('password_reset', email, {
+          bowler_name: user.firstName || user.email,
+          reset_link: resetUrl,
+          organization_name: org?.name || 'LeagueVault',
+        });
+
+        if (!sent) {
+          const { sendPasswordResetFallbackEmail } = await import('./services/email.js');
+          await sendPasswordResetFallbackEmail(email, user.firstName || 'there', token, org?.slug);
+        }
+
+        log.info('Password reset email sent', { userId: user.id, email });
+      } catch (bgError) {
+        log.error('Failed to process forgot-password request:', bgError);
+      }
+    } catch (error) {
+      log.error('Forgot password error:', error);
+      sendError(res, "Something went wrong", 500, "SERVER_ERROR");
+    }
+  });
+
   const claimLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,

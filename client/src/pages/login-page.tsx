@@ -162,6 +162,9 @@ const LoginPage: FC = () => {
           </Form>
         </CardContent>
         <CardFooter className="flex flex-col items-center gap-2 pt-0">
+          <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+            Forgot your password?
+          </Link>
           <p className="text-sm text-muted-foreground">
             Don't have an account?{" "}
             <Link href="/sign-up" className="text-primary hover:underline">
