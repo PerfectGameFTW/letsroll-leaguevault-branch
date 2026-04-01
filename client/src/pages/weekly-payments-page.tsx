@@ -217,7 +217,7 @@ export default function WeeklyPaymentsPage() {
           className="text-muted-foreground hover:text-foreground flex items-center mb-4"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to League Dashboard
+          Back to {league.name}
         </Link>
 
         <div className="flex flex-col space-y-4">
