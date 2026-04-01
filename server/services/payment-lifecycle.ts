@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 import { paymentSchedules, payments, leagues, DEFAULT_TIMEZONE, type PaymentSchedule } from "@shared/schema";
+import { providerNameToPaymentType } from "@shared/schema/constants";
 import { addWeeks, addMonths, setHours, setMinutes, setSeconds, setMilliseconds } from "date-fns";
 import { fromZonedTime, toZonedTime } from "date-fns-tz";
 import { logger } from "../logger";
@@ -165,7 +166,7 @@ async function handleSuccessfulPayment(
       lineageAmount,
       prizeFundAmount,
       status: 'paid',
-      type: (paymentResult.providerName as 'square' | 'cardpointe') || 'credit_card',
+      type: providerNameToPaymentType(paymentResult.providerName || ''),
       weekOf: scheduleRecord.nextPaymentDate,
       providerPaymentId: paymentResult.paymentId,
       cardpointeRetref: paymentResult.providerRef?.cardpointeRetref,
@@ -237,7 +238,7 @@ async function handleFailedPayment(
     leagueId: scheduleRecord.leagueId,
     amount: scheduleRecord.amount,
     status: 'failed',
-    type: (paymentResult.providerName as 'square' | 'cardpointe') || 'credit_card',
+    type: providerNameToPaymentType(paymentResult.providerName || ''),
     weekOf: scheduleRecord.nextPaymentDate,
     notes: `Failed payment: ${paymentResult.error}`,
   });

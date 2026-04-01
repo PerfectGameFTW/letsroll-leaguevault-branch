@@ -46,6 +46,15 @@ export function isCardPaymentType(type: string): boolean {
   return CARD_PAYMENT_TYPES.includes(type);
 }
 
+export type PaymentTypeValue = (typeof PAYMENT_TYPES)[number];
+const PROVIDER_TO_PAYMENT_TYPE: Record<string, PaymentTypeValue> = {
+  square: PaymentType.SQUARE,
+  cardpointe: PaymentType.CARDPOINTE,
+};
+export function providerNameToPaymentType(providerName: string): PaymentTypeValue {
+  return PROVIDER_TO_PAYMENT_TYPE[providerName] ?? PaymentType.CREDIT_CARD;
+}
+
 export const dateSchema = z.coerce.date()
   .transform((date) => date.toISOString());
 

@@ -106,11 +106,11 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
               if (!resolvedSquareLocationId) {
                 log.info('No payment-configured location found, skipping customer sync');
               }
-              let squareCustomer = null;
+              let providerCustomer = null;
               if (resolvedSquareLocationId) {
                 try {
                   const userProvider = await getPaymentProvider(resolvedSquareLocationId);
-                  squareCustomer = await userProvider.createOrUpdateCustomer(
+                  providerCustomer = await userProvider.createOrUpdateCustomer(
                     updatedUser.name,
                     updatedUser.email,
                     updatedUser.phone,
@@ -123,18 +123,18 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
                   }
                 }
               }
-              if (squareCustomer && squareCustomer.id !== bowler.paymentCustomerId) {
+              if (providerCustomer && providerCustomer.id !== bowler.paymentCustomerId) {
                 await storage.updateBowler(bowler.id, {
                   ...bowler,
                   ...bowlerUpdate,
-                  paymentCustomerId: squareCustomer.id,
+                  paymentCustomerId: providerCustomer.id,
                 });
-                log.info('Linked Square customer to bowler:', squareCustomer.id);
+                log.info('Linked payment customer to bowler:', providerCustomer.id);
               }
             }
           }
         } catch (syncError) {
-          log.error('Error syncing to bowler/Square (non-fatal):', syncError);
+          log.error('Error syncing bowler payment customer (non-fatal):', syncError);
         }
       }
     }

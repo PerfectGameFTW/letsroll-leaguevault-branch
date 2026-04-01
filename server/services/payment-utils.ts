@@ -1,9 +1,24 @@
 import type { Bowler } from "@shared/schema";
 import type { PaymentProvider } from "./payment-provider";
+import { storage } from "../storage";
+import { createLogger } from "../logger";
+
+const log = createLogger('PaymentUtils');
 
 export function getProviderCustomerId(bowler: Bowler, provider: PaymentProvider): string | undefined {
   if (provider.providerName === 'cardpointe') {
     return bowler.cardpointeProfileId || undefined;
   }
   return bowler.paymentCustomerId || undefined;
+}
+
+export async function persistCardpointeProfile(provider: PaymentProvider, cardId: string, bowlerId: number): Promise<void> {
+  if (provider.providerName === 'cardpointe' && cardId.includes('/')) {
+    const profileId = cardId.split('/')[0];
+    try {
+      await storage.updateBowler(bowlerId, { cardpointeProfileId: profileId });
+    } catch (profileError) {
+      log.error('Failed to persist CardPointe profile ID on bowler:', profileError);
+    }
+  }
 }

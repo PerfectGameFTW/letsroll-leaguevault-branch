@@ -3,6 +3,7 @@
 import * as React from "react"
 import { CreditCard, DollarSign, FileCheck } from "lucide-react"
 import { Pie, PieChart, Label } from "recharts"
+import { isCardPaymentType } from "@shared/schema/constants"
 
 import {
   Card,
@@ -41,7 +42,7 @@ export default function PaymentDistributionChart({ payments, activeBowlersCount 
     };
     
     paidPayments.forEach(payment => {
-      if (payment.type === 'credit_card' || payment.type === 'square' || payment.type === 'cardpointe') counts.card++;
+      if (isCardPaymentType(payment.type)) counts.card++;
       else if (payment.type === 'cash') counts.cash++;
       else if (payment.type === 'check') counts.check++;
     });

@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { eq, and, lte, gte, sql } from "drizzle-orm";
 import { payments, leagues, bowlers, type PaymentSchedule } from "@shared/schema";
+import { providerNameToPaymentType } from "@shared/schema/constants";
 import { logger } from "../logger";
 import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
 import type { PaymentProvider, OrderLineItem } from "./payment-provider";
@@ -173,7 +174,7 @@ export async function createPaymentRecord(
     lineageAmount: status === 'paid' ? lineageAmount : undefined,
     prizeFundAmount: status === 'paid' ? prizeFundAmount : undefined,
     status,
-    type: (providerName as 'square' | 'cardpointe') || 'credit_card',
+    type: providerNameToPaymentType(providerName || ''),
     weekOf: weekOf ?? scheduleRecord.nextPaymentDate,
     providerPaymentId: paymentId,
     cardpointeRetref: providerRef?.cardpointeRetref,

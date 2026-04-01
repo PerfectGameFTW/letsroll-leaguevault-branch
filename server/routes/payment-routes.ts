@@ -9,7 +9,8 @@ import { createLogger } from '../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasCatalogSupport, hasWalletSupport, type PaymentProvider } from '../services/payment-provider';
 import { computePaymentSplit, buildLineItems } from '../services/payment-execution';
-import { getProviderCustomerId } from '../services/payment-utils';
+import { getProviderCustomerId, persistCardpointeProfile } from '../services/payment-utils';
+import { providerNameToPaymentType } from '@shared/schema/constants';
 
 const log = createLogger("Payments");
 
@@ -20,16 +21,6 @@ async function getProviderForLeague(leagueId: number) {
 }
 
 
-async function persistCardpointeProfile(provider: PaymentProvider, cardId: string, bowlerId: number): Promise<void> {
-  if (provider.providerName === 'cardpointe' && cardId.includes('/')) {
-    const profileId = cardId.split('/')[0];
-    try {
-      await storage.updateBowler(bowlerId, { cardpointeProfileId: profileId });
-    } catch (profileError) {
-      log.error('Failed to persist CardPointe profile ID on bowler:', profileError);
-    }
-  }
-}
 
 const router = Router();
 
@@ -280,7 +271,7 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
       prizeFundAmount,
       weekOf: weekOf.toISOString(),
       status: 'paid',
-      type: provider.providerName as 'square' | 'cardpointe',
+      type: providerNameToPaymentType(provider.providerName),
       providerPaymentId: payment.id,
       cardpointeRetref: payment.providerRef?.cardpointeRetref,
       cardpointeAuthcode: payment.providerRef?.cardpointeAuthcode,

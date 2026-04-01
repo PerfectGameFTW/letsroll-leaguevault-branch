@@ -36,10 +36,10 @@ export async function runBowlerPostCreateSync(
         ? await storage.getFirstSquareConfiguredLocation(organizationId)
         : null;
       if (squareLocation?.id) {
-        let squareCustomer = null;
+        let providerCustomer = null;
         try {
           const syncProvider = await getPaymentProvider(squareLocation.id);
-          squareCustomer = await syncProvider.createOrUpdateCustomer(
+          providerCustomer = await syncProvider.createOrUpdateCustomer(
             current.name,
             current.email,
             current.phone,
@@ -51,16 +51,16 @@ export async function runBowlerPostCreateSync(
             throw e;
           }
         }
-        if (squareCustomer) {
+        if (providerCustomer) {
           current = await storage.updateBowler(current.id, {
             ...current,
-            paymentCustomerId: squareCustomer.id,
+            paymentCustomerId: providerCustomer.id,
             active: true,
           });
         }
       }
-    } catch (squareError) {
-      log.error('Square API error during bowler sync:', squareError);
+    } catch (syncError) {
+      log.error('Payment provider error during bowler sync:', syncError);
     }
   }
 

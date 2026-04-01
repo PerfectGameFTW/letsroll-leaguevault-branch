@@ -2,6 +2,7 @@ import { FC } from "react";
 import { CreditCard, Banknote, FileText, ChevronRight, Receipt } from "lucide-react";
 import { differenceInWeeks, format } from "date-fns";
 import { formatCurrency } from "@/lib/utils";
+import { isCardPaymentType } from "@shared/schema/constants";
 import type { Payment, League } from "@shared/schema";
 
 interface BowlerPaymentTableProps {
@@ -10,11 +11,8 @@ interface BowlerPaymentTableProps {
 }
 
 function getPaymentIcon(type: string) {
+  if (isCardPaymentType(type)) return CreditCard;
   switch (type) {
-    case 'credit_card':
-    case 'square':
-    case 'cardpointe':
-      return CreditCard;
     case 'cash': return Banknote;
     case 'check': return FileText;
     default: return Receipt;

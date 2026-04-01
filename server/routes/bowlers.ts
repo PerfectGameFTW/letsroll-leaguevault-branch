@@ -363,10 +363,10 @@ router.patch("/:id", async (req, res) => {
           const patchOrgId = (req as any).user?.organizationId;
           const patchSquareLocation = patchOrgId ? await storage.getFirstSquareConfiguredLocation(patchOrgId) : null;
           if (patchSquareLocation?.id) {
-            let squareCustomer = null;
+            let providerCustomer = null;
             try {
               const patchProvider = await getPaymentProvider(patchSquareLocation.id);
-              squareCustomer = await patchProvider.createOrUpdateCustomer(updated.name, updated.email);
+              providerCustomer = await patchProvider.createOrUpdateCustomer(updated.name, updated.email);
             } catch (e) {
               if (e instanceof ProviderNotConfiguredError) {
                 log.warn('Bowler update: provider not configured, skipping customer sync', { locationId: patchSquareLocation.id });
@@ -374,17 +374,17 @@ router.patch("/:id", async (req, res) => {
                 throw e;
               }
             }
-            if (squareCustomer && squareCustomer.id !== updated.paymentCustomerId) {
+            if (providerCustomer && providerCustomer.id !== updated.paymentCustomerId) {
               updated = await storage.updateBowler(id, {
                 ...updated,
-                paymentCustomerId: squareCustomer.id,
+                paymentCustomerId: providerCustomer.id,
               });
             }
           } else {
-            log.info('No Square-configured location found for org, skipping customer sync on update');
+            log.info('No payment-configured location found for org, skipping customer sync on update');
           }
-        } catch (squareError) {
-          log.error('Square customer sync error on update:', squareError);
+        } catch (syncError) {
+          log.error('Payment customer sync error on update:', syncError);
         }
       }
     }

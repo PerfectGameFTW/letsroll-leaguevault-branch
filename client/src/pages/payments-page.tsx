@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { PaymentForm } from "@/components/payment-form";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { isCardPaymentType } from "@shared/schema/constants";
 import {
   Table,
   TableBody,
@@ -279,7 +280,7 @@ export default function PaymentsPage() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {payment.status === "paid" && (payment.type === "credit_card" || payment.type === "square" || payment.type === "cardpointe") && isAdmin && (
+                          {payment.status === "paid" && isCardPaymentType(payment.type) && isAdmin && (
                             <Button
                               size="icon"
                               variant="ghost"
@@ -290,7 +291,7 @@ export default function PaymentsPage() {
                               <RotateCcw className="h-4 w-4 text-destructive" />
                             </Button>
                           )}
-                          {(!(payment.type === "credit_card" || payment.type === "square" || payment.type === "cardpointe") || isAdmin) && (
+                          {(!isCardPaymentType(payment.type) || isAdmin) && (
                             <Button
                               size="icon"
                               variant="ghost"
@@ -420,6 +421,7 @@ export default function PaymentsPage() {
                     Refund <strong>${(paymentToRefund.amount / 100).toFixed(2)}</strong> ({paymentToRefund.type === 'credit_card' ? 'Credit Card' : paymentToRefund.type === 'square' ? 'Square' : paymentToRefund.type === 'cardpointe' ? 'CardPointe' : paymentToRefund.type === 'check' ? 'Check' : 'Cash'})?
                     {(paymentToRefund.type === 'credit_card' || paymentToRefund.type === 'square') && ' The refund will be processed through Square.'}
                     {paymentToRefund.type === 'cardpointe' && ' The refund will be processed through CardPointe.'}
+                    {isCardPaymentType(paymentToRefund.type) && !['credit_card', 'square', 'cardpointe'].includes(paymentToRefund.type) && ' The refund will be processed through your payment provider.'}
                   </>
                 )}
               </DialogDescription>

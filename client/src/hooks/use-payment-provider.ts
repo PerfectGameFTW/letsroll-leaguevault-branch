@@ -17,7 +17,13 @@ interface UsePaymentProviderReturn {
   supportsWallets: boolean;
 }
 
-const configCache = new Map<string, PaymentProviderConfig>();
+interface CacheEntry {
+  config: PaymentProviderConfig;
+  timestamp: number;
+}
+
+const CONFIG_CACHE_TTL_MS = 5 * 60 * 1000;
+const configCache = new Map<string, CacheEntry>();
 
 export function usePaymentProvider(locationId?: number | null): UsePaymentProviderReturn {
   const [config, setConfig] = useState<PaymentProviderConfig | null>(null);
@@ -33,8 +39,8 @@ export function usePaymentProvider(locationId?: number | null): UsePaymentProvid
   useEffect(() => {
     const cacheKey = String(locationId ?? 'default');
     const cached = configCache.get(cacheKey);
-    if (cached) {
-      setConfig(cached);
+    if (cached && (Date.now() - cached.timestamp) < CONFIG_CACHE_TTL_MS) {
+      setConfig(cached.config);
       setIsLoading(false);
       setError(null);
       return;
@@ -57,7 +63,7 @@ export function usePaymentProvider(locationId?: number | null): UsePaymentProvid
           locationId: data.locationId,
           tokenizerUrl: data.tokenizerUrl,
         };
-        configCache.set(cacheKey, cfg);
+        configCache.set(cacheKey, { config: cfg, timestamp: Date.now() });
         if (mountedRef.current) {
           setConfig(cfg);
           setIsLoading(false);
