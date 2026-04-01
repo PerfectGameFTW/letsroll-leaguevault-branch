@@ -22,8 +22,11 @@ export async function getPaymentProvider(locationId: number | null): Promise<Pay
   switch (providerType) {
     case 'square':
       return new SquarePaymentProvider(locationId);
+    case 'cardpointe':
+      log.warn(`CardPointe provider not yet implemented for location ${locationId}`);
+      return null;
     default:
-      log.warn(`Unknown payment provider "${providerType}" for location ${locationId}, falling back to square`);
-      return new SquarePaymentProvider(locationId);
+      log.error(`Unknown payment provider "${providerType}" for location ${locationId}`);
+      return null;
   }
 }
