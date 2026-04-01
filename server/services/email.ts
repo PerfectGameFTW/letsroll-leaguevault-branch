@@ -66,7 +66,8 @@ function convertLinksToButtons(html: string): string {
       else if (url.includes('/login')) label = 'Log In';
       else if (url.includes('/claim')) label = 'Claim Your Profile';
 
-      return `<div style="margin: 20px 0;"><a href="${url}" style="display: inline-block; background-color: #1a1a2e; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold;">${label}</a></div>`;
+      const safeUrl = escapeHtml(url);
+      return `<div style="margin: 20px 0;"><a href="${safeUrl}" style="display: inline-block; background-color: #1a1a2e; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold;">${label}</a></div>`;
     }
   );
 }
