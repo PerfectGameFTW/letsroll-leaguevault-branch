@@ -7,7 +7,7 @@ import { logger } from "../logger";
 import { getNextLeagueDateTime } from "../utils/league-datetime.js";
 import { storage } from "../storage";
 import { isDateSkippedOrCancelled } from "@shared/schedule-utils";
-import { executeScheduledPayment, computePaymentSplit, type PaymentResult } from "./payment-execution";
+import { executeScheduledPayment, computePaymentSplit, type ChargeResult } from "./payment-execution";
 import { checkAndChargeFinalTwoWeeks, checkPaidInFull } from "./payment-checks";
 
 interface SchedulerCallbacks {
@@ -129,7 +129,7 @@ export function computeNextPaymentDate(
 async function handleSuccessfulPayment(
   scheduleRecord: PaymentSchedule,
   league: typeof leagues.$inferSelect,
-  paymentResult: PaymentResult,
+  paymentResult: ChargeResult,
   jobId: string,
   callbacks: SchedulerCallbacks
 ) {
@@ -218,7 +218,7 @@ async function handleSuccessfulPayment(
 
 async function handleFailedPayment(
   scheduleRecord: PaymentSchedule,
-  paymentResult: PaymentResult,
+  paymentResult: ChargeResult,
   jobId: string
 ) {
   logger.error(`[PaymentScheduler] Payment failed for ${jobId}`, {

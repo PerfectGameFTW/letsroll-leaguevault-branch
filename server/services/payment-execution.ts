@@ -88,7 +88,7 @@ export async function executeSquareCharge(
   locationId: number | null,
   squareCustomerId: string | undefined,
   buyerEmail: string | undefined
-): Promise<PaymentResult> {
+): Promise<ChargeResult> {
   const provider = await getPaymentProvider(locationId);
   if (!provider) {
     return { status: 'error', error: 'No payment provider configured for this location' };
@@ -100,7 +100,7 @@ export async function executeScheduledPayment(
   scheduleRecord: PaymentSchedule,
   league: typeof leagues.$inferSelect,
   jobId: string
-): Promise<PaymentResult> {
+): Promise<ChargeResult> {
   const { buyerEmail, squareCustomerId } = await fetchBowlerPaymentInfo(scheduleRecord.bowlerId);
 
   const locationId = league?.locationId ?? null;
