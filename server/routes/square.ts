@@ -11,6 +11,13 @@ import { hasCatalogSupport, hasWalletSupport } from '../services/payment-provide
 
 const log = createLogger("Square");
 
+function getProviderCustomerId(bowler: any, provider: any): string | undefined {
+  if (provider.providerName === 'cardpointe') {
+    return bowler.cardpointeProfileId || undefined;
+  }
+  return bowler.squareCustomerId || undefined;
+}
+
 const router = Router();
 
 router.use((req: any, res: any, next: any) => {
@@ -173,11 +180,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       return sendError(res, "Payment system is not configured for this location", 500, 'PROVIDER_NOT_CONFIGURED');
     }
 
-    const customerId = bowler.squareCustomerId || undefined;
-
-    if (req.body.storeCard && !customerId) {
-      log.warn('Cannot store card — bowler has no customer ID:', bowlerId);
-    }
+    const customerId = getProviderCustomerId(bowler, provider);
 
     const lineItems: { catalogObjectId: string; quantity: string }[] = [];
     const weeklyFee = league.weeklyFee || 0;
@@ -231,9 +234,10 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       bowlerId, leagueId, amount,
     });
 
-    if (req.body.storeCard && customerId && sourceId && !provider.validateCardId(sourceId)) {
+    const canStoreCard = provider.providerName === 'cardpointe' || !!customerId;
+    if (req.body.storeCard && canStoreCard && sourceId && !provider.validateCardId(sourceId)) {
       try {
-        const savedCard = await provider.saveCardOnFile(sourceId, customerId);
+        const savedCard = await provider.saveCardOnFile(sourceId, customerId || '');
         if (savedCard?.id) {
           log.info('Card saved on file:', savedCard.id.substring(0, 15) + '...');
           storedCardId = savedCard.id;
@@ -444,8 +448,8 @@ router.post('/cards/:bowlerId', async (req, res) => {
     }
 
     const bowler = await storage.getBowler(bowlerId);
-    if (!bowler?.squareCustomerId) {
-      return sendError(res, 'Bowler does not have a payment customer account', 400);
+    if (!bowler) {
+      return sendError(res, 'Bowler not found', 404);
     }
 
     const cardLeagueId = req.body.leagueId ? parseInt(req.body.leagueId) : null;
@@ -457,12 +461,25 @@ router.post('/cards/:bowlerId', async (req, res) => {
       return sendError(res, 'Payment provider not configured for this location', 500);
     }
 
-    const savedCard = await provider.saveCardOnFile(sourceId, bowler.squareCustomerId);
+    const providerCustId = getProviderCustomerId(bowler, provider);
+    if (!providerCustId && provider.providerName !== 'cardpointe') {
+      return sendError(res, 'Bowler does not have a payment customer account', 400);
+    }
+
+    const savedCard = await provider.saveCardOnFile(sourceId, providerCustId || '');
     if (!savedCard?.id) {
       return sendError(res, 'Failed to save card on file', 500);
     }
 
     log.info('Card saved on file (no-charge):', savedCard.id.substring(0, 15) + '...');
+    if (provider.providerName === 'cardpointe' && savedCard.id.includes('/')) {
+      const profileId = savedCard.id.split('/')[0];
+      try {
+        await storage.updateBowler(bowlerId, { cardpointeProfileId: profileId });
+      } catch (profileError) {
+        log.error('Failed to persist CardPointe profile ID on bowler:', profileError);
+      }
+    }
     return sendSuccess(res, { savedCardId: savedCard.id, last4: savedCard.last4, brand: savedCard.brand });
   } catch (error) {
     log.error('Save card error:', error);
@@ -482,7 +499,7 @@ router.get('/cards/:bowlerId', async (req, res) => {
     }
 
     const bowler = await storage.getBowler(bowlerId);
-    if (!bowler?.squareCustomerId) {
+    if (!bowler) {
       return sendSuccess(res, []);
     }
 
@@ -504,7 +521,12 @@ router.get('/cards/:bowlerId', async (req, res) => {
       return sendSuccess(res, []);
     }
 
-    const cards = await provider.listCardsOnFile(bowler.squareCustomerId);
+    const providerCustId = getProviderCustomerId(bowler, provider);
+    if (!providerCustId) {
+      return sendSuccess(res, []);
+    }
+
+    const cards = await provider.listCardsOnFile(providerCustId);
     sendSuccess(res, cards);
   } catch (error) {
     log.error('List cards error:', error);
@@ -529,8 +551,8 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
     }
 
     const bowler = await storage.getBowler(bowlerId);
-    if (!bowler?.squareCustomerId) {
-      return sendError(res, 'Bowler does not have a payment customer account', 400);
+    if (!bowler) {
+      return sendError(res, 'Bowler not found', 404);
     }
 
     let delLvLocationId: number | null = null;
@@ -551,7 +573,12 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
       return sendError(res, 'Payment provider not configured for this location', 500);
     }
 
-    await provider.disableCard(cardId, bowler.squareCustomerId);
+    const providerCustId = getProviderCustomerId(bowler, provider);
+    if (!providerCustId) {
+      return sendError(res, 'Bowler does not have a payment customer account', 400);
+    }
+
+    await provider.disableCard(cardId, providerCustId);
     log.info('Card disabled:', cardId.substring(0, 15) + '...');
     sendSuccess(res, { disabled: true });
   } catch (error) {

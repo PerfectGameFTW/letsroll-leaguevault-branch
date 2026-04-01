@@ -49,7 +49,7 @@ export const paymentSchedules = pgTable("payment_schedules", {
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
   lastPaymentDate: timestamp("last_payment_date", { mode: "string" }),
-  squareCardId: text("square_card_id").notNull(),
+  squareCardId: text("payment_card_id").notNull(),
 }, (table) => ({
   bowlerScheduleIdx: index("bowler_schedule_idx").on(table.bowlerId, table.leagueId),
   nextPaymentIdx: index("next_payment_idx").on(table.nextPaymentDate),
