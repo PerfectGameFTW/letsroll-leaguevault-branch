@@ -48,6 +48,25 @@ export async function getTeamsByIds(ids: number[]): Promise<Team[]> {
   return db.select().from(teams).where(inArray(teams.id, ids));
 }
 
+export async function renumberActiveTeams(leagueId: number): Promise<void> {
+  const allTeams = await db.select().from(teams)
+    .where(eq(teams.leagueId, leagueId))
+    .orderBy(teams.displayOrder, teams.number);
+
+  const activeTeams = allTeams.filter(t => t.active);
+
+  if (activeTeams.length === 0) return;
+
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < activeTeams.length; i++) {
+      await tx.update(teams).set({ number: -(i + 1) }).where(eq(teams.id, activeTeams[i].id));
+    }
+    for (let i = 0; i < activeTeams.length; i++) {
+      await tx.update(teams).set({ number: i + 1, displayOrder: i }).where(eq(teams.id, activeTeams[i].id));
+    }
+  });
+}
+
 export async function reorderTeams(updates: { id: number; displayOrder: number; number: number }[]): Promise<void> {
   await db.transaction(async (tx) => {
     for (let i = 0; i < updates.length; i++) {

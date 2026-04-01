@@ -241,6 +241,11 @@ router.patch("/:id", async (req, res) => {
     
     const update = updateTeamSchema.parse(req.body);
     const updated = await storage.updateTeam(id, update);
+
+    if ('active' in update) {
+      await storage.renumberActiveTeams(team.leagueId);
+    }
+
     sendSuccess(res, updated);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -278,7 +283,9 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
     
+    const leagueId = team.leagueId;
     await storage.deleteTeam(id);
+    await storage.renumberActiveTeams(leagueId);
     sendSuccess(res, null, 204);
   } catch (error) {
     sendError(res, 'Failed to delete team');
