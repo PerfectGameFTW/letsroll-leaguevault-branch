@@ -16,6 +16,12 @@ import { PaymentEntryRow } from "@/components/payment-entry-row";
 import { PaymentHistoryTable } from "@/components/payment-history-table";
 import { useWeeklyPayments, getNearestBowlingDay, getWeekNumber } from "@/hooks/use-weekly-payments";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import {
   Table,
   TableBody,
   TableCell,
@@ -46,6 +52,7 @@ export default function WeeklyPaymentsPage() {
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
+  const [weekJumpOpen, setWeekJumpOpen] = useState(false);
 
   const {
     paymentEntries,
@@ -225,9 +232,37 @@ export default function WeeklyPaymentsPage() {
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <div className="min-w-[100px] text-center font-medium text-sm px-2">
-                {selectedWeek !== null ? `Week ${selectedWeek}` : "—"}
-              </div>
+              <Popover open={weekJumpOpen} onOpenChange={setWeekJumpOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="min-w-[100px] text-center font-medium text-sm px-2 h-9"
+                  >
+                    {selectedWeek !== null ? `Week ${selectedWeek}` : "—"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-3" align="center">
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {Array.from({ length: maxWeek }, (_, i) => i + 1).map((week) => (
+                      <Button
+                        key={week}
+                        variant={week === selectedWeek ? "default" : "ghost"}
+                        size="sm"
+                        className={cn(
+                          "h-8 w-10 text-xs",
+                          week === selectedWeek && "pointer-events-none"
+                        )}
+                        onClick={() => {
+                          setSelectedWeek(week);
+                          setWeekJumpOpen(false);
+                        }}
+                      >
+                        {week}
+                      </Button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
               <Button
                 variant="outline"
                 size="icon"
