@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -13,15 +13,34 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { Plus, ArrowLeft, ArrowUpDown } from "lucide-react";
+import { Plus, ArrowLeft, ArrowUpDown, MoreHorizontal, Archive, ArchiveRestore, Trash2, Loader2 } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import type { Team, League } from "@shared/schema";
 import { useParams, Link } from "wouter";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 export default function TeamsPage() {
   const [showForm, setShowForm] = useState(false);
   const [showReorder, setShowReorder] = useState(false);
+  const [archiveTeam, setArchiveTeam] = useState<Team | null>(null);
+  const [deleteTeam, setDeleteTeam] = useState<Team | null>(null);
+  const { toast } = useToast();
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
 
@@ -29,7 +48,7 @@ export default function TeamsPage() {
     queryKey: [`/api/leagues/${leagueId}`],
     enabled: !!leagueId,
     retry: false,
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 
   const league = leagueResponse?.data;
@@ -45,7 +64,7 @@ export default function TeamsPage() {
     },
     enabled: !!leagueId,
     retry: false,
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 1000 * 60 * 5,
   });
 
   const teams = teamsResponse?.data || [];
@@ -57,6 +76,50 @@ export default function TeamsPage() {
       const numB = b.number ?? Number.MAX_SAFE_INTEGER;
       return numA - numB;
     });
+
+  const archiveMutation = useMutation({
+    mutationFn: async ({ id, active }: { id: number; active: boolean }) => {
+      await apiRequest(`/api/teams/${id}`, "PATCH", { active });
+    },
+    onSuccess: (_, { active }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/teams", leagueId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      toast({
+        title: active ? "Team restored" : "Team archived",
+        description: active ? "The team has been restored." : "The team has been archived.",
+      });
+      setArchiveTeam(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest(`/api/teams/${id}`, "DELETE");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/teams", leagueId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
+      toast({
+        title: "Team deleted",
+        description: "The team and all its data have been permanently deleted.",
+      });
+      setDeleteTeam(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error deleting team",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   if (loadingLeague || loadingTeams) {
     return (
@@ -109,11 +172,12 @@ export default function TeamsPage() {
                 <TableHead>Number</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sortedTeams.map((team) => (
-                <TableRow key={team.id}>
+                <TableRow key={team.id} className={!team.active ? "opacity-60" : ""}>
                   <TableCell>{team.number || 'Not assigned'}</TableCell>
                   <TableCell>
                     <Link href={`/teams/${team.id}`} className="hover:underline text-foreground">
@@ -122,8 +186,39 @@ export default function TeamsPage() {
                   </TableCell>
                   <TableCell>
                     <Badge variant={team.active ? "default" : "secondary"}>
-                      {team.active ? "Active" : "Inactive"}
+                      {team.active ? "Active" : "Archived"}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setArchiveTeam(team)}>
+                          {team.active ? (
+                            <>
+                              <Archive className="mr-2 h-4 w-4" />
+                              Archive
+                            </>
+                          ) : (
+                            <>
+                              <ArchiveRestore className="mr-2 h-4 w-4" />
+                              Restore
+                            </>
+                          )}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeleteTeam(team)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}
@@ -143,6 +238,57 @@ export default function TeamsPage() {
           teams={sortedTeams}
           leagueId={leagueId}
         />
+
+        <Dialog open={!!archiveTeam} onOpenChange={() => setArchiveTeam(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {archiveTeam?.active ? "Archive" : "Restore"} Team
+              </DialogTitle>
+              <DialogDescription>
+                {archiveTeam?.active
+                  ? `Are you sure you want to archive "${archiveTeam?.name}"? Archived teams won't appear in active views.`
+                  : `Are you sure you want to restore "${archiveTeam?.name}"? It will appear in active views again.`}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setArchiveTeam(null)} disabled={archiveMutation.isPending}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => archiveTeam && archiveMutation.mutate({ id: archiveTeam.id, active: !archiveTeam.active })}
+                disabled={archiveMutation.isPending}
+              >
+                {archiveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {archiveTeam?.active ? "Archive" : "Restore"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!deleteTeam} onOpenChange={() => setDeleteTeam(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Team</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to permanently delete "{deleteTeam?.name}"? This will remove the team and all associated bowler assignments. This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDeleteTeam(null)} disabled={deleteMutation.isPending}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => deleteTeam && deleteMutation.mutate(deleteTeam.id)}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
       </ErrorBoundary>
     </Layout>
