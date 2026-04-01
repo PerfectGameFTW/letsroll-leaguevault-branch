@@ -40,6 +40,11 @@ export function validateDataUri(dataUri: string): { valid: true; mimeType: strin
     return { valid: false, error: `Unsupported MIME type: ${declaredMime}` };
   }
 
+  const MAX_BASE64_LENGTH = Math.ceil((2 * 1024 * 1024) / 3) * 4;
+  if (matches[2].length > MAX_BASE64_LENGTH) {
+    return { valid: false, error: 'Image data exceeds maximum allowed size' };
+  }
+
   const buffer = Buffer.from(matches[2], 'base64');
   const detectedMime = detectImageMime(buffer);
 
