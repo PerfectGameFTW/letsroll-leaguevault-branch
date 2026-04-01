@@ -221,6 +221,19 @@ export class CardPointePaymentProvider implements PaymentProvider {
 
     try {
       const inquiry = await inquireTransaction(creds, paymentId);
+
+      let timestamp = new Date().toISOString();
+      const localPayment =
+        await storage.getPaymentByCardpointeRetref(paymentId) ??
+        await storage.getPaymentByProviderPaymentId(paymentId);
+      if (localPayment?.createdAt) {
+        timestamp = localPayment.createdAt;
+      } else {
+        log.warn('No local payment record found for CardPointe retref, using current time as fallback', {
+          retref: paymentId,
+        });
+      }
+
       return {
         id: inquiry.retref,
         status: inquiry.respstat === 'A' ? 'COMPLETED' : 'FAILED',
@@ -228,8 +241,8 @@ export class CardPointePaymentProvider implements PaymentProvider {
           amount: String(parseCardPointeAmount(inquiry.amount)),
           currency: 'USD',
         },
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: timestamp,
+        updatedAt: timestamp,
         sourceType: 'CARD',
         last4: extractLast4(inquiry.account),
       };

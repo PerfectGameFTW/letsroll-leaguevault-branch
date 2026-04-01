@@ -69,6 +69,8 @@ export interface IPaymentStorage {
   getPaymentsPaginated(filters: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date; organizationId: number }, page: number, limit: number): Promise<PaginatedResult<Payment>>;
   getPaymentById(id: number): Promise<Payment | undefined>;
   getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined>;
+  getPaymentByCardpointeRetref(retref: string): Promise<Payment | undefined>;
+  getPaymentByProviderPaymentId(providerPaymentId: string): Promise<Payment | undefined>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePayment(id: number, payment: UpdatePayment): Promise<Payment>;
   refundPayment(id: number, providerRefundId?: string, reason?: string): Promise<Payment>;

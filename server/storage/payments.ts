@@ -168,6 +168,16 @@ export async function getPaymentByIdempotencyKey(key: string): Promise<Payment |
   return result;
 }
 
+export async function getPaymentByCardpointeRetref(retref: string): Promise<Payment | undefined> {
+  const [result] = await db.select().from(payments).where(eq(payments.cardpointeRetref, retref)).limit(1);
+  return result;
+}
+
+export async function getPaymentByProviderPaymentId(providerPaymentId: string): Promise<Payment | undefined> {
+  const [result] = await db.select().from(payments).where(eq(payments.providerPaymentId, providerPaymentId)).limit(1);
+  return result;
+}
+
 export async function createPayment(payment: InsertPayment): Promise<Payment> {
   const [result] = await db.insert(payments).values(payment).returning();
   return result;

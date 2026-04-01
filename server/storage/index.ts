@@ -57,6 +57,8 @@ export class DatabaseStorage implements IStorage {
   getPaymentsPaginated!: IStorage["getPaymentsPaginated"];
   getPaymentById!: IStorage["getPaymentById"];
   getPaymentByIdempotencyKey!: IStorage["getPaymentByIdempotencyKey"];
+  getPaymentByCardpointeRetref!: IStorage["getPaymentByCardpointeRetref"];
+  getPaymentByProviderPaymentId!: IStorage["getPaymentByProviderPaymentId"];
   createPayment!: IStorage["createPayment"];
   updatePayment!: IStorage["updatePayment"];
   refundPayment!: IStorage["refundPayment"];
