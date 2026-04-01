@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db.js";
-import { emailTemplates, type EmailTemplate, type UpdateEmailTemplate } from "@shared/schema";
+import { emailTemplates } from "@shared/schema/email-templates";
+import type { EmailTemplate, UpdateEmailTemplate } from "@shared/schema";
 
 export async function getEmailTemplates(): Promise<EmailTemplate[]> {
   return db.select().from(emailTemplates);

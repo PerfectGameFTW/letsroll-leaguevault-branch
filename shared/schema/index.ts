@@ -25,7 +25,6 @@ export type { User, InsertUser, UpdateUser } from "./users";
 export { games, scores, insertGameSchema, insertScoreSchema, updateGameSchema, updateScoreSchema } from "./games";
 export type { Game, InsertGame, UpdateGame, Score, InsertScore, UpdateScore } from "./games";
 
-export { emailTemplates, insertEmailTemplateSchema, updateEmailTemplateSchema } from "./email-templates";
 export type { InsertEmailTemplate, UpdateEmailTemplate, EmailTemplate } from "./email-templates";
 
 export { sessions } from "./sessions";
