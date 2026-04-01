@@ -5,7 +5,7 @@ import compression from "compression";
 import helmet from "helmet";
 import { registerRoutes } from "./routes/index";
 import { setupVite } from "./vite";
-import { testConnection, cleanup as dbCleanup, ensureSessionTable } from "./db";
+import { testConnection, cleanup as dbCleanup } from "./db";
 import { createServer } from 'http';
 import { storage } from './storage';
 import path from 'path';
@@ -345,13 +345,6 @@ async function startServer() {
       process.exit(1);
     }
     log.info('Database connected');
-
-    try {
-      await ensureSessionTable();
-    } catch (error) {
-      log.error('Failed to ensure session table exists, refusing to start:', error);
-      process.exit(1);
-    }
 
     ensureAvatarsDirectory();
 

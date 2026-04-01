@@ -91,7 +91,6 @@ export async function setupAuth(app: Express) {
     saveUninitialized: false,
     store: new PostgresSessionStore({
       pool,
-      createTableIfMissing: true,
       pruneSessionInterval: 60,
       tableName: 'session'
     }),
