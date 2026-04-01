@@ -263,10 +263,14 @@ export async function getActiveSchedulesByLocationId(locationId: number): Promis
   return rows.map(r => r.schedule);
 }
 
-export async function deactivatePaymentSchedule(id: number): Promise<void> {
+export async function deactivatePaymentSchedule(id: number, reason?: string): Promise<void> {
   await db
     .update(paymentSchedules)
-    .set({ active: false })
+    .set({
+      active: false,
+      cancelledAt: new Date().toISOString(),
+      cancelReason: reason ?? null,
+    })
     .where(eq(paymentSchedules.id, id));
 }
 

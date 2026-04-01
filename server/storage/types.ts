@@ -80,7 +80,7 @@ export interface IPaymentStorage {
   getPaymentScheduleById(id: number): Promise<PaymentSchedule | undefined>;
   getActiveSchedulesByLeague(leagueId: number): Promise<PaymentSchedule[]>;
   getActiveSchedulesByLocationId(locationId: number): Promise<PaymentSchedule[]>;
-  deactivatePaymentSchedule(id: number): Promise<void>;
+  deactivatePaymentSchedule(id: number, reason?: string): Promise<void>;
   updatePaymentScheduleFields(id: number, fields: UpdatePaymentSchedule): Promise<PaymentSchedule>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
 }

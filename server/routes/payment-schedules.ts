@@ -152,7 +152,7 @@ router.delete('/:id', adminWriteLimiter, async (req, res) => {
       return sendError(res, "You don't have access to this schedule", 403, 'FORBIDDEN');
     }
 
-    await storage.deactivatePaymentSchedule(id);
+    await storage.deactivatePaymentSchedule(id, "manual");
     await paymentScheduler.removeSchedule(id);
 
     return sendSuccess(res, { message: 'Payment schedule cancelled' });

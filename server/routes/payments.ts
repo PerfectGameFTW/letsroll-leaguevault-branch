@@ -165,7 +165,7 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
           if (totalPaid >= fullSeasonAmount) {
             const activeSchedule = await storage.getPaymentSchedule(payment.bowlerId, payment.leagueId);
             if (activeSchedule) {
-              await storage.deactivatePaymentSchedule(activeSchedule.id);
+              await storage.deactivatePaymentSchedule(activeSchedule.id, `paid_in_full:payment_id=${created.id}`);
               await paymentScheduler.removeSchedule(activeSchedule.id);
               log.info(`Bowler ${payment.bowlerId} paid in full for league ${payment.leagueId}, auto-cancelled schedule ${activeSchedule.id}`);
             }

@@ -50,6 +50,8 @@ export const paymentSchedules = pgTable("payment_schedules", {
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
   lastPaymentDate: timestamp("last_payment_date", { mode: "string" }),
   paymentCardId: text("payment_card_id").notNull(),
+  cancelledAt: timestamp("cancelled_at", { mode: "string" }),
+  cancelReason: text("cancel_reason"),
 }, (table) => ({
   bowlerScheduleIdx: index("bowler_schedule_idx").on(table.bowlerId, table.leagueId),
   nextPaymentIdx: index("next_payment_idx").on(table.nextPaymentDate),
@@ -85,7 +87,7 @@ export const insertPaymentScheduleSchema = basePaymentScheduleSchema.extend({
   nextPaymentDate: dateSchema,
   active: z.boolean().default(true),
   paymentCardId: z.string(),
-}).omit({ id: true, createdAt: true, lastPaymentDate: true });
+}).omit({ id: true, createdAt: true, lastPaymentDate: true, cancelledAt: true, cancelReason: true });
 
 export const updatePaymentSchema = z.object({
   amount: positiveIntSchema,
@@ -111,6 +113,8 @@ export const updatePaymentScheduleSchema = z.object({
   active: z.boolean(),
   paymentCardId: z.string(),
   lastPaymentDate: dateSchema.nullable(),
+  cancelledAt: dateSchema.nullable(),
+  cancelReason: z.string().nullable(),
 }).partial();
 
 export type Payment = typeof payments.$inferSelect;

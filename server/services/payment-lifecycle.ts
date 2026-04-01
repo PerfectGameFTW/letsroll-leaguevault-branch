@@ -185,7 +185,7 @@ async function handleSuccessfulPayment(
       bowlerId: scheduleRecord.bowlerId,
       leagueId: scheduleRecord.leagueId,
     });
-    await storage.deactivatePaymentSchedule(scheduleRecord.id);
+    await storage.deactivatePaymentSchedule(scheduleRecord.id, `paid_in_full:scheduled_job=${jobId}`);
     callbacks.cancelJob(jobId);
     return;
   }

@@ -188,7 +188,7 @@ export async function checkPaidInFull(
         leagueId: scheduleRecord.leagueId,
       });
 
-      await storage.deactivatePaymentSchedule(scheduleRecord.id);
+      await storage.deactivatePaymentSchedule(scheduleRecord.id, `paid_in_full:scheduled_job=${jobId}`);
       cancelJobCallback(`payment-${scheduleRecord.id}`);
       return true;
     }
