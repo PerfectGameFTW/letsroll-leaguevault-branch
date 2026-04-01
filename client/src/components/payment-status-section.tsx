@@ -64,9 +64,9 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   });
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
-    queryKey: [`/api/square/cards/${bowler.id}`, league.id],
+    queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id],
     queryFn: async () => {
-      const res = await csrfFetch(`/api/square/cards/${bowler.id}?leagueId=${league.id}`);
+      const res = await csrfFetch(`/api/payments-provider/cards/${bowler.id}?leagueId=${league.id}`);
       if (!res.ok) throw new Error('Failed to fetch saved cards');
       return res.json();
     },
@@ -137,7 +137,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     try {
       setIsSubmitting(true);
       const amount = calculateTotalAmount();
-      const response = await csrfFetch('/api/square/payments', {
+      const response = await csrfFetch('/api/payments-provider/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -163,7 +163,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       }
       queryClient.invalidateQueries({ queryKey: ['/api/payments'] });
       queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`, league.id] });
+      queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id] });
       setShowPaymentSetup(false);
     } catch (err: any) {
       toast({ title: "Payment Failed", description: err?.message || 'Payment could not be processed', variant: "destructive" });

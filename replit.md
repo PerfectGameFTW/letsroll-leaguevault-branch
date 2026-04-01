@@ -204,24 +204,24 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
     - On successful wallet payment, card is automatically saved on file (`storeCard: true`) for future autopay use
     - "or pay with card" divider appears between wallet buttons and card form when wallet is available
   - **Admin-facing flow**: Wallet buttons in `PaymentCreditCardSection` above the card form
-  - Wallet tokens go to the same `/api/square/payments` endpoint (no backend changes needed)
+  - Wallet tokens go to the same `/api/payments-provider/payments` endpoint (no backend changes needed)
   - Payment request amount auto-updates when the form amount changes
   - Graceful fallback: buttons only appear when the device/browser supports them
   - Hook has defensive checks: validates `attach` method exists on SDK-returned objects before calling
   - Debug status banner (temporary): shows wallet init state for troubleshooting on-device
   - **Platform support**: Apple Pay works only in Safari on iOS; Google Pay works only in Chrome on Android
   - Apple Pay requires domain verification: `/.well-known/apple-developer-merchantid-domain-association` route (serves static file from `.well-known/` directory first, falls back to `APPLE_PAY_DOMAIN_VERIFICATION` env var). Download the verification file from Square Dashboard → Apple Pay and place it at `.well-known/apple-developer-merchantid-domain-association`.
-  - Apple Pay domain registration: `POST /api/square/apple-pay/register-domain` (admin-only, per-domain)
-  - Apple Pay bulk registration: `POST /api/square/apple-pay/register-all-domains` (system admin, all org subdomains)
+  - Apple Pay domain registration: `POST /api/payments-provider/apple-pay/register-domain` (admin-only, per-domain)
+  - Apple Pay bulk registration: `POST /api/payments-provider/apple-pay/register-all-domains` (system admin, all org subdomains)
   - Auto-registration: org create/update in `server/routes/organizations.ts` fires fire-and-forget `registerApplePayDomain()` when subdomain/slug changes
   - `registerApplePayDomain()` in `server/services/square.ts` — calls Square's `POST /v2/apple-pay/domains`
   - Google Pay requires `pay.google.com` in CSP scriptSrc, frameSrc, connectSrc
 - **Saved Card Payments**: Bowlers can save credit cards during one-time payments and use them for future payments
   - `listCardsOnFile(customerId)` function in `server/services/square.ts` — retrieves enabled cards from Square
-  - `GET /api/square/cards/:bowlerId` endpoint to list saved cards for a bowler
+  - `GET /api/payments-provider/cards/:bowlerId` endpoint to list saved cards for a bowler
   - Payment form updated: when a bowler has saved cards, shows "Saved Card" / "New Card" toggle
-  - Saved card payments go through `/api/square/payments` with the card ID as sourceId
-  - New card payments with "Save card" checked also go through `/api/square/payments` for proper card-on-file saving
+  - Saved card payments go through `/api/payments-provider/payments` with the card ID as sourceId
+  - New card payments with "Save card" checked also go through `/api/payments-provider/payments` for proper card-on-file saving
   - Card saving uses Square's Cards API (`cardsApi.createCard`) with the payment token
 - **BowlNow CRM Integration**: One-way sync of bowler contact data into BowlNow CRM
   - `server/services/bowlnow.ts` — service module for BN API (create/update contacts, sync single/all bowlers)
@@ -314,8 +314,8 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
 - Fixed bowler dashboard route guard: `AuthRouteGuard` instead of `SystemAdminRouteGuard`
 - Fixed logout: corrected `apiRequest` argument order (URL first, method second)
 - Square Catalog integration: dual-item model with Lineage + Prize Fund items per league
-  - Category filtering on catalog item endpoint (`GET /api/square/catalog/items?categoryId=...`)
-  - Categories endpoint (`GET /api/square/catalog/categories`)
+  - Category filtering on catalog item endpoint (`GET /api/payments-provider/catalog/items?categoryId=...`)
+  - Categories endpoint (`GET /api/payments-provider/catalog/categories`)
   - League form: category filter dropdown, separate Lineage and Prize Fund item pickers, auto-sum weekly fee
   - Payments create Square Orders with multi-line items (lineage + prize fund as separate line items)
   - Payment scheduler uses same Orders API logic for recurring payments

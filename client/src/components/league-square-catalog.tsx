@@ -45,9 +45,9 @@ export function LeagueSquareCatalog({
   const catalogLocationParam = locationId ? `?locationId=${locationId}` : '';
 
   const { data: categoriesData } = useQuery<{ success: boolean; data: CatalogCategory[] }>({
-    queryKey: ['/api/square/catalog/categories', locationId],
+    queryKey: ['/api/payments-provider/catalog/categories', locationId],
     queryFn: async () => {
-      const res = await fetch(`/api/square/catalog/categories${catalogLocationParam}`);
+      const res = await fetch(`/api/payments-provider/catalog/categories${catalogLocationParam}`);
       if (!res.ok) throw new Error('Failed to fetch catalog categories');
       return res.json();
     },
@@ -57,9 +57,9 @@ export function LeagueSquareCatalog({
   const categories = categoriesData?.data || [];
 
   const { data: allCatalogData, isLoading: isLoadingCatalog } = useQuery<{ success: boolean; data: CatalogItem[] }>({
-    queryKey: ['/api/square/catalog/items', locationId],
+    queryKey: ['/api/payments-provider/catalog/items', locationId],
     queryFn: async () => {
-      const res = await fetch(`/api/square/catalog/items${catalogLocationParam}`);
+      const res = await fetch(`/api/payments-provider/catalog/items${catalogLocationParam}`);
       if (!res.ok) throw new Error('Failed to fetch catalog items');
       return res.json();
     },
@@ -69,12 +69,12 @@ export function LeagueSquareCatalog({
   const allCatalogItems = allCatalogData?.data || [];
 
   const { data: filteredCatalogData } = useQuery<{ success: boolean; data: CatalogItem[] }>({
-    queryKey: ['/api/square/catalog/items', locationId, selectedCategoryId],
+    queryKey: ['/api/payments-provider/catalog/items', locationId, selectedCategoryId],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedCategoryId) params.set('categoryId', selectedCategoryId);
       if (locationId) params.set('locationId', String(locationId));
-      const res = await fetch(`/api/square/catalog/items?${params.toString()}`);
+      const res = await fetch(`/api/payments-provider/catalog/items?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch catalog items');
       return res.json();
     },

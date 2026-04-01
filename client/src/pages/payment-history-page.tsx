@@ -56,10 +56,10 @@ export default function PaymentHistoryPage() {
   const bowlerId = currentUser?.data?.bowlerId;
 
   const { data: savedCardsResponse } = useQuery<ApiResponse<SavedCard[]>>({
-    queryKey: [`/api/square/cards/${bowlerId}`, selectedLeagueId],
+    queryKey: [`/api/payments-provider/cards/${bowlerId}`, selectedLeagueId],
     queryFn: async () => {
       const params = selectedLeagueId ? `?leagueId=${selectedLeagueId}` : '';
-      const res = await csrfFetch(`/api/square/cards/${bowlerId}${params}`);
+      const res = await csrfFetch(`/api/payments-provider/cards/${bowlerId}${params}`);
       if (!res.ok) throw new Error('Failed to fetch saved cards');
       return res.json();
     },
@@ -172,7 +172,7 @@ export default function PaymentHistoryPage() {
     if (!bowlerId || !leagueId || !dialogAmountCents) return;
     try {
       setIsWalletProcessing(true);
-      const response = await csrfFetch('/api/square/payments', {
+      const response = await csrfFetch('/api/payments-provider/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -197,7 +197,7 @@ export default function PaymentHistoryPage() {
       setPayDialogType(null);
       queryClient.invalidateQueries({ queryKey: ["/api/payments", { bowlerId, leagueId }] });
       queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowlerId}/details`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
     } catch (error) {
       console.error('[Wallet Payment Error]:', error);
       toast({ title: "Payment Failed", description: error instanceof Error ? error.message : "Unable to process payment.", variant: "destructive" });
@@ -254,7 +254,7 @@ export default function PaymentHistoryPage() {
       setIsSubmitting(true);
 
       if (cardMode === 'saved' && selectedSavedCardId) {
-        const response = await csrfFetch('/api/square/payments', {
+        const response = await csrfFetch('/api/payments-provider/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -272,7 +272,7 @@ export default function PaymentHistoryPage() {
       } else {
         await createPayment(dialogAmount, card, bowlerId, leagueId, storeCard);
         if (storeCard) {
-          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
         }
       }
 

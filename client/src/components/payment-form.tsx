@@ -105,10 +105,10 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const watchedAmount = form.watch("amount");
 
   const { data: savedCardsResponse } = useQuery<{ success: boolean; data: SavedCard[] }>({
-    queryKey: [`/api/square/cards/${selectedBowlerId}`, leagueId],
+    queryKey: [`/api/payments-provider/cards/${selectedBowlerId}`, leagueId],
     queryFn: async () => {
       const params = leagueId ? `?leagueId=${leagueId}` : '';
-      const res = await csrfFetch(`/api/square/cards/${selectedBowlerId}${params}`);
+      const res = await csrfFetch(`/api/payments-provider/cards/${selectedBowlerId}${params}`);
       if (!res.ok) throw new Error('Failed to fetch saved cards');
       return res.json();
     },
@@ -214,7 +214,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
 
     try {
-      const response = await csrfFetch('/api/square/payments', {
+      const response = await csrfFetch('/api/payments-provider/payments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

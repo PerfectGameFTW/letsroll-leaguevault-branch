@@ -80,7 +80,7 @@ export function useBowlerPaymentSubmit({
           paymentCardId = selectedSavedCardId;
         } else {
           const token = await tokenizeCard(card);
-          const saveResponse = await csrfFetch(`/api/square/cards/${bowler.id}`, {
+          const saveResponse = await csrfFetch(`/api/payments-provider/cards/${bowler.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sourceId: token }),
@@ -90,7 +90,7 @@ export function useBowlerPaymentSubmit({
             throw new Error(saveData.error?.message || 'Your card could not be saved. Please try again.');
           }
           paymentCardId = saveData.data.savedCardId;
-          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
         }
 
         const scheduleResponse = await csrfFetch('/api/payment-schedules', {
@@ -130,7 +130,7 @@ export function useBowlerPaymentSubmit({
           paymentCardId = selectedSavedCardId;
         } else {
           const token = await tokenizeCard(card);
-          const saveResponse = await csrfFetch(`/api/square/cards/${bowler.id}`, {
+          const saveResponse = await csrfFetch(`/api/payments-provider/cards/${bowler.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ sourceId: token }),
@@ -143,10 +143,10 @@ export function useBowlerPaymentSubmit({
           if (!paymentCardId) {
             throw new Error('Your card could not be saved for auto-pay. Please try again.');
           }
-          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
         }
       } else if (cardMode === 'saved' && selectedSavedCardId) {
-        const response = await csrfFetch('/api/square/payments', {
+        const response = await csrfFetch('/api/payments-provider/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -167,7 +167,7 @@ export function useBowlerPaymentSubmit({
         const shouldStore = isAutoPay || storeCard;
         const paymentResult = await createPayment(amount, card, bowler.id, league.id, shouldStore);
         if (shouldStore) {
-          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
         }
         if (isAutoPay) {
           paymentCardId = paymentResult.savedCardId || null;

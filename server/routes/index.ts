@@ -7,7 +7,7 @@ import paymentsRouter from './payments.js';
 import bowlerLeaguesRouter from './bowler-leagues.js';
 import scoresRouter from './scores.js';
 import gamesRouter from './games.js';
-import squareRouter from './square.js';
+import paymentRoutesRouter from './payment-routes.js';
 import adminRouter from './admin.js';
 import adminUpdateRouter from './admin-update.js';
 import organizationsRouter from './organizations.js';
@@ -52,7 +52,7 @@ export function registerRoutes(app: Express): void {
   app.use('/api/payments', requireAuth, paymentsRouter);
   app.use('/api/scores', requireAuth, scoresRouter);
   app.use('/api/games', requireAuth, gamesRouter);
-  app.use('/api/square', requireAuth, squareRouter);
+  app.use('/api/payments-provider', requireAuth, paymentRoutesRouter);
   app.use('/api/admin', requireOrgAdmin, adminRouter);
   app.use('/api/admin-update', requireOrgAdmin, adminUpdateRouter);
   app.use('/api/organizations', requireAuth, organizationsRouter);

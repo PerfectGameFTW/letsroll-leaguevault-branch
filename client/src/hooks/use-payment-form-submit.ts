@@ -31,7 +31,7 @@ export function usePaymentFormSubmit({
 
       if (data.type === 'credit_card') {
         if (cardMode === 'saved' && selectedSavedCardId) {
-          const response = await csrfFetch('/api/square/payments', {
+          const response = await csrfFetch('/api/payments-provider/payments', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -76,7 +76,7 @@ export function usePaymentFormSubmit({
           throw new Error(errorMessage);
         }
 
-        const response = await csrfFetch('/api/square/payments', {
+        const response = await csrfFetch('/api/payments-provider/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -95,7 +95,7 @@ export function usePaymentFormSubmit({
 
         toast({ title: "Success", description: "Payment processed successfully" });
         if (data.storeCard) {
-          queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${data.bowlerId}`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${data.bowlerId}`] });
         }
         queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
         onClose();

@@ -72,9 +72,9 @@ export const ProfileSettingsPage: FC = () => {
   const bowlerId = currentUser?.bowlerId;
 
   const { data: savedCardsResponse, isLoading: isLoadingCards } = useQuery<{ success: boolean; data: SavedCard[] }>({
-    queryKey: [`/api/square/cards/${bowlerId}`],
+    queryKey: [`/api/payments-provider/cards/${bowlerId}`],
     queryFn: async () => {
-      const res = await csrfFetch(`/api/square/cards/${bowlerId}`);
+      const res = await csrfFetch(`/api/payments-provider/cards/${bowlerId}`);
       if (!res.ok) throw new Error('Failed to load saved cards');
       return res.json();
     },
@@ -87,7 +87,7 @@ export const ProfileSettingsPage: FC = () => {
     if (!bowlerId) return;
     setIsDeletingCard(true);
     try {
-      const res = await csrfFetch(`/api/square/cards/${bowlerId}/${card.id}`, {
+      const res = await csrfFetch(`/api/payments-provider/cards/${bowlerId}/${card.id}`, {
         method: 'DELETE',
       });
       if (!res.ok) {
@@ -95,7 +95,7 @@ export const ProfileSettingsPage: FC = () => {
         throw new Error(data.error?.message || 'Failed to remove card');
       }
       toast({ title: "Card Removed", description: `Your ${card.brand} card ending in ${card.last4} has been removed.` });
-      queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowlerId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
     } catch (err: any) {
       toast({ title: "Error", description: err?.message || 'Failed to remove card', variant: "destructive" });
     } finally {

@@ -129,7 +129,7 @@ async function getSquareConfig(locationId?: number | null): Promise<{ appId: str
   // Return cached config only if the location matches
   if (squareConfig && squareConfigLocationId === (locationId ?? null)) return squareConfig;
 
-  const url = locationId ? `/api/square/config?locationId=${locationId}` : '/api/square/config';
+  const url = locationId ? `/api/payments-provider/config?locationId=${locationId}` : '/api/payments-provider/config';
   let data: SquareConfigResponse;
   try {
     const res = await fetch(url);
@@ -359,7 +359,7 @@ export async function createPayment(amount: number, cardInstance: SquareCard | n
         storeCard
       };
 
-      const response = await csrfFetch('/api/square/payments', {
+      const response = await csrfFetch('/api/payments-provider/payments', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -426,7 +426,7 @@ export async function createPayment(amount: number, cardInstance: SquareCard | n
 
 export async function createSquareCustomer(name: string, email: string, teamId: number): Promise<SquareCustomer> {
   try {
-    const response = await csrfFetch('/api/square/customers', {
+    const response = await csrfFetch('/api/payments-provider/customers', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
