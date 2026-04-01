@@ -45,8 +45,8 @@ export function GlobalSearch() {
         setResults(null);
         setIsOpen(false);
       }
-    } catch (err: any) {
-      if (err?.name === "AbortError") return;
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
       setResults(null);
       setIsOpen(false);
     } finally {
