@@ -247,9 +247,6 @@ export default function LeagueViewPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Record manual payments by team and week, view payment history
-                </p>
               </CardContent>
             </Card>
           </Link>
