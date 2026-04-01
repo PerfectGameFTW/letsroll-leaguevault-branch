@@ -68,7 +68,9 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     sourceId: string,
     customerId: string,
   ): Promise<SavedCard | null> {
-    return sqSaveCardOnFile(sourceId, customerId, this.locationId);
+    const result = await sqSaveCardOnFile(sourceId, customerId, this.locationId);
+    if (!result?.id) return null;
+    return { id: result.id, last4: result.last4 ?? '', brand: result.brand ?? '' };
   }
 
   async listCardsOnFile(
