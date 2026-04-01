@@ -5,6 +5,7 @@ import { storage } from '../storage';
 import { insertLocationSchema, updateLocationSchema, locationSquareCredentialsSchema } from '@shared/schema';
 import { filterByOrganization } from '../middleware/organization.js';
 import { createLogger } from '../logger';
+import { clearProviderCache } from '../services/payment-provider-factory';
 
 const log = createLogger("Locations");
 
@@ -101,6 +102,9 @@ router.patch('/:id', async (req: any, res) => {
       }
     }
     const updatedLocation = await storage.updateLocation(id, cleanedData);
+    if ('paymentProvider' in cleanedData || 'squareCredentials' in cleanedData || 'cardpointeCredentials' in cleanedData) {
+      clearProviderCache(id);
+    }
     sendSuccess(res, updatedLocation);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -239,6 +243,7 @@ router.patch('/:id/square-config', async (req: any, res) => {
     };
 
     await storage.updateLocationSquareConfig(id, creds);
+    clearProviderCache(id);
     sendSuccess(res, {
       appId: creds.appId || null,
       accessTokenConfigured: !!(creds.accessToken && creds.accessToken.trim().length > 0),
