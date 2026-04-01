@@ -339,43 +339,40 @@ async function testDatabaseConnectionWithRetry(maxRetries = 3, backoffMs = 1000)
 
 async function startServer() {
   try {
-    let dbConnected = await testDatabaseConnectionWithRetry();
+    const dbConnected = await testDatabaseConnectionWithRetry();
     if (!dbConnected) {
-      log.warn('Database connection failed, starting without database');
-    } else {
-      log.info('Database connected');
-      try {
-        await ensureSessionTable();
-      } catch (error) {
-        log.error('Failed to ensure session table exists - authentication will not work:', error);
-        dbConnected = false;
-      }
+      log.error('Database connection failed after all retry attempts, refusing to start');
+      process.exit(1);
+    }
+    log.info('Database connected');
+
+    try {
+      await ensureSessionTable();
+    } catch (error) {
+      log.error('Failed to ensure session table exists, refusing to start:', error);
+      process.exit(1);
     }
 
     ensureAvatarsDirectory();
 
-    if (dbConnected) {
-      try {
-        const dbMigrationOk = await migrateAvatarsFromDBToDisk();
-        if (dbMigrationOk) {
-          await migrateApiUrlsToDiskUrls();
-        }
-      } catch (error) {
-        log.error('Error running avatar migration:', error);
+    try {
+      const dbMigrationOk = await migrateAvatarsFromDBToDisk();
+      if (dbMigrationOk) {
+        await migrateApiUrlsToDiskUrls();
       }
+    } catch (error) {
+      log.error('Error running avatar migration:', error);
     }
 
     server.listen({ port: PORT, host: HOST }, () => {
       log.info(`Running at http://${HOST}:${PORT}`);
     });
 
-    if (dbConnected) {
-      try {
-        await paymentScheduler.initialize();
-        log.info('Schedulers initialized');
-      } catch (error) {
-        log.error('Error initializing schedulers:', error);
-      }
+    try {
+      await paymentScheduler.initialize();
+      log.info('Schedulers initialized');
+    } catch (error) {
+      log.error('Error initializing schedulers:', error);
     }
   } catch (error) {
     log.error('Critical startup error:', error);
