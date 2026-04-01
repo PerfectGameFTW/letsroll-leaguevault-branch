@@ -44,7 +44,7 @@ interface EnrichedBowlerLeague {
   leagueId: number;
   teamId: number;
   bowler: { id: number; name: string; email: string | null; active: boolean } | null;
-  team: { id: number; name: string; number: number; leagueId: number; displayOrder: number } | null;
+  team: { id: number; name: string; number: number; leagueId: number; displayOrder: number; active: boolean } | null;
   league: { id: number; name: string; description: string | null; active: boolean } | null;
 }
 
@@ -108,7 +108,7 @@ export default function WeeklyPaymentsPage() {
 
   const sortedBowlerLeagues = useMemo(() => {
     return [...enrichedBowlerLeagues]
-      .filter(bl => bl.bowler)
+      .filter(bl => bl.bowler && (bl.team?.active !== false))
       .sort((a, b) => {
         const aOrder = a.team?.displayOrder ?? Infinity;
         const bOrder = b.team?.displayOrder ?? Infinity;
