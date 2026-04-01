@@ -135,6 +135,12 @@ export default function EmailTemplatesPage() {
 
         {isLoading ? (
           <PageLoadingState fullPage={false} />
+        ) : templates.length === 0 ? (
+          <div className="rounded-lg border p-8 text-center">
+            <Mail className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <h3 className="text-sm font-medium">No email templates</h3>
+            <p className="text-sm text-muted-foreground mt-1">Email templates will appear here once they are created.</p>
+          </div>
         ) : (
           <div className="rounded-lg border divide-y">
             {templates.map((template) => {
