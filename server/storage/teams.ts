@@ -48,10 +48,13 @@ export async function getTeamsByIds(ids: number[]): Promise<Team[]> {
   return db.select().from(teams).where(inArray(teams.id, ids));
 }
 
-export async function reorderTeams(updates: { id: number; displayOrder: number }[]): Promise<void> {
+export async function reorderTeams(updates: { id: number; displayOrder: number; number: number }[]): Promise<void> {
   await db.transaction(async (tx) => {
-    for (const { id, displayOrder } of updates) {
-      await tx.update(teams).set({ displayOrder }).where(eq(teams.id, id));
+    for (let i = 0; i < updates.length; i++) {
+      await tx.update(teams).set({ number: -(i + 1) }).where(eq(teams.id, updates[i].id));
+    }
+    for (const { id, displayOrder, number: teamNumber } of updates) {
+      await tx.update(teams).set({ displayOrder, number: teamNumber }).where(eq(teams.id, id));
     }
   });
 }

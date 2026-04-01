@@ -100,11 +100,13 @@ export function ReorderTeamsDialog({
       const updates = orderedTeams.map((team, index) => ({
         id: team.id,
         displayOrder: index,
+        number: index + 1,
       }));
 
       await apiRequest("/api/teams/reorder", "PATCH", { teams: updates });
 
       queryClient.invalidateQueries({ queryKey: ["/api/teams", leagueId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bowler-leagues"] });
 
       toast({
         title: "Success",

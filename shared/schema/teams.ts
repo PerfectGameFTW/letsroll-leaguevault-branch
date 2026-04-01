@@ -38,6 +38,7 @@ export const reorderTeamsSchema = z.object({
   teams: z.array(z.object({
     id: z.number(),
     displayOrder: z.number().min(0),
+    number: z.number().min(1),
   })),
 });
 
