@@ -35,13 +35,13 @@ export default function PaymentDistributionChart({ payments, activeBowlersCount 
     
     // Count by type
     const counts = {
-      credit_card: 0,
+      card: 0,
       cash: 0,
       check: 0
     };
     
     paidPayments.forEach(payment => {
-      if (payment.type === 'credit_card') counts.credit_card++;
+      if (payment.type === 'credit_card' || payment.type === 'square' || payment.type === 'cardpointe') counts.card++;
       else if (payment.type === 'cash') counts.cash++;
       else if (payment.type === 'check') counts.check++;
     });
@@ -51,16 +51,16 @@ export default function PaymentDistributionChart({ payments, activeBowlersCount 
   
   // Create chart data
   const chartData = React.useMemo(() => {
-    const totalPayments = paymentCounts.credit_card + paymentCounts.cash + paymentCounts.check;
+    const totalPayments = paymentCounts.card + paymentCounts.cash + paymentCounts.check;
     
     // Filter out zero values so they don't appear in the chart
     const data = [
       { 
-        type: "credit_card", 
-        count: paymentCounts.credit_card,
-        percentage: totalPayments > 0 ? Math.round((paymentCounts.credit_card / totalPayments) * 100) : 0,
-        percent: totalPayments > 0 ? (paymentCounts.credit_card / totalPayments) : 0,
-        fill: "#3b82f6" // blue-500 for credit cards
+        type: "card", 
+        count: paymentCounts.card,
+        percentage: totalPayments > 0 ? Math.round((paymentCounts.card / totalPayments) * 100) : 0,
+        percent: totalPayments > 0 ? (paymentCounts.card / totalPayments) : 0,
+        fill: "#3b82f6" // blue-500 for card payments
       },
       { 
         type: "cash", 
@@ -86,9 +86,9 @@ export default function PaymentDistributionChart({ payments, activeBowlersCount 
     count: {
       label: "Count",
     },
-    credit_card: {
-      label: "Credit Card",
-      color: "#3b82f6", // blue-500 for credit cards
+    card: {
+      label: "Card",
+      color: "#3b82f6",
       icon: CreditCard,
     },
     cash: {

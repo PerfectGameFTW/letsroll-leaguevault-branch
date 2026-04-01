@@ -32,12 +32,19 @@ export const PaymentStatus = {
   REFUNDED: PAYMENT_STATUSES[3],
 } as const;
 
-export const PAYMENT_TYPES = ["cash", "check", "credit_card"] as const;
+export const PAYMENT_TYPES = ["cash", "check", "credit_card", "square", "cardpointe"] as const;
 export const PaymentType = {
   CASH: PAYMENT_TYPES[0],
   CHECK: PAYMENT_TYPES[1],
   CREDIT_CARD: PAYMENT_TYPES[2],
+  SQUARE: PAYMENT_TYPES[3],
+  CARDPOINTE: PAYMENT_TYPES[4],
 } as const;
+
+export const CARD_PAYMENT_TYPES: readonly string[] = [PaymentType.CREDIT_CARD, PaymentType.SQUARE, PaymentType.CARDPOINTE];
+export function isCardPaymentType(type: string): boolean {
+  return CARD_PAYMENT_TYPES.includes(type);
+}
 
 export const dateSchema = z.coerce.date()
   .transform((date) => date.toISOString());

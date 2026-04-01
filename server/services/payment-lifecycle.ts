@@ -165,7 +165,7 @@ async function handleSuccessfulPayment(
       lineageAmount,
       prizeFundAmount,
       status: 'paid',
-      type: 'credit_card',
+      type: (paymentResult.providerName as 'square' | 'cardpointe') || 'credit_card',
       weekOf: scheduleRecord.nextPaymentDate,
       providerPaymentId: paymentResult.paymentId,
       cardpointeRetref: paymentResult.providerRef?.cardpointeRetref,
@@ -237,7 +237,7 @@ async function handleFailedPayment(
     leagueId: scheduleRecord.leagueId,
     amount: scheduleRecord.amount,
     status: 'failed',
-    type: 'credit_card',
+    type: (paymentResult.providerName as 'square' | 'cardpointe') || 'credit_card',
     weekOf: scheduleRecord.nextPaymentDate,
     notes: `Failed payment: ${paymentResult.error}`,
   });

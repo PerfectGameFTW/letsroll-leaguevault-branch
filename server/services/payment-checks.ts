@@ -117,6 +117,7 @@ export async function checkAndChargeFinalTwoWeeks(
         new Date().toISOString(),
         undefined,
         finalPaymentResult.providerRef,
+        provider.providerName,
       );
 
       logger.info(`[PaymentScheduler] Final 2 weeks auto-charge successful for ${jobId}`, {
@@ -131,7 +132,10 @@ export async function checkAndChargeFinalTwoWeeks(
         league,
         undefined,
         `Auto-charge failed: Final 2 Weeks - ${finalPaymentResult.error}`,
-        new Date().toISOString()
+        new Date().toISOString(),
+        undefined,
+        undefined,
+        provider.providerName,
       );
 
       logger.error(`[PaymentScheduler] Final 2 weeks auto-charge failed for ${jobId}`, {

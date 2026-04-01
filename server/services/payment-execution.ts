@@ -11,6 +11,7 @@ export interface ChargeResult {
   error?: string;
   cardId?: string;
   providerRef?: Record<string, string>;
+  providerName?: string;
 }
 
 export type PaymentResult = ChargeResult;
@@ -56,11 +57,11 @@ export async function executeCharge(
         buyerEmail
       );
       if (!orderResult.id) {
-        return { status: 'error', error: 'Order payment succeeded but no payment ID returned' };
+        return { status: 'error', error: 'Order payment succeeded but no payment ID returned', providerName: provider.providerName };
       }
-      return { status: 'success', paymentId: orderResult.id, providerRef: orderResult.providerRef };
+      return { status: 'success', paymentId: orderResult.id, providerRef: orderResult.providerRef, providerName: provider.providerName };
     } catch (error) {
-      return { status: 'error', error: error instanceof Error ? error.message : 'Unknown error' };
+      return { status: 'error', error: error instanceof Error ? error.message : 'Unknown error', providerName: provider.providerName };
     }
   } else {
     const processResult = await provider.processPayment(
@@ -72,9 +73,9 @@ export async function executeCharge(
       undefined,
     );
     if (processResult?.id) {
-      return { status: 'success', paymentId: processResult.id, providerRef: processResult.providerRef };
+      return { status: 'success', paymentId: processResult.id, providerRef: processResult.providerRef, providerName: provider.providerName };
     }
-    return { status: 'error', error: 'Payment processing failed' };
+    return { status: 'error', error: 'Payment processing failed', providerName: provider.providerName };
   }
 }
 
@@ -160,6 +161,7 @@ export async function createPaymentRecord(
   weekOf?: string,
   tx?: typeof db,
   providerRef?: Record<string, string>,
+  providerName?: string,
 ): Promise<void> {
   const target = tx ?? db;
   const { lineageAmount, prizeFundAmount } = computePaymentSplit(amount, league);
@@ -171,7 +173,7 @@ export async function createPaymentRecord(
     lineageAmount: status === 'paid' ? lineageAmount : undefined,
     prizeFundAmount: status === 'paid' ? prizeFundAmount : undefined,
     status,
-    type: 'credit_card',
+    type: (providerName as 'square' | 'cardpointe') || 'credit_card',
     weekOf: weekOf ?? scheduleRecord.nextPaymentDate,
     providerPaymentId: paymentId,
     cardpointeRetref: providerRef?.cardpointeRetref,

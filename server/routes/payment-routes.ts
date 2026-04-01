@@ -276,7 +276,7 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
       prizeFundAmount,
       weekOf: weekOf.toISOString(),
       status: 'paid',
-      type: 'credit_card',
+      type: provider.providerName as 'square' | 'cardpointe',
       providerPaymentId: payment.id,
       cardpointeRetref: payment.providerRef?.cardpointeRetref,
       cardpointeAuthcode: payment.providerRef?.cardpointeAuthcode,

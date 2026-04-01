@@ -11,7 +11,10 @@ interface BowlerPaymentTableProps {
 
 function getPaymentIcon(type: string) {
   switch (type) {
-    case 'credit_card': return CreditCard;
+    case 'credit_card':
+    case 'square':
+    case 'cardpointe':
+      return CreditCard;
     case 'cash': return Banknote;
     case 'check': return FileText;
     default: return Receipt;
@@ -21,6 +24,8 @@ function getPaymentIcon(type: string) {
 function getPaymentMethodLabel(payment: Payment) {
   switch (payment.type) {
     case 'credit_card': return 'Credit Card';
+    case 'square': return 'Square';
+    case 'cardpointe': return 'CardPointe';
     case 'cash': return 'Cash';
     case 'check': return `Check #${payment.checkNumber || ''}`;
     default: return 'Other';

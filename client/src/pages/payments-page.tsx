@@ -272,12 +272,14 @@ export default function PaymentsPage() {
                           {payment.type === 'cash' ? 'Cash' :
                             payment.type === 'check' ? `Check #${payment.checkNumber}` :
                               payment.type === 'credit_card' ? 'Credit Card' :
-                                'Other Payment'}
+                                payment.type === 'square' ? 'Square' :
+                                  payment.type === 'cardpointe' ? 'CardPointe' :
+                                    'Other Payment'}
                         </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          {payment.status === "paid" && payment.type === "credit_card" && isAdmin && (
+                          {payment.status === "paid" && (payment.type === "credit_card" || payment.type === "square" || payment.type === "cardpointe") && isAdmin && (
                             <Button
                               size="icon"
                               variant="ghost"
@@ -288,7 +290,7 @@ export default function PaymentsPage() {
                               <RotateCcw className="h-4 w-4 text-destructive" />
                             </Button>
                           )}
-                          {(payment.type !== "credit_card" || isAdmin) && (
+                          {(!(payment.type === "credit_card" || payment.type === "square" || payment.type === "cardpointe") || isAdmin) && (
                             <Button
                               size="icon"
                               variant="ghost"
@@ -415,8 +417,9 @@ export default function PaymentsPage() {
               <DialogDescription>
                 {paymentToRefund && (
                   <>
-                    Refund <strong>${(paymentToRefund.amount / 100).toFixed(2)}</strong> ({paymentToRefund.type === 'credit_card' ? 'Credit Card' : paymentToRefund.type === 'check' ? 'Check' : 'Cash'})?
-                    {paymentToRefund.type === 'credit_card' && ' The refund will be processed through Square.'}
+                    Refund <strong>${(paymentToRefund.amount / 100).toFixed(2)}</strong> ({paymentToRefund.type === 'credit_card' ? 'Credit Card' : paymentToRefund.type === 'square' ? 'Square' : paymentToRefund.type === 'cardpointe' ? 'CardPointe' : paymentToRefund.type === 'check' ? 'Check' : 'Cash'})?
+                    {(paymentToRefund.type === 'credit_card' || paymentToRefund.type === 'square') && ' The refund will be processed through Square.'}
+                    {paymentToRefund.type === 'cardpointe' && ' The refund will be processed through CardPointe.'}
                   </>
                 )}
               </DialogDescription>

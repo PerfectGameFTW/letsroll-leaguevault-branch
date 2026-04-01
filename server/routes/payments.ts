@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { storage } from '../storage';
 import { insertPaymentSchema, updatePaymentSchema } from "@shared/schema";
+import { isCardPaymentType } from "@shared/schema/constants";
 import { z } from "zod";
 import { sendSuccess, sendError, sendPaginatedSuccess, parsePaginationParams, handleZodError } from '../utils/api.js';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
@@ -205,8 +206,8 @@ router.delete("/:id", paymentWriteLimiter, async (req, res) => {
       return sendError(res, "Payment not found", 404, "NOT_FOUND");
     }
 
-    if (payment.type === 'credit_card' && req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
-      return sendError(res, "Only admins can delete credit card payments", 403, "FORBIDDEN");
+    if (isCardPaymentType(payment.type) && req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
+      return sendError(res, "Only admins can delete card payments", 403, "FORBIDDEN");
     }
 
     if (req.user?.role !== 'system_admin') {
@@ -249,8 +250,8 @@ router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
       return sendError(res, "Only paid payments can be refunded", 400, "INVALID_STATUS");
     }
 
-    if (payment.type !== 'credit_card') {
-      return sendError(res, "Only credit card payments can be refunded", 400, "INVALID_TYPE");
+    if (!isCardPaymentType(payment.type)) {
+      return sendError(res, "Only card payments can be refunded", 400, "INVALID_TYPE");
     }
 
     if (req.user.role !== 'system_admin') {
@@ -264,7 +265,7 @@ router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
     let providerRefundId: string | undefined;
 
     const providerPaymentRef = payment.cardpointeRetref || payment.providerPaymentId;
-    if (providerPaymentRef && payment.type === 'credit_card') {
+    if (providerPaymentRef && isCardPaymentType(payment.type)) {
       const league = await storage.getLeague(payment.leagueId);
       const locationId = league?.locationId ?? null;
       const provider = await getPaymentProvider(locationId);
