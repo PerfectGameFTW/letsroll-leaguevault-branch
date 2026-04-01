@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { TeamForm } from "@/components/team-form";
+import { ReorderTeamsDialog } from "@/components/reorder-teams-dialog";
 import {
   Table,
   TableBody,
@@ -13,13 +14,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, ArrowLeft } from "lucide-react";
+import { Plus, ArrowLeft, ArrowUpDown } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import type { Team, League } from "@shared/schema";
 import { useParams, Link } from "wouter";
 
 export default function TeamsPage() {
   const [showForm, setShowForm] = useState(false);
+  const [showReorder, setShowReorder] = useState(false);
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
 
@@ -50,6 +52,7 @@ export default function TeamsPage() {
   const sortedTeams = teams
     .slice()
     .sort((a, b) => {
+      if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder;
       const numA = a.number ?? Number.MAX_SAFE_INTEGER;
       const numB = b.number ?? Number.MAX_SAFE_INTEGER;
       return numA - numB;
@@ -85,10 +88,18 @@ export default function TeamsPage() {
 
         <div className="space-y-4 mb-6">
           <h1 className="text-2xl font-bold">{league.name}</h1>
-          <Button onClick={() => setShowForm(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Team
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button onClick={() => setShowForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Team
+            </Button>
+            {teams.length > 1 && (
+              <Button variant="outline" onClick={() => setShowReorder(true)}>
+                <ArrowUpDown className="h-4 w-4 mr-2" />
+                Reorder Teams
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="rounded-md border">
@@ -123,6 +134,13 @@ export default function TeamsPage() {
         <TeamForm
           open={showForm}
           onClose={() => setShowForm(false)}
+          leagueId={leagueId}
+        />
+
+        <ReorderTeamsDialog
+          open={showReorder}
+          onClose={() => setShowReorder(false)}
+          teams={sortedTeams}
           leagueId={leagueId}
         />
       </div>

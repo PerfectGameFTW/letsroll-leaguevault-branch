@@ -1,0 +1,166 @@
+import { useState, useEffect, useRef } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Loader2, GripVertical } from "lucide-react";
+import type { Team } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+interface ReorderTeamsDialogProps {
+  open: boolean;
+  onClose: () => void;
+  teams: Team[];
+  leagueId: number;
+}
+
+export function ReorderTeamsDialog({
+  open,
+  onClose,
+  teams,
+  leagueId,
+}: ReorderTeamsDialogProps) {
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orderedTeams, setOrderedTeams] = useState<Team[]>([]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragItem = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      const sorted = [...teams].sort((a, b) => {
+        if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder;
+        return (a.number ?? 0) - (b.number ?? 0);
+      });
+      setOrderedTeams(sorted);
+      setDragIndex(null);
+      setDragOverIndex(null);
+    }
+  }, [open, teams]);
+
+  const handleDragStart = (index: number) => {
+    dragItem.current = index;
+    setDragIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    setDragOverIndex(index);
+  };
+
+  const handleDrop = (index: number) => {
+    if (dragItem.current === null || dragItem.current === index) {
+      setDragIndex(null);
+      setDragOverIndex(null);
+      return;
+    }
+
+    setOrderedTeams(prev => {
+      const newOrder = [...prev];
+      const [removed] = newOrder.splice(dragItem.current!, 1);
+      newOrder.splice(index, 0, removed);
+      return newOrder;
+    });
+
+    dragItem.current = null;
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsSubmitting(true);
+
+      const updates = orderedTeams.map((team, index) => ({
+        id: team.id,
+        displayOrder: index,
+      }));
+
+      await apiRequest("/api/teams/reorder", "PATCH", { teams: updates });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/teams", leagueId] });
+
+      toast({
+        title: "Success",
+        description: "Team order updated successfully",
+      });
+
+      onClose();
+    } catch (error) {
+      toast({
+        title: "Error updating order",
+        description: error instanceof Error ? error.message : "Failed to update order",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reorder Teams</DialogTitle>
+        </DialogHeader>
+
+        <p className="text-sm text-muted-foreground">
+          Drag and drop teams to change their display order.
+        </p>
+
+        <div className="space-y-4">
+          <div className="border rounded-md divide-y">
+            {orderedTeams.map((team, index) => (
+              <div
+                key={team.id}
+                draggable
+                onDragStart={() => handleDragStart(index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDrop={() => handleDrop(index)}
+                onDragEnd={handleDragEnd}
+                className={`flex items-center gap-3 p-3 cursor-grab active:cursor-grabbing transition-colors ${
+                  dragIndex === index ? "opacity-50 bg-muted" : ""
+                } ${dragOverIndex === index && dragIndex !== index ? "bg-accent" : ""}`}
+              >
+                <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="font-medium flex-1">
+                  {team.number ? `#${team.number} - ` : ""}{team.name}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={isSubmitting}
+              className="min-w-[80px]"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Order'
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

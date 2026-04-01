@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { insertTeamSchema, updateTeamSchema, type Team } from "@shared/schema";
+import { insertTeamSchema, updateTeamSchema, reorderTeamsSchema, type Team } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 
@@ -53,6 +53,56 @@ router.get("/", async (req, res) => {
     sendSuccess(res, teams);
   } catch (error) {
     sendError(res, 'Failed to fetch teams');
+  }
+});
+
+router.patch("/reorder", async (req, res) => {
+  try {
+    const { teams: teamUpdates } = reorderTeamsSchema.parse(req.body);
+
+    if (teamUpdates.length === 0) {
+      return sendSuccess(res, null);
+    }
+
+    const uniqueIds = new Set(teamUpdates.map(t => t.id));
+    if (uniqueIds.size !== teamUpdates.length) {
+      return sendError(res, "Duplicate team IDs in payload", 400, 'VALIDATION_ERROR');
+    }
+
+    const teamIds = teamUpdates.map(t => t.id);
+    const existingTeams = await storage.getTeamsByIds(teamIds);
+
+    if (existingTeams.length !== teamUpdates.length) {
+      return sendError(res, "One or more teams not found", 404, 'NOT_FOUND');
+    }
+
+    const leagueIds = new Set(existingTeams.map(t => t.leagueId));
+    if (leagueIds.size !== 1) {
+      return sendError(res, "All teams must belong to the same league", 400, 'VALIDATION_ERROR');
+    }
+
+    const leagueId = [...leagueIds][0];
+    const league = await storage.getLeague(leagueId);
+    if (!league) {
+      return sendError(res, "League not found", 404, 'NOT_FOUND');
+    }
+
+    const userHasAccess =
+      req.user?.role === 'system_admin' ||
+      league.organizationId === null ||
+      (req.user?.organizationId === league.organizationId);
+
+    if (!userHasAccess) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+
+    await storage.reorderTeams(teamUpdates);
+    sendSuccess(res, null);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return handleZodError(res, error);
+    }
+    sendError(res, 'Failed to reorder teams');
   }
 });
 

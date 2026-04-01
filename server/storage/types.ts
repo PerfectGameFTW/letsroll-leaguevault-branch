@@ -37,6 +37,7 @@ export interface ITeamStorage {
   createTeam(team: InsertTeam): Promise<Team>;
   updateTeam(id: number, team: UpdateTeam): Promise<Team>;
   deleteTeam(id: number): Promise<void>;
+  reorderTeams(updates: { id: number; displayOrder: number }[]): Promise<void>;
 }
 
 export interface IBowlerStorage {

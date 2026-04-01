@@ -147,7 +147,15 @@ curl -X POST https://<your-domain>/api/admin-update/first-system-admin/<userId> 
 
 These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes/admin-update.ts`. They are completely disabled if `SETUP_SECRET` is not set in the environment.
 
-## Recent Changes (2026-03-12)
+## Recent Changes (2026-04-01)
+- **Drag-and-Drop Team Reordering**: Teams on the roster management page can be reordered via drag and drop
+  - Schema: added `displayOrder` integer column (default 0) to teams table
+  - `PATCH /api/teams/reorder` endpoint with full authorization (validates all teams belong to same league, checks org access, deduplicates IDs)
+  - `ReorderTeamsDialog` component (`client/src/components/reorder-teams-dialog.tsx`) with HTML5 drag-and-drop
+  - "Reorder Teams" button appears on teams page when 2+ teams exist
+  - Teams sort by `displayOrder` first, then by `number` as tiebreaker
+
+## Previous Changes (2026-03-12)
 - **Role Enum Migration**: Replaced `isAdmin` (boolean) + `isOrganizationAdmin` (boolean) with a single `role` enum column (`system_admin`, `org_admin`, `user`)
   - Schema: `pgEnum('user_role', ['system_admin', 'org_admin', 'user'])`, `role` column with default `'user'`
   - Storage: `updateUserRole(userId, role)` replaces `updateUserAdminStatus` + `updateUserOrganizationAdminStatus`

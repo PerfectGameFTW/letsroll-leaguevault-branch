@@ -10,7 +10,7 @@ export type { LocationSquareCredentials, Location, InsertLocation, UpdateLocatio
 export { leagues, insertLeagueSchema, updateLeagueSchema } from "./leagues";
 export type { League, InsertLeague, UpdateLeague } from "./leagues";
 
-export { teams, insertTeamSchema, updateTeamSchema } from "./teams";
+export { teams, insertTeamSchema, updateTeamSchema, reorderTeamsSchema } from "./teams";
 export type { Team, InsertTeam, UpdateTeam } from "./teams";
 
 export { bowlers, bowlerLeagues, insertBowlerSchema, insertBowlerLeagueSchema, updateBowlerSchema, updateBowlerLeagueSchema } from "./bowlers";

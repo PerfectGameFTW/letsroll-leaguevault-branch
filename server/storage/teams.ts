@@ -8,9 +8,9 @@ const log = createLogger("StorageTeams");
 export async function getTeams(leagueId?: number): Promise<Team[]> {
   const query = db.select().from(teams);
   if (leagueId !== undefined) {
-    return query.where(eq(teams.leagueId, leagueId)).orderBy(teams.number);
+    return query.where(eq(teams.leagueId, leagueId)).orderBy(teams.displayOrder, teams.number);
   }
-  return query.orderBy(teams.number);
+  return query.orderBy(teams.displayOrder, teams.number);
 }
 
 export async function getTeam(id: number): Promise<Team | undefined> {
@@ -46,4 +46,12 @@ export async function getTeamByNumber(leagueId: number, teamNumber: number): Pro
 export async function getTeamsByIds(ids: number[]): Promise<Team[]> {
   if (ids.length === 0) return [];
   return db.select().from(teams).where(inArray(teams.id, ids));
+}
+
+export async function reorderTeams(updates: { id: number; displayOrder: number }[]): Promise<void> {
+  await db.transaction(async (tx) => {
+    for (const { id, displayOrder } of updates) {
+      await tx.update(teams).set({ displayOrder }).where(eq(teams.id, id));
+    }
+  });
 }

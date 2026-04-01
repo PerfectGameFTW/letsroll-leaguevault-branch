@@ -12,6 +12,7 @@ export const teams = pgTable("teams", {
     .notNull()
     .references(() => leagues.id, { onDelete: 'cascade' }),
   active: boolean("active").notNull().default(true),
+  displayOrder: integer("display_order").notNull().default(0),
 }, (table) => ({
   leagueNumberIdx: uniqueIndex("teams_league_number_idx").on(table.leagueId, table.number),
 }));
@@ -30,7 +31,15 @@ export const updateTeamSchema = z.object({
   number: positiveIntSchema,
   leagueId: positiveIntSchema,
   active: z.boolean(),
+  displayOrder: z.number().min(0),
 }).partial();
+
+export const reorderTeamsSchema = z.object({
+  teams: z.array(z.object({
+    id: z.number(),
+    displayOrder: z.number().min(0),
+  })),
+});
 
 export type Team = typeof teams.$inferSelect;
 export type InsertTeam = z.infer<typeof insertTeamSchema>;

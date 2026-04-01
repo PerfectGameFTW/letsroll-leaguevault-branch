@@ -30,6 +30,7 @@ export class DatabaseStorage implements IStorage {
   createTeam!: IStorage["createTeam"];
   updateTeam!: IStorage["updateTeam"];
   deleteTeam!: IStorage["deleteTeam"];
+  reorderTeams!: IStorage["reorderTeams"];
 
   getBowlers!: IStorage["getBowlers"];
   getAllBowlersSystemAdmin!: IStorage["getAllBowlersSystemAdmin"];
