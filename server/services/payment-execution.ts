@@ -2,7 +2,7 @@ import { db } from "../db";
 import { eq, and, lte, gte, sql } from "drizzle-orm";
 import { payments, leagues, bowlers, type PaymentSchedule } from "@shared/schema";
 import { logger } from "../logger";
-import { getPaymentProvider } from "./payment-provider-factory";
+import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
 import type { PaymentProvider, OrderLineItem } from "./payment-provider";
 
 export interface ChargeResult {
@@ -89,11 +89,15 @@ export async function executeSquareCharge(
   paymentCustomerId: string | undefined,
   buyerEmail: string | undefined
 ): Promise<ChargeResult> {
-  const provider = await getPaymentProvider(locationId);
-  if (!provider) {
-    return { status: 'error', error: 'No payment provider configured for this location' };
+  try {
+    const provider = await getPaymentProvider(locationId);
+    return executeCharge(provider, cardId, amount, lineItems, paymentCustomerId, buyerEmail);
+  } catch (e) {
+    if (e instanceof ProviderNotConfiguredError) {
+      return { status: 'error', error: `Payment provider not configured: ${e.message}` };
+    }
+    throw e;
   }
-  return executeCharge(provider, cardId, amount, lineItems, paymentCustomerId, buyerEmail);
 }
 
 export async function executeScheduledPayment(
@@ -104,9 +108,14 @@ export async function executeScheduledPayment(
   const { buyerEmail, paymentCustomerId } = await fetchBowlerPaymentInfo(scheduleRecord.bowlerId);
 
   const locationId = league?.locationId ?? null;
-  const provider = await getPaymentProvider(locationId);
-  if (!provider) {
-    return { status: 'error', error: 'No payment provider configured for this location' };
+  let provider;
+  try {
+    provider = await getPaymentProvider(locationId);
+  } catch (e) {
+    if (e instanceof ProviderNotConfiguredError) {
+      return { status: 'error', error: `Payment provider not configured: ${e.message}` };
+    }
+    throw e;
   }
 
   if (!paymentCustomerId && provider.validateCardId(scheduleRecord.paymentCardId)) {

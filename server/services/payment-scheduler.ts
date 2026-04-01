@@ -5,7 +5,7 @@ import { paymentSchedules, leagues, type PaymentSchedule } from "@shared/schema"
 import { logger } from "../logger";
 import { storage } from "../storage";
 import { processScheduledPaymentJob } from "./payment-lifecycle";
-import { getPaymentProvider } from "./payment-provider-factory";
+import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
 
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
@@ -53,10 +53,15 @@ class PaymentScheduler {
 
     const league = await db.select().from(leagues).where(eq(leagues.id, leagueId)).limit(1).then(r => r[0]);
     const locationId = league?.locationId ?? null;
-    const provider = await getPaymentProvider(locationId);
-    if (!provider) {
-      logger.warn(`[PaymentScheduler] No payment provider for location ${locationId}`);
-      return false;
+    let provider;
+    try {
+      provider = await getPaymentProvider(locationId);
+    } catch (e) {
+      if (e instanceof ProviderNotConfiguredError) {
+        logger.warn(`[PaymentScheduler] Provider not configured for location ${locationId}, skipping card validation`);
+        return false;
+      }
+      throw e;
     }
 
     const isValid = provider.validateCardId(cardId);

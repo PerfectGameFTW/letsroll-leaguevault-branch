@@ -1,5 +1,5 @@
 import { logger } from "../logger";
-import { getPaymentProvider } from "../services/payment-provider-factory";
+import { getPaymentProvider, ProviderNotConfiguredError } from "../services/payment-provider-factory";
 
 interface CreatePaymentParams {
   amount: number;
@@ -22,12 +22,6 @@ export async function createSquarePayment({
 }: CreatePaymentParams) {
   try {
     const provider = await getPaymentProvider(locationId);
-    if (!provider) {
-      return {
-        status: "error" as const,
-        error: "Payment provider is not configured for this location",
-      };
-    }
 
     logger.info(`Creating payment for location ${locationId}`, {
       amount,

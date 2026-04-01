@@ -16,7 +16,7 @@ import { requireOrganizationAccess } from '../utils/access-control.js';
 import { sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email.js';
 import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger';
-import { getPaymentProvider } from '../services/payment-provider-factory';
+import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasWalletSupport } from '../services/payment-provider';
 
 const log = createLogger("Organizations");
@@ -39,13 +39,21 @@ async function autoRegisterApplePayDomain(org: Organization) {
     }
 
     for (const locationId of locationIds) {
-      const provider = await getPaymentProvider(locationId);
-      if (provider && hasWalletSupport(provider)) {
-        const result = await provider.registerApplePayDomain(fullDomain);
-        if (result.success) {
-          log.info(`Apple Pay domain registered for ${fullDomain} (location ${locationId})`);
+      try {
+        const provider = await getPaymentProvider(locationId);
+        if (hasWalletSupport(provider)) {
+          const result = await provider.registerApplePayDomain(fullDomain);
+          if (result.success) {
+            log.info(`Apple Pay domain registered for ${fullDomain} (location ${locationId})`);
+          } else {
+            log.warn(`Apple Pay domain registration failed for ${fullDomain} (location ${locationId}): ${result.message}`);
+          }
+        }
+      } catch (e) {
+        if (e instanceof ProviderNotConfiguredError) {
+          log.warn(`Apple Pay domain registration skipped: provider not configured for location ${locationId}`);
         } else {
-          log.warn(`Apple Pay domain registration failed for ${fullDomain} (location ${locationId}): ${result.message}`);
+          throw e;
         }
       }
     }

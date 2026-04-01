@@ -10,7 +10,7 @@ import {
   createPaymentRecord,
   getTotalPaidInSeason,
 } from "./payment-execution";
-import { getPaymentProvider } from "./payment-provider-factory";
+import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
 import type { OrderLineItem } from "./payment-provider";
 
 export async function checkAndChargeFinalTwoWeeks(
@@ -69,10 +69,15 @@ export async function checkAndChargeFinalTwoWeeks(
     });
 
     const locationId = league?.locationId ?? null;
-    const provider = await getPaymentProvider(locationId);
-    if (!provider) {
-      logger.error(`[PaymentScheduler] No payment provider for final 2 weeks charge ${jobId}`);
-      return;
+    let provider;
+    try {
+      provider = await getPaymentProvider(locationId);
+    } catch (e) {
+      if (e instanceof ProviderNotConfiguredError) {
+        logger.warn(`[PaymentScheduler] Provider not configured for final 2 weeks charge ${jobId}, skipping`, { locationId });
+        return;
+      }
+      throw e;
     }
 
     const bowler = await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]);

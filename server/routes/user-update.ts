@@ -5,7 +5,7 @@ import { storage } from '../storage';
 import { hashPassword } from '../auth';
 import { passwordSchema } from '@shared/password-validation';
 import { updateUserSchema } from '@shared/schema';
-import { getPaymentProvider } from '../services/payment-provider-factory';
+import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 import { createLogger } from '../logger';
@@ -106,16 +106,23 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
               if (!resolvedSquareLocationId) {
                 log.info('No payment-configured location found, skipping customer sync');
               }
-              const userProvider = resolvedSquareLocationId
-                ? await getPaymentProvider(resolvedSquareLocationId)
-                : null;
-              const squareCustomer = userProvider
-                ? await userProvider.createOrUpdateCustomer(
+              let squareCustomer = null;
+              if (resolvedSquareLocationId) {
+                try {
+                  const userProvider = await getPaymentProvider(resolvedSquareLocationId);
+                  squareCustomer = await userProvider.createOrUpdateCustomer(
                     updatedUser.name,
                     updatedUser.email,
                     updatedUser.phone,
-                  )
-                : null;
+                  );
+                } catch (e) {
+                  if (e instanceof ProviderNotConfiguredError) {
+                    log.warn('User update: provider not configured, skipping customer sync', { locationId: resolvedSquareLocationId });
+                  } else {
+                    throw e;
+                  }
+                }
+              }
               if (squareCustomer && squareCustomer.id !== bowler.paymentCustomerId) {
                 await storage.updateBowler(bowler.id, {
                   ...bowler,

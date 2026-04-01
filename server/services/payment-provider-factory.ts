@@ -6,19 +6,30 @@ import { createLogger } from '../logger';
 
 const log = createLogger('PaymentProviderFactory');
 
+export class ProviderNotConfiguredError extends Error {
+  public readonly code = 'PROVIDER_NOT_CONFIGURED';
+
+  constructor(reason: string, public readonly locationId: number | null) {
+    super(reason);
+    this.name = 'ProviderNotConfiguredError';
+  }
+}
+
 const CACHE_TTL_MS = 60_000;
 
 interface CacheEntry {
-  provider: PaymentProvider | null;
+  provider: PaymentProvider;
   expiresAt: number;
 }
 
 const providerCache = new Map<number, CacheEntry>();
 
-export async function getPaymentProvider(locationId: number | null): Promise<PaymentProvider | null> {
+export async function getPaymentProvider(locationId: number | null): Promise<PaymentProvider> {
   if (locationId == null) {
-    log.warn('getPaymentProvider called without locationId — no provider available');
-    return null;
+    throw new ProviderNotConfiguredError(
+      'No location ID provided — payment provider cannot be resolved',
+      locationId,
+    );
   }
 
   const now = Date.now();
@@ -29,14 +40,15 @@ export async function getPaymentProvider(locationId: number | null): Promise<Pay
 
   const location = await storage.getLocation(locationId);
   if (!location) {
-    log.warn(`Location ${locationId} not found`);
-    providerCache.set(locationId, { provider: null, expiresAt: now + CACHE_TTL_MS });
-    return null;
+    throw new ProviderNotConfiguredError(
+      `Location ${locationId} not found`,
+      locationId,
+    );
   }
 
   const providerType = location.paymentProvider ?? 'square';
 
-  let provider: PaymentProvider | null;
+  let provider: PaymentProvider;
   switch (providerType) {
     case 'square':
       provider = new SquarePaymentProvider(locationId);
@@ -45,9 +57,10 @@ export async function getPaymentProvider(locationId: number | null): Promise<Pay
       provider = new CardPointePaymentProvider(locationId);
       break;
     default:
-      log.error(`Unknown payment provider "${providerType}" for location ${locationId}`);
-      provider = null;
-      break;
+      throw new ProviderNotConfiguredError(
+        `Unknown payment provider "${providerType}" for location ${locationId}`,
+        locationId,
+      );
   }
 
   providerCache.set(locationId, { provider, expiresAt: now + CACHE_TTL_MS });

@@ -3,7 +3,7 @@ import { storage } from '../storage';
 import { insertBowlerSchema, updateBowlerSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
-import { getPaymentProvider } from '../services/payment-provider-factory';
+import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
@@ -363,8 +363,17 @@ router.patch("/:id", async (req, res) => {
           const patchOrgId = (req as any).user?.organizationId;
           const patchSquareLocation = patchOrgId ? await storage.getFirstSquareConfiguredLocation(patchOrgId) : null;
           if (patchSquareLocation?.id) {
-            const patchProvider = await getPaymentProvider(patchSquareLocation.id);
-            const squareCustomer = patchProvider ? await patchProvider.createOrUpdateCustomer(updated.name, updated.email) : null;
+            let squareCustomer = null;
+            try {
+              const patchProvider = await getPaymentProvider(patchSquareLocation.id);
+              squareCustomer = await patchProvider.createOrUpdateCustomer(updated.name, updated.email);
+            } catch (e) {
+              if (e instanceof ProviderNotConfiguredError) {
+                log.warn('Bowler update: provider not configured, skipping customer sync', { locationId: patchSquareLocation.id });
+              } else {
+                throw e;
+              }
+            }
             if (squareCustomer && squareCustomer.id !== updated.paymentCustomerId) {
               updated = await storage.updateBowler(id, {
                 ...updated,

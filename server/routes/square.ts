@@ -6,7 +6,7 @@ import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
 import { squarePaymentLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger';
-import { getPaymentProvider } from '../services/payment-provider-factory';
+import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasCatalogSupport, hasWalletSupport } from '../services/payment-provider';
 
 const log = createLogger("Square");
@@ -51,7 +51,16 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
     const locationId = league?.locationId ?? null;
 
     const provider = await getPaymentProvider(locationId);
-    const providerPayment = provider ? await provider.getPayment(dbPayment.providerPaymentId) : null;
+    let providerPayment = null;
+    try {
+      providerPayment = await provider.getPayment(dbPayment.providerPaymentId);
+    } catch (e) {
+      if (e instanceof ProviderNotConfiguredError) {
+        log.warn('Payment verification: provider not configured', { locationId, paymentId: dbPayment.id });
+      } else {
+        throw e;
+      }
+    }
 
     log.info('Payment verification:', {
       dbPaymentId: dbPayment.id,
@@ -176,9 +185,6 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
     const lvLocationId = league.locationId ?? null;
     const provider = await getPaymentProvider(lvLocationId);
-    if (!provider) {
-      return sendError(res, "Payment system is not configured for this location", 500, 'PROVIDER_NOT_CONFIGURED');
-    }
 
     const customerId = getProviderCustomerId(bowler, provider);
 
@@ -302,6 +308,9 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       savedCardId: storedCardId ?? null,
     });
   } catch (error: any) {
+    if (error instanceof ProviderNotConfiguredError) {
+      return sendError(res, 'Payment system is not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
+    }
     const errDetail = error instanceof Error ? {
       name: error.name,
       message: error.message,
@@ -352,9 +361,6 @@ router.post('/customers', squarePaymentLimiter, async (req, res) => {
       : null;
 
     const provider = await getPaymentProvider(teamLvLocationId);
-    if (!provider) {
-      throw new Error('Payment provider not configured for this location');
-    }
 
     const customer = await provider.createOrUpdateCustomer(
       req.body.name,
@@ -367,6 +373,9 @@ router.post('/customers', squarePaymentLimiter, async (req, res) => {
 
     res.json(customer);
   } catch (error) {
+    if (error instanceof ProviderNotConfiguredError) {
+      return sendError(res, 'Payment provider not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
+    }
     log.error('Customer operation error:', {
       error: error instanceof Error ? {
         name: error.name,
@@ -392,8 +401,17 @@ router.get('/catalog/categories', async (req: any, res) => {
       if (!isAuthorized) return sendError(res, 'Forbidden', 403, 'FORBIDDEN');
     }
 
-    const provider = await getPaymentProvider(lvLocationId);
-    if (!provider || !hasCatalogSupport(provider)) {
+    let provider;
+    try {
+      provider = await getPaymentProvider(lvLocationId);
+    } catch (e) {
+      if (e instanceof ProviderNotConfiguredError) {
+        log.warn('Catalog categories: provider not configured, returning empty', { locationId: lvLocationId });
+        return sendSuccess(res, []);
+      }
+      throw e;
+    }
+    if (!hasCatalogSupport(provider)) {
       return sendSuccess(res, []);
     }
 
@@ -420,8 +438,17 @@ router.get('/catalog/items', async (req: any, res) => {
       if (!isAuthorized) return sendError(res, 'Forbidden', 403, 'FORBIDDEN');
     }
 
-    const provider = await getPaymentProvider(lvLocationId);
-    if (!provider || !hasCatalogSupport(provider)) {
+    let provider;
+    try {
+      provider = await getPaymentProvider(lvLocationId);
+    } catch (e) {
+      if (e instanceof ProviderNotConfiguredError) {
+        log.warn('Catalog items: provider not configured, returning empty', { locationId: lvLocationId });
+        return sendSuccess(res, []);
+      }
+      throw e;
+    }
+    if (!hasCatalogSupport(provider)) {
       return sendSuccess(res, []);
     }
 
@@ -456,6 +483,11 @@ router.post('/cards/:bowlerId', async (req, res) => {
       return sendError(res, 'Bowler not found', 404);
     }
 
+    const cardLeagueId = req.body.leagueId ? parseInt(req.body.leagueId) : null;
+    const cardLeague = cardLeagueId ? await storage.getLeague(cardLeagueId) : null;
+    const cardLvLocationId = cardLeague?.locationId ?? null;
+
+    const provider = await getPaymentProvider(cardLvLocationId);
     const providerCustId = getProviderCustomerId(bowler, provider);
     if (!providerCustId && provider.providerName !== 'cardpointe') {
       return sendError(res, 'Bowler does not have a payment customer account', 400);
@@ -477,6 +509,9 @@ router.post('/cards/:bowlerId', async (req, res) => {
     }
     return sendSuccess(res, { savedCardId: savedCard.id, last4: savedCard.last4, brand: savedCard.brand });
   } catch (error) {
+    if (error instanceof ProviderNotConfiguredError) {
+      return sendError(res, 'Payment provider not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
+    }
     log.error('Save card error:', error);
     return sendError(res, 'Failed to save card');
   }
@@ -511,9 +546,15 @@ router.get('/cards/:bowlerId', async (req, res) => {
       }
     }
 
-    const provider = await getPaymentProvider(listLvLocationId);
-    if (!provider) {
-      return sendSuccess(res, []);
+    let provider;
+    try {
+      provider = await getPaymentProvider(listLvLocationId);
+    } catch (e) {
+      if (e instanceof ProviderNotConfiguredError) {
+        log.warn('List cards: provider not configured, returning empty', { locationId: listLvLocationId });
+        return sendSuccess(res, []);
+      }
+      throw e;
     }
 
     const providerCustId = getProviderCustomerId(bowler, provider);
@@ -564,9 +605,6 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
     }
 
     const provider = await getPaymentProvider(delLvLocationId);
-    if (!provider) {
-      return sendError(res, 'Payment provider not configured for this location', 500);
-    }
 
     const providerCustId = getProviderCustomerId(bowler, provider);
     if (!providerCustId) {
@@ -577,6 +615,9 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
     log.info('Card disabled:', cardId.substring(0, 15) + '...');
     sendSuccess(res, { disabled: true });
   } catch (error) {
+    if (error instanceof ProviderNotConfiguredError) {
+      return sendError(res, 'Payment provider not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
+    }
     const message = error instanceof Error ? error.message : 'Failed to remove card';
     log.error('Disable card error:', message);
     sendError(res, message, message.includes('does not belong') ? 403 : 500);
@@ -609,12 +650,20 @@ router.post('/apple-pay/register-all-domains', async (req: any, res) => {
       }
 
       for (const locationId of locationIds) {
-        const provider = await getPaymentProvider(locationId);
-        if (provider && hasWalletSupport(provider)) {
-          const result = await provider.registerApplePayDomain(fullDomain);
-          results.push({ domain: fullDomain, ...result });
-        } else {
-          results.push({ domain: fullDomain, success: false, message: 'Provider does not support Apple Pay' });
+        try {
+          const provider = await getPaymentProvider(locationId);
+          if (hasWalletSupport(provider)) {
+            const result = await provider.registerApplePayDomain(fullDomain);
+            results.push({ domain: fullDomain, ...result });
+          } else {
+            results.push({ domain: fullDomain, success: false, message: 'Provider does not support Apple Pay' });
+          }
+        } catch (e) {
+          if (e instanceof ProviderNotConfiguredError) {
+            results.push({ domain: fullDomain, success: false, message: 'Payment provider not configured' });
+          } else {
+            throw e;
+          }
         }
       }
     }
@@ -659,8 +708,16 @@ router.post('/apple-pay/register-domain', async (req: any, res) => {
     }
 
     const lvLocationId = locationId ? parseInt(locationId) : null;
-    const provider = await getPaymentProvider(lvLocationId);
-    if (!provider || !hasWalletSupport(provider)) {
+    let provider;
+    try {
+      provider = await getPaymentProvider(lvLocationId);
+    } catch (e) {
+      if (e instanceof ProviderNotConfiguredError) {
+        return sendError(res, 'Payment provider not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
+      }
+      throw e;
+    }
+    if (!hasWalletSupport(provider)) {
       return sendError(res, 'Payment provider does not support Apple Pay', 400, 'UNSUPPORTED_FEATURE');
     }
 

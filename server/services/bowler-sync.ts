@@ -1,5 +1,5 @@
 import { storage } from '../storage';
-import { getPaymentProvider } from './payment-provider-factory';
+import { getPaymentProvider, ProviderNotConfiguredError } from './payment-provider-factory';
 import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
 import { createLogger } from '../logger';
 import type { Bowler } from '@shared/schema';
@@ -36,12 +36,21 @@ export async function runBowlerPostCreateSync(
         ? await storage.getFirstSquareConfiguredLocation(organizationId)
         : null;
       if (squareLocation?.id) {
-        const syncProvider = await getPaymentProvider(squareLocation.id);
-        const squareCustomer = syncProvider ? await syncProvider.createOrUpdateCustomer(
-          current.name,
-          current.email,
-          current.phone,
-        ) : null;
+        let squareCustomer = null;
+        try {
+          const syncProvider = await getPaymentProvider(squareLocation.id);
+          squareCustomer = await syncProvider.createOrUpdateCustomer(
+            current.name,
+            current.email,
+            current.phone,
+          );
+        } catch (e) {
+          if (e instanceof ProviderNotConfiguredError) {
+            log.warn('Bowler sync: provider not configured, skipping customer sync', { locationId: squareLocation.id });
+          } else {
+            throw e;
+          }
+        }
         if (squareCustomer) {
           current = await storage.updateBowler(current.id, {
             ...current,

@@ -3,7 +3,7 @@ import { storage } from '../storage';
 import { insertPaymentSchema, updatePaymentSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, sendPaginatedSuccess, parsePaginationParams, handleZodError } from '../utils/api.js';
-import { getPaymentProvider } from '../services/payment-provider-factory';
+import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasAccessToPayment, requireOrganizationAccess } from '../utils/access-control.js';
 import { paymentWriteLimiter } from '../middleware/rate-limit.js';
 import { differenceInWeeks } from 'date-fns';
@@ -268,9 +268,6 @@ router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
       const league = await storage.getLeague(payment.leagueId);
       const locationId = league?.locationId ?? null;
       const provider = await getPaymentProvider(locationId);
-      if (!provider) {
-        return sendError(res, "Payment provider not available for refund processing", 500, "PROVIDER_NOT_CONFIGURED");
-      }
       const refundResult = await provider.refundPayment(providerPaymentRef, payment.amount, reason);
       providerRefundId = refundResult.refundId;
     }
@@ -278,6 +275,9 @@ router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
     const refunded = await storage.refundPayment(id, providerRefundId, reason);
     sendSuccess(res, refunded);
   } catch (error) {
+    if (error instanceof ProviderNotConfiguredError) {
+      return sendError(res, 'Payment provider not available for refund processing', 422, 'PROVIDER_NOT_CONFIGURED');
+    }
     log.error('Refund error:', error);
     sendError(res, 'Failed to process refund');
   }
