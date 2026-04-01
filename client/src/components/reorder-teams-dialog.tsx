@@ -109,7 +109,7 @@ export function ReorderTeamsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Reorder Teams</DialogTitle>
         </DialogHeader>
@@ -119,7 +119,7 @@ export function ReorderTeamsDialog({
         </p>
 
         <div className="space-y-4">
-          <div className="border rounded-md divide-y">
+          <div className="border rounded-md divide-y max-h-[60vh] overflow-y-auto">
             {orderedTeams.map((team, index) => (
               <div
                 key={team.id}
