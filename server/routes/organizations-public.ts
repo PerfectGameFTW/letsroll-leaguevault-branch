@@ -42,8 +42,10 @@ router.get('/slug/:slug/leagues', async (req, res) => {
     }
 
     const leagues = await storage.getLeagues(organization.id);
-    const activeLeagues = leagues.filter(l => l.active !== false);
-    sendSuccess(res, activeLeagues);
+    const publicLeagues = leagues
+      .filter(l => l.active !== false && l.allowPublicSignup === true)
+      .map(l => ({ id: l.id, name: l.name }));
+    sendSuccess(res, publicLeagues);
   } catch (error) {
     log.error(`Error fetching leagues for org slug ${req.params.slug}:`, error);
     sendError(res, 'Failed to fetch organization leagues', 500, 'ServerError');

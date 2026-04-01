@@ -62,6 +62,7 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       name: "",
       description: "",
       active: true,
+      allowPublicSignup: false,
       seasonStart: today.toISOString(),
       seasonEnd: nextYear.toISOString(),
       weekDay: "Monday",
