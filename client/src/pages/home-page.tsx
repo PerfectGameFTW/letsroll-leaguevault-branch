@@ -9,31 +9,6 @@ import { formatCurrency } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { DashboardSkeleton, PageErrorState } from "@/components/page-states";
 
-function PastDueCircle({ rate }: { rate: number }) {
-  const color = rate === 0 ? "text-emerald-500" : rate <= 10 ? "text-amber-400" : "text-red-500";
-  return (
-    <div className="relative w-9 h-9">
-      <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-        <path
-          className="text-slate-100"
-          strokeWidth="4"
-          stroke="currentColor"
-          fill="none"
-          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-        />
-        <path
-          className={color}
-          strokeDasharray={`${rate}, 100`}
-          strokeWidth="4"
-          stroke="currentColor"
-          fill="none"
-          strokeLinecap="round"
-          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-        />
-      </svg>
-    </div>
-  );
-}
 
 function LeagueHealthCard({ name, bowlerCount, pastDueBowlerCount }: {
   name: string;
@@ -257,14 +232,11 @@ export default function HomePage() {
               </div>
             </Link>
             <Link href="/past-due">
-              <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow flex items-center justify-between cursor-pointer">
-                <div>
-                  <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Bowlers Past Due
-                  </div>
-                  <div className="text-2xl font-bold text-slate-900">{pastDueBowlerIds.size} of {activeBowlers} ({pastDueRate}%)</div>
+              <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
+                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Bowlers Past Due
                 </div>
-                <PastDueCircle rate={pastDueRate} />
+                <div className="text-2xl font-bold text-slate-900">{pastDueBowlerIds.size} of {activeBowlers} ({pastDueRate}%)</div>
               </div>
             </Link>
           </div>
