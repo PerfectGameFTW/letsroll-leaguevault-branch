@@ -8,6 +8,7 @@ import { squarePaymentLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasCatalogSupport, hasWalletSupport } from '../services/payment-provider';
+import { computePaymentSplit } from '../services/payment-execution';
 
 const log = createLogger("Square");
 
@@ -274,12 +275,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       }
     }
 
-    const lineageAmount = (league.lineageFee != null && league.weeklyFee > 0)
-      ? Math.round(amount * league.lineageFee / league.weeklyFee)
-      : undefined;
-    const prizeFundAmount = (league.prizeFundFee != null && league.weeklyFee > 0)
-      ? Math.round(amount * league.prizeFundFee / league.weeklyFee)
-      : undefined;
+    const { lineageAmount, prizeFundAmount } = computePaymentSplit(amount, league);
 
     const dbPayment = await storage.createPayment({
       bowlerId,
