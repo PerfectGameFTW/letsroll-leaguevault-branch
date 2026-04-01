@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema";
 import { getTotalPaidAmount, calculateBowlerPastDue } from "@/lib/financial-utils";
@@ -160,9 +160,12 @@ export default function PastDuePage() {
                 pastDueBowlers.map(item => (
                   <TableRow key={`${item.bowler.id}-${item.league.id}`}>
                     <TableCell>
-                      <Link href={`/bowlers/${item.bowler.id}`} className="hover:underline">
-                        {item.bowler.name}
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className={`h-4 w-4 ${(item.bowler as any).hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
+                        <Link href={`/bowlers/${item.bowler.id}`} className="hover:underline">
+                          {item.bowler.name}
+                        </Link>
+                      </div>
                     </TableCell>
                     <TableCell>{item.league.name}</TableCell>
                     <TableCell>{item.team.name}</TableCell>
