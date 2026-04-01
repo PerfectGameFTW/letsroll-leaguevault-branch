@@ -1,6 +1,6 @@
 import schedule from "node-schedule";
 import { db } from "../db";
-import { eq, and, lte, isNull } from "drizzle-orm";
+import { eq, and, lte, isNull, sql, count } from "drizzle-orm";
 import { paymentSchedules, leagues, type PaymentSchedule } from "@shared/schema";
 import { logger } from "../logger";
 import { storage } from "../storage";
@@ -116,16 +116,63 @@ class PaymentScheduler {
         }
       }
 
-      const organizationFilteredSchedules = await db
-        .select({
-          schedule: paymentSchedules,
-          leagueOrganizationId: leagues.organizationId
-        })
-        .from(paymentSchedules)
-        .innerJoin(leagues, eq(paymentSchedules.leagueId, leagues.id))
-        .where(and(...conditions));
+      const SERIALIZATION_MAX_RETRIES = 3;
+      let { activeSchedules, organizationFilteredSchedules } = { activeSchedules: [] as PaymentSchedule[], organizationFilteredSchedules: [] as { schedule: PaymentSchedule; leagueOrganizationId: number | null }[] };
 
-      const activeSchedules = organizationFilteredSchedules.map(item => item.schedule);
+      for (let attempt = 1; attempt <= SERIALIZATION_MAX_RETRIES; attempt++) {
+        try {
+          const result = await db.transaction(async (tx) => {
+            await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL SERIALIZABLE`);
+            const totalCountResult = await tx
+              .select({ total: count() })
+              .from(paymentSchedules)
+              .innerJoin(leagues, eq(paymentSchedules.leagueId, leagues.id))
+              .where(and(...conditions));
+
+            const totalMatchingRows = totalCountResult[0]?.total ?? 0;
+
+            const lockedSchedules = await tx
+              .select({
+                schedule: paymentSchedules,
+                leagueOrganizationId: leagues.organizationId
+              })
+              .from(paymentSchedules)
+              .innerJoin(leagues, eq(paymentSchedules.leagueId, leagues.id))
+              .where(and(...conditions))
+              .for('update', { of: paymentSchedules, skipLocked: true });
+
+            const lockedCount = lockedSchedules.length;
+            const skippedByLock = totalMatchingRows - lockedCount;
+
+            if (skippedByLock > 0) {
+              logger.warn(`[PaymentScheduler] Skipped ${skippedByLock} schedule(s) due to row-level locking (claimed by another instance)`, {
+                totalMatching: totalMatchingRows,
+                acquired: lockedCount,
+                skippedByLock
+              });
+            } else {
+              logger.info(`[PaymentScheduler] Acquired locks on all ${lockedCount} matching schedule(s) (no contention)`);
+            }
+
+            return {
+              activeSchedules: lockedSchedules.map(item => item.schedule),
+              organizationFilteredSchedules: lockedSchedules
+            };
+          });
+
+          activeSchedules = result.activeSchedules;
+          organizationFilteredSchedules = result.organizationFilteredSchedules;
+          break;
+        } catch (txError: unknown) {
+          const isSerializationFailure = txError instanceof Error && 'code' in txError && (txError as { code: string }).code === '40001';
+          if (isSerializationFailure && attempt < SERIALIZATION_MAX_RETRIES) {
+            logger.warn(`[PaymentScheduler] Serialization failure on attempt ${attempt}/${SERIALIZATION_MAX_RETRIES}, retrying...`);
+            await new Promise(resolve => setTimeout(resolve, 50 * attempt));
+            continue;
+          }
+          throw txError;
+        }
+      }
 
       logger.info(`[PaymentScheduler] Found ${activeSchedules.length} active schedules to process`, {
         schedules: activeSchedules.map(s => ({
