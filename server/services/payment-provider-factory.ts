@@ -1,5 +1,6 @@
 import type { PaymentProvider } from './payment-provider';
 import { SquarePaymentProvider } from './square-provider';
+import { CardPointePaymentProvider } from './cardpointe-provider';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
 
@@ -23,8 +24,7 @@ export async function getPaymentProvider(locationId: number | null): Promise<Pay
     case 'square':
       return new SquarePaymentProvider(locationId);
     case 'cardpointe':
-      log.warn(`CardPointe provider not yet implemented for location ${locationId}`);
-      return null;
+      return new CardPointePaymentProvider(locationId);
     default:
       log.error(`Unknown payment provider "${providerType}" for location ${locationId}`);
       return null;

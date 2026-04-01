@@ -13,12 +13,15 @@ A full-stack bowling league management application with multi-tenant support for
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui + TanStack Query + wouter
 - **Backend**: Express + Passport.js + Drizzle ORM
 - **Database**: Neon PostgreSQL (via `pg` driver + `drizzle-orm/node-postgres`)
-- **Payments**: Provider abstraction layer (Square SDK; CardPointe planned)
+- **Payments**: Provider abstraction layer (Square SDK + CardPointe Gateway)
   - `server/services/payment-provider.ts` - Core PaymentProvider interface + optional CatalogProvider/WalletProvider interfaces + type guards
   - `server/services/square-provider.ts` - SquarePaymentProvider wrapping existing Square SDK calls
   - `server/services/payment-provider-factory.ts` - `getPaymentProvider(locationId)` resolves provider from location config
   - `server/services/payment-execution.ts` - Provider-aware charge execution
-  - `shared/schema/locations.ts` - `paymentProvider` field (default 'square') on locations table
+  - `server/services/cardpointe.ts` - CardPointe Gateway REST API client (auth, capture, void, refund, profile CRUD)
+  - `server/services/cardpointe-provider.ts` - CardPointePaymentProvider implementing PaymentProvider interface
+  - `shared/schema/locations.ts` - `paymentProvider` field + `cardpointeCredentials` JSONB on locations table
+  - `shared/schema/bowlers.ts` - `cardpointeProfileId` for stored card profiles
 
 ## Key Files
 - `shared/schema/` - Database schema split by domain (barrel re-exports from `shared/schema/index.ts`)

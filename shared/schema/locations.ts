@@ -19,6 +19,20 @@ export const locationSquareCredentialsSchema = z.object({
   locationId: z.string().optional(),
 }).nullable().optional();
 
+export interface LocationCardPointeCredentials {
+  merchantId?: string;
+  apiUsername?: string;
+  apiPassword?: string;
+  siteUrl?: string;
+}
+
+export const locationCardPointeCredentialsSchema = z.object({
+  merchantId: z.string().optional(),
+  apiUsername: z.string().optional(),
+  apiPassword: z.string().optional(),
+  siteUrl: z.string().optional(),
+}).nullable().optional();
+
 export const locations = pgTable("locations", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -30,6 +44,7 @@ export const locations = pgTable("locations", {
   active: boolean("active").notNull().default(true),
   organizationId: integer("organization_id").notNull().references(() => organizations.id),
   squareCredentials: jsonb("square_credentials").$type<LocationSquareCredentials>(),
+  cardpointeCredentials: jsonb("cardpointe_credentials").$type<LocationCardPointeCredentials>(),
   paymentProvider: text("payment_provider").$type<PaymentProviderType>().default('square'),
 }, (table) => ({
   organizationIdx: index("locations_organization_idx").on(table.organizationId),
@@ -47,6 +62,7 @@ export const insertLocationSchema = baseLocationSchema.extend({
   active: z.boolean().default(true),
   organizationId: z.number().int().positive(),
   squareCredentials: locationSquareCredentialsSchema,
+  cardpointeCredentials: locationCardPointeCredentialsSchema,
   paymentProvider: z.enum(PAYMENT_PROVIDERS).default('square').optional(),
 }).omit({ id: true });
 
@@ -60,6 +76,7 @@ export const updateLocationSchema = z.object({
   active: z.boolean(),
   organizationId: z.number().int().positive(),
   squareCredentials: locationSquareCredentialsSchema,
+  cardpointeCredentials: locationCardPointeCredentialsSchema,
   paymentProvider: z.enum(PAYMENT_PROVIDERS),
 }).partial();
 

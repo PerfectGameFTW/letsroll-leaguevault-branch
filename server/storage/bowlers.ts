@@ -20,6 +20,7 @@ const bowlerColumns = {
   active: bowlers.active,
   order: bowlers.order,
   squareCustomerId: bowlers.squareCustomerId,
+  cardpointeProfileId: bowlers.cardpointeProfileId,
   bnContactId: bowlers.bnContactId,
 };
 
