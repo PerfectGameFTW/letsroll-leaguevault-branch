@@ -23,6 +23,7 @@ import paymentSchedulesRouter from './payment-schedules.js';
 import bowlnowRouter from './bowlnow.js';
 import integrationsRouter from './integrations.js';
 import accountRouter from './account.js';
+import bulkImportRouter from './bulk-import.js';
 import { requireAuth, requireOrgAdmin, requireSystemAdmin } from '../middleware/auth.js';
 import { createLogger } from '../logger';
 
@@ -45,6 +46,7 @@ export function registerRoutes(app: Express): void {
 
   app.use('/api/leagues', requireAuth, leaguesRouter);
   app.use('/api/teams', requireAuth, teamsRouter);
+  app.use('/api/bowlers/bulk-import', requireOrgAdmin, bulkImportRouter);
   app.use('/api/bowlers', requireAuth, bowlersRouter);
   app.use('/api/bowler-leagues', requireAuth, bowlerLeaguesRouter);
   app.use('/api/payments', requireAuth, paymentsRouter);

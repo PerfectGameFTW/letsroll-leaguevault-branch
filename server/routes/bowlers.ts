@@ -6,6 +6,7 @@ import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { createOrUpdateCustomer } from '../services/square.js';
 import { hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
+import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
 import { createLogger } from '../logger';
 
 const log = createLogger("Bowlers");
@@ -305,63 +306,10 @@ router.post("/", async (req, res) => {
       }
     }
 
-    // Create bowler in database first
     const created = await storage.createBowler(bowler);
-
-    if (created.email) {
-      try {
-        const matchingUser = await storage.getUserByEmail(created.email);
-        if (matchingUser && !matchingUser.bowlerId) {
-          await storage.linkUserToBowler(matchingUser.id, created.id);
-          log.info(`Auto-linked user ${matchingUser.id} to newly created bowler ${created.id}`);
-          const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: created.id });
-          if (bowlerLeagues.length > 0) {
-            const league = await storage.getLeague(bowlerLeagues[0].leagueId);
-            if (league?.organizationId && !matchingUser.organizationId) {
-              await storage.setUserOrganization(matchingUser.id, league.organizationId);
-              log.info(`Set user ${matchingUser.id} organization to ${league.organizationId}`);
-            }
-          }
-        }
-      } catch (linkError) {
-        log.error('Error auto-linking user to bowler:', linkError);
-      }
-
-      try {
-        const orgId = (req as any).user?.organizationId;
-        const squareLocation = orgId ? await storage.getFirstSquareConfiguredLocation(orgId) : null;
-        if (squareLocation?.id) {
-          const squareCustomer = await createOrUpdateCustomer(created.name, created.email, undefined, squareLocation.id);
-          if (squareCustomer) {
-            const updated = await storage.updateBowler(created.id, {
-              ...created,
-              squareCustomerId: squareCustomer.id,
-              active: true
-            });
-            if (orgId) {
-              const orgConfig = await storage.getOrgIntegrations(orgId);
-              if (isOrgBNConfigured(orgConfig)) {
-                syncBowlerToBN(updated.id, orgConfig).catch(e => log.error('BowlNow sync error:', e));
-              }
-            }
-            return sendSuccess(res, updated, 201);
-          }
-        } else {
-          log.info('No Square-configured location found for org, skipping customer sync');
-        }
-      } catch (squareError) {
-        log.error('Square API error:', squareError);
-      }
-    }
-
-    const createOrgId = (req as any).user?.organizationId;
-    if (createOrgId) {
-      const createOrgConfig = await storage.getOrgIntegrations(createOrgId);
-      if (isOrgBNConfigured(createOrgConfig)) {
-        syncBowlerToBN(created.id, createOrgConfig).catch(e => log.error('BowlNow sync error:', e));
-      }
-    }
-    sendSuccess(res, created, 201);
+    const orgId: number | undefined = (req as any).user?.organizationId;
+    const synced = await runBowlerPostCreateSync(created, orgId);
+    sendSuccess(res, synced, 201);
   } catch (error) {
     log.error('Error creating bowler:', error);
     if (error instanceof z.ZodError) {

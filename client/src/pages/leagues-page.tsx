@@ -33,8 +33,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Pencil, Archive, RotateCcw, Trash, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Archive, RotateCcw, Trash, AlertTriangle, Upload } from "lucide-react";
 import { LeaguesTableSkeleton } from "@/components/page-states";
+import { BulkBowlerImport } from "@/components/bulk-bowler-import";
 import type { League, Team, Location } from "@shared/schema";
 import type { ScoreWithRelations } from "@/lib/types/scores";
 import { apiRequest } from "@/lib/queryClient";
@@ -47,6 +48,7 @@ import { Link } from "wouter";
 
 export default function LeaguesPage() {
   const [showForm, setShowForm] = useState(false);
+  const [showBulkImport, setShowBulkImport] = useState(false);
   const [selectedLeague, setSelectedLeague] = useState<League | undefined>();
   const [showArchived, setShowArchived] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
@@ -160,13 +162,19 @@ export default function LeaguesPage() {
       <ErrorBoundary level="section">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold">Leagues</h1>
-        <Button onClick={() => {
-          setSelectedLeague(undefined);
-          setShowForm(true);
-        }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add League
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowBulkImport(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import Bowlers
+          </Button>
+          <Button onClick={() => {
+            setSelectedLeague(undefined);
+            setShowForm(true);
+          }}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add League
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-md border mb-8">
@@ -414,6 +422,10 @@ export default function LeaguesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <BulkBowlerImport
+        open={showBulkImport}
+        onClose={() => setShowBulkImport(false)}
+      />
       </ErrorBoundary>
     </Layout>
   );
