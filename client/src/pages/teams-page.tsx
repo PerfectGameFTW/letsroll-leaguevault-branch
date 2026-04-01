@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function TeamsPage() {
   const [showForm, setShowForm] = useState(false);
   const [showReorder, setShowReorder] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [archiveTeam, setArchiveTeam] = useState<Team | null>(null);
   const [deleteTeam, setDeleteTeam] = useState<Team | null>(null);
   const { toast } = useToast();
@@ -67,15 +68,19 @@ export default function TeamsPage() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const teams = teamsResponse?.data || [];
-  const sortedTeams = teams
+  const allTeams = teamsResponse?.data || [];
+  const archivedCount = allTeams.filter(t => !t.active).length;
+  const visibleTeams = showArchived ? allTeams : allTeams.filter(t => t.active);
+  const sortedTeams = visibleTeams
     .slice()
     .sort((a, b) => {
+      if (a.active !== b.active) return a.active ? -1 : 1;
       if (a.displayOrder !== b.displayOrder) return a.displayOrder - b.displayOrder;
       const numA = a.number ?? Number.MAX_SAFE_INTEGER;
       const numB = b.number ?? Number.MAX_SAFE_INTEGER;
       return numA - numB;
     });
+  const activeTeams = allTeams.filter(t => t.active);
 
   const archiveMutation = useMutation({
     mutationFn: async ({ id, active }: { id: number; active: boolean }) => {
@@ -156,13 +161,22 @@ export default function TeamsPage() {
               <Plus className="h-4 w-4 mr-2" />
               Add Team
             </Button>
-            {teams.length > 1 && (
+            {activeTeams.length > 1 && (
               <Button variant="outline" onClick={() => setShowReorder(true)}>
                 <ArrowUpDown className="h-4 w-4 mr-2" />
                 Reorder Teams
               </Button>
             )}
           </div>
+          {archivedCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowArchived(!showArchived)}
+            >
+              {showArchived ? "Hide" : "Show"} archived ({archivedCount})
+            </Button>
+          )}
         </div>
 
         <div className="rounded-md border">
@@ -235,7 +249,7 @@ export default function TeamsPage() {
         <ReorderTeamsDialog
           open={showReorder}
           onClose={() => setShowReorder(false)}
-          teams={sortedTeams}
+          teams={activeTeams}
           leagueId={leagueId}
         />
 
