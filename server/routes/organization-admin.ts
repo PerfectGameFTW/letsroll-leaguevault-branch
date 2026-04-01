@@ -139,6 +139,9 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
     }
     
     if (req.user.role === 'org_admin') {
+      if (user.role === 'system_admin') {
+        return sendError(res, 'Organization admins cannot modify system admin accounts', 403, 'forbidden');
+      }
       if (user.organizationId !== req.user.organizationId) {
         return sendError(res, 'You can only update users in your own organization', 403, 'forbidden');
       }
@@ -195,6 +198,10 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
       return sendError(res, 'User not found', 404, 'not_found');
     }
 
+    if (req.user.role === 'org_admin' && user.role === 'system_admin') {
+      return sendError(res, 'Organization admins cannot modify system admin accounts', 403, 'forbidden');
+    }
+
     // Check if user is already in an organization
     if (user.organizationId) {
       // If they're in the same org we're trying to add them to, just update admin status
@@ -244,6 +251,9 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimit
     
     // Organization admins can only remove users from their own organization
     if (req.user.role === 'org_admin') {
+      if (user.role === 'system_admin') {
+        return sendError(res, 'Organization admins cannot modify system admin accounts', 403, 'forbidden');
+      }
       if (user.organizationId !== req.user.organizationId) {
         return sendError(res, 'You can only remove users from your own organization', 403, 'forbidden');
       }
@@ -290,6 +300,9 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
     }
 
     if (req.user.role === 'org_admin') {
+      if (user.role === 'system_admin') {
+        return sendError(res, 'Organization admins cannot modify system admin accounts', 403, 'forbidden');
+      }
       if (user.organizationId !== req.user.organizationId) {
         return sendError(res, 'You can only update users in your own organization', 403, 'forbidden');
       }
