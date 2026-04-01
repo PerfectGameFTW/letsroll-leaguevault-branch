@@ -114,6 +114,7 @@ export interface IUserStorage {
   getLinkedBowlerIds(): Promise<number[]>;
   isBowlerLinked(bowlerId: number): Promise<boolean>;
   hasAdminUsers(): Promise<boolean>;
+  countOrgAdmins(organizationId: number): Promise<number>;
   setUserLocation(userId: number, locationId: number | null): Promise<User>;
   getUserByInviteToken(token: string): Promise<User | undefined>;
   setUserInviteToken(userId: number, token: string, expiry: Date): Promise<User>;

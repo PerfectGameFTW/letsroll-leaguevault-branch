@@ -1,4 +1,4 @@
-import { eq, isNull, isNotNull } from "drizzle-orm";
+import { eq, and, count, isNotNull } from "drizzle-orm";
 import { db } from "../db.js";
 import { users, type User, type InsertUser, type UpdateUser, type UserRole } from "@shared/schema";
 import { createLogger } from '../logger';
@@ -78,6 +78,14 @@ export async function hasAdminUsers(): Promise<boolean> {
     .where(eq(users.role, 'system_admin'))
     .limit(1);
   return row !== undefined;
+}
+
+export async function countOrgAdmins(organizationId: number): Promise<number> {
+  const [row] = await db
+    .select({ count: count() })
+    .from(users)
+    .where(and(eq(users.organizationId, organizationId), eq(users.role, 'org_admin')));
+  return Number(row?.count ?? 0);
 }
 
 export async function getUsers(): Promise<User[]> {

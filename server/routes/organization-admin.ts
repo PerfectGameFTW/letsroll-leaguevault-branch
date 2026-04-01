@@ -148,6 +148,14 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
     }
     
     const newRole = makeOrgAdmin ? 'org_admin' : 'user';
+
+    if (!makeOrgAdmin && user.role === 'org_admin' && user.organizationId) {
+      const adminCount = await storage.countOrgAdmins(user.organizationId);
+      if (adminCount <= 1) {
+        return sendError(res, 'Cannot remove the last administrator from this organization', 400, 'bad_request');
+      }
+    }
+
     const updatedUser = await storage.updateUserRole(userId, newRole);
     return sendSuccess(res, updatedUser);
   } catch (error) {
@@ -208,6 +216,12 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
       if (user.organizationId === organizationId) {
         const desiredRole = makeOrgAdmin ? 'org_admin' : 'user';
         if (desiredRole !== user.role) {
+          if (desiredRole === 'user' && user.role === 'org_admin') {
+            const adminCount = await storage.countOrgAdmins(user.organizationId);
+            if (adminCount <= 1) {
+              return sendError(res, 'Cannot remove the last administrator from this organization', 400, 'bad_request');
+            }
+          }
           const updatedUser = await storage.updateUserRole(userId, desiredRole);
           return sendSuccess(res, updatedUser);
         }
@@ -266,6 +280,13 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimit
     // Check if user is in an organization
     if (!user.organizationId) {
       return sendError(res, 'User is not in any organization', 400, 'bad_request');
+    }
+
+    if (user.role === 'org_admin') {
+      const adminCount = await storage.countOrgAdmins(user.organizationId);
+      if (adminCount <= 1) {
+        return sendError(res, 'Cannot remove the last administrator from this organization', 400, 'bad_request');
+      }
     }
     
     // Remove user from organization
