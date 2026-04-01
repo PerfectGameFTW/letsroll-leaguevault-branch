@@ -2,6 +2,60 @@ import { createLogger } from '../logger';
 
 const log = createLogger('CardPointeService');
 
+const CP_RATE_LIMIT_PER_MINUTE = (() => {
+  const env = process.env.CARDPOINTE_RATE_LIMIT_PER_MINUTE;
+  if (env) {
+    const parsed = parseInt(env, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return 60;
+})();
+
+const CP_RATE_WINDOW_MS = 60_000;
+
+const merchantRequestTimestamps = new Map<string, number[]>();
+
+function checkRateLimit(merchantId: string): void {
+  const now = Date.now();
+  const windowStart = now - CP_RATE_WINDOW_MS;
+
+  let timestamps = merchantRequestTimestamps.get(merchantId);
+  if (!timestamps) {
+    timestamps = [];
+    merchantRequestTimestamps.set(merchantId, timestamps);
+  }
+
+  const firstValid = timestamps.findIndex(t => t > windowStart);
+  if (firstValid > 0) {
+    timestamps.splice(0, firstValid);
+  } else if (firstValid === -1 && timestamps.length > 0) {
+    timestamps.length = 0;
+  }
+
+  if (timestamps.length === 0 && merchantRequestTimestamps.size > 100) {
+    for (const [key, ts] of merchantRequestTimestamps) {
+      if (key !== merchantId && (ts.length === 0 || ts[ts.length - 1] <= windowStart)) {
+        merchantRequestTimestamps.delete(key);
+      }
+    }
+  }
+
+  if (timestamps.length >= CP_RATE_LIMIT_PER_MINUTE) {
+    log.warn('CardPointe outbound rate limit exceeded', {
+      merchantId,
+      limit: CP_RATE_LIMIT_PER_MINUTE,
+      windowMs: CP_RATE_WINDOW_MS,
+      currentCount: timestamps.length,
+    });
+    throw new Error(
+      `CardPointe rate limit exceeded for merchant ${merchantId}: ` +
+      `${CP_RATE_LIMIT_PER_MINUTE} requests per ${CP_RATE_WINDOW_MS / 1000}s allowed`,
+    );
+  }
+
+  timestamps.push(now);
+}
+
 export interface CardPointeCredentials {
   merchantId: string;
   apiUsername: string;
@@ -92,6 +146,7 @@ async function cpRequest<T>(
   const authHeader = buildAuthHeader(creds.apiUsername, creds.apiPassword);
 
   for (let attempt = 0; attempt <= retries; attempt++) {
+    checkRateLimit(creds.merchantId);
     try {
       const options: RequestInit = {
         method,
