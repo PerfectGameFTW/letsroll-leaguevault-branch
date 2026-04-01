@@ -96,11 +96,6 @@ const navItems: NavItem[] = [
     label: "Integrations",
     href: "/integrations",
     orgAdminOnly: true
-  },
-  {
-    icon: LayoutDashboard,
-    label: "Bowler Dashboard",
-    href: "/bowler-dashboard"
   }
 ];
 
@@ -116,7 +111,6 @@ const pageLabels: Record<string, string> = {
   "/payments": "Payments",
   "/reports": "Reports",
   "/integrations": "Integrations",
-  "/bowler-dashboard": "Bowler Dashboard",
   "/profile": "Profile",
 };
 
@@ -305,7 +299,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
               {navItems.map((item) => {
                 if (item.adminOnly && !isAdmin) return null;
                 if (item.orgAdminOnly && !canSeeOrgAdminItems) return null;
-                if (item.href === '/bowler-dashboard' && !isSystemAdmin) return null;
 
                 const isActive = location === item.href ||
                   (item.href !== "/" && location.startsWith(item.href + "/"));
