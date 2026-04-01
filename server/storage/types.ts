@@ -77,6 +77,7 @@ export interface IPaymentStorage {
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;
   getPaymentScheduleById(id: number): Promise<PaymentSchedule | undefined>;
   getActiveSchedulesByLeague(leagueId: number): Promise<PaymentSchedule[]>;
+  getActiveSchedulesByLocationId(locationId: number): Promise<PaymentSchedule[]>;
   deactivatePaymentSchedule(id: number): Promise<void>;
   updatePaymentScheduleFields(id: number, fields: UpdatePaymentSchedule): Promise<PaymentSchedule>;
   updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void>;
@@ -149,6 +150,7 @@ export interface ILocationStorage {
   getLocationCardPointeConfig(locationId: number): Promise<LocationCardPointeCredentials | null>;
   updateLocationCardPointeConfig(locationId: number, creds: LocationCardPointeCredentials): Promise<Location>;
   getFirstPaymentConfiguredLocation(orgId: number): Promise<Location | undefined>;
+  updateLocationAndDeactivateSchedules(id: number, data: UpdateLocation, scheduleIds: number[]): Promise<Location>;
 }
 
 export interface IEmailTemplateStorage {

@@ -101,6 +101,51 @@ router.patch('/:id', async (req: any, res) => {
         cleanedData[key] = value;
       }
     }
+
+    const isProviderChange = 'paymentProvider' in cleanedData && cleanedData.paymentProvider !== location.paymentProvider;
+
+    if (isProviderChange) {
+      const activeSchedules = await storage.getActiveSchedulesByLocationId(id);
+
+      if (activeSchedules.length > 0) {
+        if (req.body.confirmProviderSwitch !== true) {
+          return sendSuccess(res, {
+            warning: true,
+            message: `Switching payment provider from "${location.paymentProvider}" to "${cleanedData.paymentProvider}" will break ${activeSchedules.length} active auto-pay schedule(s). Card tokens from the current provider will no longer work. To proceed, resend with confirmProviderSwitch: true.`,
+            activeScheduleCount: activeSchedules.length,
+            currentProvider: location.paymentProvider,
+            newProvider: cleanedData.paymentProvider,
+          }, 200);
+        }
+
+        const updatedLocation = await storage.updateLocationAndDeactivateSchedules(
+          id,
+          cleanedData,
+          activeSchedules.map(s => s.id)
+        );
+
+        log.warn(`Payment provider switch: location ${id} changed from "${location.paymentProvider}" to "${cleanedData.paymentProvider}". Deactivated ${activeSchedules.length} active schedule(s).`, {
+          locationId: id,
+          previousProvider: location.paymentProvider,
+          newProvider: cleanedData.paymentProvider,
+          deactivatedScheduleCount: activeSchedules.length,
+          deactivatedScheduleIds: activeSchedules.map(s => s.id),
+          confirmedBy: req.user?.id ?? 'unknown',
+        });
+
+        clearProviderCache(id);
+        return sendSuccess(res, updatedLocation);
+      } else {
+        log.info(`Payment provider switch: location ${id} changed from "${location.paymentProvider}" to "${cleanedData.paymentProvider}". No active schedules affected.`, {
+          locationId: id,
+          previousProvider: location.paymentProvider,
+          newProvider: cleanedData.paymentProvider,
+          deactivatedScheduleCount: 0,
+          changedBy: req.user?.id ?? 'unknown',
+        });
+      }
+    }
+
     const updatedLocation = await storage.updateLocation(id, cleanedData);
     if ('paymentProvider' in cleanedData || 'squareCredentials' in cleanedData || 'cardpointeCredentials' in cleanedData) {
       clearProviderCache(id);

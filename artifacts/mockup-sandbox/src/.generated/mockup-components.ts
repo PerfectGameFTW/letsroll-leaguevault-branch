@@ -18,5 +18,8 @@ export const modules: ModuleMap = {
   "./components/mockups/leaguevault-dashboard/RetroLanes.tsx": () => import("../components/mockups/leaguevault-dashboard/RetroLanes.tsx"),
   "./components/mockups/leaguevault-dashboard/WarmProfessional.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmProfessional.tsx"),
   "./components/mockups/leaguevault-dashboard/WarmRicherDepth.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmRicherDepth.tsx"),
-  "./components/mockups/leaguevault-dashboard/WarmTightHierarchy.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmTightHierarchy.tsx")
+  "./components/mockups/leaguevault-dashboard/WarmTightHierarchy.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmTightHierarchy.tsx"),
+  "./components/mockups/bowler-nav/CleanTabBar.tsx": () => import("../components/mockups/bowler-nav/CleanTabBar.tsx"),
+  "./components/mockups/bowler-nav/FloatingDock.tsx": () => import("../components/mockups/bowler-nav/FloatingDock.tsx"),
+  "./components/mockups/bowler-nav/IntegratedTopBar.tsx": () => import("../components/mockups/bowler-nav/IntegratedTopBar.tsx")
 };

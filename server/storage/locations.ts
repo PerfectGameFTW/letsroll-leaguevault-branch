@@ -1,7 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import {
-  locations, leagues,
+  locations, leagues, paymentSchedules,
   locationSquareCredentialsSchema,
   locationCardPointeCredentialsSchema,
   type Location, type InsertLocation, type UpdateLocation,
@@ -153,6 +153,27 @@ export async function updateLocationCardPointeConfig(locationId: number, creds: 
   const encrypted = encryptCardPointeCreds(creds);
   const [result] = await db.update(locations).set({ cardpointeCredentials: encrypted }).where(eq(locations.id, locationId)).returning();
   return result;
+}
+
+export async function updateLocationAndDeactivateSchedules(
+  id: number,
+  data: UpdateLocation,
+  scheduleIds: number[]
+): Promise<Location> {
+  let encrypted = { ...data };
+  if (data.squareCredentials !== undefined) {
+    encrypted = { ...encrypted, squareCredentials: encryptSquareCreds(data.squareCredentials) };
+  }
+  if (data.cardpointeCredentials !== undefined) {
+    encrypted = { ...encrypted, cardpointeCredentials: encryptCardPointeCreds(data.cardpointeCredentials) };
+  }
+  return db.transaction(async (tx) => {
+    for (const scheduleId of scheduleIds) {
+      await tx.update(paymentSchedules).set({ active: false }).where(eq(paymentSchedules.id, scheduleId));
+    }
+    const [result] = await tx.update(locations).set(encrypted).where(eq(locations.id, id)).returning();
+    return result;
+  });
 }
 
 export async function getFirstPaymentConfiguredLocation(orgId: number): Promise<Location | undefined> {

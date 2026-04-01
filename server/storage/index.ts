@@ -65,6 +65,7 @@ export class DatabaseStorage implements IStorage {
   getPaymentSchedule!: IStorage["getPaymentSchedule"];
   getPaymentScheduleById!: IStorage["getPaymentScheduleById"];
   getActiveSchedulesByLeague!: IStorage["getActiveSchedulesByLeague"];
+  getActiveSchedulesByLocationId!: IStorage["getActiveSchedulesByLocationId"];
   deactivatePaymentSchedule!: IStorage["deactivatePaymentSchedule"];
   updatePaymentScheduleFields!: IStorage["updatePaymentScheduleFields"];
   updatePaymentScheduleCard!: IStorage["updatePaymentScheduleCard"];
@@ -129,6 +130,7 @@ export class DatabaseStorage implements IStorage {
   getLocationCardPointeConfig!: IStorage["getLocationCardPointeConfig"];
   updateLocationCardPointeConfig!: IStorage["updateLocationCardPointeConfig"];
   getFirstPaymentConfiguredLocation!: IStorage["getFirstPaymentConfiguredLocation"];
+  updateLocationAndDeactivateSchedules!: IStorage["updateLocationAndDeactivateSchedules"];
 
   getEmailTemplates!: IStorage["getEmailTemplates"];
   getEmailTemplate!: IStorage["getEmailTemplate"];

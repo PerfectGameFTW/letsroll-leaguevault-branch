@@ -239,6 +239,20 @@ export async function getActiveSchedulesByLeague(leagueId: number): Promise<Paym
     );
 }
 
+export async function getActiveSchedulesByLocationId(locationId: number): Promise<PaymentSchedule[]> {
+  const rows = await db
+    .select({ schedule: paymentSchedules })
+    .from(paymentSchedules)
+    .innerJoin(leagues, eq(paymentSchedules.leagueId, leagues.id))
+    .where(
+      and(
+        eq(leagues.locationId, locationId),
+        eq(paymentSchedules.active, true)
+      )
+    );
+  return rows.map(r => r.schedule);
+}
+
 export async function deactivatePaymentSchedule(id: number): Promise<void> {
   await db
     .update(paymentSchedules)
