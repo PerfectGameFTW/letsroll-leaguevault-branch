@@ -49,7 +49,11 @@ export async function hashPassword(password: string) {
   return `${buf.toString("hex")}.${salt}`;
 }
 
-const DUMMY_HASH = '2f9f2c9675648aa136c5b1e089432e102f593725bba27de669a6a6c140fb07824e54678ada643212884f3e2402b6fc1fa8024243ec3b49c6f483cb4daf01411d.07178debc1ee62255438ded3ad0ea7de';
+let DUMMY_HASH: string;
+
+async function initDummyHash() {
+  DUMMY_HASH = await hashPassword(randomBytes(32).toString("hex"));
+}
 
 async function comparePasswords(supplied: string, stored: string) {
   try {
@@ -77,7 +81,8 @@ function isValidUser(user: any): user is SelectUser {
   );
 }
 
-export function setupAuth(app: Express) {
+export async function setupAuth(app: Express) {
+  await initDummyHash();
   const isProduction = !isDev;
 
   const sessionSettings: session.SessionOptions = {

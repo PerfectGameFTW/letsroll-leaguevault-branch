@@ -143,7 +143,7 @@ app.use(helmet({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
-setupAuth(app);
+await setupAuth(app);
 app.use(orgSessionGuard);
 
 app.use(manifestRouter);
