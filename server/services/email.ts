@@ -1,4 +1,5 @@
 import sgMail from '@sendgrid/mail';
+import sanitizeHtml from 'sanitize-html';
 import { storage } from '../storage';
 import { env, isDev } from '../config';
 import { createLogger } from '../logger';
@@ -51,6 +52,38 @@ function replaceVariablesPlainText(text: string, variables: Record<string, strin
   });
 }
 
+function sanitizeTemplateBody(html: string): string {
+  return sanitizeHtml(html, {
+    allowedTags: [
+      'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a',
+      'ul', 'ol', 'li',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'span', 'div',
+      'table', 'thead', 'tbody', 'tr', 'td', 'th',
+      'img', 'hr', 'blockquote', 'pre', 'code',
+    ],
+    allowedAttributes: {
+      'a': ['href', 'target', 'rel'],
+      'img': ['src', 'alt', 'width', 'height'],
+      'td': ['align', 'valign', 'width', 'style'],
+      'th': ['align', 'valign', 'width', 'style'],
+      'table': ['width', 'cellpadding', 'cellspacing', 'border', 'style'],
+      'tr': ['style'],
+      'div': ['style'],
+      'span': ['style'],
+      'p': ['style'],
+      'h1': ['style'],
+      'h2': ['style'],
+      'h3': ['style'],
+      'h4': ['style'],
+      'h5': ['style'],
+      'h6': ['style'],
+    },
+    allowedSchemes: ['http', 'https', 'mailto'],
+    disallowedTagsMode: 'discard',
+  });
+}
+
 export function getOrgLogoUrl(orgId: number | string): string {
   const baseUrl = getBaseUrl();
   return `${baseUrl}/api/organizations/${orgId}/logo`;
@@ -60,13 +93,13 @@ function convertLinksToButtons(html: string): string {
   return html.replace(
     /^\s*(https?:\/\/[^\s<]+)\s*$/gm,
     (_match, url) => {
+      const safeUrl = escapeHtml(url);
       let label = 'Click Here';
       if (url.includes('/set-password')) label = 'Set Up Your Password';
       else if (url.includes('/bowler-dashboard') || url.includes('/dashboard')) label = 'Go to Dashboard';
       else if (url.includes('/login')) label = 'Log In';
       else if (url.includes('/claim')) label = 'Claim Your Profile';
 
-      const safeUrl = escapeHtml(url);
       return `<div style="margin: 20px 0;"><a href="${safeUrl}" style="display: inline-block; background-color: #1a1a2e; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold;">${label}</a></div>`;
     }
   );
@@ -110,7 +143,7 @@ export async function sendTemplatedEmail(
 
     const subject = replaceVariablesPlainText(template.subject, variables);
     const body = replaceVariables(template.body, variables);
-    const html = wrapInHtmlLayout(body, variables);
+    const html = wrapInHtmlLayout(sanitizeTemplateBody(body), variables);
 
     const msg = {
       to: toEmail,
@@ -244,7 +277,7 @@ export async function sendTestEmail(
 
   const subject = `[TEST] ${replaceVariablesPlainText(template.subject, sampleVariables)}`;
   const body = replaceVariables(template.body, sampleVariables);
-  const html = wrapInHtmlLayout(body, sampleVariables);
+  const html = wrapInHtmlLayout(sanitizeTemplateBody(body), sampleVariables);
 
   try {
     await sgMail.send({
