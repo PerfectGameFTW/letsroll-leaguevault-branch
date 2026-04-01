@@ -7,7 +7,7 @@ import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js
 import { paymentLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
-import { hasCatalogSupport, hasWalletSupport } from '../services/payment-provider';
+import { hasCatalogSupport, hasWalletSupport, type PaymentProvider } from '../services/payment-provider';
 import { computePaymentSplit, buildLineItems } from '../services/payment-execution';
 import { getProviderCustomerId } from '../services/payment-utils';
 
@@ -19,6 +19,17 @@ async function getProviderForLeague(leagueId: number) {
   return getPaymentProvider(locationId);
 }
 
+
+async function persistCardpointeProfile(provider: PaymentProvider, cardId: string, bowlerId: number): Promise<void> {
+  if (provider.providerName === 'cardpointe' && cardId.includes('/')) {
+    const profileId = cardId.split('/')[0];
+    try {
+      await storage.updateBowler(bowlerId, { cardpointeProfileId: profileId });
+    } catch (profileError) {
+      log.error('Failed to persist CardPointe profile ID on bowler:', profileError);
+    }
+  }
+}
 
 const router = Router();
 
@@ -252,14 +263,7 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
           } catch (schedError) {
             log.info('No payment schedule to update (normal for one-time payments)');
           }
-          if (provider.providerName === 'cardpointe' && savedCard.id.includes('/')) {
-            const profileId = savedCard.id.split('/')[0];
-            try {
-              await storage.updateBowler(bowlerId, { cardpointeProfileId: profileId });
-            } catch (profileError) {
-              log.error('Failed to persist CardPointe profile ID on bowler:', profileError);
-            }
-          }
+          await persistCardpointeProfile(provider, savedCard.id, bowlerId);
         }
       } catch (error) {
         log.error('Failed to save card on file:', error);
@@ -485,14 +489,7 @@ router.post('/cards/:bowlerId', async (req, res) => {
     }
 
     log.info('Card saved on file (no-charge):', savedCard.id.substring(0, 15) + '...');
-    if (provider.providerName === 'cardpointe' && savedCard.id.includes('/')) {
-      const profileId = savedCard.id.split('/')[0];
-      try {
-        await storage.updateBowler(bowlerId, { cardpointeProfileId: profileId });
-      } catch (profileError) {
-        log.error('Failed to persist CardPointe profile ID on bowler:', profileError);
-      }
-    }
+    await persistCardpointeProfile(provider, savedCard.id, bowlerId);
     return sendSuccess(res, { savedCardId: savedCard.id, last4: savedCard.last4, brand: savedCard.brand });
   } catch (error) {
     if (error instanceof ProviderNotConfiguredError) {
