@@ -162,21 +162,6 @@ class PaymentScheduler {
     }
   }
 
-  private validateCardId(cardId: string | null): boolean {
-    if (!cardId) {
-      logger.warn('[PaymentScheduler] Missing card token', {
-        validationTime: new Date().toISOString()
-      });
-      return false;
-    }
-    const isValid = cardId.startsWith('ccof:');
-    logger.info('[PaymentScheduler] Card token validation (legacy)', {
-      tokenPrefix: cardId.substring(0, 5),
-      isValid,
-      validationTime: new Date().toISOString()
-    });
-    return isValid;
-  }
 
   private schedulePayment(scheduleRecord: PaymentSchedule) {
     const jobId = `payment-${scheduleRecord.id}`;
