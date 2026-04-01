@@ -17,6 +17,7 @@ import { Loader2, Plus, Eye, EyeOff, Search, RefreshCw, CheckCircle2 } from "luc
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Bowler } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+import { getSquareCustomerUrl } from "@/lib/square";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
@@ -31,7 +32,7 @@ function BowlerTableSkeleton() {
           <TableHead>Name</TableHead>
           <TableHead>League Name</TableHead>
           <TableHead>Team Name</TableHead>
-          <TableHead>Square Customer ID</TableHead>
+          <TableHead>Square Account</TableHead>
           <TableHead>Status</TableHead>
         </TableRow>
       </TableHeader>
@@ -42,7 +43,6 @@ function BowlerTableSkeleton() {
             <TableCell><Skeleton className="h-4 w-32" /></TableCell>
             <TableCell><Skeleton className="h-4 w-32" /></TableCell>
             <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-            <TableCell><Skeleton className="h-4 w-32" /></TableCell>
             <TableCell><Skeleton className="h-6 w-16 rounded-full" /></TableCell>
           </TableRow>
         ))}
@@ -148,7 +148,7 @@ export default function BowlersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>League Name</TableHead>
                 <TableHead>Team Name</TableHead>
-                <TableHead>Square Customer ID</TableHead>
+                <TableHead>Square Account</TableHead>
                 <TableHead>Status</TableHead>
                 {bnConfigured && <TableHead>BowlNow</TableHead>}
               </TableRow>
@@ -198,8 +198,17 @@ export default function BowlersPage() {
                           teamName
                         )}
                       </TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">
-                        {bowler.paymentCustomerId || '—'}
+                      <TableCell className="text-sm">
+                        {bowler.paymentCustomerId ? (
+                          <a
+                            href={getSquareCustomerUrl(bowler.paymentCustomerId)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline"
+                          >
+                            Square Customer
+                          </a>
+                        ) : '—'}
                       </TableCell>
                       <TableCell>
                         <Badge variant={bowler.active ? "default" : "secondary"}>
