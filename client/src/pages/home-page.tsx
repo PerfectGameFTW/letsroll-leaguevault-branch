@@ -9,7 +9,8 @@ import { formatCurrency } from "@/lib/utils";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { DashboardSkeleton, PageErrorState } from "@/components/page-states";
 
-function CollectionRateCircle({ rate }: { rate: number }) {
+function PastDueCircle({ rate }: { rate: number }) {
+  const color = rate === 0 ? "text-emerald-500" : rate <= 10 ? "text-amber-400" : "text-red-500";
   return (
     <div className="relative w-9 h-9">
       <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
@@ -21,7 +22,7 @@ function CollectionRateCircle({ rate }: { rate: number }) {
           d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
         />
         <path
-          className="text-indigo-500"
+          className={color}
           strokeDasharray={`${rate}, 100`}
           strokeWidth="4"
           stroke="currentColor"
@@ -34,15 +35,16 @@ function CollectionRateCircle({ rate }: { rate: number }) {
   );
 }
 
-function LeagueHealthCard({ name, bowlerCount, collectionRate }: {
+function LeagueHealthCard({ name, bowlerCount, pastDueBowlerCount }: {
   name: string;
   bowlerCount: number;
-  collectionRate: number;
+  pastDueBowlerCount: number;
 }) {
-  const status = collectionRate >= 98 ? "green" : collectionRate >= 90 ? "amber" : "red";
+  const status = pastDueBowlerCount === 0 ? "green" : pastDueBowlerCount <= 2 ? "amber" : "red";
+  const pastDueRate = bowlerCount > 0 ? Math.round((pastDueBowlerCount / bowlerCount) * 100) : 0;
 
   return (
-    <Link href="/leagues">
+    <Link href="/past-due">
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow group cursor-pointer">
         <div className="flex justify-between items-start mb-3">
           <div className="font-semibold text-slate-800 text-sm leading-tight">
@@ -65,8 +67,8 @@ function LeagueHealthCard({ name, bowlerCount, collectionRate }: {
           </span>
         </div>
         <div className="flex items-center justify-between">
-          <div className="text-xs text-slate-500">Collection</div>
-          <div className="text-sm font-bold text-slate-900">{collectionRate}%</div>
+          <div className="text-xs text-slate-500">Past Due</div>
+          <div className="text-sm font-bold text-slate-900">{pastDueBowlerCount} ({pastDueRate}%)</div>
         </div>
         <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden mt-1.5">
           <div
@@ -77,7 +79,7 @@ function LeagueHealthCard({ name, bowlerCount, collectionRate }: {
                 ? "bg-amber-400"
                 : "bg-red-500"
             }`}
-            style={{ width: `${collectionRate}%` }}
+            style={{ width: `${Math.max(pastDueRate > 0 ? 5 : 0, pastDueRate)}%` }}
           />
         </div>
       </div>
@@ -136,26 +138,53 @@ export default function HomePage() {
   const { paidPayments } = getPaymentSummary(payments);
   const totalLineagePaid = paidPayments.reduce((sum, p) => sum + (p.lineageAmount ?? 0), 0);
   const totalPrizeFundPaid = paidPayments.reduce((sum, p) => sum + (p.prizeFundAmount ?? 0), 0);
-  const totalCollected = paidPayments.reduce((sum, p) => sum + p.amount, 0);
-  const totalExpected = payments.reduce((sum, p) => sum + p.amount, 0);
-  const collectionRate = totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 100;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const pastDueBowlerIds = new Set<number>();
+  activeBowlerIds.forEach(bowlerId => {
+    const associations = bowlerLeaguesData.filter((bl: BowlerLeague) => bl.bowlerId === bowlerId && bl.active);
+    for (const assoc of associations) {
+      const league = activeLeagues.find(l => l.id === assoc.leagueId);
+      if (!league || !league.seasonStart) continue;
+      const seasonStart = new Date(league.seasonStart);
+      const weeksPassed = Math.max(0, Math.floor((today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+      const dueToDate = league.weeklyFee * weeksPassed;
+      const bowlerPaid = payments
+        .filter(p => p.bowlerId === bowlerId && p.leagueId === league.id && p.status === 'paid')
+        .reduce((s, p) => s + p.amount, 0);
+      if (dueToDate - bowlerPaid > 0) {
+        pastDueBowlerIds.add(bowlerId);
+        break;
+      }
+    }
+  });
+
+  const pastDueRate = activeBowlers > 0 ? Math.round((pastDueBowlerIds.size / activeBowlers) * 100) : 0;
 
   const leagueHealthData = activeLeagues.map(league => {
-    const leagueBowlerCount = new Set(
-      bowlerLeaguesData
-        .filter((bl: BowlerLeague) => bl.leagueId === league.id && bl.active)
-        .map((bl: BowlerLeague) => bl.bowlerId)
-    ).size;
+    const leagueBowlerAssocs = bowlerLeaguesData.filter((bl: BowlerLeague) => bl.leagueId === league.id && bl.active);
+    const leagueBowlerIds = new Set(leagueBowlerAssocs.map((bl: BowlerLeague) => bl.bowlerId));
+    const leagueBowlerCount = leagueBowlerIds.size;
 
-    const leaguePayments = payments.filter(p => p.leagueId === league.id);
-    const leaguePaid = leaguePayments.filter(p => p.status === 'paid').reduce((s, p) => s + p.amount, 0);
-    const leagueTotal = leaguePayments.reduce((s, p) => s + p.amount, 0);
-    const rate = leagueTotal > 0 ? Math.round((leaguePaid / leagueTotal) * 100) : 100;
+    let pastDueCount = 0;
+    if (league.seasonStart) {
+      const seasonStart = new Date(league.seasonStart);
+      const weeksPassed = Math.max(0, Math.floor((today.getTime() - seasonStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
+      const dueToDate = league.weeklyFee * weeksPassed;
+      leagueBowlerIds.forEach(bowlerId => {
+        const bowlerPaid = payments
+          .filter(p => p.bowlerId === bowlerId && p.leagueId === league.id && p.status === 'paid')
+          .reduce((s, p) => s + p.amount, 0);
+        if (dueToDate - bowlerPaid > 0) pastDueCount++;
+      });
+    }
 
     return {
       name: league.name,
       bowlerCount: leagueBowlerCount,
-      collectionRate: rate,
+      pastDueBowlerCount: pastDueCount,
     };
   }).filter(l => l.bowlerCount > 0);
 
@@ -227,15 +256,17 @@ export default function HomePage() {
                 </div>
               </div>
             </Link>
-            <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow flex items-center justify-between">
-              <div>
-                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Collection Rate
+            <Link href="/past-due">
+              <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow flex items-center justify-between cursor-pointer">
+                <div>
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                    Past Due
+                  </div>
+                  <div className="text-2xl font-bold text-slate-900">{pastDueRate}%</div>
                 </div>
-                <div className="text-2xl font-bold text-slate-900">{collectionRate}%</div>
+                <PastDueCircle rate={pastDueRate} />
               </div>
-              <CollectionRateCircle rate={collectionRate} />
-            </div>
+            </Link>
           </div>
 
           <ErrorBoundary level="section">
