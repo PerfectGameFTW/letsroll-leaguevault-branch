@@ -159,11 +159,6 @@ export default function HomePage() {
     };
   }).filter(l => l.bowlerCount > 0);
 
-  const seasonWeeks = 32;
-  const now = new Date();
-  const yearStart = new Date(now.getFullYear(), 0, 1);
-  const currentWeek = Math.min(seasonWeeks, Math.max(1, Math.ceil((now.getTime() - yearStart.getTime()) / (7 * 24 * 60 * 60 * 1000))));
-
   const userName = userResponse?.data?.name?.split(' ')[0] || "Admin";
 
   return (
@@ -211,20 +206,6 @@ export default function HomePage() {
                 </div>
               </div>
             </Link>
-            <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow flex flex-col justify-center">
-              <div className="flex justify-between items-end mb-2">
-                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                  Season
-                </div>
-                <div className="text-xs font-bold text-slate-700">Wk {currentWeek}/{seasonWeeks}</div>
-              </div>
-              <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-slate-800 rounded-full"
-                  style={{ width: `${(currentWeek / seasonWeeks) * 100}%` }}
-                />
-              </div>
-            </div>
             <Link href="/payments">
               <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
                 <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
