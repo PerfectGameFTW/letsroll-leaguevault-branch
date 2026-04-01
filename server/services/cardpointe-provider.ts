@@ -68,6 +68,7 @@ export class CardPointePaymentProvider implements PaymentProvider {
       amount: formatAmountForCardPointe(amount),
       capture: 'Y',
       email: buyerEmail,
+      ..._idempotencyKey !== undefined && { orderid: _idempotencyKey },
     };
 
     if (sourceId.includes('/')) {
@@ -101,7 +102,7 @@ export class CardPointePaymentProvider implements PaymentProvider {
     buyerEmail?: string,
     _idempotencyKey?: string,
   ): Promise<PaymentResult> {
-    return this.processPayment(sourceId, amount, false, undefined, buyerEmail);
+    return this.processPayment(sourceId, amount, false, undefined, buyerEmail, _idempotencyKey);
   }
 
   async refundPayment(
