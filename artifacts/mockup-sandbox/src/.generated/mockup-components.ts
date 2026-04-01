@@ -18,8 +18,5 @@ export const modules: ModuleMap = {
   "./components/mockups/leaguevault-dashboard/RetroLanes.tsx": () => import("../components/mockups/leaguevault-dashboard/RetroLanes.tsx"),
   "./components/mockups/leaguevault-dashboard/WarmProfessional.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmProfessional.tsx"),
   "./components/mockups/leaguevault-dashboard/WarmRicherDepth.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmRicherDepth.tsx"),
-  "./components/mockups/leaguevault-dashboard/WarmTightHierarchy.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmTightHierarchy.tsx"),
-  "./components/mockups/home-layouts/ActivityPriority.tsx": () => import("../components/mockups/home-layouts/ActivityPriority.tsx"),
-  "./components/mockups/home-layouts/CommandCenter.tsx": () => import("../components/mockups/home-layouts/CommandCenter.tsx"),
-  "./components/mockups/home-layouts/SidebarStats.tsx": () => import("../components/mockups/home-layouts/SidebarStats.tsx")
+  "./components/mockups/leaguevault-dashboard/WarmTightHierarchy.tsx": () => import("../components/mockups/leaguevault-dashboard/WarmTightHierarchy.tsx")
 };
