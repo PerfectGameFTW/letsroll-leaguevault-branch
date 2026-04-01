@@ -79,11 +79,11 @@ export default function TeamsPage() {
       <ErrorBoundary level="section">
       <div className="space-y-4">
         <Link
-          href="/leagues"
+          href={`/leagues/${leagueId}`}
           className="text-muted-foreground hover:text-foreground flex items-center mb-4"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to Leagues
+          Back to {league.name}
         </Link>
 
         <div className="space-y-4 mb-6">
