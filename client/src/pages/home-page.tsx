@@ -236,7 +236,10 @@ export default function HomePage() {
                 <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                   Bowlers Past Due
                 </div>
-                <div className="text-2xl font-bold text-slate-900">{pastDueBowlerIds.size} of {activeBowlers} ({pastDueRate}%)</div>
+                <div className="flex items-end justify-between">
+                  <div className="text-2xl font-bold text-slate-900">{pastDueBowlerIds.size} of {activeBowlers}</div>
+                  <div className="text-xs font-medium text-slate-500 mb-0.5">{pastDueRate}%</div>
+                </div>
               </div>
             </Link>
           </div>
