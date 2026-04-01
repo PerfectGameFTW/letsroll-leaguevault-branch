@@ -87,11 +87,6 @@ const navItems: NavItem[] = [
     href: "/bowlers"
   },
   {
-    icon: CreditCard,
-    label: "Payments",
-    href: "/payments"
-  },
-  {
     icon: ClipboardPlus,
     label: "Reports",
     href: "/reports"
