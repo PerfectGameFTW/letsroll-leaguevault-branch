@@ -96,29 +96,7 @@ export default function WeeklyPaymentsPage() {
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
-    queryKey: ["/api/payments", { leagueId, weekOf: selectedDate?.toISOString() }],
-    queryFn: async ({ signal }) => {
-      const params = new URLSearchParams();
-      if (selectedDate) params.set("weekOf", selectedDate.toISOString());
-      params.set("leagueId", String(leagueId));
-      const response = await fetch(`/api/payments?${params.toString()}`, {
-        credentials: "include",
-        headers: { "Accept": "application/json" },
-        signal,
-      });
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData?.error?.message || "Failed to fetch payments");
-      }
-      return response.json();
-    },
-    enabled: !!selectedDate,
-    staleTime: 1000 * 60,
-  });
-
   const league = leagueResponse?.data;
-  const payments = paymentsResponse?.data || [];
   const enrichedBowlerLeagues = bowlerLeaguesResponse?.data || [];
 
   const sortedBowlerLeagues = useMemo(() => {
@@ -181,6 +159,29 @@ export default function WeeklyPaymentsPage() {
       league.cancelledDates ?? []
     ) ?? undefined;
   }, [league?.seasonStart, league?.weekDay, league?.skipDates, league?.cancelledDates, selectedWeek]);
+
+  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
+    queryKey: ["/api/payments", { leagueId, weekOf: selectedDate?.toISOString() }],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams();
+      if (selectedDate) params.set("weekOf", selectedDate.toISOString());
+      params.set("leagueId", String(leagueId));
+      const response = await fetch(`/api/payments?${params.toString()}`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" },
+        signal,
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error?.message || "Failed to fetch payments");
+      }
+      return response.json();
+    },
+    enabled: !!selectedDate,
+    staleTime: 1000 * 60,
+  });
+
+  const payments = paymentsResponse?.data || [];
 
   if ((loadingLeague || loadingBowlerLeagues) && !league) {
     return (
