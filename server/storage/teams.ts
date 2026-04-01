@@ -54,15 +54,17 @@ export async function renumberActiveTeams(leagueId: number): Promise<void> {
     .orderBy(teams.displayOrder, teams.number);
 
   const activeTeams = allTeams.filter(t => t.active);
-
-  if (activeTeams.length === 0) return;
+  const inactiveTeams = allTeams.filter(t => !t.active);
 
   await db.transaction(async (tx) => {
-    for (let i = 0; i < activeTeams.length; i++) {
-      await tx.update(teams).set({ number: -(i + 1) }).where(eq(teams.id, activeTeams[i].id));
+    for (let i = 0; i < allTeams.length; i++) {
+      await tx.update(teams).set({ number: -(i + 1) }).where(eq(teams.id, allTeams[i].id));
     }
     for (let i = 0; i < activeTeams.length; i++) {
       await tx.update(teams).set({ number: i + 1, displayOrder: i }).where(eq(teams.id, activeTeams[i].id));
+    }
+    for (let i = 0; i < inactiveTeams.length; i++) {
+      await tx.update(teams).set({ number: activeTeams.length + i + 1, displayOrder: activeTeams.length + i }).where(eq(teams.id, inactiveTeams[i].id));
     }
   });
 }
