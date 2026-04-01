@@ -231,9 +231,6 @@ export default function LeagueViewPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Add or remove bowlers, organize team rosters, and manage team assignments
-                </p>
               </CardContent>
             </Card>
           </Link>
