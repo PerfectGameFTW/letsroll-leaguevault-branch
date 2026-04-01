@@ -123,13 +123,13 @@ function getPageLabel(path: string): string {
   return "Page";
 }
 
-function getParentLabel(path: string): string | null {
+function getParentLabel(path: string): { label: string; href: string } | null {
   if (path === "/" || path === "/home") return null;
-  if (path.startsWith("/leagues/")) return "Leagues";
-  if (path.startsWith("/bowlers/")) return "Bowlers";
-  if (path.startsWith("/teams/")) return "Teams";
-  if (path.startsWith("/reports/")) return "Reports";
-  return "Dashboard";
+  if (path.startsWith("/leagues/")) return { label: "Leagues", href: "/leagues" };
+  if (path.startsWith("/bowlers/")) return { label: "Bowlers", href: "/bowlers" };
+  if (path.startsWith("/teams/")) return { label: "Teams", href: "/leagues" };
+  if (path.startsWith("/reports/")) return { label: "Reports", href: "/reports" };
+  return { label: "Dashboard", href: "/" };
 }
 
 const LeagueLoadingFallback = () => (
@@ -385,13 +385,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center text-slate-500">
             {parentLabel ? (
               <>
-                <span className="text-sm font-medium">{parentLabel}</span>
+                <Link href={parentLabel.href} className="text-sm font-medium hover:text-slate-900 transition-colors">{parentLabel.label}</Link>
                 <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
                 <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
               </>
             ) : (
               <>
-                <span className="text-sm font-medium">Dashboard</span>
+                <Link href="/" className="text-sm font-medium hover:text-slate-900 transition-colors">Dashboard</Link>
                 <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
                 <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
               </>
