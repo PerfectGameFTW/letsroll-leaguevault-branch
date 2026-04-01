@@ -306,6 +306,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     selectedSavedCardId,
     setPaymentError,
     onClose,
+    isCardPointe,
   });
 
   return (

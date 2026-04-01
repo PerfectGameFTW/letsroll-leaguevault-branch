@@ -64,12 +64,15 @@ export function usePaymentFormSubmit({
         }
 
         let sourceToken: string;
-        const isSquareCard = 'tokenize' in card && card.tokenize.length !== 0 || ('destroy' in card && 'attach' in card);
-        const cardAny = card as any;
 
-        if (cardAny.tokenize) {
-          const result = await cardAny.tokenize(
-            isSquareCard && data.storeCard ? {
+        if (isCardPointe) {
+          const cpCard = card as CardPointeCard;
+          const result = await cpCard.tokenize();
+          sourceToken = result.token;
+        } else {
+          const sqCard = card as SquareCard;
+          const result = await sqCard.tokenize(
+            data.storeCard ? {
               cardOnFile: true,
               verificationMethod: 'EXTERNAL',
               verificationDetails: {
@@ -80,18 +83,12 @@ export function usePaymentFormSubmit({
             } : undefined
           );
 
-          if ('status' in result) {
-            if (result.status !== 'OK' || !result.token) {
-              const errors = result.errors || [];
-              const errorMessage = errors.map((e: { message: string }) => e.message).join(', ') || 'Card validation failed';
-              throw new Error(errorMessage);
-            }
-            sourceToken = result.token;
-          } else {
-            sourceToken = result.token;
+          if (result.status !== 'OK' || !result.token) {
+            const errors = result.errors || [];
+            const errorMessage = errors.map((e: { message: string }) => e.message).join(', ') || 'Card validation failed';
+            throw new Error(errorMessage);
           }
-        } else {
-          throw new Error('Card tokenization not available');
+          sourceToken = result.token;
         }
 
         const response = await csrfFetch('/api/payments-provider/payments', {

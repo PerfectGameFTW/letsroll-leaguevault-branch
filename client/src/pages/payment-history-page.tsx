@@ -36,33 +36,6 @@ export default function PaymentHistoryPage() {
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
   const [storeCard, setStoreCard] = useState(false);
-  const { config: providerConfig, isCardPointe, supportsWallets } = usePaymentProvider(league?.locationId ?? null);
-
-  const { card: sqCard, isInitialized: sqInit, initializeCard: sqInitCard, cleanupCard: sqCleanup } = useSquarePayment({
-    onError: (error) => {
-      console.error('[Square Payment Error]:', error);
-      toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
-    }
-  });
-
-  const { card: cpCard, isInitialized: cpInit, initializeCard: cpInitCard, cleanupCard: cpCleanup } = useCardPointePayment({
-    tokenizerUrl: providerConfig?.tokenizerUrl,
-    onError: (error) => {
-      console.error('[CardPointe Payment Error]:', error);
-      toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
-    }
-  });
-
-  const card = isCardPointe ? cpCard : sqCard;
-  const isInitialized = isCardPointe ? cpInit : sqInit;
-  const initializeCard = isCardPointe ? cpInitCard : sqInitCard;
-  const cleanupCard = isCardPointe ? cpCleanup : sqCleanup;
-
-  useEffect(() => {
-    if (!payDialogType) {
-      cleanupCard();
-    }
-  }, [payDialogType]);
 
   const [isWalletProcessing, setIsWalletProcessing] = useState(false);
 
@@ -159,6 +132,35 @@ export default function PaymentHistoryPage() {
   });
 
   const league = leagueMap.get(leagueId!);
+
+  const { config: providerConfig, isCardPointe, supportsWallets } = usePaymentProvider(league?.locationId ?? null);
+
+  const { card: sqCard, isInitialized: sqInit, initializeCard: sqInitCard, cleanupCard: sqCleanup } = useSquarePayment({
+    onError: (error) => {
+      console.error('[Square Payment Error]:', error);
+      toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
+    }
+  });
+
+  const { card: cpCard, isInitialized: cpInit, initializeCard: cpInitCard, cleanupCard: cpCleanup } = useCardPointePayment({
+    tokenizerUrl: providerConfig?.tokenizerUrl,
+    onError: (error) => {
+      console.error('[CardPointe Payment Error]:', error);
+      toast({ title: "Payment Setup Error", description: error, variant: "destructive" });
+    }
+  });
+
+  const card = isCardPointe ? cpCard : sqCard;
+  const isInitialized = isCardPointe ? cpInit : sqInit;
+  const initializeCard = isCardPointe ? cpInitCard : sqInitCard;
+  const cleanupCard = isCardPointe ? cpCleanup : sqCleanup;
+
+  useEffect(() => {
+    if (!payDialogType) {
+      cleanupCard();
+    }
+  }, [payDialogType]);
+
   const payments = hasPaymentsFromDetails ? allPaymentsFromDetails : (paymentsResponse?.data || []);
   const bowlerName = bowlerDetailsResponse?.data?.bowler?.name || '';
 
@@ -287,7 +289,7 @@ export default function PaymentHistoryPage() {
           throw new Error(responseData.error?.message || 'Payment failed');
         }
       } else {
-        await createPayment(dialogAmount, card, bowlerId, leagueId, storeCard);
+        await createPayment(dialogAmount, card!, bowlerId, leagueId, storeCard);
         if (storeCard) {
           queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
         }

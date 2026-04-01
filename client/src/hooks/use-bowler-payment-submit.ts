@@ -82,7 +82,7 @@ export function useBowlerPaymentSubmit({
         if (cardMode === 'saved' && selectedSavedCardId) {
           paymentCardId = selectedSavedCardId;
         } else {
-          const token = await tokenizeCard(card);
+          const token = await tokenizeCard(card!);
           const saveResponse = await csrfFetch(`/api/payments-provider/cards/${bowler.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -132,7 +132,7 @@ export function useBowlerPaymentSubmit({
         if (cardMode === 'saved' && selectedSavedCardId) {
           paymentCardId = selectedSavedCardId;
         } else {
-          const token = await tokenizeCard(card);
+          const token = await tokenizeCard(card!);
           const saveResponse = await csrfFetch(`/api/payments-provider/cards/${bowler.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -168,7 +168,7 @@ export function useBowlerPaymentSubmit({
         paymentWasCharged = true;
       } else {
         const shouldStore = isAutoPay || storeCard;
-        const paymentResult = await createPayment(amount, card, bowler.id, league.id, shouldStore);
+        const paymentResult = await createPayment(amount, card!, bowler.id, league.id, shouldStore);
         if (shouldStore) {
           queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
         }

@@ -1,5 +1,7 @@
 import { loadScript } from "@/lib/utils";
 import { csrfFetch } from '@/lib/queryClient';
+import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
+import type { SquareCard as SquareCardHook } from "@/hooks/use-square-payment";
 
 const SDK_LOAD_MAX_ATTEMPTS = 3;
 const SDK_LOAD_RETRY_DELAY_MS = 1000;
@@ -276,17 +278,18 @@ export async function initializeSquare(locationId?: number | null): Promise<Squa
   }
 }
 
-export async function tokenizeCard(cardInstance: any): Promise<string> {
+export async function tokenizeCard(cardInstance: SquareCard | CardPointeCard): Promise<string> {
   if (!cardInstance) {
     throw new Error(JSON.stringify({
       error: { message: 'Card element not initialized', code: 'INITIALIZATION_ERROR' }
     }));
   }
   const result = await cardInstance.tokenize();
-  if (result.token && (result.status === 'OK' || !('status' in result))) {
-    return result.token;
-  }
-  if (result.status === 'OK' && result.token) {
+  if ('status' in result) {
+    if (result.status === 'OK' && result.token) {
+      return result.token;
+    }
+  } else if (result.token) {
     return result.token;
   }
   throw new Error(JSON.stringify({
@@ -294,7 +297,7 @@ export async function tokenizeCard(cardInstance: any): Promise<string> {
   }));
 }
 
-export async function createPayment(amount: number, cardInstance: any, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
+export async function createPayment(amount: number, cardInstance: SquareCardHook | CardPointeCard, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
   try {
     if (!cardInstance) {
       throw new Error(JSON.stringify({
@@ -393,7 +396,7 @@ export async function createPayment(amount: number, cardInstance: any, bowlerId:
 
       return responseData;
     } else {
-      const errors = result.errors || [];
+      const errors = ('errors' in result && result.errors) ? result.errors : [];
       const errorMessage = errors.map((e: { message: string }) => e.message).join(', ') || 'Card validation failed';
       throw new Error(JSON.stringify({
         error: {
