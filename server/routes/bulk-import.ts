@@ -6,6 +6,7 @@ import { sendSuccess, sendError } from '../utils/api.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
 import { createLogger } from '../logger';
 import { z } from 'zod';
+import { insertBowlerSchema } from '../../shared/schema/bowlers';
 
 const log = createLogger("BulkImport");
 
@@ -16,7 +17,6 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 },
 });
 
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface ParsedRow {
   rowNumber: number;
@@ -195,10 +195,17 @@ router.post('/', (req: any, res, next) => {
     for (const row of rows) {
       const vRow: ValidatedRow = { ...row, status: 'valid', errors: [] };
 
-      if (!row.bowlerName || row.bowlerName.length < 1) {
-        vRow.errors.push('Bowler name is required');
-      } else if (row.bowlerName.length > 100) {
-        vRow.errors.push('Bowler name is too long');
+      const bowlerValidation = insertBowlerSchema.safeParse({
+        name: row.bowlerName,
+        email: row.email || undefined,
+        phone: row.phone || undefined,
+        active: true,
+        order: 0,
+      });
+      if (!bowlerValidation.success) {
+        for (const issue of bowlerValidation.error.issues) {
+          vRow.errors.push(`${issue.path.join('.')}: ${issue.message}`);
+        }
       }
 
       if (!row.leagueName) {
@@ -221,19 +228,15 @@ router.post('/', (req: any, res, next) => {
       }
 
       if (row.email) {
-        if (!emailRegex.test(row.email)) {
-          vRow.errors.push('Invalid email format');
+        const emailLower = row.email.toLowerCase();
+        if (existingEmailSet.has(emailLower)) {
+          vRow.status = 'duplicate';
+          vRow.errors.push('A bowler with this email already exists');
+        } else if (emailsInFile.has(emailLower)) {
+          vRow.status = 'duplicate';
+          vRow.errors.push(`Duplicate email in file (same as row ${emailsInFile.get(emailLower)})`);
         } else {
-          const emailLower = row.email.toLowerCase();
-          if (existingEmailSet.has(emailLower)) {
-            vRow.status = 'duplicate';
-            vRow.errors.push('A bowler with this email already exists');
-          } else if (emailsInFile.has(emailLower)) {
-            vRow.status = 'duplicate';
-            vRow.errors.push(`Duplicate email in file (same as row ${emailsInFile.get(emailLower)})`);
-          } else {
-            emailsInFile.set(emailLower, row.rowNumber);
-          }
+          emailsInFile.set(emailLower, row.rowNumber);
         }
       }
 
@@ -328,9 +331,11 @@ router.post('/', (req: any, res, next) => {
           order: 0,
         });
 
-        runBowlerPostCreateSync(created, organizationId).catch((e) =>
-          log.error(`Post-create sync error for bowler ${created.id}:`, e),
-        );
+        try {
+          await runBowlerPostCreateSync(created, organizationId);
+        } catch (syncErr) {
+          log.error(`Post-create sync error for bowler ${created.id}:`, syncErr);
+        }
 
         bowlersCreated++;
       } catch (err) {
