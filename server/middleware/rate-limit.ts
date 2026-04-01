@@ -44,6 +44,14 @@ export const emailTestLimiter = rateLimit({
   message: rateLimitMessage("Too many test email requests, please try again later"),
 });
 
+export const setupAdminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: rateLimitMessage("Too many setup requests, please try again later"),
+});
+
 export const inviteLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   max: 15,

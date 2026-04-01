@@ -6,6 +6,7 @@ import { hashPassword, safeTokenCompare } from '../auth.js';
 import { passwordSchema } from '@shared/password-validation.js';
 import { env } from '../config';
 import { createLogger } from '../logger';
+import { setupAdminLimiter } from '../middleware/rate-limit.js';
 
 const log = createLogger("SetupAdmin");
 
@@ -14,7 +15,7 @@ const router = Router();
 // Endpoint to create the first admin user
 // This can only be used if there are no admin users in the system
 // Requires a SETUP_SECRET header matching the SETUP_SECRET environment variable
-router.post('/create-first-admin', async (req: Request, res: Response) => {
+router.post('/create-first-admin', setupAdminLimiter, async (req: Request, res: Response) => {
   try {
     const setupSecret = env.SETUP_SECRET;
     if (!setupSecret) {
