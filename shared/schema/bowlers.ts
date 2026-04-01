@@ -12,7 +12,7 @@ export const bowlers = pgTable("bowlers", {
   phone: text("phone"),
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
-  squareCustomerId: text("square_customer_id"),
+  paymentCustomerId: text("payment_customer_id"),
   cardpointeProfileId: text("cardpointe_profile_id"),
   bnContactId: text("bn_contact_id"),
 });
@@ -53,7 +53,7 @@ export const insertBowlerSchema = baseBowlerSchema.extend({
   phone: z.string().nullable().optional(),
   active: z.boolean().default(true),
   order: z.number().min(0).default(0),
-  squareCustomerId: z.string().nullable().optional(),
+  paymentCustomerId: z.string().nullable().optional(),
   cardpointeProfileId: z.string().nullable().optional(),
 }).omit({ id: true });
 
@@ -71,7 +71,7 @@ export const updateBowlerSchema = z.object({
   phone: z.string().nullable(),
   active: z.boolean(),
   order: z.number().min(0),
-  squareCustomerId: z.string().nullable(),
+  paymentCustomerId: z.string().nullable(),
   cardpointeProfileId: z.string().nullable(),
   bnContactId: z.string().nullable(),
 }).partial();

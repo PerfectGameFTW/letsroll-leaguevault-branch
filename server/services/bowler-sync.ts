@@ -45,7 +45,7 @@ export async function runBowlerPostCreateSync(
         if (squareCustomer) {
           current = await storage.updateBowler(current.id, {
             ...current,
-            squareCustomerId: squareCustomer.id,
+            paymentCustomerId: squareCustomer.id,
             active: true,
           });
         }

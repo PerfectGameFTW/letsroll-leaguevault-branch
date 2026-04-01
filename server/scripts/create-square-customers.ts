@@ -1,6 +1,6 @@
 /**
  * One-off migration script: backfills Square customer records for bowlers
- * that don't have a squareCustomerId yet.
+ * that don't have a paymentCustomerId yet.
  *
  * IMPORTANT: This script reads credentials from environment variables and
  * must be run once per location with that location's own Square credentials.
@@ -43,7 +43,7 @@ async function createSquareCustomers() {
     const bowlersWithoutSquareId = await db
       .select()
       .from(bowlers)
-      .where(isNull(bowlers.squareCustomerId));
+      .where(isNull(bowlers.paymentCustomerId));
 
     log.info(`Found ${bowlersWithoutSquareId.length} bowlers without Square Customer IDs`);
 
@@ -69,7 +69,7 @@ async function createSquareCustomers() {
         if (response.result.customer?.id) {
           await db
             .update(bowlers)
-            .set({ squareCustomerId: response.result.customer.id })
+            .set({ paymentCustomerId: response.result.customer.id })
             .where(eq(bowlers.id, bowler.id));
 
           log.info(`Created Square Customer for ${bowler.name} (ID: ${response.result.customer.id})`);

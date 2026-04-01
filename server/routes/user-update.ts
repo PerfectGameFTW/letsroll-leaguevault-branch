@@ -116,11 +116,11 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
                     updatedUser.phone,
                   )
                 : null;
-              if (squareCustomer && squareCustomer.id !== bowler.squareCustomerId) {
+              if (squareCustomer && squareCustomer.id !== bowler.paymentCustomerId) {
                 await storage.updateBowler(bowler.id, {
                   ...bowler,
                   ...bowlerUpdate,
-                  squareCustomerId: squareCustomer.id,
+                  paymentCustomerId: squareCustomer.id,
                 });
                 log.info('Linked Square customer to bowler:', squareCustomer.id);
               }

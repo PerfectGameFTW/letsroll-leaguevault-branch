@@ -41,7 +41,7 @@ export async function processScheduledPaymentJob(
     logger.info(`[PaymentScheduler] Executing scheduled payment for ${jobId}`, {
       amount: scheduleRecord.amount,
       bowlerId: scheduleRecord.bowlerId,
-      cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`,
+      cardToken: `${scheduleRecord.paymentCardId?.substring(0, 10)}...`,
       executionTime: new Date().toISOString(),
       scheduledTime: scheduleRecord.nextPaymentDate
     });
@@ -88,7 +88,7 @@ export async function processScheduledPaymentJob(
         id: scheduleRecord.id,
         bowlerId: scheduleRecord.bowlerId,
         amount: scheduleRecord.amount,
-        cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`
+        cardToken: `${scheduleRecord.paymentCardId?.substring(0, 10)}...`
       },
       executionTime: new Date().toISOString()
     });
@@ -167,7 +167,7 @@ async function handleSuccessfulPayment(
       status: 'paid',
       type: 'credit_card',
       weekOf: scheduleRecord.nextPaymentDate,
-      squarePaymentId: paymentResult.paymentId,
+      providerPaymentId: paymentResult.paymentId,
       cardpointeRetref: paymentResult.providerRef?.cardpointeRetref,
       cardpointeAuthcode: paymentResult.providerRef?.cardpointeAuthcode,
     });
@@ -227,7 +227,7 @@ async function handleFailedPayment(
       id: scheduleRecord.id,
       bowlerId: scheduleRecord.bowlerId,
       amount: scheduleRecord.amount,
-      cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`
+      cardToken: `${scheduleRecord.paymentCardId?.substring(0, 10)}...`
     },
     failureTime: new Date().toISOString()
   });

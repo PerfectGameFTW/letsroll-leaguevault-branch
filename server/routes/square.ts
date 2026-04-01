@@ -39,7 +39,7 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
       return sendError(res, "Payment not found", 404, 'NOT_FOUND');
     }
 
-    if (!dbPayment.squarePaymentId) {
+    if (!dbPayment.providerPaymentId) {
       return res.json({
         dbPayment: { id: dbPayment.id, amount: dbPayment.amount, status: dbPayment.status, type: dbPayment.type, createdAt: dbPayment.createdAt },
         squarePayment: null,
@@ -51,11 +51,11 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
     const locationId = league?.locationId ?? null;
 
     const provider = await getPaymentProvider(locationId);
-    const providerPayment = provider ? await provider.getPayment(dbPayment.squarePaymentId) : null;
+    const providerPayment = provider ? await provider.getPayment(dbPayment.providerPaymentId) : null;
 
     log.info('Payment verification:', {
       dbPaymentId: dbPayment.id,
-      squarePaymentId: dbPayment.squarePaymentId,
+      providerPaymentId: dbPayment.providerPaymentId,
       providerFound: !!providerPayment,
       providerStatus: providerPayment?.status,
       dbStatus: dbPayment.status,
@@ -67,7 +67,7 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
         amount: dbPayment.amount,
         status: dbPayment.status,
         type: dbPayment.type,
-        squarePaymentId: dbPayment.squarePaymentId,
+        providerPaymentId: dbPayment.providerPaymentId,
         createdAt: dbPayment.createdAt,
         bowlerId: dbPayment.bowlerId,
         leagueId: dbPayment.leagueId,
@@ -170,8 +170,8 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
     const existingPayment = await storage.getPaymentByIdempotencyKey(idempotencyKey);
     const truncatedIdempotencyKey = idempotencyKey.substring(0, 39);
     if (existingPayment) {
-      log.info('Payment deduplicated (same token resubmitted):', { dbPaymentId: existingPayment.id, squarePaymentId: existingPayment.squarePaymentId, bowlerId, leagueId, amount });
-      return res.json({ dbPaymentId: existingPayment.id, id: existingPayment.squarePaymentId, status: 'COMPLETED', deduplicated: true });
+      log.info('Payment deduplicated (same token resubmitted):', { dbPaymentId: existingPayment.id, providerPaymentId: existingPayment.providerPaymentId, bowlerId, leagueId, amount });
+      return res.json({ dbPaymentId: existingPayment.id, id: existingPayment.providerPaymentId, status: 'COMPLETED', deduplicated: true });
     }
 
     const lvLocationId = league.locationId ?? null;
@@ -182,16 +182,20 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
 
     const customerId = getProviderCustomerId(bowler, provider);
 
+    if (req.body.storeCard && !customerId) {
+      log.warn('Cannot store card — bowler has no customer ID:', bowlerId);
+    }
+
     const lineItems: { catalogObjectId: string; quantity: string }[] = [];
     const weeklyFee = league.weeklyFee || 0;
     const quantity = weeklyFee > 0 && amount % weeklyFee === 0
       ? String(amount / weeklyFee)
       : '1';
-    if (league?.squareLineageItemVariationId) {
-      lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity });
+    if (league?.lineageItemVariationId) {
+      lineItems.push({ catalogObjectId: league.lineageItemVariationId, quantity });
     }
-    if (league?.squarePrizeFundItemVariationId) {
-      lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity });
+    if (league?.prizeFundItemVariationId) {
+      lineItems.push({ catalogObjectId: league.prizeFundItemVariationId, quantity });
     }
 
     const buyerEmail = bowler.email || undefined;
@@ -280,7 +284,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       weekOf: weekOf.toISOString(),
       status: 'paid',
       type: 'credit_card',
-      squarePaymentId: payment.id,
+      providerPaymentId: payment.id,
       cardpointeRetref: payment.providerRef?.cardpointeRetref,
       cardpointeAuthcode: payment.providerRef?.cardpointeAuthcode,
       idempotencyKey,
@@ -450,15 +454,6 @@ router.post('/cards/:bowlerId', async (req, res) => {
     const bowler = await storage.getBowler(bowlerId);
     if (!bowler) {
       return sendError(res, 'Bowler not found', 404);
-    }
-
-    const cardLeagueId = req.body.leagueId ? parseInt(req.body.leagueId) : null;
-    const cardLeague = cardLeagueId ? await storage.getLeague(cardLeagueId) : null;
-    const cardLvLocationId = cardLeague?.locationId ?? null;
-
-    const provider = await getPaymentProvider(cardLvLocationId);
-    if (!provider) {
-      return sendError(res, 'Payment provider not configured for this location', 500);
     }
 
     const providerCustId = getProviderCustomerId(bowler, provider);

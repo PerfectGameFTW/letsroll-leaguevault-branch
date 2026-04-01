@@ -356,7 +356,7 @@ router.patch("/:id", async (req, res) => {
       }
 
       const nameChanged = bowler.name !== updated.name;
-      const needsSquareSync = !updated.squareCustomerId || emailChanged || nameChanged;
+      const needsSquareSync = !updated.paymentCustomerId || emailChanged || nameChanged;
 
       if (needsSquareSync) {
         try {
@@ -365,10 +365,10 @@ router.patch("/:id", async (req, res) => {
           if (patchSquareLocation?.id) {
             const patchProvider = await getPaymentProvider(patchSquareLocation.id);
             const squareCustomer = patchProvider ? await patchProvider.createOrUpdateCustomer(updated.name, updated.email) : null;
-            if (squareCustomer && squareCustomer.id !== updated.squareCustomerId) {
+            if (squareCustomer && squareCustomer.id !== updated.paymentCustomerId) {
               updated = await storage.updateBowler(id, {
                 ...updated,
-                squareCustomerId: squareCustomer.id,
+                paymentCustomerId: squareCustomer.id,
               });
             }
           } else {

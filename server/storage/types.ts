@@ -71,7 +71,7 @@ export interface IPaymentStorage {
   getPaymentByIdempotencyKey(key: string): Promise<Payment | undefined>;
   createPayment(payment: InsertPayment): Promise<Payment>;
   updatePayment(id: number, payment: UpdatePayment): Promise<Payment>;
-  refundPayment(id: number, squareRefundId?: string, reason?: string): Promise<Payment>;
+  refundPayment(id: number, providerRefundId?: string, reason?: string): Promise<Payment>;
   deletePayment(id: number): Promise<void>;
   createPaymentSchedule(schedule: InsertPaymentSchedule): Promise<PaymentSchedule>;
   getPaymentSchedule(bowlerId: number, leagueId: number): Promise<PaymentSchedule | undefined>;

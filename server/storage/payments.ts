@@ -182,12 +182,12 @@ export async function updatePayment(id: number, payment: UpdatePayment): Promise
   return result;
 }
 
-export async function refundPayment(id: number, squareRefundId?: string, reason?: string): Promise<Payment> {
+export async function refundPayment(id: number, providerRefundId?: string, reason?: string): Promise<Payment> {
   const [result] = await db
     .update(payments)
     .set({
       status: 'refunded',
-      squareRefundId: squareRefundId || null,
+      squareRefundId: providerRefundId || null,
       refundReason: reason || null,
       refundedAt: new Date().toISOString(),
     })
@@ -261,7 +261,7 @@ export async function updatePaymentScheduleFields(
 export async function updatePaymentScheduleCard(bowlerId: number, leagueId: number, cardId: string): Promise<void> {
   await db
     .update(paymentSchedules)
-    .set({ squareCardId: cardId })
+    .set({ paymentCardId: cardId })
     .where(
       and(
         eq(paymentSchedules.bowlerId, bowlerId),

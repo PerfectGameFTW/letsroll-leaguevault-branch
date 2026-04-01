@@ -221,8 +221,8 @@ export async function syncBowlerToBN(
     }
 
     const customFields: { id: string; value: string | string[] }[] = [];
-    if (bowler.squareCustomerId) {
-      customFields.push({ id: CUSTOM_FIELD_IDS.squareCustomerId, value: bowler.squareCustomerId });
+    if (bowler.paymentCustomerId) {
+      customFields.push({ id: CUSTOM_FIELD_IDS.squareCustomerId, value: bowler.paymentCustomerId });
     }
     if (leagueNames.length > 0) {
       customFields.push({ id: CUSTOM_FIELD_IDS.leagueName, value: leagueNames.length === 1 ? leagueNames[0] : leagueNames });

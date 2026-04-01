@@ -74,10 +74,10 @@ export function useBowlerPaymentSubmit({
 
       if (isUpfront) {
         const upfrontAmount = financials.fullSeasonAmount;
-        let squareCardId: string;
+        let paymentCardId: string;
 
         if (cardMode === 'saved' && selectedSavedCardId) {
-          squareCardId = selectedSavedCardId;
+          paymentCardId = selectedSavedCardId;
         } else {
           const token = await tokenizeCard(card);
           const saveResponse = await csrfFetch(`/api/square/cards/${bowler.id}`, {
@@ -89,7 +89,7 @@ export function useBowlerPaymentSubmit({
           if (!saveResponse.ok || !saveData.data?.savedCardId) {
             throw new Error(saveData.error?.message || 'Your card could not be saved. Please try again.');
           }
-          squareCardId = saveData.data.savedCardId;
+          paymentCardId = saveData.data.savedCardId;
           queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
         }
 
@@ -102,7 +102,7 @@ export function useBowlerPaymentSubmit({
             frequency: 'upfront',
             amount: upfrontAmount,
             nextPaymentDate: new Date(),
-            squareCardId,
+            paymentCardId,
             includeFinalTwoWeeks: false,
           }),
         });
@@ -122,12 +122,12 @@ export function useBowlerPaymentSubmit({
       
       const amount = calculateTotalAmount();
       const hasOutstandingBalance = financials.amountPastDue > 0;
-      let squareCardId: string | null = null;
+      let paymentCardId: string | null = null;
       let paymentWasCharged = false;
 
       if (isAutoPay && !hasOutstandingBalance) {
         if (cardMode === 'saved' && selectedSavedCardId) {
-          squareCardId = selectedSavedCardId;
+          paymentCardId = selectedSavedCardId;
         } else {
           const token = await tokenizeCard(card);
           const saveResponse = await csrfFetch(`/api/square/cards/${bowler.id}`, {
@@ -139,8 +139,8 @@ export function useBowlerPaymentSubmit({
           if (!saveResponse.ok) {
             throw new Error(saveData.error?.message || 'Failed to save card');
           }
-          squareCardId = saveData.data?.savedCardId || null;
-          if (!squareCardId) {
+          paymentCardId = saveData.data?.savedCardId || null;
+          if (!paymentCardId) {
             throw new Error('Your card could not be saved for auto-pay. Please try again.');
           }
           queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
@@ -161,7 +161,7 @@ export function useBowlerPaymentSubmit({
         if (!response.ok) {
           throw new Error(responseData.error?.message || 'Payment failed');
         }
-        squareCardId = selectedSavedCardId;
+        paymentCardId = selectedSavedCardId;
         paymentWasCharged = true;
       } else {
         const shouldStore = isAutoPay || storeCard;
@@ -170,15 +170,15 @@ export function useBowlerPaymentSubmit({
           queryClient.invalidateQueries({ queryKey: [`/api/square/cards/${bowler.id}`] });
         }
         if (isAutoPay) {
-          squareCardId = paymentResult.savedCardId || null;
-          if (!squareCardId) {
+          paymentCardId = paymentResult.savedCardId || null;
+          if (!paymentCardId) {
             throw new Error('Your card could not be saved for auto-pay. Please try again.');
           }
         }
         paymentWasCharged = true;
       }
 
-      if (isAutoPay && squareCardId) {
+      if (isAutoPay && paymentCardId) {
         const recurringAmount = weeklyFee;
         const scheduleResponse = await csrfFetch('/api/payment-schedules', {
           method: 'POST',
@@ -189,7 +189,7 @@ export function useBowlerPaymentSubmit({
             frequency: selectedSchedule,
             amount: recurringAmount,
             nextPaymentDate: new Date(),
-            squareCardId,
+            paymentCardId,
             includeFinalTwoWeeks,
           }),
         });

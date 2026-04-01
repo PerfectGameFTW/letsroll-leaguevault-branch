@@ -20,7 +20,7 @@ export const payments = pgTable("payments", {
   status: text("status", { enum: PAYMENT_STATUSES }).notNull().default('paid'),
   type: text("type", { enum: PAYMENT_TYPES }).notNull(),
   checkNumber: text("check_number"),
-  squarePaymentId: text("square_payment_id"),
+  providerPaymentId: text("provider_payment_id"),
   cardpointeRetref: text("cardpointe_retref"),
   cardpointeAuthcode: text("cardpointe_authcode"),
   idempotencyKey: text("idempotency_key").unique(),
@@ -49,7 +49,7 @@ export const paymentSchedules = pgTable("payment_schedules", {
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
   lastPaymentDate: timestamp("last_payment_date", { mode: "string" }),
-  squareCardId: text("payment_card_id").notNull(),
+  paymentCardId: text("payment_card_id").notNull(),
 }, (table) => ({
   bowlerScheduleIdx: index("bowler_schedule_idx").on(table.bowlerId, table.leagueId),
   nextPaymentIdx: index("next_payment_idx").on(table.nextPaymentDate),
@@ -69,7 +69,7 @@ export const insertPaymentSchema = basePaymentSchema.extend({
   status: z.enum(PAYMENT_STATUSES).default("paid"),
   type: z.enum(PAYMENT_TYPES),
   checkNumber: z.string().optional(),
-  squarePaymentId: z.string().optional(),
+  providerPaymentId: z.string().optional(),
   cardpointeRetref: z.string().optional(),
   cardpointeAuthcode: z.string().optional(),
   idempotencyKey: z.string().optional(),
@@ -84,7 +84,7 @@ export const insertPaymentScheduleSchema = basePaymentScheduleSchema.extend({
   amount: positiveIntSchema,
   nextPaymentDate: dateSchema,
   active: z.boolean().default(true),
-  squareCardId: z.string(),
+  paymentCardId: z.string(),
 }).omit({ id: true, createdAt: true, lastPaymentDate: true });
 
 export const updatePaymentSchema = z.object({
@@ -95,7 +95,7 @@ export const updatePaymentSchema = z.object({
   status: z.enum(PAYMENT_STATUSES),
   type: z.enum(PAYMENT_TYPES),
   checkNumber: z.string().nullable(),
-  squarePaymentId: z.string().nullable(),
+  providerPaymentId: z.string().nullable(),
   cardpointeRetref: z.string().nullable(),
   cardpointeAuthcode: z.string().nullable(),
   squareRefundId: z.string().nullable(),
@@ -109,7 +109,7 @@ export const updatePaymentScheduleSchema = z.object({
   amount: positiveIntSchema,
   nextPaymentDate: dateSchema,
   active: z.boolean(),
-  squareCardId: z.string(),
+  paymentCardId: z.string(),
   lastPaymentDate: dateSchema.nullable(),
 }).partial();
 

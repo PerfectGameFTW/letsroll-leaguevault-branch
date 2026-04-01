@@ -110,7 +110,7 @@ class PaymentScheduler {
           leagueId: s.leagueId,
           nextPaymentDate: s.nextPaymentDate,
           amount: s.amount,
-          cardId: s.squareCardId ? `${s.squareCardId.substring(0, 10)}...` : 'none',
+          cardId: s.paymentCardId ? `${s.paymentCardId.substring(0, 10)}...` : 'none',
           organizationId: organizationFilteredSchedules.find(item => item.schedule.id === s.id)?.leagueOrganizationId ?? null
         }))
       });
@@ -118,7 +118,7 @@ class PaymentScheduler {
       const validationResults = await Promise.all(
         activeSchedules.map(async s => ({
           schedule: s,
-          isValid: await this.validateCardForProvider(s.squareCardId, s.leagueId),
+          isValid: await this.validateCardForProvider(s.paymentCardId, s.leagueId),
         }))
       );
 
@@ -138,7 +138,7 @@ class PaymentScheduler {
           frequency: s.frequency,
           bowlerId: s.bowlerId,
           leagueId: s.leagueId,
-          cardToken: `${s.squareCardId?.substring(0, 10)}...`,
+          cardToken: `${s.paymentCardId?.substring(0, 10)}...`,
           scheduledAt: new Date().toISOString()
         });
         this.schedulePayment(s);
@@ -167,7 +167,7 @@ class PaymentScheduler {
     const jobId = `payment-${scheduleRecord.id}`;
     const now = new Date();
 
-    if (!scheduleRecord.squareCardId) {
+    if (!scheduleRecord.paymentCardId) {
       logger.warn(`[PaymentScheduler] Missing card token for schedule ${scheduleRecord.id}`);
       return;
     }
@@ -181,7 +181,7 @@ class PaymentScheduler {
         amount: scheduleRecord.amount,
         frequency: scheduleRecord.frequency,
         bowlerId: scheduleRecord.bowlerId,
-        cardToken: `${scheduleRecord.squareCardId?.substring(0, 10)}...`
+        cardToken: `${scheduleRecord.paymentCardId?.substring(0, 10)}...`
       }
     });
 
@@ -220,7 +220,7 @@ class PaymentScheduler {
   }
 
   async addSchedule(scheduleRecord: PaymentSchedule, organizationId?: number | null) {
-    const isValid = await this.validateCardForProvider(scheduleRecord.squareCardId, scheduleRecord.leagueId);
+    const isValid = await this.validateCardForProvider(scheduleRecord.paymentCardId, scheduleRecord.leagueId);
     if (!isValid) {
       return;
     }
@@ -236,7 +236,7 @@ class PaymentScheduler {
       nextPaymentDate: scheduleRecord.nextPaymentDate,
       frequency: scheduleRecord.frequency,
       bowlerId: scheduleRecord.bowlerId,
-      cardId: `${scheduleRecord.squareCardId?.substring(0, 10)}...`,
+      cardId: `${scheduleRecord.paymentCardId?.substring(0, 10)}...`,
       addedAt: new Date().toISOString()
     });
     this.schedulePayment(scheduleRecord);
@@ -268,7 +268,7 @@ class PaymentScheduler {
   }
 
   async updateSchedule(schedule: PaymentSchedule, organizationId?: number | null) {
-    const isValid = await this.validateCardForProvider(schedule.squareCardId, schedule.leagueId);
+    const isValid = await this.validateCardForProvider(schedule.paymentCardId, schedule.leagueId);
     if (!isValid) {
       logger.error(`[PaymentScheduler] Cannot update schedule with invalid card ID`, {
         scheduleId: schedule.id,
@@ -288,7 +288,7 @@ class PaymentScheduler {
       nextPaymentDate: schedule.nextPaymentDate,
       frequency: schedule.frequency,
       bowlerId: schedule.bowlerId,
-      cardId: `${schedule.squareCardId?.substring(0, 10)}...`,
+      cardId: `${schedule.paymentCardId?.substring(0, 10)}...`,
       updatedAt: new Date().toISOString()
     });
     this.schedulePayment(schedule);

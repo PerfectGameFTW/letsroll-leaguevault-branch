@@ -390,13 +390,13 @@ export default function BowlerViewPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      {payment.squarePaymentId ? (
+                      {payment.providerPaymentId ? (
                         <>
                           <span className="font-mono text-sm">
-                            {payment.squarePaymentId}
+                            {payment.providerPaymentId}
                           </span>
                           <a
-                            href={`https://squareup.com/dashboard/payments/${payment.squarePaymentId}`}
+                            href={`https://squareup.com/dashboard/payments/${payment.providerPaymentId}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-muted-foreground hover:text-foreground"

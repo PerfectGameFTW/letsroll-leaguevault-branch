@@ -22,7 +22,7 @@ async function fetchBowlerPaymentInfo(bowlerId: number) {
   const bowler = await db.select().from(bowlers).where(eq(bowlers.id, bowlerId)).then(r => r[0]);
   return {
     buyerEmail: bowler?.email || undefined,
-    squareCustomerId: bowler?.squareCustomerId || undefined,
+    paymentCustomerId: bowler?.paymentCustomerId || undefined,
   };
 }
 
@@ -31,11 +31,11 @@ function buildLineItems(
   quantity: string
 ): OrderLineItem[] {
   const lineItems: OrderLineItem[] = [];
-  if (league.squareLineageItemVariationId) {
-    lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity });
+  if (league.lineageItemVariationId) {
+    lineItems.push({ catalogObjectId: league.lineageItemVariationId, quantity });
   }
-  if (league.squarePrizeFundItemVariationId) {
-    lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity });
+  if (league.prizeFundItemVariationId) {
+    lineItems.push({ catalogObjectId: league.prizeFundItemVariationId, quantity });
   }
   return lineItems;
 }
@@ -45,7 +45,7 @@ export async function executeCharge(
   cardId: string,
   amount: number,
   lineItems: OrderLineItem[],
-  squareCustomerId: string | undefined,
+  paymentCustomerId: string | undefined,
   buyerEmail: string | undefined
 ): Promise<ChargeResult> {
   if (lineItems.length > 0) {
@@ -55,7 +55,7 @@ export async function executeCharge(
         amount,
         lineItems,
         false,
-        squareCustomerId,
+        paymentCustomerId,
         buyerEmail
       );
       if (!orderResult.id) {
@@ -70,7 +70,7 @@ export async function executeCharge(
       cardId,
       amount,
       false,
-      squareCustomerId,
+      paymentCustomerId,
       buyerEmail,
       undefined,
     );
@@ -86,14 +86,14 @@ export async function executeSquareCharge(
   amount: number,
   lineItems: OrderLineItem[],
   locationId: number | null,
-  squareCustomerId: string | undefined,
+  paymentCustomerId: string | undefined,
   buyerEmail: string | undefined
 ): Promise<ChargeResult> {
   const provider = await getPaymentProvider(locationId);
   if (!provider) {
     return { status: 'error', error: 'No payment provider configured for this location' };
   }
-  return executeCharge(provider, cardId, amount, lineItems, squareCustomerId, buyerEmail);
+  return executeCharge(provider, cardId, amount, lineItems, paymentCustomerId, buyerEmail);
 }
 
 export async function executeScheduledPayment(
@@ -101,7 +101,7 @@ export async function executeScheduledPayment(
   league: typeof leagues.$inferSelect,
   jobId: string
 ): Promise<ChargeResult> {
-  const { buyerEmail, squareCustomerId } = await fetchBowlerPaymentInfo(scheduleRecord.bowlerId);
+  const { buyerEmail, paymentCustomerId } = await fetchBowlerPaymentInfo(scheduleRecord.bowlerId);
 
   const locationId = league?.locationId ?? null;
   const provider = await getPaymentProvider(locationId);
@@ -109,7 +109,7 @@ export async function executeScheduledPayment(
     return { status: 'error', error: 'No payment provider configured for this location' };
   }
 
-  if (!squareCustomerId && provider.validateCardId(scheduleRecord.squareCardId)) {
+  if (!paymentCustomerId && provider.validateCardId(scheduleRecord.paymentCardId)) {
     logger.warn(`[PaymentScheduler] Card-on-file charge for ${jobId} has no customer ID — provider may reject the payment`, {
       bowlerId: scheduleRecord.bowlerId,
     });
@@ -123,10 +123,10 @@ export async function executeScheduledPayment(
 
   return executeCharge(
     provider,
-    scheduleRecord.squareCardId!,
+    scheduleRecord.paymentCardId!,
     scheduleRecord.amount,
     lineItems,
-    squareCustomerId,
+    paymentCustomerId,
     buyerEmail
   );
 }
@@ -167,7 +167,7 @@ export async function createPaymentRecord(
     status,
     type: 'credit_card',
     weekOf: weekOf ?? scheduleRecord.nextPaymentDate,
-    squarePaymentId: paymentId,
+    providerPaymentId: paymentId,
     cardpointeRetref: providerRef?.cardpointeRetref,
     cardpointeAuthcode: providerRef?.cardpointeAuthcode,
     notes,

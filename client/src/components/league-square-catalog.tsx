@@ -155,12 +155,12 @@ export function LeagueSquareCatalog({
           value={
             !hasCatalogItems
               ? undefined
-              : (form.watch('squareLineageItemVariationId') || 'none')
+              : (form.watch('lineageItemVariationId') || 'none')
           }
           onValueChange={(value) => {
             if (value === 'none') {
               form.setValue('squareLineageItemId', null);
-              form.setValue('squareLineageItemVariationId', null);
+              form.setValue('lineageItemVariationId', null);
               form.setValue('squareLineageItemName', null);
               form.setValue('lineageFee', null);
             } else {
@@ -168,10 +168,10 @@ export function LeagueSquareCatalog({
                 const variation = item.variations.find(v => v.id === value);
                 if (variation) {
                   form.setValue('squareLineageItemId', item.id);
-                  form.setValue('squareLineageItemVariationId', variation.id);
+                  form.setValue('lineageItemVariationId', variation.id);
                   form.setValue('squareLineageItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
                   const lineagePrice = variation.price || 0;
-                  const prizeFundPrice = getPriceForVariation(form.getValues('squarePrizeFundItemVariationId'));
+                  const prizeFundPrice = getPriceForVariation(form.getValues('prizeFundItemVariationId'));
                   const total = lineagePrice + (prizeFundPrice || 0);
                   if (total > 0) form.setValue('weeklyFee', total);
                   if (lineagePrice > 0) form.setValue('lineageFee', lineagePrice);
@@ -195,7 +195,7 @@ export function LeagueSquareCatalog({
               <>
                 <SelectItem value="none">None</SelectItem>
                 {(() => {
-                  const savedId = form.watch('squareLineageItemVariationId');
+                  const savedId = form.watch('lineageItemVariationId');
                   const savedName = form.watch('squareLineageItemName');
                   const isInList = savedId && catalogItems.some(item => item.variations.some(v => v.id === savedId));
                   if (savedId && savedName && !isInList) {
@@ -223,12 +223,12 @@ export function LeagueSquareCatalog({
           value={
             !hasCatalogItems
               ? undefined
-              : (form.watch('squarePrizeFundItemVariationId') || 'none')
+              : (form.watch('prizeFundItemVariationId') || 'none')
           }
           onValueChange={(value) => {
             if (value === 'none') {
               form.setValue('squarePrizeFundItemId', null);
-              form.setValue('squarePrizeFundItemVariationId', null);
+              form.setValue('prizeFundItemVariationId', null);
               form.setValue('squarePrizeFundItemName', null);
               form.setValue('prizeFundFee', null);
             } else {
@@ -236,9 +236,9 @@ export function LeagueSquareCatalog({
                 const variation = item.variations.find(v => v.id === value);
                 if (variation) {
                   form.setValue('squarePrizeFundItemId', item.id);
-                  form.setValue('squarePrizeFundItemVariationId', variation.id);
+                  form.setValue('prizeFundItemVariationId', variation.id);
                   form.setValue('squarePrizeFundItemName', `${item.name}${variation.name !== 'Regular' && variation.name !== 'Default' ? ` - ${variation.name}` : ''}`);
-                  const lineagePrice = getPriceForVariation(form.getValues('squareLineageItemVariationId'));
+                  const lineagePrice = getPriceForVariation(form.getValues('lineageItemVariationId'));
                   const prizeFundPrice = variation.price || 0;
                   const total = (lineagePrice || 0) + prizeFundPrice;
                   if (total > 0) form.setValue('weeklyFee', total);

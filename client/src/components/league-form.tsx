@@ -74,10 +74,10 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
       finalTwoWeeksDueWeek: DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK,
       paymentMode: "weekly",
       squareLineageItemId: null,
-      squareLineageItemVariationId: null,
+      lineageItemVariationId: null,
       squareLineageItemName: null,
       squarePrizeFundItemId: null,
-      squarePrizeFundItemVariationId: null,
+      prizeFundItemVariationId: null,
       squarePrizeFundItemName: null,
       squareCategoryId: null,
       locationId: null,
@@ -147,10 +147,10 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
     setSelectedCategoryId(null);
     form.setValue('squareCategoryId', null);
     form.setValue('squareLineageItemId', null);
-    form.setValue('squareLineageItemVariationId', null);
+    form.setValue('lineageItemVariationId', null);
     form.setValue('squareLineageItemName', null);
     form.setValue('squarePrizeFundItemId', null);
-    form.setValue('squarePrizeFundItemVariationId', null);
+    form.setValue('prizeFundItemVariationId', null);
     form.setValue('squarePrizeFundItemName', null);
   };
 

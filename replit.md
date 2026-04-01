@@ -308,7 +308,7 @@ These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes
 - Fixed Square card-on-file: uses `cardsApi.createCard` (correct API) instead of invalid `card_on_file` payment param
   - Card is saved first, then used as payment source; requires bowler to have a Square customer ID
   - Both `processPayment` and `createOrderWithPayment` now accept `customerId` parameter
-  - Payment route looks up bowler's `squareCustomerId` and passes it through
+  - Payment route looks up bowler's `paymentCustomerId` and passes it through
 - Fixed bowler dashboard: independent queries with staleTime, error states with retry, multi-league support
 - Fixed login redirect: routes to `/` for `RootRedirectHandler` to decide admin vs bowler destination
 - Fixed bowler dashboard route guard: `AuthRouteGuard` instead of `SystemAdminRouteGuard`

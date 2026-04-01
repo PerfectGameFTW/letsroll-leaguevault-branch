@@ -199,7 +199,7 @@ export default function BowlersPage() {
                         )}
                       </TableCell>
                       <TableCell className="font-mono text-sm text-muted-foreground">
-                        {bowler.squareCustomerId || '—'}
+                        {bowler.paymentCustomerId || '—'}
                       </TableCell>
                       <TableCell>
                         <Badge variant={bowler.active ? "default" : "secondary"}>

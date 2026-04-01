@@ -77,27 +77,27 @@ export async function checkAndChargeFinalTwoWeeks(
 
     const bowler = await db.select().from(bowlers).where(eq(bowlers.id, scheduleRecord.bowlerId)).then(r => r[0]);
     const buyerEmail = bowler?.email || undefined;
-    const squareCustomerId = bowler?.squareCustomerId || undefined;
-    if (!squareCustomerId && provider.validateCardId(scheduleRecord.squareCardId)) {
+    const paymentCustomerId = bowler?.paymentCustomerId || undefined;
+    if (!paymentCustomerId && provider.validateCardId(scheduleRecord.paymentCardId)) {
       logger.warn(`[PaymentScheduler] Final-two-weeks card-on-file charge for ${jobId} has no customer ID — provider may reject the payment`, {
         bowlerId: scheduleRecord.bowlerId,
       });
     }
 
     const lineItems: OrderLineItem[] = [];
-    if (league.squareLineageItemVariationId) {
-      lineItems.push({ catalogObjectId: league.squareLineageItemVariationId, quantity: '2' });
+    if (league.lineageItemVariationId) {
+      lineItems.push({ catalogObjectId: league.lineageItemVariationId, quantity: '2' });
     }
-    if (league.squarePrizeFundItemVariationId) {
-      lineItems.push({ catalogObjectId: league.squarePrizeFundItemVariationId, quantity: '2' });
+    if (league.prizeFundItemVariationId) {
+      lineItems.push({ catalogObjectId: league.prizeFundItemVariationId, quantity: '2' });
     }
 
     const finalPaymentResult = await executeCharge(
       provider,
-      scheduleRecord.squareCardId!,
+      scheduleRecord.paymentCardId!,
       finalTwoWeeksAmount,
       lineItems,
-      squareCustomerId,
+      paymentCustomerId,
       buyerEmail
     );
 

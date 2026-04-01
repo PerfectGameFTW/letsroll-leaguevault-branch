@@ -263,7 +263,7 @@ router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
     const { reason } = req.body || {};
     let providerRefundId: string | undefined;
 
-    const providerPaymentRef = payment.cardpointeRetref || payment.squarePaymentId;
+    const providerPaymentRef = payment.cardpointeRetref || payment.providerPaymentId;
     if (providerPaymentRef && payment.type === 'credit_card') {
       const league = await storage.getLeague(payment.leagueId);
       const locationId = league?.locationId ?? null;
