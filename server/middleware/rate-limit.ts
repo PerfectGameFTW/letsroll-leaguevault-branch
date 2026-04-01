@@ -18,7 +18,7 @@ export const paymentWriteLimiter = rateLimit({
   message: rateLimitMessage("Too many payment requests, please try again later"),
 });
 
-export const squarePaymentLimiter = rateLimit({
+export const paymentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: true,

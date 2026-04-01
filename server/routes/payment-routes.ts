@@ -4,13 +4,13 @@ import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { storage } from '../storage';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../utils/access-control.js';
-import { squarePaymentLimiter } from '../middleware/rate-limit.js';
+import { paymentLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasCatalogSupport, hasWalletSupport } from '../services/payment-provider';
 import { computePaymentSplit } from '../services/payment-execution';
 
-const log = createLogger("Square");
+const log = createLogger("Payments");
 
 function getProviderCustomerId(bowler: any, provider: any): string | undefined {
   if (provider.providerName === 'cardpointe') {
@@ -43,7 +43,7 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
     if (!dbPayment.providerPaymentId) {
       return res.json({
         dbPayment: { id: dbPayment.id, amount: dbPayment.amount, status: dbPayment.status, type: dbPayment.type, createdAt: dbPayment.createdAt },
-        squarePayment: null,
+        providerPayment: null,
         message: 'No payment ID associated with this payment (cash/check payment)',
       });
     }
@@ -82,7 +82,7 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
         bowlerId: dbPayment.bowlerId,
         leagueId: dbPayment.leagueId,
       },
-      squarePayment: providerPayment,
+      providerPayment: providerPayment,
       match: providerPayment ? {
         statusMatch: (dbPayment.status === 'paid' && providerPayment.status === 'COMPLETED') ||
                      (dbPayment.status !== 'paid' && providerPayment.status !== 'COMPLETED'),
@@ -98,7 +98,7 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
   }
 });
 
-router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
+router.post('/payments', paymentLimiter, async (req: any, res) => {
   try {
     const { sourceId, amount, bowlerId, leagueId } = req.body;
 
@@ -312,11 +312,11 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
       message: error.message,
       stack: error.stack?.split('\n').slice(0, 5).join('\n'),
     } : error;
-    const squareErrors = error?.errors || error?.body?.errors;
-    log.error('Payment processing error:', { error: errDetail, squareErrors });
+    const providerErrors = error?.errors || error?.body?.errors;
+    log.error('Payment processing error:', { error: errDetail, providerErrors });
     let userMessage = 'Payment processing failed. Please try again.';
-    if (squareErrors?.[0]?.detail) {
-      userMessage = squareErrors[0].detail;
+    if (providerErrors?.[0]?.detail) {
+      userMessage = providerErrors[0].detail;
     } else if (error instanceof Error && error.message.startsWith('{')) {
       try {
         const parsed = JSON.parse(error.message);
@@ -327,7 +327,7 @@ router.post('/payments', squarePaymentLimiter, async (req: any, res) => {
   }
 });
 
-router.post('/customers', squarePaymentLimiter, async (req, res) => {
+router.post('/customers', paymentLimiter, async (req, res) => {
   try {
     if (req.body.teamId) {
       const team = await storage.getTeam(req.body.teamId);
