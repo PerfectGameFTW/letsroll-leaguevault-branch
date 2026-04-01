@@ -24,6 +24,7 @@ import bowlnowRouter from './bowlnow.js';
 import integrationsRouter from './integrations.js';
 import accountRouter from './account.js';
 import bulkImportRouter from './bulk-import.js';
+import searchRouter from './search.js';
 import { requireAuth, requireOrgAdmin, requireSystemAdmin } from '../middleware/auth.js';
 import { createLogger } from '../logger';
 
@@ -67,6 +68,7 @@ export function registerRoutes(app: Express): void {
   app.use('/api/bn', requireOrgAdmin, bowlnowRouter);
   app.use('/api/integrations', requireOrgAdmin, integrationsRouter);
   app.use('/api/account', accountRouter);
+  app.use('/api/search', requireAuth, searchRouter);
 
   log.info('API routes registered');
 }
