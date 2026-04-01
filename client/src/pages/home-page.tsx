@@ -260,9 +260,9 @@ export default function HomePage() {
               <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow flex items-center justify-between cursor-pointer">
                 <div>
                   <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                    Past Due
+                    Bowlers Past Due
                   </div>
-                  <div className="text-2xl font-bold text-slate-900">{pastDueRate}%</div>
+                  <div className="text-2xl font-bold text-slate-900">{pastDueBowlerIds.size} of {activeBowlers} ({pastDueRate}%)</div>
                 </div>
                 <PastDueCircle rate={pastDueRate} />
               </div>
