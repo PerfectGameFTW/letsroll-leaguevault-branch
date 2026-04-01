@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from "react";
 import { useLocation } from "wouter";
 import { Search, Trophy, Users, UserCircle, Loader2 } from "lucide-react";
 
@@ -72,7 +72,7 @@ export function GlobalSearch() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  function handleKeyDown(e: React.KeyboardEvent) {
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape") {
       setIsOpen(false);
       (e.target as HTMLInputElement).blur();
