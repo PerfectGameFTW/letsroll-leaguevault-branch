@@ -53,7 +53,7 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
 
-  const { config: providerConfig, isCardPointe, supportsWallets } = usePaymentProvider(league.locationId ?? null);
+  const { config: providerConfig, isCardPointe, supportsWallets, isLoading: providerLoading } = usePaymentProvider(league.locationId ?? null);
 
   const { card: sqCard, isInitialized: sqInit, error: sqError, initializeCard: sqInitCard, cleanupCard: sqCleanup } = useSquarePayment({
     locationId: league.locationId ?? null,
@@ -101,10 +101,10 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
   }, [savedCards.length]);
 
   useEffect(() => {
-    if (showPaymentSetup && cardContainerRef.current && cardMode === 'new') {
+    if (showPaymentSetup && cardContainerRef.current && cardMode === 'new' && !providerLoading) {
       initializeCard(cardContainerRef.current);
     }
-  }, [showPaymentSetup, cardContainerRef, initializeCard, cardMode]);
+  }, [showPaymentSetup, cardContainerRef, initializeCard, cardMode, providerLoading]);
 
   useEffect(() => {
     if (!showPaymentSetup) {

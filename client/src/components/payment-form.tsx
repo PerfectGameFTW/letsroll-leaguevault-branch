@@ -78,7 +78,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     },
   });
 
-  const { config: providerConfig, isCardPointe, supportsWallets } = usePaymentProvider(leagueInfo?.locationId ?? null);
+  const { config: providerConfig, isCardPointe, supportsWallets, isLoading: providerLoading } = usePaymentProvider(leagueInfo?.locationId ?? null);
 
   const {
     card: squareCard,
@@ -166,7 +166,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       return;
     }
 
-    if (!cardContainerRef.current) {
+    if (providerLoading || !cardContainerRef.current) {
       return;
     }
     
@@ -221,7 +221,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     return () => {
       clearTimeout(initTimeout);
     };
-  }, [open, paymentType, isInitialized, isSquareReady, cleanupCard, initializeCard, toast, form]);
+  }, [open, paymentType, isInitialized, isSquareReady, cleanupCard, initializeCard, toast, form, providerLoading]);
 
   useEffect(() => {
     if (!open) {

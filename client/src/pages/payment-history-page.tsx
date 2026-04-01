@@ -133,7 +133,7 @@ export default function PaymentHistoryPage() {
 
   const league = leagueMap.get(leagueId!);
 
-  const { config: providerConfig, isCardPointe, supportsWallets } = usePaymentProvider(league?.locationId ?? null);
+  const { config: providerConfig, isCardPointe, supportsWallets, isLoading: providerLoading } = usePaymentProvider(league?.locationId ?? null);
 
   const { card: sqCard, isInitialized: sqInit, initializeCard: sqInitCard, cleanupCard: sqCleanup } = useSquarePayment({
     onError: (error) => {
