@@ -18,12 +18,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { PageLoadingState } from "@/components/page-states";
 import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema"; // Added BowlerLeague type
 import { Link } from "wouter";
 import { calculateBowlerPastDue, getTotalPaidAmount } from "@/lib/financial-utils";
 
 export default function ReportsPage() {
+  const [showArchived, setShowArchived] = useState(false);
+
   const { data: leaguesResponse, isLoading: loadingLeagues } = useQuery<{ data: League[] }>({
     queryKey: ["/api/leagues"],
     queryFn: async () => {
@@ -134,9 +138,12 @@ export default function ReportsPage() {
     };
   });
 
-  // Calculate overall totals
-  const totalCollected = leagueFinancials.reduce((sum, league) => sum + league.collected, 0) || 0;
-  const totalPastDue = leagueFinancials.reduce((sum, league) => sum + league.pastDueBalance, 0) || 0;
+  const filteredLeagueFinancials = showArchived
+    ? leagueFinancials
+    : leagueFinancials.filter(league => league.active);
+
+  const totalCollected = filteredLeagueFinancials.reduce((sum, league) => sum + league.collected, 0) || 0;
+  const totalPastDue = filteredLeagueFinancials.reduce((sum, league) => sum + league.pastDueBalance, 0) || 0;
 
   return (
     <Layout>
@@ -177,7 +184,17 @@ export default function ReportsPage() {
 
         <ErrorBoundary level="section">
         <div>
-          <h2 className="text-xl font-semibold mb-4">League Financial Reports</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">League Financial Reports</h2>
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="show-archived"
+                checked={showArchived}
+                onCheckedChange={setShowArchived}
+              />
+              <Label htmlFor="show-archived">Show archived</Label>
+            </div>
+          </div>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -191,7 +208,7 @@ export default function ReportsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {leagueFinancials.map((league) => (
+                {filteredLeagueFinancials.map((league) => (
                   <TableRow key={league.id}>
                     <TableCell>
                       <Link
