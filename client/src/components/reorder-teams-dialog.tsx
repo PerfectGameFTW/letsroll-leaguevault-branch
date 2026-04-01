@@ -6,6 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Loader2, GripVertical } from "lucide-react";
 import type { Team } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -42,6 +43,21 @@ export function ReorderTeamsDialog({
       setDragOverIndex(null);
     }
   }, [open, teams]);
+
+  const handlePositionChange = (currentIndex: number, newPositionStr: string) => {
+    const newPosition = parseInt(newPositionStr);
+    if (isNaN(newPosition) || newPosition < 1 || newPosition > orderedTeams.length) return;
+
+    const targetIndex = newPosition - 1;
+    if (targetIndex === currentIndex) return;
+
+    setOrderedTeams(prev => {
+      const newOrder = [...prev];
+      const [removed] = newOrder.splice(currentIndex, 1);
+      newOrder.splice(targetIndex, 0, removed);
+      return newOrder;
+    });
+  };
 
   const handleDragStart = (index: number) => {
     dragItem.current = index;
@@ -115,7 +131,7 @@ export function ReorderTeamsDialog({
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">
-          Drag and drop teams to change their display order.
+          Drag teams or type a new position number to reorder.
         </p>
 
         <div className="space-y-4">
@@ -133,6 +149,23 @@ export function ReorderTeamsDialog({
                 } ${dragOverIndex === index && dragIndex !== index ? "bg-accent" : ""}`}
               >
                 <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                <Input
+                  type="number"
+                  min={1}
+                  max={orderedTeams.length}
+                  defaultValue={index + 1}
+                  key={`${team.id}-${index}`}
+                  className="w-14 h-8 text-center text-sm px-1"
+                  onBlur={(e) => handlePositionChange(index, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      (e.target as HTMLInputElement).blur();
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onDragStart={(e) => e.stopPropagation()}
+                  draggable={false}
+                />
                 <span className="font-medium flex-1">
                   {team.number ? `#${team.number} - ` : ""}{team.name}
                 </span>
