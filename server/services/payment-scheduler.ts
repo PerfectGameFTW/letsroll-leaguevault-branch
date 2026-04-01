@@ -9,6 +9,25 @@ import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provid
 
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
+  private locks: Map<number, Promise<void>> = new Map();
+
+  // Non-reentrant per-ID mutex: do not call withScheduleLock for the same ID within fn.
+  private async withScheduleLock<T>(scheduleId: number, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(scheduleId) ?? Promise.resolve();
+    let resolve: () => void;
+    const next = new Promise<void>((r) => { resolve = r; });
+    this.locks.set(scheduleId, next);
+
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      if (this.locks.get(scheduleId) === next) {
+        this.locks.delete(scheduleId);
+      }
+      resolve!();
+    }
+  }
 
   private async checkLeagueOrgAccess(
     leagueId: number,
@@ -136,18 +155,20 @@ class PaymentScheduler {
         })
         .map(r => r.schedule);
 
-      validSchedules.forEach(s => {
-        logger.info(`[PaymentScheduler] Scheduling payment for schedule ${s.id}`, {
-          amount: s.amount,
-          nextPaymentDate: s.nextPaymentDate,
-          frequency: s.frequency,
-          bowlerId: s.bowlerId,
-          leagueId: s.leagueId,
-          cardToken: `${s.paymentCardId?.substring(0, 10)}...`,
-          scheduledAt: new Date().toISOString()
-        });
-        this.schedulePayment(s);
-      });
+      await Promise.all(validSchedules.map(s =>
+        this.withScheduleLock(s.id, async () => {
+          logger.info(`[PaymentScheduler] Scheduling payment for schedule ${s.id}`, {
+            amount: s.amount,
+            nextPaymentDate: s.nextPaymentDate,
+            frequency: s.frequency,
+            bowlerId: s.bowlerId,
+            leagueId: s.leagueId,
+            cardToken: `${s.paymentCardId?.substring(0, 10)}...`,
+            scheduledAt: new Date().toISOString()
+          });
+          this.schedulePayment(s);
+        })
+      ));
 
       const skippedCount = activeSchedules.length - validSchedules.length;
       logger.info(`[PaymentScheduler] Initialization complete`, {
@@ -225,78 +246,84 @@ class PaymentScheduler {
   }
 
   async addSchedule(scheduleRecord: PaymentSchedule, organizationId?: number | null) {
-    const isValid = await this.validateCardForProvider(scheduleRecord.paymentCardId, scheduleRecord.leagueId);
-    if (!isValid) {
-      return;
-    }
-    
-    if (organizationId !== undefined) {
-      const allowed = await this.checkLeagueOrgAccess(scheduleRecord.leagueId, organizationId, 'addSchedule');
-      if (!allowed) return;
-    }
+    return this.withScheduleLock(scheduleRecord.id, async () => {
+      const isValid = await this.validateCardForProvider(scheduleRecord.paymentCardId, scheduleRecord.leagueId);
+      if (!isValid) {
+        return;
+      }
+      
+      if (organizationId !== undefined) {
+        const allowed = await this.checkLeagueOrgAccess(scheduleRecord.leagueId, organizationId, 'addSchedule');
+        if (!allowed) return;
+      }
 
-    logger.info(`[PaymentScheduler] Adding new payment schedule`, {
-      scheduleId: scheduleRecord.id,
-      amount: scheduleRecord.amount,
-      nextPaymentDate: scheduleRecord.nextPaymentDate,
-      frequency: scheduleRecord.frequency,
-      bowlerId: scheduleRecord.bowlerId,
-      cardId: `${scheduleRecord.paymentCardId?.substring(0, 10)}...`,
-      addedAt: new Date().toISOString()
+      logger.info(`[PaymentScheduler] Adding new payment schedule`, {
+        scheduleId: scheduleRecord.id,
+        amount: scheduleRecord.amount,
+        nextPaymentDate: scheduleRecord.nextPaymentDate,
+        frequency: scheduleRecord.frequency,
+        bowlerId: scheduleRecord.bowlerId,
+        cardId: `${scheduleRecord.paymentCardId?.substring(0, 10)}...`,
+        addedAt: new Date().toISOString()
+      });
+      this.schedulePayment(scheduleRecord);
     });
-    this.schedulePayment(scheduleRecord);
   }
 
   async removeSchedule(scheduleId: number, organizationId?: number | null) {
-    logger.info(`[PaymentScheduler] Removing payment schedule ${scheduleId}`, {
-      removalTime: new Date().toISOString(),
-      organizationId: organizationId ?? 'not specified'
-    });
-    
-    if (organizationId !== undefined) {
-      const scheduleRow = await db
-        .select({ leagueId: paymentSchedules.leagueId })
-        .from(paymentSchedules)
-        .where(eq(paymentSchedules.id, scheduleId))
-        .limit(1);
+    return this.withScheduleLock(scheduleId, async () => {
+      logger.info(`[PaymentScheduler] Removing payment schedule ${scheduleId}`, {
+        removalTime: new Date().toISOString(),
+        organizationId: organizationId ?? 'not specified'
+      });
+      
+      if (organizationId !== undefined) {
+        const scheduleRow = await db
+          .select({ leagueId: paymentSchedules.leagueId })
+          .from(paymentSchedules)
+          .where(eq(paymentSchedules.id, scheduleId))
+          .limit(1);
 
-      if (scheduleRow.length === 0) {
-        logger.info(`[PaymentScheduler] Schedule not found, cannot remove: ${scheduleId}`);
-        return;
+        if (scheduleRow.length === 0) {
+          logger.info(`[PaymentScheduler] Schedule not found, cannot remove: ${scheduleId}`);
+          return;
+        }
+
+        const allowed = await this.checkLeagueOrgAccess(scheduleRow[0].leagueId, organizationId, 'removeSchedule');
+        if (!allowed) return;
       }
-
-      const allowed = await this.checkLeagueOrgAccess(scheduleRow[0].leagueId, organizationId, 'removeSchedule');
-      if (!allowed) return;
-    }
-    
-    this.cancelJob(`payment-${scheduleId}`);
+      
+      this.cancelJob(`payment-${scheduleId}`);
+    });
   }
 
   async updateSchedule(schedule: PaymentSchedule, organizationId?: number | null) {
-    const isValid = await this.validateCardForProvider(schedule.paymentCardId, schedule.leagueId);
-    if (!isValid) {
-      logger.error(`[PaymentScheduler] Cannot update schedule with invalid card ID`, {
-        scheduleId: schedule.id,
-        bowlerId: schedule.bowlerId,
-        validationTime: new Date().toISOString()
-      });
-      return;
-    }
-    
-    if (organizationId !== undefined) {
-      const allowed = await this.checkLeagueOrgAccess(schedule.leagueId, organizationId, 'updateSchedule');
-      if (!allowed) return;
-    }
+    return this.withScheduleLock(schedule.id, async () => {
+      const isValid = await this.validateCardForProvider(schedule.paymentCardId, schedule.leagueId);
+      if (!isValid) {
+        logger.error(`[PaymentScheduler] Cannot update schedule with invalid card ID`, {
+          scheduleId: schedule.id,
+          bowlerId: schedule.bowlerId,
+          validationTime: new Date().toISOString()
+        });
+        return;
+      }
+      
+      if (organizationId !== undefined) {
+        const allowed = await this.checkLeagueOrgAccess(schedule.leagueId, organizationId, 'updateSchedule');
+        if (!allowed) return;
+      }
 
-    logger.info(`[PaymentScheduler] Updating payment schedule ${schedule.id}`, {
-      amount: schedule.amount,
-      nextPaymentDate: schedule.nextPaymentDate,
-      frequency: schedule.frequency,
-      bowlerId: schedule.bowlerId,
-      cardId: `${schedule.paymentCardId?.substring(0, 10)}...`,
-      updatedAt: new Date().toISOString()
+      logger.info(`[PaymentScheduler] Updating payment schedule ${schedule.id}`, {
+        amount: schedule.amount,
+        nextPaymentDate: schedule.nextPaymentDate,
+        frequency: schedule.frequency,
+        bowlerId: schedule.bowlerId,
+        cardId: `${schedule.paymentCardId?.substring(0, 10)}...`,
+        updatedAt: new Date().toISOString()
+      });
+      this.schedulePayment(schedule);
     });
-    this.schedulePayment(schedule);
   }
 }
 
