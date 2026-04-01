@@ -10,11 +10,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { Payment, Bowler } from "@shared/schema";
+import type { Payment } from "@shared/schema";
+
+interface BowlerInfo {
+  id: number;
+  name: string;
+}
 
 interface PaymentHistoryTableProps {
   payments: Payment[];
-  bowlers: Bowler[];
+  bowlers: BowlerInfo[];
+  bowlerTeamMap?: Map<number, string>;
   onStartEdit: (payment: Payment) => void;
   onDelete: (paymentId: number) => void;
   isDeletePending: boolean;
@@ -24,17 +30,21 @@ interface PaymentHistoryTableProps {
 export const PaymentHistoryTable = memo(function PaymentHistoryTable({
   payments,
   bowlers,
+  bowlerTeamMap,
   onStartEdit,
   onDelete,
   isDeletePending,
   isAdmin = false,
 }: PaymentHistoryTableProps) {
+  const showTeamColumn = !!bowlerTeamMap;
+
   return (
     <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Bowler</TableHead>
+            {showTeamColumn && <TableHead>Team</TableHead>}
             <TableHead>Payment Type</TableHead>
             <TableHead className="text-right">Amount</TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
@@ -43,17 +53,21 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
         <TableBody>
           {payments?.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={4} className="text-center">
+              <TableCell colSpan={showTeamColumn ? 5 : 4} className="text-center">
                 No payment history
               </TableCell>
             </TableRow>
           ) : (
             payments?.map((payment) => {
               const bowler = bowlers.find(b => b.id === payment.bowlerId);
+              const teamName = bowlerTeamMap?.get(payment.bowlerId);
 
               return (
                 <TableRow key={payment.id}>
                   <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
+                  {showTeamColumn && (
+                    <TableCell className="text-muted-foreground">{teamName || '—'}</TableCell>
+                  )}
                   <TableCell>
                     <Badge variant="outline">
                       {payment.type === 'cash' ? 'Cash' :

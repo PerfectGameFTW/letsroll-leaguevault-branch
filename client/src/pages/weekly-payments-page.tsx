@@ -1,14 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { ErrorBoundary } from "@/components/error-boundary";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,8 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, Calendar as CalendarIcon } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import { startOfToday } from "date-fns";
-import type { League, Payment, Bowler, BowlerLeague, Team, ApiResponse, TeamDetailsResponse } from "@shared/schema";
-import { useTeams } from "@/hooks/use-teams";
+import type { League, Payment, ApiResponse } from "@shared/schema";
 import { useParams, Link } from "wouter";
 import { PaymentEntryRow } from "@/components/payment-entry-row";
 import { PaymentHistoryTable } from "@/components/payment-history-table";
@@ -31,6 +23,7 @@ import {
 import {
   Table,
   TableBody,
+  TableCell,
   TableHead,
   TableHeader,
   TableRow,
@@ -45,11 +38,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+interface EnrichedBowlerLeague {
+  id: number;
+  bowlerId: number;
+  leagueId: number;
+  teamId: number;
+  bowler: { id: number; name: string; email: string | null; active: boolean } | null;
+  team: { id: number; name: string; number: number; leagueId: number } | null;
+  league: { id: number; name: string; description: string | null; active: boolean } | null;
+}
+
 export default function WeeklyPaymentsPage() {
   const params = useParams();
   const leagueId = parseInt(params.leagueId!);
   const [selectedDate, setSelectedDate] = useState<Date>();
-  const [selectedTeam, setSelectedTeam] = useState<string>();
 
   const {
     paymentEntries,
@@ -78,16 +80,32 @@ export default function WeeklyPaymentsPage() {
   const { data: leagueResponse, isLoading: loadingLeague } = useQuery<{ data: League }>({
     queryKey: [`/api/leagues/${leagueId}`],
     staleTime: 1000 * 60 * 30,
-    enabled: !selectedTeam,
   });
 
-  const { teams, isLoading: loadingTeams } = useTeams({ leagueId });
-
-  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
-    queryKey: ["/api/payments", { teamId: selectedTeam, weekOf: selectedDate?.toISOString(), leagueId }],
+  const { data: bowlerLeaguesResponse, isLoading: loadingBowlerLeagues } = useQuery<{ data: EnrichedBowlerLeague[] }>({
+    queryKey: ["/api/bowler-leagues", { leagueId, enriched: true }],
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams();
-      if (selectedTeam) params.set("teamId", selectedTeam);
+      params.set("leagueId", String(leagueId));
+      params.set("enriched", "true");
+      const response = await fetch(`/api/bowler-leagues?${params.toString()}`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" },
+        signal,
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error?.message || "Failed to fetch bowlers");
+      }
+      return response.json();
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const { data: paymentsResponse, isLoading: loadingPayments } = useQuery<{ data: Payment[] }>({
+    queryKey: ["/api/payments", { leagueId, weekOf: selectedDate?.toISOString() }],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams();
       if (selectedDate) params.set("weekOf", selectedDate.toISOString());
       params.set("leagueId", String(leagueId));
       const response = await fetch(`/api/payments?${params.toString()}`, {
@@ -101,20 +119,41 @@ export default function WeeklyPaymentsPage() {
       }
       return response.json();
     },
-    enabled: !!selectedTeam && !!selectedDate,
+    enabled: !!selectedDate,
     staleTime: 1000 * 60,
   });
 
-  const { data: teamDetailsResponse, isLoading: loadingTeamDetails } = useQuery<{ data: TeamDetailsResponse }>({
-    queryKey: [`/api/teams/${selectedTeam}/details`],
-    enabled: !!selectedTeam,
-    staleTime: 1000 * 60 * 5,
-  });
-
-  const league = teamDetailsResponse?.data?.league ?? leagueResponse?.data;
+  const league = leagueResponse?.data;
   const payments = paymentsResponse?.data || [];
-  const bowlerLeagues = teamDetailsResponse?.data?.bowlerLeagues || [];
-  const bowlers = teamDetailsResponse?.data?.bowlers || [];
+  const enrichedBowlerLeagues = bowlerLeaguesResponse?.data || [];
+
+  const sortedBowlerLeagues = useMemo(() => {
+    return [...enrichedBowlerLeagues]
+      .filter(bl => bl.bowler)
+      .sort((a, b) => {
+        const aTeam = a.team?.number ?? Infinity;
+        const bTeam = b.team?.number ?? Infinity;
+        const teamDiff = aTeam - bTeam;
+        if (teamDiff !== 0) return teamDiff;
+        return (a.bowler?.name ?? "").localeCompare(b.bowler?.name ?? "");
+      });
+  }, [enrichedBowlerLeagues]);
+
+  const bowlers = useMemo(() => {
+    return sortedBowlerLeagues
+      .map(bl => bl.bowler!)
+      .filter((bowler, index, self) => self.findIndex(b => b.id === bowler.id) === index);
+  }, [sortedBowlerLeagues]);
+
+  const bowlerTeamMap = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const bl of sortedBowlerLeagues) {
+      if (bl.bowler) {
+        map.set(bl.bowler.id, bl.team?.name ?? "Unassigned");
+      }
+    }
+    return map;
+  }, [sortedBowlerLeagues]);
 
   useEffect(() => {
     if (league?.weekDay && !selectedDate) {
@@ -127,12 +166,7 @@ export default function WeeklyPaymentsPage() {
       );
       setSelectedDate(nearestBowlingDay);
     }
-
-    if (teams.length > 0 && !selectedTeam) {
-      const team1 = teams.find(t => t.number === 1) || teams[0];
-      setSelectedTeam(team1.id.toString());
-    }
-  }, [league?.weekDay, teams, selectedDate, selectedTeam]);
+  }, [league?.weekDay, selectedDate]);
 
   let disabledDates: { before: Date; after: Date } | undefined;
   if (league) {
@@ -142,7 +176,7 @@ export default function WeeklyPaymentsPage() {
     };
   }
 
-  if ((loadingLeague || loadingTeams || (selectedTeam && loadingTeamDetails)) && !league) {
+  if ((loadingLeague || loadingBowlerLeagues) && !league) {
     return (
       <Layout>
         <PageLoadingState />
@@ -157,8 +191,6 @@ export default function WeeklyPaymentsPage() {
       </Layout>
     );
   }
-
-  const selectedTeamData = teams.find(t => t.id.toString() === selectedTeam);
 
   return (
     <Layout>
@@ -213,34 +245,19 @@ export default function WeeklyPaymentsPage() {
                 </PopoverContent>
               </Popover>
             </div>
-
-            <div className="w-[200px]">
-              <Select value={selectedTeam} onValueChange={setSelectedTeam}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a team" />
-                </SelectTrigger>
-                <SelectContent>
-                  {teams.map((team) => (
-                    <SelectItem key={team.id.toString()} value={team.id.toString()}>
-                      Team {team.number} - {team.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
           </div>
         </div>
 
         <ErrorBoundary level="section">
-        {selectedDate && selectedTeamData && (
+        {selectedDate && (
           <Card>
             <CardHeader>
               <CardTitle>
-                {selectedTeamData.name} - Week {getWeekNumber(selectedDate, league)}
+                Week {getWeekNumber(selectedDate, league)}
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
-              {loadingPayments || loadingTeamDetails ? (
+              {loadingPayments || loadingBowlerLeagues ? (
                 <PageLoadingState fullPage={false} />
               ) : (
                 <div className="space-y-6">
@@ -249,17 +266,26 @@ export default function WeeklyPaymentsPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>Bowler</TableHead>
+                          <TableHead>Team</TableHead>
                           <TableHead>Payment Type</TableHead>
                           <TableHead>Amount</TableHead>
                           <TableHead>Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {bowlers.map((bowler) => (
+                        {sortedBowlerLeagues.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                              No bowlers found in this league
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {sortedBowlerLeagues.map((bl) => (
                           <PaymentEntryRow
-                            key={bowler.id}
-                            bowler={bowler}
-                            entry={paymentEntries[bowler.id]}
+                            key={bl.id}
+                            bowler={bl.bowler!}
+                            teamName={bl.team?.name ?? "Unassigned"}
+                            entry={paymentEntries[bl.bowler!.id]}
                             onPaymentTypeChange={handlePaymentTypeChange}
                             onAmountChange={handleAmountChange}
                             onCheckNumberChange={handleCheckNumberChange}
@@ -274,6 +300,7 @@ export default function WeeklyPaymentsPage() {
                   <PaymentHistoryTable
                     payments={payments}
                     bowlers={bowlers}
+                    bowlerTeamMap={bowlerTeamMap}
                     onStartEdit={handleStartEdit}
                     onDelete={setPaymentToDelete}
                     isDeletePending={deletePaymentMutation.isPending}

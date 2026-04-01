@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
-import type { Bowler } from "@shared/schema";
 
 interface PaymentEntry {
   bowlerId: number;
@@ -19,8 +18,14 @@ interface PaymentEntry {
   checkNumber?: string;
 }
 
+interface BowlerInfo {
+  id: number;
+  name: string;
+}
+
 interface PaymentEntryRowProps {
-  bowler: Bowler;
+  bowler: BowlerInfo;
+  teamName?: string;
   entry: PaymentEntry | undefined;
   onPaymentTypeChange: (bowlerId: number, type: string) => void;
   onAmountChange: (bowlerId: number, amount: string) => void;
@@ -31,6 +36,7 @@ interface PaymentEntryRowProps {
 
 export const PaymentEntryRow = memo(function PaymentEntryRow({
   bowler,
+  teamName,
   entry,
   onPaymentTypeChange,
   onAmountChange,
@@ -41,6 +47,9 @@ export const PaymentEntryRow = memo(function PaymentEntryRow({
   return (
     <TableRow>
       <TableCell>{bowler.name}</TableCell>
+      {teamName !== undefined && (
+        <TableCell className="text-muted-foreground">{teamName}</TableCell>
+      )}
       <TableCell>
         <Select
           value={entry?.type || ""}
