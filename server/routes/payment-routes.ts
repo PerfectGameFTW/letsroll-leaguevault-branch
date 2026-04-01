@@ -9,6 +9,7 @@ import { createLogger } from '../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasCatalogSupport, hasWalletSupport } from '../services/payment-provider';
 import { computePaymentSplit, buildLineItems } from '../services/payment-execution';
+import { getProviderCustomerId } from '../services/payment-utils';
 
 const log = createLogger("Payments");
 
@@ -18,12 +19,6 @@ async function getProviderForLeague(leagueId: number) {
   return getPaymentProvider(locationId);
 }
 
-function getProviderCustomerId(bowler: any, provider: any): string | undefined {
-  if (provider.providerName === 'cardpointe') {
-    return bowler.cardpointeProfileId || undefined;
-  }
-  return bowler.squareCustomerId || undefined;
-}
 
 const router = Router();
 
