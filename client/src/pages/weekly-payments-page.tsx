@@ -190,7 +190,7 @@ export default function WeeklyPaymentsPage() {
     staleTime: 1000 * 60,
   });
 
-  const payments = paymentsResponse?.data || [];
+  const payments = (paymentsResponse?.data || []).filter(p => p.type !== "credit_card");
 
   if ((loadingLeague || loadingBowlerLeagues) && !league) {
     return (
