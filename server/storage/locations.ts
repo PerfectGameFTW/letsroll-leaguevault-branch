@@ -14,7 +14,7 @@ import { encrypt, decrypt, isEncrypted } from '../utils/crypto';
 const log = createLogger("StorageLocations");
 
 function encryptSquareCreds(creds: LocationSquareCredentials | null | undefined): LocationSquareCredentials | null | undefined {
-  if (!creds || !process.env.FIELD_ENCRYPTION_KEY) return creds;
+  if (!creds) return creds;
   return {
     ...creds,
     accessToken: creds.accessToken ? encrypt(creds.accessToken) : creds.accessToken,
@@ -22,7 +22,7 @@ function encryptSquareCreds(creds: LocationSquareCredentials | null | undefined)
 }
 
 function decryptSquareCreds(creds: LocationSquareCredentials | null | undefined): LocationSquareCredentials | null | undefined {
-  if (!creds || !creds.accessToken || !process.env.FIELD_ENCRYPTION_KEY) return creds;
+  if (!creds || !creds.accessToken) return creds;
   if (!isEncrypted(creds.accessToken)) return creds;
   const decrypted = decrypt(creds.accessToken);
   if (decrypted === null) {
@@ -33,7 +33,7 @@ function decryptSquareCreds(creds: LocationSquareCredentials | null | undefined)
 }
 
 function encryptCardPointeCreds(creds: LocationCardPointeCredentials | null | undefined): LocationCardPointeCredentials | null | undefined {
-  if (!creds || !process.env.FIELD_ENCRYPTION_KEY) return creds;
+  if (!creds) return creds;
   return {
     ...creds,
     apiPassword: creds.apiPassword ? encrypt(creds.apiPassword) : creds.apiPassword,
@@ -41,7 +41,7 @@ function encryptCardPointeCreds(creds: LocationCardPointeCredentials | null | un
 }
 
 function decryptCardPointeCreds(creds: LocationCardPointeCredentials | null | undefined): LocationCardPointeCredentials | null | undefined {
-  if (!creds || !creds.apiPassword || !process.env.FIELD_ENCRYPTION_KEY) return creds;
+  if (!creds || !creds.apiPassword) return creds;
   if (!isEncrypted(creds.apiPassword)) return creds;
   const decrypted = decrypt(creds.apiPassword);
   if (decrypted === null) {
