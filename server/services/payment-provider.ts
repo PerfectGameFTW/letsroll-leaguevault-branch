@@ -116,11 +116,21 @@ export interface PaymentProvider {
   validateCardId(cardId: string | null): boolean;
 }
 
+/**
+ * Optional capability: catalog operations (e.g., Square catalog items/categories).
+ * Split from PaymentProvider because not all processors support catalog management.
+ * Use hasCatalogSupport() type guard to check at runtime.
+ */
 export interface CatalogProvider {
   listCatalogCategories(): Promise<CatalogCategory[]>;
   listCatalogItems(categoryId?: string): Promise<CatalogItem[]>;
 }
 
+/**
+ * Optional capability: digital wallet operations (e.g., Apple Pay domain registration).
+ * Split from PaymentProvider because not all processors support wallet payments.
+ * Use hasWalletSupport() type guard to check at runtime.
+ */
 export interface WalletProvider {
   registerApplePayDomain(domain: string): Promise<{ success: boolean; message: string }>;
 }
