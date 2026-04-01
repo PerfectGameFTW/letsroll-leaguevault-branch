@@ -244,6 +244,6 @@ export class CardPointePaymentProvider implements PaymentProvider {
 
   validateCardId(cardId: string | null): boolean {
     if (!cardId) return false;
-    return cardId.includes('/') || /^\d{10,}$/.test(cardId);
+    return /^\d+\/\d{1,2}$/.test(cardId) || /^\d{10,}$/.test(cardId);
   }
 }
