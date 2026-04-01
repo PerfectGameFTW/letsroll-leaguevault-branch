@@ -748,12 +748,10 @@ router.get('/config', async (req: any, res) => {
           if (isAuthorized) {
             if (loc.paymentProvider === 'cardpointe') {
               const cpCreds = await storage.getLocationCardPointeConfig(lvLocationId);
-              if (cpCreds?.merchantId && cpCreds.merchantId.trim().length > 0) {
+              if (cpCreds?.merchantId && cpCreds.merchantId.trim().length > 0 && cpCreds.siteUrl && cpCreds.siteUrl.trim().length > 0) {
                 return res.json({
                   paymentProvider: 'cardpointe',
-                  tokenizerUrl: cpCreds.siteUrl
-                    ? `https://${cpCreds.siteUrl.replace(/^https?:\/\//, '')}/itoke/ajax-tokenizer.html`
-                    : null,
+                  tokenizerUrl: `https://${cpCreds.siteUrl.replace(/^https?:\/\//, '')}/itoke/ajax-tokenizer.html`,
                 });
               }
             }
