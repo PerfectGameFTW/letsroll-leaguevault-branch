@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Link } from "wouter";
 import type { Payment } from "@shared/schema";
 
 interface BowlerInfo {
@@ -64,7 +65,13 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
 
               return (
                 <TableRow key={payment.id}>
-                  <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
+                  <TableCell>
+                    {bowler ? (
+                      <Link href={`/bowlers/${bowler.id}`} className="hover:underline text-foreground">
+                        {bowler.name}
+                      </Link>
+                    ) : 'Unknown Bowler'}
+                  </TableCell>
                   {showTeamColumn && (
                     <TableCell className="text-muted-foreground">{teamName || '—'}</TableCell>
                   )}

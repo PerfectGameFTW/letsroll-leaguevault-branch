@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
 import { TableCell, TableRow } from "@/components/ui/table";
+import { Link } from "wouter";
 
 interface PaymentEntry {
   bowlerId: number;
@@ -46,7 +47,11 @@ export const PaymentEntryRow = memo(function PaymentEntryRow({
 }: PaymentEntryRowProps) {
   return (
     <TableRow>
-      <TableCell>{bowler.name}</TableCell>
+      <TableCell>
+        <Link href={`/bowlers/${bowler.id}`} className="hover:underline text-foreground">
+          {bowler.name}
+        </Link>
+      </TableCell>
       {teamName !== undefined && (
         <TableCell className="text-muted-foreground">{teamName}</TableCell>
       )}
