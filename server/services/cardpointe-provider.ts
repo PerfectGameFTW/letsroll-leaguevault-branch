@@ -203,16 +203,11 @@ export class CardPointePaymentProvider implements PaymentProvider {
   }
 
   async createOrUpdateCustomer(
-    name: string,
-    email: string,
+    _name: string,
+    _email: string,
     _phone?: string | null,
   ): Promise<PaymentCustomer | null> {
-    log.info('CardPointe createOrUpdateCustomer: profiles are created when cards are saved, returning placeholder');
-    return {
-      id: `cp_customer_${Date.now()}`,
-      name,
-      email,
-    };
+    return null;
   }
 
   async getPayment(
