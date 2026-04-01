@@ -114,7 +114,7 @@ router.get('/:bowlerId/:leagueId', async (req, res) => {
 
     const schedule = await storage.getPaymentSchedule(bowlerId, leagueId);
     if (!schedule) {
-      return sendError(res, 'No active payment schedule found', 404, 'NOT_FOUND');
+      return sendSuccess(res, null);
     }
 
     const league = await storage.getLeague(leagueId);

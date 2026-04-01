@@ -245,13 +245,13 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     return presets;
   }, [totalWeeks, weeklyFee, financials.totalPaid, league.seasonStart]);
 
-  const { data: scheduleResponse } = useQuery<{ success: boolean; data: ScheduleData }>({
+  const { data: scheduleResponse } = useQuery<{ success: boolean; data: ScheduleData | null }>({
     queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`],
     enabled: !!bowler.id && !!league.id,
     staleTime: 1000 * 60 * 5,
     retry: false,
   });
-  const activeSchedule = scheduleResponse?.success ? scheduleResponse.data : undefined;
+  const activeSchedule = scheduleResponse?.success ? scheduleResponse.data ?? undefined : undefined;
 
   if (showPaymentSetup) {
     return (
