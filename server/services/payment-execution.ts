@@ -23,7 +23,7 @@ async function fetchBowlerPaymentInfo(bowlerId: number) {
   };
 }
 
-function buildLineItems(
+export function buildLineItems(
   league: typeof leagues.$inferSelect,
   quantity: string
 ): OrderLineItem[] {

@@ -8,7 +8,7 @@ import { paymentLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasCatalogSupport, hasWalletSupport } from '../services/payment-provider';
-import { computePaymentSplit } from '../services/payment-execution';
+import { computePaymentSplit, buildLineItems } from '../services/payment-execution';
 
 const log = createLogger("Payments");
 
@@ -195,17 +195,11 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
       log.warn('Cannot store card — bowler has no customer ID:', bowlerId);
     }
 
-    const lineItems: { catalogObjectId: string; quantity: string }[] = [];
     const weeklyFee = league.weeklyFee || 0;
     const quantity = weeklyFee > 0 && amount % weeklyFee === 0
       ? String(amount / weeklyFee)
       : '1';
-    if (league?.lineageItemVariationId) {
-      lineItems.push({ catalogObjectId: league.lineageItemVariationId, quantity });
-    }
-    if (league?.prizeFundItemVariationId) {
-      lineItems.push({ catalogObjectId: league.prizeFundItemVariationId, quantity });
-    }
+    const lineItems = buildLineItems(league, quantity);
 
     const buyerEmail = bowler.email || undefined;
 
