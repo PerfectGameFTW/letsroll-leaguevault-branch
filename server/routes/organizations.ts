@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { sendSuccess, sendError, sanitizeUser, sanitizeOrg, sanitizeOrgs, handleZodError } from '../utils/api.js';
+import { isAllowedRedirectUrl } from '../utils/url-validation.js';
 import { storage } from '../storage';
 import { 
   insertOrganizationSchema, 
@@ -103,6 +104,9 @@ router.get('/:id/logo', async (req, res) => {
       return res.send(buffer);
     }
 
+    if (!isAllowedRedirectUrl(logo)) {
+      return sendError(res, 'Logo URL points to an untrusted domain', 400, 'UNTRUSTED_URL');
+    }
     return res.redirect(logo);
   } catch (error) {
     log.error('Error serving organization logo:', error);

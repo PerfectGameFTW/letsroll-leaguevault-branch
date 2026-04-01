@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { sendSuccess, sendError } from '../utils/api.js';
+import { isAllowedRedirectUrl } from '../utils/url-validation.js';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
 
@@ -76,6 +77,9 @@ router.get('/:id/logo', async (req, res) => {
       return res.send(buffer);
     }
 
+    if (!isAllowedRedirectUrl(logo)) {
+      return sendError(res, 'Logo URL points to an untrusted domain', 400, 'UNTRUSTED_URL');
+    }
     return res.redirect(logo);
   } catch (error) {
     log.error('Error serving organization logo:', error);
@@ -111,6 +115,9 @@ router.get('/:id/app-icon', async (req, res) => {
       return res.send(buffer);
     }
 
+    if (!isAllowedRedirectUrl(iconData)) {
+      return sendError(res, 'App icon URL points to an untrusted domain', 400, 'UNTRUSTED_URL');
+    }
     return res.redirect(iconData);
   } catch (error) {
     log.error('Error serving organization app icon:', error);
