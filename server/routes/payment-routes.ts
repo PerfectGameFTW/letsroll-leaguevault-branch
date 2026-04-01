@@ -12,6 +12,12 @@ import { computePaymentSplit } from '../services/payment-execution';
 
 const log = createLogger("Payments");
 
+async function getProviderForLeague(leagueId: number) {
+  const league = await storage.getLeague(leagueId);
+  const locationId = league?.locationId ?? null;
+  return getPaymentProvider(locationId);
+}
+
 function getProviderCustomerId(bowler: any, provider: any): string | undefined {
   if (provider.providerName === 'cardpointe') {
     return bowler.cardpointeProfileId || undefined;
@@ -48,16 +54,13 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
       });
     }
 
-    const league = await storage.getLeague(dbPayment.leagueId);
-    const locationId = league?.locationId ?? null;
-
-    const provider = await getPaymentProvider(locationId);
+    const provider = await getProviderForLeague(dbPayment.leagueId);
     let providerPayment = null;
     try {
       providerPayment = await provider.getPayment(dbPayment.providerPaymentId);
     } catch (e) {
       if (e instanceof ProviderNotConfiguredError) {
-        log.warn('Payment verification: provider not configured', { locationId, paymentId: dbPayment.id });
+        log.warn('Payment verification: provider not configured', { leagueId: dbPayment.leagueId, paymentId: dbPayment.id });
       } else {
         throw e;
       }
@@ -184,8 +187,7 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
       return res.json({ dbPaymentId: existingPayment.id, id: existingPayment.providerPaymentId, status: 'COMPLETED', deduplicated: true });
     }
 
-    const lvLocationId = league.locationId ?? null;
-    const provider = await getPaymentProvider(lvLocationId);
+    const provider = await getPaymentProvider(league.locationId ?? null);
 
     const customerId = getProviderCustomerId(bowler, provider);
 
@@ -209,7 +211,7 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
 
     log.info('Processing payment:', {
       bowlerId, leagueId, amount,
-      locationId: lvLocationId,
+      locationId: league.locationId,
       provider: provider.providerName,
       hasLineItems: lineItems.length > 0,
       hasCustomerId: !!customerId,
@@ -329,8 +331,9 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
 
 router.post('/customers', paymentLimiter, async (req, res) => {
   try {
+    let team: any = null;
     if (req.body.teamId) {
-      const team = await storage.getTeam(req.body.teamId);
+      team = await storage.getTeam(req.body.teamId);
       
       if (!team) {
         return sendError(res, "Team not found", 404, 'NOT_FOUND');
@@ -352,11 +355,9 @@ router.post('/customers', paymentLimiter, async (req, res) => {
       }
     }
 
-    const teamLvLocationId = req.body.teamId
-      ? (await storage.getLeague((await storage.getTeam(req.body.teamId))?.leagueId ?? 0))?.locationId ?? null
-      : null;
-
-    const provider = await getPaymentProvider(teamLvLocationId);
+    const provider = team
+      ? await getProviderForLeague(team.leagueId)
+      : await getPaymentProvider(null);
 
     const customer = await provider.createOrUpdateCustomer(
       req.body.name,
@@ -480,10 +481,10 @@ router.post('/cards/:bowlerId', async (req, res) => {
     }
 
     const cardLeagueId = req.body.leagueId ? parseInt(req.body.leagueId) : null;
-    const cardLeague = cardLeagueId ? await storage.getLeague(cardLeagueId) : null;
-    const cardLvLocationId = cardLeague?.locationId ?? null;
 
-    const provider = await getPaymentProvider(cardLvLocationId);
+    const provider = cardLeagueId
+      ? await getProviderForLeague(cardLeagueId)
+      : await getPaymentProvider(null);
     const providerCustId = getProviderCustomerId(bowler, provider);
     if (!providerCustId && provider.providerName !== 'cardpointe') {
       return sendError(res, 'Bowler does not have a payment customer account', 400);
@@ -529,25 +530,23 @@ router.get('/cards/:bowlerId', async (req, res) => {
       return sendSuccess(res, []);
     }
 
-    let listLvLocationId: number | null = null;
     const listLeagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : null;
-    if (listLeagueId) {
-      const listLeague = await storage.getLeague(listLeagueId);
-      listLvLocationId = listLeague?.locationId ?? null;
-    } else {
+    let resolvedLeagueId = listLeagueId;
+    if (!resolvedLeagueId) {
       const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: bowlerId });
       if (bowlerLeagues.length > 0) {
-        const firstLeague = await storage.getLeague(bowlerLeagues[0].leagueId);
-        listLvLocationId = firstLeague?.locationId ?? null;
+        resolvedLeagueId = bowlerLeagues[0].leagueId;
       }
     }
 
     let provider;
     try {
-      provider = await getPaymentProvider(listLvLocationId);
+      provider = resolvedLeagueId
+        ? await getProviderForLeague(resolvedLeagueId)
+        : await getPaymentProvider(null);
     } catch (e) {
       if (e instanceof ProviderNotConfiguredError) {
-        log.warn('List cards: provider not configured, returning empty', { locationId: listLvLocationId });
+        log.warn('List cards: provider not configured, returning empty', { leagueId: resolvedLeagueId });
         return sendSuccess(res, []);
       }
       throw e;
@@ -587,20 +586,18 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
       return sendError(res, 'Bowler not found', 404);
     }
 
-    let delLvLocationId: number | null = null;
     const delLeagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : null;
-    if (delLeagueId) {
-      const delLeague = await storage.getLeague(delLeagueId);
-      delLvLocationId = delLeague?.locationId ?? null;
-    } else {
+    let resolvedLeagueId = delLeagueId;
+    if (!resolvedLeagueId) {
       const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: bowlerId });
       if (bowlerLeagues.length > 0) {
-        const firstLeague = await storage.getLeague(bowlerLeagues[0].leagueId);
-        delLvLocationId = firstLeague?.locationId ?? null;
+        resolvedLeagueId = bowlerLeagues[0].leagueId;
       }
     }
 
-    const provider = await getPaymentProvider(delLvLocationId);
+    const provider = resolvedLeagueId
+      ? await getProviderForLeague(resolvedLeagueId)
+      : await getPaymentProvider(null);
 
     const providerCustId = getProviderCustomerId(bowler, provider);
     if (!providerCustId) {
