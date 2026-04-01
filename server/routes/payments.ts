@@ -98,6 +98,17 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
       return sendError(res, "You don't have access to create payments for this league", 403, 'FORBIDDEN');
     }
 
+    if (payment.idempotencyKey) {
+      const existing = await storage.getPaymentByIdempotencyKey(payment.idempotencyKey);
+      if (existing && existing.leagueId === payment.leagueId) {
+        log.info('Payment deduplicated by idempotency key:', { id: existing.id, idempotencyKey: payment.idempotencyKey });
+        return sendSuccess(res, existing, 200);
+      }
+      if (existing) {
+        return sendError(res, 'Duplicate idempotency key', 409, 'CONFLICT');
+      }
+    }
+
     const lineageAmount = (league.lineageFee != null && league.weeklyFee > 0)
       ? Math.round(payment.amount * league.lineageFee / league.weeklyFee)
       : undefined;
@@ -105,11 +116,31 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
       ? Math.round(payment.amount * league.prizeFundFee / league.weeklyFee)
       : undefined;
 
-    const created = await storage.createPayment({
-      ...payment,
-      lineageAmount,
-      prizeFundAmount,
-    });
+    let created;
+    try {
+      created = await storage.createPayment({
+        ...payment,
+        lineageAmount,
+        prizeFundAmount,
+      });
+    } catch (insertError: unknown) {
+      if (
+        payment.idempotencyKey &&
+        insertError instanceof Error &&
+        'code' in insertError &&
+        (insertError as Record<string, unknown>).code === '23505'
+      ) {
+        const existing = await storage.getPaymentByIdempotencyKey(payment.idempotencyKey);
+        if (existing && existing.leagueId === payment.leagueId) {
+          log.info('Payment deduplicated after race condition:', { id: existing.id, idempotencyKey: payment.idempotencyKey });
+          return sendSuccess(res, existing, 200);
+        }
+        if (existing) {
+          return sendError(res, 'Duplicate idempotency key', 409, 'CONFLICT');
+        }
+      }
+      throw insertError;
+    }
 
     if (payment.status === 'paid' && league.seasonStart && league.seasonEnd && league.weeklyFee) {
       try {
