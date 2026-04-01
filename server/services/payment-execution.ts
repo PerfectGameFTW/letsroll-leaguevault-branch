@@ -81,7 +81,7 @@ export async function executeCharge(
   }
 }
 
-export async function executeSquareCharge(
+export async function executeChargeForLocation(
   cardId: string,
   amount: number,
   lineItems: OrderLineItem[],
