@@ -4,6 +4,7 @@ import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { sendSuccess, sendError, sanitizeUser, sanitizeOrg, sanitizeOrgs, handleZodError } from '../utils/api.js';
 import { isAllowedRedirectUrl } from '../utils/url-validation.js';
+import { validateDataUri } from '../utils/image-magic-bytes.js';
 import { storage } from '../storage';
 import { 
   insertOrganizationSchema, 
@@ -89,19 +90,13 @@ router.get('/:id/logo', async (req, res) => {
 
     const logo = organization.logo;
     if (logo.startsWith('data:')) {
-      const matches = logo.match(/^data:([^;]+);base64,(.+)$/);
-      if (!matches) {
-        return sendError(res, 'Invalid logo format', 400, 'INVALID_FORMAT');
+      const result = validateDataUri(logo);
+      if (!result.valid) {
+        return sendError(res, result.error, 400, 'INVALID_FORMAT');
       }
-      const mimeType = matches[1];
-      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-      if (!allowedMimeTypes.includes(mimeType)) {
-        return sendError(res, 'Invalid logo MIME type', 400, 'INVALID_MIME_TYPE');
-      }
-      const buffer = Buffer.from(matches[2], 'base64');
-      res.set('Content-Type', mimeType);
+      res.set('Content-Type', result.mimeType);
       res.set('Cache-Control', 'public, max-age=86400');
-      return res.send(buffer);
+      return res.send(result.buffer);
     }
 
     if (!isAllowedRedirectUrl(logo)) {
@@ -294,6 +289,17 @@ router.patch('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
     }
 
     const validatedData = updateOrganizationSchema.parse(req.body);
+
+    const imageFields = ['logo', 'darkLogo', 'appIcon'] as const;
+    for (const field of imageFields) {
+      const value = validatedData[field];
+      if (value && value.startsWith('data:')) {
+        const result = validateDataUri(value);
+        if (!result.valid) {
+          return sendError(res, `${field}: ${result.error}`, 400, 'INVALID_FORMAT');
+        }
+      }
+    }
     
     // If slug is being updated, check if it's already in use
     if (validatedData.slug && validatedData.slug !== organization.slug) {

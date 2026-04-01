@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { sendSuccess, sendError } from '../utils/api.js';
 import { isAllowedRedirectUrl } from '../utils/url-validation.js';
+import { validateDataUri } from '../utils/image-magic-bytes.js';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
 
@@ -62,19 +63,13 @@ router.get('/:id/logo', async (req, res) => {
 
     const logo = organization.logo;
     if (logo.startsWith('data:')) {
-      const matches = logo.match(/^data:([^;]+);base64,(.+)$/);
-      if (!matches) {
-        return sendError(res, 'Invalid logo format', 400, 'INVALID_FORMAT');
+      const result = validateDataUri(logo);
+      if (!result.valid) {
+        return sendError(res, result.error, 400, 'INVALID_FORMAT');
       }
-      const mimeType = matches[1];
-      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-      if (!allowedMimeTypes.includes(mimeType)) {
-        return sendError(res, 'Invalid logo MIME type', 400, 'INVALID_MIME_TYPE');
-      }
-      const buffer = Buffer.from(matches[2], 'base64');
-      res.set('Content-Type', mimeType);
+      res.set('Content-Type', result.mimeType);
       res.set('Cache-Control', 'public, max-age=86400');
-      return res.send(buffer);
+      return res.send(result.buffer);
     }
 
     if (!isAllowedRedirectUrl(logo)) {
@@ -100,19 +95,13 @@ router.get('/:id/app-icon', async (req, res) => {
     }
 
     if (iconData.startsWith('data:')) {
-      const matches = iconData.match(/^data:([^;]+);base64,(.+)$/);
-      if (!matches) {
-        return sendError(res, 'Invalid icon format', 400, 'INVALID_FORMAT');
+      const result = validateDataUri(iconData);
+      if (!result.valid) {
+        return sendError(res, result.error, 400, 'INVALID_FORMAT');
       }
-      const mimeType = matches[1];
-      const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-      if (!allowedMimeTypes.includes(mimeType)) {
-        return sendError(res, 'Invalid icon MIME type', 400, 'INVALID_MIME_TYPE');
-      }
-      const buffer = Buffer.from(matches[2], 'base64');
-      res.set('Content-Type', mimeType);
+      res.set('Content-Type', result.mimeType);
       res.set('Cache-Control', 'public, max-age=86400');
-      return res.send(buffer);
+      return res.send(result.buffer);
     }
 
     if (!isAllowedRedirectUrl(iconData)) {
