@@ -204,34 +204,14 @@ export class CardPointePaymentProvider implements PaymentProvider {
   }
 
   async createOrUpdateCustomer(
-    name: string,
-    email: string,
+    _name: string,
+    _email: string,
     _phone?: string | null,
   ): Promise<PaymentCustomer | null> {
-    const creds = await this.getCredentials();
-
-    try {
-      const profileResult = await createOrUpdateProfile(creds, {
-        account: '',
-        name,
-      });
-
-      if (!profileResult.profileid) {
-        log.warn('CardPointe createOrUpdateCustomer: no profileid returned');
-        return null;
-      }
-
-      return {
-        id: profileResult.profileid,
-        name,
-        email,
-      };
-    } catch (error) {
-      log.error('CardPointe createOrUpdateCustomer failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
+    log.info(
+      'CardPointe does not support standalone customer creation — a card token is required to create a profile. Returning null.',
+    );
+    return null;
   }
 
   async getPayment(
