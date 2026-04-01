@@ -360,6 +360,7 @@ export default function BowlerViewPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Date</TableHead>
+              <TableHead>Type</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Transaction ID</TableHead>
@@ -368,7 +369,7 @@ export default function BowlerViewPage() {
           <TableBody>
             {payments?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="text-center">
+                <TableCell colSpan={5} className="text-center">
                   No payment history
                 </TableCell>
               </TableRow>
@@ -378,6 +379,7 @@ export default function BowlerViewPage() {
                   <TableCell>
                     {format(new Date(payment.weekOf), "MMM d, yyyy")}
                   </TableCell>
+                  <TableCell className="capitalize">{payment.type.replace(/_/g, " ")}</TableCell>
                   <TableCell>${(payment.amount / 100).toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge
