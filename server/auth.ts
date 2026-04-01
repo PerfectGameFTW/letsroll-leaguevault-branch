@@ -16,7 +16,7 @@ import { csrfProtection } from "./middleware/csrf";
 
 const log = createLogger("Auth");
 
-function safeTokenCompare(provided: unknown, stored: unknown): boolean {
+export function safeTokenCompare(provided: unknown, stored: unknown): boolean {
   if (typeof provided !== 'string' || typeof stored !== 'string') {
     return false;
   }

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
-import { hashPassword } from '../auth.js';
+import { hashPassword, safeTokenCompare } from '../auth.js';
 import { passwordSchema } from '@shared/password-validation.js';
 import { env } from '../config';
 import { createLogger } from '../logger';
@@ -21,7 +21,7 @@ router.post('/create-first-admin', async (req: Request, res: Response) => {
       return sendError(res, 'This endpoint is disabled. Set SETUP_SECRET to enable it.', 403, 'ENDPOINT_DISABLED');
     }
     const providedSecret = req.headers['x-setup-secret'];
-    if (!providedSecret || providedSecret !== setupSecret) {
+    if (!providedSecret || !safeTokenCompare(providedSecret, setupSecret)) {
       return sendError(res, 'Invalid or missing setup secret.', 401, 'UNAUTHORIZED');
     }
 
