@@ -10,10 +10,7 @@ export interface ChargeResult {
   paymentId?: string;
   error?: string;
   cardId?: string;
-  providerRef?: {
-    cardpointeRetref?: string;
-    cardpointeAuthcode?: string;
-  };
+  providerRef?: Record<string, string>;
 }
 
 export type PaymentResult = ChargeResult;
@@ -162,7 +159,7 @@ export async function createPaymentRecord(
   notes?: string,
   weekOf?: string,
   tx?: typeof db,
-  providerRef?: { cardpointeRetref?: string; cardpointeAuthcode?: string },
+  providerRef?: Record<string, string>,
 ): Promise<void> {
   const target = tx ?? db;
   const { lineageAmount, prizeFundAmount } = computePaymentSplit(amount, league);

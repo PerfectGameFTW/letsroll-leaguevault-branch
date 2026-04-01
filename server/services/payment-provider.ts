@@ -6,10 +6,7 @@ export interface PaymentResult {
     last4: string;
     brand: string;
   };
-  providerRef?: {
-    cardpointeRetref?: string;
-    cardpointeAuthcode?: string;
-  };
+  providerRef?: Record<string, string>;
 }
 
 export interface RefundResult {
