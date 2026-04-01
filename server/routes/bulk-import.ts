@@ -6,7 +6,7 @@ import { sendSuccess, sendError } from '../utils/api.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
 import { createLogger } from '../logger';
 import { z } from 'zod';
-import { insertBowlerSchema } from '../../shared/schema/bowlers';
+import { insertBowlerSchema, type InsertBowler } from '../../shared/schema/bowlers';
 
 const log = createLogger("BulkImport");
 
@@ -296,6 +296,9 @@ router.post('/', (req: any, res, next) => {
         if (!teamCache.has(cacheKey)) {
           const existing = await storage.getTeamByNumber(vRow.leagueId!, vRow.teamNumber);
           if (existing) {
+            if (existing.name.toLowerCase().trim() !== vRow.teamName.toLowerCase().trim()) {
+              log.warn(`Row ${vRow.rowNumber}: Team #${vRow.teamNumber} exists as "${existing.name}" but file has "${vRow.teamName}". Using existing team.`);
+            }
             teamCache.set(cacheKey, { id: existing.id, isNew: false });
           } else {
             const newTeam = await storage.createTeam({
@@ -313,13 +316,13 @@ router.post('/', (req: any, res, next) => {
         const teamInfo = teamCache.get(cacheKey)!;
         vRow.teamId = teamInfo.id;
 
-        const bowlerData: any = {
+        const bowlerData: InsertBowler = {
           name: vRow.bowlerName,
           active: true,
           order: 0,
+          email: vRow.email || null,
+          phone: vRow.phone || null,
         };
-        if (vRow.email) bowlerData.email = vRow.email;
-        if (vRow.phone) bowlerData.phone = vRow.phone;
 
         const created = await storage.createBowler(bowlerData);
 
