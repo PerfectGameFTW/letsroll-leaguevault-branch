@@ -242,6 +242,7 @@ export default function WeeklyPaymentsPage() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-3" align="center">
+                  <p className="text-xs font-medium text-muted-foreground mb-2 text-center">Jump to week</p>
                   <div className="grid grid-cols-5 gap-1.5">
                     {Array.from({ length: maxWeek }, (_, i) => i + 1).map((week) => (
                       <Button
