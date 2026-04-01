@@ -136,7 +136,7 @@ export default function WeeklyPaymentsPage() {
   }, [league?.totalBowlingWeeks, league?.weekDay, league?.cancelledDates]);
 
   useEffect(() => {
-    if (league?.weekDay && selectedWeek === null) {
+    if (league?.weekDay && selectedWeek === null && maxWeek > 0) {
       const today = startOfToday();
       const nearestBowlingDay = getNearestBowlingDay(
         today,
@@ -145,9 +145,9 @@ export default function WeeklyPaymentsPage() {
         league.cancelledDates ?? []
       );
       const weekNum = getWeekNumber(nearestBowlingDay, league);
-      setSelectedWeek(weekNum > 0 ? weekNum : 1);
+      setSelectedWeek(Math.max(1, Math.min(weekNum, maxWeek)));
     }
-  }, [league?.weekDay, selectedWeek]);
+  }, [league?.weekDay, selectedWeek, maxWeek]);
 
   const selectedDate = useMemo(() => {
     if (!league?.weekDay || !league?.seasonStart || selectedWeek === null) return undefined;
