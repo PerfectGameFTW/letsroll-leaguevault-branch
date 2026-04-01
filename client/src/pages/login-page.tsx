@@ -1,4 +1,4 @@
-import { FC } from "react";
+import { FC, useState } from "react";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { queryClient } from "@/lib/queryClient";
 import {
@@ -22,9 +22,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import { useSubdomainOrg } from "@/hooks/use-subdomain-org";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 const loginSchema = z.object({
   email: z
@@ -38,9 +38,10 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 const LoginPage: FC = () => {
-  const { toast } = useToast();
   const [, setLocation] = useLocation();
   const { org: subdomainOrg } = useSubdomainOrg();
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -51,6 +52,8 @@ const LoginPage: FC = () => {
   });
 
   const onSubmit = async (data: LoginFormData) => {
+    setLoginError(null);
+    setIsSubmitting(true);
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
@@ -72,12 +75,10 @@ const LoginPage: FC = () => {
 
       setLocation("/");
     } catch (error) {
-      console.error("[Login] Login error:", error);
-      toast({
-        title: "Login failed",
-        description: error instanceof Error ? error.message : "Failed to login. Please try again.",
-        variant: "destructive",
-      });
+      const message = error instanceof Error ? error.message : "Failed to login. Please try again.";
+      setLoginError(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -141,8 +142,21 @@ const LoginPage: FC = () => {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full mt-2">
-                Sign In
+              {loginError && (
+                <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{loginError}</span>
+                </div>
+              )}
+              <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  "Sign In"
+                )}
               </Button>
             </form>
           </Form>
