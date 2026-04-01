@@ -39,9 +39,11 @@ vi.mock('../../logger', () => ({
   }),
 }));
 
-const { createOrUpdateCustomer, processPayment } = await import('../square.js');
+const { SquarePaymentProvider } = await import('../square-provider.js');
 
 describe('Square Service', () => {
+  let provider: InstanceType<typeof SquarePaymentProvider>;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getLocationSquareConfig.mockResolvedValue({
@@ -49,6 +51,7 @@ describe('Square Service', () => {
       appId: 'sq0idp-test',
       locationId: 'LOC123',
     });
+    provider = new SquarePaymentProvider(1);
   });
 
   describe('createOrUpdateCustomer', () => {
@@ -68,7 +71,7 @@ describe('Square Service', () => {
         },
       });
 
-      const result = await createOrUpdateCustomer('John Doe', 'john@example.com', null, 1);
+      const result = await provider.createOrUpdateCustomer('John Doe', 'john@example.com', null);
 
       expect(result).toEqual({
         id: 'test-customer-id',
@@ -110,7 +113,7 @@ describe('Square Service', () => {
         },
       });
 
-      const result = await createOrUpdateCustomer('John Doe', 'john@example.com', null, 1);
+      const result = await provider.createOrUpdateCustomer('John Doe', 'john@example.com', null);
 
       expect(result).toEqual({
         id: 'existing-customer-id',
@@ -124,8 +127,10 @@ describe('Square Service', () => {
       );
     });
 
-    it('should return null when no locationId is provided', async () => {
-      const result = await createOrUpdateCustomer('John Doe', 'john@example.com');
+    it('should return null when no Square credentials configured', async () => {
+      mocks.getLocationSquareConfig.mockResolvedValue(null);
+      const noCredsProvider = new SquarePaymentProvider(999);
+      const result = await noCredsProvider.createOrUpdateCustomer('John Doe', 'john@example.com');
       expect(result).toBeNull();
     });
 
@@ -133,7 +138,7 @@ describe('Square Service', () => {
       mocks.customersApi.searchCustomers.mockRejectedValueOnce(new Error('API Error'));
 
       await expect(
-        createOrUpdateCustomer('John Doe', 'john@example.com', null, 1),
+        provider.createOrUpdateCustomer('John Doe', 'john@example.com', null),
       ).rejects.toThrow('Failed to create/update Square customer: API Error');
     });
   });
@@ -155,7 +160,7 @@ describe('Square Service', () => {
         },
       });
 
-      const result = await processPayment('source-id', 1000, false, undefined, undefined, undefined, 1);
+      const result = await provider.processPayment('source-id', 1000, false);
 
       expect(result).toEqual({
         id: 'payment-id',
@@ -177,8 +182,10 @@ describe('Square Service', () => {
       );
     });
 
-    it('should throw when no location client available', async () => {
-      await expect(processPayment('source-id', 1000)).rejects.toThrow(
+    it('should throw when no Square credentials configured', async () => {
+      mocks.getLocationSquareConfig.mockResolvedValue(null);
+      const noCredsProvider = new SquarePaymentProvider(999);
+      await expect(noCredsProvider.processPayment('source-id', 1000)).rejects.toThrow(
         'INITIALIZATION_ERROR',
       );
     });
