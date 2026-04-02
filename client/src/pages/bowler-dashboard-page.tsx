@@ -1,4 +1,4 @@
-import { useState, FC, useMemo } from "react";
+import { useState, useEffect, FC, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { getSeasonLengthWeeks, getWeeksPassedInSeason } from "@/lib/financial-ut
 import { DEFAULT_WEEKLY_FEE_CENTS } from "@shared/schema";
 import type { League, Payment, User, Bowler, BowlerLeague, Team, ApiResponse } from "@shared/schema";
 import { PaymentStatusSection } from "@/components/payment-status-section";
-import { queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useSelectedLeague } from "@/hooks/use-selected-league";
 
@@ -193,6 +193,18 @@ export const BowlerDashboardPage: FC = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/payments'] });
   };
 
+  const noBowlerProfile = !bowler && !isLoadingUser && !isLoadingBowlers && !userError && !bowlersError && !!currentUser;
+  useEffect(() => {
+    if (noBowlerProfile) {
+      apiRequest('/api/auth/logout', 'POST', {})
+        .catch(() => {})
+        .finally(() => {
+          queryClient.clear();
+          window.location.href = '/login';
+        });
+    }
+  }, [noBowlerProfile]);
+
   if (isStillLoadingChain && !league) {
     return <PageLoadingState message="Loading dashboard data..." />;
   }
@@ -237,19 +249,7 @@ export const BowlerDashboardPage: FC = () => {
   }
 
   if (!bowler) {
-    return (
-      <Card className="mx-auto max-w-md mt-8">
-        <CardHeader>
-          <CardTitle>Profile Setup Required</CardTitle>
-          <CardDescription>Your bowler profile needs to be configured</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Please contact a league administrator to set up your bowler profile.
-          </p>
-        </CardContent>
-      </Card>
-    );
+    return <PageLoadingState />;
   }
 
   if (blError || leaguesError || teamsError) {
