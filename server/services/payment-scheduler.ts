@@ -314,7 +314,7 @@ class PaymentScheduler {
     }
   }
 
-  public startSweepPoll() {
+  public startSweepPoll(immediateFirstTick = true) {
     this.stopSweepPoll();
     logger.info(`[PaymentScheduler] Starting sweep poll (every ${SWEEP_INTERVAL_MS / 1000}s)`);
 
@@ -329,6 +329,15 @@ class PaymentScheduler {
 
     if (this.sweepInterval && typeof this.sweepInterval === 'object' && 'unref' in this.sweepInterval) {
       this.sweepInterval.unref();
+    }
+
+    if (immediateFirstTick) {
+      this.sweepTick().catch(err => {
+        logger.error('[PaymentScheduler] Immediate sweep tick error', {
+          error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err,
+          timestamp: new Date().toISOString()
+        });
+      });
     }
   }
 
