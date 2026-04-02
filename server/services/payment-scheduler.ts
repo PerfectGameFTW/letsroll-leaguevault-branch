@@ -211,30 +211,50 @@ class PaymentScheduler {
         })
         .map(r => r.schedule);
 
-      await Promise.all(validSchedules.map(s =>
-        this.withScheduleLock(s.id, async () => {
-          const isPastDue = new Date(s.nextPaymentDate) <= now;
-          logger.info(`[PaymentScheduler] Scheduling payment for schedule ${s.id}`, {
+      const validPastDue = validSchedules.filter(s => new Date(s.nextPaymentDate) <= now);
+      const validFuture = validSchedules.filter(s => new Date(s.nextPaymentDate) > now);
+
+      for (const s of validPastDue) {
+        await this.withScheduleLock(s.id, async () => {
+          const jobId = `payment-${s.id}`;
+          logger.warn(`[PaymentScheduler] Immediately processing past-due schedule ${s.id}`, {
             amount: s.amount,
             nextPaymentDate: s.nextPaymentDate,
             frequency: s.frequency,
             bowlerId: s.bowlerId,
             leagueId: s.leagueId,
-            isPastDue,
+            cardToken: `${s.paymentCardId?.substring(0, 10)}...`,
+            processedAt: new Date().toISOString()
+          });
+          await processScheduledPaymentJob(s, jobId, {
+            schedulePayment: (record) => this.schedulePayment(record),
+            cancelJob: (id) => this.cancelJob(id),
+          });
+        });
+      }
+
+      for (const s of validFuture) {
+        await this.withScheduleLock(s.id, async () => {
+          logger.info(`[PaymentScheduler] Scheduling future payment for schedule ${s.id}`, {
+            amount: s.amount,
+            nextPaymentDate: s.nextPaymentDate,
+            frequency: s.frequency,
+            bowlerId: s.bowlerId,
+            leagueId: s.leagueId,
             cardToken: `${s.paymentCardId?.substring(0, 10)}...`,
             scheduledAt: new Date().toISOString()
           });
           this.schedulePayment(s);
-        })
-      ));
+        });
+      }
 
       const skippedCount = activeSchedules.length - validSchedules.length;
       logger.info(`[PaymentScheduler] Initialization complete`, {
         activated: validSchedules.length,
         skipped: skippedCount,
         totalSchedules: activeSchedules.length,
-        pastDueProcessed: pastDue.filter(s => validSchedules.includes(s)).length,
-        futureScheduled: future.filter(s => validSchedules.includes(s)).length,
+        pastDueProcessed: validPastDue.length,
+        futureScheduled: validFuture.length,
         completionTime: new Date().toISOString()
       });
     } catch (error) {
@@ -273,7 +293,8 @@ class PaymentScheduler {
 
     this.cancelJob(jobId);
 
-    const job = schedule.scheduleJob(new Date(scheduleRecord.nextPaymentDate), async () => {
+    const scheduledDate = new Date(scheduleRecord.nextPaymentDate);
+    const job = schedule.scheduleJob(scheduledDate, async () => {
       try {
         await processScheduledPaymentJob(scheduleRecord, jobId, {
           schedulePayment: (record) => this.schedulePayment(record),
@@ -286,7 +307,11 @@ class PaymentScheduler {
       }
     });
 
-    this.jobs.set(jobId, job);
+    if (job) {
+      this.jobs.set(jobId, job);
+    } else {
+      logger.warn(`[PaymentScheduler] node-schedule returned null for ${jobId} (date ${scheduledDate.toISOString()} is in the past). Sweep poll will catch this.`);
+    }
   }
 
   public startSweepPoll() {
