@@ -364,7 +364,8 @@ async function startServer() {
 
     try {
       await paymentScheduler.initialize();
-      log.info('Schedulers initialized');
+      paymentScheduler.startSweepPoll();
+      log.info('Schedulers initialized with 60-second sweep poll');
     } catch (error) {
       log.error('Error initializing schedulers:', error);
     }

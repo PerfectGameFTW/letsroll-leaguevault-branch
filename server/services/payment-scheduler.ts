@@ -7,11 +7,14 @@ import { storage } from "../storage";
 import { processScheduledPaymentJob } from "./payment-lifecycle";
 import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
 
+const SWEEP_INTERVAL_MS = 60_000;
+
 class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
   private locks: Map<number, Promise<void>> = new Map();
+  private sweepInterval: ReturnType<typeof setInterval> | null = null;
+  private sweepRunning = false;
 
-  // Non-reentrant per-ID mutex: do not call withScheduleLock for the same ID within fn.
   private async withScheduleLock<T>(scheduleId: number, fn: () => Promise<T>): Promise<T> {
     const prev = this.locks.get(scheduleId) ?? Promise.resolve();
     let resolve: () => void;
@@ -103,7 +106,6 @@ class PaymentScheduler {
 
       const conditions = [
         eq(paymentSchedules.active, true),
-        lte(paymentSchedules.nextPaymentDate, new Date().toISOString()),
       ];
 
       if (organizationId !== undefined) {
@@ -174,13 +176,20 @@ class PaymentScheduler {
         }
       }
 
-      logger.info(`[PaymentScheduler] Found ${activeSchedules.length} active schedules to process`, {
+      const now = new Date();
+      const pastDue = activeSchedules.filter(s => new Date(s.nextPaymentDate) <= now);
+      const future = activeSchedules.filter(s => new Date(s.nextPaymentDate) > now);
+
+      logger.info(`[PaymentScheduler] Found ${activeSchedules.length} active schedules`, {
+        pastDue: pastDue.length,
+        future: future.length,
         schedules: activeSchedules.map(s => ({
           id: s.id,
           bowlerId: s.bowlerId,
           leagueId: s.leagueId,
           nextPaymentDate: s.nextPaymentDate,
           amount: s.amount,
+          isPastDue: new Date(s.nextPaymentDate) <= now,
           cardId: s.paymentCardId ? `${s.paymentCardId.substring(0, 10)}...` : 'none',
           organizationId: organizationFilteredSchedules.find(item => item.schedule.id === s.id)?.leagueOrganizationId ?? null
         }))
@@ -204,12 +213,14 @@ class PaymentScheduler {
 
       await Promise.all(validSchedules.map(s =>
         this.withScheduleLock(s.id, async () => {
+          const isPastDue = new Date(s.nextPaymentDate) <= now;
           logger.info(`[PaymentScheduler] Scheduling payment for schedule ${s.id}`, {
             amount: s.amount,
             nextPaymentDate: s.nextPaymentDate,
             frequency: s.frequency,
             bowlerId: s.bowlerId,
             leagueId: s.leagueId,
+            isPastDue,
             cardToken: `${s.paymentCardId?.substring(0, 10)}...`,
             scheduledAt: new Date().toISOString()
           });
@@ -222,6 +233,8 @@ class PaymentScheduler {
         activated: validSchedules.length,
         skipped: skippedCount,
         totalSchedules: activeSchedules.length,
+        pastDueProcessed: pastDue.filter(s => validSchedules.includes(s)).length,
+        futureScheduled: future.filter(s => validSchedules.includes(s)).length,
         completionTime: new Date().toISOString()
       });
     } catch (error) {
@@ -261,16 +274,133 @@ class PaymentScheduler {
     this.cancelJob(jobId);
 
     const job = schedule.scheduleJob(new Date(scheduleRecord.nextPaymentDate), async () => {
-      await processScheduledPaymentJob(scheduleRecord, jobId, {
-        schedulePayment: (record) => this.schedulePayment(record),
-        cancelJob: (id) => this.cancelJob(id),
-      });
+      try {
+        await processScheduledPaymentJob(scheduleRecord, jobId, {
+          schedulePayment: (record) => this.schedulePayment(record),
+          cancelJob: (id) => this.cancelJob(id),
+        });
+      } finally {
+        if (this.jobs.get(jobId) === job) {
+          this.jobs.delete(jobId);
+        }
+      }
     });
 
     this.jobs.set(jobId, job);
   }
 
+  public startSweepPoll() {
+    this.stopSweepPoll();
+    logger.info(`[PaymentScheduler] Starting sweep poll (every ${SWEEP_INTERVAL_MS / 1000}s)`);
+
+    this.sweepInterval = setInterval(() => {
+      this.sweepTick().catch(err => {
+        logger.error('[PaymentScheduler] Sweep poll tick error', {
+          error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : err,
+          timestamp: new Date().toISOString()
+        });
+      });
+    }, SWEEP_INTERVAL_MS);
+
+    if (this.sweepInterval && typeof this.sweepInterval === 'object' && 'unref' in this.sweepInterval) {
+      this.sweepInterval.unref();
+    }
+  }
+
+  public stopSweepPoll() {
+    if (this.sweepInterval !== null) {
+      clearInterval(this.sweepInterval);
+      this.sweepInterval = null;
+      logger.info('[PaymentScheduler] Sweep poll stopped');
+    }
+  }
+
+  private async sweepTick() {
+    if (this.sweepRunning) {
+      return;
+    }
+    this.sweepRunning = true;
+
+    try {
+      const now = new Date();
+
+      const dueSchedules = await db
+        .select({
+          schedule: paymentSchedules,
+          leagueOrganizationId: leagues.organizationId
+        })
+        .from(paymentSchedules)
+        .innerJoin(leagues, eq(paymentSchedules.leagueId, leagues.id))
+        .where(
+          and(
+            eq(paymentSchedules.active, true),
+            lte(paymentSchedules.nextPaymentDate, now.toISOString())
+          )
+        );
+
+      const missedSchedules = dueSchedules.filter(row => {
+        const jobId = `payment-${row.schedule.id}`;
+        const existingJob = this.jobs.get(jobId);
+        if (!existingJob) return true;
+        if (!existingJob.nextInvocation()) {
+          this.jobs.delete(jobId);
+          return true;
+        }
+        return false;
+      });
+
+      const alreadyTracked = dueSchedules.length - missedSchedules.length;
+
+      if (missedSchedules.length > 0) {
+        logger.warn(`[PaymentScheduler] Sweep poll found ${missedSchedules.length} missed schedule(s) — safety net activated`, {
+          missedIds: missedSchedules.map(r => r.schedule.id),
+          timestamp: now.toISOString()
+        });
+      }
+
+      if (dueSchedules.length > 0 || missedSchedules.length > 0) {
+        logger.info(`[PaymentScheduler] Sweep poll tick`, {
+          checked: dueSchedules.length,
+          alreadyTracked,
+          missed: missedSchedules.length,
+          timestamp: now.toISOString()
+        });
+      }
+
+      for (const row of missedSchedules) {
+        const s = row.schedule;
+        const isValid = await this.validateCardForProvider(s.paymentCardId, s.leagueId);
+        if (!isValid) {
+          logger.error(`[PaymentScheduler] Sweep: invalid card token for schedule ${s.id}, skipping`);
+          continue;
+        }
+
+        await this.withScheduleLock(s.id, async () => {
+          const jobId = `payment-${s.id}`;
+          if (this.jobs.has(jobId)) {
+            return;
+          }
+
+          logger.warn(`[PaymentScheduler] Sweep: processing missed schedule ${s.id}`, {
+            scheduleId: s.id,
+            nextPaymentDate: s.nextPaymentDate,
+            amount: s.amount,
+            bowlerId: s.bowlerId,
+            leagueId: s.leagueId,
+            cardToken: `${s.paymentCardId?.substring(0, 10)}...`,
+            sweepTime: new Date().toISOString()
+          });
+
+          this.schedulePayment(s);
+        });
+      }
+    } finally {
+      this.sweepRunning = false;
+    }
+  }
+
   public cancelAllJobs() {
+    this.stopSweepPoll();
     const jobCount = this.jobs.size;
     logger.info(`[PaymentScheduler] Cancelling all ${jobCount} scheduled jobs`);
     this.jobs.forEach((job, id) => {
