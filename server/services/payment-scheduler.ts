@@ -1,6 +1,6 @@
 import schedule from "node-schedule";
 import { db } from "../db";
-import { eq, and, lte, isNull, sql, count } from "drizzle-orm";
+import { eq, and, lte, isNull, sql, count, inArray } from "drizzle-orm";
 import { paymentSchedules, leagues, type PaymentSchedule } from "@shared/schema";
 import { logger } from "../logger";
 import { storage } from "../storage";
@@ -321,6 +321,10 @@ class PaymentScheduler {
     }
     this.sweepRunning = true;
 
+    let checked = 0;
+    let processed = 0;
+    let skipped = 0;
+
     try {
       const now = new Date();
 
@@ -338,6 +342,8 @@ class PaymentScheduler {
           )
         );
 
+      checked = dueSchedules.length;
+
       const missedSchedules = dueSchedules.filter(row => {
         const jobId = `payment-${row.schedule.id}`;
         const existingJob = this.jobs.get(jobId);
@@ -349,51 +355,70 @@ class PaymentScheduler {
         return false;
       });
 
-      const alreadyTracked = dueSchedules.length - missedSchedules.length;
+      skipped = checked - missedSchedules.length;
 
       if (missedSchedules.length > 0) {
         logger.warn(`[PaymentScheduler] Sweep poll found ${missedSchedules.length} missed schedule(s) — safety net activated`, {
           missedIds: missedSchedules.map(r => r.schedule.id),
           timestamp: now.toISOString()
         });
-      }
 
-      if (dueSchedules.length > 0 || missedSchedules.length > 0) {
-        logger.info(`[PaymentScheduler] Sweep poll tick`, {
-          checked: dueSchedules.length,
-          alreadyTracked,
-          missed: missedSchedules.length,
-          timestamp: now.toISOString()
+        const lockedRows = await db.transaction(async (tx) => {
+          const missedIds = missedSchedules.map(r => r.schedule.id);
+          const locked = await tx
+            .select({ schedule: paymentSchedules })
+            .from(paymentSchedules)
+            .where(
+              and(
+                eq(paymentSchedules.active, true),
+                lte(paymentSchedules.nextPaymentDate, now.toISOString()),
+                inArray(paymentSchedules.id, missedIds)
+              )
+            )
+            .for('update', { of: paymentSchedules, skipLocked: true });
+          return locked;
         });
-      }
 
-      for (const row of missedSchedules) {
-        const s = row.schedule;
-        const isValid = await this.validateCardForProvider(s.paymentCardId, s.leagueId);
-        if (!isValid) {
-          logger.error(`[PaymentScheduler] Sweep: invalid card token for schedule ${s.id}, skipping`);
-          continue;
-        }
-
-        await this.withScheduleLock(s.id, async () => {
-          const jobId = `payment-${s.id}`;
-          if (this.jobs.has(jobId)) {
-            return;
+        for (const row of lockedRows) {
+          const s = row.schedule;
+          const isValid = await this.validateCardForProvider(s.paymentCardId, s.leagueId);
+          if (!isValid) {
+            logger.error(`[PaymentScheduler] Sweep: invalid card token for schedule ${s.id}, skipping`);
+            continue;
           }
 
-          logger.warn(`[PaymentScheduler] Sweep: processing missed schedule ${s.id}`, {
-            scheduleId: s.id,
-            nextPaymentDate: s.nextPaymentDate,
-            amount: s.amount,
-            bowlerId: s.bowlerId,
-            leagueId: s.leagueId,
-            cardToken: `${s.paymentCardId?.substring(0, 10)}...`,
-            sweepTime: new Date().toISOString()
-          });
+          await this.withScheduleLock(s.id, async () => {
+            const jobId = `payment-${s.id}`;
+            const existingJob = this.jobs.get(jobId);
+            if (existingJob && existingJob.nextInvocation()) {
+              return;
+            }
 
-          this.schedulePayment(s);
-        });
+            logger.warn(`[PaymentScheduler] Sweep: immediately processing missed schedule ${s.id}`, {
+              scheduleId: s.id,
+              nextPaymentDate: s.nextPaymentDate,
+              amount: s.amount,
+              bowlerId: s.bowlerId,
+              leagueId: s.leagueId,
+              cardToken: `${s.paymentCardId?.substring(0, 10)}...`,
+              sweepTime: new Date().toISOString()
+            });
+
+            await processScheduledPaymentJob(s, jobId, {
+              schedulePayment: (record) => this.schedulePayment(record),
+              cancelJob: (id) => this.cancelJob(id),
+            });
+            processed++;
+          });
+        }
       }
+
+      logger.info(`[PaymentScheduler] Sweep poll tick`, {
+        checked,
+        processed,
+        skipped,
+        timestamp: now.toISOString()
+      });
     } finally {
       this.sweepRunning = false;
     }
