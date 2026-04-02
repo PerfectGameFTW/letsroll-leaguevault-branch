@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { format, isValid } from "date-fns";
 import { formatCurrency } from "@/lib/utils";
+import { CheckCircle2 } from "lucide-react";
 
 interface FinalTwoWeeksInfo {
   amount: number;
@@ -41,8 +42,19 @@ export function PaymentSummaryCards({
   onPayPastDue,
   onPayRemaining,
 }: PaymentSummaryCardsProps) {
+  const isPaidInFull = remainingBalance <= 0 && totalPaidAmount > 0;
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {isPaidInFull && (
+        <Card className="md:col-span-3 border-green-500/50 bg-green-500/5">
+          <CardContent className="flex items-center justify-center gap-3 py-4">
+            <CheckCircle2 className="h-6 w-6 text-green-600" />
+            <span className="text-lg font-semibold text-green-600">Season Paid in Full</span>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-lg">Full Season Amount Due</CardTitle>

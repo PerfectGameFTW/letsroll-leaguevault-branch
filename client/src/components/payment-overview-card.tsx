@@ -2,7 +2,7 @@ import { FC, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, CreditCard, CalendarDays, AlertTriangle } from "lucide-react";
+import { Loader2, CreditCard, CalendarDays, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -112,6 +112,13 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
             <span className="text-sm font-medium">{formatCurrency(financials.remainingBalance)}</span>
           </div>
 
+          {financials.remainingBalance <= 0 && financials.totalPaid > 0 && (
+            <div className="flex items-center justify-center gap-2 rounded-md bg-green-500/10 px-3 py-3">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <span className="text-sm font-semibold text-green-600">Season Paid in Full</span>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">Payment Schedule</span>
             <span className="text-sm font-medium">
@@ -201,7 +208,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
           </div>
         )}
 
-        {!activeSchedule && league.paymentMode === 'upfront' && (
+        {!activeSchedule && financials.remainingBalance > 0 && league.paymentMode === 'upfront' && (
           <div className="space-y-2">
             <Button className="w-full" onClick={() => onSetupPayment('autopay')}>
               Pay Full Season ({formatCurrency(financials.fullSeasonAmount)})
@@ -210,7 +217,7 @@ export const PaymentOverviewCard: FC<PaymentOverviewCardProps> = ({
           </div>
         )}
 
-        {!activeSchedule && league.paymentMode !== 'upfront' && (
+        {!activeSchedule && financials.remainingBalance > 0 && league.paymentMode !== 'upfront' && (
           <div className="space-y-2">
             <Button onClick={() => onSetupPayment('autopay')} className="w-full">
               {financials.amountPastDue > 0
