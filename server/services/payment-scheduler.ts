@@ -9,7 +9,7 @@ import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provid
 
 const SWEEP_INTERVAL_MS = 60_000;
 
-class PaymentScheduler {
+export class PaymentScheduler {
   private jobs: Map<string, schedule.Job> = new Map();
   private locks: Map<number, Promise<void>> = new Map();
   private sweepInterval: ReturnType<typeof setInterval> | null = null;
