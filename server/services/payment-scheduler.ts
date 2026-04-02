@@ -349,6 +349,9 @@ class PaymentScheduler {
     let checked = 0;
     let processed = 0;
     let skipped = 0;
+    let alreadyTracked = 0;
+    let lockContention = 0;
+    let invalidCard = 0;
 
     try {
       const now = new Date();
@@ -380,7 +383,7 @@ class PaymentScheduler {
         return false;
       });
 
-      skipped = checked - missedSchedules.length;
+      alreadyTracked = checked - missedSchedules.length;
 
       if (missedSchedules.length > 0) {
         logger.warn(`[PaymentScheduler] Sweep poll found ${missedSchedules.length} missed schedule(s) — safety net activated`, {
@@ -404,11 +407,14 @@ class PaymentScheduler {
           return locked;
         });
 
+        lockContention = missedSchedules.length - lockedRows.length;
+
         for (const row of lockedRows) {
           const s = row.schedule;
           const isValid = await this.validateCardForProvider(s.paymentCardId, s.leagueId);
           if (!isValid) {
             logger.error(`[PaymentScheduler] Sweep: invalid card token for schedule ${s.id}, skipping`);
+            invalidCard++;
             continue;
           }
 
@@ -438,10 +444,14 @@ class PaymentScheduler {
         }
       }
 
+      skipped = alreadyTracked + lockContention + invalidCard;
       logger.info(`[PaymentScheduler] Sweep poll tick`, {
         checked,
         processed,
         skipped,
+        alreadyTracked,
+        lockContention,
+        invalidCard,
         timestamp: now.toISOString()
       });
     } finally {
