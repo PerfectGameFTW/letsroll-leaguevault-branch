@@ -157,17 +157,17 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
         </DialogHeader>
         <form onSubmit={handleFormSubmit}>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">Name</Label>
-              <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} onBlur={generateSlug} className="col-span-3" />
+            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+              <Label htmlFor="name" className="md:text-right">Name</Label>
+              <Input id="name" required value={name} onChange={(e) => setName(e.target.value)} onBlur={generateSlug} className="md:col-span-3" />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="slug" className="text-right">Slug</Label>
-              <Input id="slug" required value={slug} onChange={(e) => setSlug(e.target.value)} className="col-span-3" placeholder="org-name" />
+            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+              <Label htmlFor="slug" className="md:text-right">Slug</Label>
+              <Input id="slug" required value={slug} onChange={(e) => setSlug(e.target.value)} className="md:col-span-3" placeholder="org-name" />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="subdomain" className="text-right">Subdomain</Label>
-              <div className="col-span-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+              <Label htmlFor="subdomain" className="md:text-right">Subdomain</Label>
+              <div className="md:col-span-3">
                 <div className="flex items-center gap-1">
                   <Input id="subdomain" value={subdomain} onChange={(e) => setSubdomain(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, ''))} className="flex-1" placeholder="orgname" />
                   <span className="text-sm text-muted-foreground whitespace-nowrap">.leaguevault.app</span>
@@ -175,13 +175,13 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
                 <p className="text-xs text-muted-foreground mt-1">Custom subdomain for this org (lowercase letters and numbers only). Leave blank to use the slug.</p>
               </div>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="phone" className="text-right">Phone</Label>
-              <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="col-span-3" />
+            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+              <Label htmlFor="phone" className="md:text-right">Phone</Label>
+              <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="md:col-span-3" />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="email" className="text-right">Email</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="col-span-3" />
+            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+              <Label htmlFor="email" className="md:text-right">Email</Label>
+              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="md:col-span-3" />
             </div>
 
             {!editId && (
@@ -192,17 +192,17 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
                     An invite email will be sent to the administrator to set up their password.
                   </p>
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="adminName" className="text-right">Admin Name</Label>
-                  <Input id="adminName" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="col-span-3" required={!editId} />
+                <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+                  <Label htmlFor="adminName" className="md:text-right">Admin Name</Label>
+                  <Input id="adminName" value={adminName} onChange={(e) => setAdminName(e.target.value)} className="md:col-span-3" required={!editId} />
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="adminEmail" className="text-right">Admin Email</Label>
-                  <Input id="adminEmail" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} className="col-span-3" required={!editId} />
+                <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+                  <Label htmlFor="adminEmail" className="md:text-right">Admin Email</Label>
+                  <Input id="adminEmail" type="email" value={adminEmail} onChange={(e) => setAdminEmail(e.target.value)} className="md:col-span-3" required={!editId} />
                 </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="adminPhone" className="text-right">Admin Phone</Label>
-                  <Input id="adminPhone" value={adminPhone} onChange={(e) => setAdminPhone(e.target.value)} className="col-span-3" />
+                <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+                  <Label htmlFor="adminPhone" className="md:text-right">Admin Phone</Label>
+                  <Input id="adminPhone" value={adminPhone} onChange={(e) => setAdminPhone(e.target.value)} className="md:col-span-3" />
                 </div>
               </>
             )}
@@ -211,26 +211,26 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
               <h3 className="text-lg font-medium">Organization Details</h3>
               <p className="text-sm text-muted-foreground">Additional organization information</p>
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="address" className="text-right">Address</Label>
-              <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} className="col-span-3" />
+            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+              <Label htmlFor="address" className="md:text-right">Address</Label>
+              <Input id="address" value={address} onChange={(e) => setAddress(e.target.value)} className="md:col-span-3" />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="city" className="text-right">City</Label>
-              <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} className="col-span-3" />
+            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+              <Label htmlFor="city" className="md:text-right">City</Label>
+              <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} className="md:col-span-3" />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="state" className="text-right">State</Label>
-              <Input id="state" value={state} onChange={(e) => setState(e.target.value)} className="col-span-3" />
+            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+              <Label htmlFor="state" className="md:text-right">State</Label>
+              <Input id="state" value={state} onChange={(e) => setState(e.target.value)} className="md:col-span-3" />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="zipCode" className="text-right">ZIP Code</Label>
-              <Input id="zipCode" value={zipCode} onChange={(e) => setZipCode(e.target.value)} className="col-span-3" />
+            <div className="grid grid-cols-1 md:grid-cols-4 items-center gap-2 md:gap-4">
+              <Label htmlFor="zipCode" className="md:text-right">ZIP Code</Label>
+              <Input id="zipCode" value={zipCode} onChange={(e) => setZipCode(e.target.value)} className="md:col-span-3" />
             </div>
 
-            <div className="grid grid-cols-4 items-start gap-4 mt-4">
-              <Label htmlFor="logo" className="text-right pt-2">Logo</Label>
-              <div className="col-span-3 space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-4 items-start gap-2 md:gap-4 mt-4">
+              <Label htmlFor="logo" className="md:text-right pt-2">Logo</Label>
+              <div className="md:col-span-3 space-y-2">
                 {logoPreview ? (
                   <div className="relative w-40 h-40 rounded-md overflow-hidden border">
                     <img src={logoPreview} alt="Organization logo" className="w-full h-full object-contain" />
@@ -280,9 +280,9 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
               </div>
             </div>
 
-            <div className="grid grid-cols-4 items-start gap-4">
-              <Label htmlFor="darkLogo" className="text-right pt-2">Dark Logo</Label>
-              <div className="col-span-3 space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-4 items-start gap-2 md:gap-4">
+              <Label htmlFor="darkLogo" className="md:text-right pt-2">Dark Logo</Label>
+              <div className="md:col-span-3 space-y-2">
                 {darkLogoPreview ? (
                   <div className="relative w-40 h-40 rounded-md overflow-hidden border bg-slate-900">
                     <img src={darkLogoPreview} alt="Dark background logo" className="w-full h-full object-contain" />
@@ -332,9 +332,9 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
               </div>
             </div>
 
-            <div className="grid grid-cols-4 items-start gap-4">
-              <Label htmlFor="appIcon" className="text-right pt-2">App Icon</Label>
-              <div className="col-span-3 space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-4 items-start gap-2 md:gap-4">
+              <Label htmlFor="appIcon" className="md:text-right pt-2">App Icon</Label>
+              <div className="md:col-span-3 space-y-2">
                 {appIconPreview ? (
                   <div className="relative w-40 h-40 rounded-md overflow-hidden border">
                     <img src={appIconPreview} alt="App icon" className="w-full h-full object-contain" />
