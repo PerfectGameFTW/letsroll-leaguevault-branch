@@ -357,7 +357,7 @@ export default function WeeklyPaymentsPage() {
                         </TableBody>
                       </Table>
                     </div>
-                  )
+                  )}
 
                   <PaymentHistoryTable
                     payments={payments}
