@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/navigation-menu";
 import { UserProfileMenu } from "@/components/user-profile-menu";
 import { GlobalSearch } from "@/components/global-search";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+} from "@/components/ui/sheet";
 
 
 const getStoredValue = (key: string, defaultValue: any) => {
@@ -208,10 +213,91 @@ const LoadingFallback = () => (
   </div>
 );
 
+function SidebarNav({
+  navItems,
+  isAdmin,
+  canSeeOrgAdminItems,
+  isCollapsed,
+  location,
+  onNavigate,
+}: {
+  navItems: NavItem[];
+  isAdmin: boolean;
+  canSeeOrgAdminItems: boolean;
+  isCollapsed: boolean;
+  location: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <nav className="flex-1 py-6 px-3 flex flex-col gap-1 overflow-y-auto">
+      {navItems.map((item) => {
+        if (item.adminOnly && !isAdmin) return null;
+        if (item.orgAdminOnly && !canSeeOrgAdminItems) return null;
+
+        const isActive = location === item.href ||
+          (item.href !== "/" && location.startsWith(item.href + "/"));
+        const isDashboardActive = item.href === "/" && (location === "/" || location === "/home");
+
+        if (item.hasDropdown && !isCollapsed) {
+          return (
+            <NavigationMenu key={item.href}>
+              <NavigationMenuList>
+                <NavigationMenuItem>
+                  <NavigationMenuTrigger
+                    className={cn(
+                      "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-all duration-200 w-full",
+                      isActive
+                        ? "bg-indigo-500/10 text-indigo-400"
+                        : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                    )}
+                  >
+                    <item.icon className={cn("w-5 h-5 shrink-0", isActive ? "text-indigo-400" : "text-slate-400")} />
+                    {item.label}
+                  </NavigationMenuTrigger>
+                  <NavigationMenuContent>
+                    <Suspense fallback={<LeagueLoadingFallback />}>
+                      <LeaguesDropdownContent />
+                    </Suspense>
+                  </NavigationMenuContent>
+                </NavigationMenuItem>
+              </NavigationMenuList>
+            </NavigationMenu>
+          );
+        }
+
+        return (
+          <Link key={item.href} href={item.href}>
+            <button
+              onClick={onNavigate}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-md transition-all duration-200 group",
+                isCollapsed ? "justify-center p-2.5" : "px-3 py-2.5",
+                (isActive || isDashboardActive)
+                  ? "bg-indigo-500/10 text-indigo-400"
+                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
+              )}
+              title={isCollapsed ? item.label : undefined}
+            >
+              <item.icon className={cn(
+                "w-5 h-5 shrink-0",
+                (isActive || isDashboardActive) ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
+              )} />
+              {!isCollapsed && (
+                <span className="font-medium text-sm">{item.label}</span>
+              )}
+            </button>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [isCollapsed, setIsCollapsed] = useState(() =>
     getStoredValue("sidebarCollapsed", false)
   );
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
@@ -255,6 +341,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const [location] = useLocation();
 
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location]);
+
+  useEffect(() => {
+    const mql = window.matchMedia("(min-width: 768px)");
+    const handler = (e: MediaQueryListEvent) => {
+      if (e.matches) setMobileMenuOpen(false);
+    };
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+
   const organization = organizationResponse?.data || perfectGameOrgResponse?.data;
   const orgName = organization?.name || "LeagueVault";
   const orgInitials = orgName.split(/\s+/).map(w => w[0]).join("").substring(0, 2).toUpperCase();
@@ -262,27 +361,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const parentLabel = getParentLabel(location);
   const pageLabel = getPageLabel(location);
 
+  const logoElement = (organization?.darkLogo || organization?.logo) ? (
+    <img
+      src={organization.darkLogo || organization.logo || ''}
+      alt={orgName}
+      className="w-full h-auto max-h-12 object-contain"
+    />
+  ) : (
+    <div className="w-10 h-10 rounded-md bg-indigo-500 flex items-center justify-center shadow-sm">
+      <span className="text-sm font-bold text-white">{orgInitials}</span>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans flex overflow-hidden">
       <aside
         className={cn(
-          "transition-all duration-300 ease-in-out bg-[#0f172a] text-slate-300 flex flex-col border-r border-slate-800 shadow-xl z-50 shrink-0 fixed top-0 bottom-0 left-0",
+          "transition-all duration-300 ease-in-out bg-[#0f172a] text-slate-300 flex-col border-r border-slate-800 shadow-xl z-50 shrink-0 fixed top-0 bottom-0 left-0 hidden md:flex",
           isCollapsed ? "w-20" : "w-64"
         )}
       >
         <div className="border-b border-slate-800/60 shrink-0">
           <div className="flex items-center justify-center px-3 py-3">
-            {(organization?.darkLogo || organization?.logo) ? (
-              <img
-                src={organization.darkLogo || organization.logo || ''}
-                alt={orgName}
-                className="w-full h-auto max-h-12 object-contain"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-md bg-indigo-500 flex items-center justify-center shadow-sm">
-                <span className="text-sm font-bold text-white">{orgInitials}</span>
-              </div>
-            )}
+            {logoElement}
           </div>
           <div className="flex justify-end px-3 pb-2">
             <button
@@ -296,66 +397,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         <ErrorBoundary level="section" onReset={() => window.location.reload()}>
           <Suspense fallback={<LoadingFallback />}>
-            <nav className="flex-1 py-6 px-3 flex flex-col gap-1 overflow-y-auto">
-              {navItems.map((item) => {
-                if (item.adminOnly && !isAdmin) return null;
-                if (item.orgAdminOnly && !canSeeOrgAdminItems) return null;
-
-                const isActive = location === item.href ||
-                  (item.href !== "/" && location.startsWith(item.href + "/"));
-                const isDashboardActive = item.href === "/" && (location === "/" || location === "/home");
-
-                if (item.hasDropdown && !isCollapsed) {
-                  return (
-                    <NavigationMenu key={item.href}>
-                      <NavigationMenuList>
-                        <NavigationMenuItem>
-                          <NavigationMenuTrigger
-                            className={cn(
-                              "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm transition-all duration-200 w-full",
-                              isActive
-                                ? "bg-indigo-500/10 text-indigo-400"
-                                : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                            )}
-                          >
-                            <item.icon className={cn("w-5 h-5 shrink-0", isActive ? "text-indigo-400" : "text-slate-400")} />
-                            {item.label}
-                          </NavigationMenuTrigger>
-                          <NavigationMenuContent>
-                            <Suspense fallback={<LeagueLoadingFallback />}>
-                              <LeaguesDropdownContent />
-                            </Suspense>
-                          </NavigationMenuContent>
-                        </NavigationMenuItem>
-                      </NavigationMenuList>
-                    </NavigationMenu>
-                  );
-                }
-
-                return (
-                  <Link key={item.href} href={item.href}>
-                    <button
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-md transition-all duration-200 group",
-                        isCollapsed ? "justify-center p-2.5" : "px-3 py-2.5",
-                        (isActive || isDashboardActive)
-                          ? "bg-indigo-500/10 text-indigo-400"
-                          : "text-slate-300 hover:bg-slate-800 hover:text-white"
-                      )}
-                      title={isCollapsed ? item.label : undefined}
-                    >
-                      <item.icon className={cn(
-                        "w-5 h-5 shrink-0",
-                        (isActive || isDashboardActive) ? "text-indigo-400" : "text-slate-400 group-hover:text-slate-300"
-                      )} />
-                      {!isCollapsed && (
-                        <span className="font-medium text-sm">{item.label}</span>
-                      )}
-                    </button>
-                  </Link>
-                );
-              })}
-            </nav>
+            <SidebarNav
+              navItems={navItems}
+              isAdmin={isAdmin}
+              canSeeOrgAdminItems={canSeeOrgAdminItems}
+              isCollapsed={isCollapsed}
+              location={location}
+            />
           </Suspense>
         </ErrorBoundary>
 
@@ -378,28 +426,81 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className={cn(
-        "flex-1 flex flex-col min-h-screen transition-all duration-300",
-        isCollapsed ? "ml-20" : "ml-64"
-      )}>
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.02)] z-10 sticky top-0">
-          <div className="flex items-center text-slate-500">
-            {parentLabel ? (
-              <>
-                <Link href={parentLabel.href} className="text-sm font-medium hover:text-slate-900 transition-colors">{parentLabel.label}</Link>
-                <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
-                <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
-              </>
-            ) : (
-              <>
-                <Link href="/" className="text-sm font-medium hover:text-slate-900 transition-colors">Dashboard</Link>
-                <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
-                <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
-              </>
-            )}
+      <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+        <SheetContent side="left" className="w-72 p-0 bg-[#0f172a] text-slate-300 border-slate-800 [&>button]:text-slate-400 [&>button]:hover:text-white">
+          <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+          <div className="border-b border-slate-800/60 shrink-0">
+            <div className="flex items-center justify-center px-3 py-3">
+              {logoElement}
+            </div>
           </div>
 
-          <div className="flex items-center gap-5">
+          <ErrorBoundary level="section" onReset={() => window.location.reload()}>
+            <Suspense fallback={<LoadingFallback />}>
+              <SidebarNav
+                navItems={navItems}
+                isAdmin={isAdmin}
+                canSeeOrgAdminItems={canSeeOrgAdminItems}
+                isCollapsed={false}
+                location={location}
+                onNavigate={() => setMobileMenuOpen(false)}
+              />
+            </Suspense>
+          </ErrorBoundary>
+
+          <div className="p-4 border-t border-slate-800/60 shrink-0">
+            {currentUserResponse?.data && (
+              <div className="flex items-center gap-3">
+                <UserProfileMenu user={currentUserResponse.data} />
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-sm font-medium text-white truncate">
+                    {currentUserResponse.data.name || currentUserResponse.data.email}
+                  </span>
+                  <span className="text-xs text-slate-500 truncate">
+                    {currentUserResponse.data.email}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <main className={cn(
+        "flex-1 flex flex-col min-h-screen transition-all duration-300",
+        isCollapsed ? "md:ml-20" : "md:ml-64"
+      )}>
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 shrink-0 shadow-[0_1px_2px_rgba(0,0,0,0.02)] z-10 sticky top-0">
+          <div className="flex items-center gap-3 text-slate-500">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open navigation menu"
+              aria-expanded={mobileMenuOpen}
+              className="p-2 -ml-2 rounded-md hover:bg-slate-100 text-slate-600 transition-colors md:hidden"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+
+            <div className="hidden sm:flex items-center">
+              {parentLabel ? (
+                <>
+                  <Link href={parentLabel.href} className="text-sm font-medium hover:text-slate-900 transition-colors">{parentLabel.label}</Link>
+                  <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
+                  <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
+                </>
+              ) : (
+                <>
+                  <Link href="/" className="text-sm font-medium hover:text-slate-900 transition-colors">Dashboard</Link>
+                  <ChevronRight className="w-4 h-4 mx-2 text-slate-300" />
+                  <span className="text-sm font-medium text-slate-900">{pageLabel}</span>
+                </>
+              )}
+            </div>
+            <span className="text-sm font-medium text-slate-900 sm:hidden">{pageLabel}</span>
+          </div>
+
+          <div className="flex items-center gap-3 md:gap-5">
             <GlobalSearch />
 
             <button className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-full transition-colors">
@@ -408,7 +509,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
           <div className="max-w-[1400px] mx-auto">
             <ErrorBoundary level="section" onReset={() => window.location.reload()}>
               <Suspense fallback={<LoadingFallback />}>
