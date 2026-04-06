@@ -6,3 +6,4 @@ vite.config.ts.*
 *.tar.gz
 scripts/zap-report.html
 uploads/avatars/
+attached_assets/

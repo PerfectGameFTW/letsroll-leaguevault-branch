@@ -22,9 +22,11 @@ const EXEMPT_PATHS = [
   '/auth/register',
   '/auth/set-password',
   '/auth/validate-invite',
+  '/auth/forgot-password',
   '/health',
   '/csrf-token',
   '/setup/create-first-admin',
+  '/account/request-deletion',
 ];
 
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
@@ -55,7 +57,14 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
   }
 
   if (!req.session) {
-    return next();
+    log.warn(`No session available for ${req.method} ${req.path} — rejecting`);
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'CSRF_ERROR',
+        message: 'Session required. Please refresh the page and try again.',
+      },
+    });
   }
 
   const sessionToken = req.session.csrfToken;

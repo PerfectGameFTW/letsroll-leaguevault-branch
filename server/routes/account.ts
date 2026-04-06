@@ -1,10 +1,22 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { createLogger } from "../logger";
 
 const log = createLogger("Account");
 const router = Router();
 
-router.post("/request-deletion", async (req, res) => {
+const deletionRequestLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { message: "Too many requests, please try again later" },
+  },
+});
+
+router.post("/request-deletion", deletionRequestLimiter, async (req, res) => {
   try {
     const { email, reason } = req.body;
 

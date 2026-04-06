@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage';
-import { sendSuccess, sendError, handleZodError } from '../utils/api';
+import { sendSuccess, sendError, handleZodError, sanitizeUser } from '../utils/api';
 import { z } from 'zod';
 import type { User as SelectUser } from '@shared/schema';
 import { updateEmailTemplateSchema } from '@shared/schema/email-templates';
@@ -23,7 +23,7 @@ const setAdminStatusSchema = z.object({
 router.get('/users', requireAdmin, async (req, res) => {
   try {
     const users = await storage.getUsers();
-    sendSuccess(res, users.map(({ password, ...u }) => u));
+    sendSuccess(res, users.map(sanitizeUser));
   } catch (error) {
     log.error('Error fetching users:', error);
     sendError(res, 'Failed to fetch users');
@@ -47,7 +47,7 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
     
     const newRole = parsedData.makeSystemAdmin ? 'system_admin' : 'user';
     const updatedUser = await storage.updateUserRole(parsedData.userId, newRole);
-    sendSuccess(res, updatedUser);
+    sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
     log.error('Error updating admin status:', error);
     if (error instanceof z.ZodError) {

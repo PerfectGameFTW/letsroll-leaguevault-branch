@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
 import { requireAdmin } from '../middleware/admin.js';
+import { safeTokenCompare } from '../auth.js';
 import { env } from '../config';
 import { createLogger } from '../logger';
 
@@ -77,8 +78,9 @@ router.post('/first-system-admin/:id', async (req: Request, res: Response) => {
     if (!setupSecret) {
       return sendError(res, 'This endpoint is disabled. Set SETUP_SECRET to enable it.', 403, 'ENDPOINT_DISABLED');
     }
-    const providedSecret = req.headers['x-setup-secret'];
-    if (!providedSecret || providedSecret !== setupSecret) {
+    const rawSecret = req.headers['x-setup-secret'];
+    const providedSecret = Array.isArray(rawSecret) ? rawSecret[0] : rawSecret;
+    if (!providedSecret || !safeTokenCompare(providedSecret, setupSecret)) {
       return sendError(res, 'Invalid or missing setup secret.', 401, 'UNAUTHORIZED');
     }
 

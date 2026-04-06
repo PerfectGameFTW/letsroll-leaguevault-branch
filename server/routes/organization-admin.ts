@@ -78,12 +78,13 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
     const teamMap = new Map(allTeams.map(t => [t.id, t]));
 
     const usersWithBowlerInfo = users.map((user: any) => {
+      const safeUser = sanitizeUser(user);
       if (!user.bowlerId) {
-        return { ...user, linkedBowler: null };
+        return { ...safeUser, linkedBowler: null };
       }
       const bowler = bowlerMap.get(user.bowlerId);
       if (!bowler) {
-        return { ...user, linkedBowler: null };
+        return { ...safeUser, linkedBowler: null };
       }
       const entries = blByBowler.get(bowler.id) || [];
       let leagueName: string | null = null;
@@ -94,7 +95,7 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
         teamName = teamMap.get(bl.teamId)?.name || null;
       }
       return {
-        ...user,
+        ...safeUser,
         linkedBowler: {
           id: bowler.id,
           name: bowler.name,
@@ -157,7 +158,7 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
     }
 
     const updatedUser = await storage.updateUserRole(userId, newRole);
-    return sendSuccess(res, updatedUser);
+    return sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
     log.error('Error updating organization admin status:', error);
     return sendError(res, 'Failed to update organization admin status', 500, 'internal_error');
@@ -223,10 +224,10 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
             }
           }
           const updatedUser = await storage.updateUserRole(userId, desiredRole);
-          return sendSuccess(res, updatedUser);
+          return sendSuccess(res, sanitizeUser(updatedUser));
         }
         
-        return sendSuccess(res, user);
+        return sendSuccess(res, sanitizeUser(user));
       }
       
       return sendError(res, 'User is already in another organization', 409, 'conflict');
@@ -240,9 +241,8 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
       await storage.updateUserRole(userId, 'org_admin');
     }
     
-    // Get fresh user data
     const refreshedUser = await storage.getUser(userId);
-    return sendSuccess(res, refreshedUser);
+    return sendSuccess(res, sanitizeUser(refreshedUser!));
   } catch (error) {
     log.error('Error adding user to organization:', error);
     return sendError(res, 'Failed to add user to organization', 500, 'internal_error');
@@ -289,9 +289,8 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimit
       }
     }
     
-    // Remove user from organization
     const updatedUser = await storage.setUserOrganization(userId, null);
-    return sendSuccess(res, updatedUser);
+    return sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
     log.error('Error removing user from organization:', error);
     return sendError(res, 'Failed to remove user from organization', 500, 'internal_error');
@@ -330,7 +329,7 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
     }
 
     const updatedUser = await storage.setUserLocation(userId, parseResult.data.locationId);
-    return sendSuccess(res, updatedUser);
+    return sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
     log.error('Error updating user location:', error);
     return sendError(res, 'Failed to update user location', 500, 'internal_error');

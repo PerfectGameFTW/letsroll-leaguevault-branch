@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from '../storage';
-import { sendSuccess, sendError, handleZodError } from '../utils/api';
+import { sendSuccess, sendError, handleZodError, sanitizeUser } from '../utils/api';
 import { z } from 'zod';
 import { User as SelectUser } from '@shared/schema';
 import { hasAccessToBowler } from '../utils/access-control.js';
@@ -40,9 +40,8 @@ router.post('/link-bowler', requireAuth, async (req, res) => {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
-    // Link bowler to user
     const updatedUser = await storage.linkUserToBowler(user.id, bowlerId);
-    sendSuccess(res, updatedUser);
+    sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);

@@ -435,7 +435,7 @@ router.post('/user/:userId/set', requireAdmin, adminWriteLimiter, async (req, re
     
     
     const updatedUser = await storage.setUserOrganization(userId, organizationId);
-    sendSuccess(res, updatedUser);
+    sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
