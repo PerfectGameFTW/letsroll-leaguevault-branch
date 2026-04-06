@@ -179,7 +179,7 @@ export default function HomePage() {
               </p>
             </div>
             <Link href="/reports">
-              <button className="px-4 py-2 bg-[#0f172a] text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors shadow-sm">
+              <button className="hidden md:inline-flex px-4 py-2 bg-[#0f172a] text-white text-sm font-medium rounded-md hover:bg-slate-800 transition-colors shadow-sm">
                 Generate Report
               </button>
             </Link>
