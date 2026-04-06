@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Edit, Trash, Archive, RotateCcw, ExternalLink } from 'lucide-react';
+import { Plus, Edit, Trash, Archive, RotateCcw } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
@@ -189,7 +189,6 @@ export default function OrganizationsPage() {
                             disabled={switchOrgMutation.isPending}
                           >
                             {org.name}
-                            <ExternalLink className="h-3.5 w-3.5 opacity-50" />
                           </button>
                         ) : (
                           org.name
