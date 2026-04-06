@@ -33,6 +33,7 @@ interface PaymentEntryRowProps {
   onCheckNumberChange: (bowlerId: number, checkNumber: string) => void;
   onSubmit: (bowlerId: number) => void;
   isSubmitting: boolean;
+  variant?: "table" | "card";
 }
 
 export const PaymentEntryRow = memo(function PaymentEntryRow({
@@ -44,7 +45,66 @@ export const PaymentEntryRow = memo(function PaymentEntryRow({
   onCheckNumberChange,
   onSubmit,
   isSubmitting,
+  variant = "table",
 }: PaymentEntryRowProps) {
+  if (variant === "card") {
+    return (
+      <div className="rounded-lg border bg-card p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <Link href={`/bowlers/${bowler.id}`} className="hover:underline text-foreground font-medium">
+            {bowler.name}
+          </Link>
+          {teamName !== undefined && (
+            <span className="text-sm text-muted-foreground">{teamName}</span>
+          )}
+        </div>
+        <div className="space-y-2">
+          <Select
+            value={entry?.type || ""}
+            onValueChange={(value) => onPaymentTypeChange(bowler.id, value)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="cash">Cash</SelectItem>
+              <SelectItem value="check">Check</SelectItem>
+            </SelectContent>
+          </Select>
+          {entry?.type === 'check' && (
+            <Input
+              placeholder="Check number"
+              value={entry?.checkNumber || ""}
+              onChange={(e) => onCheckNumberChange(bowler.id, e.target.value)}
+            />
+          )}
+          <Input
+            type="text"
+            placeholder="Amount (0.00)"
+            value={entry?.amount || ""}
+            onChange={(e) => onAmountChange(bowler.id, e.target.value)}
+          />
+          <Button
+            className="w-full"
+            onClick={() => onSubmit(bowler.id)}
+            disabled={
+              !entry?.type ||
+              !entry?.amount ||
+              (entry?.type === 'check' && !entry?.checkNumber) ||
+              isSubmitting
+            }
+            size="sm"
+          >
+            {isSubmitting && (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            )}
+            Record Payment
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <TableRow>
       <TableCell>

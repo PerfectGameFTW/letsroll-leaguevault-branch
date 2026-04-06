@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { PageLoadingState } from "@/components/page-states";
 import { format, startOfToday } from "date-fns";
 import type { League, Payment, ApiResponse } from "@shared/schema";
@@ -53,6 +54,7 @@ export default function WeeklyPaymentsPage() {
   const leagueId = parseInt(params.leagueId!);
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null);
   const [weekJumpOpen, setWeekJumpOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   const {
     paymentEntries,
@@ -245,7 +247,7 @@ export default function WeeklyPaymentsPage() {
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-3" align="center">
                   <p className="text-xs font-medium text-muted-foreground mb-2 text-center">Jump to week</p>
-                  <div className="grid grid-cols-5 gap-1.5">
+                  <div className="grid grid-cols-3 md:grid-cols-5 gap-1.5">
                     {Array.from({ length: maxWeek }, (_, i) => i + 1).map((week) => (
                       <Button
                         key={week}
@@ -297,41 +299,65 @@ export default function WeeklyPaymentsPage() {
                 <PageLoadingState fullPage={false} />
               ) : (
                 <div className="space-y-6">
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Bowler</TableHead>
-                          <TableHead>Team</TableHead>
-                          <TableHead>Payment Type</TableHead>
-                          <TableHead>Amount</TableHead>
-                          <TableHead>Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {sortedBowlerLeagues.length === 0 && (
+                  {isMobile ? (
+                    <div className="space-y-3">
+                      {sortedBowlerLeagues.length === 0 && (
+                        <p className="text-center text-muted-foreground py-8">
+                          No bowlers found in this league
+                        </p>
+                      )}
+                      {sortedBowlerLeagues.map((bl) => (
+                        <PaymentEntryRow
+                          key={bl.id}
+                          bowler={bl.bowler!}
+                          teamName={bl.team?.name ?? "Unassigned"}
+                          entry={paymentEntries[bl.bowler!.id]}
+                          onPaymentTypeChange={handlePaymentTypeChange}
+                          onAmountChange={handleAmountChange}
+                          onCheckNumberChange={handleCheckNumberChange}
+                          onSubmit={(bowlerId) => handleSubmitPayment(bowlerId, selectedDate)}
+                          isSubmitting={submitPaymentMutation.isPending}
+                          variant="card"
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
                           <TableRow>
-                            <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                              No bowlers found in this league
-                            </TableCell>
+                            <TableHead>Bowler</TableHead>
+                            <TableHead>Team</TableHead>
+                            <TableHead>Payment Type</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Action</TableHead>
                           </TableRow>
-                        )}
-                        {sortedBowlerLeagues.map((bl) => (
-                          <PaymentEntryRow
-                            key={bl.id}
-                            bowler={bl.bowler!}
-                            teamName={bl.team?.name ?? "Unassigned"}
-                            entry={paymentEntries[bl.bowler!.id]}
-                            onPaymentTypeChange={handlePaymentTypeChange}
-                            onAmountChange={handleAmountChange}
-                            onCheckNumberChange={handleCheckNumberChange}
-                            onSubmit={(bowlerId) => handleSubmitPayment(bowlerId, selectedDate)}
-                            isSubmitting={submitPaymentMutation.isPending}
-                          />
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {sortedBowlerLeagues.length === 0 && (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                                No bowlers found in this league
+                              </TableCell>
+                            </TableRow>
+                          )}
+                          {sortedBowlerLeagues.map((bl) => (
+                            <PaymentEntryRow
+                              key={bl.id}
+                              bowler={bl.bowler!}
+                              teamName={bl.team?.name ?? "Unassigned"}
+                              entry={paymentEntries[bl.bowler!.id]}
+                              onPaymentTypeChange={handlePaymentTypeChange}
+                              onAmountChange={handleAmountChange}
+                              onCheckNumberChange={handleCheckNumberChange}
+                              onSubmit={(bowlerId) => handleSubmitPayment(bowlerId, selectedDate)}
+                              isSubmitting={submitPaymentMutation.isPending}
+                            />
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )
 
                   <PaymentHistoryTable
                     payments={payments}
