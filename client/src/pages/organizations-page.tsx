@@ -129,10 +129,10 @@ export default function OrganizationsPage() {
 
   return (
     <Layout>
-      <div className="container mx-auto py-10">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">Organizations</h1>
-          <Button onClick={() => { setEditOrg(null); setOpen(true); }}>
+      <div className="container mx-auto px-4 md:px-8 py-6 md:py-10">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+          <h1 className="text-2xl md:text-3xl font-bold">Organizations</h1>
+          <Button onClick={() => { setEditOrg(null); setOpen(true); }} className="w-full sm:w-auto">
             <Plus className="mr-2 h-4 w-4" /> Add Organization
           </Button>
         </div>
