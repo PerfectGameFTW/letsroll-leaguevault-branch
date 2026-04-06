@@ -214,11 +214,11 @@ export default function LeaguesPage() {
             <TableRow>
               <TableHead className="w-[12%]">Weekday</TableHead>
               <TableHead className="w-[20%]">Name</TableHead>
-              <TableHead>Location</TableHead>
-              <TableHead>Teams</TableHead>
-              <TableHead className="w-[15%]">Start Date</TableHead>
-              <TableHead className="w-[15%]">End Date</TableHead>
-              <TableHead>Duration</TableHead>
+              <TableHead className="hidden md:table-cell">Location</TableHead>
+              <TableHead className="hidden md:table-cell">Teams</TableHead>
+              <TableHead className="hidden md:table-cell w-[15%]">Start Date</TableHead>
+              <TableHead className="hidden md:table-cell w-[15%]">End Date</TableHead>
+              <TableHead className="hidden md:table-cell">Duration</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
@@ -244,17 +244,17 @@ export default function LeaguesPage() {
                       {getSeasonLabel(league.seasonStart, league.seasonEnd)}
                     </p>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                     {league.locationId ? locationMap[league.locationId] || '—' : '—'}
                   </TableCell>
-                  <TableCell>{teamCounts[league.id] || 0}</TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="hidden md:table-cell">{teamCounts[league.id] || 0}</TableCell>
+                  <TableCell className="hidden md:table-cell whitespace-nowrap">
                     {format(startDate, "MMM d, yyyy")}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">
+                  <TableCell className="hidden md:table-cell whitespace-nowrap">
                     {format(endDate, "MMM d, yyyy")}
                   </TableCell>
-                  <TableCell>{weeks} weeks</TableCell>
+                  <TableCell className="hidden md:table-cell">{weeks} weeks</TableCell>
                   <TableCell>
                     <Badge variant={league.active ? "default" : "secondary"}>
                       {league.active ? "Active" : "Archived"}

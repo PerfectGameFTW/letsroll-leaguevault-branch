@@ -146,9 +146,9 @@ export default function BowlersPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
-                <TableHead>League Name</TableHead>
-                <TableHead>Team Name</TableHead>
-                <TableHead>Square Account</TableHead>
+                <TableHead className="hidden md:table-cell">League Name</TableHead>
+                <TableHead className="hidden md:table-cell">Team Name</TableHead>
+                <TableHead className="hidden md:table-cell">Square Account</TableHead>
                 <TableHead>Status</TableHead>
                 {bnConfigured && <TableHead>BowlNow</TableHead>}
               </TableRow>
@@ -184,21 +184,21 @@ export default function BowlersPage() {
                           </Link>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         {isLoadingRelatedData ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           leagueName
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         {isLoadingRelatedData ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
                           teamName
                         )}
                       </TableCell>
-                      <TableCell className="text-sm">
+                      <TableCell className="hidden md:table-cell text-sm">
                         {bowler.paymentCustomerId ? (
                           <a
                             href={getSquareCustomerUrl(bowler.paymentCustomerId)}

@@ -46,8 +46,8 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
         <TableHeader>
           <TableRow>
             <TableHead>Bowler</TableHead>
-            {showTeamColumn && <TableHead>Team</TableHead>}
-            <TableHead>Payment Type</TableHead>
+            {showTeamColumn && <TableHead className="hidden md:table-cell">Team</TableHead>}
+            <TableHead className="hidden md:table-cell">Payment Type</TableHead>
             <TableHead className="text-right">Amount</TableHead>
             <TableHead className="w-[100px]">Actions</TableHead>
           </TableRow>
@@ -74,9 +74,9 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
                     ) : 'Unknown Bowler'}
                   </TableCell>
                   {showTeamColumn && (
-                    <TableCell className="text-muted-foreground">{teamName || '—'}</TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground">{teamName || '—'}</TableCell>
                   )}
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     <Badge variant="outline">
                       {payment.type === 'cash' ? 'Cash' :
                         payment.type === 'check' ? `Check #${payment.checkNumber}` :

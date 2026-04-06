@@ -164,10 +164,10 @@ export default function OrganizationsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
-                  <TableHead>Slug</TableHead>
+                  <TableHead className="hidden md:table-cell">Slug</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
+                  <TableHead className="hidden md:table-cell">Email</TableHead>
+                  <TableHead className="hidden md:table-cell">Phone</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -195,7 +195,7 @@ export default function OrganizationsPage() {
                           org.name
                         )}
                       </TableCell>
-                      <TableCell>{org.slug}</TableCell>
+                      <TableCell className="hidden md:table-cell">{org.slug}</TableCell>
                       <TableCell>
                         {org.active === false ? (
                           <Badge variant="secondary">Archived</Badge>
@@ -203,8 +203,8 @@ export default function OrganizationsPage() {
                           <Badge variant="default">Active</Badge>
                         )}
                       </TableCell>
-                      <TableCell>{org.email || '—'}</TableCell>
-                      <TableCell>{org.phone || '—'}</TableCell>
+                      <TableCell className="hidden md:table-cell">{org.email || '—'}</TableCell>
+                      <TableCell className="hidden md:table-cell">{org.phone || '—'}</TableCell>
                       <TableCell>
                         <div className="flex space-x-2">
                           <Button variant="outline" size="sm" onClick={() => handleEditClick(org)}>
