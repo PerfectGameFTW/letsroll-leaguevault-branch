@@ -224,10 +224,10 @@ export default function PaymentsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Bowler</TableHead>
-                <TableHead>Week Of</TableHead>
+                <TableHead className="hidden md:table-cell">Week Of</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Payment Type</TableHead>
+                <TableHead className="hidden md:table-cell">Payment Type</TableHead>
                 <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -250,7 +250,7 @@ export default function PaymentsPage() {
                   return (
                     <TableRow key={payment.id}>
                       <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         {format(new Date(payment.weekOf), "MMM d, yyyy")}
                       </TableCell>
                       <TableCell>${(payment.amount / 100).toFixed(2)}</TableCell>
@@ -268,7 +268,7 @@ export default function PaymentsPage() {
                           {payment.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         <Badge variant="outline">
                           {payment.type === 'cash' ? 'Cash' :
                             payment.type === 'check' ? `Check #${payment.checkNumber}` :
