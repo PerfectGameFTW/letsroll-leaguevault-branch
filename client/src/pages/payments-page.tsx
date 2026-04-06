@@ -224,7 +224,7 @@ export default function PaymentsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Bowler</TableHead>
-                <TableHead className="hidden md:table-cell">Week Of</TableHead>
+                <TableHead>Week Of</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="hidden md:table-cell">Payment Type</TableHead>
@@ -250,7 +250,7 @@ export default function PaymentsPage() {
                   return (
                     <TableRow key={payment.id}>
                       <TableCell>{bowler?.name || 'Unknown Bowler'}</TableCell>
-                      <TableCell className="hidden md:table-cell">
+                      <TableCell>
                         {format(new Date(payment.weekOf), "MMM d, yyyy")}
                       </TableCell>
                       <TableCell>${(payment.amount / 100).toFixed(2)}</TableCell>
