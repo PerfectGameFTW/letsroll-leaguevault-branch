@@ -169,7 +169,7 @@ export default function HomePage() {
     <Layout>
       <ErrorBoundary level="section">
         <div className="flex flex-col gap-6">
-          <div className="flex justify-between items-end">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-2">
             <div>
               <h1 className="text-2xl font-bold tracking-tight text-slate-900">
                 Welcome back, {userName}
@@ -185,7 +185,7 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             <Link href="/leagues">
               <div className="bg-white p-3.5 border border-slate-200 rounded-lg shadow-sm hover:shadow-md transition-shadow cursor-pointer">
                 <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
