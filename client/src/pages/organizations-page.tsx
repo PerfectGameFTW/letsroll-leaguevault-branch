@@ -129,7 +129,7 @@ export default function OrganizationsPage() {
 
   return (
     <Layout>
-      <div className="container mx-auto px-4 md:px-8 py-6 md:py-10">
+      <div className="container mx-auto px-4 md:px-8 py-6 md:py-10 overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
           <h1 className="text-2xl md:text-3xl font-bold">Organizations</h1>
           <Button onClick={() => { setEditOrg(null); setOpen(true); }} className="w-full sm:w-auto">
@@ -138,7 +138,7 @@ export default function OrganizationsPage() {
         </div>
 
         <ErrorBoundary level="section">
-        <Card>
+        <Card className="overflow-hidden">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -159,7 +159,8 @@ export default function OrganizationsPage() {
               )}
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-0 sm:px-6">
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -241,6 +242,7 @@ export default function OrganizationsPage() {
                 )}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
         </ErrorBoundary>
