@@ -166,7 +166,7 @@ export default function OrganizationsPage() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead className="hidden md:table-cell">Slug</TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="hidden md:table-cell">Status</TableHead>
                   <TableHead className="hidden md:table-cell">Email</TableHead>
                   <TableHead className="hidden md:table-cell">Phone</TableHead>
                   <TableHead>Actions</TableHead>
@@ -196,7 +196,7 @@ export default function OrganizationsPage() {
                         )}
                       </TableCell>
                       <TableCell className="hidden md:table-cell">{org.slug}</TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         {org.active === false ? (
                           <Badge variant="secondary">Archived</Badge>
                         ) : (
