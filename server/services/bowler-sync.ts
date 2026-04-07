@@ -2,6 +2,7 @@ import { storage } from '../storage';
 import { getPaymentProvider, ProviderNotConfiguredError } from './payment-provider-factory';
 import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
 import { createLogger } from '../logger';
+import { isDev } from '../config';
 import type { Bowler } from '@shared/schema';
 
 const log = createLogger("BowlerSync");
@@ -23,7 +24,7 @@ export async function runBowlerPostCreateSync(
           const league = await storage.getLeague(bowlerLeagues[0].leagueId);
           if (league?.organizationId && !matchingUser.organizationId) {
             await storage.setUserOrganization(matchingUser.id, league.organizationId);
-            log.info(`Set user ${matchingUser.id} organization to ${league.organizationId}`);
+            if (isDev) log.info(`Set user ${matchingUser.id} organization to ${league.organizationId}`);
           }
         }
       }

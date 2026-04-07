@@ -320,7 +320,11 @@ export async function setupAuth(app: Express) {
           }
         }
 
-        log.info('Login successful', { userId: user.id, email: user.email, sessionId: req.sessionID, hostname: req.hostname, cookieDomain: req.session?.cookie?.domain || 'not set' });
+        if (isDev) {
+          log.info('Login successful', { userId: user.id, email: user.email, sessionId: req.sessionID, hostname: req.hostname, cookieDomain: req.session?.cookie?.domain || 'not set' });
+        } else {
+          log.info('Login successful', { userId: user.id });
+        }
         sendSuccess(res, sanitizeUser(user));
       });
     })(req, res, next);
@@ -339,7 +343,7 @@ export async function setupAuth(app: Express) {
   authRouter.get("/user", async (req, res) => {
     try {
       if (!req.isAuthenticated() || !req.user) {
-        log.info('/api/user unauthenticated request', { sessionId: req.sessionID, hasSession: !!req.session, hasCookie: !!req.headers.cookie, hostname: req.hostname });
+        if (isDev) log.info('/api/user unauthenticated request', { sessionId: req.sessionID, hasSession: !!req.session, hasCookie: !!req.headers.cookie, hostname: req.hostname });
         return sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
       }
 

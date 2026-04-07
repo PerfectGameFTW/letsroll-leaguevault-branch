@@ -9,6 +9,7 @@ import { getPaymentProvider, ProviderNotConfiguredError } from '../services/paym
 import { scrypt, timingSafeEqual } from 'crypto';
 import { promisify } from 'util';
 import { createLogger } from '../logger';
+import { isDev } from '../config';
 
 const log = createLogger("UserUpdate");
 
@@ -88,7 +89,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
 
             if (Object.keys(bowlerUpdate).length > 0) {
               await storage.updateBowler(bowler.id, { ...bowler, ...bowlerUpdate });
-              log.info('Synced profile changes to bowler record:', bowler.id);
+              if (isDev) log.info('Synced profile changes to bowler record:', bowler.id);
             }
 
             if (updatedUser.email && (emailChanged || nameChanged || phoneChanged)) {
@@ -104,7 +105,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
                 resolvedSquareLocationId = sq?.id ?? null;
               }
               if (!resolvedSquareLocationId) {
-                log.info('No payment-configured location found, skipping customer sync');
+                if (isDev) log.info('No payment-configured location found, skipping customer sync');
               }
               let providerCustomer = null;
               if (resolvedSquareLocationId) {

@@ -1,4 +1,5 @@
 import { createLogger } from '../logger';
+import { isDev } from '../config';
 
 const log = createLogger("Cache");
 
@@ -23,7 +24,7 @@ function ensureCleanup() {
       }
     }
     if (cleared > 0) {
-      log.info(`Evicted ${cleared} expired cache entries, ${store.size} remaining`);
+      if (isDev) log.info(`Evicted ${cleared} expired cache entries, ${store.size} remaining`);
     }
   }, 60_000);
   cleanupTimer.unref();

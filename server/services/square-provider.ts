@@ -3,6 +3,7 @@ import type { ApiError } from 'square';
 import crypto from 'crypto';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
+import { isDev } from '../config';
 import type {
   PaymentProvider,
   CatalogProvider,
@@ -334,7 +335,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     if (!client) return null;
 
     try {
-      log.info('Saving card on file for customer:', customerId.substring(0, 10) + '...');
+      if (isDev) log.info('Saving card on file for customer:', customerId.substring(0, 10) + '...');
       const response = await client.cardsApi.createCard({
         idempotencyKey: crypto.createHash('sha256').update(`card:${sourceId}:${customerId}`).digest('hex'),
         sourceId,
@@ -409,7 +410,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     }
 
     try {
-      log.info('Searching for customer with email:', email);
+      if (isDev) log.info('Searching for customer with email:', email);
       const searchResponse = await client.customersApi.searchCustomers({
         query: {
           filter: {
@@ -430,7 +431,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       const phoneNumber = phone || undefined;
 
       if (searchResponse.result.customers?.[0]?.id) {
-        log.info('Found existing customer, updating...');
+        if (isDev) log.info('Found existing customer, updating...');
         customerId = searchResponse.result.customers[0].id;
         const updateResponse = await client.customersApi.updateCustomer(customerId, {
           givenName: firstName,
@@ -443,9 +444,9 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           throw new Error('API Error: Invalid update response');
         }
 
-        log.info('Customer updated successfully:', updateResponse.result.customer.id);
+        if (isDev) log.info('Customer updated successfully:', updateResponse.result.customer.id);
       } else {
-        log.info('No existing customer found, creating new...');
+        if (isDev) log.info('No existing customer found, creating new...');
         const customerResponse = await client.customersApi.createCustomer({
           idempotencyKey: crypto.createHash('sha256').update(`customer:${email.toLowerCase()}:${name}`).digest('hex'),
           givenName: firstName,
@@ -459,7 +460,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         }
 
         customerId = customerResponse.result.customer.id;
-        log.info('New customer created successfully:', customerId);
+        if (isDev) log.info('New customer created successfully:', customerId);
       }
 
       return {
@@ -549,7 +550,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           return true;
         })
         .sort((a, b) => a.name.localeCompare(b.name));
-      log.info(`Categories: ${allObjects.length} raw -> ${deduped.length} deduped`);
+      if (isDev) log.info(`Categories: ${allObjects.length} raw -> ${deduped.length} deduped`);
       return deduped;
     } catch (error) {
       log.error('Catalog categories error:', error);

@@ -3,6 +3,7 @@ import { SquarePaymentProvider } from './square-provider';
 import { CardPointePaymentProvider } from './cardpointe-provider';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
+import { isDev } from '../config';
 
 const log = createLogger('PaymentProviderFactory');
 
@@ -70,9 +71,9 @@ export async function getPaymentProvider(locationId: number | null): Promise<Pay
 export function clearProviderCache(locationId?: number): void {
   if (locationId !== undefined) {
     providerCache.delete(locationId);
-    log.info(`Cleared payment provider cache for location ${locationId}`);
+    if (isDev) log.info(`Cleared payment provider cache for location ${locationId}`);
   } else {
     providerCache.clear();
-    log.info('Cleared entire payment provider cache');
+    if (isDev) log.info('Cleared entire payment provider cache');
   }
 }

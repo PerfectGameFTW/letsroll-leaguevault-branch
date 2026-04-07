@@ -8,6 +8,7 @@ import { hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
 import { createLogger } from '../logger';
+import { isDev } from '../config';
 
 const log = createLogger("Bowlers");
 
@@ -381,7 +382,7 @@ router.patch("/:id", async (req, res) => {
               });
             }
           } else {
-            log.info('No payment-configured location found for org, skipping customer sync on update');
+            if (isDev) log.info('No payment-configured location found for org, skipping customer sync on update');
           }
         } catch (syncError) {
           log.error('Payment customer sync error on update:', syncError);

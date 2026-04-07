@@ -11,6 +11,7 @@ import { hasCatalogSupport, hasWalletSupport, type PaymentProvider } from '../se
 import { computePaymentSplit, buildLineItems } from '../services/payment-execution';
 import { getProviderCustomerId, persistCardpointeProfile } from '../services/payment-utils';
 import { providerNameToPaymentType } from '@shared/schema/constants';
+import { isDev } from '../config';
 
 const log = createLogger("Payments");
 
@@ -63,7 +64,7 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
       }
     }
 
-    log.info('Payment verification:', {
+    if (isDev) log.info('Payment verification:', {
       dbPaymentId: dbPayment.id,
       providerPaymentId: dbPayment.providerPaymentId,
       providerFound: !!providerPayment,
@@ -102,12 +103,11 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
   try {
     const { sourceId, amount, bowlerId, leagueId } = req.body;
 
-    log.info('Payment request received:', {
+    if (isDev) log.info('Payment request received:', {
       bowlerId,
       leagueId,
       amount,
       sourceIdPrefix: sourceId?.substring(0, 10) + '...',
-      storeCard: req.body.storeCard,
       userId: req.user?.id,
     });
 
@@ -200,7 +200,7 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
 
     const buyerEmail = bowler.email || undefined;
 
-    log.info('Processing payment:', {
+    if (isDev) log.info('Processing payment:', {
       bowlerId, leagueId, amount,
       locationId: league.locationId,
       provider: provider.providerName,
@@ -252,7 +252,7 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
               savedCard.id
             );
           } catch (schedError) {
-            log.info('No payment schedule to update (normal for one-time payments)');
+            if (isDev) log.info('No payment schedule to update (normal for one-time payments)');
           }
           await persistCardpointeProfile(provider, savedCard.id, bowlerId);
         }
@@ -278,7 +278,7 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
       idempotencyKey,
     });
 
-    log.info('Payment recorded in DB:', {
+    if (isDev) log.info('Payment recorded in DB:', {
       dbPaymentId: dbPayment.id,
       paymentId: payment.id,
       bowlerId, leagueId, amount,
@@ -751,7 +751,7 @@ router.get('/config', async (req: any, res) => {
     || ((squareAppId && !squareAppId.includes('sandbox-')) ? squareAppId : '')
     || viteAppId || squareAppId;
 
-  log.info('Serving config:', {
+  if (isDev) log.info('Serving config:', {
     prodAppIdSet: !!prodAppId,
     viteAppIdSet: !!viteAppId,
     squareAppIdSet: !!squareAppId,

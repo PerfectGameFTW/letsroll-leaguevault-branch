@@ -3,6 +3,7 @@ import sanitizeHtml from 'sanitize-html';
 import { storage } from '../storage';
 import { env, isDev } from '../config';
 import { createLogger } from '../logger';
+import { maskEmail } from '../utils/pii';
 
 const log = createLogger("Email");
 
@@ -156,7 +157,7 @@ export async function sendTemplatedEmail(
     };
 
     await sgMail.send(msg);
-    log.info(`Templated email '${slug}' sent to:`, toEmail);
+    log.info(`Templated email '${slug}' sent to:`, isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error: any) {
     log.error(`Failed to send templated email '${slug}':`, error?.response?.body || error.message);
@@ -245,7 +246,7 @@ export async function sendInviteEmail(
 
   try {
     await sgMail.send(msg);
-    log.info('Invite email sent to:', toEmail);
+    log.info('Invite email sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error: any) {
     log.error('Failed to send invite email:', error?.response?.body || error.message);
@@ -289,7 +290,7 @@ export async function sendTestEmail(
         clickTracking: { enable: false, enableText: false },
       },
     });
-    log.info(`Test email for '${template.slug}' sent to:`, toEmail);
+    log.info(`Test email for '${template.slug}' sent to:`, isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error: any) {
     log.error(`Failed to send test email:`, error?.response?.body || error.message);
@@ -354,7 +355,7 @@ export async function sendPasswordResetFallbackEmail(
 
   try {
     await sgMail.send(msg);
-    log.info('Password reset email sent to:', toEmail);
+    log.info('Password reset email sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
   } catch (error: any) {
     log.error('Failed to send password reset email:', error?.response?.body || error.message);
