@@ -134,11 +134,7 @@ app.use(helmet({
     },
   },
   frameguard: isDev ? false : { action: 'sameorigin' },
-  strictTransportSecurity: {
-    maxAge: 63072000,
-    includeSubDomains: true,
-    preload: true,
-  },
+  strictTransportSecurity: false,
   crossOriginEmbedderPolicy: false,
 }));
 
