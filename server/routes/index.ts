@@ -7,7 +7,7 @@ import paymentsRouter from './payments.js';
 import bowlerLeaguesRouter from './bowler-leagues.js';
 import scoresRouter from './scores.js';
 import gamesRouter from './games.js';
-import paymentRoutesRouter from './payment-routes.js';
+import paymentRoutesRouter from './payments-provider/index.js';
 import adminRouter from './admin.js';
 import organizationsRouter from './organizations.js';
 import organizationsPublicRouter from './organizations-public.js';
