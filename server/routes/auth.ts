@@ -1,0 +1,445 @@
+import { Express, Router } from "express";
+import passport from "passport";
+import rateLimit from "express-rate-limit";
+import { randomBytes } from "crypto";
+import { z } from "zod";
+import { storage } from "../storage";
+import { User as SelectUser, insertUserSchema } from "@shared/schema";
+import { passwordSchema } from "@shared/password-validation";
+import { sanitizeUser, sendSuccess, sendError } from "../utils/api.js";
+import { isDev } from "../config";
+import { checkUserBelongsToOrg } from "../middleware/subdomain";
+import { csrfProtection } from "../middleware/csrf";
+import { createLogger } from "../logger";
+import { hashPassword, safeTokenCompare } from "../lib/password";
+import { sendTemplatedEmail, getBaseUrl } from "../services/email.js";
+
+const log = createLogger("AuthRoutes");
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { message: "Too many login attempts, please try again later", code: "RATE_LIMITED" },
+  },
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { message: "Too many requests, please try again later", code: "RATE_LIMITED" },
+  },
+});
+
+const setPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { message: "Too many requests, please try again later", code: "RATE_LIMITED" },
+  },
+});
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { message: "Too many password reset requests, please try again later", code: "RATE_LIMITED" },
+  },
+});
+
+const claimLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: { message: "Too many requests, please try again later", code: "RATE_LIMITED" },
+  },
+});
+
+export function registerAuthRoutes(app: Express): void {
+  const authRouter = Router();
+
+  authRouter.post("/register", registerLimiter, async (req, res) => {
+    try {
+      const registrationData = {
+        email: req.body.email,
+        password: req.body.password,
+        name: req.body.name,
+        phone: req.body.phone,
+      };
+
+      const result = insertUserSchema.safeParse(registrationData);
+
+      if (!result.success) {
+        const validationErrors = result.error.errors.map(error => ({
+          field: error.path.join('.'),
+          message: error.message,
+        }));
+        return sendError(res, "Registration validation failed", 400, "VALIDATION_ERROR", validationErrors);
+      }
+
+      const existingUser = await storage.getUserByEmail(result.data.email);
+      if (existingUser) {
+        return sendError(res, "Email already registered", 400, "DUPLICATE_EMAIL");
+      }
+
+      const hashedPassword = await hashPassword(result.data.password);
+
+      const user = await storage.createUser({
+        ...result.data,
+        password: hashedPassword,
+        role: 'user',
+      });
+
+      const organizationId = req.body.organizationId ? parseInt(req.body.organizationId) : undefined;
+
+      let bowlerLinked = false;
+      try {
+        const bowler = organizationId
+          ? await storage.getBowlerByEmail(result.data.email, organizationId)
+          : await storage.getBowlerByEmailSystemAdmin(result.data.email);
+        if (bowler) {
+          const alreadyLinked = await storage.isBowlerLinked(bowler.id);
+          if (!alreadyLinked) {
+            await storage.linkUserToBowler(user.id, bowler.id);
+            bowlerLinked = true;
+
+            const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId: bowler.id });
+            if (bowlerLeagueEntries.length > 0) {
+              const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
+              if (league?.organizationId) {
+                const [, org] = await Promise.all([
+                  storage.setUserOrganization(user.id, league.organizationId),
+                  storage.getOrganization(league.organizationId),
+                ]);
+                const baseUrl = getBaseUrl(org?.slug || req.orgSlug);
+                sendTemplatedEmail('self_register_linked', result.data.email, {
+                  bowler_name: bowler.name,
+                  organization_name: org?.name || '',
+                  organization_logo_url: org?.logo ? `${baseUrl}/api/organizations/${org.id}/logo` : '',
+                  league_name: league.name,
+                  dashboard_link: `${baseUrl}/bowler-dashboard`,
+                }).catch(err => log.error('Failed to send self_register_linked email:', err));
+              }
+            }
+          }
+        }
+
+        if (!bowlerLinked) {
+          const baseUrl = getBaseUrl(req.orgSlug);
+          sendTemplatedEmail('self_register_unlinked', result.data.email, {
+            bowler_name: result.data.name,
+            login_link: `${baseUrl}/login`,
+          }).catch(err => log.error('Failed to send self_register_unlinked email:', err));
+        }
+      } catch (linkError) {
+        log.error('Auto-link bowler after registration failed:', linkError);
+      }
+
+      req.login(user, (err) => {
+        if (err) {
+          log.error('Session creation after registration failed:', err);
+          return sendError(res, "Failed to login after registration", 500, "SESSION_ERROR");
+        }
+        sendSuccess(res, sanitizeUser(user), 201);
+      });
+    } catch (error) {
+      log.error('Registration error:', error);
+      if (error instanceof z.ZodError) {
+        return sendError(res, "Validation failed", 400, "VALIDATION_ERROR", error.errors.map(err => ({
+          field: err.path.join('.'),
+          message: err.message,
+        })));
+      }
+      sendError(res, "Failed to register user", 500, "SERVER_ERROR");
+    }
+  });
+
+  authRouter.post("/login", loginLimiter, (req, res, next) => {
+    passport.authenticate("local", (err: any, user: any, info: any) => {
+      if (err) {
+        log.error('Login error:', err);
+        return sendError(res, "Internal server error", 500, "SERVER_ERROR");
+      }
+      if (!user) {
+        return sendError(res, info?.message || "Invalid credentials", 401, "INVALID_CREDENTIALS");
+      }
+      req.login(user, async (err) => {
+        if (err) {
+          log.error('Session creation error:', err);
+          return sendError(res, "Failed to create session", 500, "SESSION_ERROR");
+        }
+
+        if (req.subdomainOrg && !user.organizationId) {
+          try {
+            await checkUserBelongsToOrg(user, req.subdomainOrg.id);
+          } catch (orgErr) {
+            log.error('Failed to check org on login:', orgErr);
+          }
+        }
+
+        if (isDev) {
+          log.info('Login successful', { userId: user.id, email: user.email, sessionId: req.sessionID, hostname: req.hostname, cookieDomain: req.session?.cookie?.domain || 'not set' });
+        } else {
+          log.info('Login successful', { userId: user.id });
+        }
+        sendSuccess(res, sanitizeUser(user));
+      });
+    })(req, res, next);
+  });
+
+  authRouter.post("/logout", csrfProtection, (req, res, next) => {
+    req.logout((err) => {
+      if (err) {
+        log.error('Logout error:', err);
+        return next(err);
+      }
+      sendSuccess(res, null);
+    });
+  });
+
+  authRouter.get("/user", async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        if (isDev) log.info('/api/user unauthenticated request', { sessionId: req.sessionID, hasSession: !!req.session, hasCookie: !!req.headers.cookie, hostname: req.hostname });
+        return sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
+      }
+
+      const user = req.user as SelectUser;
+      const subdomainOrg = req.subdomainOrg;
+
+      if (subdomainOrg) {
+        const belongs = await checkUserBelongsToOrg(user, subdomainOrg.id);
+        if (!belongs) {
+          return new Promise<void>((resolve) => {
+            req.logout((err) => {
+              if (err) log.error('Logout error in /api/auth/user org guard:', err);
+              sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
+              resolve();
+            });
+          });
+        }
+      }
+
+      sendSuccess(res, sanitizeUser(user));
+    } catch (error) {
+      log.error('Error in /api/user route:', error);
+      sendError(res, "Internal server error", 500, "SERVER_ERROR");
+    }
+  });
+
+  authRouter.post("/set-password", setPasswordLimiter, async (req, res) => {
+    try {
+      const { token, password } = req.body;
+
+      if (!token || !password) {
+        return sendError(res, "Token and password are required", 400, "VALIDATION_ERROR");
+      }
+
+      const passwordResult = passwordSchema.safeParse(password);
+      if (!passwordResult.success) {
+        return sendError(res, passwordResult.error.errors[0].message, 400, "VALIDATION_ERROR");
+      }
+
+      const user = await storage.getUserByInviteToken(token);
+      if (!user || !user.inviteToken || !safeTokenCompare(token, user.inviteToken)) {
+        return sendError(res, "Invalid or expired invitation link", 400, "INVALID_TOKEN");
+      }
+
+      if (user.inviteTokenExpiry && new Date(user.inviteTokenExpiry) < new Date()) {
+        return sendError(res, "This invitation link has expired. Please ask your administrator to resend the invite.", 400, "TOKEN_EXPIRED");
+      }
+
+      const hashedPassword = await hashPassword(password);
+      await Promise.all([
+        storage.updateUser(user.id, { password: hashedPassword }),
+        storage.clearUserInviteToken(user.id),
+      ]);
+
+      try {
+        const bowler = await storage.getBowlerByEmailSystemAdmin(user.email);
+        if (bowler) {
+          const alreadyLinked = await storage.isBowlerLinked(bowler.id);
+          if (!alreadyLinked) {
+            await storage.linkUserToBowler(user.id, bowler.id);
+
+            if (!user.organizationId) {
+              const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId: bowler.id });
+              if (bowlerLeagueEntries.length > 0) {
+                const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
+                if (league?.organizationId) {
+                  await storage.setUserOrganization(user.id, league.organizationId);
+                }
+              }
+            }
+          }
+        }
+      } catch (linkError) {
+        log.error('Auto-link bowler after set-password failed:', linkError);
+      }
+
+      req.login(user, (err) => {
+        if (err) {
+          log.error('Auto-login after password set failed:', err);
+          return sendSuccess(res, { message: "Password set successfully. Please log in." });
+        }
+        sendSuccess(res, sanitizeUser(user));
+      });
+    } catch (error) {
+      log.error('Set password error:', error);
+      sendError(res, "Failed to set password", 500, "SERVER_ERROR");
+    }
+  });
+
+  authRouter.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email || typeof email !== 'string') {
+        return sendError(res, "Email is required", 400, "VALIDATION_ERROR");
+      }
+
+      sendSuccess(res, { message: "If an account exists with that email, a password reset link has been sent." });
+
+      try {
+        const user = await storage.getUserByEmail(email.trim().toLowerCase());
+        if (!user) return;
+        if (!user.password) return;
+
+        const token = randomBytes(32).toString("hex");
+        const expiry = new Date(Date.now() + 60 * 60 * 1000);
+        await storage.setUserInviteToken(user.id, token, expiry);
+
+        const org = user.organizationId ? await storage.getOrganization(user.organizationId) : null;
+        const baseUrl = getBaseUrl(org?.slug);
+        const resetUrl = `${baseUrl}/set-password?token=${token}`;
+
+        const firstName = user.name?.split(' ')[0] || user.email;
+
+        const sent = await sendTemplatedEmail('password_reset', email, {
+          bowler_name: firstName,
+          reset_link: resetUrl,
+          organization_name: org?.name || 'LeagueVault',
+        });
+
+        if (!sent) {
+          const { sendPasswordResetFallbackEmail } = await import('../services/email.js');
+          await sendPasswordResetFallbackEmail(email, firstName || 'there', token, org?.slug);
+        }
+
+        log.info('Password reset email sent', { userId: user.id, email });
+      } catch (bgError) {
+        log.error('Failed to process forgot-password request:', bgError);
+      }
+    } catch (error) {
+      log.error('Forgot password error:', error);
+      sendError(res, "Something went wrong", 500, "SERVER_ERROR");
+    }
+  });
+
+  authRouter.post("/claim-bowler", claimLimiter, csrfProtection, async (req, res) => {
+    try {
+      if (!req.isAuthenticated() || !req.user) {
+        return sendError(res, "Not authenticated", 401, "AUTH_REQUIRED");
+      }
+
+      const user = req.user as SelectUser;
+
+      if (user.bowlerId) {
+        return sendError(res, "You are already linked to a bowler", 400, "ALREADY_LINKED");
+      }
+
+      const { bowlerId } = req.body;
+      if (!bowlerId || typeof bowlerId !== 'number') {
+        return sendError(res, "Valid bowler ID is required", 400, "VALIDATION_ERROR");
+      }
+
+      const bowler = await storage.getBowler(bowlerId);
+      if (!bowler) {
+        return sendError(res, "Bowler not found", 404, "NOT_FOUND");
+      }
+
+      if (bowler.email && bowler.email.trim() !== '') {
+        if (bowler.email.toLowerCase().trim() !== user.email.toLowerCase().trim()) {
+          return sendError(res, "You can only claim a bowler profile that matches your email address", 403, "FORBIDDEN");
+        }
+      }
+
+      const alreadyLinked = await storage.isBowlerLinked(bowlerId);
+      if (alreadyLinked) {
+        return sendError(res, "This bowler is already linked to another account", 400, "ALREADY_LINKED");
+      }
+
+      await Promise.all([
+        storage.linkUserToBowler(user.id, bowlerId),
+        storage.updateBowler(bowlerId, { ...bowler, email: user.email }),
+      ]);
+
+      const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId });
+      if (bowlerLeagueEntries.length > 0) {
+        const league = await storage.getLeague(bowlerLeagueEntries[0].leagueId);
+        if (league?.organizationId) {
+          const [, org] = await Promise.all([
+            !user.organizationId
+              ? storage.setUserOrganization(user.id, league.organizationId)
+              : Promise.resolve(null),
+            storage.getOrganization(league.organizationId),
+          ]);
+          const baseUrl = getBaseUrl(org?.slug || req.orgSlug);
+          sendTemplatedEmail('bowler_claimed', user.email, {
+            bowler_name: bowler.name,
+            organization_name: org?.name || '',
+            organization_logo_url: org?.logo ? `${baseUrl}/api/organizations/${org.id}/logo` : '',
+            league_name: league.name,
+            dashboard_link: `${baseUrl}/bowler-dashboard`,
+          }).catch(err => log.error('Failed to send bowler_claimed email:', err));
+        }
+      }
+
+      const updatedUser = await storage.getUser(user.id);
+      sendSuccess(res, sanitizeUser(updatedUser!));
+    } catch (error) {
+      log.error('Claim bowler error:', error);
+      sendError(res, "Failed to claim bowler", 500, "SERVER_ERROR");
+    }
+  });
+
+  authRouter.get("/validate-invite", async (req, res) => {
+    try {
+      const token = req.query.token as string;
+      if (!token) {
+        return sendError(res, "Token is required", 400, "VALIDATION_ERROR");
+      }
+
+      const user = await storage.getUserByInviteToken(token);
+      if (!user || !user.inviteToken || !safeTokenCompare(token, user.inviteToken)) {
+        return sendError(res, "Invalid invitation link", 400, "INVALID_TOKEN");
+      }
+
+      if (user.inviteTokenExpiry && new Date(user.inviteTokenExpiry) < new Date()) {
+        return sendError(res, "This invitation link has expired", 400, "TOKEN_EXPIRED");
+      }
+
+      return sendSuccess(res, { name: user.name, email: user.email });
+    } catch (error) {
+      log.error('Validate invite error:', error);
+      sendError(res, "Failed to validate invite", 500, "SERVER_ERROR");
+    }
+  });
+
+  app.use('/api/auth', authRouter);
+}

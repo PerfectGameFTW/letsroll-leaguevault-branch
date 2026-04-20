@@ -2,12 +2,10 @@ import { env, isDev } from "./config";
 import * as Sentry from "@sentry/node";
 import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
-import helmet from "helmet";
 import { registerRoutes } from "./routes/index";
 import { setupVite } from "./vite";
-import { testConnection, cleanup as dbCleanup } from "./db";
+import { testConnection } from "./db";
 import { createServer } from 'http';
-import { storage } from './storage';
 import path from 'path';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
@@ -15,6 +13,8 @@ import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDis
 import { createLogger } from './logger';
 import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
 import { subdomainDetection, orgSessionGuard } from './middleware/subdomain';
+import { securityHeaders, apiHeaders } from './middleware/security';
+import { requestTracker, registerShutdownHandlers } from './lib/shutdown';
 import manifestRouter from './routes/manifest';
 
 const log = createLogger("Server");
@@ -26,117 +26,10 @@ const server = createServer(app);
 const HOST = '0.0.0.0';
 const PORT = env.PORT;
 
-function getAllowedOrigins(): string[] {
-  const origins: string[] = [];
-  origins.push('https://leaguevault.app');
-  if (isDev) {
-    if (env.REPLIT_DOMAINS) {
-      for (const domain of env.REPLIT_DOMAINS.split(',')) {
-        origins.push(`https://${domain}`);
-      }
-    }
-    if (env.REPL_SLUG && env.REPL_OWNER) {
-      origins.push(`https://${env.REPL_SLUG}.${env.REPL_OWNER}.repl.co`);
-    }
-    origins.push('http://localhost:5000');
-    origins.push('http://localhost:5173');
-    origins.push('http://127.0.0.1:5000');
-    origins.push('http://127.0.0.1:5173');
-  }
-  return origins;
-}
-
-const allowedOrigins = getAllowedOrigins();
-
-function isAllowedOrigin(origin: string): boolean {
-  if (allowedOrigins.includes(origin)) return true;
-  if (origin === 'capacitor://localhost' || origin === 'ionic://localhost') return true;
-  if (origin === 'http://localhost') return true;
-  try {
-    const url = new URL(origin);
-    if (url.hostname.endsWith('.leaguevault.app') && url.protocol === 'https:') {
-      return true;
-    }
-  } catch {}
-  return false;
-}
-
-let activeRequests = 0;
-let viteSetupComplete = false;
-
-const requestTracker = (req: Request, res: Response, next: NextFunction) => {
-  activeRequests++;
-  res.on('finish', () => { activeRequests--; });
-  next();
-};
-
 app.use(requestTracker);
-
 app.use(subdomainDetection);
 app.use(compression());
-
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: [
-        "'self'",
-        "https://web.squarecdn.com",
-        "https://sandbox.web.squarecdn.com",
-        "https://pay.google.com",
-        ...(isDev ? ["'unsafe-inline'", "'unsafe-eval'"] : []),
-      ],
-      styleSrc: [
-        "'self'",
-        "'unsafe-inline'",
-        "https://web.squarecdn.com",
-        "https://sandbox.web.squarecdn.com",
-      ],
-      connectSrc: [
-        "'self'",
-        "https://web.squarecdn.com",
-        "https://sandbox.web.squarecdn.com",
-        "https://pds.squareup.com",
-        "https://connect.squareup.com",
-        "https://connect.squareupsandbox.com",
-        "https://pci-connect.squareup.com",
-        "https://pci-connect.squareupsandbox.com",
-        "https://square-fonts-production-f.squarecdn.com",
-        "https://d1g145x70srn7h.cloudfront.net",
-        "https://cash-f.squarecdn.com",
-        "https://pay.google.com",
-        "https://google.com",
-        "https://apple.com",
-        "https://*.apple.com",
-        "https://*.apple-pay-gateway.apple.com",
-        "https://*.ingest.sentry.io",
-        "https://*.ingest.us.sentry.io",
-        ...(isDev ? ["ws:", "wss:"] : []),
-      ],
-      frameSrc: [
-        "'self'",
-        "https://web.squarecdn.com",
-        "https://sandbox.web.squarecdn.com",
-        "https://pci-connect.squareup.com",
-        "https://pci-connect.squareupsandbox.com",
-        "https://pay.google.com",
-        "https://apple.com",
-        "https://*.apple.com",
-      ],
-      imgSrc: ["'self'", "data:", "blob:", "https://web.squarecdn.com", "https://sandbox.web.squarecdn.com"],
-      fontSrc: ["'self'", "data:", "https://square-fonts-production-f.squarecdn.com", "https://d1g145x70srn7h.cloudfront.net", "https://cash-f.squarecdn.com"],
-      objectSrc: ["'none'"],
-      baseUri: ["'self'"],
-      formAction: ["'self'"],
-      frameAncestors: isDev
-        ? ["*"]
-        : ["'self'", "https://leaguevault.app", "https://*.leaguevault.app"],
-    },
-  },
-  frameguard: isDev ? false : { action: 'sameorigin' },
-  strictTransportSecurity: false,
-  crossOriginEmbedderPolicy: false,
-}));
+app.use(securityHeaders);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: false, limit: '10mb' }));
@@ -207,24 +100,7 @@ app.get('/.well-known/apple-developer-merchantid-domain-association', async (_re
   res.status(404).type('text/plain').send('Not configured');
 });
 
-app.use('/api', (req, res, next) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-store');
-  const origin = req.headers.origin;
-  if (origin) {
-    res.setHeader('Vary', 'Origin');
-    if (isAllowedOrigin(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-    }
-  }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-csrf-token');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
+app.use('/api', apiHeaders);
 
 app.get('/api/csrf-token', csrfTokenEndpoint);
 app.use('/api', csrfProtection);
@@ -271,7 +147,6 @@ if (isDev) {
   setupVite(app, server)
     .then(() => {
       log.info('Vite middleware ready');
-      viteSetupComplete = true;
       startServer();
     })
     .catch((error) => {
@@ -300,7 +175,7 @@ if (isDev) {
 
 Sentry.setupExpressErrorHandler(app);
 
-app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   log.error('Unhandled express error:', err);
   if (!res.headersSent) {
     const statusCode = (typeof err.status === 'number' && err.status >= 400 && err.status < 500)
@@ -371,62 +246,4 @@ async function startServer() {
   }
 }
 
-const DRAIN_POLL_INTERVAL_MS = 100;
-
-async function shutdown() {
-  log.info('Shutting down...');
-  const startTime = Date.now();
-
-  try {
-    paymentScheduler?.cancelAllJobs();
-
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(() => {
-        log.warn(`Forcing shutdown with ${activeRequests} active requests`);
-        resolve();
-      }, 10000);
-
-      const waitForDrain = () => {
-        if (activeRequests <= 0) {
-          clearTimeout(timeout);
-          resolve();
-        } else {
-          setTimeout(waitForDrain, DRAIN_POLL_INTERVAL_MS);
-        }
-      };
-      waitForDrain();
-    });
-
-    await dbCleanup();
-
-    await new Promise<void>((resolve, reject) => {
-      const SERVER_CLOSE_TIMEOUT_MS = 5000;
-      const timeout = setTimeout(() => reject(new Error('Server close timeout')), SERVER_CLOSE_TIMEOUT_MS);
-      server.close((err) => {
-        clearTimeout(timeout);
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-
-    log.info(`Shutdown completed in ${Date.now() - startTime}ms`);
-    process.exit(0);
-  } catch (error) {
-    log.error('Error during shutdown:', error);
-    process.exit(1);
-  }
-}
-
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
-process.on('SIGHUP', shutdown);
-
-process.on('uncaughtException', (error) => {
-  log.error('Uncaught exception:', error);
-  shutdown();
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  log.error('Unhandled rejection:', reason);
-  shutdown();
-});
+registerShutdownHandlers(server);
