@@ -50,9 +50,8 @@ export function ChangePasswordCard() {
       setShowForm(false);
       toast({ title: "Password Changed", description: "Your password has been updated successfully." });
     },
-    onError: (error: any) => {
-      const message = error?.error?.message || error?.message || "Failed to change password";
-      toast({ title: "Password Change Failed", description: message, variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Password Change Failed", description: error.message || "Failed to change password", variant: "destructive" });
     },
   });
 

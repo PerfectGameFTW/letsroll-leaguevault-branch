@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import type { Location } from "@shared/schema";
+import type { Location, InsertLocation } from "@shared/schema";
 
 interface Props {
   open: boolean;
@@ -43,7 +43,7 @@ export function LocationFormDialog({ open, onClose, location }: Props) {
   }, [open, location]);
 
   const createMutation = useMutation({
-    mutationFn: async (loc: Record<string, any>) => apiRequest("/api/locations", "POST", loc),
+    mutationFn: async (loc: Partial<InsertLocation>) => apiRequest("/api/locations", "POST", loc),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
       toast({ title: "Location Created", description: "The location has been successfully created." });
@@ -55,7 +55,7 @@ export function LocationFormDialog({ open, onClose, location }: Props) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, loc }: { id: number; loc: Record<string, any> }) =>
+    mutationFn: async ({ id, loc }: { id: number; loc: Partial<InsertLocation> }) =>
       apiRequest(`/api/locations/${id}`, "PATCH", loc),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });

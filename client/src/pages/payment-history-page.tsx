@@ -5,8 +5,7 @@ import type { League, Payment, User, SavedCard, ApiResponse, BowlerDetailsRespon
 import { BowlerLayout } from "@/components/bowler-layout";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
 import { Link, useSearch } from "wouter";
-import { ChevronDown, X, Check } from "lucide-react";
-import { differenceInWeeks } from "date-fns";
+import { ChevronDown } from "lucide-react";
 import { calculateFinalTwoWeeksPaidOnWeek } from "@/lib/financial-utils";
 import { useSquarePayment } from "@/hooks/use-square-payment";
 import { useCardPointePayment } from "@/hooks/use-cardpointe-payment";
@@ -21,6 +20,7 @@ import { PaymentSummaryCards } from "@/components/payment-summary-cards";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { BowlerPaymentTable } from "@/components/bowler-payment-table";
 import { BowlerPaymentDialog } from "@/components/bowler-payment-dialog";
+import { LeagueSwitcherSheet } from "@/components/league-switcher-sheet";
 import { useSelectedLeague } from "@/hooks/use-selected-league";
 
 export default function PaymentHistoryPage() {
@@ -459,64 +459,14 @@ export default function PaymentHistoryPage() {
         </ErrorBoundary>
       </div>
 
-      {leagueSheetOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/40 z-40 transition-opacity duration-300"
-            onClick={() => setLeagueSheetOpen(false)}
-          />
-          <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">
-            <div className="bg-white rounded-t-2xl shadow-xl max-h-[70vh] overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                <h3 className="text-lg font-semibold text-slate-900">Switch League</h3>
-                <button
-                  onClick={() => setLeagueSheetOpen(false)}
-                  className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="overflow-y-auto">
-                {bowlerLeagues.map((bl) => {
-                  const l = leagueMap.get(bl.leagueId);
-                  const isSelected = bl.leagueId === leagueId;
-                  return (
-                    <button
-                      key={bl.leagueId}
-                      onClick={() => {
-                        setSelectedLeagueId(bl.leagueId);
-                        setLeagueSheetOpen(false);
-                      }}
-                      className={`w-full text-left px-5 py-4 flex items-center justify-between transition-colors ${
-                        isSelected ? 'bg-indigo-50' : 'hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className={`font-medium ${isSelected ? 'text-indigo-700' : 'text-slate-900'}`}>
-                        {l?.name ?? `League #${bl.leagueId}`}
-                      </div>
-                      {isSelected && (
-                        <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center flex-shrink-0 ml-3">
-                          <Check className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="h-8" />
-            </div>
-          </div>
-          <style>{`
-            @keyframes slide-up {
-              from { transform: translateY(100%); }
-              to { transform: translateY(0); }
-            }
-            .animate-slide-up {
-              animation: slide-up 0.3s ease-out;
-            }
-          `}</style>
-        </>
-      )}
+      <LeagueSwitcherSheet
+        open={leagueSheetOpen}
+        onClose={() => setLeagueSheetOpen(false)}
+        bowlerLeagues={bowlerLeagues}
+        leagueMap={leagueMap}
+        selectedLeagueId={leagueId}
+        onSelect={setSelectedLeagueId}
+      />
     </BowlerLayout>
   );
 }

@@ -57,10 +57,10 @@ export function AddUserDialog({ open, onClose, orgLocations }: Props) {
       email: string;
       makeOrgAdmin: boolean;
       locationId: number | null;
-    }) => {
-      return apiRequest("/api/org-admin/users/create", "POST", data);
+    }): Promise<{ emailSent?: boolean }> => {
+      return apiRequest("/api/org-admin/users/create", "POST", data) as Promise<{ emailSent?: boolean }>;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/org-admin/users"] });
       handleClose();
       const emailSent = data?.emailSent !== false;

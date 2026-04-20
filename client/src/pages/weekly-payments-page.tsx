@@ -3,25 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Loader2, ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PageLoadingState } from "@/components/page-states";
-import { format, startOfToday } from "date-fns";
+import { startOfToday } from "date-fns";
 import type { League, Payment, ApiResponse } from "@shared/schema";
 import { getBowlingDateByWeekNumber, getEffectiveBowlingWeeks } from "@shared/schedule-utils";
 import { useParams, Link } from "wouter";
 import { PaymentEntryRow } from "@/components/payment-entry-row";
 import { PaymentHistoryTable } from "@/components/payment-history-table";
 import { useWeeklyPayments, getNearestBowlingDay, getWeekNumber } from "@/hooks/use-weekly-payments";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -30,14 +21,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { WeekNavigator } from "@/components/week-navigator";
+import { EditPaymentAmountDialog } from "@/components/edit-payment-amount-dialog";
+import { DeletePaymentDialog } from "@/components/delete-payment-dialog";
 
 interface EnrichedBowlerLeague {
   id: number;
@@ -74,7 +60,7 @@ export default function WeeklyPaymentsPage() {
     updatePaymentMutation,
   } = useWeeklyPayments(leagueId);
 
-  const { data: userResponse } = useQuery<ApiResponse<any>>({
+  const { data: userResponse } = useQuery<ApiResponse<{ role?: string }>>({
     queryKey: ["/api/user"],
     staleTime: 1000 * 60 * 5,
   });
@@ -140,10 +126,7 @@ export default function WeeklyPaymentsPage() {
 
   const maxWeek = useMemo(() => {
     if (!league?.totalBowlingWeeks || !league?.weekDay) return 0;
-    return getEffectiveBowlingWeeks(
-      league.totalBowlingWeeks,
-      league.cancelledDates ?? []
-    );
+    return getEffectiveBowlingWeeks(league.totalBowlingWeeks, league.cancelledDates ?? []);
   }, [league?.totalBowlingWeeks, league?.weekDay, league?.cancelledDates]);
 
   useEffect(() => {
@@ -195,151 +178,54 @@ export default function WeeklyPaymentsPage() {
   const payments = (paymentsResponse?.data || []).filter(p => p.type === "cash" || p.type === "check");
 
   if ((loadingLeague || loadingBowlerLeagues) && !league) {
-    return (
-      <Layout>
-        <PageLoadingState />
-      </Layout>
-    );
+    return <Layout><PageLoadingState /></Layout>;
   }
 
   if (!league) {
-    return (
-      <Layout>
-        <div className="text-center">League not found</div>
-      </Layout>
-    );
+    return <Layout><div className="text-center">League not found</div></Layout>;
   }
 
   return (
     <Layout>
       <ErrorBoundary level="section">
-      <div className="space-y-6">
-        <Link
-          href={`/leagues/${leagueId}`}
-          className="text-muted-foreground hover:text-foreground flex items-center mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Back to {league.name}
-        </Link>
+        <div className="space-y-6">
+          <Link
+            href={`/leagues/${leagueId}`}
+            className="text-muted-foreground hover:text-foreground flex items-center mb-4"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to {league.name}
+          </Link>
 
-        <div className="flex flex-col space-y-4">
-          <h1 className="text-2xl font-bold">{league.name}: Weekly Payments</h1>
-
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9"
-                onClick={() => setSelectedWeek(w => Math.max(1, (w ?? 1) - 1))}
-                disabled={selectedWeek === null || selectedWeek <= 1}
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Popover open={weekJumpOpen} onOpenChange={setWeekJumpOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="min-w-[100px] text-center font-medium text-sm px-2 h-9"
-                  >
-                    {selectedWeek !== null ? `Week ${selectedWeek}` : "—"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-3" align="center">
-                  <p className="text-xs font-medium text-muted-foreground mb-2 text-center">Jump to week</p>
-                  <div className="grid grid-cols-3 md:grid-cols-5 gap-1.5">
-                    {Array.from({ length: maxWeek }, (_, i) => i + 1).map((week) => (
-                      <Button
-                        key={week}
-                        variant={week === selectedWeek ? "default" : "ghost"}
-                        size="sm"
-                        className={cn(
-                          "h-8 w-10 text-xs",
-                          week === selectedWeek && "pointer-events-none"
-                        )}
-                        onClick={() => {
-                          setSelectedWeek(week);
-                          setWeekJumpOpen(false);
-                        }}
-                      >
-                        {week}
-                      </Button>
-                    ))}
-                  </div>
-                </PopoverContent>
-              </Popover>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9"
-                onClick={() => setSelectedWeek(w => Math.min(maxWeek, (w ?? 1) + 1))}
-                disabled={selectedWeek === null || selectedWeek >= maxWeek}
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-            {selectedDate && (
-              <span className="text-sm text-muted-foreground">
-                {format(selectedDate, "MMM d, yyyy")}
-              </span>
-            )}
+          <div className="flex flex-col space-y-4">
+            <h1 className="text-2xl font-bold">{league.name}: Weekly Payments</h1>
+            <WeekNavigator
+              selectedWeek={selectedWeek}
+              maxWeek={maxWeek}
+              selectedDate={selectedDate}
+              onWeekChange={setSelectedWeek}
+              popoverOpen={weekJumpOpen}
+              onPopoverOpenChange={setWeekJumpOpen}
+            />
           </div>
-        </div>
 
-        <ErrorBoundary level="section">
-        {selectedDate && (
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                Week {selectedWeek}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6">
-              {loadingPayments || loadingBowlerLeagues ? (
-                <PageLoadingState fullPage={false} />
-              ) : (
-                <div className="space-y-6">
-                  {isMobile ? (
-                    <div className="space-y-3">
-                      {sortedBowlerLeagues.length === 0 && (
-                        <p className="text-center text-muted-foreground py-8">
-                          No bowlers found in this league
-                        </p>
-                      )}
-                      {sortedBowlerLeagues.map((bl) => (
-                        <PaymentEntryRow
-                          key={bl.id}
-                          bowler={bl.bowler!}
-                          teamName={bl.team?.name ?? "Unassigned"}
-                          entry={paymentEntries[bl.bowler!.id]}
-                          onPaymentTypeChange={handlePaymentTypeChange}
-                          onAmountChange={handleAmountChange}
-                          onCheckNumberChange={handleCheckNumberChange}
-                          onSubmit={(bowlerId) => handleSubmitPayment(bowlerId, selectedDate)}
-                          isSubmitting={submitPaymentMutation.isPending}
-                          variant="card"
-                        />
-                      ))}
-                    </div>
+          <ErrorBoundary level="section">
+            {selectedDate && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Week {selectedWeek}</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  {loadingPayments || loadingBowlerLeagues ? (
+                    <PageLoadingState fullPage={false} />
                   ) : (
-                    <div className="rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Bowler</TableHead>
-                            <TableHead>Team</TableHead>
-                            <TableHead>Payment Type</TableHead>
-                            <TableHead>Amount</TableHead>
-                            <TableHead>Action</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
+                    <div className="space-y-6">
+                      {isMobile ? (
+                        <div className="space-y-3">
                           {sortedBowlerLeagues.length === 0 && (
-                            <TableRow>
-                              <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                                No bowlers found in this league
-                              </TableCell>
-                            </TableRow>
+                            <p className="text-center text-muted-foreground py-8">
+                              No bowlers found in this league
+                            </p>
                           )}
                           {sortedBowlerLeagues.map((bl) => (
                             <PaymentEntryRow
@@ -352,97 +238,78 @@ export default function WeeklyPaymentsPage() {
                               onCheckNumberChange={handleCheckNumberChange}
                               onSubmit={(bowlerId) => handleSubmitPayment(bowlerId, selectedDate)}
                               isSubmitting={submitPaymentMutation.isPending}
+                              variant="card"
                             />
                           ))}
-                        </TableBody>
-                      </Table>
+                        </div>
+                      ) : (
+                        <div className="rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Bowler</TableHead>
+                                <TableHead>Team</TableHead>
+                                <TableHead>Payment Type</TableHead>
+                                <TableHead>Amount</TableHead>
+                                <TableHead>Action</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {sortedBowlerLeagues.length === 0 && (
+                                <TableRow>
+                                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                                    No bowlers found in this league
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                              {sortedBowlerLeagues.map((bl) => (
+                                <PaymentEntryRow
+                                  key={bl.id}
+                                  bowler={bl.bowler!}
+                                  teamName={bl.team?.name ?? "Unassigned"}
+                                  entry={paymentEntries[bl.bowler!.id]}
+                                  onPaymentTypeChange={handlePaymentTypeChange}
+                                  onAmountChange={handleAmountChange}
+                                  onCheckNumberChange={handleCheckNumberChange}
+                                  onSubmit={(bowlerId) => handleSubmitPayment(bowlerId, selectedDate)}
+                                  isSubmitting={submitPaymentMutation.isPending}
+                                />
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+
+                      <PaymentHistoryTable
+                        payments={payments}
+                        bowlers={bowlers}
+                        bowlerTeamMap={bowlerTeamMap}
+                        onStartEdit={handleStartEdit}
+                        onDelete={setPaymentToDelete}
+                        isDeletePending={deletePaymentMutation.isPending}
+                        isAdmin={isAdmin}
+                      />
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            )}
+          </ErrorBoundary>
 
-                  <PaymentHistoryTable
-                    payments={payments}
-                    bowlers={bowlers}
-                    bowlerTeamMap={bowlerTeamMap}
-                    onStartEdit={handleStartEdit}
-                    onDelete={setPaymentToDelete}
-                    isDeletePending={deletePaymentMutation.isPending}
-                    isAdmin={isAdmin}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-        </ErrorBoundary>
+          <EditPaymentAmountDialog
+            editingPayment={editingPayment}
+            onChange={setEditingPayment}
+            onSave={handleSaveEdit}
+            isPending={updatePaymentMutation.isPending}
+          />
 
-        <Dialog open={editingPayment !== null} onOpenChange={(open) => !open && setEditingPayment(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Edit Payment Amount</DialogTitle>
-              <DialogDescription>
-                Update the payment amount below.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="amount">Amount ($)</Label>
-                <Input
-                  id="amount"
-                  value={editingPayment?.amount || ""}
-                  onChange={(e) => setEditingPayment(prev =>
-                    prev ? { ...prev, amount: e.target.value } : null
-                  )}
-                  placeholder="0.00"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setEditingPayment(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => editingPayment && handleSaveEdit(editingPayment.id)}
-                disabled={updatePaymentMutation.isPending}
-              >
-                {updatePaymentMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : "Save Changes"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={paymentToDelete !== null} onOpenChange={() => setPaymentToDelete(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Delete Payment</DialogTitle>
-              <DialogDescription>
-                Are you sure you want to delete this payment? This action cannot be undone.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => setPaymentToDelete(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => handleDelete(paymentToDelete!)}
-                disabled={deletePaymentMutation.isPending}
-              >
-                {deletePaymentMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : "Delete"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+          <DeletePaymentDialog
+            open={paymentToDelete !== null}
+            onClose={() => setPaymentToDelete(null)}
+            onConfirm={() => paymentToDelete !== null && handleDelete(paymentToDelete)}
+            isPending={deletePaymentMutation.isPending}
+          />
+        </div>
       </ErrorBoundary>
     </Layout>
   );

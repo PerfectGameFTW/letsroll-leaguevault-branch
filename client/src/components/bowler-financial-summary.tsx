@@ -1,0 +1,79 @@
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import type { League } from "@shared/schema";
+import type { BowlerViewFinancials } from "@/lib/financial-utils";
+
+interface Props {
+  league: League | undefined;
+  financials: BowlerViewFinancials;
+}
+
+export function BowlerFinancialSummary({ league, financials }: Props) {
+  const weeklyFee = (league?.weeklyFee || 0) / 100;
+  const {
+    weeksDue,
+    totalSeasonDues,
+    totalWeeksInSeason,
+    fullSeasonAmount,
+    amountPastDue,
+    remainingBalance,
+    totalPaidAmount,
+  } = financials;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <SummaryCard title="Weekly Fee" description="Regular payment amount" value={`$${weeklyFee.toFixed(2)}`} />
+      <SummaryCard
+        title="Amount Due to Date"
+        description={`${weeksDue} week${weeksDue === 1 ? "" : "s"} at $${weeklyFee.toFixed(2)}`}
+        value={`$${(totalSeasonDues / 100).toFixed(2)}`}
+      />
+      <SummaryCard
+        title="Amount Paid to Date"
+        description="All payments received"
+        value={`$${(totalPaidAmount / 100).toFixed(2)}`}
+      />
+      <SummaryCard
+        title="Amount Past Due to Date"
+        description="Unpaid fees for weeks passed"
+        value={`$${(amountPastDue / 100).toFixed(2)}`}
+        valueClass="text-destructive"
+      />
+      <SummaryCard
+        title="Full Season Lineage Amount Due"
+        description={`${totalWeeksInSeason} week${totalWeeksInSeason === 1 ? "" : "s"} at $${weeklyFee.toFixed(2)}`}
+        value={`$${(fullSeasonAmount / 100).toFixed(2)}`}
+        valueClass="text-orange-600"
+      />
+      <SummaryCard
+        title="Full Season Remaining Balance"
+        description="Amount left to pay"
+        value={`$${(remainingBalance / 100).toFixed(2)}`}
+        valueClass="text-orange-600"
+      />
+    </div>
+  );
+}
+
+function SummaryCard({
+  title,
+  description,
+  value,
+  valueClass = "",
+}: {
+  title: string;
+  description: string;
+  value: string;
+  valueClass?: string;
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-lg">{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <p className={`text-2xl font-bold ${valueClass}`}>{value}</p>
+      </CardContent>
+    </Card>
+  );
+}

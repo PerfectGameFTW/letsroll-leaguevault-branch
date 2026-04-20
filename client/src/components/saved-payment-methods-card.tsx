@@ -43,8 +43,9 @@ export function SavedPaymentMethodsCard({ bowlerId }: { bowlerId: number }) {
       }
       toast({ title: "Card Removed", description: `Your ${card.brand} card ending in ${card.last4} has been removed.` });
       queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
-    } catch (err: any) {
-      toast({ title: "Error", description: err?.message || "Failed to remove card", variant: "destructive" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to remove card";
+      toast({ title: "Error", description: message, variant: "destructive" });
     } finally {
       setIsDeleting(false);
       setCardToDelete(null);

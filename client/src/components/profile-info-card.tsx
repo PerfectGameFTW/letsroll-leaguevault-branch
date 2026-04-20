@@ -50,9 +50,8 @@ export function ProfileInfoCard({ currentUser }: { currentUser: User }) {
       setIsEditing(false);
       toast({ title: "Profile Updated", description: "Your profile has been saved successfully." });
     },
-    onError: (error: any) => {
-      const message = error?.error?.message || error?.message || "Failed to update profile";
-      toast({ title: "Update Failed", description: message, variant: "destructive" });
+    onError: (error: Error) => {
+      toast({ title: "Update Failed", description: error.message || "Failed to update profile", variant: "destructive" });
     },
   });
 

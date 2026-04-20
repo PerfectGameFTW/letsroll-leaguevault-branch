@@ -1,0 +1,67 @@
+import { format } from "date-fns";
+import { ExternalLink } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import type { Payment } from "@shared/schema";
+
+interface Props {
+  payments: Payment[];
+}
+
+export function BowlerPaymentHistoryTable({ payments }: Props) {
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Amount</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Transaction ID</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {payments.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={5} className="text-center">No payment history</TableCell>
+            </TableRow>
+          ) : (
+            payments.map((payment) => (
+              <TableRow key={payment.id}>
+                <TableCell>{format(new Date(payment.weekOf), "MMM d, yyyy")}</TableCell>
+                <TableCell className="capitalize">{payment.type.replace(/_/g, " ")}</TableCell>
+                <TableCell>${(payment.amount / 100).toFixed(2)}</TableCell>
+                <TableCell>
+                  <Badge variant={payment.status === "paid" ? "default" : "secondary"}>
+                    {payment.status}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    {payment.providerPaymentId ? (
+                      <>
+                        <span className="font-mono text-sm">{payment.providerPaymentId}</span>
+                        <a
+                          href={`https://squareup.com/dashboard/payments/${payment.providerPaymentId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-muted-foreground hover:text-foreground"
+                          title="View in Square Dashboard"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      </>
+                    ) : (
+                      <span className="text-muted-foreground">N/A</span>
+                    )}
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
