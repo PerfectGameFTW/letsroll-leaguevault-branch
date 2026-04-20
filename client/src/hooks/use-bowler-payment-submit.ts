@@ -9,22 +9,10 @@ import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
 
 type PaymentCard = SquareCard | CardPointeCard | null;
 
-/**
- * Maps an internal payment-schedule key to a human-friendly adjective for
- * use inside auto-pay toast copy (e.g. "weekly auto-pay is now active").
- *
- * Today the only schedule key that reaches the auto-pay branch is
- * `'weekly'` — `'custom'` short-circuits into the one-time path before
- * we get here — but routing it through this helper keeps the toast copy
- * sensible if more cadences are added later.
- */
+// Human-friendly cadence label for auto-pay toast copy (avoids
+// interpolating raw schedule keys into user-facing text).
 function scheduleLabel(schedule: 'weekly' | 'custom'): string {
-  switch (schedule) {
-    case 'weekly':
-      return 'weekly';
-    default:
-      return 'recurring';
-  }
+  return schedule === 'weekly' ? 'weekly' : 'recurring';
 }
 
 interface UseBowlerPaymentSubmitOptions {
@@ -233,7 +221,7 @@ export function useBowlerPaymentSubmit({
         toast({
           title: "Payment Successful",
           description: includeFinalTwoWeeks
-            ? `Your payment of ${formatCurrency(amount)} has been processed (includes Final 2 Weeks).`
+            ? `Payment of ${formatCurrency(amount)} processed (includes Final 2 Weeks).`
             : `Your payment of ${formatCurrency(amount)} has been processed.`,
         });
       }
