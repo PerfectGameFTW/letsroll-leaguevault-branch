@@ -21,6 +21,7 @@ import paymentSchedulesRouter from './payment-schedules.js';
 import bowlnowRouter from './bowlnow.js';
 import integrationsRouter from './integrations.js';
 import accountRouter from './account.js';
+import { registerAuthRoutes } from './auth.js';
 import bulkImportRouter from './bulk-import.js';
 import searchRouter from './search.js';
 import { requireAuth, requireOrgAdmin, requireSystemAdmin } from '../middleware/auth.js';
@@ -30,6 +31,10 @@ const log = createLogger("Routes");
 
 export function registerRoutes(app: Express): void {
   log.info('Registering API routes...');
+
+  // Auth endpoints (/api/auth/*) are mounted first so they take precedence
+  // over the broader /api/* middleware below.
+  registerAuthRoutes(app);
 
   app.get('/api/user', (req, res) => {
     req.url = '/api/auth/user';

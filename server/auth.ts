@@ -10,7 +10,6 @@ import { cacheFetch } from "./utils/cache";
 import { env, isDev } from "./config";
 import { createLogger } from "./logger";
 import { pool } from "./db";
-import { registerAuthRoutes } from "./routes/auth";
 import { hashPassword, comparePasswords, safeTokenCompare } from "./lib/password";
 
 // Re-export for backward compatibility with existing import sites.
@@ -126,5 +125,4 @@ export async function setupAuth(app: Express) {
     }
   });
 
-  registerAuthRoutes(app);
 }
