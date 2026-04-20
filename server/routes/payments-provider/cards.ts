@@ -13,7 +13,7 @@ import { hasAccessToBowler } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
 import { getProviderCustomerId, persistCardpointeProfile } from '../../services/payment-utils';
-import { getProviderForLeague } from './shared';
+import { getProviderForLeague } from './shared.js';
 
 const log = createLogger('Payments');
 

@@ -10,7 +10,7 @@ import { sendError } from '../../utils/api.js';
 import { paymentLimiter } from '../../middleware/rate-limit.js';
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
-import { getProviderForLeague } from './shared';
+import { getProviderForLeague } from './shared.js';
 
 const log = createLogger('Payments');
 

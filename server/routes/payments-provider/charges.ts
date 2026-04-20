@@ -18,7 +18,7 @@ import { computePaymentSplit, buildLineItems } from '../../services/payment-exec
 import { getProviderCustomerId, persistCardpointeProfile } from '../../services/payment-utils';
 import { providerNameToPaymentType } from '@shared/schema/constants';
 import { isDev } from '../../config';
-import { getProviderForLeague } from './shared';
+import { getProviderForLeague } from './shared.js';
 
 const log = createLogger('Payments');
 

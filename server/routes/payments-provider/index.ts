@@ -13,13 +13,13 @@
  * the public `/api/payments-provider/*` URL surface is unchanged.
  */
 import { Router } from 'express';
-import { requireAuthenticated } from './shared';
-import chargesRouter from './charges';
-import customersRouter from './customers';
-import catalogRouter from './catalog';
-import cardsRouter from './cards';
-import applePayRouter from './apple-pay';
-import configRouter from './config';
+import { requireAuthenticated } from './shared.js';
+import chargesRouter from './charges.js';
+import customersRouter from './customers.js';
+import catalogRouter from './catalog.js';
+import cardsRouter from './cards.js';
+import applePayRouter from './apple-pay.js';
+import configRouter from './config.js';
 
 const router = Router();
 
