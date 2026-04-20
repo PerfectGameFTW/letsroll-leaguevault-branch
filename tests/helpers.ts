@@ -1,4 +1,6 @@
-const BASE_URL = process.env.TEST_BASE_URL || process.env.BASE_URL || 'http://localhost:5000';
+// Note: do not fall back to process.env.BASE_URL — the runtime sets it to "/"
+// (Vite app-base-path convention), which produces invalid fetch URLs in tests.
+const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:5000';
 
 const TEST_ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || 'admin@example.com';
 const TEST_ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || 'admin-local-dev';

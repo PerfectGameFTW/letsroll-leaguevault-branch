@@ -466,15 +466,17 @@ export async function setupAuth(app: Express) {
         const baseUrl = getBaseUrl(org?.slug);
         const resetUrl = `${baseUrl}/set-password?token=${token}`;
 
+        const firstName = user.name?.split(' ')[0] || user.email;
+
         const sent = await sendTemplatedEmail('password_reset', email, {
-          bowler_name: user.firstName || user.email,
+          bowler_name: firstName,
           reset_link: resetUrl,
           organization_name: org?.name || 'LeagueVault',
         });
 
         if (!sent) {
           const { sendPasswordResetFallbackEmail } = await import('./services/email.js');
-          await sendPasswordResetFallbackEmail(email, user.firstName || 'there', token, org?.slug);
+          await sendPasswordResetFallbackEmail(email, firstName || 'there', token, org?.slug);
         }
 
         log.info('Password reset email sent', { userId: user.id, email });

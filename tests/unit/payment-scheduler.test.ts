@@ -50,7 +50,7 @@ vi.mock('node-schedule', () => {
           cancelled: false,
           cancel: function() { this.cancelled = true; this.nextInvoc = null; },
           nextInvocation: function() { return this.cancelled ? null : this.nextInvoc; },
-          nextInvoc: date,
+          nextInvoc: date as Date | null,
         };
         jobs.push(job);
         return job;

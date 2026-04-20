@@ -59,11 +59,11 @@ async function lookupOrgBySubdomain(subdomain: string): Promise<Organization | n
     let org = await storage.getOrganizationBySubdomain(subdomain);
 
     if (!org) {
-      org = await storage.getOrganizationBySlug(subdomain) || null;
+      org = await storage.getOrganizationBySlug(subdomain);
     }
 
-    orgCache.set(subdomain, { org: org || null, expiry: Date.now() + CACHE_TTL_MS });
-    return org || null;
+    orgCache.set(subdomain, { org: org ?? null, expiry: Date.now() + CACHE_TTL_MS });
+    return org ?? null;
   } catch (err) {
     log.error(`Failed to lookup org by subdomain "${subdomain}":`, err);
     return null;

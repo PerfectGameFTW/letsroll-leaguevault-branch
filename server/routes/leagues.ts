@@ -409,6 +409,7 @@ router.post("/:id/new-season", async (req: any, res) => {
       name: sourceLeague.name,
       description: sourceLeague.description,
       active: true,
+      allowPublicSignup: sourceLeague.allowPublicSignup ?? false,
       seasonStart: newSeasonStart.toISOString(),
       seasonEnd: newSeasonEnd.toISOString(),
       weekDay: sourceLeague.weekDay,
