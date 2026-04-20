@@ -34,7 +34,27 @@ same email are updated in place — their password is rehashed and their
 role and organization are reset to the values above.
 
 The hook is idempotent, so re-running the suite does not pollute the
-database with duplicate rows.
+database with duplicate rows. As an additional safety measure the
+seeder refuses to run when `NODE_ENV=production` or `REPLIT_DEPLOYMENT`
+is set, unless `ALLOW_TEST_SEED=1` is also set.
+
+### Base URL behavior
+
+`tests/helpers.ts` picks a sensible default for the API base URL:
+
+- On Replit (when `REPLIT_DEV_DOMAIN` or `REPLIT_DOMAINS` is set) it
+  uses the `https://<replit-domain>` of the running dev server. This is
+  required because session cookies are flagged `Secure` and would be
+  dropped over plain `http://localhost`.
+- Otherwise it falls back to `http://localhost:5000`.
+
+Set `TEST_BASE_URL` explicitly to override either default.
+
+### Auth rate limiter in dev
+
+`server/routes/auth.ts` skips the login/register rate limiters whenever
+`isDev` is true, so repeated test runs do not trip the per-IP cap.
+Production traffic is still rate limited.
 
 If you need to seed manually (for example to log in as one of the test
 users in your browser), run:
@@ -55,7 +75,7 @@ override credentials without editing source:
 
 | Env var                          | Default                       |
 |----------------------------------|-------------------------------|
-| `TEST_BASE_URL`                  | `http://localhost:5000`       |
+| `TEST_BASE_URL`                  | `https://$REPLIT_DEV_DOMAIN` when running on Replit, otherwise `http://localhost:5000` |
 | `TEST_ADMIN_EMAIL`               | `admin@example.com`           |
 | `TEST_ADMIN_PASSWORD`            | `admin-local-dev`             |
 | `TEST_ORG_A_EMAIL`               | `testadmin@example.com`       |
