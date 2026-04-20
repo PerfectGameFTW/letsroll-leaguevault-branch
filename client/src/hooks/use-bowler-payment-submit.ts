@@ -9,6 +9,24 @@ import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
 
 type PaymentCard = SquareCard | CardPointeCard | null;
 
+/**
+ * Maps an internal payment-schedule key to a human-friendly adjective for
+ * use inside auto-pay toast copy (e.g. "weekly auto-pay is now active").
+ *
+ * Today the only schedule key that reaches the auto-pay branch is
+ * `'weekly'` — `'custom'` short-circuits into the one-time path before
+ * we get here — but routing it through this helper keeps the toast copy
+ * sensible if more cadences are added later.
+ */
+function scheduleLabel(schedule: 'weekly' | 'custom'): string {
+  switch (schedule) {
+    case 'weekly':
+      return 'weekly';
+    default:
+      return 'recurring';
+  }
+}
+
 interface UseBowlerPaymentSubmitOptions {
   league: League;
   bowler: Bowler;
@@ -116,7 +134,7 @@ export function useBowlerPaymentSubmit({
         queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
         toast({
           title: "Payment Scheduled",
-          description: "Your card has been saved and your full season payment will be processed momentarily.",
+          description: `Your card has been saved and your full season payment of ${formatCurrency(upfrontAmount)} will be processed momentarily.`,
         });
         setShowPaymentSetup(false);
         queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
@@ -204,17 +222,18 @@ export function useBowlerPaymentSubmit({
       }
 
       if (isAutoPay) {
+        const cadence = scheduleLabel(selectedSchedule);
         toast({
           title: "Auto-Pay Activated",
           description: paymentWasCharged
-            ? `Payment of ${formatCurrency(amount)} processed and ${selectedSchedule} auto-pay is now active.`
-            : `Your card has been saved and ${selectedSchedule} auto-pay is now active.`,
+            ? `Paid ${formatCurrency(amount)} today and ${cadence} auto-pay is now active for future weeks.`
+            : `Your card has been saved and ${cadence} auto-pay is now active.`,
         });
       } else {
         toast({
           title: "Payment Successful",
           description: includeFinalTwoWeeks
-            ? `Payment of ${formatCurrency(amount)} processed (includes Final 2 Weeks).`
+            ? `Your payment of ${formatCurrency(amount)} has been processed (includes Final 2 Weeks).`
             : `Your payment of ${formatCurrency(amount)} has been processed.`,
         });
       }
