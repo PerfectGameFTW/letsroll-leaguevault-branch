@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Layout } from '@/components/layout';
-import { AdminRouteGuard } from '@/components/admin-route-guard';
+import { ProtectedRoute } from '@/components/protected-route';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -186,7 +186,7 @@ export default function UsersPage() {
 
   return (
     <Layout>
-      <AdminRouteGuard>
+      <ProtectedRoute requirement="systemAdmin">
         <ErrorBoundary level="section">
         <div className="container py-6">
           <div className="flex items-center justify-between mb-6">
@@ -471,7 +471,7 @@ export default function UsersPage() {
           </Dialog>
         </div>
         </ErrorBoundary>
-      </AdminRouteGuard>
+      </ProtectedRoute>
     </Layout>
   );
 }

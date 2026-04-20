@@ -129,7 +129,7 @@ export const ProfileSettingsPage: FC = () => {
 
   const profileMutation = useMutation({
     mutationFn: async (data: ProfileFormData) => {
-      return apiRequest(`/api/user-update/profile/${currentUser!.id}`, 'PATCH', data);
+      return apiRequest(`/api/account/profile/${currentUser!.id}`, 'PATCH', data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/user'] });
@@ -151,7 +151,7 @@ export const ProfileSettingsPage: FC = () => {
 
   const passwordMutation = useMutation({
     mutationFn: async (data: PasswordFormData) => {
-      return apiRequest('/api/user-update/change-password', 'POST', {
+      return apiRequest('/api/account/change-password', 'POST', {
         currentPassword: data.currentPassword,
         newPassword: data.newPassword,
       });

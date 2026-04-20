@@ -163,11 +163,11 @@ curl -X POST https://<your-domain>/api/setup/create-first-admin \
 
 **Option B — Promote an existing registered user to admin:**
 ```bash
-curl -X POST https://<your-domain>/api/admin-update/first-system-admin/<userId> \
+curl -X POST https://<your-domain>/api/setup/first-system-admin/<userId> \
   -H "x-setup-secret: <SETUP_SECRET value>"
 ```
 
-These endpoints are defined in `server/routes/setup-admin.ts` and `server/routes/admin-update.ts`. They are completely disabled if `SETUP_SECRET` is not set in the environment.
+Both endpoints live in `server/routes/setup-admin.ts` and are completely disabled if `SETUP_SECRET` is not set in the environment.
 
 ## Recent Changes (2026-04-01)
 - **Drag-and-Drop Team Reordering**: Teams on the roster management page can be reordered via drag and drop

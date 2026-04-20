@@ -1,3 +1,14 @@
+/**
+ * Payment DB CRUD router (mounted at /api/payments).
+ *
+ * Owns the **persistence side** of payments: list/create/update/delete/refund
+ * payment rows. Refunds delegate the provider call to the payment provider but
+ * return through this router because the DB record is the source of truth for
+ * the user-visible payment list.
+ *
+ * For provider-side execution (charging cards, customers, catalog, wallets,
+ * card vault), see `payment-routes.ts` mounted at /api/payments-provider.
+ */
 import { Router } from 'express';
 import { storage } from '../storage';
 import { insertPaymentSchema, updatePaymentSchema } from "@shared/schema";

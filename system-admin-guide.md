@@ -75,7 +75,7 @@ As a System Administrator, you have access to special features:
 
 The Bowler Dashboard is only accessible to System Administrators. This is protected by:
 
-1. Route protection via the `SystemAdminRouteGuard` component
+1. Route protection via the `ProtectedRoute` component with `requirement="systemAdmin"`
 2. UI element hiding in the navigation menu
 3. Server-side validation of requests
 
@@ -94,7 +94,7 @@ The application implements multiple layers of access control:
    - The Bowler Dashboard link is only displayed in the menu if `isSystemAdmin = isAdmin && isOrganizationAdmin` is true.
 
 2. **Route Guard**:
-   - The `SystemAdminRouteGuard` component checks for system admin status (both flags must be true).
+   - The unified `ProtectedRoute` component (`requirement="systemAdmin"`) checks for system admin status.
    - If a non-system admin tries to access the route directly, they are redirected to the home page.
 
 3. **Server Verification**:

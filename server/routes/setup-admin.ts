@@ -97,4 +97,47 @@ router.post('/create-first-admin', setupAdminLimiter, async (req: Request, res: 
   }
 });
 
+// Promote an existing user to system_admin — only works when ZERO admin users exist.
+// Same setup-secret guard as create-first-admin. Useful when bootstrapping
+// from a database that was seeded with regular users first.
+router.post('/first-system-admin/:id', setupAdminLimiter, async (req: Request, res: Response) => {
+  try {
+    const setupSecret = env.SETUP_SECRET;
+    if (!setupSecret) {
+      return sendError(res, 'This endpoint is disabled. Set SETUP_SECRET to enable it.', 403, 'ENDPOINT_DISABLED');
+    }
+    const rawSecret = req.headers['x-setup-secret'];
+    const providedSecret = Array.isArray(rawSecret) ? rawSecret[0] : rawSecret;
+    if (!providedSecret || !safeTokenCompare(providedSecret, setupSecret)) {
+      return sendError(res, 'Invalid or missing setup secret.', 401, 'UNAUTHORIZED');
+    }
+
+    const adminExists = await storage.hasAdminUsers();
+    if (adminExists) {
+      return sendError(
+        res,
+        'Admin users already exist. Use the regular admin invitation process.',
+        403,
+        'ADMIN_EXISTS',
+      );
+    }
+
+    const userId = parseInt(req.params.id, 10);
+    if (isNaN(userId)) {
+      return sendError(res, 'Invalid user ID', 400, 'INVALID_ID');
+    }
+
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
+    }
+
+    const updatedUser = await storage.updateUserRole(userId, 'system_admin');
+    sendSuccess(res, sanitizeUser(updatedUser));
+  } catch (error) {
+    log.error('Error creating first system admin:', error);
+    sendError(res, 'Failed to create first system admin', 500, 'SERVER_ERROR');
+  }
+});
+
 export default router;

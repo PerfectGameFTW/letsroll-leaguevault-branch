@@ -1,14 +1,10 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route } from "wouter";
 import { queryClient, prefetchQueries } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import { lazy, Suspense, useEffect, FC } from "react";
+import { lazy, Suspense, useEffect, FC, ReactNode } from "react";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { AdminRouteGuard } from "@/components/admin-route-guard";
-import { OrganizationRouteGuard } from "@/components/organization-route-guard";
-import { OrganizationAdminRouteGuard } from "@/components/organization-admin-route-guard";
-import { AuthRouteGuard } from "@/components/auth-route-guard";
-import { SystemAdminRouteGuard } from "@/components/system-admin-route-guard";
+import { ProtectedRoute, type RouteRequirement } from "@/components/protected-route";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { PageLoadingState } from "@/components/page-states";
@@ -50,9 +46,13 @@ function PageLoader() {
   return <PageLoadingState />;
 }
 
+const guard = (requirement: RouteRequirement, node: ReactNode) => (
+  <ProtectedRoute requirement={requirement}>{node}</ProtectedRoute>
+);
+
 const RootRedirectHandler: FC = () => {
   const [, navigate] = useLocation();
-  
+
   const { data: currentUserResponse, isLoading, error } = useQuery<ApiResponse<User>>({
     queryKey: ['/api/user'],
     staleTime: 1000 * 60 * 5,
@@ -115,158 +115,43 @@ function Router() {
         <Route path="/forgot-password" component={ForgotPasswordPage} />
         <Route path="/privacy-policy" component={PrivacyPolicyPage} />
         <Route path="/delete-account" component={DeleteAccountPage} />
-        <Route path="/claim-bowler">
-          <AuthRouteGuard>
-            <ClaimBowlerPage />
-          </AuthRouteGuard>
-        </Route>
+        <Route path="/claim-bowler">{guard('auth', <ClaimBowlerPage />)}</Route>
         <Route path="/not-found" component={NotFound} />
 
         {/* Root route with redirect handler */}
         <Route path="/" component={RootRedirectHandler} />
 
-        {/* System Admin specific routes */}
-        <Route path="/bowler-dashboard">
-          <AuthRouteGuard>
-            <BowlerDashboardPage />
-          </AuthRouteGuard>
-        </Route>
-        
-        <Route path="/payment-history">
-          <AuthRouteGuard>
-            <PaymentHistoryPage />
-          </AuthRouteGuard>
-        </Route>
+        {/* Authenticated user routes */}
+        <Route path="/bowler-dashboard">{guard('auth', <BowlerDashboardPage />)}</Route>
+        <Route path="/payment-history">{guard('auth', <PaymentHistoryPage />)}</Route>
+        <Route path="/profile">{guard('auth', <ProfileSettingsPage />)}</Route>
 
-        <Route path="/profile">
-          <AuthRouteGuard>
-            <ProfileSettingsPage />
-          </AuthRouteGuard>
-        </Route>
-
-        {/* Organization-specific routes */}
-        <Route path="/home">
-          <OrganizationRouteGuard>
-            <HomePage />
-          </OrganizationRouteGuard>
-        </Route>
-        
-        <Route path="/locations">
-          <OrganizationRouteGuard>
-            <LocationsPage />
-          </OrganizationRouteGuard>
-        </Route>
-        
-        <Route path="/leagues">
-          <OrganizationRouteGuard>
-            <LeaguesPage />
-          </OrganizationRouteGuard>
-        </Route>
-        
-        <Route path="/leagues/:leagueId">
-          <OrganizationRouteGuard>
-            <LeagueViewPage />
-          </OrganizationRouteGuard>
-        </Route>
-        
-        <Route path="/leagues/:leagueId/teams">
-          <OrganizationRouteGuard>
-            <TeamsPage />
-          </OrganizationRouteGuard>
-        </Route>
-        
-        <Route path="/leagues/:leagueId/scores">
-          <OrganizationRouteGuard>
-            <LeagueScoresPage />
-          </OrganizationRouteGuard>
-        </Route>
-        
-        <Route path="/teams/:teamId">
-          <OrganizationRouteGuard>
-            <TeamViewPage />
-          </OrganizationRouteGuard>
-        </Route>
-        
-        <Route path="/bowlers">
-          <OrganizationRouteGuard>
-            <BowlersPage />
-          </OrganizationRouteGuard>
-        </Route>
-        
-        <Route path="/bowlers/:bowlerId">
-          <OrganizationRouteGuard>
-            <BowlerViewPage />
-          </OrganizationRouteGuard>
-        </Route>
-        
-        <Route path="/bowlers/:bowlerId/scores">
-          <OrganizationRouteGuard>
-            <BowlerScoresPage />
-          </OrganizationRouteGuard>
-        </Route>
+        {/* Organization-member routes */}
+        <Route path="/home">{guard('org', <HomePage />)}</Route>
+        <Route path="/locations">{guard('org', <LocationsPage />)}</Route>
+        <Route path="/leagues">{guard('org', <LeaguesPage />)}</Route>
+        <Route path="/leagues/:leagueId">{guard('org', <LeagueViewPage />)}</Route>
+        <Route path="/leagues/:leagueId/teams">{guard('org', <TeamsPage />)}</Route>
+        <Route path="/leagues/:leagueId/scores">{guard('org', <LeagueScoresPage />)}</Route>
+        <Route path="/teams/:teamId">{guard('org', <TeamViewPage />)}</Route>
+        <Route path="/bowlers">{guard('org', <BowlersPage />)}</Route>
+        <Route path="/bowlers/:bowlerId">{guard('org', <BowlerViewPage />)}</Route>
+        <Route path="/bowlers/:bowlerId/scores">{guard('org', <BowlerScoresPage />)}</Route>
 
         {/* Organization Admin routes */}
-        <Route path="/leagues/:leagueId/weekly-payments">
-          <OrganizationAdminRouteGuard>
-            <WeeklyPaymentsPage />
-          </OrganizationAdminRouteGuard>
-        </Route>
-        
-        <Route path="/payments">
-          <OrganizationAdminRouteGuard>
-            <PaymentsPage />
-          </OrganizationAdminRouteGuard>
-        </Route>
-        
-        <Route path="/reports">
-          <OrganizationAdminRouteGuard>
-            <ReportsPage />
-          </OrganizationAdminRouteGuard>
-        </Route>
-        
-        <Route path="/reports/leagues/:leagueId/past-due">
-          <OrganizationAdminRouteGuard>
-            <LeaguePastDuePage />
-          </OrganizationAdminRouteGuard>
-        </Route>
-        
-        <Route path="/reports/past-due">
-          <OrganizationAdminRouteGuard>
-            <PastDuePage />
-          </OrganizationAdminRouteGuard>
-        </Route>
+        <Route path="/leagues/:leagueId/weekly-payments">{guard('orgAdmin', <WeeklyPaymentsPage />)}</Route>
+        <Route path="/payments">{guard('orgAdmin', <PaymentsPage />)}</Route>
+        <Route path="/reports">{guard('orgAdmin', <ReportsPage />)}</Route>
+        <Route path="/reports/leagues/:leagueId/past-due">{guard('orgAdmin', <LeaguePastDuePage />)}</Route>
+        <Route path="/reports/past-due">{guard('orgAdmin', <PastDuePage />)}</Route>
+        <Route path="/integrations">{guard('orgAdmin', <IntegrationsPage />)}</Route>
 
         {/* System Admin routes */}
-        <Route path="/organizations">
-          <AdminRouteGuard>
-            <OrganizationsPage />
-          </AdminRouteGuard>
-        </Route>
-        
-        <Route path="/admin/link-bowler">
-          <AdminRouteGuard>
-            <AdminLinkBowlerPage />
-          </AdminRouteGuard>
-        </Route>
+        <Route path="/organizations">{guard('systemAdmin', <OrganizationsPage />)}</Route>
+        <Route path="/admin/link-bowler">{guard('systemAdmin', <AdminLinkBowlerPage />)}</Route>
+        <Route path="/users">{guard('systemAdmin', <UsersPage />)}</Route>
+        <Route path="/email-templates">{guard('systemAdmin', <EmailTemplatesPage />)}</Route>
 
-        <Route path="/users">
-          <AdminRouteGuard>
-            <UsersPage />
-          </AdminRouteGuard>
-        </Route>
-
-        <Route path="/email-templates">
-          <AdminRouteGuard>
-            <EmailTemplatesPage />
-          </AdminRouteGuard>
-        </Route>
-
-        <Route path="/integrations">
-          <OrganizationAdminRouteGuard>
-            <IntegrationsPage />
-          </OrganizationAdminRouteGuard>
-        </Route>
-        
         {/* Fallback route */}
         <Route component={NotFound} />
       </Switch>
