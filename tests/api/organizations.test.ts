@@ -49,13 +49,17 @@ describe('Organizations API', () => {
       );
       expect(status).toBe(201);
       expect(data.success).toBe(true);
-      expect(data.data).toHaveProperty('name', 'Vitest Test Organization');
-      expect(data.data).toHaveProperty('slug', slug);
 
-      const created = data.data as { id?: number; organization?: { id: number } };
-      const orgId = created?.id ?? created?.organization?.id;
-      if (orgId) {
-        createdOrgIds.push(orgId);
+      // The endpoint may return the org directly or wrapped as
+      // `{ organization, adminUser }`. Support both shapes.
+      const created = data.data as
+        | { id: number; name: string; slug: string }
+        | { organization: { id: number; name: string; slug: string }; adminUser?: unknown };
+      const org = 'organization' in created ? created.organization : created;
+      expect(org).toHaveProperty('name', 'Vitest Test Organization');
+      expect(org).toHaveProperty('slug', slug);
+      if (org?.id) {
+        createdOrgIds.push(org.id);
       }
     });
 

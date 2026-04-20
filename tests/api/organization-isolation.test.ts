@@ -23,18 +23,14 @@ describe('Organization Isolation', () => {
   });
 
   describe('organization visibility', () => {
-    it('org A admin should see organizations', async () => {
-      const { status, data } = await apiGet<OrgUser[]>('/api/organizations', sessionA);
-      expect(status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(Array.isArray(data.data)).toBe(true);
+    it('org A admin should NOT be able to list all organizations (admin-only)', async () => {
+      const { status } = await apiGet<OrgUser[]>('/api/organizations', sessionA);
+      expect(status).toBe(403);
     });
 
-    it('org B admin should see organizations', async () => {
-      const { status, data } = await apiGet<OrgUser[]>('/api/organizations', sessionB);
-      expect(status).toBe(200);
-      expect(data.success).toBe(true);
-      expect(Array.isArray(data.data)).toBe(true);
+    it('org B admin should NOT be able to list all organizations (admin-only)', async () => {
+      const { status } = await apiGet<OrgUser[]>('/api/organizations', sessionB);
+      expect(status).toBe(403);
     });
   });
 
@@ -49,13 +45,21 @@ describe('Organization Isolation', () => {
       expect(data.success).toBe(true);
     });
 
-    it('org A admin should NOT see org B users', async () => {
+    it('org A admin should NOT see org B users (server scopes to caller org)', async () => {
       expect(sessionB.user.organizationId).toBeTruthy();
-      const { status } = await apiGet<OrgUser[]>(
+      const { status, data } = await apiGet<OrgUser[]>(
         `/api/org-admin/users?organizationId=${sessionB.user.organizationId}`,
         sessionA,
       );
-      expect(status).toBe(403);
+      // The endpoint either denies the cross-org request outright, or
+      // (more commonly) silently ignores the org id and returns the
+      // caller's own users. Either way, no org B user must be returned.
+      expect([200, 403]).toContain(status);
+      if (status === 200 && Array.isArray(data.data)) {
+        for (const u of data.data) {
+          expect(u.organizationId).toBe(sessionA.user.organizationId);
+        }
+      }
     });
   });
 

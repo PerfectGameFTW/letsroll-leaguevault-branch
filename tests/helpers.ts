@@ -1,6 +1,12 @@
 // Note: do not fall back to process.env.BASE_URL — the runtime sets it to "/"
 // (Vite app-base-path convention), which produces invalid fetch URLs in tests.
-const BASE_URL = process.env.TEST_BASE_URL || 'http://localhost:5000';
+//
+// Default base URL prefers the Replit-served HTTPS domain when available,
+// because the dev server sets `Secure` session cookies that are dropped
+// over plain http://localhost. Outside of Replit the localhost fallback
+// is used. Override explicitly with TEST_BASE_URL if needed.
+const REPLIT_HOST = process.env.REPLIT_DEV_DOMAIN || (process.env.REPLIT_DOMAINS?.split(',')[0]);
+const BASE_URL = process.env.TEST_BASE_URL || (REPLIT_HOST ? `https://${REPLIT_HOST}` : 'http://localhost:5000');
 
 const TEST_ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL || 'admin@example.com';
 const TEST_ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD || 'admin-local-dev';

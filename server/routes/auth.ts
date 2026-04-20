@@ -21,6 +21,9 @@ const loginLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  // The test suite logs in many times per run; rate-limiting locally
+  // also makes development painful. Production keeps the limit enforced.
+  skip: () => isDev,
   message: {
     success: false,
     error: { message: "Too many login attempts, please try again later", code: "RATE_LIMITED" },
@@ -32,6 +35,7 @@ const registerLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: () => isDev,
   message: {
     success: false,
     error: { message: "Too many requests, please try again later", code: "RATE_LIMITED" },
