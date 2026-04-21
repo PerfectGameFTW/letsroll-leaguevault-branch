@@ -11,7 +11,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
-import { users, bowlers, organizations } from '@shared/schema';
+import { users, bowlers, organizations, locations } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import {
   apiPatch,
@@ -26,6 +26,7 @@ import {
 const createdUserIds: number[] = [];
 const createdBowlerIds: number[] = [];
 const createdOrgIds: number[] = [];
+const createdLocationIds: number[] = [];
 
 afterAll(async () => {
   if (createdUserIds.length > 0) {
@@ -35,6 +36,10 @@ afterAll(async () => {
   if (createdBowlerIds.length > 0) {
     await db.delete(bowlers).where(inArray(bowlers.id, createdBowlerIds));
     createdBowlerIds.length = 0;
+  }
+  if (createdLocationIds.length > 0) {
+    await db.delete(locations).where(inArray(locations.id, createdLocationIds));
+    createdLocationIds.length = 0;
   }
   if (createdOrgIds.length > 0) {
     await db.delete(organizations).where(inArray(organizations.id, createdOrgIds));
@@ -125,6 +130,86 @@ describe('PATCH /api/account/profile/:id payment sync status', () => {
     // not 'pending_retry' (which would indicate a real provider failure)
     // and not 'not_applicable' (which would indicate the link was missed).
     expect(res.data.data?.paymentSyncStatus).toBe('skipped');
+  });
+
+  it("returns paymentSyncStatus: 'pending_retry' when the payment provider call fails with a real error", async () => {
+    // Setup: fresh org + a location with a bogus Square access token so
+    // getPaymentProvider resolves but the actual createOrUpdateCustomer
+    // call fails with a non-ProviderNotConfiguredError. The helper should
+    // log the failure, set payment_sync_pending_at, and respond
+    // 'pending_retry'.
+    const admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+
+    const [org] = await db
+      .insert(organizations)
+      .values({
+        name: uniq('retry-test-org'),
+        slug: uniq('retry-test-org-slug'),
+      })
+      .returning();
+    createdOrgIds.push(org.id);
+
+    const [location] = await db
+      .insert(locations)
+      .values({
+        name: uniq('retry-test-location'),
+        organizationId: org.id,
+        // Bogus credentials — the Square SDK call will fail at the
+        // network/auth layer, surfacing a real error (not ProviderNotConfigured).
+        squareCredentials: {
+          appId: 'sq0idp-bogus-test-app-id',
+          accessToken: 'bogus-test-token-not-a-real-square-credential',
+          locationId: 'L00000000000',
+        },
+      })
+      .returning();
+    createdLocationIds.push(location.id);
+
+    const [bowler] = await db
+      .insert(bowlers)
+      .values({
+        name: uniq('retry-test-bowler'),
+        email: `${uniq('rb')}@vitest.local`,
+        phone: null,
+        active: true,
+        order: 0,
+        paymentCustomerId: null,
+        cardpointeProfileId: null,
+        bnContactId: null,
+        paymentSyncPendingAt: null,
+      })
+      .returning();
+    createdBowlerIds.push(bowler.id);
+
+    const password = await hashPassword('vitest-retry-test-pw');
+    const [user] = await db
+      .insert(users)
+      .values({
+        email: `${uniq('ru')}@vitest.local`,
+        password,
+        name: uniq('retry-test-user'),
+        role: 'user',
+        organizationId: org.id,
+        locationId: location.id,
+        bowlerId: bowler.id,
+      })
+      .returning();
+    createdUserIds.push(user.id);
+
+    const res = await apiPatch<{ paymentSyncStatus: string; name: string }>(
+      `/api/account/profile/${user.id}`,
+      { name: `${user.name}-changed` },
+      admin,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.data.success).toBe(true);
+    expect(res.data.data?.paymentSyncStatus).toBe('pending_retry');
+
+    // The bowler row should now have a non-null payment_sync_pending_at
+    // so the admin retry endpoint / future profile edits can pick it up.
+    const [reread] = await db.select().from(bowlers).where(eq(bowlers.id, bowler.id));
+    expect(reread.paymentSyncPendingAt).not.toBeNull();
   });
 });
 
