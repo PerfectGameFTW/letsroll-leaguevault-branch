@@ -25,6 +25,15 @@ const envSchema = z.object({
   SQUARE_APP_ID: z.string().min(1).optional(),
   SQUARE_LOCATION_ID: z.string().min(1).optional(),
 
+  APP_DOMAIN: z
+    .string()
+    .min(1)
+    .regex(
+      /^(?!-)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/,
+      "APP_DOMAIN must be a bare hostname like 'leaguevault.app' (no scheme, no path, no leading dot)",
+    )
+    .default("leaguevault.app"),
+
   REPLIT_DOMAINS: z.string().optional(),
   REPL_SLUG: z.string().optional(),
   REPL_OWNER: z.string().optional(),

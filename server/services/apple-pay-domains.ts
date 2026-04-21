@@ -24,9 +24,22 @@
  *     rename-then-re-register case, which is the whole point of this fix.
  */
 
+import { env } from "../config";
+
 export interface OrgLikeForApplePay {
   subdomain?: string | null;
   slug: string;
+}
+
+/**
+ * Resolve the app-domain suffix used to build accepted Apple Pay domains.
+ * Defaults to `env.APP_DOMAIN` (typically `leaguevault.app`) when not
+ * explicitly provided. Tests pass an explicit value so they don't depend
+ * on the production literal — see `apple-pay-domains.test.ts`.
+ */
+function resolveSuffix(suffix?: string): string {
+  if (suffix && suffix.trim()) return suffix.trim().toLowerCase();
+  return env.APP_DOMAIN.toLowerCase();
 }
 
 /**
@@ -34,9 +47,12 @@ export interface OrgLikeForApplePay {
  * worker when enumerating domains). Prefers `subdomain` over `slug` for
  * historical reasons — both are accepted on read.
  */
-export function canonicalApplePayDomain(org: OrgLikeForApplePay): string {
+export function canonicalApplePayDomain(
+  org: OrgLikeForApplePay,
+  suffix?: string,
+): string {
   const prefix = org.subdomain || org.slug;
-  return `${prefix}.leaguevault.app`;
+  return `${prefix}.${resolveSuffix(suffix)}`;
 }
 
 /**
@@ -44,14 +60,16 @@ export function canonicalApplePayDomain(org: OrgLikeForApplePay): string {
  * meaningful; duplicates are removed.
  *
  * Includes:
- *   - `<subdomain>.leaguevault.app` if subdomain is set
- *   - `<slug>.leaguevault.app`
+ *   - `<subdomain>.<suffix>` if subdomain is set
+ *   - `<slug>.<suffix>`
  *   - every `previouslyRegisteredDomain` (case-insensitive de-dup)
  */
 export function acceptedApplePayDomainsForOrg(
   org: OrgLikeForApplePay,
   previouslyRegisteredDomains: string[] = [],
+  suffix?: string,
 ): string[] {
+  const resolvedSuffix = resolveSuffix(suffix);
   const seen = new Set<string>();
   const out: string[] = [];
   const add = (d: string | null | undefined) => {
@@ -62,8 +80,8 @@ export function acceptedApplePayDomainsForOrg(
     out.push(norm);
   };
 
-  if (org.subdomain) add(`${org.subdomain}.leaguevault.app`);
-  add(`${org.slug}.leaguevault.app`);
+  if (org.subdomain) add(`${org.subdomain}.${resolvedSuffix}`);
+  add(`${org.slug}.${resolvedSuffix}`);
   for (const d of previouslyRegisteredDomains) add(d);
   return out;
 }
@@ -77,8 +95,9 @@ export function isAcceptedApplePayDomain(
   org: OrgLikeForApplePay,
   candidate: string,
   previouslyRegisteredDomains: string[] = [],
+  suffix?: string,
 ): boolean {
   if (!candidate) return false;
   const norm = candidate.trim().toLowerCase();
-  return acceptedApplePayDomainsForOrg(org, previouslyRegisteredDomains).includes(norm);
+  return acceptedApplePayDomainsForOrg(org, previouslyRegisteredDomains, suffix).includes(norm);
 }

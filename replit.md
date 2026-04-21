@@ -236,7 +236,10 @@ the other receives `ADMIN_EXISTS` (HTTP 403).
 - Subdomain middleware (`server/middleware/subdomain.ts`) resolves org by: subdomain field first, then slug fallback
 - Dynamic PWA manifest at `/manifest.json` always uses "LeagueVault" as the app name; uses org's custom app icon on subdomains if configured
 - Login/signup pages show org branding via `useSubdomainOrg` hook
-- Cookie domain set to `.leaguevault.app` in production for cross-subdomain session sharing
+- Cookie domain set to `.${APP_DOMAIN}` in production for cross-subdomain session sharing
+  - `APP_DOMAIN` env var (default `leaguevault.app`) is the single source of truth for the production hostname suffix
+  - Used by the session cookie domain (`server/auth.ts`) and the Apple Pay accepted-domain check (`server/services/apple-pay-domains.ts`)
+  - Native iOS/Android entitlements stay hardcoded — those are build-time artifacts, not runtime config
 - Org form dialog has a Subdomain field for admin configuration
 - **Org session isolation**: `orgSessionGuard` middleware (`server/middleware/subdomain.ts`) prevents sessions from leaking across org subdomains
   - Runs after passport session deserialization on all routes

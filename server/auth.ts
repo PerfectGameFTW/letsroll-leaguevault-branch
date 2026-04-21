@@ -62,7 +62,7 @@ export async function setupAuth(app: Express) {
       sameSite: (isDev && !!env.REPLIT_DOMAINS) ? "none" as const : "lax" as const,
       maxAge: 24 * 60 * 60 * 1000,
       httpOnly: true,
-      ...(isProduction ? { domain: '.leaguevault.app' } : {}),
+      ...(isProduction ? { domain: `.${env.APP_DOMAIN}` } : {}),
     },
   };
 
