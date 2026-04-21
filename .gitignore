@@ -7,3 +7,5 @@ vite.config.ts.*
 scripts/zap-report.html
 uploads/avatars/
 attached_assets/
+
+.git.backup.*
