@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { League, Location, ApiResponse, Organization, User } from "@shared/schema";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
