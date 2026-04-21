@@ -162,7 +162,21 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       return sendError(res, 'Unauthorized', 403, 'UNAUTHORIZED');
     }
 
-    const profileUpdateSchema = updateUserSchemaBase.pick({ name: true, email: true, phone: true });
+    // Phone is normalized at the schema layer: clients may send `null`
+    // (intent to clear) or omit the field entirely (intent to no-op), and
+    // the storage layer's convention is `undefined = no-op`. The
+    // `.transform` collapses both to `string | undefined` so the route
+    // handler never has to do null/undefined ceremony — keep this if any
+    // future nullable field is added to the profile payload.
+    const profileUpdateSchema = updateUserSchemaBase
+      .pick({ name: true, email: true, phone: true })
+      .extend({
+        phone: z
+          .string()
+          .nullable()
+          .optional()
+          .transform((v) => (v === null ? undefined : v)),
+      });
 
     const validationResult = profileUpdateSchema.safeParse(req.body);
     if (!validationResult.success) {
@@ -249,11 +263,11 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
     }
 
     // Build the actual storage patch — name/phone only, never email.
+    // `updateData.phone` is already `string | undefined` thanks to the
+    // schema-level transform above, so no null-coercion is needed here.
     const storagePatch: Parameters<typeof storage.updateUser>[1] = {};
     if (updateData.name !== undefined) storagePatch.name = updateData.name;
-    if (updateData.phone !== undefined) {
-      storagePatch.phone = updateData.phone === null ? undefined : updateData.phone;
-    }
+    if (updateData.phone !== undefined) storagePatch.phone = updateData.phone;
 
     const updatedUser =
       Object.keys(storagePatch).length > 0
