@@ -9,6 +9,7 @@ import {
 } from "@shared/schema";
 import { createLogger } from '../logger';
 import { cacheInvalidate } from '../utils/cache';
+import { NonAdminMissingOrgError, OrgHasUsersError } from './users';
 
 const log = createLogger("StorageOrgs");
 
@@ -52,24 +53,28 @@ export async function restoreOrganization(id: number): Promise<Organization> {
 }
 
 export async function deleteOrganization(id: number): Promise<void> {
-  const affectedUserIds: number[] = [];
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT id FROM ${organizations} WHERE id = ${id} FOR UPDATE`);
+
+    // Refuse to delete an org that still has users attached. Orphaning
+    // them into role=user / organization_id=null would violate the
+    // `users_role_org_required` CHECK constraint, and silently dropping
+    // their accounts is too destructive to do automatically. Admins must
+    // reassign or delete the users first via the org admin UI.
+    const orgUsers = await tx.select({ id: users.id }).from(users).where(eq(users.organizationId, id));
+    if (orgUsers.length > 0) {
+      throw new OrgHasUsersError(orgUsers.length);
+    }
+
     const orgLeagues = await tx.select({ id: leagues.id }).from(leagues).where(eq(leagues.organizationId, id));
     const leagueIds = orgLeagues.map(l => l.id);
     if (leagueIds.length > 0) {
       await tx.delete(leagues).where(inArray(leagues.id, leagueIds));
     }
-    const orgUsers = await tx.select({ id: users.id }).from(users).where(eq(users.organizationId, id));
-    affectedUserIds.push(...orgUsers.map(u => u.id));
-    await tx.update(users).set({ organizationId: null, role: 'user' }).where(eq(users.organizationId, id));
     await tx.delete(organizations).where(eq(organizations.id, id));
   });
   cacheInvalidate('leagues:');
   cacheInvalidate('bowlers:');
-  for (const userId of affectedUserIds) {
-    cacheInvalidate(`user:${userId}`);
-  }
 }
 
 export async function getUserOrganizations(userId: number): Promise<Organization[]> {
@@ -88,6 +93,12 @@ export async function getUserOrganizations(userId: number): Promise<Organization
 }
 
 export async function setUserOrganization(userId: number, organizationId: number | null): Promise<User> {
+  if (organizationId === null) {
+    const [existing] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+    if (existing && existing.role !== 'system_admin') {
+      throw new NonAdminMissingOrgError();
+    }
+  }
   const [updatedUser] = await db
     .update(users)
     .set({

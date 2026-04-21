@@ -1,4 +1,5 @@
-import { pgTable, text, serial, integer, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, index, check } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { USER_ROLES, userRoleEnum, nameSchema, emailSchema } from "./constants";
@@ -25,10 +26,31 @@ export const users = pgTable("users", {
   organizationIdx: index("users_organization_idx").on(table.organizationId),
   bowlerIdx: index("users_bowler_idx").on(table.bowlerId),
   locationIdx: index("users_location_idx").on(table.locationId),
+  // Mirrors the DB-side `users_role_org_required` CHECK: every non-admin
+  // user must be attached to an organization. Bootstrap system_admin
+  // users legitimately have no org and remain exempt.
+  roleOrgRequired: check(
+    "users_role_org_required",
+    sql`${table.role} = 'system_admin' OR ${table.organizationId} IS NOT NULL`,
+  ),
 }));
 
 
 const baseUserSchema = createInsertSchema(users);
+
+const requireOrgForNonAdmin = (
+  data: { role?: string | null; organizationId?: number | null },
+  ctx: z.RefinementCtx,
+) => {
+  const role = data.role ?? 'user';
+  if (role !== 'system_admin' && (data.organizationId === null || data.organizationId === undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['organizationId'],
+      message: 'organizationId is required for non-admin users',
+    });
+  }
+};
 
 export const insertUserSchema = baseUserSchema.extend({
   email: emailSchema,
@@ -38,9 +60,11 @@ export const insertUserSchema = baseUserSchema.extend({
   organizationId: z.number().nullable().optional(),
   password: passwordSchema,
   bowlerId: z.number().nullable().optional(),
-}).omit({ id: true, createdAt: true });
+}).omit({ id: true, createdAt: true }).superRefine(requireOrgForNonAdmin);
 
-export const updateUserSchema = z.object({
+// Base object schema (kept .pick / .omit / .partial friendly so that
+// callers like `server/routes/account.ts` can derive narrower schemas).
+export const updateUserSchemaBase = z.object({
   email: emailSchema,
   name: nameSchema,
   phone: z.string().nullable(),
@@ -51,6 +75,26 @@ export const updateUserSchema = z.object({
   bowlerId: z.number().nullable(),
   password: passwordSchema,
 }).partial();
+
+// Strict update schema: refuses payloads that would set a non-admin
+// user to an org-less state. The role/org invariant is also enforced
+// at the storage layer (`setUserOrganization`, `updateUserRole`) and
+// by the `users_role_org_required` DB CHECK constraint.
+export const updateUserSchema = updateUserSchemaBase.superRefine((data, ctx) => {
+  const settingNullOrg = data.organizationId === null;
+  const settingNonAdminRole = data.role !== undefined && data.role !== 'system_admin';
+  if (settingNullOrg && settingNonAdminRole) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['organizationId'],
+      message: 'organizationId is required for non-admin users',
+    });
+  }
+  if (settingNullOrg && data.role === undefined) {
+    // We can't know the resulting role here without the DB row, so leave
+    // this case to the storage-layer guard which has the existing role.
+  }
+});
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;

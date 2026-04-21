@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage';
-import { sendSuccess, sendError, handleZodError, sanitizeUser } from '../utils/api';
+import { sendSuccess, sendError, handleZodError, sanitizeUser, handleUserOrgError } from '../utils/api';
 import { z } from 'zod';
 import type { User as SelectUser } from '@shared/schema';
 import { updateEmailTemplateSchema } from '@shared/schema/email-templates';
@@ -49,6 +49,7 @@ router.patch('/users/:userId/admin-status', requireAdmin, async (req, res) => {
     const updatedUser = await storage.updateUserRole(parsedData.userId, newRole);
     sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
+    if (handleUserOrgError(res, error)) return;
     log.error('Error updating admin status:', error);
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);

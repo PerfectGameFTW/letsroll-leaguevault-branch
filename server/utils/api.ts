@@ -62,6 +62,25 @@ export function handleZodError(res: Response, error: ZodError) {
   sendError(res, 'Validation error', 400, 'VALIDATION_ERROR', error.format());
 }
 
+/**
+ * If the error came from one of the typed user-org guards
+ * (`NonAdminMissingOrgError` / `OrgHasUsersError`), responds with
+ * a 400 ORG_REQUIRED and returns true so the caller can short-circuit.
+ * Otherwise returns false and the caller should fall through to its
+ * normal error handling.
+ */
+export function handleUserOrgError(res: Response, error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const name = (error as { name?: string }).name;
+  if (name === 'NonAdminMissingOrgError' || name === 'OrgHasUsersError') {
+    const message = (error as { message?: string }).message ||
+      'Non-admin users must belong to an organization.';
+    sendError(res, message, 400, 'ORG_REQUIRED');
+    return true;
+  }
+  return false;
+}
+
 export function sendError(
   res: Response,
   message: string,

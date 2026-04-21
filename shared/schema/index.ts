@@ -19,7 +19,7 @@ export type { Bowler, InsertBowler, UpdateBowler, BowlerLeague, InsertBowlerLeag
 export { payments, paymentSchedules, insertPaymentSchema, insertPaymentScheduleSchema, updatePaymentSchema, updatePaymentScheduleSchema } from "./payments";
 export type { Payment, InsertPayment, UpdatePayment, PaymentSchedule, InsertPaymentSchedule, UpdatePaymentSchedule } from "./payments";
 
-export { users, insertUserSchema, updateUserSchema } from "./users";
+export { users, insertUserSchema, updateUserSchema, updateUserSchemaBase } from "./users";
 export type { User, InsertUser, UpdateUser } from "./users";
 
 export { games, scores, insertGameSchema, insertScoreSchema, updateGameSchema, updateScoreSchema } from "./games";

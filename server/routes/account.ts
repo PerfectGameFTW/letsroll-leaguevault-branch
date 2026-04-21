@@ -5,7 +5,7 @@ import { sendError, sendSuccess, sanitizeUser, handleZodError } from '../utils/a
 import { storage } from '../storage';
 import { hashPassword } from '../auth';
 import { passwordSchema } from '@shared/password-validation';
-import { updateUserSchema, insertDeletionRequestSchema } from '@shared/schema';
+import { updateUserSchemaBase, insertDeletionRequestSchema } from '@shared/schema';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
@@ -124,7 +124,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       return sendError(res, 'Unauthorized', 403, 'UNAUTHORIZED');
     }
 
-    const profileUpdateSchema = updateUserSchema.pick({ name: true, email: true, phone: true });
+    const profileUpdateSchema = updateUserSchemaBase.pick({ name: true, email: true, phone: true });
 
     const validationResult = profileUpdateSchema.safeParse(req.body);
     if (!validationResult.success) {

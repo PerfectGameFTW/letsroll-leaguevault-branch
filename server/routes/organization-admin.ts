@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { randomBytes } from 'crypto';
 import { storage } from '../storage';
-import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api';
+import { sendSuccess, sendError, sanitizeUser, handleZodError, handleUserOrgError } from '../utils/api';
 import { hashPassword } from '../auth';
 import { sendInviteEmail, sendTemplatedEmail, getBaseUrl, getOrgLogoUrl } from '../services/email';
 import { z } from 'zod';
@@ -160,6 +160,7 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
     const updatedUser = await storage.updateUserRole(userId, newRole);
     return sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
+    if (handleUserOrgError(res, error)) return;
     log.error('Error updating organization admin status:', error);
     return sendError(res, 'Failed to update organization admin status', 500, 'internal_error');
   }
@@ -244,6 +245,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
     const refreshedUser = await storage.getUser(userId);
     return sendSuccess(res, sanitizeUser(refreshedUser!));
   } catch (error) {
+    if (handleUserOrgError(res, error)) return;
     log.error('Error adding user to organization:', error);
     return sendError(res, 'Failed to add user to organization', 500, 'internal_error');
   }
@@ -288,9 +290,17 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimit
         return sendError(res, 'Cannot remove the last administrator from this organization', 400, 'bad_request');
       }
     }
-    
-    const updatedUser = await storage.setUserOrganization(userId, null);
-    return sendSuccess(res, sanitizeUser(updatedUser));
+
+    // Per the org-less resource policy, non-admin users must always belong
+    // to an organization. "Removing" them from an org would create an
+    // orphan, which the `users_role_org_required` CHECK constraint forbids.
+    // Reassign them to a different org or delete the account instead.
+    return sendError(
+      res,
+      'Non-admin users cannot be left without an organization. Reassign or delete the user instead.',
+      400,
+      'ORG_REQUIRED',
+    );
   } catch (error) {
     log.error('Error removing user from organization:', error);
     return sendError(res, 'Failed to remove user from organization', 500, 'internal_error');
@@ -407,6 +417,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
 
     return sendSuccess(res, { user: sanitizeUser(finalUser!), emailSent });
   } catch (error) {
+    if (handleUserOrgError(res, error)) return;
     log.error('Error creating user:', error);
     return sendError(res, 'Failed to create user', 500, 'internal_error');
   }

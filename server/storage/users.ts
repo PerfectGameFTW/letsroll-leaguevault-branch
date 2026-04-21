@@ -32,6 +32,34 @@ export class FirstAdminUserNotFoundError extends Error {
   }
 }
 
+/**
+ * Thrown by user create/update paths that would leave a non-system_admin
+ * user without an organizationId. Mirrors the `users_role_org_required`
+ * DB CHECK constraint so callers get a clean typed error before hitting
+ * the database.
+ */
+export class NonAdminMissingOrgError extends Error {
+  constructor(message = 'Non-admin users must belong to an organization') {
+    super(message);
+    this.name = 'NonAdminMissingOrgError';
+  }
+}
+
+/**
+ * Thrown when a destructive operation on an organization (currently
+ * `deleteOrganization`) would leave non-admin users without an
+ * organization. Callers should reassign or delete the affected users
+ * first.
+ */
+export class OrgHasUsersError extends Error {
+  constructor(public readonly userCount: number) {
+    super(
+      `Organization still has ${userCount} user(s). Reassign or delete them before deleting the organization.`,
+    );
+    this.name = 'OrgHasUsersError';
+  }
+}
+
 // Stable advisory-lock key for the first-admin bootstrap critical section.
 // pg_advisory_xact_lock takes a bigint; pick an arbitrary unique constant.
 const BOOTSTRAP_ADVISORY_LOCK_KEY = 7244910283645127n;
@@ -47,6 +75,10 @@ export async function getUserByEmail(email: string): Promise<User | undefined> {
 }
 
 export async function createUser(user: InsertUser): Promise<User> {
+  const role = user.role ?? 'user';
+  if (role !== 'system_admin' && (user.organizationId === null || user.organizationId === undefined)) {
+    throw new NonAdminMissingOrgError();
+  }
   const [result] = await db.insert(users).values(user).returning();
   return result;
 }
@@ -130,6 +162,10 @@ export async function updateUserRole(userId: number, role: UserRole): Promise<Us
   if (!existingUser) {
     log.error('User not found for role update:', userId);
     throw new Error(`User with ID ${userId} not found`);
+  }
+
+  if (role !== 'system_admin' && existingUser.organizationId === null) {
+    throw new NonAdminMissingOrgError();
   }
 
   const [updatedUser] = await db

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { User as SelectUser, insertUserSchema } from "@shared/schema";
 import { passwordSchema } from "@shared/password-validation";
-import { sanitizeUser, sendSuccess, sendError } from "../utils/api.js";
+import { sanitizeUser, sendSuccess, sendError, handleUserOrgError } from "../utils/api.js";
 import { isDev } from "../config";
 import { checkUserBelongsToOrg } from "../middleware/subdomain";
 import { csrfProtection } from "../middleware/csrf";
@@ -80,11 +80,21 @@ export function registerAuthRoutes(app: Express): void {
 
   authRouter.post("/register", registerLimiter, async (req, res) => {
     try {
+      const organizationId = req.body.organizationId ? parseInt(req.body.organizationId) : undefined;
+      if (!organizationId || Number.isNaN(organizationId)) {
+        // Self-signup must always happen in an org context (subdomain).
+        // The DB-side `users_role_org_required` CHECK constraint forbids
+        // org-less non-admin users.
+        return sendError(res, "Sign-up requires an organization context.", 400, "ORG_REQUIRED");
+      }
+
       const registrationData = {
         email: req.body.email,
         password: req.body.password,
         name: req.body.name,
         phone: req.body.phone,
+        role: 'user' as const,
+        organizationId,
       };
 
       const result = insertUserSchema.safeParse(registrationData);
@@ -104,13 +114,18 @@ export function registerAuthRoutes(app: Express): void {
 
       const hashedPassword = await hashPassword(result.data.password);
 
-      const user = await storage.createUser({
-        ...result.data,
-        password: hashedPassword,
-        role: 'user',
-      });
-
-      const organizationId = req.body.organizationId ? parseInt(req.body.organizationId) : undefined;
+      let user;
+      try {
+        user = await storage.createUser({
+          ...result.data,
+          password: hashedPassword,
+          role: 'user',
+          organizationId,
+        });
+      } catch (createError) {
+        if (handleUserOrgError(res, createError)) return;
+        throw createError;
+      }
 
       let bowlerLinked = false;
       try {

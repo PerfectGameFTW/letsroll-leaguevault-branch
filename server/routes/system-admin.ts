@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser, handleZodError, handleUserOrgError } from '../utils/api.js';
 import { storage } from '../storage';
 import { db } from '../db';
 import {
@@ -50,6 +50,7 @@ router.post('/create/:id', requireAdmin, async (req: Request, res: Response) => 
     const updatedUser = await storage.updateUserRole(userId, 'system_admin');
     sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
+    if (handleUserOrgError(res, error)) return;
     log.error('Error creating system admin:', error);
     sendError(res, 'Failed to create system admin', 500, 'SERVER_ERROR');
   }
@@ -92,6 +93,7 @@ router.post('/revoke/:id', requireAdmin, async (req: Request, res: Response) => 
     const updatedUser = await storage.updateUserRole(userId, 'user');
     sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
+    if (handleUserOrgError(res, error)) return;
     log.error('Error revoking system admin:', error);
     sendError(res, 'Failed to revoke system admin privileges', 500, 'SERVER_ERROR');
   }

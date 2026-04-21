@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
-import { sendSuccess, sendError, sanitizeUser, sanitizeOrg, sanitizeOrgs, handleZodError } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser, sanitizeOrg, sanitizeOrgs, handleZodError, handleUserOrgError } from '../utils/api.js';
 import { isAllowedRedirectUrl } from '../utils/url-validation.js';
 import { validateDataUri } from '../utils/image-magic-bytes.js';
 import { storage } from '../storage';
@@ -270,6 +270,7 @@ router.post('/', requireAdmin, adminWriteLimiter, inviteLimiter, async (req, res
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
+    if (handleUserOrgError(res, error)) return;
     log.error('Error creating organization:', error);
     sendError(res, 'Failed to create organization', 500, 'ServerError');
   }
@@ -385,6 +386,7 @@ router.delete('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
     await storage.deleteOrganization(id);
     sendSuccess(res, { message: 'Organization deleted successfully' });
   } catch (error) {
+    if (handleUserOrgError(res, error)) return;
     log.error(`Error deleting organization with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to delete organization', 500, 'ServerError');
   }
@@ -440,6 +442,7 @@ router.post('/user/:userId/set', requireAdmin, adminWriteLimiter, async (req, re
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
     }
+    if (handleUserOrgError(res, error)) return;
     log.error(`Error setting organization for user ${req.params.userId}:`, error);
     sendError(res, 'Failed to set user organization', 500, 'ServerError');
   }
