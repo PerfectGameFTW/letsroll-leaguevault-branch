@@ -112,7 +112,16 @@ router.post('/request-deletion', deletionRequestLimiter, async (req, res) => {
   }
 });
 
-// Update user profile (name/email/phone) — also syncs the linked bowler + payment customer
+// Update user profile (name/email/phone) — also syncs the linked bowler + payment customer.
+//
+// Response contract (200): { ...sanitizedUser, paymentSyncStatus }
+//   paymentSyncStatus is one of:
+//     - 'synced'         : provider customer record updated successfully
+//     - 'skipped'        : no provider configured (informational, not a warning)
+//     - 'pending_retry'  : provider call failed for a real reason; bowler row
+//                          flagged with payment_sync_pending_at, will be retried
+//                          on next profile edit or via the admin retry endpoint
+//     - 'not_applicable' : no linked bowler (nothing to sync)
 router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
