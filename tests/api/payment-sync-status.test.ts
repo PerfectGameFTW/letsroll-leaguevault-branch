@@ -62,6 +62,70 @@ describe('PATCH /api/account/profile/:id payment sync status', () => {
     expect(res.data.success).toBe(true);
     expect(res.data.data?.paymentSyncStatus).toBe('not_applicable');
   });
+
+  it("returns paymentSyncStatus: 'skipped' when a linked bowler exists but no payment provider is configured", async () => {
+    // Build a fresh user+bowler pair with no Square config so the helper
+    // hits the "no provider-configured location" skip branch and we can
+    // see the response shape end-to-end.
+    const admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+    expect(admin.user.organizationId === null).toBe(true);
+
+    // Create a fresh org so we know it has no Square config and the
+    // helper takes the deterministic 'skipped' branch.
+    const [org] = await db
+      .insert(organizations)
+      .values({
+        name: uniq('sync-test-org'),
+        slug: uniq('sync-test-org-slug'),
+      })
+      .returning();
+    createdOrgIds.push(org.id);
+
+    const [bowler] = await db
+      .insert(bowlers)
+      .values({
+        name: uniq('sync-test-bowler'),
+        email: `${uniq('sb')}@vitest.local`,
+        phone: null,
+        active: true,
+        order: 0,
+        paymentCustomerId: null,
+        cardpointeProfileId: null,
+        bnContactId: null,
+        paymentSyncPendingAt: null,
+      })
+      .returning();
+    createdBowlerIds.push(bowler.id);
+
+    const password = await hashPassword('vitest-sync-test-pw');
+    const [user] = await db
+      .insert(users)
+      .values({
+        email: `${uniq('su')}@vitest.local`,
+        password,
+        name: uniq('sync-test-user'),
+        role: 'user',
+        organizationId: org.id,
+        locationId: null,
+        bowlerId: bowler.id,
+      })
+      .returning();
+    createdUserIds.push(user.id);
+
+    // System admin can patch any user's profile
+    const res = await apiPatch<{ paymentSyncStatus: string; name: string }>(
+      `/api/account/profile/${user.id}`,
+      { name: `${user.name}-changed` },
+      admin,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.data.success).toBe(true);
+    // No Square config exists for this org → status should be 'skipped',
+    // not 'pending_retry' (which would indicate a real provider failure)
+    // and not 'not_applicable' (which would indicate the link was missed).
+    expect(res.data.data?.paymentSyncStatus).toBe('skipped');
+  });
 });
 
 describe('POST /api/account/bowlers/:id/retry-payment-sync', () => {
