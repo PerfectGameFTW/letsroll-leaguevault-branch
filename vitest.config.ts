@@ -11,6 +11,7 @@ export default defineConfig({
     alias: {
       '@shared': new URL('./shared', import.meta.url).pathname,
       '@server': new URL('./server', import.meta.url).pathname,
+      '@': new URL('./client/src', import.meta.url).pathname,
     },
   },
 });
