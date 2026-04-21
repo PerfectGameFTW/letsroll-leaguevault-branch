@@ -190,19 +190,29 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
         return sendError(res, 'Email already in use', 400, 'EMAIL_IN_USE');
       }
 
-      // Supersede any older pending request for this user before creating
-      // a new one — protects the "two competing requests" case.
-      await storage.invalidatePendingEmailChangeRequestsForUser(userId);
-
       const rawToken = randomBytes(32).toString('hex');
       const tokenHash = hashEmailChangeToken(rawToken);
       const expiresAt = new Date(Date.now() + EMAIL_CHANGE_TOKEN_TTL_MS).toISOString();
 
-      await storage.createEmailChangeRequest({
-        userId,
-        newEmail,
-        tokenHash,
-        expiresAt,
+      // Supersede any older pending request and create the new one in a
+      // single transaction — guarantees only one active token per user
+      // even under concurrent profile updates.
+      await db.transaction(async (tx) => {
+        await tx
+          .update(emailChangeRequests)
+          .set({ consumedAt: sql`now()` })
+          .where(
+            and(
+              eq(emailChangeRequests.userId, userId),
+              isNull(emailChangeRequests.consumedAt),
+            ),
+          );
+        await tx.insert(emailChangeRequests).values({
+          userId,
+          newEmail,
+          tokenHash,
+          expiresAt,
+        });
       });
 
       // Build confirmation URL using the org's subdomain when known so the
