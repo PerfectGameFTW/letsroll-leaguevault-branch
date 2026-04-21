@@ -167,7 +167,7 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
  *  - Unauthenticated → all denied.
  *  - Self-access shortcut for `req.user.bowlerId`.
  *  - Bowlers with no league entries → denied for everyone (incl. system admin).
- *  - Org-less leagues are skipped (and warn-logged) for every role.
+ *  - Org-less leagues are skipped (and debug-logged) for every role.
  *  - System admins are allowed via any non-org-less league entry.
  *  - Org users are allowed when their org matches a league's organizationId.
  *  - Users sharing a league with the target bowler are allowed.
