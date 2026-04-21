@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../server/db';
 import { storage } from '../../server/storage';
-import { users, organizations, emailChangeRequests } from '@shared/schema';
+import { users, organizations, emailChangeRequests, bowlers } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { createHash } from 'crypto';
 import {
@@ -228,6 +228,67 @@ describe('POST /api/account/confirm-email-change', () => {
       .from(emailChangeRequests)
       .where(eq(emailChangeRequests.tokenHash, hashToken(rawToken)));
     expect(request.consumedAt).not.toBeNull();
+  });
+
+  it('runs the bowler payment-customer sync at confirm time when the user is linked to a bowler', async () => {
+    // Create a fresh user linked to a bowler in an org with no Square
+    // config, so the sync helper takes the deterministic 'skipped' branch
+    // (matches the assertion shape used by payment-sync-status.test.ts).
+    const password = await hashPassword(TEST_PASSWORD);
+    const oldEmail = uniqEmail('linked');
+    const [bowler] = await db
+      .insert(bowlers)
+      .values({
+        name: uniq('linked-bowler'),
+        email: oldEmail,
+        phone: null,
+        active: true,
+        order: 0,
+        paymentCustomerId: null,
+        cardpointeProfileId: null,
+        bnContactId: null,
+        paymentSyncPendingAt: null,
+      })
+      .returning();
+    const [user] = await db
+      .insert(users)
+      .values({
+        email: oldEmail,
+        password,
+        name: uniq('Linked User'),
+        role: 'user',
+        organizationId: testOrgId,
+        bowlerId: bowler.id,
+      })
+      .returning();
+    createdUserIds.push(user.id);
+    const session = await login(oldEmail, TEST_PASSWORD);
+
+    const newEmail = uniqEmail('linked-new');
+    const rawToken = `vitest-linked-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    await db.insert(emailChangeRequests).values({
+      userId: user.id,
+      newEmail,
+      tokenHash: hashToken(rawToken),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const res = await apiPost<{ email: string; paymentSyncStatus: string }>(
+      `/api/account/confirm-email-change`,
+      { token: rawToken },
+      session,
+    );
+    expect(res.status).toBe(200);
+    expect(res.data.data?.email).toBe(newEmail);
+    // No Square config on this org → sync helper resolves to 'skipped',
+    // proving the sync code-path actually ran (a 'not_applicable' result
+    // would mean the bowlerId branch was skipped, which would be wrong).
+    expect(res.data.data?.paymentSyncStatus).toBe('skipped');
+
+    // Cleanup: detach the user from the bowler (FK), then drop the
+    // bowler row. The user itself is cleaned up by the afterAll hook.
+    await db.update(users).set({ bowlerId: null }).where(eq(users.id, user.id));
+    await db.delete(bowlers).where(eq(bowlers.id, bowler.id));
   });
 
   it('rejects an already-consumed token', async () => {
