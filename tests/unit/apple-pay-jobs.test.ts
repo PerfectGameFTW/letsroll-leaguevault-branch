@@ -17,7 +17,7 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { inArray, eq } from "drizzle-orm";
 import { db } from "../../server/db";
-import { applePayJobs, applePayJobItems, APPLE_PAY_ITEM_LEASE_MS } from "@shared/schema";
+import { applePayJobs, applePayJobItems, APPLE_PAY_ITEM_LEASE_MS, type ApplePayJobStatus } from "@shared/schema";
 import {
   createApplePayJob,
   claimNextApplePayJob,
@@ -31,6 +31,9 @@ import {
   updateApplePayJobItem,
   getApplePayJob,
   getApplePayJobItemCounts,
+  cancelApplePayJob,
+  retryApplePayJob,
+  retryApplePayJobItem,
 } from "../../server/storage/apple-pay-jobs";
 
 const createdJobIds: number[] = [];
@@ -379,5 +382,296 @@ describe("apple pay job storage — concurrency invariants", () => {
     const final = (await getApplePayJobItems(jobId)).find((it) => it.id === live.id)!;
     expect(final.status).toBe("succeeded");
     expect(final.claimedAt).toBeNull();
+  });
+});
+
+/**
+ * Cancel + retry storage invariants (task #264).
+ *
+ * Pins the per-status guards on `cancelApplePayJob`, `retryApplePayJob`,
+ * and `retryApplePayJobItem`. These transactions only act on specific
+ * source statuses; without these tests it would be easy to silently
+ * regress them into "always succeeds" stubs.
+ */
+async function setJobStatus(jobId: number, status: ApplePayJobStatus): Promise<void> {
+  await db
+    .update(applePayJobs)
+    .set({
+      status,
+      // Terminal rows in the real product carry a completedAt; mirror
+      // that here so the guard tests start from a realistic shape.
+      completedAt: status === "pending" || status === "running" ? null : new Date().toISOString(),
+    })
+    .where(eq(applePayJobs.id, jobId));
+}
+
+describe("apple pay job storage — cancel guards", () => {
+  it("cancels a pending job and stamps completedAt", async () => {
+    const jobId = await makeJob();
+
+    const updated = await cancelApplePayJob(jobId);
+
+    expect(updated).toBeDefined();
+    expect(updated!.status).toBe("canceled");
+    expect(updated!.completedAt).not.toBeNull();
+  });
+
+  it("cancels a running job (worker observes status flip mid-loop)", async () => {
+    const jobId = await makeJob();
+    // Directly mark the job as running rather than going through
+    // claimNextApplePayJob — that helper may pick a different stale
+    // pending row from previous test runs since this DB isn't reset
+    // between test files. The cancel-storage behavior is what we're
+    // exercising here, not the claim ordering.
+    await db
+      .update(applePayJobs)
+      .set({ status: "running", startedAt: new Date().toISOString() })
+      .where(eq(applePayJobs.id, jobId));
+
+    const updated = await cancelApplePayJob(jobId);
+
+    expect(updated).toBeDefined();
+    expect(updated!.status).toBe("canceled");
+    expect(updated!.completedAt).not.toBeNull();
+  });
+
+  it("preserves an existing completedAt when canceling (COALESCE)", async () => {
+    const jobId = await makeJob();
+    const stamped = new Date(Date.now() - 60_000).toISOString();
+    await db
+      .update(applePayJobs)
+      .set({ completedAt: stamped })
+      .where(eq(applePayJobs.id, jobId));
+
+    const updated = await cancelApplePayJob(jobId);
+    expect(updated).toBeDefined();
+    // The pre-existing completedAt must NOT be overwritten by the cancel.
+    expect(new Date(updated!.completedAt!).toISOString()).toBe(
+      new Date(stamped).toISOString(),
+    );
+  });
+
+  it("returns undefined for a job already in a terminal status", async () => {
+    for (const terminal of ["succeeded", "failed", "partial", "canceled"] as const) {
+      const jobId = await makeJob();
+      await setJobStatus(jobId, terminal);
+
+      const updated = await cancelApplePayJob(jobId);
+      expect(updated, `expected cancel of ${terminal} job to be a no-op`).toBeUndefined();
+
+      const reloaded = await getApplePayJob(jobId);
+      expect(reloaded?.status).toBe(terminal);
+    }
+  });
+
+  it("returns undefined for a non-existent job", async () => {
+    const updated = await cancelApplePayJob(2_147_483_000);
+    expect(updated).toBeUndefined();
+  });
+});
+
+describe("apple pay job storage — retry job guards", () => {
+  it("resets failed items and re-opens the job for failed/partial/canceled jobs", async () => {
+    for (const terminal of ["failed", "partial", "canceled"] as const) {
+      const jobId = await makeJob();
+      await insertApplePayJobItems(jobId, [
+        { organizationId: null, locationId: null, domain: `succeeded-${terminal}.test` },
+        { organizationId: null, locationId: null, domain: `failed-1-${terminal}.test` },
+        { organizationId: null, locationId: null, domain: `failed-2-${terminal}.test` },
+      ]);
+      const items = await getApplePayJobItems(jobId);
+      const succeeded = items.find((i) => i.domain.startsWith("succeeded"))!;
+      const failed1 = items.find((i) => i.domain.startsWith("failed-1"))!;
+      const failed2 = items.find((i) => i.domain.startsWith("failed-2"))!;
+      await claimAndCompleteApplePayJobItem(succeeded.id, { status: "succeeded" });
+      await claimAndCompleteApplePayJobItem(failed1.id, { status: "failed", message: "boom" });
+      await claimAndCompleteApplePayJobItem(failed2.id, { status: "failed", message: "kaboom" });
+      await setJobStatus(jobId, terminal);
+      // Set an errorMessage so we can assert it gets cleared on retry.
+      await db
+        .update(applePayJobs)
+        .set({ errorMessage: "previous run error" })
+        .where(eq(applePayJobs.id, jobId));
+
+      const result = await retryApplePayJob(jobId);
+
+      expect(result, `retry should succeed for ${terminal}`).toBeDefined();
+      expect(result!.resetCount).toBe(2);
+      expect(result!.job.status).toBe("pending");
+      expect(result!.job.completedAt).toBeNull();
+      expect(result!.job.errorMessage).toBeNull();
+
+      // Failed items are reset; the succeeded item is untouched.
+      const reloaded = await getApplePayJobItems(jobId);
+      const byDomain = Object.fromEntries(reloaded.map((it) => [it.domain, it]));
+      expect(byDomain[`succeeded-${terminal}.test`].status).toBe("succeeded");
+      expect(byDomain[`failed-1-${terminal}.test`].status).toBe("pending");
+      expect(byDomain[`failed-1-${terminal}.test`].message).toBeNull();
+      expect(byDomain[`failed-1-${terminal}.test`].processedAt).toBeNull();
+      expect(byDomain[`failed-2-${terminal}.test`].status).toBe("pending");
+    }
+  });
+
+  it("returns undefined for a non-terminal job (pending or running)", async () => {
+    for (const ineligible of ["pending", "running"] as const) {
+      const jobId = await makeJob();
+      await insertApplePayJobItems(jobId, [
+        { organizationId: null, locationId: null, domain: `f-${ineligible}.test` },
+      ]);
+      const [item] = await getApplePayJobItems(jobId);
+      await claimAndCompleteApplePayJobItem(item.id, { status: "failed", message: "no" });
+      await setJobStatus(jobId, ineligible);
+
+      const result = await retryApplePayJob(jobId);
+      expect(result, `retry of ${ineligible} job should be a no-op`).toBeUndefined();
+
+      // Critically, the item is NOT reset — would otherwise strand it
+      // outside the running worker's already-loaded pending queue.
+      const [reloaded] = await getApplePayJobItems(jobId);
+      expect(reloaded.status).toBe("failed");
+    }
+  });
+
+  it("returns undefined for a fully-succeeded terminal job", async () => {
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "ok.test" },
+    ]);
+    const [item] = await getApplePayJobItems(jobId);
+    await claimAndCompleteApplePayJobItem(item.id, { status: "succeeded" });
+    await setJobStatus(jobId, "succeeded");
+
+    const result = await retryApplePayJob(jobId);
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined for a terminal job with no failed items (e.g. all skipped)", async () => {
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "skip.test" },
+    ]);
+    const [item] = await getApplePayJobItems(jobId);
+    await claimAndCompleteApplePayJobItem(item.id, { status: "skipped", message: "no loc" });
+    await setJobStatus(jobId, "partial");
+
+    const result = await retryApplePayJob(jobId);
+    expect(result).toBeUndefined();
+
+    // Job stays terminal — must NOT have been re-opened.
+    const reloaded = await getApplePayJob(jobId);
+    expect(reloaded?.status).toBe("partial");
+  });
+
+  it("returns undefined for a non-existent job", async () => {
+    const result = await retryApplePayJob(2_147_483_001);
+    expect(result).toBeUndefined();
+  });
+});
+
+describe("apple pay job storage — retry single-item guards", () => {
+  it("resets a failed item and re-opens its terminal job", async () => {
+    for (const terminal of ["failed", "partial", "canceled"] as const) {
+      const jobId = await makeJob();
+      await insertApplePayJobItems(jobId, [
+        { organizationId: null, locationId: null, domain: `keep-${terminal}.test` },
+        { organizationId: null, locationId: null, domain: `retry-${terminal}.test` },
+      ]);
+      const items = await getApplePayJobItems(jobId);
+      const keep = items.find((i) => i.domain.startsWith("keep"))!;
+      const retry = items.find((i) => i.domain.startsWith("retry"))!;
+      await claimAndCompleteApplePayJobItem(keep.id, { status: "failed", message: "still bad" });
+      await claimAndCompleteApplePayJobItem(retry.id, { status: "failed", message: "transient" });
+      await setJobStatus(jobId, terminal);
+
+      const result = await retryApplePayJobItem(jobId, retry.id);
+
+      expect(result, `single-item retry should succeed for ${terminal}`).toBeDefined();
+      expect(result!.item.status).toBe("pending");
+      expect(result!.item.message).toBeNull();
+      expect(result!.item.processedAt).toBeNull();
+      expect(result!.job.status).toBe("pending");
+      expect(result!.job.completedAt).toBeNull();
+
+      // The other failed item is left alone — only the one we asked for resets.
+      const reloaded = await getApplePayJobItems(jobId);
+      const keepAfter = reloaded.find((i) => i.id === keep.id)!;
+      expect(keepAfter.status).toBe("failed");
+      expect(keepAfter.message).toBe("still bad");
+    }
+  });
+
+  it("refuses to retry an item while its parent job is still running", async () => {
+    // Resetting an item under a running job would strand it outside the
+    // worker's already-loaded pending queue, breaking final accounting.
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "running.test" },
+    ]);
+    const [item] = await getApplePayJobItems(jobId);
+    await claimAndCompleteApplePayJobItem(item.id, { status: "failed", message: "x" });
+    await setJobStatus(jobId, "running");
+
+    const result = await retryApplePayJobItem(jobId, item.id);
+    expect(result).toBeUndefined();
+    const reloaded = (await getApplePayJobItems(jobId))[0];
+    expect(reloaded.status).toBe("failed");
+  });
+
+  it("refuses to retry a non-failed item (e.g. succeeded or skipped) on a terminal job", async () => {
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "ok.test" },
+      { organizationId: null, locationId: null, domain: "skip.test" },
+      { organizationId: null, locationId: null, domain: "fail.test" },
+    ]);
+    const items = await getApplePayJobItems(jobId);
+    const ok = items.find((i) => i.domain === "ok.test")!;
+    const skip = items.find((i) => i.domain === "skip.test")!;
+    const fail = items.find((i) => i.domain === "fail.test")!;
+    await claimAndCompleteApplePayJobItem(ok.id, { status: "succeeded" });
+    await claimAndCompleteApplePayJobItem(skip.id, { status: "skipped", message: "n/a" });
+    await claimAndCompleteApplePayJobItem(fail.id, { status: "failed", message: "boom" });
+    await setJobStatus(jobId, "partial");
+
+    expect(await retryApplePayJobItem(jobId, ok.id)).toBeUndefined();
+    expect(await retryApplePayJobItem(jobId, skip.id)).toBeUndefined();
+    // Crucially, the same item is retryable when its status IS failed.
+    const okResult = await retryApplePayJobItem(jobId, fail.id);
+    expect(okResult).toBeDefined();
+  });
+
+  it("refuses to retry when (jobId, itemId) belong to different jobs (cross-job scoping)", async () => {
+    const jobAId = await makeJob();
+    const jobBId = await makeJob();
+    await insertApplePayJobItems(jobAId, [
+      { organizationId: null, locationId: null, domain: "a.test" },
+    ]);
+    await insertApplePayJobItems(jobBId, [
+      { organizationId: null, locationId: null, domain: "b.test" },
+    ]);
+    const [itemA] = await getApplePayJobItems(jobAId);
+    await claimAndCompleteApplePayJobItem(itemA.id, { status: "failed", message: "x" });
+    await setJobStatus(jobAId, "failed");
+    await setJobStatus(jobBId, "failed");
+
+    // Item belongs to A; pretend it was an item under B. Must be a no-op
+    // and leave both jobs untouched.
+    const result = await retryApplePayJobItem(jobBId, itemA.id);
+    expect(result).toBeUndefined();
+
+    const reloadedA = await getApplePayJob(jobAId);
+    const reloadedB = await getApplePayJob(jobBId);
+    expect(reloadedA?.status).toBe("failed");
+    expect(reloadedB?.status).toBe("failed");
+    const [reloadedItem] = await getApplePayJobItems(jobAId);
+    expect(reloadedItem.status).toBe("failed");
+  });
+
+  it("returns undefined for a non-existent job or item", async () => {
+    expect(await retryApplePayJobItem(2_147_483_002, 2_147_483_002)).toBeUndefined();
+
+    const jobId = await makeJob();
+    await setJobStatus(jobId, "failed");
+    expect(await retryApplePayJobItem(jobId, 2_147_483_003)).toBeUndefined();
   });
 });
