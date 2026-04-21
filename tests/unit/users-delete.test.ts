@@ -11,7 +11,7 @@
  * Hits the real test database; cleans up after itself.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   users,
