@@ -48,7 +48,16 @@ router.get('/apple-pay/jobs', async (req: any, res) => {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
     }
     const jobs = await storage.listApplePayJobs(25);
-    sendSuccess(res, { jobs });
+    // Decorate each row with its lease-recovered total so admins can spot
+    // anomalous jobs at a glance from the list view (#270).
+    const totals = await storage.getApplePayJobsRecoveredItemTotals(
+      jobs.map((j) => j.id),
+    );
+    const jobsWithRecovery = jobs.map((j) => ({
+      ...j,
+      recoveredItemCount: totals.get(j.id) ?? 0,
+    }));
+    sendSuccess(res, { jobs: jobsWithRecovery });
   } catch (error) {
     log.error('Apple Pay list jobs error:', error);
     sendError(res, 'Failed to list jobs', 500);

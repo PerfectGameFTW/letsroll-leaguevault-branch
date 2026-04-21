@@ -339,7 +339,9 @@ function CountTile({ label, value, tone }: { label: string; value: number; tone?
 export default function ApplePayJobsPage() {
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
 
-  const { data: jobsResponse, isLoading, isError, error, refetch, isFetching } = useQuery<ApiResponse<{ jobs: ApplePayJob[] }>>({
+  // Each job is augmented server-side with `recoveredItemCount` so the
+  // list view can flag anomalous jobs (#270) without per-row fetches.
+  const { data: jobsResponse, isLoading, isError, error, refetch, isFetching } = useQuery<ApiResponse<{ jobs: Array<ApplePayJob & { recoveredItemCount?: number }> }>>({
     queryKey: ['/api/payments-provider/apple-pay/jobs'],
     refetchInterval: (query) => {
       const jobs = query.state.data?.data?.jobs ?? [];
@@ -408,7 +410,19 @@ export default function ApplePayJobsPage() {
                           <TableRow key={job.id}>
                             <TableCell className="font-medium">#{job.id}</TableCell>
                             <TableCell>
-                              <Badge variant={meta.variant}>{meta.label}</Badge>
+                              <div className="flex flex-wrap items-center gap-1">
+                                <Badge variant={meta.variant}>{meta.label}</Badge>
+                                {(job.recoveredItemCount ?? 0) > 0 && (
+                                  <Badge
+                                    variant="outline"
+                                    className="border-amber-500/50 bg-amber-500/10 text-amber-900 dark:text-amber-200"
+                                    title={`${job.recoveredItemCount} item${job.recoveredItemCount === 1 ? '' : 's'} were recovered after stalling mid-call`}
+                                    data-testid={`badge-lease-anomaly-${job.id}`}
+                                  >
+                                    Lease anomaly
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className="text-right">{job.totalDomains}</TableCell>
                             <TableCell className="text-right text-emerald-600">{job.succeededCount}</TableCell>

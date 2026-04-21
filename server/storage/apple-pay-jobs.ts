@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   applePayJobs,
@@ -29,6 +29,27 @@ export async function listApplePayJobs(limit = 25): Promise<ApplePayJob[]> {
     .from(applePayJobs)
     .orderBy(desc(applePayJobs.createdAt))
     .limit(limit);
+}
+
+/**
+ * Per-job aggregate of `apple_pay_job_items.recovered_count`. Used by the
+ * admin list view to flag jobs that had any items recovered after their
+ * pre-call lease expired (#270). Returns a map of jobId -> total
+ * recovered count so callers can decorate list rows without N+1 queries.
+ */
+export async function getApplePayJobsRecoveredItemTotals(
+  jobIds: number[],
+): Promise<Map<number, number>> {
+  if (jobIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      jobId: applePayJobItems.jobId,
+      total: sql<number>`COALESCE(SUM(${applePayJobItems.recoveredCount}), 0)::int`,
+    })
+    .from(applePayJobItems)
+    .where(inArray(applePayJobItems.jobId, jobIds))
+    .groupBy(applePayJobItems.jobId);
+  return new Map(rows.map((r) => [r.jobId, Number(r.total) || 0]));
 }
 
 /**
