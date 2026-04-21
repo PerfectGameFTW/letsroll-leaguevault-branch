@@ -15,9 +15,9 @@
  *      were still `pending`.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { inArray } from "drizzle-orm";
+import { inArray, eq } from "drizzle-orm";
 import { db } from "../../server/db";
-import { applePayJobs } from "@shared/schema";
+import { applePayJobs, applePayJobItems, APPLE_PAY_ITEM_LEASE_MS } from "@shared/schema";
 import {
   createApplePayJob,
   claimNextApplePayJob,
@@ -257,40 +257,111 @@ describe("apple pay job storage — concurrency invariants", () => {
     expect(stored.message).toBe("ok");
   });
 
-  it("recoverInterruptedApplePayJobs revives items orphaned in 'processing' by a crashed worker", async () => {
+  it("recoverInterruptedApplePayJobs revives items whose pre-call lease has EXPIRED, leaves fresh leases alone", async () => {
     const jobId = await makeJob();
     await insertApplePayJobItems(jobId, [
-      { organizationId: null, locationId: null, domain: "orphan-1.test" },
-      { organizationId: null, locationId: null, domain: "orphan-2.test" },
+      { organizationId: null, locationId: null, domain: "expired-1.test" },
+      { organizationId: null, locationId: null, domain: "expired-2.test" },
       { organizationId: null, locationId: null, domain: "done.test" },
     ]);
     const items = await getApplePayJobItems(jobId);
-    const orphan1 = items.find((it) => it.domain === "orphan-1.test")!;
-    const orphan2 = items.find((it) => it.domain === "orphan-2.test")!;
+    const expired1 = items.find((it) => it.domain === "expired-1.test")!;
+    const expired2 = items.find((it) => it.domain === "expired-2.test")!;
     const done = items.find((it) => it.domain === "done.test")!;
 
-    // Two items get pre-claimed but the worker crashes before writing
-    // their terminal state. A third already finished cleanly.
-    expect(await claimApplePayJobItemForProcessing(orphan1.id)).toBe(true);
-    expect(await claimApplePayJobItemForProcessing(orphan2.id)).toBe(true);
+    // Two items get pre-claimed but the worker crashed before writing
+    // their terminal state, AND enough wall time has passed that the
+    // lease is now expired. A third already finished cleanly.
+    expect(await claimApplePayJobItemForProcessing(expired1.id)).toBe(true);
+    expect(await claimApplePayJobItemForProcessing(expired2.id)).toBe(true);
     await claimAndCompleteApplePayJobItem(done.id, { status: "succeeded" });
 
-    // -- crash boundary --
+    // Backdate the leases to simulate a crashed worker whose lease
+    // expired before the next instance booted (simulating wall time
+    // without sleeping the test).
+    const expiredAt = new Date(Date.now() - APPLE_PAY_ITEM_LEASE_MS - 60_000).toISOString();
+    await db
+      .update(applePayJobItems)
+      .set({ claimedAt: expiredAt })
+      .where(inArray(applePayJobItems.id, [expired1.id, expired2.id]));
 
     await recoverInterruptedApplePayJobs();
 
     const reloaded = await getApplePayJobItems(jobId);
     const byDomain = Object.fromEntries(reloaded.map((it) => [it.domain, it.status]));
-    expect(byDomain["orphan-1.test"]).toBe("pending");
-    expect(byDomain["orphan-2.test"]).toBe("pending");
+    expect(byDomain["expired-1.test"]).toBe("pending");
+    expect(byDomain["expired-2.test"]).toBe("pending");
     // Already-terminal items must not be touched by the recovery sweep.
     expect(byDomain["done.test"]).toBe("succeeded");
 
-    // The next worker pass must see exactly the two orphans as pending.
+    // Recovery must also clear the lease so subsequent recoveries don't
+    // immediately treat a fresh re-claim as already expired.
+    const reloaded1 = reloaded.find((it) => it.id === expired1.id)!;
+    expect(reloaded1.claimedAt).toBeNull();
+
+    // The next worker pass must see exactly the two revived items as pending.
     const pending = await getPendingApplePayJobItems(jobId);
     expect(pending.map((it) => it.domain).sort()).toEqual([
-      "orphan-1.test",
-      "orphan-2.test",
+      "expired-1.test",
+      "expired-2.test",
     ]);
+  });
+
+  it("recoverInterruptedApplePayJobs leaves a sibling instance's LIVE pre-claim alone (rolling restart safety)", async () => {
+    // Simulates: instance A is mid-call on an item (lease is fresh).
+    // Instance B boots and runs startup recovery. The item must NOT
+    // be reverted to pending — that would let a third worker re-issue
+    // the provider call before A's call returns.
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "live.test" },
+      { organizationId: null, locationId: null, domain: "expired.test" },
+    ]);
+    const items = await getApplePayJobItems(jobId);
+    const live = items.find((it) => it.domain === "live.test")!;
+    const expired = items.find((it) => it.domain === "expired.test")!;
+
+    // Both items get pre-claimed.
+    expect(await claimApplePayJobItemForProcessing(live.id)).toBe(true);
+    expect(await claimApplePayJobItemForProcessing(expired.id)).toBe(true);
+
+    // Backdate ONLY one item's lease to simulate the asymmetric
+    // rolling-restart scenario: one sibling crashed long ago, another
+    // is currently mid-call.
+    const expiredAt = new Date(Date.now() - APPLE_PAY_ITEM_LEASE_MS - 60_000).toISOString();
+    await db
+      .update(applePayJobItems)
+      .set({ claimedAt: expiredAt })
+      .where(eq(applePayJobItems.id, expired.id));
+
+    await recoverInterruptedApplePayJobs();
+
+    const reloaded = await getApplePayJobItems(jobId);
+    const liveAfter = reloaded.find((it) => it.id === live.id)!;
+    const expiredAfter = reloaded.find((it) => it.id === expired.id)!;
+
+    // The live sibling's claim is preserved end-to-end: status stays
+    // `processing`, the lease timestamp is untouched, and the row does
+    // NOT show up in the pending queue another worker would scan.
+    expect(liveAfter.status).toBe("processing");
+    expect(liveAfter.claimedAt).not.toBeNull();
+    // Crashed sibling's row is reset, lease cleared.
+    expect(expiredAfter.status).toBe("pending");
+    expect(expiredAfter.claimedAt).toBeNull();
+
+    const pending = await getPendingApplePayJobItems(jobId);
+    expect(pending.map((it) => it.domain)).toEqual(["expired.test"]);
+
+    // And the live sibling can still successfully complete its terminal
+    // write — terminal write must not be blocked by a parallel recovery
+    // sweep that left the row alone.
+    const completed = await claimAndCompleteApplePayJobItem(live.id, {
+      status: "succeeded",
+      message: "ok from live sibling",
+    });
+    expect(completed).toBe(true);
+    const final = (await getApplePayJobItems(jobId)).find((it) => it.id === live.id)!;
+    expect(final.status).toBe("succeeded");
+    expect(final.claimedAt).toBeNull();
   });
 });

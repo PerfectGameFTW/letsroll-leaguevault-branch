@@ -268,17 +268,14 @@ class ApplePayWorker {
     //   2. `claimAndCompleteApplePayJobItem` writes the terminal result.
     //      It accepts either pending (for paths that don't pre-claim, e.g.
     //      a missing-location skip) or processing (for the normal path).
-    // If the process dies between (1) and (2), the item is left in
-    // `processing` and revived to `pending` on the next boot by
-    // `recoverInterruptedApplePayJobs`, so the call is re-issued exactly
-    // once on resume.
-    //
-    // Caveat: see `recoverInterruptedApplePayJobs` — under a rolling
-    // restart with multiple instances, startup recovery on a fresh
-    // instance can flip a sibling's live `processing` row back to
-    // `pending`, so the at-most-once guarantee currently holds across
-    // single-instance crashes but not across overlapping multi-instance
-    // restarts. Lease/heartbeat-based recovery is tracked as a follow-up.
+    // The pending->processing flip also stamps `claimed_at = NOW()` as
+    // a lease. If the process dies between (1) and (2), the row stays
+    // `processing` until the lease expires; `recoverInterruptedApplePayJobs`
+    // then revives it on a future boot. Crucially, a sibling instance
+    // booting up DURING our provider call sees a fresh lease and leaves
+    // the row alone — so the at-most-once provider-call guarantee holds
+    // across both single-instance crashes and overlapping rolling
+    // restarts of multiple backend instances.
     try {
       if (item.locationId == null) {
         await storage.claimAndCompleteApplePayJobItem(item.id, {

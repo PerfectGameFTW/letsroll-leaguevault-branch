@@ -49,6 +49,7 @@ export {
   applePayJobItems,
   APPLE_PAY_JOB_STATUSES,
   APPLE_PAY_JOB_ITEM_STATUSES,
+  APPLE_PAY_ITEM_LEASE_MS,
 } from "./apple-pay-jobs";
 export type {
   ApplePayJob,

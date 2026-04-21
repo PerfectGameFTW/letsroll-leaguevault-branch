@@ -3,6 +3,7 @@ import { db } from "../db.js";
 import {
   applePayJobs,
   applePayJobItems,
+  APPLE_PAY_ITEM_LEASE_MS,
   type ApplePayJob,
   type ApplePayJobItem,
   type ApplePayJobStatus,
@@ -66,21 +67,22 @@ export async function claimNextApplePayJob(): Promise<ApplePayJob | undefined> {
 }
 
 /**
- * Reset any `running` jobs to `pending` so the worker can pick them up, and
- * any items left in `processing` back to `pending` so they get re-issued.
- * Called once at server startup — the assumption (matching the rest of this
- * codebase, e.g. PaymentScheduler) is a single backend instance, so any row
- * still mid-flight after a fresh boot was interrupted by a crash/restart
- * and is safe to revive.
+ * Server-startup recovery of mid-flight Apple Pay work.
  *
- * Multi-instance caveat: this reset is unconditional and will also flip
- * `processing` rows that another *live* instance is currently working on.
- * That re-opens the duplicate-provider-call window the pre-claim was meant
- * to close during a rolling restart. The pre-claim still prevents same-
- * instance races and protects against single-instance crash recovery, but
- * a true at-most-once guarantee across rolling restarts requires an item
- * lease/heartbeat (so recovery can tell "crashed" from "still alive") or
- * an advisory-lock-elected leader doing recovery — tracked as a follow-up.
+ * Two passes:
+ *   1. Re-open `running` jobs (the worker re-claims via `claimNextApplePayJob`).
+ *   2. Revive `processing` items whose pre-call lease has expired (i.e.
+ *      `claimed_at` is older than `APPLE_PAY_ITEM_LEASE_MS`, or NULL —
+ *      the latter is a defensive fallback for rows written before the
+ *      lease column was added). Items whose lease is still valid belong
+ *      to a sibling instance that is actively mid-call and MUST NOT be
+ *      reverted, because doing so would let a third worker re-issue the
+ *      provider call before the original returns.
+ *
+ * This makes the at-most-once provider-call guarantee hold across both
+ * single-instance crashes (lease expires before we boot, item is revived)
+ * and overlapping rolling restarts (sibling's lease is still fresh, item
+ * stays `processing` until the sibling writes its terminal result).
  *
  * Returns the number of jobs revived (item recovery is opportunistic).
  */
@@ -90,14 +92,23 @@ export async function recoverInterruptedApplePayJobs(): Promise<number> {
     .set({ status: "pending" })
     .where(eq(applePayJobs.status, "running"))
     .returning({ id: applePayJobs.id });
-  // Items left mid-flight by a crashed worker. The pre-call claim flips
-  // them to `processing`; if the process dies before the terminal write
-  // they'd otherwise be stuck. Resetting them lets the next worker pass
-  // re-issue the provider call exactly once.
+
+  // Lease cutoff is computed entirely in DB time (NOW() - interval) to
+  // avoid clock skew between app servers and Postgres. Any `processing`
+  // row whose `claimed_at` is older than the lease is presumed orphaned
+  // by a crashed worker.
+  const leaseSeconds = Math.ceil(APPLE_PAY_ITEM_LEASE_MS / 1000);
   await db
     .update(applePayJobItems)
-    .set({ status: "pending" })
-    .where(eq(applePayJobItems.status, "processing"));
+    .set({ status: "pending", claimedAt: null })
+    .where(
+      and(
+        eq(applePayJobItems.status, "processing"),
+        // `claimed_at IS NULL` covers rows written before the lease
+        // column existed; `claimed_at < NOW() - lease` is the normal case.
+        sql`(${applePayJobItems.claimedAt} IS NULL OR ${applePayJobItems.claimedAt} < NOW() - (${leaseSeconds} || ' seconds')::interval)`,
+      ),
+    );
   return updated.length;
 }
 
@@ -176,18 +187,20 @@ export async function updateApplePayJobItem(
 
 /**
  * Atomically claim an item for the worker about to issue a provider call.
- * Flips `pending` -> `processing` and returns `true` only if THIS caller
- * won the claim. A second worker racing on the same item will get `false`
- * and must NOT issue the provider call.
+ * Flips `pending` -> `processing` and stamps `claimed_at = NOW()`. Returns
+ * `true` only if THIS caller won the claim. A second worker racing on the
+ * same item will get `false` and must NOT issue the provider call.
  *
- * If the process crashes between this claim and the terminal write, the
- * item is left in `processing` and is revived to `pending` on the next
- * server boot by `recoverInterruptedApplePayJobs()`.
+ * The `claimed_at` timestamp acts as a lease: if the process crashes
+ * between this claim and the terminal write, `recoverInterruptedApplePayJobs`
+ * will only revert the row once the lease (`APPLE_PAY_ITEM_LEASE_MS`) has
+ * expired. A live sibling instance whose lease is still valid is therefore
+ * never disturbed by another instance's startup recovery.
  */
 export async function claimApplePayJobItemForProcessing(itemId: number): Promise<boolean> {
   const updated = await db
     .update(applePayJobItems)
-    .set({ status: "processing" })
+    .set({ status: "processing", claimedAt: sql`NOW()` })
     .where(and(eq(applePayJobItems.id, itemId), eq(applePayJobItems.status, "pending")))
     .returning({ id: applePayJobItems.id });
   return updated.length > 0;
@@ -211,6 +224,9 @@ export async function claimAndCompleteApplePayJobItem(
       status: patch.status,
       message: patch.message ?? null,
       processedAt: new Date().toISOString(),
+      // Clear the lease — terminal rows are no longer "in flight" and
+      // must not look like a stuck claim to startup recovery.
+      claimedAt: null,
     })
     .where(
       and(

@@ -194,6 +194,13 @@ the same `SETUP_SECRET` cannot both succeed — exactly one wins, and
 the other receives `ADMIN_EXISTS` (HTTP 403).
 
 ## Recent Changes (2026-04-21)
+- **Apple Pay worker lease-based recovery (#265)**: True at-most-once provider calls across rolling restarts
+  - Schema: added `claimed_at` timestamp column to `apple_pay_job_items`; new `APPLE_PAY_ITEM_LEASE_MS` constant (10 min) shared between schema + storage
+  - Storage: `claimApplePayJobItemForProcessing` now stamps `claimed_at = NOW()`; `claimAndCompleteApplePayJobItem` clears it on terminal write
+  - `recoverInterruptedApplePayJobs` now only reverts `processing` items whose `claimed_at` is older than the lease (or NULL, for backfill safety) — a sibling instance's live in-flight claim is preserved across the rolling restart of another instance
+  - Migration: `migrations/0003_apple_pay_item_lease.sql` (db:push also applied to dev DB)
+  - Tests: 9 passing tests (was 8); replaced the unconditional-orphan test with a lease-expired test, plus a new "rolling restart safety" regression that asserts a fresh claim is NOT reverted while an expired claim is
+
 - **Apple Pay worker pre-call item claim (#260)**: Reduced duplicate provider calls under multi-instance deployments
   - Schema: added `processing` to `APPLE_PAY_JOB_ITEM_STATUSES` (in `shared/schema/apple-pay-jobs.ts`)
   - Storage: new `claimApplePayJobItemForProcessing(itemId)` does atomic `pending`→`processing` flip; `claimAndCompleteApplePayJobItem` now accepts pending OR processing as the source state
