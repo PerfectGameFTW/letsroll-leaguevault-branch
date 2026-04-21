@@ -14,10 +14,10 @@
  *      revives `running` jobs and the worker only re-processes items that
  *      were still `pending`.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { describe, it, expect, afterEach } from "vitest";
+import { inArray } from "drizzle-orm";
 import { db } from "../../server/db";
-import { applePayJobs, applePayJobItems } from "@shared/schema";
+import { applePayJobs } from "@shared/schema";
 import {
   createApplePayJob,
   claimNextApplePayJob,
