@@ -17,6 +17,21 @@ const log = createLogger("AccessControl");
  * built on top of it). The general-purpose CRUD/read paths must never expose
  * org-less rows. This keeps PII contained and surfaces data-integrity bugs
  * instead of silently absorbing them.
+ *
+ * Logging convention for the deny-on-null branches below
+ * ------------------------------------------------------
+ * The org-less drift signal is a development/debug aid, NOT a production
+ * alarm: the access-deny is the actual safety behavior, and the message
+ * pairs a user id with a resource id in plain text — exactly the kind of
+ * correlatable PII we don't want shipped to a production log sink at warn
+ * level. We therefore log these messages at `log.debug` so they only fire
+ * when `LOG_LEVEL=debug` (the dev default per `server/logger.ts`); a
+ * production deploy that sets `LOG_LEVEL=info` (or higher) will suppress
+ * them entirely. The drift signal itself remains observable in production
+ * via the system-admin "Data integrity" surface
+ * (`GET /api/system-admin/orphaned-data-counts` and friends — see replit.md
+ * for the full route list). Any new deny-on-null branch added to this file
+ * MUST follow the same `log.debug` convention.
  */
 
 export function isSystemAdmin(user: Express.User | undefined): boolean {
@@ -30,7 +45,7 @@ export function isOrgOrHigher(user: Express.User | undefined): boolean {
 export function requireOrganizationAccess(req: Request, resourceOrgId: number | null, resourceType?: string, resourceId?: number | string): boolean {
   if (!req.user) return false;
   if (resourceOrgId === null) {
-    log.warn(`${resourceType ?? 'resource'} ${resourceId ?? '?'} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
+    log.debug(`${resourceType ?? 'resource'} ${resourceId ?? '?'} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
     return false;
   }
   if (isSystemAdmin(req.user)) return true;
@@ -48,7 +63,7 @@ export async function hasAccessToLeague(req: Request, leagueId: number): Promise
   }
 
   if (league.organizationId === null) {
-    log.warn(`league ${leagueId} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
+    log.debug(`league ${leagueId} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
     return false;
   }
 
@@ -126,7 +141,7 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
       return true;
     }
     if (league.organizationId === null) {
-      log.warn(`bowler ${bowlerId} via league ${league.id} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
+      log.debug(`bowler ${bowlerId} via league ${league.id} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
       continue;
     }
     if (userIsSystemAdmin) {
@@ -252,7 +267,7 @@ export async function hasAccessToBowlers(
         break;
       }
       if (league.organizationId === null) {
-        log.warn(`bowler ${bowlerId} via league ${league.id} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
+        log.debug(`bowler ${bowlerId} via league ${league.id} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
         continue;
       }
       if (userIsSystemAdmin) {
@@ -288,7 +303,7 @@ export async function hasAccessToPayment(req: Request, paymentId: number): Promi
     }
 
     if (league.organizationId === null) {
-      log.warn(`payment ${paymentId} via league ${payment.leagueId} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
+      log.debug(`payment ${paymentId} via league ${payment.leagueId} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
       return false;
     }
 
