@@ -267,11 +267,7 @@ describe('POST /api/account/confirm-email-change', () => {
     expect(res.data.error?.code).toBe('TOKEN_EXPIRED');
   });
 
-  it('rejects a bogus token (400 INVALID_TOKEN, or 403 from the CSRF gate when called anonymously)', async () => {
-    // Anonymous callers hit the CSRF middleware first (which is correct —
-    // the confirm link is normally clicked from a frontend page that
-    // attaches the user's CSRF token). When they DO attach a session, the
-    // token-validity check returns INVALID_TOKEN.
+  it('rejects a bogus token with INVALID_TOKEN, both authenticated and anonymous (the endpoint is CSRF-exempt by design)', async () => {
     const { session } = await createUserAndLogin();
     const res = await apiPost(
       `/api/account/confirm-email-change`,
@@ -282,9 +278,10 @@ describe('POST /api/account/confirm-email-change', () => {
     expect(res.data.error?.code).toBe('INVALID_TOKEN');
 
     const anon = await apiPost(`/api/account/confirm-email-change`, {
-      token: 'never-issued-deadbeef',
+      token: 'never-issued-deadbeef-anon',
     });
-    expect([400, 403]).toContain(anon.status);
+    expect(anon.status).toBe(400);
+    expect(anon.data.error?.code).toBe('INVALID_TOKEN');
   });
 
   it('rejects when the target email was claimed between request and confirm', async () => {

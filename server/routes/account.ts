@@ -302,8 +302,8 @@ router.post('/confirm-email-change', async (req: Request, res: Response) => {
       | { kind: 'invalid' }
       | { kind: 'consumed' }
       | { kind: 'expired' }
-      | { kind: 'user_gone' }
-      | { kind: 'email_in_use' };
+      | { kind: 'user_gone' };
+    // (EMAIL_IN_USE is handled via the catch on PG error 23505 below.)
 
     let outcome: ConfirmResult;
     try {
