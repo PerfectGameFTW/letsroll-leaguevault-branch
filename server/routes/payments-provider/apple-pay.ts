@@ -90,6 +90,93 @@ router.get('/apple-pay/jobs/:id', async (req: any, res) => {
   }
 });
 
+router.post('/apple-pay/jobs/:id/cancel', async (req: any, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
+    }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return sendError(res, 'Invalid job id', 400, 'INVALID_ID');
+
+    const existing = await storage.getApplePayJob(id);
+    if (!existing) return sendError(res, 'Job not found', 404, 'NOT_FOUND');
+
+    const updated = await storage.cancelApplePayJob(id);
+    if (!updated) {
+      return sendError(
+        res,
+        `Job is ${existing.status}; only pending or running jobs can be canceled.`,
+        409,
+        'NOT_CANCELABLE',
+      );
+    }
+    log.warn('Apple Pay job canceled by admin', { jobId: id, by: req.user?.id });
+    sendSuccess(res, { job: updated });
+  } catch (error) {
+    log.error('Apple Pay job cancel error:', error);
+    sendError(res, 'Failed to cancel job', 500);
+  }
+});
+
+router.post('/apple-pay/jobs/:id/retry', async (req: any, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
+    }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return sendError(res, 'Invalid job id', 400, 'INVALID_ID');
+
+    const existing = await storage.getApplePayJob(id);
+    if (!existing) return sendError(res, 'Job not found', 404, 'NOT_FOUND');
+
+    const result = await storage.retryApplePayJob(id);
+    if (!result) {
+      return sendError(
+        res,
+        `No failed items to retry on this job (status: ${existing.status}).`,
+        409,
+        'NOT_RETRYABLE',
+      );
+    }
+    applePayWorker.kick();
+    log.info('Apple Pay job retried by admin', { jobId: id, by: req.user?.id, resetCount: result.resetCount });
+    sendSuccess(res, { job: result.job, resetCount: result.resetCount });
+  } catch (error) {
+    log.error('Apple Pay job retry error:', error);
+    sendError(res, 'Failed to retry job', 500);
+  }
+});
+
+router.post('/apple-pay/jobs/:id/items/:itemId/retry', async (req: any, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
+    }
+    const id = parseInt(req.params.id, 10);
+    const itemId = parseInt(req.params.itemId, 10);
+    if (isNaN(id) || isNaN(itemId)) return sendError(res, 'Invalid id', 400, 'INVALID_ID');
+
+    const existing = await storage.getApplePayJob(id);
+    if (!existing) return sendError(res, 'Job not found', 404, 'NOT_FOUND');
+
+    const result = await storage.retryApplePayJobItem(id, itemId);
+    if (!result) {
+      return sendError(
+        res,
+        `Item is not retryable (job status: ${existing.status}). Items can only be retried on failed/partial/canceled jobs.`,
+        409,
+        'NOT_RETRYABLE',
+      );
+    }
+    applePayWorker.kick();
+    log.info('Apple Pay job item retried by admin', { jobId: id, itemId, by: req.user?.id });
+    sendSuccess(res, { item: result.item, job: result.job });
+  } catch (error) {
+    log.error('Apple Pay item retry error:', error);
+    sendError(res, 'Failed to retry item', 500);
+  }
+});
+
 router.post('/apple-pay/register-domain', async (req: any, res) => {
   try {
     if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {

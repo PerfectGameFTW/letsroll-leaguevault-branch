@@ -233,6 +233,13 @@ export interface IApplePayJobStorage {
       errorMessage?: string | null;
     },
   ): Promise<void>;
+  getApplePayJobStatus(jobId: number): Promise<ApplePayJobStatus | undefined>;
+  cancelApplePayJob(jobId: number): Promise<ApplePayJob | undefined>;
+  retryApplePayJob(jobId: number): Promise<{ job: ApplePayJob; resetCount: number } | undefined>;
+  retryApplePayJobItem(
+    jobId: number,
+    itemId: number,
+  ): Promise<{ item: ApplePayJobItem; job: ApplePayJob } | undefined>;
 }
 
 export interface IStorage extends

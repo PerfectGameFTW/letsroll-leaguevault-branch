@@ -166,6 +166,10 @@ export class DatabaseStorage implements IStorage {
   getApplePayJobItems!: IStorage["getApplePayJobItems"];
   updateApplePayJobItem!: IStorage["updateApplePayJobItem"];
   finalizeApplePayJob!: IStorage["finalizeApplePayJob"];
+  getApplePayJobStatus!: IStorage["getApplePayJobStatus"];
+  cancelApplePayJob!: IStorage["cancelApplePayJob"];
+  retryApplePayJob!: IStorage["retryApplePayJob"];
+  retryApplePayJobItem!: IStorage["retryApplePayJobItem"];
 
   constructor() {
     Object.assign(this, {

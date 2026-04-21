@@ -244,6 +244,121 @@ export async function getApplePayJobItemCounts(jobId: number): Promise<{
   return result;
 }
 
+/**
+ * Lightweight status read used by the worker to detect mid-job cancellation.
+ */
+export async function getApplePayJobStatus(jobId: number): Promise<ApplePayJobStatus | undefined> {
+  const [row] = await db
+    .select({ status: applePayJobs.status })
+    .from(applePayJobs)
+    .where(eq(applePayJobs.id, jobId));
+  return row?.status as ApplePayJobStatus | undefined;
+}
+
+/**
+ * Cancel a job. Behavior depends on current status:
+ *  - `pending`: flips to `canceled` immediately and stamps completedAt.
+ *  - `running`: flips to `canceled`; the worker checks status between items
+ *    and stops issuing new provider calls. Already-claimed items finish.
+ * Returns the updated job, or `undefined` if it was not in a cancelable state.
+ */
+export async function cancelApplePayJob(jobId: number): Promise<ApplePayJob | undefined> {
+  const [updated] = await db
+    .update(applePayJobs)
+    .set({
+      status: "canceled",
+      completedAt: sql`COALESCE(${applePayJobs.completedAt}, NOW())`,
+    })
+    .where(and(
+      eq(applePayJobs.id, jobId),
+      sql`${applePayJobs.status} IN ('pending', 'running')`,
+    ))
+    .returning();
+  return updated;
+}
+
+/**
+ * Reset failed items in a terminal job back to `pending` and re-open the job
+ * so the worker will pick it up again. Idempotent — only acts on jobs in a
+ * terminal state. Returns the re-opened job, or `undefined` if not retryable
+ * (e.g. already pending/running, or no failed items).
+ */
+export async function retryApplePayJob(jobId: number): Promise<{ job: ApplePayJob; resetCount: number } | undefined> {
+  return db.transaction(async (tx) => {
+    const [job] = await tx.select().from(applePayJobs).where(eq(applePayJobs.id, jobId));
+    if (!job) return undefined;
+    if (job.status !== "failed" && job.status !== "partial" && job.status !== "canceled") {
+      return undefined;
+    }
+
+    const reset = await tx
+      .update(applePayJobItems)
+      .set({ status: "pending", message: null, processedAt: null })
+      .where(and(eq(applePayJobItems.jobId, jobId), eq(applePayJobItems.status, "failed")))
+      .returning({ id: applePayJobItems.id });
+
+    if (reset.length === 0) return undefined;
+
+    const [updated] = await tx
+      .update(applePayJobs)
+      .set({
+        status: "pending",
+        completedAt: null,
+        errorMessage: null,
+      })
+      .where(eq(applePayJobs.id, jobId))
+      .returning();
+    return { job: updated, resetCount: reset.length };
+  });
+}
+
+/**
+ * Reset a single failed item back to `pending` and re-open its parent job
+ * so the worker will retry just that item. The retry is only permitted when
+ * the parent job is itself in a terminal state — retrying an item while the
+ * job is still `running` would strand the reset row outside the worker's
+ * already-loaded pending queue, leading to incorrect final accounting.
+ *
+ * Scoping is enforced atomically: the item must belong to `jobId`. If the
+ * caller passes a mismatched `(jobId, itemId)` pair, no rows are mutated.
+ *
+ * Returns the updated item + job, or `undefined` if the item/job is not in
+ * a retryable state.
+ */
+export async function retryApplePayJobItem(
+  jobId: number,
+  itemId: number,
+): Promise<{ item: ApplePayJobItem; job: ApplePayJob } | undefined> {
+  return db.transaction(async (tx) => {
+    // Validate parent-job state BEFORE touching the item, so a mismatched
+    // (jobId, itemId) or a non-terminal job leaves all rows unchanged.
+    const [job] = await tx.select().from(applePayJobs).where(eq(applePayJobs.id, jobId));
+    if (!job) return undefined;
+    if (job.status !== "failed" && job.status !== "partial" && job.status !== "canceled") {
+      return undefined;
+    }
+
+    const [updatedItem] = await tx
+      .update(applePayJobItems)
+      .set({ status: "pending", message: null, processedAt: null })
+      .where(and(
+        eq(applePayJobItems.id, itemId),
+        eq(applePayJobItems.jobId, jobId),
+        eq(applePayJobItems.status, "failed"),
+      ))
+      .returning();
+    if (!updatedItem) return undefined;
+
+    const [reopened] = await tx
+      .update(applePayJobs)
+      .set({ status: "pending", completedAt: null, errorMessage: null })
+      .where(eq(applePayJobs.id, jobId))
+      .returning();
+
+    return { item: updatedItem, job: reopened };
+  });
+}
+
 export async function finalizeApplePayJob(
   jobId: number,
   patch: {

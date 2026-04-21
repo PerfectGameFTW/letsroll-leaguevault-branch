@@ -10,6 +10,7 @@ export const APPLE_PAY_JOB_STATUSES = [
   "succeeded",
   "failed",
   "partial",
+  "canceled",
 ] as const;
 export type ApplePayJobStatus = typeof APPLE_PAY_JOB_STATUSES[number];
 

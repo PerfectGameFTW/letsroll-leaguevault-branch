@@ -82,10 +82,25 @@ class ApplePayWorker {
         await storage.setApplePayJobTotal(job.id, existingCount);
       }
 
+      // Cancellation may have flipped status to `canceled` during enumeration.
+      if (await this.isCanceled(job.id)) {
+        await this.recordCanceled(job.id);
+        return;
+      }
+
       const pending = await storage.getPendingApplePayJobItems(job.id);
       log("Items to process", { jobId: job.id, pending: pending.length });
 
-      await this.processItemsWithConcurrency(pending, CONCURRENCY_LIMIT);
+      const canceledMidFlight = await this.processItemsWithConcurrency(
+        pending,
+        CONCURRENCY_LIMIT,
+        () => this.isCanceled(job.id),
+      );
+
+      if (canceledMidFlight) {
+        await this.recordCanceled(job.id);
+        return;
+      }
 
       // Tally final counts from the source of truth (items table).
       const counts = await storage.getApplePayJobItemCounts(job.id);
@@ -111,6 +126,11 @@ class ApplePayWorker {
         jobId: job.id,
         err: err instanceof Error ? err.message : String(err),
       });
+      // Don't trample an admin's cancellation with a `failed` finalize.
+      if (await this.isCanceled(job.id)) {
+        await this.recordCanceled(job.id);
+        return;
+      }
       const counts = await storage
         .getApplePayJobItemCounts(job.id)
         .catch(() => ({ succeeded: 0, failed: 0, skipped: 0, pending: 0 }));
@@ -122,6 +142,30 @@ class ApplePayWorker {
         errorMessage: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  private async isCanceled(jobId: number): Promise<boolean> {
+    const status = await storage.getApplePayJobStatus(jobId).catch(() => undefined);
+    return status === "canceled";
+  }
+
+  /**
+   * Roll up final counts on a canceled job without overwriting its status.
+   * Cancellation already stamped status='canceled' + completedAt; we just
+   * reconcile the per-status counters from the items table.
+   */
+  private async recordCanceled(jobId: number): Promise<void> {
+    const counts = await storage
+      .getApplePayJobItemCounts(jobId)
+      .catch(() => ({ succeeded: 0, failed: 0, skipped: 0, pending: 0 }));
+    await storage.finalizeApplePayJob(jobId, {
+      status: "canceled",
+      succeededCount: counts.succeeded,
+      failedCount: counts.failed,
+      skippedCount: counts.skipped,
+      errorMessage: null,
+    });
+    warn("Job canceled by admin", { jobId, ...counts });
   }
 
   private async enumerateItems(jobId: number): Promise<void> {
@@ -172,16 +216,35 @@ class ApplePayWorker {
     log("Enumerated items", { jobId, total: items.length });
   }
 
+  /**
+   * Returns `true` if processing was halted because `shouldCancel` flipped
+   * to true mid-flight. Already-claimed items finish; no new items start.
+   * Cancellation is polled at most once per second to keep DB load bounded
+   * even with many short-running items.
+   */
   private async processItemsWithConcurrency(
     items: ApplePayJobItem[],
     limit: number,
-  ): Promise<void> {
-    if (items.length === 0) return;
+    shouldCancel: () => Promise<boolean>,
+  ): Promise<boolean> {
+    if (items.length === 0) return false;
     const queue = items.slice();
     const workers: Promise<void>[] = [];
 
+    let canceled = false;
+    let lastCheckAt = 0;
+    const checkCancel = async (): Promise<void> => {
+      if (canceled) return;
+      const now = Date.now();
+      if (now - lastCheckAt < 1000) return;
+      lastCheckAt = now;
+      if (await shouldCancel()) canceled = true;
+    };
+
     const next = async (): Promise<void> => {
       while (queue.length > 0) {
+        await checkCancel();
+        if (canceled) return;
         const item = queue.shift();
         if (!item) return;
         await this.processItem(item);
@@ -192,6 +255,7 @@ class ApplePayWorker {
       workers.push(next());
     }
     await Promise.all(workers);
+    return canceled;
   }
 
   private async processItem(item: ApplePayJobItem): Promise<void> {

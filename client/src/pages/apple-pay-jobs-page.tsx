@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Layout } from '@/components/layout';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
   DialogContent,
@@ -31,6 +33,7 @@ const JOB_STATUS_META: Record<ApplePayJobStatus, { label: string; variant: Badge
   succeeded: { label: 'Succeeded', variant: 'secondary' },
   failed: { label: 'Failed', variant: 'destructive' },
   partial: { label: 'Partial', variant: 'default' },
+  canceled: { label: 'Canceled', variant: 'outline' },
 };
 
 const ITEM_STATUS_META: Record<ApplePayJobItemStatus, { label: string; variant: BadgeVariant }> = {
@@ -54,6 +57,17 @@ function isActive(status: string): boolean {
   return status === 'pending' || status === 'running';
 }
 
+function isRetryable(status: string): boolean {
+  return status === 'failed' || status === 'partial' || status === 'canceled';
+}
+
+function invalidateJobQueries(jobId?: number) {
+  queryClient.invalidateQueries({ queryKey: ['/api/payments-provider/apple-pay/jobs'] });
+  if (jobId !== undefined) {
+    queryClient.invalidateQueries({ queryKey: ['/api/payments-provider/apple-pay/jobs', jobId] });
+  }
+}
+
 interface JobDetailResponse {
   job: ApplePayJob;
   counts: {
@@ -67,6 +81,7 @@ interface JobDetailResponse {
 }
 
 function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => void }) {
+  const { toast } = useToast();
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery<ApiResponse<JobDetailResponse>>({
     queryKey: ['/api/payments-provider/apple-pay/jobs', jobId],
     queryFn: async () => {
@@ -87,6 +102,58 @@ function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => voi
   const job = detail?.job;
   const counts = detail?.counts;
   const items = detail?.items ?? [];
+
+  const cancelMutation = useMutation({
+    mutationFn: async () => apiRequest(`/api/payments-provider/apple-pay/jobs/${jobId}/cancel`, 'POST'),
+    onSuccess: (resp) => {
+      if (resp.success) {
+        toast({ title: 'Job canceled', description: `Job #${jobId} has been canceled.` });
+        invalidateJobQueries(jobId);
+      } else {
+        toast({ title: 'Could not cancel', description: resp.error?.message ?? 'Unknown error', variant: 'destructive' });
+      }
+    },
+    onError: (err: unknown) => {
+      toast({ title: 'Could not cancel', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    },
+  });
+
+  const retryMutation = useMutation({
+    mutationFn: async () => apiRequest<{ resetCount: number }>(`/api/payments-provider/apple-pay/jobs/${jobId}/retry`, 'POST'),
+    onSuccess: (resp) => {
+      if (resp.success) {
+        toast({
+          title: 'Job retry queued',
+          description: `Re-queued ${resp.data?.resetCount ?? 0} failed item(s).`,
+        });
+        invalidateJobQueries(jobId);
+      } else {
+        toast({ title: 'Could not retry', description: resp.error?.message ?? 'Unknown error', variant: 'destructive' });
+      }
+    },
+    onError: (err: unknown) => {
+      toast({ title: 'Could not retry', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    },
+  });
+
+  const itemRetryMutation = useMutation({
+    mutationFn: async (itemId: number) =>
+      apiRequest(`/api/payments-provider/apple-pay/jobs/${jobId}/items/${itemId}/retry`, 'POST'),
+    onSuccess: (resp) => {
+      if (resp.success) {
+        toast({ title: 'Item retry queued' });
+        invalidateJobQueries(jobId);
+      } else {
+        toast({ title: 'Could not retry item', description: resp.error?.message ?? 'Unknown error', variant: 'destructive' });
+      }
+    },
+    onError: (err: unknown) => {
+      toast({ title: 'Could not retry item', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
+    },
+  });
+
+  const canCancel = job ? isActive(job.status) : false;
+  const canRetry = job ? isRetryable(job.status) : false;
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -126,6 +193,34 @@ function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => voi
               {isActive(job.status) && (
                 <span className="text-xs text-muted-foreground">Refreshing every 3s…</span>
               )}
+              <div className="ml-auto flex flex-wrap gap-2">
+                {canCancel && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (window.confirm(`Cancel job #${jobId}? In-flight item registrations will finish; the worker will stop picking up new ones within a few seconds.`)) {
+                        cancelMutation.mutate();
+                      }
+                    }}
+                    disabled={cancelMutation.isPending}
+                    data-testid="button-cancel-job"
+                  >
+                    {cancelMutation.isPending ? 'Canceling…' : 'Cancel job'}
+                  </Button>
+                )}
+                {canRetry && counts.failed > 0 && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={() => retryMutation.mutate()}
+                    disabled={retryMutation.isPending}
+                    data-testid="button-retry-job"
+                  >
+                    {retryMutation.isPending ? 'Retrying…' : `Retry ${counts.failed} failed item${counts.failed === 1 ? '' : 's'}`}
+                  </Button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -150,18 +245,24 @@ function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => voi
                     <TableHead>Status</TableHead>
                     <TableHead>Message</TableHead>
                     <TableHead>Processed</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
                         No items recorded for this job.
                       </TableCell>
                     </TableRow>
                   ) : (
                     items.map((item) => {
                       const meta = ITEM_STATUS_META[item.status as ApplePayJobItemStatus] ?? ITEM_STATUS_META.pending;
+                      // Item retry is only safe when the parent job is terminal —
+                      // otherwise the worker's preloaded pending queue would skip
+                      // the reset row. Backend enforces this too.
+                      const itemRetryable = item.status === 'failed' && canRetry;
+                      const isThisItemRetrying = itemRetryMutation.isPending && itemRetryMutation.variables === item.id;
                       return (
                         <TableRow key={item.id}>
                           <TableCell className="font-medium">{item.domain}</TableCell>
@@ -175,6 +276,19 @@ function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => voi
                           </TableCell>
                           <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                             {formatDate(item.processedAt)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {itemRetryable ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => itemRetryMutation.mutate(item.id)}
+                                disabled={itemRetryMutation.isPending}
+                                data-testid={`button-retry-item-${item.id}`}
+                              >
+                                {isThisItemRetrying ? 'Retrying…' : 'Retry'}
+                              </Button>
+                            ) : null}
                           </TableCell>
                         </TableRow>
                       );
