@@ -19,7 +19,7 @@
  * The SQL helpers in `server/storage/payments.ts` already enforce these
  * rules at the query level by joining `payments` to `leagues` on
  * `organization_id` (see `buildPaymentConditions`), and the
- * `/api/payments` route in `server/routes/payments.ts` already dispatches
+ * `/api/payments` route in `server/routes/payments/` already dispatches
  * to them. This test pins the in-memory helper so any future caller that
  * MUST take a list it didn't fetch from our DB still gets the same answer.
  */

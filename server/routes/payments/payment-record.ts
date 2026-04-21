@@ -1,95 +1,27 @@
 /**
- * Payment DB CRUD router (mounted at /api/payments).
+ * Payment record CRUD endpoints (mounted under /api/payments).
  *
- * Owns the **persistence side** of payments: list/create/update/delete/refund
- * payment rows. Refunds delegate the provider call to the payment provider but
- * return through this router because the DB record is the source of truth for
- * the user-visible payment list.
- *
- * For provider-side execution (charging cards, customers, catalog, wallets,
- * card vault), see `payment-routes.ts` mounted at /api/payments-provider.
+ * Owns create / update / delete of payment rows. Refund handling lives in
+ * `payment-refunds.ts` and listing/reporting lives in `payment-reports.ts`.
  */
 import { Router } from 'express';
-import { storage } from '../storage';
+import { storage } from '../../storage';
 import { insertPaymentSchema, updatePaymentSchema } from "@shared/schema";
 import { isCardPaymentType } from "@shared/schema/constants";
 import { z } from "zod";
-import { sendSuccess, sendError, sendPaginatedSuccess, parsePaginationParams, handleZodError } from '../utils/api.js';
-import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
-import { hasAccessToPayment, requireOrganizationAccess } from '../utils/access-control.js';
-import { paymentWriteLimiter } from '../middleware/rate-limit.js';
+import { sendSuccess, sendError, handleZodError } from '../../utils/api.js';
+import { hasAccessToPayment, requireOrganizationAccess } from '../../utils/access-control.js';
+import { paymentWriteLimiter } from '../../middleware/rate-limit.js';
 import { differenceInWeeks } from 'date-fns';
-import { paymentScheduler } from '../services/payment-scheduler.js';
-import { db } from '../db.js';
+import { paymentScheduler } from '../../services/payment-scheduler.js';
+import { db } from '../../db.js';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
 import { payments as paymentsTable } from '@shared/schema';
-import { createLogger } from '../logger';
+import { createLogger } from '../../logger';
 
 const log = createLogger("Payments");
 
 const router = Router();
-
-// Get payments with optional filters
-router.get("/", async (req, res) => {
-  try {
-    const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
-    const isSystemAdmin = req.user?.role === 'system_admin';
-    const rawQueryOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
-    if (rawQueryOrgId !== undefined && isNaN(rawQueryOrgId)) {
-      return sendError(res, "Invalid organization ID format", 400);
-    }
-    // Effective org context: explicit param > sysadmin's own org > null (unaffiliated sysadmin)
-    const effectiveOrgId: number | null = isSystemAdmin
-      ? (rawQueryOrgId ?? req.user?.organizationId ?? null)
-      : (req.user?.organizationId ?? null);
-
-    if (leagueId) {
-      const league = await storage.getLeague(leagueId);
-      if (!league) {
-        return sendError(res, "League not found", 404, 'NOT_FOUND');
-      }
-      if (!requireOrganizationAccess(req, league.organizationId, 'league', leagueId)) {
-        return sendError(res, "You don't have access to this league's payments", 403, 'FORBIDDEN');
-      }
-    }
-
-    if (!isSystemAdmin && effectiveOrgId === null) {
-      return sendSuccess(res, []);
-    }
-
-    const baseFilters = {
-      bowlerId: req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined,
-      leagueId,
-      teamId: req.query.teamId ? parseInt(req.query.teamId as string) : undefined,
-      weekOf: req.query.weekOf ? new Date(req.query.weekOf as string) : undefined,
-    };
-
-    const paginationParams = parsePaginationParams(req.query);
-
-    if (isSystemAdmin && effectiveOrgId === null) {
-      if (paginationParams) {
-        const result = await storage.getAllPaymentsPaginatedSystemAdmin(baseFilters, paginationParams.page, paginationParams.limit);
-        return sendPaginatedSuccess(res, result.items, result.pagination);
-      }
-      const payments = await storage.getAllPaymentsSystemAdmin(baseFilters);
-      return sendSuccess(res, payments);
-    }
-
-    const filters = { ...baseFilters, organizationId: effectiveOrgId! };
-
-    if (paginationParams) {
-      const result = await storage.getPaymentsPaginated(filters, paginationParams.page, paginationParams.limit);
-      return sendPaginatedSuccess(res, result.items, result.pagination);
-    }
-
-    const payments = await storage.getPayments(filters);
-    
-    sendSuccess(res, payments);
-  } catch (error) {
-    log.error('Get error:', error);
-    sendError(res, 'Failed to fetch payments');
-  }
-});
 
 // Create new payment
 router.post("/", paymentWriteLimiter, async (req, res) => {
@@ -265,64 +197,6 @@ router.delete("/:id", paymentWriteLimiter, async (req, res) => {
   } catch (error) {
     log.error('Delete error:', error);
     sendError(res, 'Failed to delete payment');
-  }
-});
-
-router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) {
-      return sendError(res, "Invalid payment ID", 400, "INVALID_ID");
-    }
-
-    if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
-      return sendError(res, "Only admins can process refunds", 403, "FORBIDDEN");
-    }
-
-    const payment = await storage.getPaymentById(id);
-    if (!payment) {
-      return sendError(res, "Payment not found", 404, "NOT_FOUND");
-    }
-
-    if (payment.status === 'refunded') {
-      return sendError(res, "Payment has already been refunded", 400, "ALREADY_REFUNDED");
-    }
-
-    if (payment.status !== 'paid') {
-      return sendError(res, "Only paid payments can be refunded", 400, "INVALID_STATUS");
-    }
-
-    if (!isCardPaymentType(payment.type)) {
-      return sendError(res, "Only card payments can be refunded", 400, "INVALID_TYPE");
-    }
-
-    if (req.user.role !== 'system_admin') {
-      const hasAccess = await hasAccessToPayment(req, id);
-      if (!hasAccess) {
-        return sendError(res, "You don't have access to refund this payment", 403, "FORBIDDEN");
-      }
-    }
-
-    const { reason } = req.body || {};
-    let providerRefundId: string | undefined;
-
-    const providerPaymentRef = payment.cardpointeRetref || payment.providerPaymentId;
-    if (providerPaymentRef && isCardPaymentType(payment.type)) {
-      const league = await storage.getLeague(payment.leagueId);
-      const locationId = league?.locationId ?? null;
-      const provider = await getPaymentProvider(locationId);
-      const refundResult = await provider.refundPayment(providerPaymentRef, payment.amount, reason);
-      providerRefundId = refundResult.refundId;
-    }
-
-    const refunded = await storage.refundPayment(id, providerRefundId, reason);
-    sendSuccess(res, refunded);
-  } catch (error) {
-    if (error instanceof ProviderNotConfiguredError) {
-      return sendError(res, 'Payment provider not available for refund processing', 422, 'PROVIDER_NOT_CONFIGURED');
-    }
-    log.error('Refund error:', error);
-    sendError(res, 'Failed to process refund');
   }
 });
 

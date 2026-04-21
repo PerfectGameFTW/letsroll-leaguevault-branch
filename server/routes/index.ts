@@ -3,7 +3,7 @@ import { Router } from "express";
 import leaguesRouter from './leagues.js';
 import teamsRouter from './teams.js';
 import bowlersRouter from './bowlers.js';
-import paymentsRouter from './payments.js';
+import paymentsRouter from './payments/index.js';
 import bowlerLeaguesRouter from './bowler-leagues.js';
 import scoresRouter from './scores.js';
 import gamesRouter from './games.js';
