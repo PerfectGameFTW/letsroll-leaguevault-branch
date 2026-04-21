@@ -31,6 +31,9 @@ export type { InsertEmailTemplate, UpdateEmailTemplate, EmailTemplate } from "./
 export { deletionRequests, insertDeletionRequestSchema, updateDeletionRequestStatusSchema, DELETION_REQUEST_STATUSES } from "./deletion-requests";
 export type { DeletionRequest, InsertDeletionRequest, UpdateDeletionRequestStatus, DeletionRequestStatus } from "./deletion-requests";
 
+export { emailChangeRequests, insertEmailChangeRequestSchema } from "./email-change-requests";
+export type { EmailChangeRequest, InsertEmailChangeRequest } from "./email-change-requests";
+
 export {
   orphanCleanupAudits,
   insertOrphanCleanupAuditSchema,

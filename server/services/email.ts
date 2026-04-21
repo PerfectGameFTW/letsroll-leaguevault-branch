@@ -482,6 +482,121 @@ export async function sendApplePayRecoveryAlert(
   }
 }
 
+export async function sendEmailChangeConfirmation(
+  toEmail: string,
+  userName: string,
+  confirmUrl: string,
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    log.error('Cannot send email-change confirmation — SENDGRID_API_KEY not configured');
+    return false;
+  }
+
+  const safeName = escapeHtml(userName || 'there');
+  const safeUrl = escapeHtml(confirmUrl);
+
+  const msg = {
+    to: toEmail,
+    from: { email: FROM_EMAIL, name: FROM_NAME },
+    subject: 'Confirm your new LeagueVault email address',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <p style="font-size: 16px; color: #333;">Hi ${safeName},</p>
+        <p style="font-size: 16px; color: #333;">
+          We received a request to use this address as the login email for your
+          LeagueVault account. Please confirm by clicking the button below.
+          Your login email will <strong>not</strong> change until you confirm.
+        </p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${safeUrl}"
+             style="background-color: #1a1a2e; color: #ffffff; padding: 14px 28px;
+                    text-decoration: none; border-radius: 6px; font-size: 16px;
+                    display: inline-block; font-weight: bold;">
+            Confirm Email Change
+          </a>
+        </div>
+        <p style="font-size: 14px; color: #666;">
+          If the button doesn't work, copy and paste this link into your browser:
+        </p>
+        <p style="font-size: 14px; color: #666; word-break: break-all;">
+          <a href="${safeUrl}">${safeUrl}</a>
+        </p>
+        <p style="font-size: 14px; color: #666;">
+          This link expires in 24 hours and can be used only once. If you didn't
+          request this change, you can safely ignore this email.
+        </p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="font-size: 12px; color: #999; text-align: center;">Powered by LeagueVault</p>
+      </div>
+    `,
+    trackingSettings: { clickTracking: { enable: false, enableText: false } },
+  };
+
+  try {
+    await sgMail.send(msg);
+    log.info('Email-change confirmation sent to:', isDev ? toEmail : maskEmail(toEmail));
+    return true;
+  } catch (error: any) {
+    log.error('Failed to send email-change confirmation:', error?.response?.body || error.message);
+    return false;
+  }
+}
+
+export async function sendEmailChangeNotification(
+  toEmail: string,
+  userName: string,
+  newEmailMasked: string,
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    log.error('Cannot send email-change notification — SENDGRID_API_KEY not configured');
+    return false;
+  }
+
+  const safeName = escapeHtml(userName || 'there');
+  const safeMasked = escapeHtml(newEmailMasked);
+  const supportUrl = `${getBaseUrl()}/support`;
+
+  const msg = {
+    to: toEmail,
+    from: { email: FROM_EMAIL, name: FROM_NAME },
+    subject: 'Email change requested on your LeagueVault account',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <p style="font-size: 16px; color: #333;">Hi ${safeName},</p>
+        <p style="font-size: 16px; color: #333;">
+          Someone — most likely you — requested to change the login email on
+          your LeagueVault account to <strong>${safeMasked}</strong>.
+        </p>
+        <p style="font-size: 16px; color: #333;">
+          Your login email has <strong>not</strong> changed yet. It will only
+          change once the new address confirms ownership via the link sent to
+          them.
+        </p>
+        <p style="font-size: 16px; color: #333;">
+          <strong>If this wasn't you</strong>, please change your password
+          immediately and contact support — someone may have access to your
+          account.
+        </p>
+        <p style="font-size: 14px; color: #666; word-break: break-all;">
+          <a href="${escapeHtml(supportUrl)}">${escapeHtml(supportUrl)}</a>
+        </p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="font-size: 12px; color: #999; text-align: center;">Powered by LeagueVault</p>
+      </div>
+    `,
+    trackingSettings: { clickTracking: { enable: false, enableText: false } },
+  };
+
+  try {
+    await sgMail.send(msg);
+    log.info('Email-change notification sent to:', isDev ? toEmail : maskEmail(toEmail));
+    return true;
+  } catch (error: any) {
+    log.error('Failed to send email-change notification:', error?.response?.body || error.message);
+    return false;
+  }
+}
+
 export async function resendInviteEmail(
   toEmail: string,
   userName: string,

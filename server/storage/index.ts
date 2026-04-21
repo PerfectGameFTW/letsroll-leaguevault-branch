@@ -10,6 +10,7 @@ import * as orgStorage from "./organizations";
 import * as locationStorage from "./locations";
 import * as emailTemplateStorage from "./email-templates";
 import * as deletionRequestStorage from "./deletion-requests";
+import * as emailChangeRequestStorage from "./email-change-requests";
 import * as applePayJobStorage from "./apple-pay-jobs";
 import * as alerterStateStorage from "./alerter-state";
 
@@ -151,6 +152,12 @@ export class DatabaseStorage implements IStorage {
   updateDeletionRequestStatus!: IStorage["updateDeletionRequestStatus"];
   countDeletionRequestsForEmailSince!: IStorage["countDeletionRequestsForEmailSince"];
 
+  createEmailChangeRequest!: IStorage["createEmailChangeRequest"];
+  getEmailChangeRequestByTokenHash!: IStorage["getEmailChangeRequestByTokenHash"];
+  consumeEmailChangeRequest!: IStorage["consumeEmailChangeRequest"];
+  claimEmailChangeRequest!: IStorage["claimEmailChangeRequest"];
+  invalidatePendingEmailChangeRequestsForUser!: IStorage["invalidatePendingEmailChangeRequestsForUser"];
+
   bootstrapFirstAdmin!: IStorage["bootstrapFirstAdmin"];
   promoteFirstAdmin!: IStorage["promoteFirstAdmin"];
 
@@ -191,6 +198,7 @@ export class DatabaseStorage implements IStorage {
       ...locationStorage,
       ...emailTemplateStorage,
       ...deletionRequestStorage,
+      ...emailChangeRequestStorage,
       ...applePayJobStorage,
       ...alerterStateStorage,
     });

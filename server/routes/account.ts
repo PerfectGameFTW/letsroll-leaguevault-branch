@@ -9,9 +9,19 @@ import { updateUserSchemaBase, insertDeletionRequestSchema } from '@shared/schem
 import { createLogger } from '../logger';
 import { isDev } from '../config';
 import { comparePasswords } from '../lib/password';
-import { sendDeletionRequestNotification } from '../services/email';
+import {
+  sendDeletionRequestNotification,
+  sendEmailChangeConfirmation,
+  sendEmailChangeNotification,
+  getBaseUrl,
+} from '../services/email';
 import { requireSystemAdmin } from '../middleware/auth';
 import { syncBowlerForUser, type PaymentSyncStatus } from '../services/payment-customer-sync';
+import { maskEmail } from '../utils/pii';
+import { randomBytes, createHash } from 'crypto';
+import { db } from '../db';
+import { emailChangeRequests, users } from '@shared/schema';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 
 const log = createLogger('Account');
 const router = Router();
@@ -112,9 +122,16 @@ router.post('/request-deletion', deletionRequestLimiter, async (req, res) => {
   }
 });
 
-// Update user profile (name/email/phone) — also syncs the linked bowler + payment customer.
+// How long an email-change confirmation token stays valid.
+const EMAIL_CHANGE_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+function hashEmailChangeToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
+}
+
+// Update user profile (name/phone synchronously; email gated by confirmation).
 //
-// Response contract (200): { ...sanitizedUser, paymentSyncStatus }
+// Response contract (200): { ...sanitizedUser, paymentSyncStatus, emailChangeRequested }
 //   paymentSyncStatus is one of:
 //     - 'synced'         : provider customer record updated successfully
 //     - 'skipped'        : no provider configured (informational, not a warning)
@@ -122,6 +139,17 @@ router.post('/request-deletion', deletionRequestLimiter, async (req, res) => {
 //                          flagged with payment_sync_pending_at, will be retried
 //                          on next profile edit or via the admin retry endpoint
 //     - 'not_applicable' : no linked bowler (nothing to sync)
+//   emailChangeRequested: true when a new email was supplied that differs
+//     from the current login email — the email is NOT applied; instead a
+//     confirmation link is sent to the new address and a notification to
+//     the old. The login email only changes after confirmation.
+//
+// Note: this confirmation gate applies to **all** callers, including
+// system_admin acting on behalf of another user, to prevent an admin (or
+// session hijacker with admin privs) from silently rerouting another
+// user's login email to an attacker-controlled address. If admins ever
+// need to swap an email without confirmation, build a separate, audited
+// admin-only endpoint — do not relax this one.
 router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
@@ -148,38 +176,226 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
     }
 
-    if (updateData.email && updateData.email !== existingUser.email) {
-      const userWithEmail = await storage.getUserByEmail(updateData.email);
+    const emailRequested =
+      typeof updateData.email === 'string' &&
+      updateData.email.trim().length > 0 &&
+      updateData.email.trim().toLowerCase() !== existingUser.email.toLowerCase();
+
+    let emailChangeRequested = false;
+
+    if (emailRequested) {
+      const newEmail = updateData.email!.trim().toLowerCase();
+      const userWithEmail = await storage.getUserByEmail(newEmail);
       if (userWithEmail && userWithEmail.id !== userId) {
         return sendError(res, 'Email already in use', 400, 'EMAIL_IN_USE');
       }
+
+      // Supersede any older pending request for this user before creating
+      // a new one — protects the "two competing requests" case.
+      await storage.invalidatePendingEmailChangeRequestsForUser(userId);
+
+      const rawToken = randomBytes(32).toString('hex');
+      const tokenHash = hashEmailChangeToken(rawToken);
+      const expiresAt = new Date(Date.now() + EMAIL_CHANGE_TOKEN_TTL_MS).toISOString();
+
+      await storage.createEmailChangeRequest({
+        userId,
+        newEmail,
+        tokenHash,
+        expiresAt,
+      });
+
+      // Build confirmation URL using the org's subdomain when known so the
+      // resulting click lands in the right tenant.
+      const org = existingUser.organizationId
+        ? await storage.getOrganization(existingUser.organizationId)
+        : null;
+      const baseUrl = getBaseUrl(org?.slug ?? null);
+      const confirmUrl = `${baseUrl}/confirm-email-change?token=${rawToken}`;
+
+      // Best-effort email delivery; do not fail the API call if the SMTP
+      // hop fails. We still record the request so the user can retry.
+      try {
+        await sendEmailChangeConfirmation(newEmail, existingUser.name, confirmUrl);
+      } catch (mailErr) {
+        log.error('Failed to send email-change confirmation (non-fatal):', mailErr);
+      }
+      try {
+        await sendEmailChangeNotification(
+          existingUser.email,
+          existingUser.name,
+          isDev ? newEmail : maskEmail(newEmail),
+        );
+      } catch (mailErr) {
+        log.error('Failed to send email-change notification to old address (non-fatal):', mailErr);
+      }
+
+      emailChangeRequested = true;
+      log.info('Email-change request created', {
+        userId,
+        oldEmail: maskEmail(existingUser.email),
+        newEmail: maskEmail(newEmail),
+      });
     }
 
-    const updatedUser = await storage.updateUser(userId, {
-      ...updateData,
-      phone: updateData.phone === null ? undefined : updateData.phone,
-    });
+    // Build the actual storage patch — name/phone only, never email.
+    const storagePatch: Parameters<typeof storage.updateUser>[1] = {};
+    if (updateData.name !== undefined) storagePatch.name = updateData.name;
+    if (updateData.phone !== undefined) {
+      storagePatch.phone = updateData.phone === null ? undefined : updateData.phone;
+    }
+
+    const updatedUser =
+      Object.keys(storagePatch).length > 0
+        ? await storage.updateUser(userId, storagePatch)
+        : existingUser;
 
     let paymentSyncStatus: PaymentSyncStatus = 'not_applicable';
 
     if (updatedUser.bowlerId) {
-      const emailChanged = updateData.email && updateData.email !== existingUser.email;
-      const nameChanged = updateData.name && updateData.name !== existingUser.name;
-      const phoneChanged = updateData.phone !== undefined && updateData.phone !== existingUser.phone;
+      const nameChanged =
+        updateData.name !== undefined && updateData.name !== existingUser.name;
+      const phoneChanged =
+        updateData.phone !== undefined && updateData.phone !== existingUser.phone;
 
-      if (emailChanged || nameChanged || phoneChanged) {
+      if (nameChanged || phoneChanged) {
+        // Email is intentionally NOT synced here — that happens at confirm time.
         const result = await syncBowlerForUser(updatedUser, {
           nameChanged: !!nameChanged,
-          emailChanged: !!emailChanged,
+          emailChanged: false,
           phoneChanged: !!phoneChanged,
         });
         paymentSyncStatus = result;
       }
     }
 
-    return sendSuccess(res, { ...sanitizeUser(updatedUser), paymentSyncStatus });
+    return sendSuccess(res, {
+      ...sanitizeUser(updatedUser),
+      paymentSyncStatus,
+      emailChangeRequested,
+    });
   } catch (error) {
     log.error('Error updating user:', error);
+    return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
+  }
+});
+
+// Confirm a pending email-change request. The token itself is the
+// authentication factor (like password reset), so this endpoint is open
+// to unauthenticated callers — anyone who clicks the link in the
+// confirmation email can complete the swap.
+router.post('/confirm-email-change', async (req: Request, res: Response) => {
+  try {
+    const schema = z.object({ token: z.string().min(1) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return handleZodError(res, parsed.error);
+    }
+
+    const tokenHash = hashEmailChangeToken(parsed.data.token);
+
+    // Atomic claim + email swap in a single transaction so we cannot leave
+    // the token consumed if the email update fails (or vice versa), and
+    // racing confirm calls can never both succeed.
+    type ConfirmResult =
+      | { kind: 'ok'; user: Awaited<ReturnType<typeof storage.updateUser>> }
+      | { kind: 'invalid' }
+      | { kind: 'consumed' }
+      | { kind: 'expired' }
+      | { kind: 'user_gone' }
+      | { kind: 'email_in_use' };
+
+    let outcome: ConfirmResult;
+    try {
+      outcome = await db.transaction(async (tx) => {
+        // Single conditional UPDATE: claims the token only if it is still
+        // pending AND not expired. Concurrent confirms cannot both win.
+        const [claimed] = await tx
+          .update(emailChangeRequests)
+          .set({ consumedAt: sql`now()` })
+          .where(
+            and(
+              eq(emailChangeRequests.tokenHash, tokenHash),
+              isNull(emailChangeRequests.consumedAt),
+              gt(emailChangeRequests.expiresAt, sql`now()`),
+            ),
+          )
+          .returning();
+
+        if (!claimed) {
+          // Look up the row out-of-band to give a friendly error code
+          // (consumed / expired / unknown).
+          const [existing] = await tx
+            .select()
+            .from(emailChangeRequests)
+            .where(eq(emailChangeRequests.tokenHash, tokenHash))
+            .limit(1);
+          if (!existing) return { kind: 'invalid' as const };
+          if (existing.consumedAt) return { kind: 'consumed' as const };
+          return { kind: 'expired' as const };
+        }
+
+        // Apply the email swap inside the same transaction. A unique-
+        // constraint violation here rolls back the claim, so the user can
+        // retry once the conflict is resolved.
+        const [updated] = await tx
+          .update(users)
+          .set({ email: claimed.newEmail })
+          .where(eq(users.id, claimed.userId))
+          .returning();
+
+        if (!updated) return { kind: 'user_gone' as const };
+        return { kind: 'ok' as const, user: updated };
+      });
+    } catch (err: any) {
+      // Postgres unique_violation — the new email was claimed by someone
+      // else between request and confirm. Transaction rolled back, so the
+      // token is still pending; we explicitly consume it now so a page
+      // refresh doesn't keep retrying the same losing race.
+      if (err?.code === '23505') {
+        await storage.invalidatePendingEmailChangeRequestsForUser(
+          // best-effort: look up the userId for the token to scope the
+          // invalidation. If the lookup fails, fall through to the error.
+          (await storage.getEmailChangeRequestByTokenHash(tokenHash))?.userId ?? -1,
+        );
+        return sendError(res, 'Email already in use', 400, 'EMAIL_IN_USE');
+      }
+      throw err;
+    }
+
+    if (outcome.kind === 'invalid') {
+      return sendError(res, 'Invalid or expired confirmation link', 400, 'INVALID_TOKEN');
+    }
+    if (outcome.kind === 'consumed') {
+      return sendError(res, 'This confirmation link has already been used', 400, 'TOKEN_CONSUMED');
+    }
+    if (outcome.kind === 'expired') {
+      return sendError(res, 'This confirmation link has expired', 400, 'TOKEN_EXPIRED');
+    }
+    if (outcome.kind === 'user_gone') {
+      return sendError(res, 'Account no longer exists', 404, 'USER_NOT_FOUND');
+    }
+
+    const updatedUser = outcome.user;
+
+    let paymentSyncStatus: PaymentSyncStatus = 'not_applicable';
+    if (updatedUser.bowlerId) {
+      const result = await syncBowlerForUser(updatedUser, {
+        nameChanged: false,
+        emailChanged: true,
+        phoneChanged: false,
+      });
+      paymentSyncStatus = result;
+    }
+
+    log.info('Email-change confirmed', {
+      userId: updatedUser.id,
+      newEmail: maskEmail(updatedUser.email),
+    });
+
+    return sendSuccess(res, { ...sanitizeUser(updatedUser), paymentSyncStatus });
+  } catch (error) {
+    log.error('Error confirming email change:', error);
     return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
   }
 });
@@ -270,6 +486,21 @@ router.post('/change-password', requireAuth, async (req: Request, res: Response)
 
     const hashedNew = await hashPassword(newPassword);
     await storage.updateUser(user.id, { password: hashedNew });
+
+    // Defense-in-depth: any in-flight email-change tokens for this user
+    // may belong to an attacker who recently had access. Invalidate them
+    // so a stolen confirmation link can no longer rewrite the login email.
+    try {
+      const invalidated = await storage.invalidatePendingEmailChangeRequestsForUser(user.id);
+      if (invalidated > 0) {
+        log.info('Invalidated pending email-change requests on password change', {
+          userId: user.id,
+          count: invalidated,
+        });
+      }
+    } catch (cleanupErr) {
+      log.error('Failed to invalidate pending email-change requests (non-fatal):', cleanupErr);
+    }
 
     return sendSuccess(res, { message: 'Password updated successfully' });
   } catch (error) {

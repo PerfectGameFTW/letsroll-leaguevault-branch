@@ -17,6 +17,7 @@ import type {
   PaginatedResult,
   EmailTemplate, UpdateEmailTemplate,
   DeletionRequest, InsertDeletionRequest, DeletionRequestStatus,
+  EmailChangeRequest, InsertEmailChangeRequest,
   ApplePayJob, ApplePayJobItem, ApplePayJobStatus, ApplePayJobItemStatus,
 } from "@shared/schema";
 
@@ -190,6 +191,14 @@ export interface IDeletionRequestStorage {
   countDeletionRequestsForEmailSince(email: string, since: Date): Promise<number>;
 }
 
+export interface IEmailChangeRequestStorage {
+  createEmailChangeRequest(data: InsertEmailChangeRequest): Promise<EmailChangeRequest>;
+  getEmailChangeRequestByTokenHash(tokenHash: string): Promise<EmailChangeRequest | undefined>;
+  consumeEmailChangeRequest(id: number): Promise<void>;
+  claimEmailChangeRequest(tokenHash: string): Promise<EmailChangeRequest | undefined>;
+  invalidatePendingEmailChangeRequestsForUser(userId: number): Promise<number>;
+}
+
 export interface IApplePayJobStorage {
   createApplePayJob(createdBy: number | null): Promise<ApplePayJob>;
   getApplePayJob(id: number): Promise<ApplePayJob | undefined>;
@@ -264,6 +273,7 @@ export interface IStorage extends
   ILocationStorage,
   IEmailTemplateStorage,
   IDeletionRequestStorage,
+  IEmailChangeRequestStorage,
   IFirstAdminBootstrapStorage,
   IApplePayJobStorage,
   IAlerterStateStorage {}
