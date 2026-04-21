@@ -143,6 +143,7 @@
   },
   "overrides": {
     "axios": "^1.8.4",
-    "path-to-regexp": "0.1.13"
+    "path-to-regexp": "0.1.13",
+    "picomatch@2": "^2.3.2"
   }
 }
