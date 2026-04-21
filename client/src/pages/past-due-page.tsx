@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { ArrowLeft, CheckCircle2 } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
-import type { League, Team, Bowler, Payment, BowlerLeague } from "@shared/schema";
+import type { League, Team, Bowler, Payment, BowlerLeague, BowlerWithAccount } from "@shared/schema";
 import { getTotalPaidAmount, calculateBowlerPastDue } from "@/lib/financial-utils";
 import { Link } from "wouter";
 
@@ -40,7 +40,7 @@ export default function PastDuePage() {
   });
   const teams = teamsResponse?.data || [];
 
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true, data: Bowler[] }>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<{ success: true, data: BowlerWithAccount[] }>({
     queryKey: ["/api/bowlers"],
     queryFn: async () => {
       const response = await fetch('/api/bowlers');
@@ -161,7 +161,7 @@ export default function PastDuePage() {
                   <TableRow key={`${item.bowler.id}-${item.league.id}`}>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
-                        <CheckCircle2 className={`h-4 w-4 ${(item.bowler as any).hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
+                        <CheckCircle2 className={`h-4 w-4 ${item.bowler.hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
                         <Link href={`/bowlers/${item.bowler.id}`} className="hover:underline">
                           {item.bowler.name}
                         </Link>

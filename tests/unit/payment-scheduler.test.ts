@@ -74,8 +74,11 @@ function makeSchedule(overrides: Partial<PaymentSchedule> = {}): PaymentSchedule
     paymentCardId: 'ccof:CA4SEXXXXXX',
     nextPaymentDate: '2026-04-01 23:30:00',
     lastPaymentDate: null,
+    createdAt: '2026-04-01 23:30:00',
+    cancelledAt: null,
+    cancelReason: null,
     ...overrides,
-  } as PaymentSchedule;
+  };
 }
 
 describe('PaymentScheduler', () => {

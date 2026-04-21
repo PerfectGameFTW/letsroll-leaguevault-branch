@@ -227,7 +227,7 @@ export default function TeamViewPage() {
                 <TableRow key={bowlerLeague.id}>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
-                      <CheckCircle2 className={`h-4 w-4 ${(bowler as any).hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
+                      <CheckCircle2 className={`h-4 w-4 ${bowler.hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
                       <Link href={`/bowlers/${bowler.id}`} className="hover:underline">
                         {bowler.name}
                       </Link>

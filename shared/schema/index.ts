@@ -68,4 +68,4 @@ export { sessions } from "./sessions";
 
 export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, gameRelations, scoreRelations, paymentRelations, paymentScheduleRelations, userRelations } from "./relations";
 
-export type { SavedCard, ApiResponse, PaginationMeta, PaginatedResult, ApiListResponse, WeeklyStat, SeriesWithStats, WeeklyStatWithBowler, DetailedScore, BowlerDetailsResponse, TeamDetailsResponse } from "./api-types";
+export type { SavedCard, ApiResponse, PaginationMeta, PaginatedResult, ApiListResponse, WeeklyStat, SeriesWithStats, WeeklyStatWithBowler, DetailedScore, BowlerDetailsResponse, TeamDetailsResponse, BowlerWithAccount } from "./api-types";

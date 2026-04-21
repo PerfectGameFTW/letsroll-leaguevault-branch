@@ -319,7 +319,7 @@ router.post("/", async (req, res) => {
     }
 
     const created = await storage.createBowler(bowler);
-    const orgId: number | undefined = (req as any).user?.organizationId;
+    const orgId: number | undefined = req.user?.organizationId ?? undefined;
     const synced = await runBowlerPostCreateSync(created, orgId);
     sendSuccess(res, synced, 201);
   } catch (error) {
@@ -372,7 +372,7 @@ router.patch("/:id", async (req, res) => {
 
       if (needsSquareSync) {
         try {
-          const patchOrgId = (req as any).user?.organizationId;
+          const patchOrgId = req.user?.organizationId;
           const patchSquareLocation = patchOrgId ? await storage.getFirstSquareConfiguredLocation(patchOrgId) : null;
           if (patchSquareLocation?.id) {
             let providerCustomer = null;
@@ -401,7 +401,7 @@ router.patch("/:id", async (req, res) => {
       }
     }
 
-    const updateOrgId = (req as any).user?.organizationId;
+    const updateOrgId = req.user?.organizationId;
     if (updateOrgId) {
       const updateOrgConfig = await storage.getOrgIntegrations(updateOrgId);
       if (isOrgBNConfigured(updateOrgConfig)) {

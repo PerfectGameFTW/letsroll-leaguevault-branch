@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Bowler, Team, League, BowlerLeague, ApiResponse } from "@shared/schema";
+import type { Bowler, Team, League, BowlerLeague, ApiResponse, BowlerWithAccount } from "@shared/schema";
 
 interface UseBowlersOptions {
   showInactive?: boolean;
@@ -10,7 +10,7 @@ interface UseBowlersOptions {
 
 export function useBowlers({ showInactive = false, searchQuery = "", isEnabled = true }: UseBowlersOptions = {}) {
   // Query for bowlers with proper error handling and longer cache time
-  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<ApiResponse<Bowler[]>>({
+  const { data: bowlersResponse, isLoading: loadingBowlers } = useQuery<ApiResponse<BowlerWithAccount[]>>({
     queryKey: ["/api/bowlers"],
     staleTime: 1000 * 60 * 5, // Cache for 5 minutes
     enabled: isEnabled,

@@ -23,16 +23,16 @@ export function filterActiveBowlerLeagues(
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
-export interface TeamBowlerEntry {
-  bowler: Bowler;
+export interface TeamBowlerEntry<B extends Bowler = Bowler> {
+  bowler: B;
   bowlerLeague: BowlerLeague;
 }
 
-export function getTeamBowlers(
+export function getTeamBowlers<B extends Bowler>(
   bowlerLeagues: BowlerLeague[],
-  bowlers: Bowler[],
+  bowlers: B[],
   teamId: number | undefined
-): TeamBowlerEntry[] {
+): TeamBowlerEntry<B>[] {
   if (!teamId || !bowlerLeagues.length || !bowlers.length) return [];
 
   const uniqueBowlerAssociations = bowlerLeagues
@@ -53,10 +53,10 @@ export function getTeamBowlers(
 
   return uniqueBowlerAssociations
     .map((bl: BowlerLeague) => ({
-      bowler: bowlers.find((b: Bowler) => b.id === bl.bowlerId),
+      bowler: bowlers.find((b) => b.id === bl.bowlerId),
       bowlerLeague: bl,
     }))
     .filter(
-      (item): item is TeamBowlerEntry => !!item.bowler
+      (item): item is TeamBowlerEntry<B> => !!item.bowler
     );
 }

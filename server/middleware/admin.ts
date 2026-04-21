@@ -17,7 +17,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   }
 
   // Check if authenticated user is an admin
-  if ((req.user as any).role !== 'system_admin') {
+  if (req.user?.role !== 'system_admin') {
     return sendError(
       res,
       'Admin access required',

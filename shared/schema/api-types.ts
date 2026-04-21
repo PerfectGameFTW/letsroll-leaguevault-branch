@@ -69,8 +69,10 @@ export interface WeeklyStatWithBowler extends WeeklyStat {
   };
 }
 
+export type BowlerWithAccount = Bowler & { hasAccount: boolean };
+
 export interface BowlerDetailsResponse {
-  bowler: Bowler & { hasAccount: boolean };
+  bowler: BowlerWithAccount;
   bowlerLeagues: BowlerLeague[];
   leagues: League[];
   teams: Team[];
@@ -81,7 +83,7 @@ export interface TeamDetailsResponse {
   team: Team;
   league: League;
   bowlerLeagues: BowlerLeague[];
-  bowlers: (Bowler & { hasAccount: boolean })[];
+  bowlers: BowlerWithAccount[];
 }
 
 export interface DetailedScore extends Score {

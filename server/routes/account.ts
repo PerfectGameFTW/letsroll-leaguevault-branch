@@ -170,7 +170,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       return sendError(res, 'Invalid user ID', 400, 'INVALID_ID');
     }
 
-    const user = req.user as any;
+    const user = req.user!;
     if (user.id !== userId && user.role !== 'system_admin') {
       return sendError(res, 'Unauthorized', 403, 'UNAUTHORIZED');
     }
@@ -483,7 +483,7 @@ router.post(
 // Change password for the currently authenticated user
 router.post('/change-password', requireAuth, async (req: Request, res: Response) => {
   try {
-    const user = req.user as any;
+    const user = req.user!;
 
     const schema = z.object({
       currentPassword: z.string().min(1, 'Current password is required'),
