@@ -193,6 +193,16 @@ transaction under the same lock, so two concurrent requests holding
 the same `SETUP_SECRET` cannot both succeed — exactly one wins, and
 the other receives `ADMIN_EXISTS` (HTTP 403).
 
+## Recent Changes (2026-04-21)
+- **Apple Pay worker pre-call item claim (#260)**: Reduced duplicate provider calls under multi-instance deployments
+  - Schema: added `processing` to `APPLE_PAY_JOB_ITEM_STATUSES` (in `shared/schema/apple-pay-jobs.ts`)
+  - Storage: new `claimApplePayJobItemForProcessing(itemId)` does atomic `pending`→`processing` flip; `claimAndCompleteApplePayJobItem` now accepts pending OR processing as the source state
+  - Worker (`server/services/apple-pay-worker.ts`): pre-claims each item before invoking the payment provider; loser of the race skips silently
+  - Recovery: `recoverInterruptedApplePayJobs` now also flips orphaned `processing` items back to `pending` on boot (so a single-instance crash mid-call doesn't strand the item)
+  - Counts roll `processing` into the `pending` bucket; UI badge added
+  - Tests: `tests/unit/apple-pay-jobs.test.ts` now has 8 passing concurrency/idempotency tests (added pre-claim race + orphaned-processing recovery)
+  - Known limitation (follow-up): startup recovery is unconditional, so a rolling restart can still flip a sibling instance's live `processing` row back to pending. True at-most-once across rolling restarts requires lease/heartbeat-based recovery.
+
 ## Recent Changes (2026-04-01)
 - **Drag-and-Drop Team Reordering**: Teams on the roster management page can be reordered via drag and drop
   - Schema: added `displayOrder` integer column (default 0) to teams table

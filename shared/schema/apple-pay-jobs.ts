@@ -15,6 +15,13 @@ export type ApplePayJobStatus = typeof APPLE_PAY_JOB_STATUSES[number];
 
 export const APPLE_PAY_JOB_ITEM_STATUSES = [
   "pending",
+  // `processing` is set by the worker via an atomic pending->processing
+  // claim immediately BEFORE issuing the Square API call. A second worker
+  // racing on the same item will see it is no longer pending and skip it,
+  // so even multi-instance deployments cannot issue duplicate provider
+  // calls. Items left in `processing` after a crash are revived to
+  // `pending` at startup by `recoverInterruptedApplePayJobs`.
+  "processing",
   "succeeded",
   "failed",
   "skipped",

@@ -35,6 +35,7 @@ const JOB_STATUS_META: Record<ApplePayJobStatus, { label: string; variant: Badge
 
 const ITEM_STATUS_META: Record<ApplePayJobItemStatus, { label: string; variant: BadgeVariant }> = {
   pending: { label: 'Pending', variant: 'outline' },
+  processing: { label: 'Processing', variant: 'default' },
   succeeded: { label: 'Succeeded', variant: 'secondary' },
   failed: { label: 'Failed', variant: 'destructive' },
   skipped: { label: 'Skipped', variant: 'outline' },

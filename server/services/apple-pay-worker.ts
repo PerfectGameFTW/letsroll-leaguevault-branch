@@ -195,18 +195,39 @@ class ApplePayWorker {
   }
 
   private async processItem(item: ApplePayJobItem): Promise<void> {
-    // Every terminal write goes through `claimAndCompleteApplePayJobItem`,
-    // which only updates rows still in `pending`. This guarantees exactly
-    // one terminal result is *recorded* per item even if two workers raced.
-    // It does NOT guarantee only one provider call is *issued* — under the
-    // single-instance assumption (matching PaymentScheduler) that's fine;
-    // see follow-up #258 for adding a pre-call pending→running item claim
-    // if multi-instance becomes a requirement.
+    // Two-phase write to make the worker safe under multi-instance
+    // deployments:
+    //   1. `claimApplePayJobItemForProcessing` flips pending->processing
+    //      atomically. If a second worker raced us to this item, our claim
+    //      returns false and we skip — guaranteeing the provider call is
+    //      issued at most once per item.
+    //   2. `claimAndCompleteApplePayJobItem` writes the terminal result.
+    //      It accepts either pending (for paths that don't pre-claim, e.g.
+    //      a missing-location skip) or processing (for the normal path).
+    // If the process dies between (1) and (2), the item is left in
+    // `processing` and revived to `pending` on the next boot by
+    // `recoverInterruptedApplePayJobs`, so the call is re-issued exactly
+    // once on resume.
+    //
+    // Caveat: see `recoverInterruptedApplePayJobs` — under a rolling
+    // restart with multiple instances, startup recovery on a fresh
+    // instance can flip a sibling's live `processing` row back to
+    // `pending`, so the at-most-once guarantee currently holds across
+    // single-instance crashes but not across overlapping multi-instance
+    // restarts. Lease/heartbeat-based recovery is tracked as a follow-up.
     try {
       if (item.locationId == null) {
         await storage.claimAndCompleteApplePayJobItem(item.id, {
           status: "skipped",
           message: item.message ?? "No location",
+        });
+        return;
+      }
+
+      const claimed = await storage.claimApplePayJobItemForProcessing(item.id);
+      if (!claimed) {
+        log("Item already in-flight or completed by another worker, skipping", {
+          itemId: item.id,
         });
         return;
       }

@@ -157,6 +157,7 @@ export class DatabaseStorage implements IStorage {
   claimNextApplePayJob!: IStorage["claimNextApplePayJob"];
   recoverInterruptedApplePayJobs!: IStorage["recoverInterruptedApplePayJobs"];
   countApplePayJobItems!: IStorage["countApplePayJobItems"];
+  claimApplePayJobItemForProcessing!: IStorage["claimApplePayJobItemForProcessing"];
   claimAndCompleteApplePayJobItem!: IStorage["claimAndCompleteApplePayJobItem"];
   getApplePayJobItemCounts!: IStorage["getApplePayJobItemCounts"];
   insertApplePayJobItems!: IStorage["insertApplePayJobItems"];

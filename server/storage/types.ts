@@ -195,9 +195,10 @@ export interface IApplePayJobStorage {
   claimNextApplePayJob(): Promise<ApplePayJob | undefined>;
   recoverInterruptedApplePayJobs(): Promise<number>;
   countApplePayJobItems(jobId: number): Promise<number>;
+  claimApplePayJobItemForProcessing(itemId: number): Promise<boolean>;
   claimAndCompleteApplePayJobItem(
     itemId: number,
-    patch: { status: Exclude<ApplePayJobItemStatus, "pending">; message?: string | null },
+    patch: { status: Exclude<ApplePayJobItemStatus, "pending" | "processing">; message?: string | null },
   ): Promise<boolean>;
   getApplePayJobItemCounts(jobId: number): Promise<{
     succeeded: number;

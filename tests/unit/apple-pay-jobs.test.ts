@@ -27,8 +27,10 @@ import {
   getPendingApplePayJobItems,
   getApplePayJobItems,
   claimAndCompleteApplePayJobItem,
+  claimApplePayJobItemForProcessing,
   updateApplePayJobItem,
   getApplePayJob,
+  getApplePayJobItemCounts,
 } from "../../server/storage/apple-pay-jobs";
 
 const createdJobIds: number[] = [];
@@ -213,6 +215,82 @@ describe("apple pay job storage — concurrency invariants", () => {
     expect(stillPending.map((it) => it.domain).sort()).toEqual([
       "todo-1.test",
       "todo-2.test",
+    ]);
+  });
+
+  it("claimApplePayJobItemForProcessing only lets one of N concurrent workers issue the provider call", async () => {
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "race.test" },
+    ]);
+    const [item] = await getPendingApplePayJobItems(jobId);
+    expect(item).toBeDefined();
+
+    // Three workers race on the pre-call claim.
+    const claims = await Promise.all([
+      claimApplePayJobItemForProcessing(item.id),
+      claimApplePayJobItemForProcessing(item.id),
+      claimApplePayJobItemForProcessing(item.id),
+    ]);
+    expect(claims.filter(Boolean)).toHaveLength(1);
+
+    // The item is now `processing`. `getPendingApplePayJobItems` must NOT
+    // surface it again — a fresh worker iteration must skip it.
+    const pendingNow = await getPendingApplePayJobItems(jobId);
+    expect(pendingNow).toHaveLength(0);
+
+    // Counts must roll `processing` into the pending bucket so the UI's
+    // progress bar doesn't prematurely show the item as completed.
+    const counts = await getApplePayJobItemCounts(jobId);
+    expect(counts).toEqual({ succeeded: 0, failed: 0, skipped: 0, pending: 1 });
+
+    // The winning worker now writes the terminal state. Terminal write must
+    // accept `processing` as a valid source state.
+    const terminal = await claimAndCompleteApplePayJobItem(item.id, {
+      status: "succeeded",
+      message: "ok",
+    });
+    expect(terminal).toBe(true);
+
+    const [stored] = await getApplePayJobItems(jobId);
+    expect(stored.status).toBe("succeeded");
+    expect(stored.message).toBe("ok");
+  });
+
+  it("recoverInterruptedApplePayJobs revives items orphaned in 'processing' by a crashed worker", async () => {
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "orphan-1.test" },
+      { organizationId: null, locationId: null, domain: "orphan-2.test" },
+      { organizationId: null, locationId: null, domain: "done.test" },
+    ]);
+    const items = await getApplePayJobItems(jobId);
+    const orphan1 = items.find((it) => it.domain === "orphan-1.test")!;
+    const orphan2 = items.find((it) => it.domain === "orphan-2.test")!;
+    const done = items.find((it) => it.domain === "done.test")!;
+
+    // Two items get pre-claimed but the worker crashes before writing
+    // their terminal state. A third already finished cleanly.
+    expect(await claimApplePayJobItemForProcessing(orphan1.id)).toBe(true);
+    expect(await claimApplePayJobItemForProcessing(orphan2.id)).toBe(true);
+    await claimAndCompleteApplePayJobItem(done.id, { status: "succeeded" });
+
+    // -- crash boundary --
+
+    await recoverInterruptedApplePayJobs();
+
+    const reloaded = await getApplePayJobItems(jobId);
+    const byDomain = Object.fromEntries(reloaded.map((it) => [it.domain, it.status]));
+    expect(byDomain["orphan-1.test"]).toBe("pending");
+    expect(byDomain["orphan-2.test"]).toBe("pending");
+    // Already-terminal items must not be touched by the recovery sweep.
+    expect(byDomain["done.test"]).toBe("succeeded");
+
+    // The next worker pass must see exactly the two orphans as pending.
+    const pending = await getPendingApplePayJobItems(jobId);
+    expect(pending.map((it) => it.domain).sort()).toEqual([
+      "orphan-1.test",
+      "orphan-2.test",
     ]);
   });
 });
