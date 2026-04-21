@@ -62,6 +62,8 @@ A full-stack bowling league management application with multi-tenant support for
 - Rationale: well-formed data always has an `organizationId`. Org-less rows are bugs/stale data and exposing them silently risks PII leakage and masks integrity problems.
 - The single explicit escape hatch is the diagnostic endpoint `GET /api/system-admin/orphaned-data-counts` (system-admin only), which returns counts of org-less rows per resource type (`leagues`, `teams`, `bowlerLeagues`, `payments`, `users`). Implementation lives in `server/storage/orphaned-data.ts`.
 - Any new authorization helper or storage method that traverses `organizationId` MUST follow the same "deny on null, even for system admins" rule.
+- **Schema-level guard**: `leagues.organization_id` is `NOT NULL` — the database refuses to create an org-less league. The insert/update zod schemas in `shared/schema/leagues.ts` mirror this (org id is required and non-nullable). The legacy `globalAccess: true` branch in `POST /api/leagues` (which created `organization_id = NULL` rows for system admins) has been removed; system admins must specify the target organization explicitly.
+- **Not yet tightened**: `users.organization_id` remains nullable because (a) the bootstrap system_admin legitimately has no org, and (b) a small number of stale non-admin org-less users still exist. Cleaning them up via the orphaned-data diagnostic and then introducing a `role <> 'system_admin' OR organization_id IS NOT NULL` constraint is left as a future tightening.
 - `client/src/App.tsx` - Frontend routing and route guards (wrapped with ErrorBoundary)
 - `client/src/pages/` - Page components
 - `client/src/components/` - Reusable UI components

@@ -1,0 +1,1 @@
+ALTER TABLE "leagues" ALTER COLUMN "organization_id" SET NOT NULL;

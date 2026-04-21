@@ -86,41 +86,42 @@ router.post("/", async (req: any, res) => {
       );
     }
 
-    // Parse league data
+    // Determine the effective organizationId BEFORE parsing — the insert
+    // schema now requires a non-null org, so server-side fallbacks must be
+    // applied to the payload first or normal org_admin form submissions
+    // (which don't include an organizationId field) would fail validation.
+    const filterOrg = getOrganizationFilter(req);
+    const bodyOrg = typeof req.body?.organizationId === 'number' ? req.body.organizationId : null;
+    let effectiveOrgId: number | null = bodyOrg ?? filterOrg ?? req.user?.organizationId ?? null;
+
+    if (effectiveOrgId == null) {
+      // Every league must belong to an organization. system_admin used to
+      // be able to create a "globally accessible" (org-less) league via
+      // globalAccess: true; that path created rows that are unreachable
+      // under the deny-on-null access policy and is no longer permitted.
+      if (req.user?.role === 'system_admin') {
+        return sendError(
+          res,
+          'An organizationId is required. System admins must specify the target organization when creating a league.',
+          400,
+          'ORG_REQUIRED'
+        );
+      }
+      return sendError(
+        res,
+        'You must belong to an organization to create a league.',
+        403,
+        'ORG_REQUIRED'
+      );
+    }
+
     const league = insertLeagueSchema.parse({
       ...req.body,
+      organizationId: effectiveOrgId,
       seasonStart: new Date(req.body.seasonStart),
       seasonEnd: derivedSeasonEnd ?? new Date(req.body.seasonEnd)
     });
-    
-    const organizationId = getOrganizationFilter(req);
 
-    if (organizationId !== null && !league.organizationId) {
-      league.organizationId = organizationId;
-    } else if (!league.organizationId) {
-      if (req.user?.role === 'system_admin') {
-        if (!req.body.globalAccess) {
-          return sendError(
-            res,
-            'An organizationId is required. To create a globally accessible league, set globalAccess: true in the request body.',
-            400,
-            'ORG_REQUIRED'
-          );
-        }
-        league.organizationId = null;
-      } else {
-        if (!req.user?.organizationId) {
-          return sendError(
-            res,
-            'You must belong to an organization to create a league.',
-            403,
-            'ORG_REQUIRED'
-          );
-        }
-        league.organizationId = req.user.organizationId;
-      }
-    }
-    
     const created = await storage.createLeague(league);
     sendSuccess(res, created, 201);
   } catch (error) {
@@ -392,6 +393,13 @@ router.post("/:id/new-season", async (req: any, res) => {
     const sourceLeague = await storage.getLeague(id);
     if (!sourceLeague) {
       return sendError(res, "League not found", 404, "NOT_FOUND");
+    }
+
+    // Authz: cloning a league counts as a write against the source league's
+    // organization. Without this check an org_admin could create a new
+    // season on any league by ID, regardless of which org owns it.
+    if (!requireOrganizationAccess(req, sourceLeague.organizationId, 'league', id)) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
 
     const { seasonStart, seasonEnd } = req.body;

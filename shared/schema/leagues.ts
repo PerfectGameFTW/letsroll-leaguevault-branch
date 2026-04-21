@@ -32,7 +32,7 @@ export const leagues = pgTable("leagues", {
   paymentMode: text("payment_mode", { enum: PAYMENT_MODES }).notNull().default("weekly"),
   seasonNumber: integer("season_number").notNull().default(1),
   previousSeasonId: integer("previous_season_id").references((): AnyPgColumn => leagues.id, { onDelete: 'set null' }),
-  organizationId: integer("organization_id").references(() => organizations.id),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id),
   locationId: integer("location_id").references(() => locations.id),
   totalBowlingWeeks: integer("total_bowling_weeks"),
   skipDates: text("skip_dates").array().notNull().default(sql`'{}'`),
@@ -128,7 +128,7 @@ export const updateLeagueSchema = z.object({
   skipDates: z.array(z.string()),
   cancelledDates: z.array(z.string()),
   finalTwoWeeksDueWeek: z.number().int().min(1).nullable(),
-  organizationId: z.number().int().positive().nullable(),
+  organizationId: z.number().int().positive(),
 }).partial().refine(
   (data) => {
     if (data.seasonStart && data.seasonEnd) {
