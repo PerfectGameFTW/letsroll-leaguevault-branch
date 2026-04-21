@@ -86,13 +86,24 @@ export async function cleanup(): Promise<void> {
   isShuttingDown = true;
   log.info('Starting pool cleanup...');
 
+  const POOL_CLEANUP_TIMEOUT_MS = 5000;
+  let timeoutHandle: NodeJS.Timeout | undefined;
   try {
     await Promise.race([
-      pool.end(),
+      pool.end().finally(() => {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      }),
       new Promise((_, reject) => {
-        const POOL_CLEANUP_TIMEOUT_MS = 5000;
-        setTimeout(() => reject(new Error('Pool cleanup timeout')), POOL_CLEANUP_TIMEOUT_MS);
-      })
+        timeoutHandle = setTimeout(
+          () => reject(new Error('Pool cleanup timeout')),
+          POOL_CLEANUP_TIMEOUT_MS,
+        );
+        // Don't let this safety-net timer keep the Node event loop
+        // alive on its own. If pool.end() resolves quickly we want
+        // the process to exit immediately, which is critical for the
+        // vitest teardown path (#276).
+        timeoutHandle.unref?.();
+      }),
     ]);
 
     log.info('Pool cleanup completed');
