@@ -67,7 +67,7 @@ describe('CSRF coverage on session-mutating routes', () => {
       expect(body.error?.code).toBe('CSRF_ERROR');
     });
 
-    it('does NOT 403 CSRF_ERROR when the valid token is included', async () => {
+    it('succeeds (200) when the valid token is included', async () => {
       const { status, body } = await rawRequest(
         `/api/account/profile/${orgAdmin.user.id}`,
         {
@@ -77,14 +77,16 @@ describe('CSRF coverage on session-mutating routes', () => {
             Cookie: orgAdmin.cookies,
             'x-csrf-token': orgAdmin.csrfToken,
           },
-          body: JSON.stringify({ name: 'CSRF Test' }),
+          // Set name to its existing value so the test is idempotent and
+          // does not mutate fixture state across runs. We still go through
+          // the full update pipeline, which is what the CSRF gate test
+          // needs to cover.
+          body: JSON.stringify({ name: orgAdmin.user.name }),
         },
       );
-      // We don't pin status=200 because the handler may surface validation
-      // / business-logic outcomes on this body shape; we only need to
-      // prove the CSRF gate let the request through.
+      expect(status).toBe(200);
+      expect(body.success).toBe(true);
       expect(body.error?.code).not.toBe('CSRF_ERROR');
-      expect(status).not.toBe(403);
     });
   });
 
@@ -147,6 +149,27 @@ describe('CSRF coverage on session-mutating routes', () => {
       // Defensive: make sure we got a response from the route handler
       // (or its auth gate) rather than the CSRF middleware short-circuit.
       expect([400, 401, 403, 404, 409, 500]).toContain(status);
+    });
+
+    it('still rejects with non-CSRF auth error when x-setup-secret is missing', async () => {
+      // Defense-in-depth: prove the endpoint's own auth gate (the
+      // x-setup-secret header) still fires after the CSRF exemption.
+      // This guards against a future refactor that accidentally drops
+      // the secret check now that CSRF no longer covers the path.
+      const { status, body } = await rawRequest(
+        '/api/setup/first-system-admin/999999999',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        },
+      );
+      expect(body.success).toBe(false);
+      expect(body.error?.code).not.toBe('CSRF_ERROR');
+      // The setup-admin handler returns 401/403 on missing/invalid
+      // secret. We accept either to stay tolerant of internal
+      // refactoring of error codes.
+      expect([401, 403]).toContain(status);
     });
   });
 });
