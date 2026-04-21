@@ -2,11 +2,22 @@ import { Response } from 'express';
 import { ZodError } from 'zod';
 import { type User, type Organization, type PaginationMeta } from '@shared/schema';
 
-export type SanitizedUser = Omit<User, 'password' | 'inviteToken' | 'inviteTokenExpiry'>;
+// Fields on `users` that must never leave the server. Any new column whose
+// name matches /token|secret|password/i must either be added here or
+// explicitly justified as safe to return — the regression test in
+// `tests/unit/sanitize-user.test.ts` enforces that contract by scanning a
+// fully-populated User and failing loudly on any leaked sensitive-looking
+// field name.
+const SENSITIVE_USER_FIELDS = ['password', 'inviteToken', 'inviteTokenExpiry'] as const;
+
+export type SanitizedUser = Omit<User, typeof SENSITIVE_USER_FIELDS[number]>;
 
 export function sanitizeUser(user: User): SanitizedUser {
-  const { password, inviteToken, inviteTokenExpiry, ...safeUser } = user;
-  return safeUser;
+  const safeUser = { ...user } as Record<string, unknown>;
+  for (const field of SENSITIVE_USER_FIELDS) {
+    delete safeUser[field];
+  }
+  return safeUser as SanitizedUser;
 }
 
 export type SanitizedOrganization = Omit<Organization, 'integrations'>;
