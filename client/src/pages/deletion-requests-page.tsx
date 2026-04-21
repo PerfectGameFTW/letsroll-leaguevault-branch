@@ -27,9 +27,14 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import type { ApiResponse, DeletionRequest, DeletionRequestStatus } from '@shared/schema';
+import type {
+  ApiResponse,
+  DeletionRequest,
+  DeletionRequestStatus,
+  DeletionExecutionSummary,
+} from '@shared/schema';
 
-type ReviewMode = 'completed' | 'rejected';
+type ReviewMode = 'completed' | 'rejected' | 'execute';
 
 const STATUS_LABELS: Record<DeletionRequestStatus, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   pending: { label: 'Pending', variant: 'default' },
@@ -53,6 +58,7 @@ export default function DeletionRequestsPage() {
   const [activeRequest, setActiveRequest] = useState<DeletionRequest | null>(null);
   const [reviewMode, setReviewMode] = useState<ReviewMode>('completed');
   const [adminNote, setAdminNote] = useState('');
+  const [executeConfirmText, setExecuteConfirmText] = useState('');
 
   const { data: requestsResponse, isLoading } = useQuery<ApiResponse<DeletionRequest[]>>({
     queryKey: ['/api/system-admin/deletion-requests', statusFilter],
@@ -86,10 +92,37 @@ export default function DeletionRequestsPage() {
     },
   });
 
+  const executeMutation = useMutation({
+    mutationFn: async (vars: { id: number; adminNote: string | null }) => {
+      return apiRequest(`/api/system-admin/deletion-requests/${vars.id}/execute`, 'POST', {
+        confirm: 'DELETE',
+        adminNote: vars.adminNote,
+      }) as Promise<ApiResponse<{ request: DeletionRequest; summary: DeletionExecutionSummary }>>;
+    },
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/deletion-requests'] });
+      setActiveRequest(null);
+      setAdminNote('');
+      setExecuteConfirmText('');
+      const summary = response?.data?.summary;
+      const bowlersDone = summary?.bowlers.filter((b) => b.anonymized).length ?? 0;
+      const providersDone = summary?.paymentProvider.filter((p) => p.deleted).length ?? 0;
+      const userDone = summary?.user.deleted ? 'user account removed' : 'no user account found';
+      toast({
+        title: 'Account data deleted',
+        description: `${bowlersDone} bowler record(s) anonymized, ${providersDone} payment-provider customer(s) removed, ${userDone}.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Deletion failed', description: error.message, variant: 'destructive' });
+    },
+  });
+
   const openReview = (req: DeletionRequest, mode: ReviewMode) => {
     setActiveRequest(req);
     setReviewMode(mode);
     setAdminNote(req.adminNote ?? '');
+    setExecuteConfirmText('');
   };
 
   return (
@@ -161,7 +194,14 @@ export default function DeletionRequestsPage() {
                             </TableCell>
                             <TableCell className="text-right">
                               {req.status === 'pending' ? (
-                                <div className="flex gap-2 justify-end">
+                                <div className="flex gap-2 justify-end flex-wrap">
+                                  <Button
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => openReview(req, 'execute')}
+                                  >
+                                    Delete account data
+                                  </Button>
                                   <Button
                                     size="sm"
                                     variant="outline"
@@ -191,19 +231,64 @@ export default function DeletionRequestsPage() {
             </CardContent>
           </Card>
 
-          <Dialog open={!!activeRequest} onOpenChange={(open) => { if (!open) { setActiveRequest(null); setAdminNote(''); } }}>
+          <Dialog
+            open={!!activeRequest}
+            onOpenChange={(open) => {
+              if (!open) {
+                setActiveRequest(null);
+                setAdminNote('');
+                setExecuteConfirmText('');
+              }
+            }}
+          >
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>
-                  {reviewMode === 'completed' ? 'Mark request completed' : 'Reject request'}
+                  {reviewMode === 'execute'
+                    ? 'Delete account data'
+                    : reviewMode === 'completed'
+                    ? 'Mark request completed'
+                    : 'Reject request'}
                 </DialogTitle>
                 <DialogDescription>
-                  {reviewMode === 'completed'
-                    ? `Confirm that you have processed the deletion request for ${activeRequest?.email}. This does not automatically delete user data — perform any required deletions in your storage backend before marking complete.`
-                    : `Reject the deletion request for ${activeRequest?.email}. Add a note explaining why.`}
+                  {reviewMode === 'execute' ? (
+                    <>
+                      This will permanently anonymize every bowler record matching{' '}
+                      <span className="font-mono">{activeRequest?.email}</span>, delete the
+                      associated user account, and best-effort remove the customer record at
+                      every configured payment provider. Historical scores, league memberships,
+                      and payment rows are preserved with PII scrubbed.
+                      <br />
+                      <strong>This action cannot be undone.</strong> Type{' '}
+                      <span className="font-mono font-semibold">DELETE</span> below to confirm.
+                    </>
+                  ) : reviewMode === 'completed' ? (
+                    <>
+                      Confirm that you have processed the deletion request for{' '}
+                      {activeRequest?.email}. This does not automatically delete user data —
+                      perform any required deletions in your storage backend before marking
+                      complete, or use "Delete account data" instead.
+                    </>
+                  ) : (
+                    <>Reject the deletion request for {activeRequest?.email}. Add a note explaining why.</>
+                  )}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-2">
+                {reviewMode === 'execute' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="execute-confirm">Type DELETE to confirm</Label>
+                    <input
+                      id="execute-confirm"
+                      type="text"
+                      className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      value={executeConfirmText}
+                      onChange={(e) => setExecuteConfirmText(e.target.value)}
+                      placeholder="DELETE"
+                      autoComplete="off"
+                    />
+                  </div>
+                )}
                 <Label htmlFor="admin-note">Admin note (optional)</Label>
                 <Textarea
                   id="admin-note"
@@ -214,20 +299,46 @@ export default function DeletionRequestsPage() {
                 />
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => { setActiveRequest(null); setAdminNote(''); }}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setActiveRequest(null);
+                    setAdminNote('');
+                    setExecuteConfirmText('');
+                  }}
+                >
                   Cancel
                 </Button>
-                <Button
-                  variant={reviewMode === 'rejected' ? 'destructive' : 'default'}
-                  disabled={reviewMutation.isPending}
-                  onClick={() => activeRequest && reviewMutation.mutate({
-                    id: activeRequest.id,
-                    status: reviewMode,
-                    adminNote: adminNote.trim() ? adminNote.trim() : null,
-                  })}
-                >
-                  {reviewMutation.isPending ? 'Saving...' : (reviewMode === 'completed' ? 'Mark completed' : 'Reject')}
-                </Button>
+                {reviewMode === 'execute' ? (
+                  <Button
+                    variant="destructive"
+                    disabled={executeMutation.isPending || executeConfirmText !== 'DELETE'}
+                    onClick={() =>
+                      activeRequest &&
+                      executeMutation.mutate({
+                        id: activeRequest.id,
+                        adminNote: adminNote.trim() ? adminNote.trim() : null,
+                      })
+                    }
+                  >
+                    {executeMutation.isPending ? 'Deleting...' : 'Delete account data'}
+                  </Button>
+                ) : (
+                  <Button
+                    variant={reviewMode === 'rejected' ? 'destructive' : 'default'}
+                    disabled={reviewMutation.isPending}
+                    onClick={() =>
+                      activeRequest &&
+                      reviewMutation.mutate({
+                        id: activeRequest.id,
+                        status: reviewMode,
+                        adminNote: adminNote.trim() ? adminNote.trim() : null,
+                      })
+                    }
+                  >
+                    {reviewMutation.isPending ? 'Saving...' : reviewMode === 'completed' ? 'Mark completed' : 'Reject'}
+                  </Button>
+                )}
               </DialogFooter>
             </DialogContent>
           </Dialog>

@@ -214,6 +214,29 @@ export class CardPointePaymentProvider implements PaymentProvider {
     return null;
   }
 
+  /**
+   * Delete the entire CardPointe profile (and all of its accounts) for
+   * the supplied profileId. Used by the automated account-data deletion
+   * flow. CardPointe stores customers as "profiles" — passing only the
+   * profileId (no accountId) tells the API to delete the whole profile.
+   */
+  async deleteCustomer(customerId: string): Promise<void> {
+    const creds = await this.getCredentials();
+    const [profileId] = customerId.includes('/') ? customerId.split('/') : [customerId];
+    try {
+      await deleteProfile(creds, profileId);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      // CardPointe returns an error for unknown profiles; treat as
+      // already-gone so this stays idempotent.
+      if (/not found|invalid profile/i.test(msg)) {
+        log.info('CardPointe profile already absent, treating as deleted', { profileId });
+        return;
+      }
+      throw error;
+    }
+  }
+
   async getPayment(
     paymentId: string,
   ): Promise<PaymentVerification | null> {

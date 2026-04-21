@@ -481,6 +481,28 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     }
   }
 
+  /**
+   * Delete a Square customer record. Used by the automated account-data
+   * deletion flow. Square responds with NOT_FOUND for unknown customers;
+   * we swallow that to keep this idempotent.
+   */
+  async deleteCustomer(customerId: string): Promise<void> {
+    const client = await this.getSquareClient();
+    if (!client) {
+      throw new Error('Square client not initialized');
+    }
+    try {
+      await client.customersApi.deleteCustomer(customerId);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (/NOT_FOUND|not found/i.test(msg)) {
+        if (isDev) log.info('Square customer already absent, treating as deleted', { customerId });
+        return;
+      }
+      throw error;
+    }
+  }
+
   async getPayment(
     paymentId: string,
   ): Promise<PaymentVerification | null> {

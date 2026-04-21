@@ -226,3 +226,41 @@ export async function getBowlerByEmailSystemAdmin(email: string): Promise<Bowler
   const [result] = await db.select().from(bowlers).where(eq(bowlers.email, email));
   return result;
 }
+
+/**
+ * Find every bowler row whose email matches the supplied address (case
+ * sensitive — emails are normalised on insert). Used by the account-data
+ * deletion flow which needs to scrub all bowler records tied to a single
+ * email, even if duplicated across orgs.
+ */
+export async function getBowlersByEmailSystemAdmin(email: string): Promise<Bowler[]> {
+  return db.select().from(bowlers).where(eq(bowlers.email, email));
+}
+
+/**
+ * Scrub personally-identifying fields on a bowler in-place. Preserves
+ * the row (and its FK-protected payments / scores / league memberships)
+ * so historical data stays consistent, but removes name, email, phone,
+ * and stored payment-provider references and marks the bowler inactive.
+ */
+export async function anonymizeBowler(id: number): Promise<Bowler> {
+  const [updated] = await db
+    .update(bowlers)
+    .set({
+      name: 'Deleted Bowler',
+      email: null,
+      phone: null,
+      active: false,
+      paymentCustomerId: null,
+      cardpointeProfileId: null,
+      bnContactId: null,
+      paymentSyncPendingAt: null,
+    })
+    .where(eq(bowlers.id, id))
+    .returning();
+  cacheInvalidate('bowlers:');
+  if (!updated) {
+    throw new Error(`Failed to anonymize bowler ${id}`);
+  }
+  return updated;
+}

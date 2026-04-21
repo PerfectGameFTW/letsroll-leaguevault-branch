@@ -43,10 +43,12 @@ export class DatabaseStorage implements IStorage {
   getBowlersByIds!: IStorage["getBowlersByIds"];
   getBowlerByEmail!: IStorage["getBowlerByEmail"];
   getBowlerByEmailSystemAdmin!: IStorage["getBowlerByEmailSystemAdmin"];
+  getBowlersByEmailSystemAdmin!: IStorage["getBowlersByEmailSystemAdmin"];
   createBowler!: IStorage["createBowler"];
   updateBowler!: IStorage["updateBowler"];
   updateBowlerBnContactId!: IStorage["updateBowlerBnContactId"];
   deleteBowler!: IStorage["deleteBowler"];
+  anonymizeBowler!: IStorage["anonymizeBowler"];
   getBowlerLeagues!: IStorage["getBowlerLeagues"];
   getBowlerLeague!: IStorage["getBowlerLeague"];
   getBowlerLeaguesByBowlerIds!: IStorage["getBowlerLeaguesByBowlerIds"];
@@ -151,6 +153,7 @@ export class DatabaseStorage implements IStorage {
   countDeletionRequests!: IStorage["countDeletionRequests"];
   getDeletionRequest!: IStorage["getDeletionRequest"];
   updateDeletionRequestStatus!: IStorage["updateDeletionRequestStatus"];
+  completeDeletionRequestWithExecution!: IStorage["completeDeletionRequestWithExecution"];
   countDeletionRequestsForEmailSince!: IStorage["countDeletionRequestsForEmailSince"];
 
   createEmailChangeRequest!: IStorage["createEmailChangeRequest"];

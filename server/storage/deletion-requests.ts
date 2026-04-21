@@ -50,6 +50,33 @@ export async function countDeletionRequests(filters?: { status?: DeletionRequest
   return row?.value ?? 0;
 }
 
+/**
+ * Mark a deletion request as completed and attach the JSON-serialized
+ * audit summary produced by the automated account-data deletion flow.
+ * Refuses to overwrite a non-pending request so a second click cannot
+ * stomp the original audit trail.
+ */
+export async function completeDeletionRequestWithExecution(
+  id: number,
+  reviewedBy: number,
+  executionSummary: string,
+  adminNote: string | null,
+): Promise<DeletionRequest> {
+  const [row] = await db
+    .update(deletionRequests)
+    .set({
+      status: "completed",
+      adminNote,
+      reviewedBy,
+      reviewedAt: new Date().toISOString(),
+      executionSummary,
+    })
+    .where(and(eq(deletionRequests.id, id), eq(deletionRequests.status, "pending")))
+    .returning();
+  if (!row) throw new Error(`Deletion request ${id} not found or already reviewed`);
+  return row;
+}
+
 export async function countDeletionRequestsForEmailSince(email: string, since: Date): Promise<number> {
   const rows = await db
     .select({ id: deletionRequests.id })

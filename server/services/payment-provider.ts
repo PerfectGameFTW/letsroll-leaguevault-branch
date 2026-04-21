@@ -136,10 +136,27 @@ export interface WalletProvider {
   registerApplePayDomain(domain: string): Promise<{ success: boolean; message: string }>;
 }
 
+/**
+ * Optional capability: delete a previously-created customer record at
+ * the payment processor. Used by the automated account-data deletion
+ * flow (see server/services/account-deletion.ts) when an admin executes
+ * a deletion request. Implementations should treat "customer not found"
+ * as a successful no-op so retries are idempotent.
+ */
+export interface CustomerCleanupProvider {
+  deleteCustomer(customerId: string): Promise<void>;
+}
+
 export function hasCatalogSupport(provider: PaymentProvider): provider is PaymentProvider & CatalogProvider {
   return 'listCatalogCategories' in provider && 'listCatalogItems' in provider;
 }
 
 export function hasWalletSupport(provider: PaymentProvider): provider is PaymentProvider & WalletProvider {
   return 'registerApplePayDomain' in provider;
+}
+
+export function hasCustomerCleanupSupport(
+  provider: PaymentProvider,
+): provider is PaymentProvider & CustomerCleanupProvider {
+  return 'deleteCustomer' in provider;
 }

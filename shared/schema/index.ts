@@ -28,8 +28,8 @@ export type { Game, InsertGame, UpdateGame, Score, InsertScore, UpdateScore } fr
 export { emailTemplates, insertEmailTemplateSchema, updateEmailTemplateSchema } from "./email-templates";
 export type { InsertEmailTemplate, UpdateEmailTemplate, EmailTemplate } from "./email-templates";
 
-export { deletionRequests, insertDeletionRequestSchema, updateDeletionRequestStatusSchema, DELETION_REQUEST_STATUSES } from "./deletion-requests";
-export type { DeletionRequest, InsertDeletionRequest, UpdateDeletionRequestStatus, DeletionRequestStatus } from "./deletion-requests";
+export { deletionRequests, insertDeletionRequestSchema, updateDeletionRequestStatusSchema, executeDeletionRequestSchema, DELETION_REQUEST_STATUSES } from "./deletion-requests";
+export type { DeletionRequest, InsertDeletionRequest, UpdateDeletionRequestStatus, DeletionRequestStatus, ExecuteDeletionRequestInput, DeletionExecutionSummary } from "./deletion-requests";
 
 export { emailChangeRequests, insertEmailChangeRequestSchema } from "./email-change-requests";
 export type { EmailChangeRequest, InsertEmailChangeRequest } from "./email-change-requests";

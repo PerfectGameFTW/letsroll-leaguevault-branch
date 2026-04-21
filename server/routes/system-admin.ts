@@ -25,7 +25,13 @@ import {
 } from '../storage/orphaned-data';
 import { requireAdmin } from '../middleware/admin.js';
 import { createLogger } from '../logger';
-import { updateDeletionRequestStatusSchema, DELETION_REQUEST_STATUSES, type DeletionRequestStatus } from '@shared/schema';
+import {
+  updateDeletionRequestStatusSchema,
+  executeDeletionRequestSchema,
+  DELETION_REQUEST_STATUSES,
+  type DeletionRequestStatus,
+} from '@shared/schema';
+import { executeAccountDeletion } from '../services/account-deletion.js';
 
 const log = createLogger("SystemAdmin");
 
@@ -162,6 +168,51 @@ router.patch('/deletion-requests/:id', requireAdmin, async (req: Request, res: R
   } catch (error) {
     log.error('Error updating deletion request:', error);
     sendError(res, 'Failed to update deletion request', 500, 'SERVER_ERROR');
+  }
+});
+
+// Automated account-data deletion. Performs the actual scrub of bowler
+// rows, payment-provider customer records, pending email-change
+// requests, and the user account, then marks the originating deletion
+// request as completed with a JSON audit summary attached. Requires an
+// explicit `confirm: "DELETE"` field in the body so a stray empty POST
+// cannot trigger the destructive flow.
+router.post('/deletion-requests/:id/execute', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid request ID', 400, 'INVALID_ID');
+    }
+
+    const parsed = executeDeletionRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return handleZodError(res, parsed.error);
+    }
+
+    const reviewerId = req.user?.id;
+    if (!reviewerId) {
+      return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
+    }
+
+    const existing = await storage.getDeletionRequest(id);
+    if (!existing) {
+      return sendError(res, 'Deletion request not found', 404, 'NOT_FOUND');
+    }
+    if (existing.status !== 'pending') {
+      return sendError(res, 'Request has already been reviewed', 400, 'ALREADY_REVIEWED');
+    }
+
+    const summary = await executeAccountDeletion(existing.email, reviewerId);
+    const updated = await storage.completeDeletionRequestWithExecution(
+      id,
+      reviewerId,
+      JSON.stringify(summary),
+      parsed.data.adminNote ?? null,
+    );
+    sendSuccess(res, { request: updated, summary });
+  } catch (error) {
+    log.error('Error executing deletion request:', error);
+    sendError(res, 'Failed to execute deletion request', 500, 'SERVER_ERROR');
   }
 });
 

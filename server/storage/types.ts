@@ -62,10 +62,12 @@ export interface IBowlerStorage {
   getBowlersByIds(ids: number[]): Promise<Bowler[]>;
   getBowlerByEmail(email: string, organizationId: number): Promise<Bowler | undefined>;
   getBowlerByEmailSystemAdmin(email: string): Promise<Bowler | undefined>;
+  getBowlersByEmailSystemAdmin(email: string): Promise<Bowler[]>;
   createBowler(bowler: InsertBowler): Promise<Bowler>;
   updateBowler(id: number, bowler: UpdateBowler): Promise<Bowler>;
   updateBowlerBnContactId(bowlerId: number, bnContactId: string): Promise<void>;
   deleteBowler(id: number): Promise<void>;
+  anonymizeBowler(id: number): Promise<Bowler>;
   getBowlerLeagues(filters?: { bowlerId?: number; leagueId?: number; teamId?: number }): Promise<BowlerLeague[]>;
   getBowlerLeague(id: number): Promise<BowlerLeague | undefined>;
   getBowlerLeaguesByBowlerIds(bowlerIds: number[]): Promise<BowlerLeague[]>;
@@ -188,6 +190,12 @@ export interface IDeletionRequestStorage {
     status: Exclude<DeletionRequestStatus, "pending">,
     reviewedBy: number,
     adminNote?: string | null,
+  ): Promise<DeletionRequest>;
+  completeDeletionRequestWithExecution(
+    id: number,
+    reviewedBy: number,
+    executionSummary: string,
+    adminNote: string | null,
   ): Promise<DeletionRequest>;
   countDeletionRequestsForEmailSince(email: string, since: Date): Promise<number>;
 }

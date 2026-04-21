@@ -17,6 +17,10 @@ export const deletionRequests = pgTable("deletion_requests", {
   adminNote: text("admin_note"),
   reviewedBy: integer("reviewed_by").references(() => users.id),
   reviewedAt: timestamp("reviewed_at", { mode: "string" }),
+  // JSON-serialized audit summary of the automated account-data deletion
+  // performed when an admin executes the request (see
+  // server/services/account-deletion.ts). Null until execution runs.
+  executionSummary: text("execution_summary"),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 }, (table) => ({
   statusIdx: index("deletion_requests_status_idx").on(table.status),
@@ -30,13 +34,44 @@ export const insertDeletionRequestSchema = baseInsert.extend({
   reason: z.string().max(2000).nullable().optional(),
   ipAddress: z.string().nullable().optional(),
   userAgent: z.string().nullable().optional(),
-}).omit({ id: true, createdAt: true, status: true, adminNote: true, reviewedBy: true, reviewedAt: true });
+}).omit({ id: true, createdAt: true, status: true, adminNote: true, reviewedBy: true, reviewedAt: true, executionSummary: true });
 
 export const updateDeletionRequestStatusSchema = z.object({
   status: z.enum(["completed", "rejected"]),
   adminNote: z.string().max(2000).nullable().optional(),
 });
 
+// Body for POST /api/system-admin/deletion-requests/:id/execute. The
+// `confirm` field is a redundant safety token the UI must send so the
+// destructive call cannot be made by an accidental empty POST.
+export const executeDeletionRequestSchema = z.object({
+  confirm: z.literal("DELETE"),
+  adminNote: z.string().max(2000).nullable().optional(),
+});
+
+export interface DeletionExecutionSummary {
+  executedAt: string;
+  executedBy: number;
+  email: string;
+  user: { deleted: boolean; userId: number | null; reason?: string };
+  bowlers: Array<{
+    bowlerId: number;
+    anonymized: boolean;
+    hadPaymentCustomerId: boolean;
+    hadCardpointeProfileId: boolean;
+    reason?: string;
+  }>;
+  paymentProvider: Array<{
+    locationId: number;
+    providerName: string;
+    customerId: string;
+    deleted: boolean;
+    error?: string;
+  }>;
+  emailChangeRequestsDeleted: number;
+}
+
 export type DeletionRequest = typeof deletionRequests.$inferSelect;
 export type InsertDeletionRequest = z.infer<typeof insertDeletionRequestSchema>;
 export type UpdateDeletionRequestStatus = z.infer<typeof updateDeletionRequestStatusSchema>;
+export type ExecuteDeletionRequestInput = z.infer<typeof executeDeletionRequestSchema>;
