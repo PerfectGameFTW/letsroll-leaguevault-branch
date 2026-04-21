@@ -307,6 +307,25 @@ export async function hasAccessToPayment(req: Request, paymentId: number): Promi
   }
 }
 
+/**
+ * In-memory org/system-admin/org-less filter for a payment list the caller
+ * already has in hand (e.g. a payload from a third-party provider, a CSV
+ * import, or any other non-DB source).
+ *
+ * **Prefer `storage.getPayments({ organizationId })` or
+ * `storage.getAllPaymentsSystemAdmin()` for lists that come from our own
+ * database** (task #295). Those helpers push the same org/org-less filtering
+ * into a single SQL query so we don't load rows the caller can never see.
+ *
+ * Behavior matrix (must match the SQL helpers above):
+ *   - unauthenticated caller → `[]`
+ *   - system_admin caller → all input payments whose parent league has a
+ *     non-null `organization_id` (org-less leagues are excluded for every
+ *     role, sysadmin included)
+ *   - org user with no `organizationId` → `[]`
+ *   - org user → input payments whose parent league belongs to the caller's
+ *     org (org-less and cross-org leagues are excluded)
+ */
 export async function filterPaymentsByOrganization(req: Request, payments: { leagueId: number }[]): Promise<{ leagueId: number }[]> {
   if (!req.user) {
     return [];
