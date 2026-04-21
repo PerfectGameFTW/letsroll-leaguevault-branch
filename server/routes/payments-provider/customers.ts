@@ -32,9 +32,12 @@ router.post('/customers', paymentLimiter, async (req, res) => {
         return sendError(res, 'League not found', 404, 'NOT_FOUND');
       }
 
+      if (league.organizationId === null) {
+        return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
+      }
+
       const userHasAccess =
         req.user?.role === 'system_admin' ||
-        league.organizationId === null ||
         (req.user?.organizationId === league.organizationId);
 
       if (!userHasAccess) {

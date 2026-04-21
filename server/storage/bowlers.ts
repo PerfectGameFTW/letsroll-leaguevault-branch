@@ -53,7 +53,17 @@ export async function getBowlers(filters: { teamId?: number; organizationId: num
 }
 
 export async function getAllBowlersSystemAdmin(): Promise<Bowler[]> {
-  return db.select().from(bowlers).orderBy(bowlers.order);
+  // Org-less resource policy (see server/utils/access-control.ts):
+  // exclude bowlers whose only league assignments point to org-less leagues
+  // (or who have no league assignments at all). They are only surfaced via
+  // the explicit /api/system-admin/orphaned-data-counts diagnostic endpoint.
+  return db
+    .selectDistinct(bowlerColumns)
+    .from(bowlers)
+    .innerJoin(bowlerLeagues, eq(bowlerLeagues.bowlerId, bowlers.id))
+    .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
+    .where(sql`${leagues.organizationId} IS NOT NULL`)
+    .orderBy(bowlers.order);
 }
 
 export async function getBowler(id: number): Promise<Bowler | undefined> {

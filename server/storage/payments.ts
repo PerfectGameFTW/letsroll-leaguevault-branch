@@ -26,11 +26,17 @@ interface AllPaymentFilters {
   organizationId?: number;
 }
 
-function buildPaymentConditions(filters: AllPaymentFilters) {
+function buildPaymentConditions(filters: AllPaymentFilters, options?: { excludeOrgLessLeagues?: boolean }) {
   const conditions = [];
 
   if (filters.organizationId !== undefined) {
     conditions.push(sql`${payments.leagueId} IN (SELECT "id" FROM ${leagues} WHERE ${leagues.organizationId} = ${filters.organizationId})`);
+  } else if (options?.excludeOrgLessLeagues) {
+    // Org-less resource policy (see server/utils/access-control.ts):
+    // exclude payments whose parent league is missing or has organization_id IS NULL.
+    conditions.push(
+      sql`${payments.leagueId} IN (SELECT "id" FROM ${leagues} WHERE ${leagues.organizationId} IS NOT NULL)`,
+    );
   }
   if (filters.bowlerId !== undefined) {
     conditions.push(eq(payments.bowlerId, filters.bowlerId));
@@ -76,7 +82,7 @@ export async function getPayments(filters: PaymentFilters): Promise<Payment[]> {
 }
 
 export async function getAllPaymentsSystemAdmin(filters?: { bowlerId?: number; leagueId?: number; teamId?: number; weekOf?: Date }): Promise<Payment[]> {
-  const conditions = buildPaymentConditions(filters ?? {});
+  const conditions = buildPaymentConditions(filters ?? {}, { excludeOrgLessLeagues: true });
   const query = db.select().from(payments);
   if (conditions.length > 0) {
     query.where(and(...conditions));
@@ -90,7 +96,7 @@ export async function getAllPaymentsPaginatedSystemAdmin(
   page: number,
   limit: number
 ): Promise<PaginatedResult<Payment>> {
-  const conditions = buildPaymentConditions(filters);
+  const conditions = buildPaymentConditions(filters, { excludeOrgLessLeagues: true });
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
   const [countResult] = await db

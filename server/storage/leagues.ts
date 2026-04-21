@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, isNotNull } from "drizzle-orm";
 import { db } from "../db.js";
 import { leagues, type League, type InsertLeague, type UpdateLeague } from "@shared/schema";
 import { createLogger } from '../logger';
@@ -17,8 +17,11 @@ export async function getLeagues(organizationId: number): Promise<League[]> {
 }
 
 export async function getAllLeaguesSystemAdmin(): Promise<League[]> {
+  // Org-less resource policy (see server/utils/access-control.ts):
+  // exclude leagues whose organization_id IS NULL. They are only surfaced via
+  // the explicit /api/system-admin/orphaned-data-counts diagnostic endpoint.
   return cacheFetch('leagues:all', LEAGUES_TTL, () =>
-    db.select().from(leagues).orderBy(leagues.id)
+    db.select().from(leagues).where(isNotNull(leagues.organizationId)).orderBy(leagues.id)
   );
 }
 

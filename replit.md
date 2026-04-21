@@ -56,6 +56,12 @@ A full-stack bowling league management application with multi-tenant support for
 - `server/auth.ts` - Authentication with Passport.js (minimal logging, no sensitive data)
 - `server/utils/access-control.ts` - Centralized authorization helpers (hasAccessToLeague, hasAccessToBowler, etc.)
 - **Storage naming convention**: Cross-org methods use `*SystemAdmin` suffix (e.g., `getAllBowlersSystemAdmin`). Org-scoped methods require `organizationId` parameter.
+
+## Org-less ("Orphaned") Resource Policy
+- All access-control helpers in `server/utils/access-control.ts` (`requireOrganizationAccess`, `hasAccessToLeague`, `hasAccessToTeam`, `hasAccessToBowler`, `hasAccessToPayment`) **deny access to any row whose effective `organizationId` is `NULL`, regardless of the caller's role — including `system_admin`.**
+- Rationale: well-formed data always has an `organizationId`. Org-less rows are bugs/stale data and exposing them silently risks PII leakage and masks integrity problems.
+- The single explicit escape hatch is the diagnostic endpoint `GET /api/system-admin/orphaned-data-counts` (system-admin only), which returns counts of org-less rows per resource type (`leagues`, `teams`, `bowlerLeagues`, `payments`, `users`). Implementation lives in `server/storage/orphaned-data.ts`.
+- Any new authorization helper or storage method that traverses `organizationId` MUST follow the same "deny on null, even for system admins" rule.
 - `client/src/App.tsx` - Frontend routing and route guards (wrapped with ErrorBoundary)
 - `client/src/pages/` - Page components
 - `client/src/components/` - Reusable UI components

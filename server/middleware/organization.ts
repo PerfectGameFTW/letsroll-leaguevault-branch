@@ -84,9 +84,8 @@ export function filterByOrganization(req: any, res: Response, next: NextFunction
  * Middleware to check if a league belongs to the user's organization
  */
 export async function hasAccessToLeague(req: any, leagueId: number): Promise<boolean> {
-  // System admins have access to all leagues
-  if (req.user && req.user.role === 'system_admin') {
-    return true;
+  if (!req.user) {
+    return false;
   }
 
   // Get the league
@@ -95,13 +94,20 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
     return false;
   }
 
+  // Org-less resource policy (see server/utils/access-control.ts): deny for
+  // every role, including system_admin, before any role-based bypass.
   if (league.organizationId === null) {
-    log.warn(`league ${leagueId} granted to user ${req.user?.id}`);
+    log.warn(`league ${leagueId} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
+    return false;
+  }
+
+  // System admins have access to all org-scoped leagues
+  if (req.user.role === 'system_admin') {
     return true;
   }
 
   // User can access leagues from their organization
-  return req.user && league.organizationId === req.user.organizationId;
+  return league.organizationId === req.user.organizationId;
 }
 
 /**

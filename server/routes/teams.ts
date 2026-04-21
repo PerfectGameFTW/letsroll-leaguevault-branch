@@ -21,12 +21,15 @@ router.get("/", async (req, res) => {
         return sendError(res, "League not found", 404, 'NOT_FOUND');
       }
       
-      // Check if user has access to this league's organization
-      const userHasAccess = 
-        req.user?.role === 'system_admin' || 
-        league.organizationId === null || 
+      // Org-less resource policy (see server/utils/access-control.ts):
+      // deny org-less rows for everyone, including system_admin.
+      if (league.organizationId === null) {
+        return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+      }
+
+      const userHasAccess =
+        req.user?.role === 'system_admin' ||
         (req.user?.organizationId === league.organizationId);
-      
       if (userHasAccess) {
         teams = await storage.getTeams(leagueId);
       } else {
@@ -38,8 +41,16 @@ router.get("/", async (req, res) => {
       const scopedOrgId: number | null = req.user?.organizationId ?? null;
 
       if (req.user?.role === 'system_admin' && scopedOrgId === null) {
-        // Unaffiliated system admin: see all teams
-        teams = await storage.getTeams();
+        // Unaffiliated system admin: see all teams whose parent league has
+        // an organization. Org-less teams are excluded per the policy in
+        // server/utils/access-control.ts and only surface via the
+        // /api/system-admin/orphaned-data-counts diagnostic endpoint.
+        const allLeagues = await storage.getAllLeaguesSystemAdmin();
+        const orgScopedLeagueIds = new Set(
+          allLeagues.filter(l => l.organizationId !== null).map(l => l.id),
+        );
+        const allTeams = await storage.getTeams();
+        teams = allTeams.filter(t => orgScopedLeagueIds.has(t.leagueId));
       } else if (scopedOrgId !== null) {
         const leagues = await storage.getLeagues(scopedOrgId);
         const teamPromises = leagues.map(league => storage.getTeams(league.id));
@@ -87,11 +98,15 @@ router.patch("/reorder", async (req, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
 
+    // Org-less resource policy (see server/utils/access-control.ts):
+    // deny org-less rows for everyone, including system_admin.
+    if (league.organizationId === null) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+
     const userHasAccess =
       req.user?.role === 'system_admin' ||
-      league.organizationId === null ||
       (req.user?.organizationId === league.organizationId);
-
     if (!userHasAccess) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
@@ -121,11 +136,15 @@ router.get("/:id/details", async (req, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
 
+    // Org-less resource policy (see server/utils/access-control.ts):
+    // deny org-less rows for everyone, including system_admin.
+    if (league.organizationId === null) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+
     const userHasAccess =
       req.user?.role === 'system_admin' ||
-      league.organizationId === null ||
       (req.user?.organizationId === league.organizationId);
-
     if (!userHasAccess) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
@@ -164,12 +183,15 @@ router.get("/:id", async (req, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    // Check if user has access to this league's organization
-    const userHasAccess = 
-      req.user?.role === 'system_admin' || 
-      league.organizationId === null || 
+    // Org-less resource policy (see server/utils/access-control.ts):
+    // deny org-less rows for everyone, including system_admin.
+    if (league.organizationId === null) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+
+    const userHasAccess =
+      req.user?.role === 'system_admin' ||
       (req.user?.organizationId === league.organizationId);
-    
     if (!userHasAccess) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
@@ -191,12 +213,15 @@ router.post("/", async (req, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    // Check if user has access to this league's organization
-    const userHasAccess = 
-      req.user?.role === 'system_admin' || 
-      league.organizationId === null || 
+    // Org-less resource policy (see server/utils/access-control.ts):
+    // deny org-less rows for everyone, including system_admin.
+    if (league.organizationId === null) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+
+    const userHasAccess =
+      req.user?.role === 'system_admin' ||
       (req.user?.organizationId === league.organizationId);
-    
     if (!userHasAccess) {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
@@ -229,12 +254,15 @@ router.patch("/:id", async (req, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    // Check if user has access to this league's organization
-    const userHasAccess = 
-      req.user?.role === 'system_admin' || 
-      league.organizationId === null || 
+    // Org-less resource policy (see server/utils/access-control.ts):
+    // deny org-less rows for everyone, including system_admin.
+    if (league.organizationId === null) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+
+    const userHasAccess =
+      req.user?.role === 'system_admin' ||
       (req.user?.organizationId === league.organizationId);
-    
     if (!userHasAccess) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
@@ -273,12 +301,15 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "League not found", 404, 'NOT_FOUND');
     }
     
-    // Check if user has access to this league's organization
-    const userHasAccess = 
-      req.user?.role === 'system_admin' || 
-      league.organizationId === null || 
+    // Org-less resource policy (see server/utils/access-control.ts):
+    // deny org-less rows for everyone, including system_admin.
+    if (league.organizationId === null) {
+      return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
+    }
+
+    const userHasAccess =
+      req.user?.role === 'system_admin' ||
       (req.user?.organizationId === league.organizationId);
-    
     if (!userHasAccess) {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
+import { countOrphanedRows } from '../storage/orphaned-data';
 import { requireAdmin } from '../middleware/admin.js';
 import { createLogger } from '../logger';
 import { updateDeletionRequestStatusSchema, DELETION_REQUEST_STATUSES, type DeletionRequestStatus } from '@shared/schema';
@@ -126,6 +127,20 @@ router.patch('/deletion-requests/:id', requireAdmin, async (req: Request, res: R
   } catch (error) {
     log.error('Error updating deletion request:', error);
     sendError(res, 'Failed to update deletion request', 500, 'SERVER_ERROR');
+  }
+});
+
+// Diagnostic endpoint: counts of org-less ("orphaned") rows per resource type.
+// Per the access-control policy, normal CRUD paths deny access to rows with
+// `organization_id IS NULL`. This endpoint is the explicit, opt-in admin tool
+// that surfaces those rows so data-integrity issues are visible.
+router.get('/orphaned-data-counts', requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const counts = await countOrphanedRows();
+    sendSuccess(res, counts);
+  } catch (error) {
+    log.error('Error counting orphaned rows:', error);
+    sendError(res, 'Failed to count orphaned rows', 500, 'SERVER_ERROR');
   }
 });
 
