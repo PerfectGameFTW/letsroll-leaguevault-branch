@@ -195,10 +195,13 @@ class ApplePayWorker {
   }
 
   private async processItem(item: ApplePayJobItem): Promise<void> {
-    // We use `claimAndCompleteApplePayJobItem` for every terminal write.
-    // It only succeeds when the row is still `pending`, so even if a second
-    // worker tried to process the same item, exactly one provider call result
-    // is recorded.
+    // Every terminal write goes through `claimAndCompleteApplePayJobItem`,
+    // which only updates rows still in `pending`. This guarantees exactly
+    // one terminal result is *recorded* per item even if two workers raced.
+    // It does NOT guarantee only one provider call is *issued* — under the
+    // single-instance assumption (matching PaymentScheduler) that's fine;
+    // see follow-up #258 for adding a pre-call pending→running item claim
+    // if multi-instance becomes a requirement.
     try {
       if (item.locationId == null) {
         await storage.claimAndCompleteApplePayJobItem(item.id, {
