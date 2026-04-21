@@ -1,4 +1,4 @@
-import { sql, isNull, ne, and } from "drizzle-orm";
+import { sql, isNull, ne, and, eq } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   leagues,
@@ -6,6 +6,8 @@ import {
   bowlerLeagues,
   payments,
   users,
+  bowlers,
+  organizations,
 } from "@shared/schema";
 
 export interface OrphanedDataCounts {
@@ -14,6 +16,59 @@ export interface OrphanedDataCounts {
   bowlerLeagues: number;
   payments: number;
   users: number;
+}
+
+export type OrphanedResourceType =
+  | "leagues"
+  | "teams"
+  | "bowlerLeagues"
+  | "payments"
+  | "users";
+
+export interface OrphanedLeagueRow {
+  id: number;
+  name: string;
+  active: boolean;
+  seasonStart: string;
+  seasonEnd: string;
+}
+
+export interface OrphanedTeamRow {
+  id: number;
+  name: string;
+  number: number;
+  leagueId: number;
+  leagueName: string | null;
+  leagueOrganizationId: number | null;
+  parentLeagueExists: boolean;
+}
+
+export interface OrphanedBowlerLeagueRow {
+  id: number;
+  bowlerId: number;
+  bowlerName: string | null;
+  leagueId: number;
+  leagueName: string | null;
+  parentLeagueExists: boolean;
+}
+
+export interface OrphanedPaymentRow {
+  id: number;
+  amount: number;
+  weekOf: string;
+  bowlerId: number;
+  bowlerName: string | null;
+  leagueId: number;
+  leagueName: string | null;
+  parentLeagueExists: boolean;
+}
+
+export interface OrphanedUserRow {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  createdAt: string;
 }
 
 /**
@@ -75,4 +130,276 @@ export async function countOrphanedRows(): Promise<OrphanedDataCounts> {
     payments: Number(payRow?.value ?? 0),
     users: Number(userRow?.value ?? 0),
   };
+}
+
+// ---------------------------------------------------------------------------
+// List helpers — return the actual rows that are org-less so admins can see
+// which records are affected and act on them. Mirrors the same "orphaned" rule
+// used by countOrphanedRows so what the UI lists is exactly what gets counted.
+// ---------------------------------------------------------------------------
+
+export async function listOrphanedLeagues(): Promise<OrphanedLeagueRow[]> {
+  const rows = await db
+    .select({
+      id: leagues.id,
+      name: leagues.name,
+      active: leagues.active,
+      seasonStart: leagues.seasonStart,
+      seasonEnd: leagues.seasonEnd,
+    })
+    .from(leagues)
+    .where(isNull(leagues.organizationId))
+    .orderBy(leagues.id);
+  return rows;
+}
+
+export async function listOrphanedTeams(): Promise<OrphanedTeamRow[]> {
+  const rows = await db
+    .select({
+      id: teams.id,
+      name: teams.name,
+      number: teams.number,
+      leagueId: teams.leagueId,
+      leagueName: leagues.name,
+      leagueOrganizationId: leagues.organizationId,
+      parentLeagueId: leagues.id,
+    })
+    .from(teams)
+    .leftJoin(leagues, sql`${teams.leagueId} = ${leagues.id}`)
+    .where(sql`${leagues.id} IS NULL OR ${leagues.organizationId} IS NULL`)
+    .orderBy(teams.id);
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    number: r.number,
+    leagueId: r.leagueId,
+    leagueName: r.leagueName,
+    leagueOrganizationId: r.leagueOrganizationId,
+    parentLeagueExists: r.parentLeagueId !== null,
+  }));
+}
+
+export async function listOrphanedBowlerLeagues(): Promise<OrphanedBowlerLeagueRow[]> {
+  const rows = await db
+    .select({
+      id: bowlerLeagues.id,
+      bowlerId: bowlerLeagues.bowlerId,
+      bowlerName: bowlers.name,
+      leagueId: bowlerLeagues.leagueId,
+      leagueName: leagues.name,
+      parentLeagueId: leagues.id,
+    })
+    .from(bowlerLeagues)
+    .leftJoin(leagues, sql`${bowlerLeagues.leagueId} = ${leagues.id}`)
+    .leftJoin(bowlers, sql`${bowlerLeagues.bowlerId} = ${bowlers.id}`)
+    .where(sql`${leagues.id} IS NULL OR ${leagues.organizationId} IS NULL`)
+    .orderBy(bowlerLeagues.id);
+  return rows.map((r) => ({
+    id: r.id,
+    bowlerId: r.bowlerId,
+    bowlerName: r.bowlerName,
+    leagueId: r.leagueId,
+    leagueName: r.leagueName,
+    parentLeagueExists: r.parentLeagueId !== null,
+  }));
+}
+
+export async function listOrphanedPayments(): Promise<OrphanedPaymentRow[]> {
+  const rows = await db
+    .select({
+      id: payments.id,
+      amount: payments.amount,
+      weekOf: payments.weekOf,
+      bowlerId: payments.bowlerId,
+      bowlerName: bowlers.name,
+      leagueId: payments.leagueId,
+      leagueName: leagues.name,
+      parentLeagueId: leagues.id,
+    })
+    .from(payments)
+    .leftJoin(leagues, sql`${payments.leagueId} = ${leagues.id}`)
+    .leftJoin(bowlers, sql`${payments.bowlerId} = ${bowlers.id}`)
+    .where(sql`${leagues.id} IS NULL OR ${leagues.organizationId} IS NULL`)
+    .orderBy(payments.id);
+  return rows.map((r) => ({
+    id: r.id,
+    amount: r.amount,
+    weekOf: r.weekOf,
+    bowlerId: r.bowlerId,
+    bowlerName: r.bowlerName,
+    leagueId: r.leagueId,
+    leagueName: r.leagueName,
+    parentLeagueExists: r.parentLeagueId !== null,
+  }));
+}
+
+export async function listOrphanedUsers(): Promise<OrphanedUserRow[]> {
+  const rows = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      role: users.role,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(and(isNull(users.organizationId), ne(users.role, 'system_admin')))
+    .orderBy(users.id);
+  return rows;
+}
+
+// ---------------------------------------------------------------------------
+// Repair helpers — explicit "orphaned data" handlers. Each one re-verifies the
+// row is actually org-less before acting, so the regular access-control rule
+// ("deny on null, even for system admins") is never bypassed for non-orphans.
+// ---------------------------------------------------------------------------
+
+export class NotOrphanedError extends Error {
+  constructor(message = "Row is not orphaned") {
+    super(message);
+    this.name = "NotOrphanedError";
+  }
+}
+
+export class OrphanRowNotFoundError extends Error {
+  constructor(message = "Orphaned row not found") {
+    super(message);
+    this.name = "OrphanRowNotFoundError";
+  }
+}
+
+async function assertOrgExists(organizationId: number): Promise<void> {
+  const [row] = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId));
+  if (!row) {
+    throw new OrphanRowNotFoundError(`Organization ${organizationId} not found`);
+  }
+}
+
+export async function reassignOrphanedLeague(
+  leagueId: number,
+  organizationId: number,
+): Promise<void> {
+  await assertOrgExists(organizationId);
+  const result = await db
+    .update(leagues)
+    .set({ organizationId })
+    .where(and(eq(leagues.id, leagueId), isNull(leagues.organizationId)))
+    .returning({ id: leagues.id });
+  if (result.length === 0) {
+    const [existing] = await db
+      .select({ id: leagues.id })
+      .from(leagues)
+      .where(eq(leagues.id, leagueId));
+    if (!existing) throw new OrphanRowNotFoundError();
+    throw new NotOrphanedError();
+  }
+}
+
+export async function reassignOrphanedUser(
+  userId: number,
+  organizationId: number,
+): Promise<void> {
+  await assertOrgExists(organizationId);
+  const result = await db
+    .update(users)
+    .set({ organizationId })
+    .where(and(
+      eq(users.id, userId),
+      isNull(users.organizationId),
+      ne(users.role, 'system_admin'),
+    ))
+    .returning({ id: users.id });
+  if (result.length === 0) {
+    const [existing] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!existing) throw new OrphanRowNotFoundError();
+    throw new NotOrphanedError();
+  }
+}
+
+export async function deleteOrphanedLeague(leagueId: number): Promise<void> {
+  const result = await db
+    .delete(leagues)
+    .where(and(eq(leagues.id, leagueId), isNull(leagues.organizationId)))
+    .returning({ id: leagues.id });
+  if (result.length === 0) {
+    const [existing] = await db
+      .select({ id: leagues.id })
+      .from(leagues)
+      .where(eq(leagues.id, leagueId));
+    if (!existing) throw new OrphanRowNotFoundError();
+    throw new NotOrphanedError();
+  }
+}
+
+export async function deleteOrphanedTeam(teamId: number): Promise<void> {
+  const [row] = await db
+    .select({
+      id: teams.id,
+      parentLeagueId: leagues.id,
+      parentOrgId: leagues.organizationId,
+    })
+    .from(teams)
+    .leftJoin(leagues, sql`${teams.leagueId} = ${leagues.id}`)
+    .where(eq(teams.id, teamId));
+  if (!row) throw new OrphanRowNotFoundError();
+  const isOrphan = row.parentLeagueId === null || row.parentOrgId === null;
+  if (!isOrphan) throw new NotOrphanedError();
+  await db.delete(teams).where(eq(teams.id, teamId));
+}
+
+export async function deleteOrphanedBowlerLeague(id: number): Promise<void> {
+  const [row] = await db
+    .select({
+      id: bowlerLeagues.id,
+      parentLeagueId: leagues.id,
+      parentOrgId: leagues.organizationId,
+    })
+    .from(bowlerLeagues)
+    .leftJoin(leagues, sql`${bowlerLeagues.leagueId} = ${leagues.id}`)
+    .where(eq(bowlerLeagues.id, id));
+  if (!row) throw new OrphanRowNotFoundError();
+  const isOrphan = row.parentLeagueId === null || row.parentOrgId === null;
+  if (!isOrphan) throw new NotOrphanedError();
+  await db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id));
+}
+
+export async function deleteOrphanedPayment(id: number): Promise<void> {
+  const [row] = await db
+    .select({
+      id: payments.id,
+      parentLeagueId: leagues.id,
+      parentOrgId: leagues.organizationId,
+    })
+    .from(payments)
+    .leftJoin(leagues, sql`${payments.leagueId} = ${leagues.id}`)
+    .where(eq(payments.id, id));
+  if (!row) throw new OrphanRowNotFoundError();
+  const isOrphan = row.parentLeagueId === null || row.parentOrgId === null;
+  if (!isOrphan) throw new NotOrphanedError();
+  await db.delete(payments).where(eq(payments.id, id));
+}
+
+export async function deleteOrphanedUser(userId: number): Promise<void> {
+  const result = await db
+    .delete(users)
+    .where(and(
+      eq(users.id, userId),
+      isNull(users.organizationId),
+      ne(users.role, 'system_admin'),
+    ))
+    .returning({ id: users.id });
+  if (result.length === 0) {
+    const [existing] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!existing) throw new OrphanRowNotFoundError();
+    throw new NotOrphanedError();
+  }
 }

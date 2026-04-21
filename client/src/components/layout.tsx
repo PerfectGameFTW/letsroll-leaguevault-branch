@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -95,6 +95,12 @@ const navItems: NavItem[] = [
     adminOnly: true
   },
   {
+    icon: ShieldAlert,
+    label: "Data Integrity",
+    href: "/admin/data-integrity",
+    adminOnly: true
+  },
+  {
     icon: Trophy,
     label: "Leagues",
     href: "/leagues"
@@ -126,6 +132,7 @@ const pageLabels: Record<string, string> = {
   "/email-templates": "Email Templates",
   "/admin/deletion-requests": "Deletion Requests",
   "/admin/apple-pay-jobs": "Apple Pay Jobs",
+  "/admin/data-integrity": "Data Integrity",
   "/leagues": "Leagues",
   "/bowlers": "Bowlers",
   "/payments": "Payments",

@@ -2,7 +2,24 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
-import { countOrphanedRows } from '../storage/orphaned-data';
+import {
+  countOrphanedRows,
+  listOrphanedLeagues,
+  listOrphanedTeams,
+  listOrphanedBowlerLeagues,
+  listOrphanedPayments,
+  listOrphanedUsers,
+  reassignOrphanedLeague,
+  reassignOrphanedUser,
+  deleteOrphanedLeague,
+  deleteOrphanedTeam,
+  deleteOrphanedBowlerLeague,
+  deleteOrphanedPayment,
+  deleteOrphanedUser,
+  NotOrphanedError,
+  OrphanRowNotFoundError,
+  type OrphanedResourceType,
+} from '../storage/orphaned-data';
 import { requireAdmin } from '../middleware/admin.js';
 import { createLogger } from '../logger';
 import { updateDeletionRequestStatusSchema, DELETION_REQUEST_STATUSES, type DeletionRequestStatus } from '@shared/schema';
@@ -141,6 +158,93 @@ router.get('/orphaned-data-counts', requireAdmin, async (_req: Request, res: Res
   } catch (error) {
     log.error('Error counting orphaned rows:', error);
     sendError(res, 'Failed to count orphaned rows', 500, 'SERVER_ERROR');
+  }
+});
+
+// Drill-down list endpoints for the data-integrity admin panel. Like the
+// counts endpoint above, these are explicit "orphaned data" handlers that
+// surface rows the regular CRUD paths intentionally hide.
+const ORPHAN_TYPES: readonly OrphanedResourceType[] = [
+  'leagues', 'teams', 'bowlerLeagues', 'payments', 'users',
+] as const;
+
+function parseOrphanType(raw: string): OrphanedResourceType | null {
+  return (ORPHAN_TYPES as readonly string[]).includes(raw)
+    ? (raw as OrphanedResourceType)
+    : null;
+}
+
+router.get('/orphaned-data/:type', requireAdmin, async (req: Request, res: Response) => {
+  const type = parseOrphanType(req.params.type);
+  if (!type) return sendError(res, 'Invalid resource type', 400, 'INVALID_TYPE');
+  try {
+    const rows = await (
+      type === 'leagues' ? listOrphanedLeagues() :
+      type === 'teams' ? listOrphanedTeams() :
+      type === 'bowlerLeagues' ? listOrphanedBowlerLeagues() :
+      type === 'payments' ? listOrphanedPayments() :
+      listOrphanedUsers()
+    );
+    sendSuccess(res, rows);
+  } catch (error) {
+    log.error(`Error listing orphaned ${type}:`, error);
+    sendError(res, 'Failed to list orphaned rows', 500, 'SERVER_ERROR');
+  }
+});
+
+const reassignBodySchema = z.object({
+  organizationId: z.number().int().positive(),
+});
+
+function handleRepairError(res: Response, error: unknown, action: string, type: string) {
+  if (error instanceof OrphanRowNotFoundError) {
+    return sendError(res, error.message, 404, 'NOT_FOUND');
+  }
+  if (error instanceof NotOrphanedError) {
+    return sendError(res, 'Row is not orphaned and cannot be repaired here', 409, 'NOT_ORPHANED');
+  }
+  log.error(`Error ${action} orphaned ${type}:`, error);
+  sendError(res, `Failed to ${action} orphaned row`, 500, 'SERVER_ERROR');
+}
+
+router.post('/orphaned-data/:type/:id/reassign', requireAdmin, async (req: Request, res: Response) => {
+  const type = parseOrphanType(req.params.type);
+  if (!type) return sendError(res, 'Invalid resource type', 400, 'INVALID_TYPE');
+  if (type !== 'leagues' && type !== 'users') {
+    return sendError(res, 'Reassignment is only supported for leagues and users; child rows inherit their org from the parent league', 400, 'REASSIGN_UNSUPPORTED');
+  }
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return sendError(res, 'Invalid id', 400, 'INVALID_ID');
+  const parsed = reassignBodySchema.safeParse(req.body);
+  if (!parsed.success) return handleZodError(res, parsed.error);
+  try {
+    if (type === 'leagues') {
+      await reassignOrphanedLeague(id, parsed.data.organizationId);
+    } else {
+      await reassignOrphanedUser(id, parsed.data.organizationId);
+    }
+    sendSuccess(res, { id, organizationId: parsed.data.organizationId });
+  } catch (error) {
+    handleRepairError(res, error, 'reassign', type);
+  }
+});
+
+router.post('/orphaned-data/:type/:id/delete', requireAdmin, async (req: Request, res: Response) => {
+  const type = parseOrphanType(req.params.type);
+  if (!type) return sendError(res, 'Invalid resource type', 400, 'INVALID_TYPE');
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) return sendError(res, 'Invalid id', 400, 'INVALID_ID');
+  try {
+    switch (type) {
+      case 'leagues': await deleteOrphanedLeague(id); break;
+      case 'teams': await deleteOrphanedTeam(id); break;
+      case 'bowlerLeagues': await deleteOrphanedBowlerLeague(id); break;
+      case 'payments': await deleteOrphanedPayment(id); break;
+      case 'users': await deleteOrphanedUser(id); break;
+    }
+    sendSuccess(res, { id, deleted: true });
+  } catch (error) {
+    handleRepairError(res, error, 'delete', type);
   }
 });
 
