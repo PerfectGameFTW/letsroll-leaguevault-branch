@@ -1,5 +1,5 @@
 {
-  "id": "74add3cb-8f3e-4169-ba52-991cddb42df9",
+  "id": "d91c20cf-e6db-4093-8efa-2bccaeabcad9",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -230,6 +230,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -244,14 +250,20 @@
           "notNull": true,
           "default": 0
         },
-        "square_customer_id": {
-          "name": "square_customer_id",
+        "payment_customer_id": {
+          "name": "payment_customer_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "qubica_id": {
-          "name": "qubica_id",
+        "cardpointe_profile_id": {
+          "name": "cardpointe_profile_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "bn_contact_id": {
+          "name": "bn_contact_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -260,12 +272,203 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.deletion_requests": {
+      "name": "deletion_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "admin_note": {
+          "name": "admin_note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_by": {
+          "name": "reviewed_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "deletion_requests_status_idx": {
+          "name": "deletion_requests_status_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "deletion_requests_email_idx": {
+          "name": "deletion_requests_email_idx",
+          "columns": [
+            {
+              "expression": "email",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "deletion_requests_created_at_idx": {
+          "name": "deletion_requests_created_at_idx",
+          "columns": [
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "deletion_requests_reviewed_by_users_id_fk": {
+          "name": "deletion_requests_reviewed_by_users_id_fk",
+          "tableFrom": "deletion_requests",
+          "tableTo": "users",
+          "columnsFrom": [
+            "reviewed_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.email_templates": {
+      "name": "email_templates",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "bowlers_qubica_id_unique": {
-          "name": "bowlers_qubica_id_unique",
+        "email_templates_slug_unique": {
+          "name": "email_templates_slug_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "qubica_id"
+            "slug"
           ]
         }
       },
@@ -402,6 +605,13 @@
           "notNull": true,
           "default": true
         },
+        "allow_public_signup": {
+          "name": "allow_public_signup",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "season_start": {
           "name": "season_start",
           "type": "timestamp",
@@ -427,6 +637,18 @@
           "notNull": true,
           "default": 2000
         },
+        "lineage_fee": {
+          "name": "lineage_fee",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prize_fund_fee": {
+          "name": "prize_fund_fee",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "practice_start_time": {
           "name": "practice_start_time",
           "type": "text",
@@ -439,11 +661,113 @@
           "primaryKey": false,
           "notNull": false
         },
-        "qubica_id": {
-          "name": "qubica_id",
+        "square_lineage_item_id": {
+          "name": "square_lineage_item_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "lineage_item_variation_id": {
+          "name": "lineage_item_variation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "square_lineage_item_name": {
+          "name": "square_lineage_item_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "square_prize_fund_item_id": {
+          "name": "square_prize_fund_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prize_fund_item_variation_id": {
+          "name": "prize_fund_item_variation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "square_prize_fund_item_name": {
+          "name": "square_prize_fund_item_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "square_category_id": {
+          "name": "square_category_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'America/Chicago'"
+        },
+        "final_two_weeks_due_week": {
+          "name": "final_two_weeks_due_week",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 6
+        },
+        "payment_mode": {
+          "name": "payment_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'weekly'"
+        },
+        "season_number": {
+          "name": "season_number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "previous_season_id": {
+          "name": "previous_season_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_id": {
+          "name": "location_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_bowling_weeks": {
+          "name": "total_bowling_weeks",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skip_dates": {
+          "name": "skip_dates",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
+        },
+        "cancelled_dates": {
+          "name": "cancelled_dates",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'"
         }
       },
       "indexes": {
@@ -488,16 +812,345 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "leagues_organization_idx": {
+          "name": "leagues_organization_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "leagues_location_idx": {
+          "name": "leagues_location_idx",
+          "columns": [
+            {
+              "expression": "location_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "leagues_previous_season_id_leagues_id_fk": {
+          "name": "leagues_previous_season_id_leagues_id_fk",
+          "tableFrom": "leagues",
+          "tableTo": "leagues",
+          "columnsFrom": [
+            "previous_season_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "leagues_organization_id_organizations_id_fk": {
+          "name": "leagues_organization_id_organizations_id_fk",
+          "tableFrom": "leagues",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "leagues_location_id_locations_id_fk": {
+          "name": "leagues_location_id_locations_id_fk",
+          "tableFrom": "leagues",
+          "tableTo": "locations",
+          "columnsFrom": [
+            "location_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.locations": {
+      "name": "locations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "zip_code": {
+          "name": "zip_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "square_credentials": {
+          "name": "square_credentials",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cardpointe_credentials": {
+          "name": "cardpointe_credentials",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "payment_provider": {
+          "name": "payment_provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'square'"
+        }
+      },
+      "indexes": {
+        "locations_organization_idx": {
+          "name": "locations_organization_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "locations_organization_id_organizations_id_fk": {
+          "name": "locations_organization_id_organizations_id_fk",
+          "tableFrom": "locations",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.organizations": {
+      "name": "organizations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subdomain": {
+          "name": "subdomain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "address": {
+          "name": "address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city": {
+          "name": "city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "zip_code": {
+          "name": "zip_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "logo": {
+          "name": "logo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dark_logo": {
+          "name": "dark_logo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "app_icon": {
+          "name": "app_icon",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "integrations": {
+          "name": "integrations",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "organization_slug_idx": {
+          "name": "organization_slug_idx",
+          "columns": [
+            {
+              "expression": "slug",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "organization_subdomain_idx": {
+          "name": "organization_subdomain_idx",
+          "columns": [
+            {
+              "expression": "subdomain",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "leagues_qubica_id_unique": {
-          "name": "leagues_qubica_id_unique",
+        "organizations_slug_unique": {
+          "name": "organizations_slug_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "qubica_id"
+            "slug"
           ]
         }
       },
@@ -565,11 +1218,23 @@
           "primaryKey": false,
           "notNull": false
         },
-        "square_card_id": {
-          "name": "square_card_id",
+        "payment_card_id": {
+          "name": "payment_card_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "cancelled_at": {
+          "name": "cancelled_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cancel_reason": {
+          "name": "cancel_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -687,6 +1352,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "lineage_amount": {
+          "name": "lineage_amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "prize_fund_amount": {
+          "name": "prize_fund_amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "week_of": {
           "name": "week_of",
           "type": "timestamp",
@@ -712,9 +1389,45 @@
           "primaryKey": false,
           "notNull": false
         },
-        "square_payment_id": {
-          "name": "square_payment_id",
+        "provider_payment_id": {
+          "name": "provider_payment_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cardpointe_retref": {
+          "name": "cardpointe_retref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "cardpointe_authcode": {
+          "name": "cardpointe_authcode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "square_refund_id": {
+          "name": "square_refund_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refund_reason": {
+          "name": "refund_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "refunded_at": {
+          "name": "refunded_at",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
@@ -732,7 +1445,53 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "payments_bowler_idx": {
+          "name": "payments_bowler_idx",
+          "columns": [
+            {
+              "expression": "bowler_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payments_league_idx": {
+          "name": "payments_league_idx",
+          "columns": [
+            {
+              "expression": "league_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payments_week_of_idx": {
+          "name": "payments_week_of_idx",
+          "columns": [
+            {
+              "expression": "week_of",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "payments_bowler_id_bowlers_id_fk": {
           "name": "payments_bowler_id_bowlers_id_fk",
@@ -762,7 +1521,15 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "payments_idempotency_key_unique": {
+          "name": "payments_idempotency_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "idempotency_key"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -974,54 +1741,35 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.series": {
-      "name": "series",
+    "public.session": {
+      "name": "session",
       "schema": "",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
+        "sid": {
+          "name": "sid",
+          "type": "varchar",
           "primaryKey": true,
           "notNull": true
         },
-        "league_id": {
-          "name": "league_id",
-          "type": "integer",
+        "sess": {
+          "name": "sess",
+          "type": "json",
           "primaryKey": false,
           "notNull": true
         },
-        "week_number": {
-          "name": "week_number",
-          "type": "integer",
+        "expire": {
+          "name": "expire",
+          "type": "timestamp (6)",
           "primaryKey": false,
           "notNull": true
-        },
-        "series_date": {
-          "name": "series_date",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "is_complete": {
-          "name": "is_complete",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         }
       },
       "indexes": {
-        "league_series_idx": {
-          "name": "league_series_idx",
+        "IDX_session_expire": {
+          "name": "IDX_session_expire",
           "columns": [
             {
-              "expression": "league_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "week_number",
+              "expression": "expire",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1033,21 +1781,7 @@
           "with": {}
         }
       },
-      "foreignKeys": {
-        "series_league_id_leagues_id_fk": {
-          "name": "series_league_id_leagues_id_fk",
-          "tableFrom": "series",
-          "tableTo": "leagues",
-          "columnsFrom": [
-            "league_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -1088,6 +1822,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": true
+        },
+        "display_order": {
+          "name": "display_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {
@@ -1107,7 +1848,7 @@
               "nulls": "last"
             }
           ],
-          "isUnique": false,
+          "isUnique": true,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -1174,6 +1915,44 @@
           "primaryKey": false,
           "notNull": false
         },
+        "avatar": {
+          "name": "avatar",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "role": {
+          "name": "role",
+          "type": "user_role",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'user'"
+        },
+        "organization_id": {
+          "name": "organization_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "location_id": {
+          "name": "location_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invite_token": {
+          "name": "invite_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "invite_token_expiry": {
+          "name": "invite_token_expiry",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -1182,7 +1961,53 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "users_organization_idx": {
+          "name": "users_organization_idx",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "users_bowler_idx": {
+          "name": "users_bowler_idx",
+          "columns": [
+            {
+              "expression": "bowler_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "users_location_idx": {
+          "name": "users_location_idx",
+          "columns": [
+            {
+              "expression": "location_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "users_bowler_id_bowlers_id_fk": {
           "name": "users_bowler_id_bowlers_id_fk",
@@ -1190,6 +2015,32 @@
           "tableTo": "bowlers",
           "columnsFrom": [
             "bowler_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "users_organization_id_organizations_id_fk": {
+          "name": "users_organization_id_organizations_id_fk",
+          "tableFrom": "users",
+          "tableTo": "organizations",
+          "columnsFrom": [
+            "organization_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "users_location_id_locations_id_fk": {
+          "name": "users_location_id_locations_id_fk",
+          "tableFrom": "users",
+          "tableTo": "locations",
+          "columnsFrom": [
+            "location_id"
           ],
           "columnsTo": [
             "id"
@@ -1211,116 +2062,19 @@
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
-    },
-    "public.weekly_stats": {
-      "name": "weekly_stats",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "series_id": {
-          "name": "series_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "bowler_league_id": {
-          "name": "bowler_league_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "average": {
-          "name": "average",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "handicap": {
-          "name": "handicap",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "games_played": {
-          "name": "games_played",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "series_stats_idx": {
-          "name": "series_stats_idx",
-          "columns": [
-            {
-              "expression": "series_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "bowler_stats_idx": {
-          "name": "bowler_stats_idx",
-          "columns": [
-            {
-              "expression": "bowler_league_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "weekly_stats_series_id_series_id_fk": {
-          "name": "weekly_stats_series_id_series_id_fk",
-          "tableFrom": "weekly_stats",
-          "tableTo": "series",
-          "columnsFrom": [
-            "series_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "weekly_stats_bowler_league_id_bowler_leagues_id_fk": {
-          "name": "weekly_stats_bowler_league_id_bowler_leagues_id_fk",
-          "tableFrom": "weekly_stats",
-          "tableTo": "bowler_leagues",
-          "columnsFrom": [
-            "bowler_league_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
     }
   },
-  "enums": {},
+  "enums": {
+    "public.user_role": {
+      "name": "user_role",
+      "schema": "public",
+      "values": [
+        "system_admin",
+        "org_admin",
+        "user"
+      ]
+    }
+  },
   "schemas": {},
   "sequences": {},
   "roles": {},
