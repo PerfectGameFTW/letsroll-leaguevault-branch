@@ -29,6 +29,16 @@ const envSchema = z.object({
   REPL_SLUG: z.string().optional(),
   REPL_OWNER: z.string().optional(),
   REPLIT_DEPLOYMENT: z.string().optional(),
+
+  APPLE_PAY_RECOVERY_ALERTS_ENABLED: z
+    .enum(["true", "false", "1", "0"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true" || v === "1")),
+  APPLE_PAY_RECOVERY_ALERT_MIN_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(30 * 60 * 1000),
 });
 
 type Env = z.infer<typeof envSchema>;

@@ -11,6 +11,7 @@ import * as locationStorage from "./locations";
 import * as emailTemplateStorage from "./email-templates";
 import * as deletionRequestStorage from "./deletion-requests";
 import * as applePayJobStorage from "./apple-pay-jobs";
+import * as alerterStateStorage from "./alerter-state";
 
 export type { IStorage };
 
@@ -173,6 +174,8 @@ export class DatabaseStorage implements IStorage {
   retryApplePayJob!: IStorage["retryApplePayJob"];
   retryApplePayJobItem!: IStorage["retryApplePayJobItem"];
 
+  tryClaimAlerterSlot!: IStorage["tryClaimAlerterSlot"];
+
   constructor() {
     Object.assign(this, {
       ...leagueStorage,
@@ -187,6 +190,7 @@ export class DatabaseStorage implements IStorage {
       ...emailTemplateStorage,
       ...deletionRequestStorage,
       ...applePayJobStorage,
+      ...alerterStateStorage,
     });
   }
 }

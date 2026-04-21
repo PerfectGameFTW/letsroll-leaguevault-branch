@@ -412,6 +412,76 @@ export async function sendDeletionRequestNotification(
   }
 }
 
+export async function sendApplePayRecoveryAlert(
+  toEmails: string[],
+  details: {
+    itemCount: number;
+    affectedJobIds: number[];
+    itemIds: number[];
+    suppressedSinceLastAlert: number;
+  },
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    log.error('Cannot send Apple Pay recovery alert — SENDGRID_API_KEY not configured');
+    return false;
+  }
+  if (toEmails.length === 0) return false;
+
+  const baseUrl = getBaseUrl();
+  const reviewUrl = `${baseUrl}/admin/apple-pay-jobs`;
+  const safeJobIds = escapeHtml(details.affectedJobIds.join(', '));
+  const previewItemIds = details.itemIds.slice(0, 25);
+  const safeItemIds = escapeHtml(
+    previewItemIds.join(', ') +
+      (details.itemIds.length > previewItemIds.length
+        ? ` (+${details.itemIds.length - previewItemIds.length} more)`
+        : ''),
+  );
+  const suppressedLine =
+    details.suppressedSinceLastAlert > 0
+      ? `<p style="font-size: 13px; color: #b45309;">${details.suppressedSinceLastAlert} additional recovery event(s) were suppressed by rate-limiting since the last alert.</p>`
+      : '';
+
+  const msg = {
+    to: toEmails,
+    from: { email: FROM_EMAIL, name: FROM_NAME },
+    subject: `[LeagueVault] Apple Pay worker recovered ${details.itemCount} stalled item(s)`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #1a1a2e; margin-top: 0;">Apple Pay items revived after stall</h2>
+        <p style="font-size: 14px; color: #333;">
+          The Apple Pay worker just revived <strong>${details.itemCount}</strong> item(s)
+          whose pre-call lease had expired. This usually means the previous worker
+          crashed mid-call or the payment provider hung — please investigate.
+        </p>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #333;">
+          <tr><td style="padding: 6px 0; color: #666; width: 140px;">Items recovered</td><td style="padding: 6px 0;"><strong>${details.itemCount}</strong></td></tr>
+          <tr><td style="padding: 6px 0; color: #666;">Affected job IDs</td><td style="padding: 6px 0;">${safeJobIds}</td></tr>
+          <tr><td style="padding: 6px 0; color: #666; vertical-align: top;">Item IDs</td><td style="padding: 6px 0; word-break: break-word;">${safeItemIds}</td></tr>
+        </table>
+        ${suppressedLine}
+        <div style="margin: 24px 0;">
+          <a href="${escapeHtml(reviewUrl)}" style="background-color: #1a1a2e; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold; display: inline-block;">Open Apple Pay Jobs</a>
+        </div>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="font-size: 12px; color: #999; text-align: center;">Powered by LeagueVault</p>
+      </div>
+    `,
+    trackingSettings: { clickTracking: { enable: false, enableText: false } },
+  };
+
+  try {
+    await sgMail.send(msg, true);
+    log.info(
+      `Apple Pay recovery alert sent to ${toEmails.length} admin(s) for ${details.itemCount} item(s)`,
+    );
+    return true;
+  } catch (error: any) {
+    log.error('Failed to send Apple Pay recovery alert:', error?.response?.body || error.message);
+    return false;
+  }
+}
+
 export async function resendInviteEmail(
   toEmail: string,
   userName: string,

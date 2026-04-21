@@ -244,6 +244,13 @@ export interface IApplePayJobStorage {
   ): Promise<{ item: ApplePayJobItem; job: ApplePayJob } | undefined>;
 }
 
+export interface IAlerterStateStorage {
+  tryClaimAlerterSlot(
+    kind: string,
+    minIntervalMs: number,
+  ): Promise<{ claimed: boolean; suppressedCount: number }>;
+}
+
 export interface IStorage extends
   ILeagueStorage,
   ITeamStorage,
@@ -256,4 +263,5 @@ export interface IStorage extends
   IEmailTemplateStorage,
   IDeletionRequestStorage,
   IFirstAdminBootstrapStorage,
-  IApplePayJobStorage {}
+  IApplePayJobStorage,
+  IAlerterStateStorage {}

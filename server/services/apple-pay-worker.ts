@@ -2,6 +2,7 @@ import { logger } from "../logger";
 import { storage } from "../storage";
 import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
 import { hasWalletSupport } from "./payment-provider";
+import { applePayRecoveryAlerter } from "./apple-pay-alerts";
 import type { ApplePayJob, ApplePayJobItem } from "@shared/schema";
 
 const CONCURRENCY_LIMIT = 4;
@@ -64,6 +65,15 @@ class ApplePayWorker {
         affectedJobIds,
         itemIds: revivedItems.map((i) => i.itemId),
       });
+      // Out-of-band alert so an on-call admin gets paged the first time
+      // this happens, even if nobody is reading the logs or has the
+      // Apple Pay Jobs page open. Rate-limited inside the alerter so a
+      // sustained outage doesn't spam.
+      applePayRecoveryAlerter
+        .notifyRecovered(revivedItems)
+        .catch((err) => error("Failed to dispatch Apple Pay recovery alert", {
+          err: err instanceof Error ? err.message : String(err),
+        }));
     }
     if (revivedJobIds.length === 0 && revivedItems.length === 0) {
       log("No interrupted jobs to recover on startup");
