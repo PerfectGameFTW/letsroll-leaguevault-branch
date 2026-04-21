@@ -18,6 +18,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../server/db';
+import { storage } from '../../server/storage';
 import { users, organizations, emailChangeRequests } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { createHash } from 'crypto';
@@ -350,6 +351,44 @@ describe('POST /api/account/change-password invalidates pending email-change req
     expect(res.status).toBe(200);
 
     // The previously-issued token should now be useless.
+    const confirmRes = await apiPost(
+      `/api/account/confirm-email-change`,
+      { token: rawToken },
+      session,
+    );
+    expect(confirmRes.status).toBe(400);
+    expect(confirmRes.data.error?.code).toBe('TOKEN_CONSUMED');
+  });
+});
+
+describe('POST /api/auth/set-password invalidates pending email-change requests', () => {
+  it('marks open email-change requests as consumed after a successful password reset', async () => {
+    const { userId } = await createUserAndLogin();
+    const newEmail = uniqEmail('pending-reset');
+    const rawToken = `setpw-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    // Stage an invite/reset token on the user, then a pending email-change.
+    const inviteToken = `inv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    await storage.setUserInviteToken(
+      userId,
+      inviteToken,
+      new Date(Date.now() + 60_000),
+    );
+    await db.insert(emailChangeRequests).values({
+      userId,
+      newEmail,
+      tokenHash: hashToken(rawToken),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const setRes = await apiPost(`/api/auth/set-password`, {
+      token: inviteToken,
+      password: 'AfterReset!2026XX',
+    });
+    expect(setRes.status).toBe(200);
+
+    // Pending token from before the reset must no longer work.
+    const { session } = await createUserAndLogin();
     const confirmRes = await apiPost(
       `/api/account/confirm-email-change`,
       { token: rawToken },

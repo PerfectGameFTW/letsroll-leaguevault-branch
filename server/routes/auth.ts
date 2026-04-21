@@ -288,6 +288,12 @@ export function registerAuthRoutes(app: Express): void {
       await Promise.all([
         storage.updateUser(user.id, { password: hashedPassword }),
         storage.clearUserInviteToken(user.id),
+        // A password set/reset must invalidate any in-flight email-change
+        // confirmation token — same defense-in-depth as the authenticated
+        // change-password endpoint. Otherwise a hijacker could pre-issue a
+        // confirmation link and silently swap the email after the legitimate
+        // owner reclaims their account via reset.
+        storage.invalidatePendingEmailChangeRequestsForUser(user.id),
       ]);
 
       try {

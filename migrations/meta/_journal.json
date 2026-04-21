@@ -43,6 +43,13 @@
       "when": 1776754748249,
       "tag": "0005_add_payment_sync_pending_at",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776756941868,
+      "tag": "0006_nostalgic_black_knight",
+      "breakpoints": true
     }
   ]
 }
