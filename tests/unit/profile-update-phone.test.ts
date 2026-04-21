@@ -1,19 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
-import { updateUserSchemaBase } from '@shared/schema';
-
-// Mirrors the schema constructed in `server/routes/account.ts` for
-// `PATCH /profile/:id`. Kept in sync with the route definition; if the
-// route's profileUpdateSchema changes shape, update this fixture too.
-const profileUpdateSchema = updateUserSchemaBase
-  .pick({ name: true, email: true, phone: true })
-  .extend({
-    phone: z
-      .string()
-      .nullable()
-      .optional()
-      .transform((v) => (v === null ? undefined : v)),
-  });
+import { profileUpdateSchema } from '../../server/routes/account';
 
 describe('profile update — phone null/undefined coercion', () => {
   it('normalizes JSON null to undefined', () => {

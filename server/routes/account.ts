@@ -26,6 +26,19 @@ import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 const log = createLogger('Account');
 const router = Router();
 
+// PATCH /profile/:id body schema. Phone normalizes `null` (clear-intent
+// from clients) to `undefined` (storage no-op) so the handler doesn't
+// need null/undefined ceremony. Exported for unit tests.
+export const profileUpdateSchema = updateUserSchemaBase
+  .pick({ name: true, email: true, phone: true })
+  .extend({
+    phone: z
+      .string()
+      .nullable()
+      .optional()
+      .transform((v) => (v === null ? undefined : v)),
+  });
+
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
     return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
@@ -161,22 +174,6 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
     if (user.id !== userId && user.role !== 'system_admin') {
       return sendError(res, 'Unauthorized', 403, 'UNAUTHORIZED');
     }
-
-    // Phone is normalized at the schema layer: clients may send `null`
-    // (intent to clear) or omit the field entirely (intent to no-op), and
-    // the storage layer's convention is `undefined = no-op`. The
-    // `.transform` collapses both to `string | undefined` so the route
-    // handler never has to do null/undefined ceremony — keep this if any
-    // future nullable field is added to the profile payload.
-    const profileUpdateSchema = updateUserSchemaBase
-      .pick({ name: true, email: true, phone: true })
-      .extend({
-        phone: z
-          .string()
-          .nullable()
-          .optional()
-          .transform((v) => (v === null ? undefined : v)),
-      });
 
     const validationResult = profileUpdateSchema.safeParse(req.body);
     if (!validationResult.success) {
