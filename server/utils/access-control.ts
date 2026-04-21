@@ -83,6 +83,14 @@ export async function hasAccessToTeam(req: Request, teamId: number): Promise<boo
   return hasAccessToLeague(req, team.leagueId);
 }
 
+/**
+ * Single-bowler access check. Use this only for endpoints that gate on a
+ * single bowler ID. For any endpoint that operates on a list of bowler IDs
+ * (request body or query), call `hasAccessToBowlers(req, bowlerIds)` instead
+ * of looping this helper — looping causes N×3 query amplification, while the
+ * batched helper does a constant number of storage reads regardless of input
+ * size and matches the same access semantics exactly.
+ */
 export async function hasAccessToBowler(req: Request, bowlerId: number): Promise<boolean> {
   if (!req.user) {
     return false;

@@ -4,7 +4,7 @@ import { insertBowlerSchema, updateBowlerSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
-import { hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
+import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
 import { createLogger } from '../logger';
@@ -127,6 +127,17 @@ router.get("/", async (req, res) => {
       const hasAccess = await hasAccessToTeam(req, teamId);
       if (!hasAccess) {
         return sendError(res, "You don't have access to this team's bowlers", 403, 'FORBIDDEN');
+      }
+    }
+
+    // If a list of bowler IDs is provided, gate access for the whole list in
+    // a single batched call. Use `hasAccessToBowlers` rather than looping
+    // `hasAccessToBowler` to avoid N×3 query amplification.
+    if (ids && ids.length > 0 && req.user?.role !== 'system_admin') {
+      const accessMap = await hasAccessToBowlers(req, ids);
+      const denied = ids.filter(id => !accessMap.get(id));
+      if (denied.length > 0) {
+        return sendError(res, "You don't have access to one or more of the requested bowlers", 403, 'FORBIDDEN');
       }
     }
 
