@@ -222,6 +222,7 @@ export interface IApplePayJobStorage {
   setApplePayJobTotal(jobId: number, total: number): Promise<void>;
   getPendingApplePayJobItems(jobId: number): Promise<ApplePayJobItem[]>;
   getApplePayJobItems(jobId: number): Promise<ApplePayJobItem[]>;
+  getRegisteredApplePayDomainsForOrg(organizationId: number): Promise<string[]>;
   updateApplePayJobItem(
     itemId: number,
     patch: { status: ApplePayJobItemStatus; message?: string | null },

@@ -14,6 +14,7 @@ import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
 import { hasWalletSupport } from '../../services/payment-provider';
 import { applePayWorker } from '../../services/apple-pay-worker';
+import { acceptedApplePayDomainsForOrg, isAcceptedApplePayDomain } from '../../services/apple-pay-domains';
 
 const log = createLogger('Payments');
 
@@ -208,9 +209,18 @@ router.post('/apple-pay/register-domain', async (req: any, res) => {
     if (req.user.role === 'org_admin' && req.user.organizationId) {
       const org = await storage.getOrganization(req.user.organizationId);
       if (org) {
-        const orgDomain = org.subdomain || org.slug;
-        const expectedDomain = `${orgDomain}.leaguevault.app`;
-        if (domain !== expectedDomain) {
+        // Accepted domain set: current `<subdomain>.leaguevault.app` and
+        // `<slug>.leaguevault.app`, plus any domain we've previously
+        // registered successfully for this org. The previously-registered
+        // list is what makes this route tolerate a slug/subdomain rename
+        // after the wallet domain was first registered (task #277).
+        const previouslyRegistered = await storage.getRegisteredApplePayDomainsForOrg(org.id);
+        if (!isAcceptedApplePayDomain(org, domain, previouslyRegistered)) {
+          log.warn('Org admin Apple Pay domain rejected', {
+            orgId: org.id,
+            attempted: domain,
+            accepted: acceptedApplePayDomainsForOrg(org, previouslyRegistered),
+          });
           return sendError(res, 'Domain does not match your organization', 403, 'FORBIDDEN');
         }
       }

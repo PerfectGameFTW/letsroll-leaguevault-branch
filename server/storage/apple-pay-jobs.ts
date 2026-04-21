@@ -203,6 +203,32 @@ export async function getPendingApplePayJobItems(jobId: number): Promise<ApplePa
     .orderBy(asc(applePayJobItems.id));
 }
 
+/**
+ * Distinct Apple Pay domains that have been registered SUCCESSFULLY for an
+ * organization in the past, drawn from the per-job audit trail. Used by
+ * the org-admin register-domain route (see task #277) to allow re-registering
+ * a wallet domain even after the org's slug/subdomain was renamed.
+ *
+ * Returns lowercased, trimmed domains with no duplicates.
+ */
+export async function getRegisteredApplePayDomainsForOrg(
+  organizationId: number,
+): Promise<string[]> {
+  const rows = await db
+    .select({ domain: applePayJobItems.domain })
+    .from(applePayJobItems)
+    .where(and(
+      eq(applePayJobItems.organizationId, organizationId),
+      eq(applePayJobItems.status, "succeeded"),
+    ));
+  const seen = new Set<string>();
+  for (const r of rows) {
+    const d = (r.domain ?? "").trim().toLowerCase();
+    if (d) seen.add(d);
+  }
+  return Array.from(seen);
+}
+
 export async function getApplePayJobItems(jobId: number): Promise<ApplePayJobItem[]> {
   return db
     .select()
