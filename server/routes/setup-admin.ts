@@ -17,26 +17,15 @@ const log = createLogger("SetupAdmin");
 
 const router = Router();
 
-// Exported for direct unit testing of the header-normalization contract
-// (see tests/api/setup-admin-header.test.ts). Keep this export — the
-// integration test cannot fully exercise the array branch through the
-// HTTP stack because Node's HTTP parser joins repeated non-special
-// headers into a single comma-separated string before the handler sees
-// them; a direct call lets us simulate the string[] shape that HTTP/2
-// and some proxy configurations produce.
+// Exported for regression tests in tests/api/setup-admin-header.test.ts.
 export function checkSetupSecret(req: Request, res: Response): boolean {
   const setupSecret = env.SETUP_SECRET;
   if (!setupSecret) {
     sendError(res, 'This endpoint is disabled. Set SETUP_SECRET to enable it.', 403, 'ENDPOINT_DISABLED');
     return false;
   }
-  // Load-bearing normalization: Node/Express can surface a repeated
-  // `x-setup-secret` header as either a comma-joined string or (under some
-  // parser configurations / HTTP/2) a string[]. `safeTokenCompare` refuses
-  // any non-string input, but we also collapse arrays here so the comparison
-  // sees a well-defined string in every code path — a future refactor that
-  // drops this normalization would reintroduce a 500-on-array regression.
-  // Regression coverage: tests/api/setup-admin-header.test.ts.
+  // Load-bearing: collapses a string[] header value to its first entry so
+  // `safeTokenCompare` always sees a string. See tests/api/setup-admin-header.test.ts.
   const rawSecret = req.headers['x-setup-secret'];
   const providedSecret = Array.isArray(rawSecret) ? rawSecret[0] : rawSecret;
   if (!providedSecret || !safeTokenCompare(providedSecret, setupSecret)) {
