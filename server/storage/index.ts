@@ -147,6 +147,9 @@ export class DatabaseStorage implements IStorage {
   updateDeletionRequestStatus!: IStorage["updateDeletionRequestStatus"];
   countDeletionRequestsForEmailSince!: IStorage["countDeletionRequestsForEmailSince"];
 
+  bootstrapFirstAdmin!: IStorage["bootstrapFirstAdmin"];
+  promoteFirstAdmin!: IStorage["promoteFirstAdmin"];
+
   constructor() {
     Object.assign(this, {
       ...leagueStorage,

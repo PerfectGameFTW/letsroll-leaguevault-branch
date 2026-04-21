@@ -19,6 +19,16 @@ import type {
   DeletionRequest, InsertDeletionRequest, DeletionRequestStatus,
 } from "@shared/schema";
 
+export interface IFirstAdminBootstrapStorage {
+  bootstrapFirstAdmin(input: {
+    email: string;
+    hashedPassword: string;
+    name: string;
+    phone?: string;
+  }): Promise<User>;
+  promoteFirstAdmin(userId: number): Promise<User>;
+}
+
 export interface ILeagueStorage {
   getLeagues(organizationId: number): Promise<League[]>;
   getAllLeaguesSystemAdmin(): Promise<League[]>;
@@ -187,4 +197,5 @@ export interface IStorage extends
   IOrganizationStorage,
   ILocationStorage,
   IEmailTemplateStorage,
-  IDeletionRequestStorage {}
+  IDeletionRequestStorage,
+  IFirstAdminBootstrapStorage {}

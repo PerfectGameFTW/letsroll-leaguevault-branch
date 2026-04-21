@@ -1,10 +1,40 @@
-import { eq, and, count, isNotNull } from "drizzle-orm";
+import { eq, and, count, isNotNull, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import { users, type User, type InsertUser, type UpdateUser, type UserRole } from "@shared/schema";
 import { createLogger } from '../logger';
 import { cacheInvalidate } from '../utils/cache';
 
 const log = createLogger("StorageUsers");
+
+/**
+ * Sentinel error thrown by the atomic first-admin bootstrap path when a
+ * system_admin already exists. Routes catch this and translate it into
+ * the public ADMIN_EXISTS / 403 response.
+ */
+export class AdminAlreadyExistsError extends Error {
+  constructor(message = 'Admin user already exists') {
+    super(message);
+    this.name = 'AdminAlreadyExistsError';
+  }
+}
+
+export class FirstAdminEmailExistsError extends Error {
+  constructor(message = 'A user with this email already exists') {
+    super(message);
+    this.name = 'FirstAdminEmailExistsError';
+  }
+}
+
+export class FirstAdminUserNotFoundError extends Error {
+  constructor(message = 'User not found') {
+    super(message);
+    this.name = 'FirstAdminUserNotFoundError';
+  }
+}
+
+// Stable advisory-lock key for the first-admin bootstrap critical section.
+// pg_advisory_xact_lock takes a bigint; pick an arbitrary unique constant.
+const BOOTSTRAP_ADVISORY_LOCK_KEY = 7244910283645127n;
 
 export async function getUser(id: number): Promise<User | undefined> {
   const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -120,6 +150,93 @@ export async function updateUserRole(userId: number, role: UserRole): Promise<Us
 
   cacheInvalidate(`user:${userId}`);
   return updatedUser;
+}
+
+/**
+ * Atomically create the first system_admin. Uses a transaction-scoped
+ * Postgres advisory lock to serialize concurrent bootstrap requests so
+ * that the "no admin exists" check and the insert happen as one
+ * critical section. Throws AdminAlreadyExistsError if the invariant has
+ * already been satisfied, or FirstAdminEmailExistsError if the email is
+ * taken.
+ */
+export async function bootstrapFirstAdmin(input: {
+  email: string;
+  hashedPassword: string;
+  name: string;
+  phone?: string;
+}): Promise<User> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${BOOTSTRAP_ADVISORY_LOCK_KEY})`);
+
+    const [existingAdmin] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.role, 'system_admin'))
+      .limit(1);
+    if (existingAdmin) {
+      throw new AdminAlreadyExistsError();
+    }
+
+    const [existingEmail] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, input.email))
+      .limit(1);
+    if (existingEmail) {
+      throw new FirstAdminEmailExistsError();
+    }
+
+    const [created] = await tx
+      .insert(users)
+      .values({
+        email: input.email,
+        password: input.hashedPassword,
+        name: input.name,
+        phone: input.phone ?? undefined,
+        role: 'system_admin',
+        organizationId: null,
+      })
+      .returning();
+    return created;
+  });
+}
+
+/**
+ * Atomically promote an existing user to system_admin, but only if no
+ * system_admin currently exists. Uses the same advisory lock as
+ * bootstrapFirstAdmin so the two endpoints share one critical section.
+ */
+export async function promoteFirstAdmin(userId: number): Promise<User> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${BOOTSTRAP_ADVISORY_LOCK_KEY})`);
+
+    const [existingAdmin] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.role, 'system_admin'))
+      .limit(1);
+    if (existingAdmin) {
+      throw new AdminAlreadyExistsError();
+    }
+
+    const [target] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!target) {
+      throw new FirstAdminUserNotFoundError();
+    }
+
+    const [promoted] = await tx
+      .update(users)
+      .set({ role: 'system_admin' })
+      .where(eq(users.id, userId))
+      .returning();
+    cacheInvalidate(`user:${userId}`);
+    return promoted;
+  });
 }
 
 export async function setUserLocation(userId: number, locationId: number | null): Promise<User> {

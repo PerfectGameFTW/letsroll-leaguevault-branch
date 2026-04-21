@@ -169,6 +169,16 @@ curl -X POST https://<your-domain>/api/setup/first-system-admin/<userId> \
 
 Both endpoints live in `server/routes/setup-admin.ts` and are completely disabled if `SETUP_SECRET` is not set in the environment.
 
+**Bootstrap invariant (atomic):** Both endpoints enforce "at most one
+system_admin can be created via the bootstrap path" by serializing
+their critical section through a Postgres transaction-scoped advisory
+lock (`pg_advisory_xact_lock`) inside `bootstrapFirstAdmin` /
+`promoteFirstAdmin` in `server/storage/users.ts`. The check ("no
+system_admin exists?") and the create/promote write happen in one
+transaction under the same lock, so two concurrent requests holding
+the same `SETUP_SECRET` cannot both succeed — exactly one wins, and
+the other receives `ADMIN_EXISTS` (HTTP 403).
+
 ## Recent Changes (2026-04-01)
 - **Drag-and-Drop Team Reordering**: Teams on the roster management page can be reordered via drag and drop
   - Schema: added `displayOrder` integer column (default 0) to teams table
