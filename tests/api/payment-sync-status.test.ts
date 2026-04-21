@@ -101,9 +101,14 @@ describe('POST /api/account/bowlers/:id/retry-payment-sync', () => {
       .values({
         name: uniq('test-bowler'),
         email: `${uniq('b')}@vitest.local`,
+        phone: null,
         active: true,
         order: 0,
-      } as any)
+        paymentCustomerId: null,
+        cardpointeProfileId: null,
+        bnContactId: null,
+        paymentSyncPendingAt: null,
+      })
       .returning();
     createdBowlerIds.push(bowler.id);
 

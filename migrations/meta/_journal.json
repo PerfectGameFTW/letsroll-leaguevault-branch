@@ -36,6 +36,13 @@
       "when": 1776751391589,
       "tag": "0004_apple_pay_item_recovered_count",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776754748249,
+      "tag": "0005_add_payment_sync_pending_at",
+      "breakpoints": true
     }
   ]
 }
