@@ -164,6 +164,11 @@ export async function getLinkedBowlerIds(): Promise<number[]> {
   return rows.map(r => r.bowlerId!);
 }
 
+export async function getUserByBowlerId(bowlerId: number): Promise<User | undefined> {
+  const [user] = await db.select().from(users).where(eq(users.bowlerId, bowlerId)).limit(1);
+  return user;
+}
+
 export async function isBowlerLinked(bowlerId: number): Promise<boolean> {
   const [row] = await db
     .select({ bowlerId: users.bowlerId })

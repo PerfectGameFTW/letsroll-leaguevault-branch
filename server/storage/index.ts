@@ -101,6 +101,7 @@ export class DatabaseStorage implements IStorage {
   linkUserToBowler!: IStorage["linkUserToBowler"];
   getLinkedBowlerIds!: IStorage["getLinkedBowlerIds"];
   isBowlerLinked!: IStorage["isBowlerLinked"];
+  getUserByBowlerId!: IStorage["getUserByBowlerId"];
   hasAdminUsers!: IStorage["hasAdminUsers"];
   countOrgAdmins!: IStorage["countOrgAdmins"];
   setUserLocation!: IStorage["setUserLocation"];

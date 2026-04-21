@@ -11,9 +11,124 @@ import { createLogger } from '../logger';
 import { isDev } from '../config';
 import { comparePasswords } from '../lib/password';
 import { sendDeletionRequestNotification } from '../services/email';
+import { requireSystemAdmin } from '../middleware/auth';
 
 const log = createLogger('Account');
 const router = Router();
+
+type PaymentSyncStatus = 'synced' | 'skipped' | 'pending_retry' | 'not_applicable';
+
+/**
+ * Push profile changes onto the linked bowler row and (when applicable)
+ * the payment provider's customer record. Returns a status the API caller
+ * can use to surface a "your payment record may be stale, we'll retry"
+ * notice when the provider call fails for a real reason. Real failures
+ * also flip `bowlers.payment_sync_pending_at` so the admin retry endpoint
+ * (POST /api/account/bowlers/:id/retry-payment-sync) and the next profile
+ * edit can re-attempt without losing track of the work.
+ */
+async function syncBowlerForUser(
+  user: { id: number; bowlerId: number | null; name: string; email: string | null; phone: string | null; locationId: number | null; organizationId: number | null },
+  changed: { nameChanged: boolean; emailChanged: boolean; phoneChanged: boolean },
+): Promise<PaymentSyncStatus> {
+  if (!user.bowlerId) return 'not_applicable';
+
+  const bowler = await storage.getBowler(user.bowlerId);
+  if (!bowler) return 'not_applicable';
+
+  const bowlerUpdate: Record<string, any> = {};
+  if (changed.nameChanged) bowlerUpdate.name = user.name;
+  if (changed.emailChanged) bowlerUpdate.email = user.email;
+  if (changed.phoneChanged) bowlerUpdate.phone = user.phone;
+
+  if (Object.keys(bowlerUpdate).length > 0) {
+    try {
+      await storage.updateBowler(bowler.id, { ...bowler, ...bowlerUpdate });
+      if (isDev) log.info('Synced profile changes to bowler record:', bowler.id);
+    } catch (e) {
+      log.error('Failed to write local bowler row during profile sync:', e);
+      // Local DB write failed — bail out before touching the remote provider
+      // so we don't desync local↔remote state.
+      return 'pending_retry';
+    }
+  }
+
+  if (!user.email) return 'skipped';
+
+  let resolvedSquareLocationId: number | null = null;
+  if (user.locationId) {
+    const locationCreds = await storage.getLocationSquareConfig(user.locationId);
+    if ((locationCreds?.accessToken ?? '').trim().length > 0) {
+      resolvedSquareLocationId = user.locationId;
+    }
+  }
+  if (!resolvedSquareLocationId && user.organizationId) {
+    const sq = await storage.getFirstSquareConfiguredLocation(user.organizationId);
+    resolvedSquareLocationId = sq?.id ?? null;
+  }
+  if (!resolvedSquareLocationId) {
+    if (isDev) log.info('No payment-configured location found, skipping customer sync');
+    return 'skipped';
+  }
+
+  let providerCustomer: { id: string } | null = null;
+  try {
+    const userProvider = await getPaymentProvider(resolvedSquareLocationId);
+    providerCustomer = await userProvider.createOrUpdateCustomer(
+      user.name,
+      user.email,
+      user.phone,
+    );
+  } catch (e) {
+    if (e instanceof ProviderNotConfiguredError) {
+      log.warn('User update: provider not configured, skipping customer sync', { locationId: resolvedSquareLocationId });
+      return 'skipped';
+    }
+    // Real provider failure: log with structured context so ops can spot a
+    // systemic outage instead of seeing scattered "non-fatal" lines, and
+    // flip the bowler's pending flag so we know to retry.
+    log.warn('Payment customer sync failed, marking bowler for retry', {
+      userId: user.id,
+      bowlerId: bowler.id,
+      locationId: resolvedSquareLocationId,
+      errorName: e instanceof Error ? e.name : 'unknown',
+      errorMessage: e instanceof Error ? e.message : String(e),
+    });
+    try {
+      await storage.updateBowler(bowler.id, {
+        ...bowler,
+        ...bowlerUpdate,
+        paymentSyncPendingAt: new Date().toISOString(),
+      });
+    } catch (markErr) {
+      log.error('Failed to flag bowler for payment-sync retry:', markErr);
+    }
+    return 'pending_retry';
+  }
+
+  const updates: Record<string, any> = { ...bowlerUpdate };
+  let needsWrite = false;
+  if (providerCustomer && providerCustomer.id !== bowler.paymentCustomerId) {
+    updates.paymentCustomerId = providerCustomer.id;
+    needsWrite = true;
+    log.info('Linked payment customer to bowler:', providerCustomer.id);
+  }
+  // Always clear the retry flag on a successful sync attempt so a previously
+  // failed sync doesn't keep the bowler pinned forever.
+  if (bowler.paymentSyncPendingAt !== null) {
+    updates.paymentSyncPendingAt = null;
+    needsWrite = true;
+  }
+  if (needsWrite) {
+    try {
+      await storage.updateBowler(bowler.id, { ...bowler, ...updates });
+    } catch (e) {
+      log.error('Failed to persist post-sync bowler updates:', e);
+      return 'pending_retry';
+    }
+  }
+  return 'synced';
+}
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
@@ -150,79 +265,86 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       phone: updateData.phone === null ? undefined : updateData.phone,
     });
 
+    let paymentSyncStatus: 'synced' | 'skipped' | 'pending_retry' | 'not_applicable' = 'not_applicable';
+
     if (updatedUser.bowlerId) {
       const emailChanged = updateData.email && updateData.email !== existingUser.email;
       const nameChanged = updateData.name && updateData.name !== existingUser.name;
       const phoneChanged = updateData.phone !== undefined && updateData.phone !== existingUser.phone;
 
       if (emailChanged || nameChanged || phoneChanged) {
-        try {
-          const bowler = await storage.getBowler(updatedUser.bowlerId);
-          if (bowler) {
-            const bowlerUpdate: Record<string, any> = {};
-            if (nameChanged) bowlerUpdate.name = updatedUser.name;
-            if (emailChanged) bowlerUpdate.email = updatedUser.email;
-            if (phoneChanged) bowlerUpdate.phone = updatedUser.phone;
-
-            if (Object.keys(bowlerUpdate).length > 0) {
-              await storage.updateBowler(bowler.id, { ...bowler, ...bowlerUpdate });
-              if (isDev) log.info('Synced profile changes to bowler record:', bowler.id);
-            }
-
-            if (updatedUser.email && (emailChanged || nameChanged || phoneChanged)) {
-              let resolvedSquareLocationId: number | null = null;
-              if (updatedUser.locationId) {
-                const locationCreds = await storage.getLocationSquareConfig(updatedUser.locationId);
-                if ((locationCreds?.accessToken ?? '').trim().length > 0) {
-                  resolvedSquareLocationId = updatedUser.locationId;
-                }
-              }
-              if (!resolvedSquareLocationId && updatedUser.organizationId) {
-                const sq = await storage.getFirstSquareConfiguredLocation(updatedUser.organizationId);
-                resolvedSquareLocationId = sq?.id ?? null;
-              }
-              if (!resolvedSquareLocationId) {
-                if (isDev) log.info('No payment-configured location found, skipping customer sync');
-              }
-              let providerCustomer = null;
-              if (resolvedSquareLocationId) {
-                try {
-                  const userProvider = await getPaymentProvider(resolvedSquareLocationId);
-                  providerCustomer = await userProvider.createOrUpdateCustomer(
-                    updatedUser.name,
-                    updatedUser.email,
-                    updatedUser.phone,
-                  );
-                } catch (e) {
-                  if (e instanceof ProviderNotConfiguredError) {
-                    log.warn('User update: provider not configured, skipping customer sync', { locationId: resolvedSquareLocationId });
-                  } else {
-                    throw e;
-                  }
-                }
-              }
-              if (providerCustomer && providerCustomer.id !== bowler.paymentCustomerId) {
-                await storage.updateBowler(bowler.id, {
-                  ...bowler,
-                  ...bowlerUpdate,
-                  paymentCustomerId: providerCustomer.id,
-                });
-                log.info('Linked payment customer to bowler:', providerCustomer.id);
-              }
-            }
-          }
-        } catch (syncError) {
-          log.error('Error syncing bowler payment customer (non-fatal):', syncError);
-        }
+        const result = await syncBowlerForUser(updatedUser, {
+          nameChanged: !!nameChanged,
+          emailChanged: !!emailChanged,
+          phoneChanged: !!phoneChanged,
+        });
+        paymentSyncStatus = result;
       }
     }
 
-    return sendSuccess(res, sanitizeUser(updatedUser));
+    return sendSuccess(res, { ...sanitizeUser(updatedUser), paymentSyncStatus });
   } catch (error) {
     log.error('Error updating user:', error);
     return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
   }
 });
+
+// Admin-initiated retry for a bowler whose payment-customer sync failed.
+// Re-runs the same provider call the profile-update path uses; success
+// clears `payment_sync_pending_at`, failure leaves it set.
+router.post(
+  '/bowlers/:id/retry-payment-sync',
+  requireAuth,
+  requireSystemAdmin,
+  async (req: Request, res: Response) => {
+    try {
+      const bowlerId = parseInt(req.params.id, 10);
+      if (isNaN(bowlerId)) {
+        return sendError(res, 'Invalid bowler ID', 400, 'INVALID_ID');
+      }
+
+      const bowler = await storage.getBowler(bowlerId);
+      if (!bowler) {
+        return sendError(res, 'Bowler not found', 404, 'NOT_FOUND');
+      }
+
+      // Find the user record linked to this bowler so we can resolve the
+      // location/org context for provider lookup. If no user is linked we
+      // can't sync — surface a clear 422.
+      const linkedUser = await storage.getUserByBowlerId(bowlerId);
+      if (!linkedUser) {
+        return sendError(
+          res,
+          'No user is linked to this bowler; cannot retry sync',
+          422,
+          'NO_LINKED_USER',
+        );
+      }
+
+      // Source-of-truth for retry is the linked **user's** profile, not the
+      // bowler row. The bowler row may carry stale values from the failed
+      // sync attempt; the user record reflects what the user submitted.
+      // Fall back to bowler fields only when the user record is missing data.
+      const status = await syncBowlerForUser(
+        {
+          id: linkedUser.id,
+          bowlerId,
+          name: linkedUser.name ?? bowler.name,
+          email: linkedUser.email ?? bowler.email,
+          phone: linkedUser.phone ?? bowler.phone,
+          locationId: linkedUser.locationId,
+          organizationId: linkedUser.organizationId,
+        },
+        { nameChanged: true, emailChanged: true, phoneChanged: true },
+      );
+
+      return sendSuccess(res, { paymentSyncStatus: status });
+    } catch (error) {
+      log.error('Error retrying payment sync:', error);
+      return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
+    }
+  },
+);
 
 // Change password for the currently authenticated user
 router.post('/change-password', requireAuth, async (req: Request, res: Response) => {

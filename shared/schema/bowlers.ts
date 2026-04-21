@@ -15,6 +15,13 @@ export const bowlers = pgTable("bowlers", {
   paymentCustomerId: text("payment_customer_id"),
   cardpointeProfileId: text("cardpointe_profile_id"),
   bnContactId: text("bn_contact_id"),
+  // Set when a profile-update tried to push the bowler to the payment
+  // provider and the call failed for a non-config reason (auth, rate
+  // limit, network). Cleared when a subsequent sync attempt succeeds.
+  // Used by the admin "retry payment sync" endpoint and surfaced in the
+  // PATCH /api/account/profile response so the caller knows the customer
+  // record on the provider side may be stale. See server/routes/account.ts.
+  paymentSyncPendingAt: timestamp("payment_sync_pending_at", { mode: "string" }),
 });
 
 export const bowlerLeagues = pgTable("bowler_leagues", {
@@ -55,6 +62,7 @@ export const insertBowlerSchema = baseBowlerSchema.extend({
   order: z.number().min(0).default(0),
   paymentCustomerId: z.string().nullable().optional(),
   cardpointeProfileId: z.string().nullable().optional(),
+  paymentSyncPendingAt: z.string().nullable().optional(),
 }).omit({ id: true });
 
 export const insertBowlerLeagueSchema = baseBowlerLeagueSchema.extend({
@@ -74,6 +82,7 @@ export const updateBowlerSchema = z.object({
   paymentCustomerId: z.string().nullable(),
   cardpointeProfileId: z.string().nullable(),
   bnContactId: z.string().nullable(),
+  paymentSyncPendingAt: z.string().nullable(),
 }).partial();
 
 export const updateBowlerLeagueSchema = z.object({

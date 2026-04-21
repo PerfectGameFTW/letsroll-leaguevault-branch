@@ -22,6 +22,7 @@ const bowlerColumns = {
   paymentCustomerId: bowlers.paymentCustomerId,
   cardpointeProfileId: bowlers.cardpointeProfileId,
   bnContactId: bowlers.bnContactId,
+  paymentSyncPendingAt: bowlers.paymentSyncPendingAt,
 };
 
 export async function getBowlers(filters: { teamId?: number; organizationId: number }): Promise<Bowler[]> {

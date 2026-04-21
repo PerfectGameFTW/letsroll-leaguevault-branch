@@ -126,6 +126,7 @@ export interface IUserStorage {
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   getLinkedBowlerIds(): Promise<number[]>;
   isBowlerLinked(bowlerId: number): Promise<boolean>;
+  getUserByBowlerId(bowlerId: number): Promise<User | undefined>;
   hasAdminUsers(): Promise<boolean>;
   countOrgAdmins(organizationId: number): Promise<number>;
   setUserLocation(userId: number, locationId: number | null): Promise<User>;
