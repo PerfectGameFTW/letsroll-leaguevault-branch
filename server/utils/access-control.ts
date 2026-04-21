@@ -132,6 +132,137 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
   return false;
 }
 
+/**
+ * Batched access check: returns a Map<bowlerId, boolean> indicating whether
+ * the requesting user may access each bowler. Uses a constant number of
+ * storage reads (at most one batched bowler-leagues lookup and one batched
+ * leagues lookup) regardless of how many bowler IDs are passed in. This is
+ * the amplification-safe replacement for looping `hasAccessToBowler` over
+ * an array.
+ *
+ * Semantics match `hasAccessToBowler` exactly:
+ *  - Unauthenticated → all denied.
+ *  - Self-access shortcut for `req.user.bowlerId`.
+ *  - Bowlers with no league entries → denied for everyone (incl. system admin).
+ *  - Org-less leagues are skipped (and warn-logged) for every role.
+ *  - System admins are allowed via any non-org-less league entry.
+ *  - Org users are allowed when their org matches a league's organizationId.
+ *  - Users sharing a league with the target bowler are allowed.
+ *
+ * Duplicate IDs are de-duplicated; the returned map is keyed by the unique
+ * input IDs. Empty input returns an empty map.
+ */
+export async function hasAccessToBowlers(
+  req: Request,
+  bowlerIds: number[],
+): Promise<Map<number, boolean>> {
+  const result = new Map<number, boolean>();
+  const uniqueIds = [...new Set(bowlerIds)];
+
+  if (uniqueIds.length === 0) {
+    return result;
+  }
+
+  for (const id of uniqueIds) {
+    result.set(id, false);
+  }
+
+  if (!req.user) {
+    return result;
+  }
+
+  const userBowlerId = req.user.bowlerId ?? null;
+
+  // Self-access shortcut: a user may always access their own linked bowler
+  // record, even if every league assignment is currently org-less.
+  const idsToCheck = new Set<number>();
+  for (const id of uniqueIds) {
+    if (userBowlerId !== null && id === userBowlerId) {
+      result.set(id, true);
+    } else {
+      idsToCheck.add(id);
+    }
+  }
+
+  if (idsToCheck.size === 0) {
+    return result;
+  }
+
+  // Fold the requesting user's own bowlerId into the same batched lookup so
+  // we can compute their league memberships in the same DB round-trip.
+  const lookupIds = new Set<number>(idsToCheck);
+  if (userBowlerId !== null) {
+    lookupIds.add(userBowlerId);
+  }
+
+  const allBowlerLeagueEntries = await storage.getBowlerLeaguesByBowlerIds([...lookupIds]);
+
+  const userLeagueIds = new Set<number>();
+  const leagueIdsByBowler = new Map<number, number[]>();
+  for (const entry of allBowlerLeagueEntries) {
+    if (userBowlerId !== null && entry.bowlerId === userBowlerId) {
+      userLeagueIds.add(entry.leagueId);
+    }
+    if (idsToCheck.has(entry.bowlerId)) {
+      const list = leagueIdsByBowler.get(entry.bowlerId);
+      if (list) {
+        list.push(entry.leagueId);
+      } else {
+        leagueIdsByBowler.set(entry.bowlerId, [entry.leagueId]);
+      }
+    }
+  }
+
+  const allLeagueIds = new Set<number>(userLeagueIds);
+  for (const list of leagueIdsByBowler.values()) {
+    for (const id of list) allLeagueIds.add(id);
+  }
+
+  if (allLeagueIds.size === 0) {
+    return result;
+  }
+
+  const fetchedLeagues = await storage.getLeaguesByIds([...allLeagueIds]);
+  const leagueMap = new Map(fetchedLeagues.map(l => [l.id, l]));
+
+  const userIsSystemAdmin = isSystemAdmin(req.user);
+  const userOrgId = req.user.organizationId ?? null;
+
+  for (const bowlerId of idsToCheck) {
+    const bowlerLeagueIds = leagueIdsByBowler.get(bowlerId);
+    if (!bowlerLeagueIds || bowlerLeagueIds.length === 0) {
+      continue;
+    }
+
+    let allowed = false;
+    for (const leagueId of bowlerLeagueIds) {
+      const league = leagueMap.get(leagueId);
+      if (!league) continue;
+
+      if (userBowlerId !== null && userLeagueIds.has(league.id)) {
+        allowed = true;
+        break;
+      }
+      if (league.organizationId === null) {
+        log.warn(`bowler ${bowlerId} via league ${league.id} has no organization — denying access to user ${req.user.id} (role=${req.user.role})`);
+        continue;
+      }
+      if (userIsSystemAdmin) {
+        allowed = true;
+        break;
+      }
+      if (userOrgId !== null && userOrgId === league.organizationId) {
+        allowed = true;
+        break;
+      }
+    }
+
+    result.set(bowlerId, allowed);
+  }
+
+  return result;
+}
+
 export async function hasAccessToPayment(req: Request, paymentId: number): Promise<boolean> {
   if (!req.user) {
     return false;
