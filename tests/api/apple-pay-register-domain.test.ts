@@ -36,8 +36,13 @@ afterAll(async () => {
 
 const ENDPOINT = '/api/payments-provider/apple-pay/register-domain';
 
+// Derive the suffix from APP_DOMAIN (defaults to the production literal) so
+// this integration test isn't pinned to the production hostname when the
+// env points at a staging or preview suffix (task #294).
+const APP_DOMAIN_SUFFIX = process.env.APP_DOMAIN ?? 'leaguevault.app';
+
 function expectedDomainFor(slug: string): string {
-  return `${slug}.leaguevault.app`;
+  return `${slug}.${APP_DOMAIN_SUFFIX}`;
 }
 
 describe('POST /apple-pay/register-domain — org_admin locationId enforcement', () => {
@@ -155,7 +160,7 @@ describe('POST /apple-pay/register-domain — domain validation still runs first
 
     const res = await apiPost(
       ENDPOINT,
-      { domain: 'someone-elses-tenant.leaguevault.app', locationId: 1 },
+      { domain: `someone-elses-tenant.${APP_DOMAIN_SUFFIX}`, locationId: 1 },
       session,
     );
 
