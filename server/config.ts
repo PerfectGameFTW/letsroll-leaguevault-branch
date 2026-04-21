@@ -43,6 +43,45 @@ const envSchema = z.object({
 
 type Env = z.infer<typeof envSchema>;
 
+// Minimum SETUP_SECRET length in characters. 32 chars of base64 is ~24 bytes
+// of entropy; we want at least 32 bytes, which is 44 base64 chars, but we
+// keep the floor at 32 chars so operators can also use 32-byte hex-ish
+// values. The bar is "long enough that brute force over the
+// 5-attempts-per-15-minutes setupAdminLimiter is infeasible".
+export const MIN_SETUP_SECRET_LENGTH = 32;
+
+export type SetupSecretValidation =
+  | { ok: true }
+  | { ok: false; reason: string };
+
+/**
+ * Validates a SETUP_SECRET candidate value. Exported for unit testing
+ * (see tests/unit/setup-secret-validation.test.ts) and called from
+ * `validateEnv` at boot. Bootstrap endpoints in
+ * `server/routes/setup-admin.ts` rely on this gate to refuse weak secrets.
+ */
+export function validateSetupSecret(value: string | undefined): SetupSecretValidation {
+  if (value === undefined || value === '') {
+    // Absent is fine — the setup-admin endpoints disable themselves when
+    // SETUP_SECRET is unset. Strength only matters when it IS set.
+    return { ok: true };
+  }
+  if (value.length < MIN_SETUP_SECRET_LENGTH) {
+    return {
+      ok: false,
+      reason: `SETUP_SECRET must be at least ${MIN_SETUP_SECRET_LENGTH} characters long (got ${value.length}). Generate one with: openssl rand -base64 48`,
+    };
+  }
+  // Reject obviously-weak values: all the same character (e.g. "aaaa...").
+  if (/^(.)\1+$/.test(value)) {
+    return {
+      ok: false,
+      reason: `SETUP_SECRET is a single repeated character and provides no entropy. Generate one with: openssl rand -base64 48`,
+    };
+  }
+  return { ok: true };
+}
+
 const optionalWarnings: { key: keyof Env; feature: string }[] = [
   { key: "SENDGRID_API_KEY", feature: "transactional emails (SendGrid)" },
   { key: "SENTRY_DSN", feature: "error tracking (Sentry)" },
@@ -82,6 +121,16 @@ function validateEnv(): Env {
 }
 
 export const env = validateEnv();
+
+// Enforce SETUP_SECRET strength at boot. Refuses to start the server when
+// a secret is set but weak — see task 282 / the docs section in replit.md.
+{
+  const check = validateSetupSecret(env.SETUP_SECRET);
+  if (!check.ok) {
+    log.error(`Environment validation failed: ${check.reason}`);
+    process.exit(1);
+  }
+}
 
 const missing = optionalWarnings.filter((w) => !env[w.key]);
 if (missing.length > 0) {

@@ -142,7 +142,8 @@ All server-side env vars are validated at startup by `server/config.ts` (Zod-bas
 - `SESSION_SECRET` - Express session secret
 - `SENDGRID_API_KEY` - SendGrid API key for transactional emails (invite/welcome emails)
 - `BN_API_KEY` - BowlNow sub-account API key for CRM contact sync
-- `SETUP_SECRET` - Protects admin bootstrap endpoints for disaster recovery (see Recovery section below)
+- `SETUP_SECRET` - Protects admin bootstrap endpoints for disaster recovery (see Recovery section below).
+  **Strength requirement:** must be at least 32 characters and not a single repeated character. The server refuses to start when this is set but weak (`server/config.ts` → `validateSetupSecret`). Generate one with: `openssl rand -base64 48`.
 
 ## Security Scanning
 

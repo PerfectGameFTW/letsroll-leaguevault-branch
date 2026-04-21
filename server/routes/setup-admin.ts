@@ -18,6 +18,11 @@ const log = createLogger("SetupAdmin");
 const router = Router();
 
 // Exported for regression tests in tests/api/setup-admin-header.test.ts.
+//
+// Strength requirement: SETUP_SECRET must be at least
+// MIN_SETUP_SECRET_LENGTH chars. That floor is enforced at boot in
+// `server/config.ts` (`validateSetupSecret`), so by the time this
+// function runs we already know the configured secret is non-trivial.
 export function checkSetupSecret(req: Request, res: Response): boolean {
   const setupSecret = env.SETUP_SECRET;
   if (!setupSecret) {
