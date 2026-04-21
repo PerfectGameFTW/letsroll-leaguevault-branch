@@ -363,6 +363,55 @@ export async function sendPasswordResetFallbackEmail(
   }
 }
 
+export async function sendDeletionRequestNotification(
+  toEmails: string[],
+  request: { id: number; email: string; reason?: string | null; createdAt: string },
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    log.error('Cannot send deletion request notification — SENDGRID_API_KEY not configured');
+    return false;
+  }
+  if (toEmails.length === 0) return false;
+
+  const baseUrl = getBaseUrl();
+  const reviewUrl = `${baseUrl}/admin/deletion-requests`;
+  const safeEmail = escapeHtml(request.email);
+  const safeReason = escapeHtml(request.reason || 'No reason provided');
+  const safeCreated = escapeHtml(request.createdAt);
+
+  const msg = {
+    to: toEmails,
+    from: { email: FROM_EMAIL, name: FROM_NAME },
+    subject: `[LeagueVault] New account deletion request from ${request.email}`,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #1a1a2e; margin-top: 0;">New account deletion request</h2>
+        <p style="font-size: 14px; color: #333;">A user has requested account deletion.</p>
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px; color: #333;">
+          <tr><td style="padding: 6px 0; color: #666; width: 120px;">Email</td><td style="padding: 6px 0;"><strong>${safeEmail}</strong></td></tr>
+          <tr><td style="padding: 6px 0; color: #666;">Submitted</td><td style="padding: 6px 0;">${safeCreated}</td></tr>
+          <tr><td style="padding: 6px 0; color: #666; vertical-align: top;">Reason</td><td style="padding: 6px 0; white-space: pre-wrap;">${safeReason}</td></tr>
+        </table>
+        <div style="margin: 24px 0;">
+          <a href="${escapeHtml(reviewUrl)}" style="background-color: #1a1a2e; color: #ffffff; padding: 12px 20px; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: bold; display: inline-block;">Review request</a>
+        </div>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="font-size: 12px; color: #999; text-align: center;">Powered by LeagueVault</p>
+      </div>
+    `,
+    trackingSettings: { clickTracking: { enable: false, enableText: false } },
+  };
+
+  try {
+    await sgMail.send(msg, true);
+    log.info(`Deletion request notification sent to ${toEmails.length} admin(s) for request ${request.id}`);
+    return true;
+  } catch (error: any) {
+    log.error('Failed to send deletion request notification:', error?.response?.body || error.message);
+    return false;
+  }
+}
+
 export async function resendInviteEmail(
   toEmail: string,
   userName: string,

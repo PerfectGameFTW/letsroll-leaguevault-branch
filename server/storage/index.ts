@@ -9,6 +9,7 @@ import * as userStorage from "./users";
 import * as orgStorage from "./organizations";
 import * as locationStorage from "./locations";
 import * as emailTemplateStorage from "./email-templates";
+import * as deletionRequestStorage from "./deletion-requests";
 
 export type { IStorage };
 
@@ -140,6 +141,12 @@ export class DatabaseStorage implements IStorage {
   getEmailTemplateBySlug!: IStorage["getEmailTemplateBySlug"];
   updateEmailTemplate!: IStorage["updateEmailTemplate"];
 
+  createDeletionRequest!: IStorage["createDeletionRequest"];
+  listDeletionRequests!: IStorage["listDeletionRequests"];
+  getDeletionRequest!: IStorage["getDeletionRequest"];
+  updateDeletionRequestStatus!: IStorage["updateDeletionRequestStatus"];
+  countDeletionRequestsForEmailSince!: IStorage["countDeletionRequestsForEmailSince"];
+
   constructor() {
     Object.assign(this, {
       ...leagueStorage,
@@ -152,6 +159,7 @@ export class DatabaseStorage implements IStorage {
       ...orgStorage,
       ...locationStorage,
       ...emailTemplateStorage,
+      ...deletionRequestStorage,
     });
   }
 }

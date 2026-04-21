@@ -41,6 +41,7 @@ const EmailTemplatesPage = lazy(() => import("@/pages/email-templates-page"));
 const IntegrationsPage = lazy(() => import("@/pages/integrations-page"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy-page"));
 const DeleteAccountPage = lazy(() => import("@/pages/delete-account-page"));
+const DeletionRequestsPage = lazy(() => import("@/pages/deletion-requests-page"));
 
 function PageLoader() {
   return <PageLoadingState />;
@@ -151,6 +152,7 @@ function Router() {
         <Route path="/admin/link-bowler">{guard('systemAdmin', <AdminLinkBowlerPage />)}</Route>
         <Route path="/users">{guard('systemAdmin', <UsersPage />)}</Route>
         <Route path="/email-templates">{guard('systemAdmin', <EmailTemplatesPage />)}</Route>
+        <Route path="/admin/deletion-requests">{guard('systemAdmin', <DeletionRequestsPage />)}</Route>
 
         {/* Fallback route */}
         <Route component={NotFound} />

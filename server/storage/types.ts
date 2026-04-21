@@ -16,6 +16,7 @@ import type {
   LocationCardPointeCredentials,
   PaginatedResult,
   EmailTemplate, UpdateEmailTemplate,
+  DeletionRequest, InsertDeletionRequest, DeletionRequestStatus,
 } from "@shared/schema";
 
 export interface ILeagueStorage {
@@ -163,6 +164,19 @@ export interface IEmailTemplateStorage {
   updateEmailTemplate(id: number, data: UpdateEmailTemplate): Promise<EmailTemplate>;
 }
 
+export interface IDeletionRequestStorage {
+  createDeletionRequest(data: InsertDeletionRequest): Promise<DeletionRequest>;
+  listDeletionRequests(filters?: { status?: DeletionRequestStatus }): Promise<DeletionRequest[]>;
+  getDeletionRequest(id: number): Promise<DeletionRequest | undefined>;
+  updateDeletionRequestStatus(
+    id: number,
+    status: Exclude<DeletionRequestStatus, "pending">,
+    reviewedBy: number,
+    adminNote?: string | null,
+  ): Promise<DeletionRequest>;
+  countDeletionRequestsForEmailSince(email: string, since: Date): Promise<number>;
+}
+
 export interface IStorage extends
   ILeagueStorage,
   ITeamStorage,
@@ -172,4 +186,5 @@ export interface IStorage extends
   IUserStorage,
   IOrganizationStorage,
   ILocationStorage,
-  IEmailTemplateStorage {}
+  IEmailTemplateStorage,
+  IDeletionRequestStorage {}

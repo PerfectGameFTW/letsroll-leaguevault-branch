@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { sendSuccess, sendError, sanitizeUser } from '../utils/api.js';
+import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
 import { requireAdmin } from '../middleware/admin.js';
 import { createLogger } from '../logger';
+import { updateDeletionRequestStatusSchema, DELETION_REQUEST_STATUSES, type DeletionRequestStatus } from '@shared/schema';
 
 const log = createLogger("SystemAdmin");
 
@@ -72,6 +73,59 @@ router.post('/revoke/:id', requireAdmin, async (req: Request, res: Response) => 
   } catch (error) {
     log.error('Error revoking system admin:', error);
     sendError(res, 'Failed to revoke system admin privileges', 500, 'SERVER_ERROR');
+  }
+});
+
+// Account deletion request management (system admin only)
+router.get('/deletion-requests', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const statusParam = typeof req.query.status === 'string' ? req.query.status : undefined;
+    const status = statusParam && (DELETION_REQUEST_STATUSES as readonly string[]).includes(statusParam)
+      ? (statusParam as DeletionRequestStatus)
+      : undefined;
+    const rows = await storage.listDeletionRequests(status ? { status } : undefined);
+    sendSuccess(res, rows);
+  } catch (error) {
+    log.error('Error listing deletion requests:', error);
+    sendError(res, 'Failed to list deletion requests', 500, 'SERVER_ERROR');
+  }
+});
+
+router.patch('/deletion-requests/:id', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) {
+      return sendError(res, 'Invalid request ID', 400, 'INVALID_ID');
+    }
+
+    const parsed = updateDeletionRequestStatusSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return handleZodError(res, parsed.error);
+    }
+
+    const existing = await storage.getDeletionRequest(id);
+    if (!existing) {
+      return sendError(res, 'Deletion request not found', 404, 'NOT_FOUND');
+    }
+    if (existing.status !== 'pending') {
+      return sendError(res, 'Request has already been reviewed', 400, 'ALREADY_REVIEWED');
+    }
+
+    const reviewerId = req.user?.id;
+    if (!reviewerId) {
+      return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
+    }
+
+    const updated = await storage.updateDeletionRequestStatus(
+      id,
+      parsed.data.status,
+      reviewerId,
+      parsed.data.adminNote ?? null,
+    );
+    sendSuccess(res, updated);
+  } catch (error) {
+    log.error('Error updating deletion request:', error);
+    sendError(res, 'Failed to update deletion request', 500, 'SERVER_ERROR');
   }
 });
 

@@ -1,32 +1,19 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { scrypt, timingSafeEqual } from 'crypto';
-import { promisify } from 'util';
 import { sendError, sendSuccess, sanitizeUser, handleZodError } from '../utils/api';
 import { storage } from '../storage';
 import { hashPassword } from '../auth';
 import { passwordSchema } from '@shared/password-validation';
-import { updateUserSchema } from '@shared/schema';
+import { updateUserSchema, insertDeletionRequestSchema } from '@shared/schema';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
+import { comparePasswords } from '../lib/password';
+import { sendDeletionRequestNotification } from '../services/email';
 
 const log = createLogger('Account');
 const router = Router();
-
-const scryptAsync = promisify(scrypt);
-
-async function comparePasswords(supplied: string, stored: string) {
-  try {
-    const [hashed, salt] = stored.split('.');
-    const hashedBuf = Buffer.from(hashed, 'hex');
-    const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
-    return timingSafeEqual(hashedBuf, suppliedBuf);
-  } catch {
-    return false;
-  }
-}
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {
@@ -35,43 +22,92 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+const GENERIC_DELETION_RESPONSE = {
+  success: true as const,
+  data: { message: 'Deletion request received' },
+};
+
+// Anti-enumeration: even when throttled, return the same generic success
+// response (HTTP 200) so callers cannot distinguish accepted vs limited.
 const deletionRequestLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    success: false,
-    error: { message: 'Too many requests, please try again later' },
+  handler: (req, res) => {
+    log.warn('Deletion request throttled (per-IP limit reached)');
+    res.status(200).json(GENERIC_DELETION_RESPONSE);
   },
 });
+
+const MAX_DELETION_REQUESTS_PER_EMAIL_PER_DAY = 3;
 
 // Public: request account deletion (no auth required so departed users can submit)
 router.post('/request-deletion', deletionRequestLimiter, async (req, res) => {
   try {
-    const { email, reason } = req.body;
+    const rawEmail = typeof req.body?.email === 'string'
+      ? req.body.email.trim().toLowerCase()
+      : req.body?.email;
+    const parsed = insertDeletionRequestSchema.safeParse({
+      email: rawEmail,
+      reason: typeof req.body?.reason === 'string' && req.body.reason.trim().length > 0
+        ? req.body.reason.trim()
+        : null,
+    });
 
-    if (!email || typeof email !== 'string') {
-      return res.status(400).json({
-        success: false,
-        error: { message: 'Email is required' },
+    if (!parsed.success) {
+      // Always return generic success to prevent enumeration; just log the failure.
+      log.info('Deletion request rejected (invalid input)', {
+        issues: parsed.error.issues.map(i => i.message),
       });
+      return res.json(GENERIC_DELETION_RESPONSE);
     }
 
-    log.info(`Account deletion requested for email: ${email}`, {
-      reason: reason || 'No reason provided',
+    const { email, reason } = parsed.data;
+
+    // Per-email throttle on top of per-IP limiter
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentCount = await storage.countDeletionRequestsForEmailSince(email, since);
+    if (recentCount >= MAX_DELETION_REQUESTS_PER_EMAIL_PER_DAY) {
+      log.warn('Deletion request throttled (per-email cap reached)', { recentCount });
+      return res.json(GENERIC_DELETION_RESPONSE);
+    }
+
+    const ipAddress = (req.ip ?? req.socket?.remoteAddress ?? null)?.toString().slice(0, 100) ?? null;
+    const userAgent = req.headers['user-agent']?.toString().slice(0, 500) ?? null;
+
+    const created = await storage.createDeletionRequest({
+      email,
+      reason: reason ?? null,
+      ipAddress,
+      userAgent,
     });
 
-    return res.json({
-      success: true,
-      data: { message: 'Deletion request received' },
-    });
+    log.info('Account deletion request recorded', { id: created.id });
+
+    // Notify system admins (non-fatal)
+    try {
+      const allUsers = await storage.getUsers();
+      const adminEmails = allUsers
+        .filter(u => u.role === 'system_admin' && u.email)
+        .map(u => u.email);
+      if (adminEmails.length > 0) {
+        await sendDeletionRequestNotification(adminEmails, {
+          id: created.id,
+          email: created.email,
+          reason: created.reason,
+          createdAt: created.createdAt,
+        });
+      }
+    } catch (notifyError) {
+      log.error('Failed to notify admins of deletion request (non-fatal):', notifyError);
+    }
+
+    return res.json(GENERIC_DELETION_RESPONSE);
   } catch (error) {
     log.error('Error processing deletion request:', error);
-    return res.status(500).json({
-      success: false,
-      error: { message: 'Failed to process deletion request' },
-    });
+    // Still return generic success to avoid leaking error state
+    return res.json(GENERIC_DELETION_RESPONSE);
   }
 });
 
