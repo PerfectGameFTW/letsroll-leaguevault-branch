@@ -11,7 +11,12 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { Request, Response } from 'express';
 import { checkSetupSecret } from '../../server/routes/setup-admin';
 
-const BASE_URL = 'http://localhost:5000';
+// Intentionally bypasses the shared `tests/helpers.ts` BASE_URL (which
+// prefers the Replit HTTPS domain) because `setupAdminLimiter` is
+// 5 req / 15 min / IP and we need `X-Forwarded-For` to actually reach
+// express-rate-limit's keyGenerator — only possible when we hit the
+// trusted local hop directly.
+const BASE_URL = process.env.SETUP_ADMIN_TEST_BASE_URL || 'http://localhost:5000';
 const SETUP_SECRET = process.env.SETUP_SECRET;
 
 let ipCounter = 0;
@@ -21,6 +26,13 @@ function freshIp(): string {
 }
 
 // --- unit harness: direct `checkSetupSecret` calls ---
+// The non-string / array header shapes are pinned here (not per-endpoint
+// HTTP) because Node's HTTP/1 parser collapses repeated headers into a
+// single comma-joined string before the route handler ever sees them —
+// the string[] branch of the normalization is only reachable via a
+// direct call. The HTTP tests below still cover the "duplicated
+// header" scenario end-to-end by asserting the collapsed shape is
+// rejected.
 
 function makeReq(headerValue: string | string[] | undefined): Request {
   const headers: Record<string, string | string[] | undefined> = {};
