@@ -86,6 +86,22 @@ override credentials without editing source:
 | `TEST_ORG_B_SLUG`                | `vitest-org-b`                |
 | `SKIP_TEST_SEED`                 | unset (seed runs)             |
 
+### Opt-in suites
+
+Some test files mutate shared state (e.g. delete and re-seed the system
+admin row) and would race with other test files under the default
+`vitest run`. They are gated behind their own env vars and must be
+invoked in a dedicated, serial step:
+
+```bash
+RUN_BOOTSTRAP_RACE_TESTS=1 npx vitest run \
+  tests/api/setup-admin-bootstrap-race.test.ts
+```
+
+| Env var                          | File(s)                                              |
+|----------------------------------|------------------------------------------------------|
+| `RUN_BOOTSTRAP_RACE_TESTS=1`     | `tests/api/setup-admin-bootstrap-race.test.ts`       |
+
 ## Layout
 
 - `tests/api/*.test.ts` — black-box API/integration tests that go over
