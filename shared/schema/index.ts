@@ -31,6 +31,19 @@ export type { InsertEmailTemplate, UpdateEmailTemplate, EmailTemplate } from "./
 export { deletionRequests, insertDeletionRequestSchema, updateDeletionRequestStatusSchema, DELETION_REQUEST_STATUSES } from "./deletion-requests";
 export type { DeletionRequest, InsertDeletionRequest, UpdateDeletionRequestStatus, DeletionRequestStatus } from "./deletion-requests";
 
+export {
+  applePayJobs,
+  applePayJobItems,
+  APPLE_PAY_JOB_STATUSES,
+  APPLE_PAY_JOB_ITEM_STATUSES,
+} from "./apple-pay-jobs";
+export type {
+  ApplePayJob,
+  ApplePayJobItem,
+  ApplePayJobStatus,
+  ApplePayJobItemStatus,
+} from "./apple-pay-jobs";
+
 export { sessions } from "./sessions";
 
 export { organizationRelations, locationRelations, leagueRelations, teamRelations, bowlerRelations, bowlerLeagueRelations, gameRelations, scoreRelations, paymentRelations, paymentScheduleRelations, userRelations } from "./relations";

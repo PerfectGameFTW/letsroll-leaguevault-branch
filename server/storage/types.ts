@@ -17,6 +17,7 @@ import type {
   PaginatedResult,
   EmailTemplate, UpdateEmailTemplate,
   DeletionRequest, InsertDeletionRequest, DeletionRequestStatus,
+  ApplePayJob, ApplePayJobItem, ApplePayJobStatus, ApplePayJobItemStatus,
 } from "@shared/schema";
 
 export interface IFirstAdminBootstrapStorage {
@@ -187,6 +188,52 @@ export interface IDeletionRequestStorage {
   countDeletionRequestsForEmailSince(email: string, since: Date): Promise<number>;
 }
 
+export interface IApplePayJobStorage {
+  createApplePayJob(createdBy: number | null): Promise<ApplePayJob>;
+  getApplePayJob(id: number): Promise<ApplePayJob | undefined>;
+  listApplePayJobs(limit?: number): Promise<ApplePayJob[]>;
+  claimNextApplePayJob(): Promise<ApplePayJob | undefined>;
+  recoverInterruptedApplePayJobs(): Promise<number>;
+  countApplePayJobItems(jobId: number): Promise<number>;
+  claimAndCompleteApplePayJobItem(
+    itemId: number,
+    patch: { status: Exclude<ApplePayJobItemStatus, "pending">; message?: string | null },
+  ): Promise<boolean>;
+  getApplePayJobItemCounts(jobId: number): Promise<{
+    succeeded: number;
+    failed: number;
+    skipped: number;
+    pending: number;
+  }>;
+  insertApplePayJobItems(
+    jobId: number,
+    items: Array<{
+      organizationId: number | null;
+      locationId: number | null;
+      domain: string;
+      status?: ApplePayJobItemStatus;
+      message?: string | null;
+    }>,
+  ): Promise<void>;
+  setApplePayJobTotal(jobId: number, total: number): Promise<void>;
+  getPendingApplePayJobItems(jobId: number): Promise<ApplePayJobItem[]>;
+  getApplePayJobItems(jobId: number): Promise<ApplePayJobItem[]>;
+  updateApplePayJobItem(
+    itemId: number,
+    patch: { status: ApplePayJobItemStatus; message?: string | null },
+  ): Promise<void>;
+  finalizeApplePayJob(
+    jobId: number,
+    patch: {
+      status: ApplePayJobStatus;
+      succeededCount: number;
+      failedCount: number;
+      skippedCount: number;
+      errorMessage?: string | null;
+    },
+  ): Promise<void>;
+}
+
 export interface IStorage extends
   ILeagueStorage,
   ITeamStorage,
@@ -198,4 +245,5 @@ export interface IStorage extends
   ILocationStorage,
   IEmailTemplateStorage,
   IDeletionRequestStorage,
-  IFirstAdminBootstrapStorage {}
+  IFirstAdminBootstrapStorage,
+  IApplePayJobStorage {}

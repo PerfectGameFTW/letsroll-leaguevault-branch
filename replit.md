@@ -235,7 +235,16 @@ the other receives `ADMIN_EXISTS` (HTTP 403).
   - **Platform support**: Apple Pay works only in Safari on iOS; Google Pay works only in Chrome on Android
   - Apple Pay requires domain verification: `/.well-known/apple-developer-merchantid-domain-association` route (serves static file from `.well-known/` directory first, falls back to `APPLE_PAY_DOMAIN_VERIFICATION` env var). Download the verification file from Square Dashboard → Apple Pay and place it at `.well-known/apple-developer-merchantid-domain-association`.
   - Apple Pay domain registration: `POST /api/payments-provider/apple-pay/register-domain` (admin-only, per-domain)
-  - Apple Pay bulk registration: `POST /api/payments-provider/apple-pay/register-all-domains` (system admin, all org subdomains)
+  - Apple Pay bulk registration: `POST /api/payments-provider/apple-pay/register-all-domains` (system admin, all org subdomains).
+    Returns **HTTP 202 + `{ jobId }`** immediately and processes asynchronously via the
+    `applePayWorker` background service (`server/services/apple-pay-worker.ts`).
+    Job + per-domain item state persists in `apple_pay_jobs` / `apple_pay_job_items`
+    so a server restart resumes pending work without double-processing.
+    Worker uses `FOR UPDATE SKIP LOCKED` to claim one job at a time and a
+    concurrency cap of 4 in-flight provider calls per job. Poll status via
+    `GET /api/payments-provider/apple-pay/jobs/:id` (system admin) for
+    succeeded / failed / skipped / pending counts and per-domain results.
+    The single-domain endpoint remains synchronous and unchanged.
   - Auto-registration: org create/update in `server/routes/organizations.ts` fires fire-and-forget `registerApplePayDomain()` when subdomain/slug changes
   - `registerApplePayDomain()` in `server/services/square.ts` — calls Square's `POST /v2/apple-pay/domains`
   - Google Pay requires `pay.google.com` in CSP scriptSrc, frameSrc, connectSrc

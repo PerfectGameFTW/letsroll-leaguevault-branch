@@ -10,6 +10,7 @@ import * as orgStorage from "./organizations";
 import * as locationStorage from "./locations";
 import * as emailTemplateStorage from "./email-templates";
 import * as deletionRequestStorage from "./deletion-requests";
+import * as applePayJobStorage from "./apple-pay-jobs";
 
 export type { IStorage };
 
@@ -150,6 +151,21 @@ export class DatabaseStorage implements IStorage {
   bootstrapFirstAdmin!: IStorage["bootstrapFirstAdmin"];
   promoteFirstAdmin!: IStorage["promoteFirstAdmin"];
 
+  createApplePayJob!: IStorage["createApplePayJob"];
+  getApplePayJob!: IStorage["getApplePayJob"];
+  listApplePayJobs!: IStorage["listApplePayJobs"];
+  claimNextApplePayJob!: IStorage["claimNextApplePayJob"];
+  recoverInterruptedApplePayJobs!: IStorage["recoverInterruptedApplePayJobs"];
+  countApplePayJobItems!: IStorage["countApplePayJobItems"];
+  claimAndCompleteApplePayJobItem!: IStorage["claimAndCompleteApplePayJobItem"];
+  getApplePayJobItemCounts!: IStorage["getApplePayJobItemCounts"];
+  insertApplePayJobItems!: IStorage["insertApplePayJobItems"];
+  setApplePayJobTotal!: IStorage["setApplePayJobTotal"];
+  getPendingApplePayJobItems!: IStorage["getPendingApplePayJobItems"];
+  getApplePayJobItems!: IStorage["getApplePayJobItems"];
+  updateApplePayJobItem!: IStorage["updateApplePayJobItem"];
+  finalizeApplePayJob!: IStorage["finalizeApplePayJob"];
+
   constructor() {
     Object.assign(this, {
       ...leagueStorage,
@@ -163,6 +179,7 @@ export class DatabaseStorage implements IStorage {
       ...locationStorage,
       ...emailTemplateStorage,
       ...deletionRequestStorage,
+      ...applePayJobStorage,
     });
   }
 }

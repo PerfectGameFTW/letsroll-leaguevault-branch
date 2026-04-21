@@ -9,6 +9,7 @@ import { createServer } from 'http';
 import path from 'path';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
+import { applePayWorker } from './services/apple-pay-worker';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDiskUrls } from './migrations/migrate-avatars';
 import { createLogger } from './logger';
 import { csrfProtection, csrfTokenEndpoint } from './middleware/csrf';
@@ -237,6 +238,12 @@ async function startServer() {
       await paymentScheduler.initialize();
       paymentScheduler.startSweepPoll();
       log.info('Schedulers initialized with 60-second sweep poll');
+
+      // Resume any in-flight or pending Apple Pay bulk-registration jobs that
+      // were interrupted by a previous server restart.
+      applePayWorker.resumeOnStartup().catch((err) => {
+        log.error('Apple Pay worker resume failed:', err);
+      });
     } catch (error) {
       log.error('Error initializing schedulers:', error);
     }

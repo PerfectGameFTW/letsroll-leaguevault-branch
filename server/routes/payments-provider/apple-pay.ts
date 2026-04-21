@@ -2,8 +2,10 @@
  * Apple Pay domain registration (single + bulk).
  *
  * Routes:
- *  - POST /apple-pay/register-all-domains
- *  - POST /apple-pay/register-domain
+ *  - POST /apple-pay/register-all-domains   (system-admin; enqueues a background job, returns 202 + jobId)
+ *  - GET  /apple-pay/jobs/:id              (system-admin; poll job status + per-item results)
+ *  - GET  /apple-pay/jobs                  (system-admin; recent jobs)
+ *  - POST /apple-pay/register-domain        (sync, single-domain — unchanged)
  */
 import { Router } from 'express';
 import { storage } from '../../storage';
@@ -11,6 +13,7 @@ import { sendSuccess, sendError } from '../../utils/api.js';
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
 import { hasWalletSupport } from '../../services/payment-provider';
+import { applePayWorker } from '../../services/apple-pay-worker';
 
 const log = createLogger('Payments');
 
@@ -22,51 +25,68 @@ router.post('/apple-pay/register-all-domains', async (req: any, res) => {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
     }
 
-    const organizations = await storage.getOrganizations();
-    const results: { domain: string; success: boolean; message: string }[] = [];
+    const job = await applePayWorker.enqueue(req.user?.id ?? null);
 
-    for (const org of organizations) {
-      const domain = org.subdomain || org.slug;
-      if (!domain) continue;
-
-      const fullDomain = `${domain}.leaguevault.app`;
-      const orgLeagues = await storage.getLeagues(org.id);
-      const locationIds = new Set<number>();
-      for (const league of orgLeagues) {
-        if (league.locationId) locationIds.add(league.locationId);
-      }
-
-      if (locationIds.size === 0) {
-        results.push({ domain: fullDomain, success: false, message: 'No locations with payment credentials' });
-        continue;
-      }
-
-      for (const locationId of locationIds) {
-        try {
-          const provider = await getPaymentProvider(locationId);
-          if (hasWalletSupport(provider)) {
-            const result = await provider.registerApplePayDomain(fullDomain);
-            results.push({ domain: fullDomain, ...result });
-          } else {
-            results.push({ domain: fullDomain, success: false, message: 'Provider does not support Apple Pay' });
-          }
-        } catch (e) {
-          if (e instanceof ProviderNotConfiguredError) {
-            results.push({ domain: fullDomain, success: false, message: 'Payment provider not configured' });
-          } else {
-            throw e;
-          }
-        }
-      }
-    }
-
-    const registered = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success).length;
-    log.info(`Apple Pay bulk registration: ${registered} succeeded, ${failed} failed`);
-    sendSuccess(res, { results, registered, failed });
+    res.status(202).json({
+      success: true,
+      data: {
+        jobId: job.id,
+        status: job.status,
+        createdAt: job.createdAt,
+        message: 'Bulk Apple Pay registration enqueued. Poll GET /api/payments-provider/apple-pay/jobs/:id for status.',
+      },
+    });
   } catch (error) {
-    log.error('Apple Pay bulk registration error:', error);
-    sendError(res, 'Failed to bulk register domains', 500);
+    log.error('Apple Pay bulk registration enqueue error:', error);
+    sendError(res, 'Failed to enqueue bulk Apple Pay registration job', 500);
+  }
+});
+
+router.get('/apple-pay/jobs', async (req: any, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
+    }
+    const jobs = await storage.listApplePayJobs(25);
+    sendSuccess(res, { jobs });
+  } catch (error) {
+    log.error('Apple Pay list jobs error:', error);
+    sendError(res, 'Failed to list jobs', 500);
+  }
+});
+
+router.get('/apple-pay/jobs/:id', async (req: any, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
+    }
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return sendError(res, 'Invalid job id', 400, 'INVALID_ID');
+
+    const job = await storage.getApplePayJob(id);
+    if (!job) return sendError(res, 'Job not found', 404, 'NOT_FOUND');
+
+    // Live counts from the items table — these stay accurate while the job is
+    // mid-flight (the job row's counts are only finalized at job completion).
+    const [items, liveCounts] = await Promise.all([
+      storage.getApplePayJobItems(id),
+      storage.getApplePayJobItemCounts(id),
+    ]);
+
+    sendSuccess(res, {
+      job,
+      counts: {
+        total: job.totalDomains,
+        succeeded: liveCounts.succeeded,
+        failed: liveCounts.failed,
+        skipped: liveCounts.skipped,
+        pending: liveCounts.pending,
+      },
+      items,
+    });
+  } catch (error) {
+    log.error('Apple Pay job status error:', error);
+    sendError(res, 'Failed to fetch job status', 500);
   }
 });
 
