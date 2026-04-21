@@ -21,6 +21,11 @@ const EXEMPT_PATHS = [
   '/csrf-token',
   '/setup/create-first-admin',
   '/account/request-deletion',
+  // Confirmation link in the email is the auth factor (like password
+  // reset). Anonymous clicks must succeed without a session-bound CSRF
+  // token. The handler validates a single-use, expiring token from the
+  // request body before mutating any state.
+  '/account/confirm-email-change',
 ];
 
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
