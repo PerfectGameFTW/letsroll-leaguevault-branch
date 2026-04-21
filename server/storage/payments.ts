@@ -26,7 +26,7 @@ interface AllPaymentFilters {
   organizationId?: number;
 }
 
-function buildPaymentConditions(filters: AllPaymentFilters, options?: { excludeOrgLessLeagues?: boolean }) {
+export function buildPaymentConditions(filters: AllPaymentFilters, options?: { excludeOrgLessLeagues?: boolean }) {
   const conditions = [];
 
   if (filters.organizationId !== undefined) {
