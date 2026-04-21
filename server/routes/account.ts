@@ -363,11 +363,13 @@ router.post('/confirm-email-change', async (req: Request, res: Response) => {
       // token is still pending; we explicitly consume it now so a page
       // refresh doesn't keep retrying the same losing race.
       if (err?.code === '23505') {
-        await storage.invalidatePendingEmailChangeRequestsForUser(
-          // best-effort: look up the userId for the token to scope the
-          // invalidation. If the lookup fails, fall through to the error.
-          (await storage.getEmailChangeRequestByTokenHash(tokenHash))?.userId ?? -1,
-        );
+        // Consume only the specific token that just lost the race. Other
+        // pending requests (e.g. one the user submitted after seeing the
+        // first link sit in their inbox) are unaffected.
+        const conflicted = await storage.getEmailChangeRequestByTokenHash(tokenHash);
+        if (conflicted) {
+          await storage.consumeEmailChangeRequest(conflicted.id);
+        }
         return sendError(res, 'Email already in use', 400, 'EMAIL_IN_USE');
       }
       throw err;
@@ -498,18 +500,16 @@ router.post('/change-password', requireAuth, async (req: Request, res: Response)
     await storage.updateUser(user.id, { password: hashedNew });
 
     // Defense-in-depth: any in-flight email-change tokens for this user
-    // may belong to an attacker who recently had access. Invalidate them
-    // so a stolen confirmation link can no longer rewrite the login email.
-    try {
-      const invalidated = await storage.invalidatePendingEmailChangeRequestsForUser(user.id);
-      if (invalidated > 0) {
-        log.info('Invalidated pending email-change requests on password change', {
-          userId: user.id,
-          count: invalidated,
-        });
-      }
-    } catch (cleanupErr) {
-      log.error('Failed to invalidate pending email-change requests (non-fatal):', cleanupErr);
+    // may belong to an attacker who recently had access. Invalidating
+    // them is part of the security contract of password change — if it
+    // fails we surface the error and the caller can retry, rather than
+    // silently leaving a stolen confirmation link active.
+    const invalidated = await storage.invalidatePendingEmailChangeRequestsForUser(user.id);
+    if (invalidated > 0) {
+      log.info('Invalidated pending email-change requests on password change', {
+        userId: user.id,
+        count: invalidated,
+      });
     }
 
     return sendSuccess(res, { message: 'Password updated successfully' });
