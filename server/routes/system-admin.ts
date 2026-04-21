@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
+import { db } from '../db';
 import {
   countOrphanedRows,
   listOrphanedLeagues,
@@ -16,6 +17,8 @@ import {
   deleteOrphanedBowlerLeague,
   deleteOrphanedPayment,
   deleteOrphanedUser,
+  recordOrphanCleanupAudit,
+  listOrphanCleanupAudits,
   NotOrphanedError,
   OrphanRowNotFoundError,
   type OrphanedResourceType,
@@ -215,14 +218,28 @@ router.post('/orphaned-data/:type/:id/reassign', requireAdmin, async (req: Reque
   }
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return sendError(res, 'Invalid id', 400, 'INVALID_ID');
+  const adminUserId = req.user?.id;
+  if (!adminUserId) return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
   const parsed = reassignBodySchema.safeParse(req.body);
   if (!parsed.success) return handleZodError(res, parsed.error);
   try {
-    if (type === 'leagues') {
-      await reassignOrphanedLeague(id, parsed.data.organizationId);
-    } else {
-      await reassignOrphanedUser(id, parsed.data.organizationId);
-    }
+    await db.transaction(async (tx) => {
+      if (type === 'leagues') {
+        await reassignOrphanedLeague(id, parsed.data.organizationId, tx);
+      } else {
+        await reassignOrphanedUser(id, parsed.data.organizationId, tx);
+      }
+      await recordOrphanCleanupAudit(
+        {
+          adminUserId,
+          resourceType: type,
+          resourceId: id,
+          action: 'reassign',
+          organizationId: parsed.data.organizationId,
+        },
+        tx,
+      );
+    });
     sendSuccess(res, { id, organizationId: parsed.data.organizationId });
   } catch (error) {
     handleRepairError(res, error, 'reassign', type);
@@ -234,17 +251,44 @@ router.post('/orphaned-data/:type/:id/delete', requireAdmin, async (req: Request
   if (!type) return sendError(res, 'Invalid resource type', 400, 'INVALID_TYPE');
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) return sendError(res, 'Invalid id', 400, 'INVALID_ID');
+  const adminUserId = req.user?.id;
+  if (!adminUserId) return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
   try {
-    switch (type) {
-      case 'leagues': await deleteOrphanedLeague(id); break;
-      case 'teams': await deleteOrphanedTeam(id); break;
-      case 'bowlerLeagues': await deleteOrphanedBowlerLeague(id); break;
-      case 'payments': await deleteOrphanedPayment(id); break;
-      case 'users': await deleteOrphanedUser(id); break;
-    }
+    await db.transaction(async (tx) => {
+      switch (type) {
+        case 'leagues': await deleteOrphanedLeague(id, tx); break;
+        case 'teams': await deleteOrphanedTeam(id, tx); break;
+        case 'bowlerLeagues': await deleteOrphanedBowlerLeague(id, tx); break;
+        case 'payments': await deleteOrphanedPayment(id, tx); break;
+        case 'users': await deleteOrphanedUser(id, tx); break;
+      }
+      await recordOrphanCleanupAudit(
+        {
+          adminUserId,
+          resourceType: type,
+          resourceId: id,
+          action: 'delete',
+          organizationId: null,
+        },
+        tx,
+      );
+    });
     sendSuccess(res, { id, deleted: true });
   } catch (error) {
     handleRepairError(res, error, 'delete', type);
+  }
+});
+
+// Recent activity feed for the data integrity admin panel.
+router.get('/orphaned-data-audits', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rawLimit = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : NaN;
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 50;
+    const rows = await listOrphanCleanupAudits(limit);
+    sendSuccess(res, rows);
+  } catch (error) {
+    log.error('Error listing orphan cleanup audits:', error);
+    sendError(res, 'Failed to list orphan cleanup audits', 500, 'SERVER_ERROR');
   }
 });
 

@@ -93,6 +93,19 @@ interface OrphanUserRow {
   createdAt: string;
 }
 
+interface CleanupAuditRow {
+  id: number;
+  adminUserId: number;
+  resourceType: OrphanType;
+  resourceId: number;
+  action: 'reassign' | 'delete';
+  organizationId: number | null;
+  createdAt: string;
+  adminUserName: string | null;
+  adminUserEmail: string | null;
+  organizationName: string | null;
+}
+
 type OrphanRow =
   | ({ _type: 'leagues' } & OrphanLeagueRow)
   | ({ _type: 'teams' } & OrphanTeamRow)
@@ -157,6 +170,83 @@ interface RepairDialogState {
   mode: 'reassign' | 'delete';
 }
 
+function formatTimestamp(value: string | null | undefined): string {
+  if (!value) return '—';
+  try { return new Date(value).toLocaleString(); } catch { return value; }
+}
+
+function RecentActivityCard() {
+  const { data, isLoading } = useQuery<ApiResponse<CleanupAuditRow[]>>({
+    queryKey: ['/api/system-admin/orphaned-data-audits'],
+  });
+  const rows = data?.data ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Recent cleanup activity</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="text-muted-foreground text-center py-8">
+            No cleanup actions recorded yet.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Admin</TableHead>
+                  <TableHead>Action</TableHead>
+                  <TableHead>Resource</TableHead>
+                  <TableHead>Organization</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.id} data-testid={`row-cleanup-audit-${row.id}`}>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {formatTimestamp(row.createdAt)}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {row.adminUserName ?? row.adminUserEmail ?? `User #${row.adminUserId}`}
+                    </TableCell>
+                    <TableCell>
+                      {row.action === 'delete' ? (
+                        <Badge variant="destructive">Delete</Badge>
+                      ) : (
+                        <Badge>Reassign</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <span className="font-medium">{TYPE_LABELS[row.resourceType] ?? row.resourceType}</span>
+                      <span className="text-xs text-muted-foreground ml-1 font-mono">#{row.resourceId}</span>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {row.action === 'reassign' ? (
+                        row.organizationName ?? (row.organizationId !== null ? `#${row.organizationId}` : '—')
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DataIntegrityPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -177,6 +267,7 @@ export default function DataIntegrityPage() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data-counts'] });
     queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data', activeType] });
+    queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data-audits'] });
   };
 
   const reassignMutation = useMutation({
@@ -385,6 +476,8 @@ export default function DataIntegrityPage() {
               )}
             </CardContent>
           </Card>
+
+          <RecentActivityCard />
 
           <Dialog open={!!repair} onOpenChange={(open) => { if (!open) { setRepair(null); setReassignOrgId(''); } }}>
             <DialogContent>

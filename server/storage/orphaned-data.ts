@@ -1,4 +1,4 @@
-import { sql, isNull, ne, and, eq } from "drizzle-orm";
+import { sql, isNull, ne, and, eq, desc } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   leagues,
@@ -8,7 +8,18 @@ import {
   users,
   bowlers,
   organizations,
+  orphanCleanupAudits,
+  type InsertOrphanCleanupAudit,
+  type OrphanCleanupAudit,
 } from "@shared/schema";
+
+// A query executor — either the top-level `db` client or a transaction handle
+// passed by `db.transaction(...)`. Each repair helper accepts one so the route
+// layer can wrap repair + audit insert in a single transaction (so a cleanup
+// can never succeed without a corresponding audit row, and vice versa).
+export type DbExecutor =
+  | typeof db
+  | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export interface OrphanedDataCounts {
   leagues: number;
@@ -252,6 +263,11 @@ export async function listOrphanedUsers(): Promise<OrphanedUserRow[]> {
 // Repair helpers — explicit "orphaned data" handlers. Each one re-verifies the
 // row is actually org-less before acting, so the regular access-control rule
 // ("deny on null, even for system admins") is never bypassed for non-orphans.
+//
+// Every helper accepts an optional `DbExecutor` so the route layer can run the
+// repair and the audit-log insert inside a single `db.transaction(...)`. If
+// the audit insert fails the whole repair is rolled back, so the audit table
+// is the authoritative record of what was changed.
 // ---------------------------------------------------------------------------
 
 export class NotOrphanedError extends Error {
@@ -268,8 +284,8 @@ export class OrphanRowNotFoundError extends Error {
   }
 }
 
-async function assertOrgExists(organizationId: number): Promise<void> {
-  const [row] = await db
+async function assertOrgExists(executor: DbExecutor, organizationId: number): Promise<void> {
+  const [row] = await executor
     .select({ id: organizations.id })
     .from(organizations)
     .where(eq(organizations.id, organizationId));
@@ -281,15 +297,16 @@ async function assertOrgExists(organizationId: number): Promise<void> {
 export async function reassignOrphanedLeague(
   leagueId: number,
   organizationId: number,
+  executor: DbExecutor = db,
 ): Promise<void> {
-  await assertOrgExists(organizationId);
-  const result = await db
+  await assertOrgExists(executor, organizationId);
+  const result = await executor
     .update(leagues)
     .set({ organizationId })
     .where(and(eq(leagues.id, leagueId), isNull(leagues.organizationId)))
     .returning({ id: leagues.id });
   if (result.length === 0) {
-    const [existing] = await db
+    const [existing] = await executor
       .select({ id: leagues.id })
       .from(leagues)
       .where(eq(leagues.id, leagueId));
@@ -301,9 +318,10 @@ export async function reassignOrphanedLeague(
 export async function reassignOrphanedUser(
   userId: number,
   organizationId: number,
+  executor: DbExecutor = db,
 ): Promise<void> {
-  await assertOrgExists(organizationId);
-  const result = await db
+  await assertOrgExists(executor, organizationId);
+  const result = await executor
     .update(users)
     .set({ organizationId })
     .where(and(
@@ -313,7 +331,7 @@ export async function reassignOrphanedUser(
     ))
     .returning({ id: users.id });
   if (result.length === 0) {
-    const [existing] = await db
+    const [existing] = await executor
       .select({ id: users.id })
       .from(users)
       .where(eq(users.id, userId));
@@ -322,13 +340,16 @@ export async function reassignOrphanedUser(
   }
 }
 
-export async function deleteOrphanedLeague(leagueId: number): Promise<void> {
-  const result = await db
+export async function deleteOrphanedLeague(
+  leagueId: number,
+  executor: DbExecutor = db,
+): Promise<void> {
+  const result = await executor
     .delete(leagues)
     .where(and(eq(leagues.id, leagueId), isNull(leagues.organizationId)))
     .returning({ id: leagues.id });
   if (result.length === 0) {
-    const [existing] = await db
+    const [existing] = await executor
       .select({ id: leagues.id })
       .from(leagues)
       .where(eq(leagues.id, leagueId));
@@ -337,8 +358,11 @@ export async function deleteOrphanedLeague(leagueId: number): Promise<void> {
   }
 }
 
-export async function deleteOrphanedTeam(teamId: number): Promise<void> {
-  const [row] = await db
+export async function deleteOrphanedTeam(
+  teamId: number,
+  executor: DbExecutor = db,
+): Promise<void> {
+  const [row] = await executor
     .select({
       id: teams.id,
       parentLeagueId: leagues.id,
@@ -350,11 +374,14 @@ export async function deleteOrphanedTeam(teamId: number): Promise<void> {
   if (!row) throw new OrphanRowNotFoundError();
   const isOrphan = row.parentLeagueId === null || row.parentOrgId === null;
   if (!isOrphan) throw new NotOrphanedError();
-  await db.delete(teams).where(eq(teams.id, teamId));
+  await executor.delete(teams).where(eq(teams.id, teamId));
 }
 
-export async function deleteOrphanedBowlerLeague(id: number): Promise<void> {
-  const [row] = await db
+export async function deleteOrphanedBowlerLeague(
+  id: number,
+  executor: DbExecutor = db,
+): Promise<void> {
+  const [row] = await executor
     .select({
       id: bowlerLeagues.id,
       parentLeagueId: leagues.id,
@@ -366,11 +393,14 @@ export async function deleteOrphanedBowlerLeague(id: number): Promise<void> {
   if (!row) throw new OrphanRowNotFoundError();
   const isOrphan = row.parentLeagueId === null || row.parentOrgId === null;
   if (!isOrphan) throw new NotOrphanedError();
-  await db.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id));
+  await executor.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id));
 }
 
-export async function deleteOrphanedPayment(id: number): Promise<void> {
-  const [row] = await db
+export async function deleteOrphanedPayment(
+  id: number,
+  executor: DbExecutor = db,
+): Promise<void> {
+  const [row] = await executor
     .select({
       id: payments.id,
       parentLeagueId: leagues.id,
@@ -382,11 +412,14 @@ export async function deleteOrphanedPayment(id: number): Promise<void> {
   if (!row) throw new OrphanRowNotFoundError();
   const isOrphan = row.parentLeagueId === null || row.parentOrgId === null;
   if (!isOrphan) throw new NotOrphanedError();
-  await db.delete(payments).where(eq(payments.id, id));
+  await executor.delete(payments).where(eq(payments.id, id));
 }
 
-export async function deleteOrphanedUser(userId: number): Promise<void> {
-  const result = await db
+export async function deleteOrphanedUser(
+  userId: number,
+  executor: DbExecutor = db,
+): Promise<void> {
+  const result = await executor
     .delete(users)
     .where(and(
       eq(users.id, userId),
@@ -395,11 +428,54 @@ export async function deleteOrphanedUser(userId: number): Promise<void> {
     ))
     .returning({ id: users.id });
   if (result.length === 0) {
-    const [existing] = await db
+    const [existing] = await executor
       .select({ id: users.id })
       .from(users)
       .where(eq(users.id, userId));
     if (!existing) throw new OrphanRowNotFoundError();
     throw new NotOrphanedError();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Audit log — every reassign/delete the admin performs is recorded here so the
+// action can be reviewed later. The route layer wraps the repair helper above
+// and `recordOrphanCleanupAudit` in a single transaction, so a failed audit
+// insert rolls the cleanup back. We only want successful operations recorded.
+// ---------------------------------------------------------------------------
+
+export interface CleanupAuditRow extends OrphanCleanupAudit {
+  adminUserName: string | null;
+  adminUserEmail: string | null;
+  organizationName: string | null;
+}
+
+export async function recordOrphanCleanupAudit(
+  entry: InsertOrphanCleanupAudit,
+  executor: DbExecutor = db,
+): Promise<OrphanCleanupAudit> {
+  const [row] = await executor.insert(orphanCleanupAudits).values(entry).returning();
+  return row;
+}
+
+export async function listOrphanCleanupAudits(limit = 50): Promise<CleanupAuditRow[]> {
+  const rows = await db
+    .select({
+      id: orphanCleanupAudits.id,
+      adminUserId: orphanCleanupAudits.adminUserId,
+      resourceType: orphanCleanupAudits.resourceType,
+      resourceId: orphanCleanupAudits.resourceId,
+      action: orphanCleanupAudits.action,
+      organizationId: orphanCleanupAudits.organizationId,
+      createdAt: orphanCleanupAudits.createdAt,
+      adminUserName: users.name,
+      adminUserEmail: users.email,
+      organizationName: organizations.name,
+    })
+    .from(orphanCleanupAudits)
+    .leftJoin(users, eq(orphanCleanupAudits.adminUserId, users.id))
+    .leftJoin(organizations, eq(orphanCleanupAudits.organizationId, organizations.id))
+    .orderBy(desc(orphanCleanupAudits.createdAt), desc(orphanCleanupAudits.id))
+    .limit(Math.max(1, Math.min(limit, 200)));
+  return rows;
 }

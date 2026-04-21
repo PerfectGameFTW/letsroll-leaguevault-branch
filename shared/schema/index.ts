@@ -32,6 +32,19 @@ export { deletionRequests, insertDeletionRequestSchema, updateDeletionRequestSta
 export type { DeletionRequest, InsertDeletionRequest, UpdateDeletionRequestStatus, DeletionRequestStatus } from "./deletion-requests";
 
 export {
+  orphanCleanupAudits,
+  insertOrphanCleanupAuditSchema,
+  ORPHAN_CLEANUP_RESOURCE_TYPES,
+  ORPHAN_CLEANUP_ACTIONS,
+} from "./orphan-cleanup-audits";
+export type {
+  OrphanCleanupAudit,
+  InsertOrphanCleanupAudit,
+  OrphanCleanupResourceType,
+  OrphanCleanupAction,
+} from "./orphan-cleanup-audits";
+
+export {
   applePayJobs,
   applePayJobItems,
   APPLE_PAY_JOB_STATUSES,
