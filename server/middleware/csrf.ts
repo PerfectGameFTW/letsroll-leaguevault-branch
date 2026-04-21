@@ -20,6 +20,11 @@ const EXEMPT_PATHS = [
   '/health',
   '/csrf-token',
   '/setup/create-first-admin',
+  // Disaster-recovery promote-to-admin endpoint. Authenticated by the
+  // `x-setup-secret` header, not a session-bound CSRF token — operators run
+  // this from `curl` against a fresh DB before any browser session exists.
+  // See `docs/security/csrf-coverage.md` and replit.md "Disaster Recovery".
+  '/setup/first-system-admin',
   '/account/request-deletion',
   // Confirmation link in the email is the auth factor (like password
   // reset). Anonymous clicks must succeed without a session-bound CSRF
