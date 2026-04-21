@@ -251,62 +251,6 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
   }
 });
 
-// Remove a user from the organization
-router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
-  try {
-    const userId = parseInt(req.params.id, 10);
-    if (isNaN(userId)) {
-      return sendError(res, 'Invalid user ID', 400, 'bad_request');
-    }
-    
-    // Get the user
-    const user = await storage.getUser(userId);
-    if (!user) {
-      return sendError(res, 'User not found', 404, 'not_found');
-    }
-    
-    // Organization admins can only remove users from their own organization
-    if (req.user.role === 'org_admin') {
-      if (user.role === 'system_admin') {
-        return sendError(res, 'Organization admins cannot modify system admin accounts', 403, 'forbidden');
-      }
-      if (user.organizationId !== req.user.organizationId) {
-        return sendError(res, 'You can only remove users from your own organization', 403, 'forbidden');
-      }
-      
-      if (user.id === req.user.id) {
-        return sendError(res, 'You cannot remove yourself from the organization', 403, 'forbidden');
-      }
-    }
-    
-    // Check if user is in an organization
-    if (!user.organizationId) {
-      return sendError(res, 'User is not in any organization', 400, 'bad_request');
-    }
-
-    if (user.role === 'org_admin') {
-      const adminCount = await storage.countOrgAdmins(user.organizationId);
-      if (adminCount <= 1) {
-        return sendError(res, 'Cannot remove the last administrator from this organization', 400, 'bad_request');
-      }
-    }
-
-    // Per the org-less resource policy, non-admin users must always belong
-    // to an organization. "Removing" them from an org would create an
-    // orphan, which the `users_role_org_required` CHECK constraint forbids.
-    // Reassign them to a different org or delete the account instead.
-    return sendError(
-      res,
-      'Non-admin users cannot be left without an organization. Reassign or delete the user instead.',
-      400,
-      'ORG_REQUIRED',
-    );
-  } catch (error) {
-    log.error('Error removing user from organization:', error);
-    return sendError(res, 'Failed to remove user from organization', 500, 'internal_error');
-  }
-});
-
 // Permanently delete a user account (#268). Replaces the old "remove
 // from organization" path, which can no longer leave a non-admin user
 // orphaned thanks to the `users_role_org_required` CHECK constraint.
