@@ -51,14 +51,17 @@ export default function UsersPage() {
   const locations = locationsResponse?.data || [];
   const orgLocations = locations.filter(l => l.organizationId === organizationId);
 
-  const removeUserMutation = useMutation({
+  const deleteUserMutation = useMutation({
     mutationFn: async (userId: number) => {
-      await apiRequest(`/api/org-admin/users/${userId}/remove`, 'DELETE');
+      await apiRequest(`/api/org-admin/users/${userId}`, 'DELETE');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/org-admin/users'] });
       setDeleteUserId(null);
-      toast({ title: 'User removed', description: 'User has been removed from the organization.' });
+      toast({
+        title: 'User deleted',
+        description: 'The user account has been permanently removed.',
+      });
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -112,18 +115,24 @@ export default function UsersPage() {
           <Dialog open={!!deleteUserId} onOpenChange={(open) => !open && setDeleteUserId(null)}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Remove User</DialogTitle>
+                <DialogTitle>Delete user permanently?</DialogTitle>
                 <DialogDescription>
-                  Are you sure you want to remove {getUserToDelete?.name || getUserToDelete?.email} from the organization? They will lose access to all organization data.
+                  This will permanently delete{' '}
+                  <span className="font-medium">
+                    {getUserToDelete?.name || getUserToDelete?.email}
+                  </span>
+                  's account. They will lose access immediately and their login will stop working. This action cannot be undone.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDeleteUserId(null)}>Cancel</Button>
                 <Button
                   variant="destructive"
-                  onClick={() => deleteUserId && removeUserMutation.mutate(deleteUserId)}
+                  onClick={() => deleteUserId && deleteUserMutation.mutate(deleteUserId)}
+                  disabled={deleteUserMutation.isPending}
+                  data-testid="button-confirm-delete-user"
                 >
-                  {removeUserMutation.isPending ? 'Removing...' : 'Remove'}
+                  {deleteUserMutation.isPending ? 'Deleting…' : 'Delete user'}
                 </Button>
               </DialogFooter>
             </DialogContent>

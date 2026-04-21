@@ -307,6 +307,73 @@ router.delete('/users/:id/remove', requireOrgAdminOrSystemAdmin, adminWriteLimit
   }
 });
 
+// Permanently delete a user account (#268). Replaces the old "remove
+// from organization" path, which can no longer leave a non-admin user
+// orphaned thanks to the `users_role_org_required` CHECK constraint.
+router.delete('/users/:id', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
+  try {
+    const userId = parseInt(req.params.id, 10);
+    if (isNaN(userId)) {
+      return sendError(res, 'Invalid user ID', 400, 'bad_request');
+    }
+
+    const user = await storage.getUser(userId);
+    if (!user) {
+      return sendError(res, 'User not found', 404, 'not_found');
+    }
+
+    // Authorization: deletion is intentionally locked down so neither
+    // an org_admin nor a system_admin can ever delete:
+    //   - themselves (would lock them out, and for the only sysadmin
+    //     would brick the platform)
+    //   - another system_admin (audit-trail FK is RESTRICT, and admin
+    //     accounts must be demoted via system-admin tooling first)
+    if (user.id === req.user.id) {
+      return sendError(res, 'You cannot delete your own account', 403, 'forbidden');
+    }
+    if (user.role === 'system_admin') {
+      return sendError(
+        res,
+        'System admin accounts cannot be deleted from this page. Demote the user first.',
+        403,
+        'forbidden',
+      );
+    }
+
+    if (req.user.role === 'org_admin' && user.organizationId !== req.user.organizationId) {
+      return sendError(res, 'You can only delete users from your own organization', 403, 'forbidden');
+    }
+
+    // Last-org-admin guard applies regardless of who the caller is —
+    // a system_admin must not be able to leave an organization with
+    // zero administrators either, since that effectively orphans the
+    // tenant from a management perspective.
+    if (user.role === 'org_admin' && user.organizationId) {
+      const adminCount = await storage.countOrgAdmins(user.organizationId);
+      if (adminCount <= 1) {
+        return sendError(res, 'Cannot delete the last administrator in this organization', 400, 'bad_request');
+      }
+    }
+
+    const deleted = await storage.deleteUser(userId);
+    log.info('User permanently deleted', {
+      deletedUserId: deleted.id,
+      deletedEmail: deleted.email,
+      actingUserId: req.user.id,
+    });
+    return sendSuccess(res, { id: deleted.id, email: deleted.email });
+  } catch (error: any) {
+    if (error?.name === 'CannotDeleteAdminError') {
+      return sendError(res, error.message, 403, 'forbidden');
+    }
+    if (error?.name === 'UserHasAuditTrailError') {
+      return sendError(res, error.message, 409, 'AUDIT_TRAIL_CONFLICT');
+    }
+    log.error('Error deleting user:', error);
+    return sendError(res, 'Failed to delete user', 500, 'internal_error');
+  }
+});
+
 // Update a user's location assignment
 router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
   try {

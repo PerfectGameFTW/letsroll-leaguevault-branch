@@ -96,6 +96,7 @@ export class DatabaseStorage implements IStorage {
   createUser!: IStorage["createUser"];
   updateUser!: IStorage["updateUser"];
   updateUserRole!: IStorage["updateUserRole"];
+  deleteUser!: IStorage["deleteUser"];
   linkUserToBowler!: IStorage["linkUserToBowler"];
   getLinkedBowlerIds!: IStorage["getLinkedBowlerIds"];
   isBowlerLinked!: IStorage["isBowlerLinked"];
@@ -154,6 +155,7 @@ export class DatabaseStorage implements IStorage {
   createApplePayJob!: IStorage["createApplePayJob"];
   getApplePayJob!: IStorage["getApplePayJob"];
   listApplePayJobs!: IStorage["listApplePayJobs"];
+  getApplePayJobsRecoveredItemTotals!: IStorage["getApplePayJobsRecoveredItemTotals"];
   claimNextApplePayJob!: IStorage["claimNextApplePayJob"];
   recoverInterruptedApplePayJobs!: IStorage["recoverInterruptedApplePayJobs"];
   countApplePayJobItems!: IStorage["countApplePayJobItems"];

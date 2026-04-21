@@ -122,6 +122,7 @@ export interface IUserStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, userData: UpdateUser): Promise<User>;
   updateUserRole(userId: number, role: UserRole): Promise<User>;
+  deleteUser(userId: number): Promise<User>;
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   getLinkedBowlerIds(): Promise<number[]>;
   isBowlerLinked(bowlerId: number): Promise<boolean>;

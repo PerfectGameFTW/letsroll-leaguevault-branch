@@ -1,6 +1,15 @@
 import { eq, and, count, isNotNull, sql } from "drizzle-orm";
 import { db } from "../db.js";
-import { users, type User, type InsertUser, type UpdateUser, type UserRole } from "@shared/schema";
+import {
+  users,
+  applePayJobs,
+  deletionRequests,
+  orphanCleanupAudits,
+  type User,
+  type InsertUser,
+  type UpdateUser,
+  type UserRole,
+} from "@shared/schema";
 import { createLogger } from '../logger';
 import { cacheInvalidate } from '../utils/cache';
 
@@ -51,6 +60,37 @@ export class NonAdminMissingOrgError extends Error {
  * organization. Callers should reassign or delete the affected users
  * first.
  */
+/**
+ * Thrown by `deleteUser` when the target is a system_admin. System admins
+ * are never deletable through the user-admin UI — that would let any
+ * org_admin escalate themselves into the only admin role and delete
+ * everyone else, and would also strand orphan_cleanup_audits rows
+ * (FK ON DELETE RESTRICT). Demote them via the system-admin tooling
+ * first if they really need to be removed.
+ */
+export class CannotDeleteAdminError extends Error {
+  constructor(message = 'System admin accounts cannot be deleted through this endpoint') {
+    super(message);
+    this.name = 'CannotDeleteAdminError';
+  }
+}
+
+/**
+ * Thrown by `deleteUser` when the target user has rows in
+ * `orphan_cleanup_audits` (FK is ON DELETE RESTRICT to preserve the
+ * audit trail). In practice this should not happen for non-admin users
+ * because only system_admins write audits today, but the typed error
+ * keeps the route deterministic if that invariant ever changes.
+ */
+export class UserHasAuditTrailError extends Error {
+  constructor(public readonly auditCount: number) {
+    super(
+      `User has ${auditCount} cleanup audit row(s) and cannot be deleted. Delete or reassign the audits first.`,
+    );
+    this.name = 'UserHasAuditTrailError';
+  }
+}
+
 export class OrgHasUsersError extends Error {
   constructor(public readonly userCount: number) {
     super(
@@ -303,6 +343,66 @@ export async function setUserInviteToken(userId: number, token: string, expiry: 
     throw new Error(`User with ID ${userId} not found`);
   }
   return updatedUser;
+}
+
+/**
+ * Permanently delete a user account, in a single transaction:
+ *   1. Refuse if the target is a `system_admin`.
+ *   2. Refuse if the target has any `orphan_cleanup_audits` rows
+ *      (the FK is RESTRICT, and admin audit trails are preserved
+ *      forever — demote/transfer first if a delete is truly needed).
+ *   3. Null out audit-style FK references that we want to PRESERVE
+ *      across the delete: `apple_pay_jobs.created_by` and
+ *      `deletion_requests.reviewed_by`. Both columns are nullable.
+ *   4. Delete the user row itself.
+ *
+ * Returns the deleted user (so callers can render a confirmation that
+ * shows the email/name without an extra read). Throws
+ * `CannotDeleteAdminError` or `UserHasAuditTrailError` for the typed
+ * refusal cases above. (#268)
+ */
+export async function deleteUser(userId: number): Promise<User> {
+  return db.transaction(async (tx) => {
+    const [target] = await tx.select().from(users).where(eq(users.id, userId));
+    if (!target) {
+      throw new Error(`User with ID ${userId} not found`);
+    }
+    if (target.role === 'system_admin') {
+      throw new CannotDeleteAdminError();
+    }
+
+    const [auditRow] = await tx
+      .select({ count: count() })
+      .from(orphanCleanupAudits)
+      .where(eq(orphanCleanupAudits.adminUserId, userId));
+    const auditCount = Number(auditRow?.count ?? 0);
+    if (auditCount > 0) {
+      throw new UserHasAuditTrailError(auditCount);
+    }
+
+    await tx
+      .update(applePayJobs)
+      .set({ createdBy: null })
+      .where(eq(applePayJobs.createdBy, userId));
+
+    await tx
+      .update(deletionRequests)
+      .set({ reviewedBy: null })
+      .where(eq(deletionRequests.reviewedBy, userId));
+
+    const [deleted] = await tx
+      .delete(users)
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!deleted) {
+      throw new Error(`Failed to delete user with ID ${userId}`);
+    }
+
+    cacheInvalidate(`user:${userId}`);
+    log.info('Deleted user', { id: deleted.id, email: deleted.email });
+    return deleted;
+  });
 }
 
 export async function clearUserInviteToken(userId: number): Promise<User> {
