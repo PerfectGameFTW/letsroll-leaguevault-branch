@@ -206,7 +206,21 @@ router.post('/apple-pay/register-domain', async (req: any, res) => {
       return sendError(res, 'Domain is required', 400, 'VALIDATION_ERROR');
     }
 
-    if (req.user.role === 'org_admin' && req.user.organizationId) {
+    // Tenant-isolation invariant: an org_admin MUST resolve the payment
+    // provider via one of their own locations. We enforce locationId
+    // presence + ownership here so the org_admin branch never falls
+    // through to `getPaymentProvider(null)`. Today that helper throws,
+    // but a future refactor that resolves a "default" provider for null
+    // would silently let an org_admin register their domain against
+    // another tenant's Square account. Validate at the route boundary.
+    if (req.user.role === 'org_admin') {
+      // Defensive guard: an org_admin without an organizationId should
+      // never have reached this route. Fail closed rather than risk
+      // falling through to `getPaymentProvider(null)`.
+      if (!req.user.organizationId) {
+        return sendError(res, 'Org admin is missing an organization', 403, 'FORBIDDEN');
+      }
+
       const org = await storage.getOrganization(req.user.organizationId);
       if (org) {
         // Accepted domain set: current `<subdomain>.leaguevault.app` and
@@ -225,15 +239,32 @@ router.post('/apple-pay/register-domain', async (req: any, res) => {
         }
       }
 
-      if (locationId) {
-        const location = await storage.getLocation(parseInt(locationId));
-        if (!location || location.organizationId !== req.user.organizationId) {
-          return sendError(res, 'Location does not belong to your organization', 403, 'FORBIDDEN');
-        }
+      // Strict integer validation: reject anything that isn't a whole
+      // positive integer (e.g. "123abc", "1.5", " ", null, undefined,
+      // ""). We deliberately avoid `parseInt` here because it accepts
+      // numeric prefixes like "123abc" -> 123, which would silently
+      // coerce malformed input into a valid-looking location ID.
+      const rawLocationId = locationId;
+      const isPositiveIntString =
+        typeof rawLocationId === 'string' && /^\d+$/.test(rawLocationId.trim()) && rawLocationId.trim().length > 0;
+      const isPositiveIntNumber =
+        typeof rawLocationId === 'number' && Number.isInteger(rawLocationId) && rawLocationId > 0;
+      if (!isPositiveIntString && !isPositiveIntNumber) {
+        return sendError(res, 'locationId is required', 400, 'VALIDATION_ERROR');
+      }
+      const parsedLocationId =
+        typeof rawLocationId === 'number' ? rawLocationId : Number(String(rawLocationId).trim());
+      if (!Number.isInteger(parsedLocationId) || parsedLocationId <= 0) {
+        return sendError(res, 'locationId is required', 400, 'VALIDATION_ERROR');
+      }
+
+      const location = await storage.getLocation(parsedLocationId);
+      if (!location || location.organizationId !== req.user.organizationId) {
+        return sendError(res, 'Location does not belong to your organization', 403, 'FORBIDDEN');
       }
     }
 
-    const lvLocationId = locationId ? parseInt(locationId) : null;
+    const lvLocationId = locationId ? parseInt(String(locationId), 10) : null;
     let provider;
     try {
       provider = await getPaymentProvider(lvLocationId);
