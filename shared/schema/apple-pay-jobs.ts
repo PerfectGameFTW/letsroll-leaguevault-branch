@@ -74,6 +74,12 @@ export const applePayJobItems = pgTable("apple_pay_job_items", {
   // (lease expired) from a still-live one (lease fresh). Cleared on
   // terminal write so successful items never look "in-flight".
   claimedAt: timestamp("claimed_at", { mode: "string" }),
+  // Incremented every time `recoverInterruptedApplePayJobs` reverts this
+  // item from `processing` back to `pending` because its lease expired.
+  // 0 in the steady state; >0 means a worker observed the item stalled
+  // mid-call long enough that recovery had to step in. Surfaced in the
+  // admin UI as an anomaly hint per job (#270).
+  recoveredCount: integer("recovered_count").notNull().default(0),
 }, (table) => ({
   jobIdIdx: index("apple_pay_job_items_job_id_idx").on(table.jobId),
   jobStatusIdx: index("apple_pay_job_items_job_status_idx").on(table.jobId, table.status),

@@ -84,10 +84,19 @@ export async function claimNextApplePayJob(): Promise<ApplePayJob | undefined> {
  * and overlapping rolling restarts (sibling's lease is still fresh, item
  * stays `processing` until the sibling writes its terminal result).
  *
- * Returns the number of jobs revived (item recovery is opportunistic).
+ * Returns both the revived job ids and the per-item revivals so callers
+ * can log/alert on items that stalled long enough to expire their lease
+ * (an anomaly worth surfacing — see #270).
  */
-export async function recoverInterruptedApplePayJobs(): Promise<number> {
-  const updated = await db
+export interface ApplePayRecoveryResult {
+  /** Jobs flipped from `running` back to `pending`. */
+  revivedJobIds: number[];
+  /** Items whose pre-call lease expired (or was NULL backfill). */
+  revivedItems: Array<{ jobId: number; itemId: number }>;
+}
+
+export async function recoverInterruptedApplePayJobs(): Promise<ApplePayRecoveryResult> {
+  const updatedJobs = await db
     .update(applePayJobs)
     .set({ status: "pending" })
     .where(eq(applePayJobs.status, "running"))
@@ -96,11 +105,16 @@ export async function recoverInterruptedApplePayJobs(): Promise<number> {
   // Lease cutoff is computed entirely in DB time (NOW() - interval) to
   // avoid clock skew between app servers and Postgres. Any `processing`
   // row whose `claimed_at` is older than the lease is presumed orphaned
-  // by a crashed worker.
+  // by a crashed worker. We bump `recovered_count` so the admin UI can
+  // flag jobs that had any items stall mid-call.
   const leaseSeconds = Math.ceil(APPLE_PAY_ITEM_LEASE_MS / 1000);
-  await db
+  const updatedItems = await db
     .update(applePayJobItems)
-    .set({ status: "pending", claimedAt: null })
+    .set({
+      status: "pending",
+      claimedAt: null,
+      recoveredCount: sql`${applePayJobItems.recoveredCount} + 1`,
+    })
     .where(
       and(
         eq(applePayJobItems.status, "processing"),
@@ -108,8 +122,13 @@ export async function recoverInterruptedApplePayJobs(): Promise<number> {
         // column existed; `claimed_at < NOW() - lease` is the normal case.
         sql`(${applePayJobItems.claimedAt} IS NULL OR ${applePayJobItems.claimedAt} < NOW() - (${leaseSeconds} || ' seconds')::interval)`,
       ),
-    );
-  return updated.length;
+    )
+    .returning({ id: applePayJobItems.id, jobId: applePayJobItems.jobId });
+
+  return {
+    revivedJobIds: updatedJobs.map((j) => j.id),
+    revivedItems: updatedItems.map((i) => ({ jobId: i.jobId, itemId: i.id })),
+  };
 }
 
 export async function insertApplePayJobItems(

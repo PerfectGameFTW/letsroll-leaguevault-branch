@@ -192,7 +192,7 @@ describe("apple pay job storage — concurrency invariants", () => {
 
     // After-restart bookkeeping.
     const revived = await recoverInterruptedApplePayJobs();
-    expect(revived).toBeGreaterThanOrEqual(1);
+    expect(revived.revivedJobIds).toContain(jobId);
     const reloaded = await getApplePayJob(jobId);
     expect(reloaded?.status).toBe("pending");
 
@@ -285,12 +285,28 @@ describe("apple pay job storage — concurrency invariants", () => {
       .set({ claimedAt: expiredAt })
       .where(inArray(applePayJobItems.id, [expired1.id, expired2.id]));
 
-    await recoverInterruptedApplePayJobs();
+    const result = await recoverInterruptedApplePayJobs();
+
+    // #270: result must surface what was revived so the worker can log it
+    // and the admin UI can flag the affected job as anomalous.
+    expect(result.revivedItems.map((i) => i.itemId).sort()).toEqual(
+      [expired1.id, expired2.id].sort(),
+    );
+    expect(result.revivedItems.every((i) => i.jobId === jobId)).toBe(true);
 
     const reloaded = await getApplePayJobItems(jobId);
     const byDomain = Object.fromEntries(reloaded.map((it) => [it.domain, it.status]));
     expect(byDomain["expired-1.test"]).toBe("pending");
     expect(byDomain["expired-2.test"]).toBe("pending");
+
+    // #270: recovered_count must be incremented on each revived item so
+    // the per-job aggregate stays accurate across multiple recovery sweeps.
+    const revivedRows = reloaded.filter((it) =>
+      [expired1.id, expired2.id].includes(it.id),
+    );
+    expect(revivedRows.every((it) => it.recoveredCount === 1)).toBe(true);
+    const doneRow = reloaded.find((it) => it.id === done.id)!;
+    expect(doneRow.recoveredCount).toBe(0);
     // Already-terminal items must not be touched by the recovery sweep.
     expect(byDomain["done.test"]).toBe("succeeded");
 

@@ -77,6 +77,10 @@ interface JobDetailResponse {
     skipped: number;
     pending: number;
   };
+  // Sum of recoveredCount across all items in this job. > 0 means at least
+  // one item's pre-call lease expired and recovery had to revive it — an
+  // anomaly worth flagging to the operator (#270).
+  recoveredItemCount?: number;
   items: ApplePayJobItem[];
 }
 
@@ -102,6 +106,7 @@ function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => voi
   const job = detail?.job;
   const counts = detail?.counts;
   const items = detail?.items ?? [];
+  const recoveredItemCount = detail?.recoveredItemCount ?? 0;
 
   const cancelMutation = useMutation({
     mutationFn: async () => apiRequest(`/api/payments-provider/apple-pay/jobs/${jobId}/cancel`, 'POST'),
@@ -234,6 +239,19 @@ function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => voi
             {job.errorMessage && (
               <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
                 {job.errorMessage}
+              </div>
+            )}
+
+            {recoveredItemCount > 0 && (
+              <div
+                className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200"
+                data-testid="banner-recovered-items"
+              >
+                <p className="font-medium">Anomaly: {recoveredItemCount} item{recoveredItemCount === 1 ? '' : 's'} recovered after stalling mid-call</p>
+                <p className="text-xs mt-1 opacity-80">
+                  Their pre-call lease expired before the worker wrote a result, so recovery re-queued them.
+                  This usually means the previous worker crashed or the provider call hung. Look for "Revived stalled items" warnings in the server logs.
+                </p>
               </div>
             )}
 

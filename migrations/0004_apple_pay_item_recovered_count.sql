@@ -1,0 +1,1 @@
+ALTER TABLE "apple_pay_job_items" ADD COLUMN "recovered_count" integer DEFAULT 0 NOT NULL;

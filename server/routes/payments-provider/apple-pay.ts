@@ -73,6 +73,13 @@ router.get('/apple-pay/jobs/:id', async (req: any, res) => {
       storage.getApplePayJobItemCounts(id),
     ]);
 
+    // Aggregate lease-recovered items so the admin UI can flag the job
+    // as "had an anomaly" without having to scan every row (#270).
+    const recoveredItemCount = items.reduce(
+      (sum, it) => sum + (it.recoveredCount ?? 0),
+      0,
+    );
+
     sendSuccess(res, {
       job,
       counts: {
@@ -82,6 +89,7 @@ router.get('/apple-pay/jobs/:id', async (req: any, res) => {
         skipped: liveCounts.skipped,
         pending: liveCounts.pending,
       },
+      recoveredItemCount,
       items,
     });
   } catch (error) {

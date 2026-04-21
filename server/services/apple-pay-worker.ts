@@ -47,10 +47,25 @@ class ApplePayWorker {
    * PaymentScheduler).
    */
   async resumeOnStartup(): Promise<void> {
-    const recovered = await storage.recoverInterruptedApplePayJobs();
-    if (recovered > 0) {
-      warn("Revived interrupted jobs (status running -> pending)", { count: recovered });
-    } else {
+    const { revivedJobIds, revivedItems } = await storage.recoverInterruptedApplePayJobs();
+    if (revivedJobIds.length > 0) {
+      warn("Revived interrupted jobs (status running -> pending)", {
+        count: revivedJobIds.length,
+        jobIds: revivedJobIds,
+      });
+    }
+    if (revivedItems.length > 0) {
+      // Lease-expired item revivals are an anomaly: the previous worker
+      // either crashed mid-call or the provider call hung longer than
+      // APPLE_PAY_ITEM_LEASE_MS. Either way, an operator should know.
+      const affectedJobIds = Array.from(new Set(revivedItems.map((i) => i.jobId)));
+      warn("Revived stalled items past lease expiry — investigate provider latency or worker crash", {
+        itemCount: revivedItems.length,
+        affectedJobIds,
+        itemIds: revivedItems.map((i) => i.itemId),
+      });
+    }
+    if (revivedJobIds.length === 0 && revivedItems.length === 0) {
       log("No interrupted jobs to recover on startup");
     }
     this.kick();

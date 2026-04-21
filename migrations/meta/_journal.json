@@ -29,6 +29,13 @@
       "when": 1776750779086,
       "tag": "0003_apple_pay_item_lease",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776751391589,
+      "tag": "0004_apple_pay_item_recovered_count",
+      "breakpoints": true
     }
   ]
 }
