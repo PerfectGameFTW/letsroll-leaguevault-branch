@@ -1,4 +1,4 @@
-import { desc, eq, and, gte } from "drizzle-orm";
+import { desc, eq, and, gte, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import {
   deletionRequests,
@@ -41,6 +41,13 @@ export async function updateDeletionRequestStatus(
     .returning();
   if (!row) throw new Error(`Deletion request ${id} not found`);
   return row;
+}
+
+export async function countDeletionRequests(filters?: { status?: DeletionRequestStatus }): Promise<number> {
+  const where = filters?.status ? eq(deletionRequests.status, filters.status) : undefined;
+  const q = db.select({ value: sql<number>`count(*)::int` }).from(deletionRequests);
+  const [row] = await (where ? q.where(where) : q);
+  return row?.value ?? 0;
 }
 
 export async function countDeletionRequestsForEmailSince(email: string, since: Date): Promise<number> {

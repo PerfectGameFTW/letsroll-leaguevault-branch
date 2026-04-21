@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { League, Location, ApiResponse, Organization, User } from "@shared/schema";
 import { ErrorBoundary } from "@/components/error-boundary";
 import {
@@ -50,6 +50,10 @@ interface NavItem {
   adminOnly?: boolean;
   orgAdminOnly?: boolean;
   subItems?: NavItem[];
+  // When set, the sidebar item shows a small numeric badge sourced from
+  // this query key. The query is registered separately in `Layout` so
+  // we can scope it to admins and control polling cadence in one place.
+  badgeQueryKey?: readonly unknown[];
 }
 
 const navItems: NavItem[] = [
@@ -86,7 +90,8 @@ const navItems: NavItem[] = [
     icon: Trash2,
     label: "Deletion Requests",
     href: "/admin/deletion-requests",
-    adminOnly: true
+    adminOnly: true,
+    badgeQueryKey: ['/api/system-admin/deletion-requests/pending-count'] as const,
   },
   {
     icon: Apple,
@@ -234,6 +239,25 @@ const LoadingFallback = () => (
   </div>
 );
 
+function NavBadge({ count, isCollapsed }: { count: number; isCollapsed: boolean }) {
+  if (count <= 0) return null;
+  const display = count > 99 ? '99+' : String(count);
+  return (
+    <span
+      data-testid="nav-badge"
+      className={cn(
+        "inline-flex items-center justify-center rounded-full bg-red-500 text-white font-semibold tabular-nums",
+        isCollapsed
+          ? "absolute -top-1 -right-1 min-w-[18px] h-[18px] text-[10px] px-1"
+          : "ml-auto min-w-[20px] h-5 px-1.5 text-xs"
+      )}
+      aria-label={`${count} pending`}
+    >
+      {display}
+    </span>
+  );
+}
+
 function SidebarNav({
   navItems,
   isAdmin,
@@ -241,6 +265,7 @@ function SidebarNav({
   isCollapsed,
   location,
   onNavigate,
+  badgeCounts,
 }: {
   navItems: NavItem[];
   isAdmin: boolean;
@@ -248,6 +273,7 @@ function SidebarNav({
   isCollapsed: boolean;
   location: string;
   onNavigate?: () => void;
+  badgeCounts: Record<string, number>;
 }) {
   return (
     <nav className="flex-1 py-6 px-3 flex flex-col gap-1 overflow-y-auto">
@@ -286,13 +312,17 @@ function SidebarNav({
           );
         }
 
+        const badgeCount = item.badgeQueryKey
+          ? badgeCounts[item.badgeQueryKey.join('|')] ?? 0
+          : 0;
+
         return (
           <Link key={item.href} href={item.href}>
             <button
               onClick={onNavigate}
               className={cn(
                 "flex w-full items-center gap-3 rounded-md transition-all duration-200 group",
-                isCollapsed ? "justify-center p-2.5" : "px-3 py-2.5",
+                isCollapsed ? "relative justify-center p-2.5" : "px-3 py-2.5",
                 (isActive || isDashboardActive)
                   ? "bg-indigo-500/10 text-indigo-400"
                   : "text-slate-300 hover:bg-slate-800 hover:text-white"
@@ -305,6 +335,9 @@ function SidebarNav({
               )} />
               {!isCollapsed && (
                 <span className="font-medium text-sm">{item.label}</span>
+              )}
+              {item.badgeQueryKey && (
+                <NavBadge count={badgeCount} isCollapsed={isCollapsed} />
               )}
             </button>
           </Link>
@@ -351,6 +384,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isSystemAdmin = userRole === 'system_admin';
   const isOrgAdmin = userRole === 'org_admin';
   const canSeeOrgAdminItems = isSystemAdmin || (isOrgAdmin && !!userOrgId);
+
+  // Poll the pending-deletion-request count for the sidebar badge.
+  // System-admin only; refetches every 60s and on window focus so an
+  // admin sitting on another page sees new requests without reloading.
+  // The deletion-requests page also invalidates this key on review,
+  // which clears the badge as soon as the queue is empty.
+  const { data: pendingDeletionResponse } = useQuery<ApiResponse<{ count: number }>>({
+    queryKey: ['/api/system-admin/deletion-requests/pending-count'],
+    enabled: isSystemAdmin,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+  });
+  const badgeCounts = useMemo<Record<string, number>>(() => ({
+    [['/api/system-admin/deletion-requests/pending-count'].join('|')]:
+      pendingDeletionResponse?.data?.count ?? 0,
+  }), [pendingDeletionResponse?.data?.count]);
 
   const toggleSidebar = useCallback(() => {
     setIsCollapsed((prev: boolean) => !prev);
@@ -424,6 +474,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               canSeeOrgAdminItems={canSeeOrgAdminItems}
               isCollapsed={isCollapsed}
               location={location}
+              badgeCounts={badgeCounts}
             />
           </Suspense>
         </ErrorBoundary>
@@ -465,6 +516,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 isCollapsed={false}
                 location={location}
                 onNavigate={() => setMobileMenuOpen(false)}
+                badgeCounts={badgeCounts}
               />
             </Suspense>
           </ErrorBoundary>

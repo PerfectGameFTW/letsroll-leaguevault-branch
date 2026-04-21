@@ -76,6 +76,7 @@ export default function DeletionRequestsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/system-admin/deletion-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/deletion-requests/pending-count'] });
       setActiveRequest(null);
       setAdminNote('');
       toast({ title: 'Request updated', description: 'The deletion request has been updated.' });

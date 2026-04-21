@@ -148,6 +148,7 @@ export class DatabaseStorage implements IStorage {
 
   createDeletionRequest!: IStorage["createDeletionRequest"];
   listDeletionRequests!: IStorage["listDeletionRequests"];
+  countDeletionRequests!: IStorage["countDeletionRequests"];
   getDeletionRequest!: IStorage["getDeletionRequest"];
   updateDeletionRequestStatus!: IStorage["updateDeletionRequestStatus"];
   countDeletionRequestsForEmailSince!: IStorage["countDeletionRequestsForEmailSince"];

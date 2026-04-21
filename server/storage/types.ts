@@ -181,6 +181,7 @@ export interface IEmailTemplateStorage {
 export interface IDeletionRequestStorage {
   createDeletionRequest(data: InsertDeletionRequest): Promise<DeletionRequest>;
   listDeletionRequests(filters?: { status?: DeletionRequestStatus }): Promise<DeletionRequest[]>;
+  countDeletionRequests(filters?: { status?: DeletionRequestStatus }): Promise<number>;
   getDeletionRequest(id: number): Promise<DeletionRequest | undefined>;
   updateDeletionRequestStatus(
     id: number,

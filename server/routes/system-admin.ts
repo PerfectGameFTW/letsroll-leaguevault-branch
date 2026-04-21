@@ -100,6 +100,19 @@ router.post('/revoke/:id', requireAdmin, async (req: Request, res: Response) => 
 });
 
 // Account deletion request management (system admin only)
+
+// Lightweight count endpoint for the in-app sidebar badge. Polled
+// frequently by the admin layout — keep it cheap (no row payload).
+router.get('/deletion-requests/pending-count', requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const count = await storage.countDeletionRequests({ status: 'pending' });
+    sendSuccess(res, { count });
+  } catch (error) {
+    log.error('Error counting pending deletion requests:', error);
+    sendError(res, 'Failed to count deletion requests', 500, 'SERVER_ERROR');
+  }
+});
+
 router.get('/deletion-requests', requireAdmin, async (req: Request, res: Response) => {
   try {
     const statusParam = typeof req.query.status === 'string' ? req.query.status : undefined;
