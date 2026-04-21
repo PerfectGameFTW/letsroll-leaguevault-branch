@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { randomBytes, timingSafeEqual } from 'crypto';
+import { randomBytes } from 'crypto';
 import { createLogger } from '../logger';
+import { safeTokenCompare } from '../lib/password';
 
 const log = createLogger("CSRF");
 
@@ -8,13 +9,6 @@ declare module 'express-session' {
   interface SessionData {
     csrfToken?: string;
   }
-}
-
-function safeTokenCompare(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a, 'utf-8');
-  const bBuf = Buffer.from(b, 'utf-8');
-  if (aBuf.length !== bBuf.length) return false;
-  return timingSafeEqual(aBuf, bBuf);
 }
 
 const EXEMPT_PATHS = [
