@@ -20,11 +20,23 @@ export function sanitizeUser(user: User): SanitizedUser {
   return safeUser as SanitizedUser;
 }
 
-export type SanitizedOrganization = Omit<Organization, 'integrations'>;
+// Fields on `organizations` that must never leave the server. The
+// `integrations` JSONB column holds OAuth tokens and provider API keys
+// (see `OrgIntegrations` in shared/schema/organizations.ts). Any new
+// column whose name matches /token|secret|password/i must either be
+// added here or explicitly justified as safe to return — the regression
+// test in `tests/unit/sanitize-org.test.ts` enforces that contract by
+// scanning every column on the live Drizzle schema.
+const SENSITIVE_ORG_FIELDS = ['integrations'] as const;
+
+export type SanitizedOrganization = Omit<Organization, typeof SENSITIVE_ORG_FIELDS[number]>;
 
 export function sanitizeOrg(org: Organization): SanitizedOrganization {
-  const { integrations, ...safeOrg } = org;
-  return safeOrg;
+  const safeOrg = { ...org } as Record<string, unknown>;
+  for (const field of SENSITIVE_ORG_FIELDS) {
+    delete safeOrg[field];
+  }
+  return safeOrg as SanitizedOrganization;
 }
 
 export function sanitizeOrgs(orgs: Organization[]): SanitizedOrganization[] {

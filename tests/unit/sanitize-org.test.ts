@@ -1,0 +1,100 @@
+import { describe, expect, it } from 'vitest';
+import { getTableColumns } from 'drizzle-orm';
+import { sanitizeOrg } from '../../server/utils/api';
+import { organizations, type Organization } from '@shared/schema';
+
+// Field-name patterns we never want to leak in any organization-facing
+// response. If a future column on `organizations` matches one of these,
+// either add it to the strip list in `server/utils/api.ts` or rename
+// the column.
+const SENSITIVE_NAME_PATTERN = /token|secret|password/i;
+
+// Build a fully-populated `Organization` so the test exercises every
+// column the schema currently defines. Adding a new sensitive-looking
+// column to `shared/schema/organizations.ts` immediately trips the
+// schema-walk test below.
+function makeFullyPopulatedOrg(): Organization {
+  return {
+    id: 1,
+    name: 'Audit Org',
+    slug: 'audit-org',
+    subdomain: 'audit',
+    address: '123 Lane',
+    city: 'Audit',
+    state: 'NY',
+    zipCode: '10001',
+    phone: '+15555550100',
+    email: 'org@example.com',
+    logo: 'logo-url',
+    darkLogo: 'dark-logo-url',
+    appIcon: 'app-icon-url',
+    active: true,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    integrations: {
+      bowlnow: {
+        enabled: true,
+        apiKey: 'super-secret-api-key-do-not-leak',
+        locationId: 'loc-1',
+      },
+    },
+  };
+}
+
+describe('sanitizeOrg', () => {
+  it('strips the known sensitive fields', () => {
+    const sanitized = sanitizeOrg(makeFullyPopulatedOrg()) as Record<string, unknown>;
+    expect(sanitized).not.toHaveProperty('integrations');
+  });
+
+  it('preserves the safe fields', () => {
+    const sanitized = sanitizeOrg(makeFullyPopulatedOrg());
+    expect(sanitized.id).toBe(1);
+    expect(sanitized.name).toBe('Audit Org');
+    expect(sanitized.slug).toBe('audit-org');
+    expect(sanitized.subdomain).toBe('audit');
+    expect(sanitized.email).toBe('org@example.com');
+    expect(sanitized.active).toBe(true);
+  });
+
+  it('never returns any field whose name looks sensitive', () => {
+    const sanitized = sanitizeOrg(makeFullyPopulatedOrg());
+    const leaked = Object.keys(sanitized).filter(k => SENSITIVE_NAME_PATTERN.test(k));
+    expect(leaked, `sanitizeOrg leaked sensitive-looking fields: ${leaked.join(', ')}`).toEqual([]);
+  });
+
+  // Pin the contract to the live Drizzle schema: if a new column on
+  // `organizations` is added with a name matching the sensitive
+  // pattern, this test fails until either `sanitizeOrg` strips it or
+  // the column is renamed.
+  it('strips every column on the organizations schema whose name looks sensitive', () => {
+    const cols = Object.keys(getTableColumns(organizations));
+    const sensitiveCols = cols.filter(c => SENSITIVE_NAME_PATTERN.test(c));
+    const fakeOrg = Object.fromEntries(cols.map(c => [c, `__${c}__`])) as unknown as Organization;
+    const sanitized = sanitizeOrg(fakeOrg) as Record<string, unknown>;
+    for (const col of sensitiveCols) {
+      expect(
+        sanitized,
+        `organizations.${col} matches the sensitive name pattern but sanitizeOrg still returns it`,
+      ).not.toHaveProperty(col);
+    }
+  });
+
+  // Belt-and-suspenders: even though no current column name matches the
+  // pattern, the `integrations` JSONB column holds OAuth tokens and
+  // provider API keys. Pin that it stays stripped regardless of any
+  // future rename of the strip list.
+  it('strips the integrations column even though its name does not match the sensitive pattern', () => {
+    const cols = Object.keys(getTableColumns(organizations));
+    expect(cols).toContain('integrations');
+    const fakeOrg = Object.fromEntries(cols.map(c => [c, `__${c}__`])) as unknown as Organization;
+    const sanitized = sanitizeOrg(fakeOrg) as Record<string, unknown>;
+    expect(sanitized).not.toHaveProperty('integrations');
+  });
+
+  it('does not mutate the input organization', () => {
+    const input = makeFullyPopulatedOrg();
+    const snapshot = JSON.parse(JSON.stringify(input));
+    sanitizeOrg(input);
+    expect(input).toEqual(snapshot);
+  });
+});
