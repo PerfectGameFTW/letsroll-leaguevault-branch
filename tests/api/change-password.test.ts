@@ -188,15 +188,15 @@ describe('POST /api/account/change-password', () => {
     // and assert the 11th call is rejected as throttled instead of
     // INVALID_PASSWORD.
     let lastStatus = 0;
-    let lastBody: any = null;
+    let lastBody: { error?: { code?: string } } | null = null;
     for (let i = 0; i < 10; i++) {
-      const r = await apiPost(
+      const r = await apiPost<unknown>(
         '/api/account/change-password',
         { currentPassword: `wrong-${i}`, newPassword: NEW_STRONG_PASSWORD },
         session,
       );
       lastStatus = r.status;
-      lastBody = r.data;
+      lastBody = r.data as { error?: { code?: string } };
     }
     expect(lastStatus).toBe(400);
     expect(lastBody?.error?.code).toBe('INVALID_PASSWORD');
