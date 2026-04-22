@@ -31,7 +31,34 @@ import {
   TEST_ORG_A_EMAIL,
   TEST_ORG_PASSWORD,
   type AuthSession,
+  BASE_URL,
 } from '../helpers';
+
+// Mint an isolated rate-limit bucket id per test. The confirm-email-change
+// limiter honors `x-test-rl-bucket` only when NODE_ENV !== 'production',
+// giving each test its own counter so the suite doesn't have to depend on
+// fragile X-Forwarded-For trickery (Replit's proxy chain mangles that
+// anyway — req.ip ends up as 127.0.0.1 regardless of what we forge).
+function newBucketId(): string {
+  return `vitest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function postWithBucket(
+  path: string,
+  body: unknown,
+  bucket: string,
+): Promise<{ status: number; body: { error?: { code?: string } } }> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-test-rl-bucket': bucket,
+    },
+    body: JSON.stringify(body),
+  });
+  const parsed = (await res.json()) as { error?: { code?: string } };
+  return { status: res.status, body: parsed };
+}
 
 const createdUserIds: number[] = [];
 const createdOrgIds: number[] = [];
@@ -607,6 +634,108 @@ describe('PATCH /api/account/profile/:id when invoked by a system_admin', () => 
     const open = pending.filter(r => r.consumedAt === null);
     expect(open.length).toBe(1);
     expect(open[0].newEmail).toBe(newEmail);
+  });
+});
+
+describe('POST /api/account/confirm-email-change rate limiting', () => {
+  it('trips the limiter after 30 failed confirms from one bucket, and other buckets are unaffected', async () => {
+    const bucket = newBucketId();
+
+    // 30 invalid-token attempts: all should return 400 INVALID_TOKEN.
+    for (let i = 0; i < 30; i++) {
+      const r = await postWithBucket(
+        '/api/account/confirm-email-change',
+        { token: `bf-${bucket}-${i}` },
+        bucket,
+      );
+      expect(r.status).toBe(400);
+      expect(r.body.error?.code).toBe('INVALID_TOKEN');
+    }
+
+    // The 31st attempt against the same bucket must be throttled.
+    const blocked = await postWithBucket(
+      '/api/account/confirm-email-change',
+      { token: `bf-${bucket}-blocked` },
+      bucket,
+    );
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error?.code).toBe('RATE_LIMITED');
+
+    // A different bucket is unaffected (per-key isolation).
+    const fromOther = await postWithBucket(
+      '/api/account/confirm-email-change',
+      { token: 'unrelated' },
+      newBucketId(),
+    );
+    expect(fromOther.status).toBe(400);
+    expect(fromOther.body.error?.code).toBe('INVALID_TOKEN');
+  });
+
+  it('successful confirms do not count toward the limit (skipSuccessfulRequests)', async () => {
+    // Burn 29 failed attempts on a fresh bucket, then successfully confirm
+    // a real token, then verify we still have budget for one more failed
+    // attempt — proving the success did NOT increment the bucket. (If it
+    // had, the next failure below would be 429 instead of 400.)
+    const bucket = newBucketId();
+
+    for (let i = 0; i < 29; i++) {
+      const r = await postWithBucket(
+        '/api/account/confirm-email-change',
+        { token: `skip-${bucket}-${i}` },
+        bucket,
+      );
+      expect(r.status).toBe(400);
+    }
+
+    // Stage a real token and confirm it successfully.
+    const password = await hashPassword(TEST_PASSWORD);
+    const oldEmail = uniqEmail('rl-success');
+    const [user] = await db
+      .insert(users)
+      .values({
+        email: oldEmail,
+        password,
+        name: uniq('RL Success'),
+        role: 'user',
+        organizationId: testOrgId,
+      })
+      .returning();
+    createdUserIds.push(user.id);
+
+    const newEmail = uniqEmail('rl-success-new');
+    const rawToken = `rl-ok-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    await db.insert(emailChangeRequests).values({
+      userId: user.id,
+      newEmail,
+      tokenHash: hashToken(rawToken),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    const ok = await postWithBucket(
+      '/api/account/confirm-email-change',
+      { token: rawToken },
+      bucket,
+    );
+    expect(ok.status).toBe(200);
+
+    // The 30th *failed* attempt should still be allowed (success above did
+    // not count). This is the meat of the assertion.
+    const stillAllowed = await postWithBucket(
+      '/api/account/confirm-email-change',
+      { token: `skip-${bucket}-final` },
+      bucket,
+    );
+    expect(stillAllowed.status).toBe(400);
+    expect(stillAllowed.body.error?.code).toBe('INVALID_TOKEN');
+
+    // The very next failed attempt (our 31st failure on this bucket) trips.
+    const blocked = await postWithBucket(
+      '/api/account/confirm-email-change',
+      { token: `skip-${bucket}-blocked` },
+      bucket,
+    );
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error?.code).toBe('RATE_LIMITED');
   });
 });
 

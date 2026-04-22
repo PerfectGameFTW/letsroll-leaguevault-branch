@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { z } from 'zod';
 import { sendError, sendSuccess, sanitizeUser, handleZodError } from '../utils/api';
 import { storage } from '../storage';
@@ -313,11 +313,48 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
   }
 });
 
+// Brute-force defense for the unauthenticated confirm endpoint. The 32-byte
+// token space is huge but we still want guessing to be operationally
+// infeasible. Keyed strictly on IP because the endpoint is unauthenticated
+// (no userId is available before the token is parsed). `skipSuccessfulRequests`
+// means a legitimate user clicking the link from email never burns budget —
+// only failed lookups (INVALID_TOKEN / TOKEN_EXPIRED / TOKEN_CONSUMED /
+// EMAIL_IN_USE — all 400) count toward the limit.
+const confirmEmailChangeLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req: Request) => {
+    // In non-prod, allow tests to claim an isolated bucket via header so a
+    // single suite can exercise the limit without polluting (or being
+    // polluted by) other tests sharing the same loopback IP. Header is
+    // ignored entirely in production.
+    if (process.env.NODE_ENV !== 'production') {
+      const bucket = req.headers['x-test-rl-bucket'];
+      if (typeof bucket === 'string' && bucket.length > 0) {
+        return `test:${bucket}`;
+      }
+    }
+    return `ip:${ipKeyGenerator(req.ip ?? 'unknown')}`;
+  },
+  handler: (req, res) => {
+    log.warn('Email-change confirm attempts throttled', { ip: req.ip });
+    return sendError(
+      res,
+      'Too many confirmation attempts. Please wait a few minutes and try again.',
+      429,
+      'RATE_LIMITED',
+    );
+  },
+});
+
 // Confirm a pending email-change request. The token itself is the
 // authentication factor (like password reset), so this endpoint is open
 // to unauthenticated callers — anyone who clicks the link in the
 // confirmation email can complete the swap.
-router.post('/confirm-email-change', async (req: Request, res: Response) => {
+router.post('/confirm-email-change', confirmEmailChangeLimiter, async (req: Request, res: Response) => {
   try {
     const schema = z.object({ token: z.string().min(1) });
     const parsed = schema.safeParse(req.body);
