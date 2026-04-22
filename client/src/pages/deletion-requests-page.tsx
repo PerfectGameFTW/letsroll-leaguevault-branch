@@ -54,16 +54,42 @@ function formatDate(value: string | null): string {
 
 /**
  * The deletion-requests row stores `executionSummary` as a
- * JSON-serialized string in a TEXT column. Parse defensively so a
- * malformed legacy row never crashes the page.
+ * JSON-serialized string in a TEXT column. Parse defensively AND
+ * normalize the shape so a malformed legacy row (or a row written by
+ * an older version of the executor with missing fields) never throws
+ * inside the panel's array `.filter` / `.map` calls.
  */
 function parseExecutionSummary(raw: string | null): DeletionExecutionSummary | null {
   if (!raw) return null;
+  let parsed: unknown;
   try {
-    return JSON.parse(raw) as DeletionExecutionSummary;
+    parsed = JSON.parse(raw);
   } catch {
     return null;
   }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const p = parsed as Record<string, unknown>;
+  const user = (p.user && typeof p.user === 'object' ? p.user : {}) as Record<string, unknown>;
+  return {
+    executedAt: typeof p.executedAt === 'string' ? p.executedAt : '',
+    executedBy: typeof p.executedBy === 'number' ? p.executedBy : 0,
+    email: typeof p.email === 'string' ? p.email : '',
+    user: {
+      deleted: user.deleted === true,
+      userId: typeof user.userId === 'number' ? user.userId : null,
+      reason: typeof user.reason === 'string' ? user.reason : undefined,
+    },
+    bowlers: Array.isArray(p.bowlers)
+      ? (p.bowlers.filter((b) => b && typeof b === 'object') as DeletionExecutionSummary['bowlers'])
+      : [],
+    paymentProvider: Array.isArray(p.paymentProvider)
+      ? (p.paymentProvider.filter(
+          (x) => x && typeof x === 'object',
+        ) as DeletionExecutionSummary['paymentProvider'])
+      : [],
+    emailChangeRequestsDeleted:
+      typeof p.emailChangeRequestsDeleted === 'number' ? p.emailChangeRequestsDeleted : 0,
+  };
 }
 
 function ExecutionSummaryPanel({ summary }: { summary: DeletionExecutionSummary }) {
