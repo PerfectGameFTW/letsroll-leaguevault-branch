@@ -18,6 +18,7 @@ import { calculateBowlerViewFinancials } from "@/lib/financial-utils";
 import { filterActiveBowlerLeagues } from "@/lib/bowler-league-utils";
 import { BowlerFinancialSummary } from "@/components/bowler-financial-summary";
 import { BowlerPaymentHistoryTable } from "@/components/bowler-payment-history-table";
+import { PaymentSyncRetryStatus } from "@/components/payment-sync-retry-status";
 
 export default function BowlerViewPage() {
   const params = useParams();
@@ -130,6 +131,15 @@ export default function BowlerViewPage() {
               >
                 {bowler?.bnContactId ? "BN Synced" : "BN Not Synced"}
               </Badge>
+            )}
+            {bowler && (
+              <PaymentSyncRetryStatus
+                bowler={bowler}
+                invalidateOnSuccess={[
+                  [`/api/bowlers/${bowlerId}/details`],
+                  ["/api/bowlers"],
+                ]}
+              />
             )}
           </div>
           <div className="flex flex-col gap-1">

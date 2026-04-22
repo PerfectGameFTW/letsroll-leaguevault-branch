@@ -33,6 +33,12 @@ export const bowlers = pgTable("bowlers", {
   paymentSyncLastAttemptAt: timestamp("payment_sync_last_attempt_at", { mode: "string" }),
 });
 
+// Mirror of `PAYMENT_SYNC_MAX_ATTEMPTS` in
+// server/services/payment-customer-sync.ts. Re-exported from a `shared/`
+// module so the admin UI can render "attempt N/MAX" without round-tripping
+// to the server. Both values must stay in lockstep — see task #320.
+export const PAYMENT_SYNC_MAX_ATTEMPTS = 5;
+
 export const bowlerLeagues = pgTable("bowler_leagues", {
   id: serial("id").primaryKey(),
   bowlerId: integer("bowler_id")

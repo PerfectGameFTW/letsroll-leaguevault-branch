@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Link } from "wouter";
 import { useBowlers } from "@/hooks/use-bowlers";
 import { apiRequest } from "@/lib/queryClient";
+import { PaymentSyncRetryStatus } from "@/components/payment-sync-retry-status";
 
 function BowlerTableSkeleton() {
   return (
@@ -211,9 +212,12 @@ export default function BowlersPage() {
                         ) : '—'}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={bowler.active ? "default" : "secondary"}>
-                          {bowler.active ? "Active" : "Inactive"}
-                        </Badge>
+                        <div className="flex flex-col gap-1">
+                          <Badge variant={bowler.active ? "default" : "secondary"} className="w-fit">
+                            {bowler.active ? "Active" : "Inactive"}
+                          </Badge>
+                          <PaymentSyncRetryStatus bowler={bowler} compact />
+                        </div>
                       </TableCell>
                       {bnConfigured && (
                         <TableCell>
