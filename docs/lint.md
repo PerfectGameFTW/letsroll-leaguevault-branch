@@ -27,24 +27,39 @@ Exit code is non-zero on any new violation.
 
 ## CI integration
 
-Add `npm run lint` to the same CI step that runs `npm run check`. Any
-new `as any` cast or `: any` annotation in `server/`, `shared/`,
-`client/src/`, or `tests/` will fail the build.
+Add `npm run lint` to the same CI step that runs `npm run check`. The
+build fails on any net-new violation of either rule above:
+
+- a new `as any` cast or `: any` annotation, **or**
+- a new `@ts-ignore`, `@ts-nocheck`, or undescribed `@ts-expect-error`
+  directive,
+
+anywhere under `server/`, `shared/`, `client/src/`, or `tests/`.
 
 ## Existing-debt baseline
 
-`eslint-suppressions.json` records the 161 pre-existing
-`no-explicit-any` violations across the codebase as of task #299. The
-baseline is **count-based per file + rule**, not exact line-pair locks
-— ESLint allows up to that many violations of `no-explicit-any` in
-each listed file, and any net-new violation fails the lint step.
+`eslint-suppressions.json` records pre-existing violations of the
+escape-hatch rules so the suite can fail on net-new occurrences
+without rewriting ~150 sites at once. The baseline is **count-based
+per file + rule**, not exact line-pair locks — ESLint allows up to
+that many violations of *that specific rule* in each listed file, and
+any net-new violation fails the lint step.
+
+As of task #328 the baseline contains:
+
+- `@typescript-eslint/no-explicit-any` — the 161 pre-existing
+  violations recorded in #299.
+- `@typescript-eslint/ban-ts-comment` — **none**. The repo had zero
+  `@ts-ignore`, `@ts-nocheck`, or `@ts-expect-error` directives when
+  the rule was turned on, so no baseline entries were needed; the
+  *first* such directive will fail lint.
 
 Practical implication: replacing one `any` with another in the same
-file won't fail lint (count is unchanged), but adding a NEW `any`
-anywhere — in a baselined file or a new file — will.
+file won't fail lint (count is unchanged), but adding a NEW `any` —
+or a NEW `@ts-ignore` / `@ts-nocheck` — anywhere will.
 
-To pay down baseline debt, fix the underlying `any` and refresh the
-file:
+To pay down baseline debt, fix the underlying violation and refresh
+the file:
 
 ```bash
 npx eslint . --suppress-all
@@ -52,4 +67,4 @@ git diff eslint-suppressions.json   # counts should only shrink
 ```
 
 Never run `--suppress-all` to mask a *new* violation — fix the type
-instead.
+or remove the directive instead.
