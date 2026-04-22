@@ -327,9 +327,7 @@ router.post("/", async (req, res) => {
     // its first league via POST /api/bowler-leagues. Prevents cross-org
     // hijack of the bowler row in the brief window before its first link.
     // See server/utils/bowler-claim-tokens.ts for full rationale.
-    if (synced && typeof (synced as { id?: unknown }).id === 'number') {
-      registerBowlerClaim((synced as { id: number }).id, req);
-    }
+    registerBowlerClaim(synced.id, req);
     sendSuccess(res, synced, 201);
   } catch (error) {
     log.error('Error creating bowler:', error);
