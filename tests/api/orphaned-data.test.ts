@@ -272,6 +272,15 @@ describe('Orphaned Data API (system-admin)', () => {
     await tryRun(() =>
       db.execute(sql`ALTER TABLE leagues ALTER COLUMN organization_id SET NOT NULL`),
     );
+
+    // The fixture re-added `users_role_org_required` as NOT VALID so
+    // the legacy orphan rows wouldn't trip back-validation. Now that
+    // those rows are deleted, mark the constraint VALID again so the
+    // schema metadata isn't left in a half-state for any sibling
+    // suite that introspects it.
+    await tryRun(() =>
+      db.execute(sql`ALTER TABLE users VALIDATE CONSTRAINT users_role_org_required`),
+    );
   });
 
   // ---- list endpoints --------------------------------------------------
