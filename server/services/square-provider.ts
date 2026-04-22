@@ -320,7 +320,9 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       log.error('Refund error:', error);
       const apiError = error as ApiError;
       if (apiError.errors) {
-        const messages = apiError.errors.map((e: any) => e.detail).join(', ');
+        const messages = apiError.errors
+          .map((e: { detail?: string }) => e.detail)
+          .join(', ');
         throw new Error(`Square refund failed: ${messages}`);
       }
       throw error;
@@ -649,8 +651,14 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       log.info(`Apple Pay domain registered: ${domain}`);
       return { success: true, message: `Domain ${domain} registered for Apple Pay` };
     } catch (error) {
-      const apiError = error as ApiError;
-      const detail = (apiError as any)?.result?.errors?.[0]?.detail;
+      // Square's `ApiError` exposes the parsed body via a `result` field that
+      // isn't on the SDK type. Narrow to a structural type instead of casting
+      // through `any`, so we can still safely read `result.errors[0].detail`.
+      type SquareApiErrorWithResult = ApiError & {
+        result?: { errors?: Array<{ detail?: string }> };
+      };
+      const apiError = error as SquareApiErrorWithResult;
+      const detail = apiError?.result?.errors?.[0]?.detail;
       log.error('Apple Pay domain registration error:', detail || error);
       return { success: false, message: detail || 'Failed to register domain for Apple Pay' };
     }
