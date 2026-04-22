@@ -295,25 +295,29 @@ router.post('/apple-pay/register-domain', async (req: any, res) => {
     }
 
     const lvLocationId = locationId ? parseInt(String(locationId), 10) : null;
-    let provider;
     try {
-      provider = await getPaymentProvider(lvLocationId);
+      const provider = await getPaymentProvider(lvLocationId);
+      if (!hasWalletSupport(provider)) {
+        return sendError(res, 'Payment provider does not support Apple Pay', 400, 'UNSUPPORTED_FEATURE');
+      }
+
+      const result = await provider.registerApplePayDomain(domain);
+
+      if (result.success) {
+        sendSuccess(res, result);
+      } else {
+        sendError(res, result.message, 400, 'REGISTRATION_FAILED');
+      }
     } catch (e) {
+      // ProviderNotConfiguredError can come from EITHER
+      // `getPaymentProvider` (locationId is null / location row
+      // missing / unknown provider type) OR from the provider's own
+      // wallet method when its credentials aren't set up. Map both to
+      // the same 422 so callers don't have to distinguish.
       if (e instanceof ProviderNotConfiguredError) {
         return sendError(res, 'Payment provider not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
       }
       throw e;
-    }
-    if (!hasWalletSupport(provider)) {
-      return sendError(res, 'Payment provider does not support Apple Pay', 400, 'UNSUPPORTED_FEATURE');
-    }
-
-    const result = await provider.registerApplePayDomain(domain);
-
-    if (result.success) {
-      sendSuccess(res, result);
-    } else {
-      sendError(res, result.message, 400, 'REGISTRATION_FAILED');
     }
   } catch (error) {
     log.error('Apple Pay domain registration error:', error);

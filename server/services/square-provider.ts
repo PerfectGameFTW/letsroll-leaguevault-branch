@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
+import { ProviderNotConfiguredError } from './payment-provider-factory';
 import type {
   PaymentProvider,
   CatalogProvider,
@@ -643,7 +644,16 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   async registerApplePayDomain(domain: string): Promise<{ success: boolean; message: string }> {
     const client = await this.getSquareClient();
     if (!client) {
-      return { success: false, message: 'Square client not configured for this location' };
+      // Throw the structured "not configured" error so callers (the
+      // sync register-domain route, the async Apple Pay worker, and
+      // the org auto-registration helper) can distinguish "the
+      // provider isn't set up at all" from "Square accepted the
+      // request and rejected the domain". The route maps this to 422
+      // PROVIDER_NOT_CONFIGURED; the worker/helper already log it.
+      throw new ProviderNotConfiguredError(
+        'Square client not configured for this location',
+        this.locationId,
+      );
     }
 
     try {
