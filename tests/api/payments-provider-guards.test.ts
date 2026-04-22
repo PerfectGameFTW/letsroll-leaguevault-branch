@@ -42,6 +42,34 @@ describe('payments-provider router guards', () => {
       expect(status).toBe(401);
       expect(data.success).toBe(false);
     });
+
+    // Task #311 — the Apple Pay sub-router lives at the same mount point
+    // (`server/routes/payments-provider/apple-pay.ts`) and inherits the
+    // shared `requireAuthenticated` gate composed in
+    // `payments-provider/index.ts`. Without explicit coverage, a future
+    // refactor that mounts apple-pay separately or before the gate would
+    // silently expose Apple Pay job controls and recovery-alert reads
+    // to anonymous callers.
+    //
+    // We pin two representative GETs from the sub-router (a list and a
+    // detail variant) so reordering or re-mounting fails here. POSTs are
+    // intentionally not used as auth-gate probes: the global CSRF
+    // middleware mounted at `app.use('/api', csrfProtection)` runs
+    // before the router-level auth gate and returns 403 on unauth POSTs,
+    // which would mask whether the auth gate itself is in place.
+    it('rejects unauthenticated GET /api/payments-provider/apple-pay/jobs', async () => {
+      const { status, data } = await apiGet('/api/payments-provider/apple-pay/jobs');
+      expect(status).toBe(401);
+      expect(data.success).toBe(false);
+    });
+
+    it('rejects unauthenticated GET /api/payments-provider/apple-pay/recovery-alerts/recent', async () => {
+      const { status, data } = await apiGet(
+        '/api/payments-provider/apple-pay/recovery-alerts/recent',
+      );
+      expect(status).toBe(401);
+      expect(data.success).toBe(false);
+    });
   });
 
   describe('admin-only verify endpoint', () => {
