@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockSelect = vi.fn();
 const mockGetUserByBowlerId = vi.fn();
+const mockUpdateClaim = vi.fn();
 
 // The sweep now wraps candidate selection in `db.transaction(...)`
 // and uses `.for('update', { skipLocked: true })` to claim rows so
@@ -47,6 +48,16 @@ function buildSelectChain(isCount: boolean) {
 const tx = {
   select: (projection?: Record<string, unknown>) =>
     buildSelectChain(projection !== undefined),
+  // The sweep stamps payment_sync_last_attempt_at = NOW() inside the
+  // tx as a lease so a peer worker's next tick won't re-pick the row.
+  update: (_table: unknown) => ({
+    set: (values: Record<string, unknown>) => ({
+      where: (predicate: unknown) => {
+        mockUpdateClaim({ values, predicate });
+        return Promise.resolve();
+      },
+    }),
+  }),
 };
 
 vi.mock('../../server/db', () => ({
@@ -105,6 +116,7 @@ beforeEach(() => {
   mockSelect.mockReset();
   mockGetUserByBowlerId.mockReset();
   mockSyncBowlerForUser.mockReset();
+  mockUpdateClaim.mockReset();
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -223,6 +235,42 @@ describe('runPaymentSyncRetrySweep', () => {
     expect(result.errors).toBe(1);
     expect(result.succeeded).toBe(1);
     expect(result.retried).toBe(2);
+  });
+
+  it('claims locked rows by stamping payment_sync_last_attempt_at = NOW so a peer worker is fenced out', async () => {
+    // Multi-process safety (task #321): even though FOR UPDATE
+    // SKIP LOCKED prevents two workers from selecting the same row
+    // in the SAME tick, locks are released at tx commit. The
+    // implementation guards against the next-tick race by writing
+    // a fresh last_attempt_at inside the same tx — the JS backoff
+    // guard then excludes the row from a peer worker's tick until
+    // the backoff window for the current attempt count elapses.
+    mockSelect.mockResolvedValue([
+      bowler({ id: 100, paymentSyncAttempts: 1 }),
+      bowler({ id: 101, paymentSyncAttempts: 1 }),
+    ]);
+    mockGetUserByBowlerId.mockResolvedValue({
+      id: 9, name: 'L', email: 'l@x.io', phone: null, locationId: null, organizationId: 3,
+    });
+    mockSyncBowlerForUser.mockResolvedValue('synced');
+
+    await runPaymentSyncRetrySweep(NOW);
+
+    expect(mockUpdateClaim).toHaveBeenCalledTimes(1);
+    const { values } = mockUpdateClaim.mock.calls[0][0];
+    // Drizzle's `sql` template renders to an SQL chunk object;
+    // verify only that we asked to set last_attempt_at to something
+    // (NOW() in production), not the exact internal shape.
+    expect(values).toHaveProperty('paymentSyncLastAttemptAt');
+    expect(values.paymentSyncLastAttemptAt).not.toBeNull();
+    expect(values.paymentSyncLastAttemptAt).not.toBeUndefined();
+  });
+
+  it('does not write a claim update when no rows were locked', async () => {
+    mockSelect.mockResolvedValue([]);
+    const result = await runPaymentSyncRetrySweep(NOW);
+    expect(result.scanned).toBe(0);
+    expect(mockUpdateClaim).not.toHaveBeenCalled();
   });
 
   it('refuses to retry a bowler that already hit the attempts cap', async () => {

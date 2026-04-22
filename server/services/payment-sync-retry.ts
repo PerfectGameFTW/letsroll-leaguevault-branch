@@ -14,7 +14,7 @@
  * error at that point). The admin retry endpoint stays available as a
  * manual override regardless of attempt count.
  */
-import { and, count, isNotNull, lt } from 'drizzle-orm';
+import { and, count, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { bowlers } from '@shared/schema';
 import { storage } from '../storage';
@@ -97,6 +97,31 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
       .from(bowlers)
       .where(conditions)
       .for('update', { of: bowlers, skipLocked: true });
+
+    // Critical for cross-process safety: row locks are released as
+    // soon as this transaction commits, but `syncBowlerForUser` runs
+    // OUTSIDE the tx (it makes external HTTP calls that would hold a
+    // DB transaction open for far too long). Without further action,
+    // a second worker's next tick a moment later could re-select the
+    // same row and double-call the payment provider.
+    //
+    // We close that window by stamping `payment_sync_last_attempt_at`
+    // to NOW for every locked row before releasing the lock. The JS
+    // backoff guard further down (`now < dueAt`) then naturally
+    // excludes these rows from any other worker's tick until the
+    // backoff window for the current attempt count elapses — so even
+    // a slow external retry can't be raced by a peer.
+    //
+    // We deliberately do NOT bump `payment_sync_attempts` here:
+    // `syncBowlerForUser` already increments it on failure (and
+    // clears it on success), and pre-incrementing would double-count.
+    if (locked.length > 0) {
+      const lockedIds = locked.map((b) => b.id);
+      await tx
+        .update(bowlers)
+        .set({ paymentSyncLastAttemptAt: sql`NOW()` })
+        .where(inArray(bowlers.id, lockedIds));
+    }
 
     return {
       candidates: locked,
