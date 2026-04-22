@@ -14,7 +14,7 @@
  * error at that point). The admin retry endpoint stays available as a
  * manual override regardless of attempt count.
  */
-import { and, isNotNull, lt } from 'drizzle-orm';
+import { and, count, isNotNull, lt } from 'drizzle-orm';
 import { db } from '../db';
 import { bowlers } from '@shared/schema';
 import { storage } from '../storage';
@@ -68,15 +68,48 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
 
   // Push the attempts cap into the SQL filter so giving-up bowlers
   // never come back into the working set on every tick.
-  const candidates = await db
-    .select()
-    .from(bowlers)
-    .where(
-      and(
-        isNotNull(bowlers.paymentSyncPendingAt),
-        lt(bowlers.paymentSyncAttempts, PAYMENT_SYNC_MAX_ATTEMPTS),
-      ),
-    );
+  //
+  // Concurrency: we mirror the row-locking pattern used by the
+  // payment scheduler (see `server/services/payment-scheduler.ts`,
+  // `sweepTick`). When the app runs on more than one process, two
+  // sweep ticks could otherwise pick the same flagged bowler in the
+  // same window and double-call the payment provider. Wrapping the
+  // candidate selection in a transaction with FOR UPDATE SKIP LOCKED
+  // means each row is claimed by exactly one worker per tick — the
+  // other worker sees the row as locked and silently skips it.
+  // We also count the matching rows separately so we can log how
+  // many were skipped because of contention with another instance
+  // (matching the scheduler's lock-contention telemetry).
+  const conditions = and(
+    isNotNull(bowlers.paymentSyncPendingAt),
+    lt(bowlers.paymentSyncAttempts, PAYMENT_SYNC_MAX_ATTEMPTS),
+  );
+
+  const { candidates, skippedByLock } = await db.transaction(async (tx) => {
+    const totalRow = await tx
+      .select({ total: count() })
+      .from(bowlers)
+      .where(conditions);
+    const totalMatching = totalRow[0]?.total ?? 0;
+
+    const locked = await tx
+      .select()
+      .from(bowlers)
+      .where(conditions)
+      .for('update', { of: bowlers, skipLocked: true });
+
+    return {
+      candidates: locked,
+      skippedByLock: Math.max(0, totalMatching - locked.length),
+    };
+  });
+
+  if (skippedByLock > 0) {
+    log.info('Payment-sync retry: rows claimed by another instance', {
+      skippedByLock,
+      acquired: candidates.length,
+    });
+  }
 
   result.scanned = candidates.length;
 

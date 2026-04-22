@@ -18,13 +18,42 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mockSelect = vi.fn();
 const mockGetUserByBowlerId = vi.fn();
 
+// The sweep now wraps candidate selection in `db.transaction(...)`
+// and uses `.for('update', { skipLocked: true })` to claim rows so
+// concurrent workers can't double-process the same bowler (task #321).
+// The mock below has to satisfy both the count query and the locked
+// SELECT, plus stay backwards-compatible with the original
+// `mockSelect.mockResolvedValue(rows)` API the rest of the suite uses.
+function buildSelectChain(isCount: boolean) {
+  return {
+    from: () => ({
+      where: (..._args: unknown[]) => {
+        if (isCount) {
+          return Promise.resolve(mockSelect()).then((rows) => [
+            { total: Array.isArray(rows) ? rows.length : 0 },
+          ]);
+        }
+        const chain = {
+          for: (..._a: unknown[]) => mockSelect(),
+          then: (resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) =>
+            Promise.resolve(mockSelect()).then(resolve, reject),
+        };
+        return chain;
+      },
+    }),
+  };
+}
+
+const tx = {
+  select: (projection?: Record<string, unknown>) =>
+    buildSelectChain(projection !== undefined),
+};
+
 vi.mock('../../server/db', () => ({
   db: {
-    select: () => ({
-      from: () => ({
-        where: (..._args: unknown[]) => mockSelect(),
-      }),
-    }),
+    select: (projection?: Record<string, unknown>) =>
+      buildSelectChain(projection !== undefined),
+    transaction: async <T,>(fn: (txArg: typeof tx) => Promise<T>) => fn(tx),
   },
 }));
 
