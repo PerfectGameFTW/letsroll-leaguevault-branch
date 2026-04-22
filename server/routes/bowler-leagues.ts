@@ -1,9 +1,11 @@
 import { Router } from 'express';
+import { sql } from 'drizzle-orm';
+import { db } from '../db';
 import { storage } from '../storage';
-import { insertBowlerLeagueSchema, updateBowlerLeagueSchema } from "@shared/schema";
+import { bowlerLeagues, insertBowlerLeagueSchema, updateBowlerLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError } from '../utils/api';
-import { hasAccessToLeague, hasAccessToTeam, hasAccessToBowler } from '../utils/access-control.js';
+import { hasAccessToLeague, hasAccessToTeam, hasAccessToBowler, isOrgOrHigher } from '../utils/access-control.js';
 import { createLogger } from '../logger';
 
 const log = createLogger("BowlerLeagues");
@@ -108,7 +110,46 @@ router.post("/", async (req, res) => {
     }
 
     if (!(await hasAccessToBowler(req, data.bowlerId))) {
-      return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+      // Bootstrap exception: a freshly created bowler has zero league
+      // entries, which makes `hasAccessToBowler` deny every caller — so
+      // the public API would otherwise have no way to attach a brand-new
+      // bowler to its first league. Production bootstrap paths (bulk
+      // import, season clone) call `storage.createBowlerLeague` directly
+      // to dodge this same chicken-egg problem.
+      //
+      // We allow the bootstrap when ALL of the following hold:
+      //   1. The caller is org_admin or system_admin (regular bowler
+      //      users that pass `hasAccessToTeam` via the league
+      //      self-membership shortcut must NOT be able to claim other
+      //      bowlers).
+      //   2. The bowler has zero bowler-league entries — including
+      //      INACTIVE ones. We deliberately bypass `storage.getBowlerLeagues`
+      //      here because that helper filters to `active = true`, which
+      //      would let another org "re-claim" a bowler whose links were
+      //      soft-deleted by their original owning org. This direct count
+      //      preserves ownership lineage even after deactivation.
+      // Access to the target league + team has already been verified
+      // above, which establishes the org affiliation for the new link.
+      //
+      // We also collapse the "bowler does not exist" case into the same
+      // 403 response to avoid handing org admins a bowler-id existence
+      // oracle through this endpoint.
+      if (!isOrgOrHigher(req.user)) {
+        return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+      }
+      const [{ count: linkCount }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(bowlerLeagues)
+        .where(sql`${bowlerLeagues.bowlerId} = ${data.bowlerId}`);
+      if (linkCount > 0) {
+        return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+      }
+      const bowler = await storage.getBowler(data.bowlerId);
+      if (!bowler) {
+        return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+      }
+      // OK: org/system admin bootstrapping a truly free-floating bowler
+      // (no historical links of any kind).
     }
 
     const existing = await storage.getBowlerLeagues({
