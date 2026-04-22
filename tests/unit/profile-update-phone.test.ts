@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { profileUpdateSchema } from '../../server/routes/account';
 
-describe('profile update — phone null/undefined coercion', () => {
-  it('normalizes JSON null to undefined', () => {
+describe('profile update — phone tri-state semantics', () => {
+  it('preserves explicit null (clear intent) so the route can write phone = NULL', () => {
     const parsed = profileUpdateSchema.parse({ phone: null });
-    expect(parsed.phone).toBeUndefined();
+    expect(parsed.phone).toBeNull();
+    expect('phone' in parsed).toBe(true);
   });
 
-  it('passes through undefined unchanged', () => {
+  it('preserves omitted (undefined) so the route knows to leave the column untouched', () => {
     const parsed = profileUpdateSchema.parse({});
     expect(parsed.phone).toBeUndefined();
   });
@@ -22,7 +23,7 @@ describe('profile update — phone null/undefined coercion', () => {
     expect(result.success).toBe(false);
   });
 
-  it('does not alter the parsed name or email when phone is null', () => {
+  it('keeps name and email intact alongside an explicit phone clear', () => {
     const parsed = profileUpdateSchema.parse({
       name: 'Audit User',
       email: 'audit@example.com',
@@ -30,6 +31,6 @@ describe('profile update — phone null/undefined coercion', () => {
     });
     expect(parsed.name).toBe('Audit User');
     expect(parsed.email).toBe('audit@example.com');
-    expect(parsed.phone).toBeUndefined();
+    expect(parsed.phone).toBeNull();
   });
 });

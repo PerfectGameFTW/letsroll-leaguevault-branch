@@ -26,17 +26,16 @@ import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 const log = createLogger('Account');
 const router = Router();
 
-// PATCH /profile/:id body schema. Phone normalizes `null` (clear-intent
-// from clients) to `undefined` (storage no-op) so the handler doesn't
-// need null/undefined ceremony. Exported for unit tests.
+// PATCH /profile/:id body schema. Phone is intentionally tri-state so
+// the handler can distinguish three caller intents:
+//   undefined → field omitted, leave the column untouched
+//   null      → caller is explicitly clearing the field, write NULL
+//   string    → caller is setting a new value
+// Exported for unit tests.
 export const profileUpdateSchema = updateUserSchemaBase
   .pick({ name: true, email: true, phone: true })
   .extend({
-    phone: z
-      .string()
-      .nullable()
-      .optional()
-      .transform((v) => (v === null ? undefined : v)),
+    phone: z.string().nullable().optional(),
   });
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -260,8 +259,10 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
     }
 
     // Build the actual storage patch — name/phone only, never email.
-    // `updateData.phone` is already `string | undefined` thanks to the
-    // schema-level transform above, so no null-coercion is needed here.
+    // For phone we keep the tri-state semantics from the schema: only
+    // SKIP the column when the field was OMITTED (undefined). An
+    // explicit `null` is a "clear it" intent and must propagate so the
+    // DB row ends up with phone = NULL.
     const storagePatch: Parameters<typeof storage.updateUser>[1] = {};
     if (updateData.name !== undefined) storagePatch.name = updateData.name;
     if (updateData.phone !== undefined) storagePatch.phone = updateData.phone;
