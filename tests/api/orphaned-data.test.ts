@@ -174,6 +174,15 @@ describe('Orphaned Data API (system-admin)', () => {
     const pwd = await hashPassword('Throwaway-Password-123!');
     const stamp = Date.now();
 
+    // The DB enforces a `users_role_org_required` CHECK constraint
+    // that forbids creating a non-admin user with `organizationId =
+    // NULL`. Production rows that pre-date the constraint can still
+    // exist as orphans, which is exactly what the orphan-data admin
+    // endpoints exist to clean up. To recreate that legacy state in a
+    // test, we insert the user normally (with an org), then in a
+    // single transaction drop the constraint, null out the org, and
+    // re-add the constraint as NOT VALID so it still enforces on all
+    // future writes but doesn't re-validate the row we just orphaned.
     const [u1] = await db
       .insert(users)
       .values({
@@ -181,10 +190,22 @@ describe('Orphaned Data API (system-admin)', () => {
         password: pwd,
         name: 'Vitest Orphan User',
         role: 'user',
-        organizationId: null,
+        organizationId: targetOrgId,
       })
       .returning({ id: users.id });
     orphanUserId = u1.id;
+
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`ALTER TABLE users DROP CONSTRAINT users_role_org_required`,
+      );
+      await tx.execute(
+        sql`UPDATE users SET organization_id = NULL WHERE id = ${orphanUserId}`,
+      );
+      await tx.execute(
+        sql`ALTER TABLE users ADD CONSTRAINT users_role_org_required CHECK (role = 'system_admin' OR organization_id IS NOT NULL) NOT VALID`,
+      );
+    });
 
     const [u2] = await db
       .insert(users)
@@ -669,11 +690,22 @@ describe('Orphaned Data API (system-admin)', () => {
     });
 
     it('deletes the orphan system_admin user (after we strip the role) to confirm delete success path', async () => {
-      // Strip the system_admin role so the delete repair endpoint will accept it.
-      await db
-        .update(users)
-        .set({ role: 'user' })
-        .where(eq(users.id, orphanSysAdminId));
+      // Strip the system_admin role so the delete repair endpoint will
+      // accept it. The user has `organization_id = NULL` (it's an
+      // orphan sysadmin), so a normal UPDATE would trip the
+      // `users_role_org_required` CHECK. Use the same constraint
+      // drop / NOT-VALID re-add dance as the orphan-user fixture.
+      await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`ALTER TABLE users DROP CONSTRAINT users_role_org_required`,
+        );
+        await tx.execute(
+          sql`UPDATE users SET role = 'user' WHERE id = ${orphanSysAdminId}`,
+        );
+        await tx.execute(
+          sql`ALTER TABLE users ADD CONSTRAINT users_role_org_required CHECK (role = 'system_admin' OR organization_id IS NOT NULL) NOT VALID`,
+        );
+      });
 
       const { status } = await apiPost(
         `/api/system-admin/orphaned-data/users/${orphanSysAdminId}/delete`,
