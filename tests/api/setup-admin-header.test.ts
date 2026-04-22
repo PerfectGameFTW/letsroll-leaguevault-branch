@@ -26,13 +26,14 @@ function freshIp(): string {
 }
 
 // --- unit harness: direct `checkSetupSecret` calls ---
-// The non-string / array header shapes are pinned here (not per-endpoint
-// HTTP) because Node's HTTP/1 parser collapses repeated headers into a
-// single comma-joined string before the route handler ever sees them —
-// the string[] branch of the normalization is only reachable via a
-// direct call. The HTTP tests below still cover the "duplicated
-// header" scenario end-to-end by asserting the collapsed shape is
-// rejected.
+// The string[] branch of the header normalization is only reachable via
+// a direct call: Node's HTTP/1 parser collapses repeated headers into a
+// single comma-joined string before the route handler ever sees them.
+// (Verified: Node's fetch Headers.append serializes two values for the
+// same name as `"v1, v2"` on the wire; iterating the Headers object
+// shows the same single-string view.) The HTTP harness below pins that
+// collapsed comma-joined shape end-to-end against both endpoints, in
+// both "bogus first" and "real first" orderings.
 
 function makeReq(headerValue: string | string[] | undefined): Request {
   const headers: Record<string, string | string[] | undefined> = {};
@@ -189,6 +190,17 @@ describe('setup-admin endpoints — per-endpoint secret-gate coverage', () => {
 
       it('returns 401 when X-Setup-Secret is a wrong single value', async () => {
         const out = await post(ep, 'definitely-wrong');
+        expect(out.status).toBe(401);
+        expect(out.code).toBe('UNAUTHORIZED');
+      });
+
+      it('returns 401 for the literal comma-joined "<real>, trailing" wire shape', async () => {
+        // Defense-in-depth: even when the real secret appears FIRST in the
+        // collapsed string, the route must not treat the joined string as
+        // a match. Guards against any future "split on comma + take first"
+        // normalization regression. Complements the duplicated-header test
+        // above, which only covers "bogus, <real>" ordering on the wire.
+        const out = await post(ep, `${SETUP_SECRET}, trailing`);
         expect(out.status).toBe(401);
         expect(out.code).toBe('UNAUTHORIZED');
       });
