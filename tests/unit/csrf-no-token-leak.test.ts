@@ -143,12 +143,10 @@ describe('CSRF middleware does not leak token material to logs', () => {
     expect(captured).toEqual([]);
   });
 
-  it('does not leak the token even when the request path itself looks token-shaped', () => {
-    // Defensive: even if a future caller passed the token in the URL,
-    // the middleware logs `req.path`. The middleware itself shouldn't
-    // be the thing that promotes that into a log line — the path is
-    // what it is. This test pins the warn-line shape so a future edit
-    // that interpolates the token alongside the path would be caught.
+  it('pins the exact warn-line shape on token mismatch', () => {
+    // Pinning the warn-line shape means a future edit that appends
+    // the session/header token (or any other field) to this log line
+    // will fail this assertion immediately.
     const req = makeReq({
       session: { csrfToken: SESSION_TOKEN, id: SESSION_ID },
       headers: { 'x-csrf-token': HEADER_TOKEN_WRONG },
@@ -160,5 +158,29 @@ describe('CSRF middleware does not leak token material to logs', () => {
     const warnLines = captured.filter((c) => c.level === 'warn');
     expect(warnLines.length).toBe(1);
     expect(warnLines[0].line).toBe('CSRF token mismatch for POST /api/teams');
+  });
+
+  it('does not leak the token even when the request path itself contains token-shaped material', () => {
+    // Defensive: a misbehaving caller might put a token-shaped value
+    // (or even the literal session token) in the URL path. The
+    // middleware logs `req.path`, so the path appears verbatim — but
+    // the assertion below is that the middleware does not ADDITIONALLY
+    // interpolate the actual session/header token. The path-derived
+    // bytes are the caller's choice, not a middleware leak.
+    const tokenShapedPath = `/api/teams/${'c'.repeat(64)}`;
+    const req = makeReq({
+      session: { csrfToken: SESSION_TOKEN, id: SESSION_ID },
+      headers: { 'x-csrf-token': HEADER_TOKEN_WRONG },
+      path: tokenShapedPath,
+    });
+    const res = makeRes();
+    const next = vi.fn() as unknown as NextFunction;
+    csrfProtection(req, res, next);
+    const warnLines = captured.filter((c) => c.level === 'warn');
+    expect(warnLines.length).toBe(1);
+    expect(warnLines[0].line).toBe(`CSRF token mismatch for POST ${tokenShapedPath}`);
+    // Path bytes are reflected (caller's choice), but the actual
+    // session/header tokens are NOT.
+    assertNoTokenLeak();
   });
 });
