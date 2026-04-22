@@ -26,6 +26,8 @@ import {
   apiPatch,
   apiPost,
   login,
+  TEST_ADMIN_EMAIL,
+  TEST_ADMIN_PASSWORD,
   TEST_ORG_A_EMAIL,
   TEST_ORG_PASSWORD,
   type AuthSession,
@@ -454,6 +456,157 @@ describe('POST /api/auth/set-password invalidates pending email-change requests'
     );
     expect(confirmRes.status).toBe(400);
     expect(confirmRes.data.error?.code).toBe('TOKEN_CONSUMED');
+  });
+});
+
+describe('POST /api/account/confirm-email-change concurrency', () => {
+  it('N parallel confirms with the same token: exactly one wins, the rest see TOKEN_CONSUMED', async () => {
+    const { userId } = await createUserAndLogin();
+    const newEmail = uniqEmail('parallel');
+    const rawToken = `parallel-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    await db.insert(emailChangeRequests).values({
+      userId,
+      newEmail,
+      tokenHash: hashToken(rawToken),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    });
+
+    // Endpoint is intentionally unauthenticated (token IS the auth factor).
+    // Fire requests with NO shared session so express-session locking can't
+    // partially serialize them — that would mask any real race in the
+    // confirm transaction.
+    const N = 8;
+    const results = await Promise.all(
+      Array.from({ length: N }, () =>
+        apiPost<{ email: string }>(
+          `/api/account/confirm-email-change`,
+          { token: rawToken },
+        ),
+      ),
+    );
+
+    const ok = results.filter(r => r.status === 200);
+    const consumed = results.filter(
+      r => r.status === 400 && r.data.error?.code === 'TOKEN_CONSUMED',
+    );
+
+    // Exactly one win, every other call sees the token-consumed branch.
+    // No 500s, no other 400 codes (e.g. EMAIL_IN_USE / INVALID_TOKEN /
+    // TOKEN_EXPIRED) are acceptable here.
+    expect(ok.length).toBe(1);
+    expect(consumed.length).toBe(N - 1);
+    expect(ok[0].data.data?.email).toBe(newEmail);
+
+    // DB ground truth: email actually swapped, exactly one token row,
+    // and it is consumed.
+    const [reread] = await db.select().from(users).where(eq(users.id, userId));
+    expect(reread.email).toBe(newEmail);
+
+    const rows = await db
+      .select()
+      .from(emailChangeRequests)
+      .where(eq(emailChangeRequests.tokenHash, hashToken(rawToken)));
+    expect(rows.length).toBe(1);
+    expect(rows[0].consumedAt).not.toBeNull();
+  });
+
+  it('two confirms targeting the same new email race-safely: one 200, one 400 EMAIL_IN_USE, never 500', async () => {
+    // Two independent users each hold a confirmation token for the SAME
+    // target address. Whichever transaction commits first wins; the
+    // loser must see EMAIL_IN_USE (not 500), and the loser's user row
+    // must remain on its old email.
+    const a = await createUserAndLogin();
+    const b = await createUserAndLogin();
+
+    const targetEmail = uniqEmail('contested');
+    const tokenA = `contendA-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const tokenB = `contendB-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    await db.insert(emailChangeRequests).values([
+      {
+        userId: a.userId,
+        newEmail: targetEmail,
+        tokenHash: hashToken(tokenA),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+      {
+        userId: b.userId,
+        newEmail: targetEmail,
+        tokenHash: hashToken(tokenB),
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+    ]);
+
+    const [resA, resB] = await Promise.all([
+      apiPost(`/api/account/confirm-email-change`, { token: tokenA }, a.session),
+      apiPost(`/api/account/confirm-email-change`, { token: tokenB }, b.session),
+    ]);
+
+    const ok = [resA, resB].filter(r => r.status === 200);
+    const inUse = [resA, resB].filter(
+      r => r.status === 400 && r.data.error?.code === 'EMAIL_IN_USE',
+    );
+    const fivexx = [resA, resB].filter(r => r.status >= 500);
+
+    expect(fivexx.length).toBe(0);
+    expect(ok.length).toBe(1);
+    expect(inUse.length).toBe(1);
+
+    // Loser's user row must be untouched.
+    const winnerId = resA.status === 200 ? a.userId : b.userId;
+    const loser = resA.status === 200 ? b : a;
+    const [loserRow] = await db.select().from(users).where(eq(users.id, loser.userId));
+    expect(loserRow.email).toBe(loser.oldEmail);
+
+    // Winner's row holds the contested email.
+    const [winnerRow] = await db.select().from(users).where(eq(users.id, winnerId));
+    expect(winnerRow.email).toBe(targetEmail);
+
+    // Loser's token is consumed (so a refresh doesn't loop on the race).
+    const loserToken = resA.status === 200 ? tokenB : tokenA;
+    const [loserRequest] = await db
+      .select()
+      .from(emailChangeRequests)
+      .where(eq(emailChangeRequests.tokenHash, hashToken(loserToken)));
+    expect(loserRequest.consumedAt).not.toBeNull();
+  });
+});
+
+describe('PATCH /api/account/profile/:id when invoked by a system_admin', () => {
+  it("admin editing another user's email triggers the confirmation flow rather than an immediate write", async () => {
+    // The endpoint comment is explicit: the confirmation gate applies to
+    // ALL callers, including system_admin acting on behalf of someone
+    // else. A regression here would let any admin (or a hijacked admin
+    // session) silently re-route another user's login email.
+    const { userId, oldEmail } = await createUserAndLogin();
+    const adminSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+    expect(adminSession.user.role).toBe('system_admin');
+
+    const newEmail = uniqEmail('admin-initiated');
+    const res = await apiPatch<{
+      email: string;
+      emailChangeRequested: boolean;
+    }>(`/api/account/profile/${userId}`, { email: newEmail }, adminSession);
+
+    expect(res.status).toBe(200);
+    expect(res.data.success).toBe(true);
+    expect(res.data.data?.emailChangeRequested).toBe(true);
+    // Returned record still shows the OLD email — admin did NOT write it.
+    expect(res.data.data?.email).toBe(oldEmail);
+
+    // DB ground truth: target user's login email is unchanged.
+    const [reread] = await db.select().from(users).where(eq(users.id, userId));
+    expect(reread.email).toBe(oldEmail);
+
+    // A pending confirmation request was created for the user.
+    const pending = await db
+      .select()
+      .from(emailChangeRequests)
+      .where(eq(emailChangeRequests.userId, userId));
+    const open = pending.filter(r => r.consumedAt === null);
+    expect(open.length).toBe(1);
+    expect(open[0].newEmail).toBe(newEmail);
   });
 });
 
