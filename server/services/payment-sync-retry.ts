@@ -66,8 +66,20 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
     errors: 0,
   };
 
-  // Push the attempts cap into the SQL filter so giving-up bowlers
-  // never come back into the working set on every tick.
+  // SQL filter responsibilities:
+  //   1. Exclude bowlers that already hit the attempts cap so the
+  //      working set keeps shrinking once we've given up.
+  //   2. Exclude bowlers still inside their per-attempt backoff
+  //      window. This used to live only in JS below, but we now need
+  //      it in SQL too so the lease-stamp step (see comment lower
+  //      down) only marks rows we're actually about to retry —
+  //      otherwise a row in backoff would be re-stamped every tick
+  //      and starve forever (review feedback on task #321).
+  //
+  //      Backoff math mirrors paymentSyncBackoffMs:
+  //        dueAt = last_attempt_at + 60s * 2 ^ LEAST(attempts, 16)
+  //      LEAST clamps the exponent so an absurd attempt count can't
+  //      overflow the interval arithmetic.
   //
   // Concurrency: we mirror the row-locking pattern used by the
   // payment scheduler (see `server/services/payment-scheduler.ts`,
@@ -80,9 +92,15 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
   // We also count the matching rows separately so we can log how
   // many were skipped because of contention with another instance
   // (matching the scheduler's lock-contention telemetry).
+  const backoffEligible = sql`(
+    ${bowlers.paymentSyncLastAttemptAt} IS NULL
+    OR ${bowlers.paymentSyncLastAttemptAt} + (interval '60 seconds' * power(2, LEAST(${bowlers.paymentSyncAttempts}, 16))) <= NOW()
+  )`;
+
   const conditions = and(
     isNotNull(bowlers.paymentSyncPendingAt),
     lt(bowlers.paymentSyncAttempts, PAYMENT_SYNC_MAX_ATTEMPTS),
+    backoffEligible,
   );
 
   const { candidates, skippedByLock } = await db.transaction(async (tx) => {
