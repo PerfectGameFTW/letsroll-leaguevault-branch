@@ -19,6 +19,7 @@
  *      clear.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { inArray } from 'drizzle-orm';
 import {
   apiGet,
   login,
@@ -29,12 +30,18 @@ import {
   type AuthSession,
 } from '../helpers';
 import { storage } from '../../server/storage';
+import { db } from '../../server/db';
+import { users } from '@shared/schema';
+import { hashPassword } from '../../server/lib/password';
 
 const PATH = '/api/system-admin/deletion-requests/pending-count';
 
 describe('GET /api/system-admin/deletion-requests/pending-count', () => {
   let sysAdmin: AuthSession;
   let orgAdmin: AuthSession;
+  let regularUser: AuthSession;
+  const createdUserIds: number[] = [];
+  const REGULAR_USER_PASSWORD = 'Pending-Count-Test!2026';
 
   // Per-run unique email prefix. The deletion_requests table has no
   // delete helper exposed and tests run against a shared dev DB, so we
@@ -55,6 +62,26 @@ describe('GET /api/system-admin/deletion-requests/pending-count', () => {
     expect(sysAdmin.user.role).toBe('system_admin');
     expect(orgAdmin.user.role).not.toBe('system_admin');
     expect(orgAdmin.user.role).not.toBe('admin');
+
+    // Helpers don't expose a regular-user fixture, so create one
+    // inline. We attach it to the org_admin's organization to keep
+    // the fixture realistic (a normal member of an existing tenant)
+    // and avoid creating an orphan org just for this test.
+    const email = `${runTag}-user@vitest.local`;
+    const password = await hashPassword(REGULAR_USER_PASSWORD);
+    const [user] = await db
+      .insert(users)
+      .values({
+        email,
+        password,
+        name: `pending-count user ${runTag}`,
+        role: 'user',
+        organizationId: orgAdmin.user.organizationId,
+      })
+      .returning();
+    createdUserIds.push(user.id);
+    regularUser = await login(email, REGULAR_USER_PASSWORD);
+    expect(regularUser.user.role).toBe('user');
   });
 
   afterAll(async () => {
@@ -62,6 +89,14 @@ describe('GET /api/system-admin/deletion-requests/pending-count', () => {
     // stop showing up in the badge for any developer poking the dev
     // DB. We do NOT hard-delete (no helper exists, and the audit
     // trail is intentional).
+    if (createdUserIds.length > 0) {
+      try {
+        await db.delete(users).where(inArray(users.id, createdUserIds));
+      } catch {
+        // best-effort
+      }
+      createdUserIds.length = 0;
+    }
     if (!sysAdmin) return;
     for (const id of seededIds) {
       try {
@@ -92,6 +127,16 @@ describe('GET /api/system-admin/deletion-requests/pending-count', () => {
 
   it('rejects an org_admin with 403', async () => {
     const { status, data } = await apiGet(PATH, orgAdmin);
+    expect(status).toBe(403);
+    expect(data.success).toBe(false);
+    expect(data.data).toBeUndefined();
+  });
+
+  it('rejects a regular user with 403', async () => {
+    // Distinct from the org_admin case: a refactor that mistakenly
+    // gates only on "not org_admin" (e.g. role !== 'org_admin')
+    // would still leak the count to plain users. Pin it.
+    const { status, data } = await apiGet(PATH, regularUser);
     expect(status).toBe(403);
     expect(data.success).toBe(false);
     expect(data.data).toBeUndefined();
