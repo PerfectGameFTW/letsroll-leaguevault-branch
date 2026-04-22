@@ -8,6 +8,7 @@ import {
   ProviderNotConfiguredError,
 } from './payment-provider-factory';
 import { hasCustomerCleanupSupport } from './payment-provider';
+import { sendAccountDeletionConfirmation } from './email';
 import type { DeletionExecutionSummary } from '@shared/schema';
 
 const log = createLogger('AccountDeletion');
@@ -192,13 +193,38 @@ export async function executeAccountDeletion(
     summary.user.reason = 'no user account found for this email';
   }
 
+  const bowlersAnonymized = summary.bowlers.filter((b) => b.anonymized).length;
+  const paymentProviderRecordsDeleted = summary.paymentProvider.filter((p) => p.deleted).length;
+
   log.info('Executed automated account deletion', {
     email,
     reviewerId,
-    bowlersAnonymized: summary.bowlers.filter((b) => b.anonymized).length,
-    providerDeletions: summary.paymentProvider.filter((p) => p.deleted).length,
+    bowlersAnonymized,
+    providerDeletions: paymentProviderRecordsDeleted,
     userDeleted: summary.user.deleted,
   });
+
+  // Best-effort confirmation email to the original requester.
+  // Per task #314: a SendGrid failure (or missing key, or a thrown
+  // exception inside the email helper) must NEVER roll back the
+  // deletion that just happened — log and move on.
+  try {
+    const sent = await sendAccountDeletionConfirmation(email, {
+      bowlersAnonymized,
+      userAccountDeleted: summary.user.deleted,
+      paymentProviderRecordsDeleted,
+      emailChangeRequestsDeleted: summary.emailChangeRequestsDeleted,
+      executedAt: summary.executedAt,
+    });
+    if (!sent) {
+      log.warn('Account-deletion confirmation email was not sent', { email });
+    }
+  } catch (err) {
+    log.error('Account-deletion confirmation email threw', {
+      email,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   return summary;
 }

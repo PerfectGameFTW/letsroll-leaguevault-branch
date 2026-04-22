@@ -597,6 +597,100 @@ export async function sendEmailChangeNotification(
   }
 }
 
+/**
+ * Confirmation email sent to the original requester after an admin
+ * runs the automated account-data deletion. Best-effort: callers
+ * should NOT roll back the deletion if this returns false.
+ */
+export async function sendAccountDeletionConfirmation(
+  toEmail: string,
+  details: {
+    bowlersAnonymized: number;
+    userAccountDeleted: boolean;
+    paymentProviderRecordsDeleted: number;
+    emailChangeRequestsDeleted: number;
+    executedAt: string;
+  },
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    log.error('Cannot send account-deletion confirmation — SENDGRID_API_KEY not configured');
+    return false;
+  }
+
+  const safeEmail = escapeHtml(toEmail);
+  const safeExecutedAt = escapeHtml(details.executedAt);
+  const supportUrl = `${getBaseUrl()}/support`;
+
+  // Build the "what we removed" list. The verb (anonymized vs deleted)
+  // matters for GDPR/CCPA wording — bowler rows are anonymized so the
+  // historical scores/payments stay correct, while the user account
+  // and ancillary records are removed outright.
+  const items: string[] = [];
+  items.push(
+    `<li><strong>${details.bowlersAnonymized}</strong> bowler record(s) anonymized — your name, email, and contact details were removed; historical scores and league memberships are kept without identifying information.</li>`,
+  );
+  if (details.userAccountDeleted) {
+    items.push(`<li>Your LeagueVault login account was <strong>deleted</strong>.</li>`);
+  } else {
+    items.push(
+      `<li>No LeagueVault login account was found for this email, so nothing was deleted at the account level.</li>`,
+    );
+  }
+  items.push(
+    `<li><strong>${details.paymentProviderRecordsDeleted}</strong> saved payment-method record(s) removed at the payment processor.</li>`,
+  );
+  items.push(
+    `<li><strong>${details.emailChangeRequestsDeleted}</strong> pending email-change request(s) deleted.</li>`,
+  );
+
+  const msg = {
+    to: toEmail,
+    from: { email: FROM_EMAIL, name: FROM_NAME },
+    subject: 'Your LeagueVault account data has been deleted',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <p style="font-size: 16px; color: #333;">Hello,</p>
+        <p style="font-size: 16px; color: #333;">
+          We're confirming that the account-deletion request you submitted for
+          <strong>${safeEmail}</strong> has been processed on
+          <strong>${safeExecutedAt}</strong>. Here's what was removed:
+        </p>
+        <ul style="font-size: 15px; color: #333; line-height: 1.5;">
+          ${items.join('\n          ')}
+        </ul>
+        <p style="font-size: 14px; color: #555;">
+          Some records that contain other people's data — such as team
+          rosters or league prize-fund history — were preserved with all
+          identifying information about you removed.
+        </p>
+        <p style="font-size: 14px; color: #555;">
+          If you didn't request this, or you believe this happened in
+          error, please contact support right away:
+        </p>
+        <p style="font-size: 14px; color: #555; word-break: break-all;">
+          <a href="${escapeHtml(supportUrl)}">${escapeHtml(supportUrl)}</a>
+        </p>
+        <p style="font-size: 14px; color: #555;">Thanks for using LeagueVault.</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="font-size: 12px; color: #999; text-align: center;">Powered by LeagueVault</p>
+      </div>
+    `,
+    trackingSettings: { clickTracking: { enable: false, enableText: false } },
+  };
+
+  try {
+    await sgMail.send(msg);
+    log.info('Account-deletion confirmation sent to:', isDev ? toEmail : maskEmail(toEmail));
+    return true;
+  } catch (error: any) {
+    log.error(
+      'Failed to send account-deletion confirmation:',
+      error?.response?.body || error.message,
+    );
+    return false;
+  }
+}
+
 export async function resendInviteEmail(
   toEmail: string,
   userName: string,
