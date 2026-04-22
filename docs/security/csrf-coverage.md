@@ -95,7 +95,11 @@ as `npm run check:csrf`): no state-changing app-level routes exist outside
 `app.post|put|patch|delete(...)` call, and exits non-zero if any path does
 not start with `/api/`. Add to `EXPLICIT_NON_API_ALLOWLIST` only with an
 inline justification (e.g. an out-of-band auth factor like
-`x-setup-secret`). Coverage is pinned by `tests/unit/check-csrf-coverage.test.ts`. The non-`/api`
+`x-setup-secret`). Coverage is pinned by `tests/unit/check-csrf-coverage.test.ts`,
+which is part of the standard `npm test` (vitest) suite — so the guard runs on
+every CI build that runs the test suite, in addition to being callable directly
+via `npm run check:csrf`. CI pipelines that only run a subset of the suite
+should invoke `npm run check:csrf` explicitly to keep the guard active. The non-`/api`
 mounts are:
 
 - `manifestRouter` — only `GET /manifest.json` (and `GET /api/org-context`,
