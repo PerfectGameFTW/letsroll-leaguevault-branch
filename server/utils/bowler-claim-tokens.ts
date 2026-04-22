@@ -85,7 +85,7 @@ export function registerBowlerClaim(bowlerId: number, req: Request): void {
     orgId: u.organizationId,
     expiresAt: Date.now() + TTL_MS,
   });
-  log.debug(`registered bowler claim: bowler=${bowlerId} user=${u.id} org=${u.orgId ?? 'null'}`);
+  log.debug(`registered bowler claim: bowler=${bowlerId} user=${u.id} org=${u.organizationId ?? 'null'}`);
 }
 
 /**
