@@ -88,8 +88,14 @@ appears in `EXEMPT_PATHS`.
 
 ## Routes mounted outside `/api`
 
-Verified by grep (`grep -n 'app\.\(post\|put\|patch\|delete\)' server/index.ts`):
-no state-changing app-level routes exist outside `/api`. The non-`/api`
+Verified by grep (`grep -n 'app\.\(post\|put\|patch\|delete\)' server/index.ts`)
+**and** by the CI guard `scripts/check-csrf-coverage.ts` (task #308 — wired
+as `npm run check:csrf`): no state-changing app-level routes exist outside
+`/api`. The guard reads `server/index.ts`, finds every
+`app.post|put|patch|delete(...)` call, and exits non-zero if any path does
+not start with `/api/`. Add to `EXPLICIT_NON_API_ALLOWLIST` only with an
+inline justification (e.g. an out-of-band auth factor like
+`x-setup-secret`). Coverage is pinned by `tests/unit/check-csrf-coverage.test.ts`. The non-`/api`
 mounts are:
 
 - `manifestRouter` — only `GET /manifest.json` (and `GET /api/org-context`,
