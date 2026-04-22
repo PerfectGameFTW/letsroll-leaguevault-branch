@@ -9,11 +9,22 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { ArrowLeft, CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, XCircle } from "lucide-react";
+
+// Mirrors the union returned by /api/account/confirm-email-change so we
+// can surface the same "payment record will be retried" notice the
+// profile-edit form shows when the post-confirm sync ends up in
+// `pending_retry` (task #322).
+type PaymentSyncStatus =
+  | "synced"
+  | "skipped"
+  | "pending_retry"
+  | "not_applicable";
 
 type Status =
   | { kind: "pending" }
-  | { kind: "success"; email: string }
+  | { kind: "success"; email: string; paymentSyncStatus: PaymentSyncStatus }
   | { kind: "error"; code: string; message: string };
 
 const ERROR_COPY: Record<string, string> = {
@@ -56,6 +67,16 @@ const ConfirmEmailChangePage: FC = () => {
           setStatus({
             kind: "success",
             email: body?.data?.email ?? "your new address",
+            // Server defaults to "not_applicable" when there's no linked
+            // bowler. Treat any unrecognized value as "not_applicable"
+            // too so a future server-side addition never trips a notice
+            // an old client doesn't know how to interpret.
+            paymentSyncStatus:
+              body?.data?.paymentSyncStatus === "synced" ||
+              body?.data?.paymentSyncStatus === "skipped" ||
+              body?.data?.paymentSyncStatus === "pending_retry"
+                ? body.data.paymentSyncStatus
+                : "not_applicable",
           });
         } else {
           const code: string = body?.error?.code ?? "INVALID_TOKEN";
@@ -113,10 +134,34 @@ const ConfirmEmailChangePage: FC = () => {
             </CardDescription>
           </CardHeader>
           {status.kind !== "pending" && (
-            <CardContent className="pb-2 text-center text-sm text-muted-foreground">
-              {status.kind === "success"
-                ? "If you didn't request this change, please contact support immediately."
-                : null}
+            <CardContent className="pb-2 space-y-3 text-center text-sm text-muted-foreground">
+              {status.kind === "success" && (
+                <>
+                  <p>
+                    If you didn't request this change, please contact support
+                    immediately.
+                  </p>
+                  {status.paymentSyncStatus === "pending_retry" && (
+                    // Wording mirrors the toast in
+                    // client/src/components/profile-info-card.tsx so a
+                    // user who edits their profile and a user who
+                    // confirms an email change see the same explanation.
+                    <Alert
+                      variant="default"
+                      className="text-left"
+                      data-testid="alert-payment-sync-pending-retry"
+                    >
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Payment record will be retried</AlertTitle>
+                      <AlertDescription>
+                        Your payment profile is temporarily out of date and
+                        will be retried automatically. Charges or saved cards
+                        may behave oddly for the next few minutes.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </>
+              )}
             </CardContent>
           )}
           <CardFooter className="flex flex-col items-center gap-2 pt-0">
