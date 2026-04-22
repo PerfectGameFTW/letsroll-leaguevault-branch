@@ -18,11 +18,17 @@ import { subdomainDetection, orgSessionGuard } from './middleware/subdomain';
 import { securityHeaders, apiHeaders } from './middleware/security';
 import { requestTracker, registerShutdownHandlers } from './lib/shutdown';
 import manifestRouter from './routes/manifest';
+import { assertTrustProxyAtBoot } from './lib/trust-proxy-check';
 
 const log = createLogger("Server");
 
 const app = express();
 app.set("trust proxy", 1);
+// Verify the configured trust-proxy hop count actually produces a
+// non-loopback `req.ip` for a realistic X-Forwarded-For chain. If it
+// doesn't, per-IP rate limiters (notably setupAdminLimiter) silently
+// collapse into a global cap. Hard-fails in production, warns in dev.
+assertTrustProxyAtBoot(app, { isProduction: !isDev, log });
 const server = createServer(app);
 
 const HOST = '0.0.0.0';
