@@ -1,8 +1,19 @@
 # Lint
 
-This project uses ESLint to catch silent type-escape hatches — primarily
-`@typescript-eslint/no-explicit-any`. The configuration lives in
-`eslint.config.js` (flat config, ESLint 9).
+This project uses ESLint to catch silent type-escape hatches. The
+configuration lives in `eslint.config.js` (flat config, ESLint 9).
+
+Two rules carry the contract:
+
+- `@typescript-eslint/no-explicit-any` (#299) — fails on any new `any`
+  annotation or `as any` cast.
+- `@typescript-eslint/ban-ts-comment` (#328) — fails on any
+  `@ts-ignore` or `@ts-nocheck` directive. `@ts-expect-error` is
+  allowed only when followed by a description of at least 10 chars.
+
+The matching `noImplicitAny` half is enforced by `tsconfig.json`
+(`"strict": true`), so a missing parameter or return annotation that
+the checker cannot infer also fails `npm run check`.
 
 ## Running
 
