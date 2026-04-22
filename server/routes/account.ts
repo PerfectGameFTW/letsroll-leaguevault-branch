@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { sendError, sendSuccess, sanitizeUser, handleZodError } from '../utils/api';
 import { storage } from '../storage';
-import { hashPassword } from '../auth';
+import { hashPassword, destroyOtherSessionsForUser } from '../auth';
 import { passwordSchema } from '@shared/password-validation';
 import { updateUserSchemaBase, insertDeletionRequestSchema } from '@shared/schema';
 import { createLogger } from '../logger';
@@ -532,6 +532,31 @@ router.post('/change-password', requireAuth, async (req: Request, res: Response)
       log.info('Invalidated pending email-change requests on password change', {
         userId: user.id,
         count: invalidated,
+      });
+    }
+
+    // Force-log-out every other session for this user. The user is
+    // typically rotating their password BECAUSE they suspect another
+    // device or browser was compromised; leaving stale cookies alive
+    // until they expire defeats the purpose. We keep the caller's
+    // current session (req.sessionID) so they don't immediately get
+    // bounced from the page that just made this request.
+    try {
+      const currentSid = req.sessionID ?? null;
+      const dropped = await destroyOtherSessionsForUser(user.id, currentSid);
+      if (dropped > 0) {
+        log.info('Destroyed other sessions on password change', {
+          userId: user.id,
+          count: dropped,
+        });
+      }
+    } catch (err) {
+      // Best-effort: a session-store failure shouldn't roll back the
+      // password update that already committed. Log loudly so this
+      // shows up in monitoring.
+      log.error('Failed to destroy other sessions on password change', {
+        userId: user.id,
+        error: err instanceof Error ? err.message : String(err),
       });
     }
 

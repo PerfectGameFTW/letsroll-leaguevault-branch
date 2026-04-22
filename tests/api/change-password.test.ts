@@ -145,6 +145,40 @@ describe('POST /api/account/change-password', () => {
     expect(after.password).toBe(before.password);
   });
 
+  it('destroys other sessions for the same user but keeps the caller logged in (task #318)', async () => {
+    const { email, session: sessionA } = await createUserAndLogin();
+    // Second session for the SAME user — simulates another device or a
+    // stolen cookie that we want force-logged-out by the password change.
+    const sessionB = await login(email, ORIGINAL_PASSWORD);
+
+    // Sanity: sessionB can hit an authenticated endpoint before the change.
+    const beforeB = await fetch(`${BASE_URL}/api/auth/user`, {
+      headers: { Cookie: sessionB.cookies },
+    });
+    expect(beforeB.status).toBe(200);
+
+    const res = await apiPost<{ message: string }>(
+      '/api/account/change-password',
+      { currentPassword: ORIGINAL_PASSWORD, newPassword: NEW_STRONG_PASSWORD },
+      sessionA,
+    );
+    expect(res.status).toBe(200);
+    expect(res.data.success).toBe(true);
+
+    // sessionB must now be invalidated.
+    const afterB = await fetch(`${BASE_URL}/api/auth/user`, {
+      headers: { Cookie: sessionB.cookies },
+    });
+    expect(afterB.status).toBe(401);
+
+    // sessionA (the caller) should still be valid — getting bounced
+    // from the page you just changed your password on is a UX trap.
+    const afterA = await fetch(`${BASE_URL}/api/auth/user`, {
+      headers: { Cookie: sessionA.cookies },
+    });
+    expect(afterA.status).toBe(200);
+  });
+
   it('rejects an unauthenticated request with AUTH_REQUIRED', async () => {
     // Fetch CSRF token+cookie without logging in so the request reaches
     // requireAuth instead of being 403'd by CSRF middleware first.

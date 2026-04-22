@@ -17,6 +17,32 @@ export { hashPassword, safeTokenCompare };
 
 const log = createLogger("Auth");
 
+/**
+ * Destroy every session belonging to `userId` EXCEPT `keepSid` (the
+ * caller's current session). Used after a password change so a stolen
+ * cookie on another device is invalidated immediately instead of
+ * lingering until its own expiry.
+ *
+ * connect-pg-simple stores rows in the `session` table with a JSON
+ * `sess` column; passport's serialized user id lives at
+ * `sess->'passport'->>'user'` (TEXT). We compare as text since the
+ * column is JSON-encoded.
+ *
+ * Returns the number of sessions destroyed. Errors are caught by
+ * the caller — best-effort vs. blocking is up to the call site.
+ */
+export async function destroyOtherSessionsForUser(
+  userId: number,
+  keepSid: string | null,
+): Promise<number> {
+  const sql = keepSid
+    ? `DELETE FROM "session" WHERE sess->'passport'->>'user' = $1 AND sid <> $2`
+    : `DELETE FROM "session" WHERE sess->'passport'->>'user' = $1`;
+  const params = keepSid ? [String(userId), keepSid] : [String(userId)];
+  const result = await pool.query(sql, params);
+  return result.rowCount ?? 0;
+}
+
 const PostgresSessionStore = connectPg(session);
 
 declare global {
