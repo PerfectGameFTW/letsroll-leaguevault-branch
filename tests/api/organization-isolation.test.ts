@@ -745,5 +745,139 @@ describe('Organization Isolation', () => {
         expect(collectIds(ownerPayments.data.data)).toContain(orgBPaymentId);
       }
     });
+
+    // ----------------------------------------------------------------
+    // Task #344 — extend the same cross-org leak coverage to remaining
+    // filtered list endpoints called out in the task: /api/bowler-leagues
+    // (?bowlerId | ?leagueId | ?teamId, plus unfiltered list scoping),
+    // /api/payment-schedules/:bowlerId/:leagueId, and /api/locations.
+    // Reuses the org B fixtures created in this describe's beforeAll.
+    // ----------------------------------------------------------------
+    interface BowlerLeagueRow { id: number; bowlerId: number; leagueId: number; teamId: number }
+    interface LocationRow { id: number; name: string }
+
+    it('org A GET /api/bowler-leagues?bowlerId=<orgB bowler> → 403 (route gates by bowler access)', async () => {
+      expect(orgBBowlerId).not.toBeNull();
+      const { status, data } = await apiGet<BowlerLeagueRow[]>(
+        `/api/bowler-leagues?bowlerId=${orgBBowlerId}`,
+        sessionA,
+      );
+      expect(status).toBe(403);
+      expect(data.success).toBe(false);
+      const payload = JSON.stringify(data);
+      expect(payload).not.toContain(`Vitest #341 Bowler ${stamp}`);
+    });
+
+    it('org A GET /api/bowler-leagues?leagueId=<orgB league> → 403 (route gates by league access)', async () => {
+      expect(orgBLeagueId).not.toBeNull();
+      const { status, data } = await apiGet<BowlerLeagueRow[]>(
+        `/api/bowler-leagues?leagueId=${orgBLeagueId}`,
+        sessionA,
+      );
+      expect(status).toBe(403);
+      expect(data.success).toBe(false);
+    });
+
+    it('org A GET /api/bowler-leagues?teamId=<orgB team> → 403 (route gates by team access)', async () => {
+      expect(orgBTeamId).not.toBeNull();
+      const { status, data } = await apiGet<BowlerLeagueRow[]>(
+        `/api/bowler-leagues?teamId=${orgBTeamId}`,
+        sessionA,
+      );
+      expect(status).toBe(403);
+      expect(data.success).toBe(false);
+    });
+
+    it('org A GET /api/bowler-leagues (no filter) must scope to caller org and exclude org B rows', async () => {
+      // The unfiltered branch falls back to scoping by req.user.organizationId.
+      // Make sure the org B link the fixtures created is NEVER returned.
+      expect(orgBBowlerLeagueId).not.toBeNull();
+      const { status, data } = await apiGet<BowlerLeagueRow[]>(
+        '/api/bowler-leagues',
+        sessionA,
+      );
+      expect(status).toBe(200);
+      if (Array.isArray(data.data) && orgBBowlerLeagueId != null) {
+        const ids = collectIds(data.data);
+        expect(ids).not.toContain(orgBBowlerLeagueId);
+      }
+    });
+
+    it('org A GET /api/bowler-leagues?enriched=true&teamId=<orgB team> → 403 (enriched flag must not bypass gate)', async () => {
+      // Defense in depth: the enrichment branch lives downstream of the
+      // access checks. Asserting it still 403s ensures a future refactor
+      // doesn't accidentally reorder enrichment ahead of gating.
+      expect(orgBTeamId).not.toBeNull();
+      const { status, data } = await apiGet(
+        `/api/bowler-leagues?teamId=${orgBTeamId}&enriched=true`,
+        sessionA,
+      );
+      expect(status).toBe(403);
+      expect(data.success).toBe(false);
+      const payload = JSON.stringify(data);
+      expect(payload).not.toContain(`Vitest #341 Bowler ${stamp}`);
+      expect(payload).not.toContain(`Vitest #341 Team ${stamp}`);
+    });
+
+    it('org A GET /api/payment-schedules/<orgB bowler>/<orgB league> → 403 (cross-org id pair denied)', async () => {
+      // The schedule fetch route gates on hasAccessToBowler. Whether or
+      // not a schedule row actually exists, session A must be denied —
+      // the response must never reveal schedule details OR the absence
+      // signal (200 + null) for an org B bowler.
+      expect(orgBBowlerId).not.toBeNull();
+      expect(orgBLeagueId).not.toBeNull();
+      const { status, data } = await apiGet(
+        `/api/payment-schedules/${orgBBowlerId}/${orgBLeagueId}`,
+        sessionA,
+      );
+      expect(status).toBe(403);
+      expect(data.success).toBe(false);
+
+      // Positive control: session B (the owning org) reaches the handler
+      // and gets a 200 (with `null` data when no schedule exists).
+      const owner = await apiGet(
+        `/api/payment-schedules/${orgBBowlerId}/${orgBLeagueId}`,
+        sessionB,
+      );
+      expect(owner.status).toBe(200);
+      expect(owner.data.success).toBe(true);
+    });
+
+    it('org A GET /api/locations must not include the org B location row', async () => {
+      // The locations list uses filterByOrganization middleware. Any
+      // accidental fall-through to "all locations" would surface the
+      // org B location id we created in beforeAll.
+      expect(orgBLocationId).not.toBeNull();
+      const { status, data } = await apiGet<LocationRow[]>('/api/locations', sessionA);
+      expect(status).toBe(200);
+      if (Array.isArray(data.data) && orgBLocationId != null) {
+        const ids = collectIds(data.data);
+        expect(ids).not.toContain(orgBLocationId);
+      }
+      const payload = JSON.stringify(data);
+      expect(payload).not.toContain(`Vitest Iso Location ${stamp}`);
+    });
+
+    it('positive control (#344): session B sees its own bowler-leagues + location', async () => {
+      // Pins the negatives above against the same fixture: session B
+      // (the owning org) must actually reach and return the rows.
+      expect(orgBBowlerId).not.toBeNull();
+      expect(orgBLocationId).not.toBeNull();
+
+      const ownerLinks = await apiGet<BowlerLeagueRow[]>(
+        `/api/bowler-leagues?bowlerId=${orgBBowlerId}`,
+        sessionB,
+      );
+      expect(ownerLinks.status).toBe(200);
+      if (Array.isArray(ownerLinks.data.data) && orgBBowlerLeagueId != null) {
+        expect(collectIds(ownerLinks.data.data)).toContain(orgBBowlerLeagueId);
+      }
+
+      const ownerLocations = await apiGet<LocationRow[]>('/api/locations', sessionB);
+      expect(ownerLocations.status).toBe(200);
+      if (Array.isArray(ownerLocations.data.data) && orgBLocationId != null) {
+        expect(collectIds(ownerLocations.data.data)).toContain(orgBLocationId);
+      }
+    });
   });
 });
