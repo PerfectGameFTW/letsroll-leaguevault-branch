@@ -20,6 +20,7 @@ import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit.js';
 import { createLogger } from '../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasWalletSupport } from '../services/payment-provider';
+import { canonicalApplePayDomain } from '../services/apple-pay-domains';
 
 const log = createLogger("Organizations");
 
@@ -27,7 +28,7 @@ async function autoRegisterApplePayDomain(org: Organization) {
   const domain = org.subdomain || org.slug;
   if (!domain) return;
 
-  const fullDomain = `${domain}.leaguevault.app`;
+  const fullDomain = canonicalApplePayDomain(org);
   try {
     const leagues = await storage.getLeagues(org.id);
     const locationIds = new Set<number>();

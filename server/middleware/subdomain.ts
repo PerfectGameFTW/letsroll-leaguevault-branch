@@ -3,10 +3,11 @@ import { storage } from '../storage';
 import { createLogger } from '../logger';
 import { Organization } from '@shared/schema';
 import { isSystemAdmin } from '../utils/access-control';
+import { env } from '../config';
 
 const log = createLogger("Subdomain");
 
-const MAIN_DOMAIN = 'leaguevault.app';
+const MAIN_DOMAIN = env.APP_DOMAIN;
 const IGNORED_SUBDOMAINS = new Set(['www', 'api', 'admin', 'mail', 'smtp', 'ftp']);
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$/;
 const isDev = process.env.NODE_ENV !== 'production';

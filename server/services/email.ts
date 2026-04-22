@@ -8,7 +8,7 @@ import { maskEmail } from '../utils/pii';
 const log = createLogger("Email");
 
 const SENDGRID_API_KEY = env.SENDGRID_API_KEY;
-const FROM_EMAIL = 'noreply@leaguevault.app';
+const FROM_EMAIL = `noreply@${env.APP_DOMAIN}`;
 const FROM_NAME = 'LeagueVault';
 
 if (SENDGRID_API_KEY) {
@@ -27,9 +27,9 @@ export function getBaseUrl(orgSlug?: string | null): string {
     }
   }
   if (orgSlug) {
-    return `https://${orgSlug}.leaguevault.app`;
+    return `https://${orgSlug}.${env.APP_DOMAIN}`;
   }
-  return 'https://leaguevault.app';
+  return `https://${env.APP_DOMAIN}`;
 }
 
 function escapeHtml(str: string): string {

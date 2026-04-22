@@ -61,7 +61,7 @@ export const securityHeaders: RequestHandler = helmet({
       formAction: ["'self'"],
       frameAncestors: isDev
         ? ["*"]
-        : ["'self'", "https://leaguevault.app", "https://*.leaguevault.app"],
+        : ["'self'", `https://${env.APP_DOMAIN}`, `https://*.${env.APP_DOMAIN}`],
     },
   },
   frameguard: isDev ? false : { action: 'sameorigin' },
@@ -71,7 +71,7 @@ export const securityHeaders: RequestHandler = helmet({
 
 function getAllowedOrigins(): string[] {
   const origins: string[] = [];
-  origins.push('https://leaguevault.app');
+  origins.push(`https://${env.APP_DOMAIN}`);
   if (isDev) {
     if (env.REPLIT_DOMAINS) {
       for (const domain of env.REPLIT_DOMAINS.split(',')) {
@@ -97,7 +97,7 @@ function isAllowedOrigin(origin: string): boolean {
   if (origin === 'http://localhost') return true;
   try {
     const url = new URL(origin);
-    if (url.hostname.endsWith('.leaguevault.app') && url.protocol === 'https:') {
+    if (url.hostname.endsWith(`.${env.APP_DOMAIN}`) && url.protocol === 'https:') {
       return true;
     }
   } catch {}

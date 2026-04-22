@@ -3,6 +3,7 @@ import { storage } from "../storage";
 import { getPaymentProvider, ProviderNotConfiguredError } from "./payment-provider-factory";
 import { hasWalletSupport } from "./payment-provider";
 import { applePayRecoveryAlerter } from "./apple-pay-alerts";
+import { canonicalApplePayDomain } from "./apple-pay-domains";
 import type { ApplePayJob, ApplePayJobItem } from "@shared/schema";
 
 const CONCURRENCY_LIMIT = 4;
@@ -206,7 +207,7 @@ class ApplePayWorker {
     for (const org of organizations) {
       const subdomain = org.subdomain || org.slug;
       if (!subdomain) continue;
-      const fullDomain = `${subdomain}.leaguevault.app`;
+      const fullDomain = canonicalApplePayDomain(org);
 
       const orgLeagues = await storage.getLeagues(org.id);
       const locationIds = new Set<number>();
