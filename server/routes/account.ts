@@ -492,6 +492,66 @@ router.post(
   },
 );
 
+// Self-serve retry for the *current* user's bowler when an earlier
+// profile-update left the payment-customer sync in `pending_retry`
+// (task #323). The ProfileInfoCard surfaces a "Retry now" button
+// when the most recent PATCH or retry returned `pending_retry`; this
+// route powers that button so a user can resolve the temporarily-
+// out-of-date state on demand instead of waiting for the background
+// sweep.
+//
+// Security shape: no path param. The bowler id is read from the
+// authenticated session (`req.user.bowlerId`), so a user can never
+// trigger a sync for someone else's bowler — this route does NOT
+// reuse the admin endpoint above (which lives behind
+// `requireSystemAdmin` and takes an :id from the URL).
+router.post(
+  '/profile/retry-payment-sync',
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.user!;
+      const bowlerId = (user as { bowlerId?: number | null }).bowlerId ?? null;
+
+      // Same 422 contract the admin endpoint uses when no bowler is
+      // linked, so the client-side error handling stays uniform.
+      if (bowlerId === null) {
+        return sendError(
+          res,
+          'No bowler is linked to your account; nothing to retry',
+          422,
+          'NO_LINKED_BOWLER',
+        );
+      }
+
+      const bowler = await storage.getBowler(bowlerId);
+      if (!bowler) {
+        return sendError(res, 'Bowler not found', 404, 'NOT_FOUND');
+      }
+
+      // Source-of-truth for retry is the linked user's profile, not
+      // the bowler row — same rationale as the admin endpoint.
+      const status = await syncBowlerForUser(
+        {
+          id: user.id,
+          bowlerId,
+          name: user.name ?? bowler.name,
+          email: user.email ?? bowler.email,
+          phone: user.phone ?? bowler.phone,
+          locationId: user.locationId,
+          organizationId: user.organizationId,
+        },
+        { nameChanged: true, emailChanged: true, phoneChanged: true },
+      );
+
+      return sendSuccess(res, { paymentSyncStatus: status });
+    } catch (error) {
+      log.error('Error in self-serve payment-sync retry:', error);
+      return sendError(res, 'Internal server error', 500, 'SERVER_ERROR');
+    }
+  },
+);
+
 // Slow down credential-stuffing / current-password brute-forcing on a
 // session that's already been hijacked. Keyed on (userId|ip) so a
 // single attacker can't burn through attempts on multiple accounts

@@ -2,8 +2,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Save, Pencil } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Loader2, Save, Pencil, RefreshCw } from "lucide-react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,9 +27,19 @@ const profileSchema = z.object({
 
 type ProfileFormData = z.infer<typeof profileSchema>;
 
+type PaymentSyncStatus = "synced" | "skipped" | "pending_retry" | "not_applicable";
+
 export function ProfileInfoCard({ currentUser }: { currentUser: User }) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
+  // Tracks the most recent payment-sync outcome so the "Retry now"
+  // button (task #323) shows up immediately after a profile edit
+  // returns `pending_retry`, and disappears once a manual retry
+  // succeeds. Server doesn't currently surface a persistent
+  // `payment_sync_pending_at` flag on /api/user, so this stays in
+  // component state for the session — follow-up on the backend will
+  // let us hydrate it on initial load too.
+  const [lastSyncStatus, setLastSyncStatus] = useState<PaymentSyncStatus | null>(null);
 
   const form = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
@@ -49,7 +59,7 @@ export function ProfileInfoCard({ currentUser }: { currentUser: User }) {
         email: data.email,
         phone: trimmedPhone === "" ? null : trimmedPhone,
       };
-      return apiRequest<{ paymentSyncStatus?: "synced" | "skipped" | "pending_retry" | "not_applicable" }>(
+      return apiRequest<{ paymentSyncStatus?: PaymentSyncStatus }>(
         `/api/account/profile/${currentUser.id}`,
         "PATCH",
         payload,
@@ -59,7 +69,9 @@ export function ProfileInfoCard({ currentUser }: { currentUser: User }) {
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       setIsEditing(false);
       toast({ title: "Profile Updated", description: "Your profile has been saved successfully." });
-      if (response?.data?.paymentSyncStatus === "pending_retry") {
+      const status = response?.data?.paymentSyncStatus ?? null;
+      setLastSyncStatus(status);
+      if (status === "pending_retry") {
         toast({
           title: "Payment record will be retried",
           description:
@@ -71,6 +83,45 @@ export function ProfileInfoCard({ currentUser }: { currentUser: User }) {
       toast({ title: "Update Failed", description: error.message || "Failed to update profile", variant: "destructive" });
     },
   });
+
+  // Self-serve "Retry now" — calls the per-user endpoint added in
+  // task #323. We deliberately don't invalidate /api/user here: the
+  // user record itself didn't change, only the payment-sync status,
+  // and the status flips lastSyncStatus directly so the UI updates
+  // without a refetch.
+  const retryMutation = useMutation({
+    mutationFn: async () =>
+      apiRequest<{ paymentSyncStatus?: PaymentSyncStatus }>(
+        "/api/account/profile/retry-payment-sync",
+        "POST",
+      ),
+    onSuccess: (response) => {
+      const status = response?.data?.paymentSyncStatus ?? null;
+      setLastSyncStatus(status);
+      if (status === "synced") {
+        toast({ title: "Payment record updated", description: "Your payment profile is back in sync." });
+      } else if (status === "pending_retry") {
+        toast({
+          title: "Still out of date",
+          description: "The retry didn't go through. We'll keep trying in the background — please try again in a few minutes.",
+          variant: "destructive",
+        });
+      } else {
+        // 'skipped' or 'not_applicable' — nothing to retry. Treat as
+        // resolved so the button doesn't linger.
+        toast({ title: "Nothing to retry", description: "No pending payment-sync work for your account." });
+      }
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Retry failed",
+        description: error.message || "Could not retry payment-sync right now.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const showRetry = lastSyncStatus === "pending_retry";
 
   return (
     <Card>
@@ -93,10 +144,33 @@ export function ProfileInfoCard({ currentUser }: { currentUser: User }) {
               <p className="text-sm font-medium text-muted-foreground">Phone</p>
               <p className="text-sm mt-1">{currentUser.phone || "Not provided"}</p>
             </div>
-            <Button variant="outline" onClick={() => setIsEditing(true)} className="flex items-center gap-2">
-              <Pencil className="h-4 w-4" />
-              Edit Profile
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setIsEditing(true)} className="flex items-center gap-2">
+                <Pencil className="h-4 w-4" />
+                Edit Profile
+              </Button>
+              {showRetry && (
+                <Button
+                  variant="outline"
+                  onClick={() => retryMutation.mutate()}
+                  disabled={retryMutation.isPending}
+                  className="flex items-center gap-2"
+                  data-testid="button-retry-payment-sync"
+                >
+                  {retryMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Retry payment sync
+                </Button>
+              )}
+            </div>
+            {showRetry && (
+              <p className="text-xs text-muted-foreground">
+                Your payment profile is temporarily out of date. We're retrying in the background — use this button to retry now.
+              </p>
+            )}
           </div>
         ) : (
           <Form {...form}>
