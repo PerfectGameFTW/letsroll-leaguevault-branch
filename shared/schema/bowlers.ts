@@ -22,6 +22,15 @@ export const bowlers = pgTable("bowlers", {
   // PATCH /api/account/profile response so the caller knows the customer
   // record on the provider side may be stale. See server/routes/account.ts.
   paymentSyncPendingAt: timestamp("payment_sync_pending_at", { mode: "string" }),
+  // Retry-sweep bookkeeping for `paymentSyncPendingAt` (task #284).
+  // `paymentSyncAttempts` counts consecutive failed retries since the
+  // flag was set; once it hits the cap the background sweep stops
+  // touching the bowler and ops must handle it manually. Reset to 0 on
+  // a successful sync. `paymentSyncLastAttemptAt` is the timestamp of
+  // the most recent retry attempt and drives exponential backoff
+  // between sweep ticks.
+  paymentSyncAttempts: integer("payment_sync_attempts").notNull().default(0),
+  paymentSyncLastAttemptAt: timestamp("payment_sync_last_attempt_at", { mode: "string" }),
 });
 
 export const bowlerLeagues = pgTable("bowler_leagues", {
@@ -63,6 +72,8 @@ export const insertBowlerSchema = baseBowlerSchema.extend({
   paymentCustomerId: z.string().nullable().optional(),
   cardpointeProfileId: z.string().nullable().optional(),
   paymentSyncPendingAt: z.string().nullable().optional(),
+  paymentSyncAttempts: z.number().int().min(0).optional(),
+  paymentSyncLastAttemptAt: z.string().nullable().optional(),
 }).omit({ id: true });
 
 export const insertBowlerLeagueSchema = baseBowlerLeagueSchema.extend({
@@ -83,6 +94,8 @@ export const updateBowlerSchema = z.object({
   cardpointeProfileId: z.string().nullable(),
   bnContactId: z.string().nullable(),
   paymentSyncPendingAt: z.string().nullable(),
+  paymentSyncAttempts: z.number().int().min(0),
+  paymentSyncLastAttemptAt: z.string().nullable(),
 }).partial();
 
 export const updateBowlerLeagueSchema = z.object({

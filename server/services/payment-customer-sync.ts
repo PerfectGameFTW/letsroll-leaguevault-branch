@@ -17,6 +17,11 @@ const log = createLogger('PaymentCustomerSync');
 
 export type PaymentSyncStatus = 'synced' | 'skipped' | 'pending_retry' | 'not_applicable';
 
+// Background retry sweep gives up after this many consecutive failed
+// attempts (task #284). Surfaced here so the sweep service and the
+// helper agree on when to log the structured "given up" error.
+export const PAYMENT_SYNC_MAX_ATTEMPTS = 5;
+
 export interface SyncableUser {
   id: number;
   bowlerId: number | null;
@@ -95,14 +100,32 @@ export async function syncBowlerForUser(
       errorName: e instanceof Error ? e.name : 'unknown',
       errorMessage: e instanceof Error ? e.message : String(e),
     });
+    const nowIso = new Date().toISOString();
+    const nextAttempts = (bowler.paymentSyncAttempts ?? 0) + 1;
     try {
       await storage.updateBowler(bowler.id, {
         ...bowler,
         ...bowlerUpdate,
-        paymentSyncPendingAt: new Date().toISOString(),
+        // Preserve the original failure timestamp so admins can see how
+        // long this bowler has been pending; only set it the first time.
+        paymentSyncPendingAt: bowler.paymentSyncPendingAt ?? nowIso,
+        paymentSyncAttempts: nextAttempts,
+        paymentSyncLastAttemptAt: nowIso,
       });
     } catch (markErr) {
       log.error('Failed to flag bowler for payment-sync retry:', markErr);
+    }
+    if (nextAttempts >= PAYMENT_SYNC_MAX_ATTEMPTS) {
+      log.error('Payment-customer sync gave up after max retry attempts', {
+        userId: user.id,
+        bowlerId: bowler.id,
+        locationId: resolvedSquareLocationId,
+        attempts: nextAttempts,
+        maxAttempts: PAYMENT_SYNC_MAX_ATTEMPTS,
+        pendingSince: bowler.paymentSyncPendingAt ?? nowIso,
+        errorName: e instanceof Error ? e.name : 'unknown',
+        errorMessage: e instanceof Error ? e.message : String(e),
+      });
     }
     return 'pending_retry';
   }
@@ -116,6 +139,14 @@ export async function syncBowlerForUser(
   }
   if (bowler.paymentSyncPendingAt !== null) {
     updates.paymentSyncPendingAt = null;
+    needsWrite = true;
+  }
+  if ((bowler.paymentSyncAttempts ?? 0) > 0) {
+    updates.paymentSyncAttempts = 0;
+    needsWrite = true;
+  }
+  if (bowler.paymentSyncLastAttemptAt != null) {
+    updates.paymentSyncLastAttemptAt = null;
     needsWrite = true;
   }
   if (needsWrite) {

@@ -9,6 +9,7 @@ import { createServer } from 'http';
 import path from 'path';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
+import { startPaymentSyncRetrySweep } from './services/payment-sync-retry';
 import { applePayWorker } from './services/apple-pay-worker';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDiskUrls } from './migrations/migrate-avatars';
 import { createLogger } from './logger';
@@ -238,6 +239,11 @@ async function startServer() {
       await paymentScheduler.initialize();
       paymentScheduler.startSweepPoll();
       log.info('Schedulers initialized with 60-second sweep poll');
+
+      // Background retry sweep for failed payment-customer syncs
+      // (task #284). Walks bowlers flagged with payment_sync_pending_at
+      // and re-runs syncBowlerForUser with exponential backoff.
+      startPaymentSyncRetrySweep();
 
       // Resume any in-flight or pending Apple Pay bulk-registration jobs that
       // were interrupted by a previous server restart.

@@ -23,6 +23,8 @@ const bowlerColumns = {
   cardpointeProfileId: bowlers.cardpointeProfileId,
   bnContactId: bowlers.bnContactId,
   paymentSyncPendingAt: bowlers.paymentSyncPendingAt,
+  paymentSyncAttempts: bowlers.paymentSyncAttempts,
+  paymentSyncLastAttemptAt: bowlers.paymentSyncLastAttemptAt,
 };
 
 export async function getBowlers(filters: { teamId?: number; organizationId: number }): Promise<Bowler[]> {
@@ -255,6 +257,8 @@ export async function anonymizeBowler(id: number): Promise<Bowler> {
       cardpointeProfileId: null,
       bnContactId: null,
       paymentSyncPendingAt: null,
+      paymentSyncAttempts: 0,
+      paymentSyncLastAttemptAt: null,
     })
     .where(eq(bowlers.id, id))
     .returning();
