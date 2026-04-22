@@ -7,6 +7,8 @@ This project uses ESLint to catch silent type-escape hatches — primarily
 ## Running
 
 ```bash
+npm run lint
+# or, equivalently:
 npx eslint .
 ```
 
@@ -14,19 +16,9 @@ Exit code is non-zero on any new violation.
 
 ## CI integration
 
-Add `npx eslint .` to the same CI step that runs `npm run check`. Any
+Add `npm run lint` to the same CI step that runs `npm run check`. Any
 new `as any` cast or `: any` annotation in `server/`, `shared/`,
 `client/src/`, or `tests/` will fail the build.
-
-If you want a shorter alias, add this to `package.json`:
-
-```json
-"lint": "eslint ."
-```
-
-(The script wasn't added automatically because `package.json` is treated
-as a fragile config in this environment — one-line edit that the
-maintainer can land directly.)
 
 ## Existing-debt baseline
 
