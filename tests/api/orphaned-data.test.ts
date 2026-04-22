@@ -548,6 +548,71 @@ describe('Orphaned Data API (system-admin)', () => {
       expect(row.organizationId).toBe(targetOrgId);
     });
 
+    it('undoes the league reassign and writes a follow-up audit row', async () => {
+      // Pull the most recent audit row for this league reassign so we can hit
+      // the undo endpoint by audit id.
+      interface AuditRow {
+        id: number;
+        action: string;
+        resourceType: string;
+        resourceId: number;
+        organizationId: number | null;
+        previousOrganizationId: number | null;
+        undoneAt: string | null;
+        undoneByAuditId: number | null;
+      }
+      const { data: listed } = await apiGet<AuditRow[]>(
+        '/api/system-admin/orphaned-data-audits?limit=200',
+        admin,
+      );
+      const reassignAudit = (listed.data ?? []).find(
+        (r) => r.action === 'reassign' && r.resourceType === 'leagues' && r.resourceId === orphanLeagueB,
+      );
+      expect(reassignAudit, 'reassign audit row should exist').toBeTruthy();
+      expect(reassignAudit!.previousOrganizationId).toBeNull();
+      expect(reassignAudit!.organizationId).toBe(targetOrgId);
+      expect(reassignAudit!.undoneAt).toBeNull();
+
+      const { status } = await apiPost(
+        `/api/system-admin/orphaned-data-audits/${reassignAudit!.id}/undo`,
+        {},
+        admin,
+      );
+      expect(status).toBe(200);
+
+      // The league should be back to org-less.
+      const [restored] = await db
+        .select({ organizationId: leagues.organizationId })
+        .from(leagues)
+        .where(eq(leagues.id, orphanLeagueB));
+      expect(restored.organizationId).toBeNull();
+
+      // Activity log: original audit is now marked undone, and a new
+      // undo_reassign row was written for traceability.
+      const { data: after } = await apiGet<AuditRow[]>(
+        '/api/system-admin/orphaned-data-audits?limit=200',
+        admin,
+      );
+      const original = (after.data ?? []).find((r) => r.id === reassignAudit!.id);
+      expect(original!.undoneAt).not.toBeNull();
+      expect(original!.undoneByAuditId).not.toBeNull();
+      const undoRow = (after.data ?? []).find(
+        (r) => r.action === 'undo_reassign' && r.resourceType === 'leagues' && r.resourceId === orphanLeagueB,
+      );
+      expect(undoRow, 'undo audit row should exist').toBeTruthy();
+      expect(undoRow!.previousOrganizationId).toBe(targetOrgId);
+      expect(undoRow!.organizationId).toBeNull();
+
+      // Re-trying the same undo should fail with 409 ALREADY_UNDONE.
+      const { status: again, data: againData } = await apiPost(
+        `/api/system-admin/orphaned-data-audits/${reassignAudit!.id}/undo`,
+        {},
+        admin,
+      );
+      expect(again).toBe(409);
+      expect(againData.error?.code).toBe('ALREADY_UNDONE');
+    });
+
     it('reassigns the orphan user to a real organization', async () => {
       const { status } = await apiPost(
         `/api/system-admin/orphaned-data/users/${orphanUserId}/reassign`,
@@ -561,6 +626,46 @@ describe('Orphaned Data API (system-admin)', () => {
         .from(users)
         .where(eq(users.id, orphanUserId));
       expect(row.organizationId).toBe(targetOrgId);
+    });
+
+    it('refuses to undo a delete audit row (snapshot path is the recovery option)', async () => {
+      // The earlier delete-success test deleted orphanLeagueA. Find that
+      // audit row and confirm undo is rejected with UNDO_UNSUPPORTED, while
+      // the snapshot was captured.
+      interface AuditRow {
+        id: number;
+        action: string;
+        resourceType: string;
+        resourceId: number;
+        snapshot: unknown;
+      }
+      const { data } = await apiGet<AuditRow[]>(
+        '/api/system-admin/orphaned-data-audits?limit=200',
+        admin,
+      );
+      const deleteAudit = (data.data ?? []).find(
+        (r) => r.action === 'delete' && r.resourceType === 'leagues',
+      );
+      expect(deleteAudit, 'delete audit row should exist').toBeTruthy();
+      expect(deleteAudit!.snapshot).toBeTruthy();
+      expect((deleteAudit!.snapshot as { id: number }).id).toBeGreaterThan(0);
+
+      const { status, data: errData } = await apiPost(
+        `/api/system-admin/orphaned-data-audits/${deleteAudit!.id}/undo`,
+        {},
+        admin,
+      );
+      expect(status).toBe(400);
+      expect(errData.error?.code).toBe('UNDO_UNSUPPORTED');
+    });
+
+    it('returns 404 when undoing a non-existent audit row', async () => {
+      const { status } = await apiPost(
+        '/api/system-admin/orphaned-data-audits/999999999/undo',
+        {},
+        admin,
+      );
+      expect(status).toBe(404);
     });
 
     it('deletes the orphan system_admin user (after we strip the role) to confirm delete success path', async () => {

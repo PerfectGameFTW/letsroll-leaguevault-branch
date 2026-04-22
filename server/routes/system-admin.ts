@@ -12,15 +12,20 @@ import {
   listOrphanedUsers,
   reassignOrphanedLeague,
   reassignOrphanedUser,
+  undoReassignLeague,
+  undoReassignUser,
   deleteOrphanedLeague,
   deleteOrphanedTeam,
   deleteOrphanedBowlerLeague,
   deleteOrphanedPayment,
   deleteOrphanedUser,
   recordOrphanCleanupAudit,
+  getOrphanCleanupAuditById,
+  markOrphanCleanupAuditUndone,
   listOrphanCleanupAudits,
   NotOrphanedError,
   OrphanRowNotFoundError,
+  RowChangedSinceAuditError,
   type OrphanedResourceType,
 } from '../storage/orphaned-data';
 import { requireAdmin } from '../middleware/admin.js';
@@ -272,6 +277,9 @@ function handleRepairError(res: Response, error: unknown, action: string, type: 
   if (error instanceof NotOrphanedError) {
     return sendError(res, 'Row is not orphaned and cannot be repaired here', 409, 'NOT_ORPHANED');
   }
+  if (error instanceof RowChangedSinceAuditError) {
+    return sendError(res, 'Row has been modified since the cleanup; refusing to undo', 409, 'ROW_CHANGED');
+  }
   log.error(`Error ${action} orphaned ${type}:`, error);
   sendError(res, `Failed to ${action} orphaned row`, 500, 'SERVER_ERROR');
 }
@@ -290,11 +298,9 @@ router.post('/orphaned-data/:type/:id/reassign', requireAdmin, async (req: Reque
   if (!parsed.success) return handleZodError(res, parsed.error);
   try {
     await db.transaction(async (tx) => {
-      if (type === 'leagues') {
-        await reassignOrphanedLeague(id, parsed.data.organizationId, tx);
-      } else {
-        await reassignOrphanedUser(id, parsed.data.organizationId, tx);
-      }
+      const result = type === 'leagues'
+        ? await reassignOrphanedLeague(id, parsed.data.organizationId, tx)
+        : await reassignOrphanedUser(id, parsed.data.organizationId, tx);
       await recordOrphanCleanupAudit(
         {
           adminUserId,
@@ -302,6 +308,7 @@ router.post('/orphaned-data/:type/:id/reassign', requireAdmin, async (req: Reque
           resourceId: id,
           action: 'reassign',
           organizationId: parsed.data.organizationId,
+          previousOrganizationId: result.previousOrganizationId,
         },
         tx,
       );
@@ -321,13 +328,13 @@ router.post('/orphaned-data/:type/:id/delete', requireAdmin, async (req: Request
   if (!adminUserId) return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
   try {
     await db.transaction(async (tx) => {
-      switch (type) {
-        case 'leagues': await deleteOrphanedLeague(id, tx); break;
-        case 'teams': await deleteOrphanedTeam(id, tx); break;
-        case 'bowlerLeagues': await deleteOrphanedBowlerLeague(id, tx); break;
-        case 'payments': await deleteOrphanedPayment(id, tx); break;
-        case 'users': await deleteOrphanedUser(id, tx); break;
-      }
+      const snapshot = await (
+        type === 'leagues' ? deleteOrphanedLeague(id, tx) :
+        type === 'teams' ? deleteOrphanedTeam(id, tx) :
+        type === 'bowlerLeagues' ? deleteOrphanedBowlerLeague(id, tx) :
+        type === 'payments' ? deleteOrphanedPayment(id, tx) :
+        deleteOrphanedUser(id, tx)
+      );
       await recordOrphanCleanupAudit(
         {
           adminUserId,
@@ -335,6 +342,7 @@ router.post('/orphaned-data/:type/:id/delete', requireAdmin, async (req: Request
           resourceId: id,
           action: 'delete',
           organizationId: null,
+          snapshot,
         },
         tx,
       );
@@ -342,6 +350,69 @@ router.post('/orphaned-data/:type/:id/delete', requireAdmin, async (req: Request
     sendSuccess(res, { id, deleted: true });
   } catch (error) {
     handleRepairError(res, error, 'delete', type);
+  }
+});
+
+// Undo a previous reassign cleanup directly from the activity log. Looks up
+// the original audit row, sets the resource back to its prior org (recorded
+// at reassign time — null for a true orphan), marks the original audit row
+// as undone, and writes a fresh `undo_reassign` audit row so the history
+// remains traceable. Refuses to undo deletes (use the snapshot instead),
+// re-undo a row that's already undone, or undo if the row has been moved
+// out of the org we put it in (preventing an unrelated change from being
+// silently reverted).
+router.post('/orphaned-data-audits/:id/undo', requireAdmin, async (req: Request, res: Response) => {
+  const auditId = parseInt(req.params.id, 10);
+  if (isNaN(auditId)) return sendError(res, 'Invalid audit id', 400, 'INVALID_ID');
+  const adminUserId = req.user?.id;
+  if (!adminUserId) return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
+
+  try {
+    const audit = await getOrphanCleanupAuditById(auditId);
+    if (!audit) return sendError(res, 'Audit row not found', 404, 'NOT_FOUND');
+    if (audit.action !== 'reassign') {
+      return sendError(
+        res,
+        'Only reassign actions can be undone. For deletes, use the snapshot to reconstruct the row manually.',
+        400,
+        'UNDO_UNSUPPORTED',
+      );
+    }
+    if (audit.undoneAt !== null) {
+      return sendError(res, 'This cleanup has already been undone', 409, 'ALREADY_UNDONE');
+    }
+    if (audit.organizationId === null) {
+      return sendError(res, 'Audit row is missing the org it reassigned to; cannot undo safely', 409, 'AUDIT_INCOMPLETE');
+    }
+    if (audit.resourceType !== 'leagues' && audit.resourceType !== 'users') {
+      return sendError(res, 'Only league or user reassigns can be undone', 400, 'UNDO_UNSUPPORTED');
+    }
+
+    await db.transaction(async (tx) => {
+      if (audit.resourceType === 'leagues') {
+        await undoReassignLeague(audit.resourceId, audit.organizationId!, audit.previousOrganizationId, tx);
+      } else {
+        await undoReassignUser(audit.resourceId, audit.organizationId!, audit.previousOrganizationId, tx);
+      }
+      const undoEntry = await recordOrphanCleanupAudit(
+        {
+          adminUserId,
+          resourceType: audit.resourceType as OrphanedResourceType,
+          resourceId: audit.resourceId,
+          action: 'undo_reassign',
+          // The org we moved the row OUT of when undoing (i.e. the org it had
+          // been reassigned into). Records the change in the same shape as a
+          // reassign for easy display in the activity log.
+          organizationId: audit.previousOrganizationId,
+          previousOrganizationId: audit.organizationId,
+        },
+        tx,
+      );
+      await markOrphanCleanupAuditUndone(audit.id, undoEntry.id, tx);
+    });
+    sendSuccess(res, { id: auditId, undone: true });
+  } catch (error) {
+    handleRepairError(res, error, 'undo', 'audit');
   }
 });
 

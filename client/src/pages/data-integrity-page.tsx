@@ -98,8 +98,12 @@ interface CleanupAuditRow {
   adminUserId: number;
   resourceType: OrphanType;
   resourceId: number;
-  action: 'reassign' | 'delete';
+  action: 'reassign' | 'delete' | 'undo_reassign';
   organizationId: number | null;
+  previousOrganizationId: number | null;
+  snapshot: unknown;
+  undoneAt: string | null;
+  undoneByAuditId: number | null;
   createdAt: string;
   adminUserName: string | null;
   adminUserEmail: string | null;
@@ -176,10 +180,27 @@ function formatTimestamp(value: string | null | undefined): string {
 }
 
 function RecentActivityCard() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery<ApiResponse<CleanupAuditRow[]>>({
     queryKey: ['/api/system-admin/orphaned-data-audits'],
   });
   const rows = data?.data ?? [];
+  const [snapshot, setSnapshot] = useState<CleanupAuditRow | null>(null);
+
+  const undoMutation = useMutation({
+    mutationFn: async (auditId: number) =>
+      apiRequest(`/api/system-admin/orphaned-data-audits/${auditId}/undo`, 'POST'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data-audits'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/system-admin/orphaned-data'] });
+      toast({ title: 'Cleanup undone', description: 'The reassign was reverted and a new audit row was recorded.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Undo failed', description: error.message, variant: 'destructive' });
+    },
+  });
 
   return (
     <Card>
@@ -207,41 +228,100 @@ function RecentActivityCard() {
                   <TableHead>Action</TableHead>
                   <TableHead>Resource</TableHead>
                   <TableHead>Organization</TableHead>
+                  <TableHead className="text-right">Undo / snapshot</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row.id} data-testid={`row-cleanup-audit-${row.id}`}>
-                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                      {formatTimestamp(row.createdAt)}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {row.adminUserName ?? row.adminUserEmail ?? `User #${row.adminUserId}`}
-                    </TableCell>
-                    <TableCell>
-                      {row.action === 'delete' ? (
-                        <Badge variant="destructive">Delete</Badge>
-                      ) : (
-                        <Badge>Reassign</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      <span className="font-medium">{TYPE_LABELS[row.resourceType] ?? row.resourceType}</span>
-                      <span className="text-xs text-muted-foreground ml-1 font-mono">#{row.resourceId}</span>
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {row.action === 'reassign' ? (
-                        row.organizationName ?? (row.organizationId !== null ? `#${row.organizationId}` : '—')
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {rows.map((row) => {
+                  const isUndo = row.action === 'undo_reassign';
+                  const isReassign = row.action === 'reassign';
+                  const isDelete = row.action === 'delete';
+                  const undone = row.undoneAt !== null;
+                  return (
+                    <TableRow key={row.id} data-testid={`row-cleanup-audit-${row.id}`}>
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {formatTimestamp(row.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {row.adminUserName ?? row.adminUserEmail ?? `User #${row.adminUserId}`}
+                      </TableCell>
+                      <TableCell>
+                        {isDelete ? (
+                          <Badge variant="destructive">Delete</Badge>
+                        ) : isUndo ? (
+                          <Badge variant="secondary">Undo reassign</Badge>
+                        ) : (
+                          <Badge>Reassign</Badge>
+                        )}
+                        {undone && (
+                          <Badge variant="outline" className="ml-2" data-testid={`badge-audit-undone-${row.id}`}>Undone</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        <span className="font-medium">{TYPE_LABELS[row.resourceType] ?? row.resourceType}</span>
+                        <span className="text-xs text-muted-foreground ml-1 font-mono">#{row.resourceId}</span>
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {isDelete ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          row.organizationName ?? (row.organizationId !== null ? `#${row.organizationId}` : '—')
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isReassign && !undone && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={undoMutation.isPending}
+                            onClick={() => undoMutation.mutate(row.id)}
+                            data-testid={`button-undo-audit-${row.id}`}
+                          >
+                            Undo
+                          </Button>
+                        )}
+                        {isDelete && row.snapshot !== null && row.snapshot !== undefined && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSnapshot(row)}
+                            data-testid={`button-view-snapshot-${row.id}`}
+                          >
+                            View snapshot
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
         )}
+
+        <Dialog open={!!snapshot} onOpenChange={(open) => { if (!open) setSnapshot(null); }}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Deleted row snapshot</DialogTitle>
+              <DialogDescription>
+                {snapshot && (
+                  <>Captured when {snapshot.adminUserName ?? snapshot.adminUserEmail ?? `user #${snapshot.adminUserId}`} deleted{' '}
+                  {TYPE_LABELS[snapshot.resourceType] ?? snapshot.resourceType} #{snapshot.resourceId} on{' '}
+                  {formatTimestamp(snapshot.createdAt)}. Use this to reconstruct the row by hand if the delete was a mistake.</>
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <pre
+              className="bg-muted p-3 rounded text-xs overflow-auto max-h-96"
+              data-testid="text-snapshot-json"
+            >
+              {snapshot ? JSON.stringify(snapshot.snapshot, null, 2) : ''}
+            </pre>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setSnapshot(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

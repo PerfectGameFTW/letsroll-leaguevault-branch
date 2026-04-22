@@ -294,11 +294,19 @@ async function assertOrgExists(executor: DbExecutor, organizationId: number): Pr
   }
 }
 
+// Reassign helpers return the previous organizationId so the route layer can
+// record it in the audit row. For an orphan that's always null today, but
+// recording it explicitly means the undo path restores the prior state
+// instead of guessing.
+export interface ReassignResult {
+  previousOrganizationId: number | null;
+}
+
 export async function reassignOrphanedLeague(
   leagueId: number,
   organizationId: number,
   executor: DbExecutor = db,
-): Promise<void> {
+): Promise<ReassignResult> {
   await assertOrgExists(executor, organizationId);
   const result = await executor
     .update(leagues)
@@ -313,13 +321,14 @@ export async function reassignOrphanedLeague(
     if (!existing) throw new OrphanRowNotFoundError();
     throw new NotOrphanedError();
   }
+  return { previousOrganizationId: null };
 }
 
 export async function reassignOrphanedUser(
   userId: number,
   organizationId: number,
   executor: DbExecutor = db,
-): Promise<void> {
+): Promise<ReassignResult> {
   await assertOrgExists(executor, organizationId);
   const result = await executor
     .update(users)
@@ -338,16 +347,86 @@ export async function reassignOrphanedUser(
     if (!existing) throw new OrphanRowNotFoundError();
     throw new NotOrphanedError();
   }
+  return { previousOrganizationId: null };
+}
+
+// ---------------------------------------------------------------------------
+// Undo helpers — invert a previous reassign by setting the row back to the
+// org it came from (which is `null` for orphans). Each helper takes the
+// `expectedOrganizationId` recorded in the audit row so we only undo when
+// the row is still in that org. If something else moved it in the meantime
+// we throw `RowChangedSinceAuditError` and the route layer reports a 409.
+// ---------------------------------------------------------------------------
+
+export class RowChangedSinceAuditError extends Error {
+  constructor(message = "Row has changed since the audit was recorded") {
+    super(message);
+    this.name = "RowChangedSinceAuditError";
+  }
+}
+
+export async function undoReassignLeague(
+  leagueId: number,
+  expectedOrganizationId: number,
+  previousOrganizationId: number | null,
+  executor: DbExecutor = db,
+): Promise<void> {
+  const result = await executor
+    .update(leagues)
+    .set({ organizationId: previousOrganizationId as unknown as number })
+    .where(and(eq(leagues.id, leagueId), eq(leagues.organizationId, expectedOrganizationId)))
+    .returning({ id: leagues.id });
+  if (result.length === 0) {
+    const [existing] = await executor
+      .select({ id: leagues.id })
+      .from(leagues)
+      .where(eq(leagues.id, leagueId));
+    if (!existing) throw new OrphanRowNotFoundError();
+    throw new RowChangedSinceAuditError();
+  }
+}
+
+export async function undoReassignUser(
+  userId: number,
+  expectedOrganizationId: number,
+  previousOrganizationId: number | null,
+  executor: DbExecutor = db,
+): Promise<void> {
+  const result = await executor
+    .update(users)
+    .set({ organizationId: previousOrganizationId })
+    .where(and(eq(users.id, userId), eq(users.organizationId, expectedOrganizationId)))
+    .returning({ id: users.id });
+  if (result.length === 0) {
+    const [existing] = await executor
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!existing) throw new OrphanRowNotFoundError();
+    throw new RowChangedSinceAuditError();
+  }
+}
+
+// Delete helpers return a JSON-friendly snapshot of the row that was deleted
+// so the audit log can store it. Admins can use the snapshot to reconstruct
+// the row by hand if a delete turns out to be wrong (auto-restore is unsafe
+// because foreign-key targets may already be gone).
+export type OrphanSnapshot = Record<string, unknown>;
+
+function toSnapshot(row: Record<string, unknown>): OrphanSnapshot {
+  // Drizzle returns Date / Decimal-like values; serialise via JSON to keep the
+  // audit row independent of those types (timestamps as ISO strings, etc.).
+  return JSON.parse(JSON.stringify(row));
 }
 
 export async function deleteOrphanedLeague(
   leagueId: number,
   executor: DbExecutor = db,
-): Promise<void> {
+): Promise<OrphanSnapshot> {
   const result = await executor
     .delete(leagues)
     .where(and(eq(leagues.id, leagueId), isNull(leagues.organizationId)))
-    .returning({ id: leagues.id });
+    .returning();
   if (result.length === 0) {
     const [existing] = await executor
       .select({ id: leagues.id })
@@ -356,15 +435,16 @@ export async function deleteOrphanedLeague(
     if (!existing) throw new OrphanRowNotFoundError();
     throw new NotOrphanedError();
   }
+  return toSnapshot(result[0] as Record<string, unknown>);
 }
 
 export async function deleteOrphanedTeam(
   teamId: number,
   executor: DbExecutor = db,
-): Promise<void> {
+): Promise<OrphanSnapshot> {
   const [row] = await executor
     .select({
-      id: teams.id,
+      team: teams,
       parentLeagueId: leagues.id,
       parentOrgId: leagues.organizationId,
     })
@@ -375,15 +455,16 @@ export async function deleteOrphanedTeam(
   const isOrphan = row.parentLeagueId === null || row.parentOrgId === null;
   if (!isOrphan) throw new NotOrphanedError();
   await executor.delete(teams).where(eq(teams.id, teamId));
+  return toSnapshot(row.team as Record<string, unknown>);
 }
 
 export async function deleteOrphanedBowlerLeague(
   id: number,
   executor: DbExecutor = db,
-): Promise<void> {
+): Promise<OrphanSnapshot> {
   const [row] = await executor
     .select({
-      id: bowlerLeagues.id,
+      bl: bowlerLeagues,
       parentLeagueId: leagues.id,
       parentOrgId: leagues.organizationId,
     })
@@ -394,15 +475,16 @@ export async function deleteOrphanedBowlerLeague(
   const isOrphan = row.parentLeagueId === null || row.parentOrgId === null;
   if (!isOrphan) throw new NotOrphanedError();
   await executor.delete(bowlerLeagues).where(eq(bowlerLeagues.id, id));
+  return toSnapshot(row.bl as Record<string, unknown>);
 }
 
 export async function deleteOrphanedPayment(
   id: number,
   executor: DbExecutor = db,
-): Promise<void> {
+): Promise<OrphanSnapshot> {
   const [row] = await executor
     .select({
-      id: payments.id,
+      payment: payments,
       parentLeagueId: leagues.id,
       parentOrgId: leagues.organizationId,
     })
@@ -413,12 +495,13 @@ export async function deleteOrphanedPayment(
   const isOrphan = row.parentLeagueId === null || row.parentOrgId === null;
   if (!isOrphan) throw new NotOrphanedError();
   await executor.delete(payments).where(eq(payments.id, id));
+  return toSnapshot(row.payment as Record<string, unknown>);
 }
 
 export async function deleteOrphanedUser(
   userId: number,
   executor: DbExecutor = db,
-): Promise<void> {
+): Promise<OrphanSnapshot> {
   const result = await executor
     .delete(users)
     .where(and(
@@ -426,7 +509,7 @@ export async function deleteOrphanedUser(
       isNull(users.organizationId),
       ne(users.role, 'system_admin'),
     ))
-    .returning({ id: users.id });
+    .returning();
   if (result.length === 0) {
     const [existing] = await executor
       .select({ id: users.id })
@@ -435,6 +518,11 @@ export async function deleteOrphanedUser(
     if (!existing) throw new OrphanRowNotFoundError();
     throw new NotOrphanedError();
   }
+  // Strip the password hash from the audit snapshot — it has no business
+  // sitting in the audit log even though the user row is gone.
+  const snap = toSnapshot(result[0] as Record<string, unknown>);
+  if ('password' in snap) delete snap.password;
+  return snap;
 }
 
 // ---------------------------------------------------------------------------
@@ -458,6 +546,28 @@ export async function recordOrphanCleanupAudit(
   return row;
 }
 
+export async function getOrphanCleanupAuditById(
+  id: number,
+  executor: DbExecutor = db,
+): Promise<OrphanCleanupAudit | null> {
+  const [row] = await executor
+    .select()
+    .from(orphanCleanupAudits)
+    .where(eq(orphanCleanupAudits.id, id));
+  return row ?? null;
+}
+
+export async function markOrphanCleanupAuditUndone(
+  id: number,
+  undoneByAuditId: number,
+  executor: DbExecutor = db,
+): Promise<void> {
+  await executor
+    .update(orphanCleanupAudits)
+    .set({ undoneAt: new Date().toISOString(), undoneByAuditId })
+    .where(eq(orphanCleanupAudits.id, id));
+}
+
 export async function listOrphanCleanupAudits(limit = 50): Promise<CleanupAuditRow[]> {
   const rows = await db
     .select({
@@ -467,6 +577,10 @@ export async function listOrphanCleanupAudits(limit = 50): Promise<CleanupAuditR
       resourceId: orphanCleanupAudits.resourceId,
       action: orphanCleanupAudits.action,
       organizationId: orphanCleanupAudits.organizationId,
+      previousOrganizationId: orphanCleanupAudits.previousOrganizationId,
+      snapshot: orphanCleanupAudits.snapshot,
+      undoneAt: orphanCleanupAudits.undoneAt,
+      undoneByAuditId: orphanCleanupAudits.undoneByAuditId,
       createdAt: orphanCleanupAudits.createdAt,
       adminUserName: users.name,
       adminUserEmail: users.email,
