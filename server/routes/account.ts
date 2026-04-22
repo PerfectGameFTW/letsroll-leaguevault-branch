@@ -21,6 +21,7 @@ import { maskEmail } from '../utils/pii';
 import { randomBytes, createHash } from 'crypto';
 import { db } from '../db';
 import { emailChangeRequests, users } from '@shared/schema';
+import { recordAdminEmailChangeAudit } from '../storage/admin-email-change-audits';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 
 const log = createLogger('Account');
@@ -217,7 +218,11 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
 
       // Supersede any older pending request and create the new one in a
       // single transaction — guarantees only one active token per user
-      // even under concurrent profile updates.
+      // even under concurrent profile updates. When a system_admin is
+      // acting on behalf of someone else (task #325), we ALSO write an
+      // audit row inside the same transaction so the request and its
+      // audit can never disagree.
+      const adminInitiated = user.id !== userId;
       await db.transaction(async (tx) => {
         await tx
           .update(emailChangeRequests)
@@ -234,6 +239,17 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
           tokenHash,
           expiresAt,
         });
+        if (adminInitiated) {
+          await recordAdminEmailChangeAudit(
+            {
+              actorUserId: user.id,
+              targetUserId: userId,
+              oldEmailMasked: maskEmail(existingUser.email),
+              newEmailMasked: maskEmail(newEmail),
+            },
+            tx,
+          );
+        }
       });
 
       // Build confirmation URL using the org's subdomain when known so the

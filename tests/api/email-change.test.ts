@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../server/db';
 import { storage } from '../../server/storage';
-import { users, organizations, emailChangeRequests, bowlers } from '@shared/schema';
+import { users, organizations, emailChangeRequests, bowlers, adminEmailChangeAudits } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { createHash } from 'crypto';
 import {
@@ -91,6 +91,16 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (createdUserIds.length > 0) {
+    // admin_email_change_audits uses ON DELETE RESTRICT (we want the
+    // audit trail to survive a user soft-delete in production), so the
+    // test cleanup has to remove those rows first by either actor or
+    // target before the users themselves can go.
+    await db
+      .delete(adminEmailChangeAudits)
+      .where(inArray(adminEmailChangeAudits.targetUserId, createdUserIds));
+    await db
+      .delete(adminEmailChangeAudits)
+      .where(inArray(adminEmailChangeAudits.actorUserId, createdUserIds));
     // email_change_requests rows cascade-delete with the user
     await db.delete(users).where(inArray(users.id, createdUserIds));
     createdUserIds.length = 0;
@@ -634,6 +644,62 @@ describe('PATCH /api/account/profile/:id when invoked by a system_admin', () => 
     const open = pending.filter(r => r.consumedAt === null);
     expect(open.length).toBe(1);
     expect(open[0].newEmail).toBe(newEmail);
+  });
+
+  it("writes an admin_email_change_audits row when an admin requests another user's email change", async () => {
+    // Audit-trail contract from task #325. The row must be written in
+    // the SAME transaction as the email_change_requests insert; this
+    // test only asserts the post-conditions, but the route comment
+    // covers the transactional invariant.
+    const { userId, oldEmail } = await createUserAndLogin();
+    const adminSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+    const newEmail = uniqEmail('admin-audited');
+
+    const before = Date.now();
+    const res = await apiPatch<{ emailChangeRequested: boolean }>(
+      `/api/account/profile/${userId}`,
+      { email: newEmail },
+      adminSession,
+    );
+    expect(res.status).toBe(200);
+    expect(res.data.data?.emailChangeRequested).toBe(true);
+
+    const auditRows = await db
+      .select()
+      .from(adminEmailChangeAudits)
+      .where(eq(adminEmailChangeAudits.targetUserId, userId));
+    expect(auditRows.length).toBe(1);
+    const audit = auditRows[0];
+    expect(audit.actorUserId).toBe(adminSession.user.id);
+    expect(audit.targetUserId).toBe(userId);
+    // Stored masked, never the full address — guard against PII leak
+    // through the audit table.
+    expect(audit.oldEmailMasked).not.toBe(oldEmail);
+    expect(audit.newEmailMasked).not.toBe(newEmail);
+    expect(audit.oldEmailMasked).toContain('*');
+    expect(audit.newEmailMasked).toContain('*');
+    expect(new Date(audit.createdAt).getTime()).toBeGreaterThanOrEqual(before - 1000);
+  });
+
+  it('does NOT write an admin audit row when the user changes their OWN email', async () => {
+    // Self-serve path is logged at INFO, not in the audit table —
+    // task description is explicit about the asymmetry.
+    const { userId, session } = await createUserAndLogin();
+    const newEmail = uniqEmail('self-no-audit');
+
+    const res = await apiPatch<{ emailChangeRequested: boolean }>(
+      `/api/account/profile/${userId}`,
+      { email: newEmail },
+      session,
+    );
+    expect(res.status).toBe(200);
+    expect(res.data.data?.emailChangeRequested).toBe(true);
+
+    const auditRows = await db
+      .select()
+      .from(adminEmailChangeAudits)
+      .where(eq(adminEmailChangeAudits.targetUserId, userId));
+    expect(auditRows.length).toBe(0);
   });
 });
 

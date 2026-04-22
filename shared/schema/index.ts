@@ -34,6 +34,9 @@ export type { DeletionRequest, InsertDeletionRequest, UpdateDeletionRequestStatu
 export { emailChangeRequests, insertEmailChangeRequestSchema } from "./email-change-requests";
 export type { EmailChangeRequest, InsertEmailChangeRequest } from "./email-change-requests";
 
+export { adminEmailChangeAudits, insertAdminEmailChangeAuditSchema } from "./admin-email-change-audits";
+export type { AdminEmailChangeAudit, InsertAdminEmailChangeAudit } from "./admin-email-change-audits";
+
 export {
   orphanCleanupAudits,
   insertOrphanCleanupAuditSchema,
