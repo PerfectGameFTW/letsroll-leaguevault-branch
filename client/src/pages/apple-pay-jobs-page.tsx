@@ -67,6 +67,16 @@ function invalidateJobQueries(jobId?: number) {
   if (jobId !== undefined) {
     queryClient.invalidateQueries({ queryKey: ['/api/payments-provider/apple-pay/jobs', jobId] });
   }
+  // Refresh the sidebar badge so it clears the moment a cancel/retry
+  // moves the queue out of an attention-needing state (#313). Note: the
+  // listing key above (`['/api/payments-provider/apple-pay/jobs']`) is a
+  // prefix of the pending-count key, so by default React Query would
+  // refetch this through prefix matching — but we invalidate it
+  // explicitly here so this guarantee survives any future refactor that
+  // narrows the listing key.
+  queryClient.invalidateQueries({
+    queryKey: ['/api/payments-provider/apple-pay/jobs/pending-count'],
+  });
 }
 
 interface JobDetailResponse {

@@ -32,6 +32,31 @@ export async function listApplePayJobs(limit = 25): Promise<ApplePayJob[]> {
 }
 
 /**
+ * Count of Apple Pay jobs that should pull a system admin's attention,
+ * used to drive the sidebar badge next to "Apple Pay Jobs" (#313).
+ *
+ * "Attention" = jobs that are either still in flight (pending / running)
+ * or terminated in a state the admin needs to react to (failed / partial).
+ * `succeeded` and `canceled` are intentionally excluded — succeeded jobs
+ * need no action, and a canceled job is the result of an explicit admin
+ * decision so it would be noisy to keep nagging.
+ */
+const ATTENTION_STATUSES: ApplePayJobStatus[] = [
+  "pending",
+  "running",
+  "failed",
+  "partial",
+];
+
+export async function countApplePayJobsNeedingAttention(): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`COUNT(*)::int` })
+    .from(applePayJobs)
+    .where(inArray(applePayJobs.status, ATTENTION_STATUSES));
+  return row?.count ?? 0;
+}
+
+/**
  * Per-job aggregate of `apple_pay_job_items.recovered_count`. Used by the
  * admin list view to flag jobs that had any items recovered after their
  * pre-call lease expired (#270). Returns a map of jobId -> total

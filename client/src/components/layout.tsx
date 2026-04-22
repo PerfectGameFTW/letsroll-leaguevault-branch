@@ -97,7 +97,8 @@ const navItems: NavItem[] = [
     icon: Apple,
     label: "Apple Pay Jobs",
     href: "/admin/apple-pay-jobs",
-    adminOnly: true
+    adminOnly: true,
+    badgeQueryKey: ['/api/payments-provider/apple-pay/jobs/pending-count'] as const,
   },
   {
     icon: ShieldAlert,
@@ -397,10 +398,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
     refetchOnWindowFocus: true,
     staleTime: 30_000,
   });
+  // Same polling cadence as the deletion-requests badge above (#313).
+  // System-admin only; the apple-pay jobs page also invalidates this key
+  // after cancel/retry actions so the badge clears as soon as the queue
+  // drains.
+  const { data: pendingApplePayResponse } = useQuery<ApiResponse<{ count: number }>>({
+    queryKey: ['/api/payments-provider/apple-pay/jobs/pending-count'],
+    enabled: isSystemAdmin,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 30_000,
+  });
   const badgeCounts = useMemo<Record<string, number>>(() => ({
     [['/api/system-admin/deletion-requests/pending-count'].join('|')]:
       pendingDeletionResponse?.data?.count ?? 0,
-  }), [pendingDeletionResponse?.data?.count]);
+    [['/api/payments-provider/apple-pay/jobs/pending-count'].join('|')]:
+      pendingApplePayResponse?.data?.count ?? 0,
+  }), [
+    pendingDeletionResponse?.data?.count,
+    pendingApplePayResponse?.data?.count,
+  ]);
 
   const toggleSidebar = useCallback(() => {
     setIsCollapsed((prev: boolean) => !prev);

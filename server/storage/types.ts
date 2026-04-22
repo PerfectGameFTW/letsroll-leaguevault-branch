@@ -212,6 +212,7 @@ export interface IApplePayJobStorage {
   createApplePayJob(createdBy: number | null): Promise<ApplePayJob>;
   getApplePayJob(id: number): Promise<ApplePayJob | undefined>;
   listApplePayJobs(limit?: number): Promise<ApplePayJob[]>;
+  countApplePayJobsNeedingAttention(): Promise<number>;
   getApplePayJobsRecoveredItemTotals(jobIds: number[]): Promise<Map<number, number>>;
   claimNextApplePayJob(): Promise<ApplePayJob | undefined>;
   recoverInterruptedApplePayJobs(): Promise<import("./apple-pay-jobs").ApplePayRecoveryResult>;

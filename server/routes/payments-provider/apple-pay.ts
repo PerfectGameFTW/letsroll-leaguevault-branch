@@ -72,6 +72,24 @@ router.get('/apple-pay/jobs', async (req: any, res) => {
   }
 });
 
+// Sidebar badge feed (#313). Returns the number of jobs in a state that
+// requires admin attention (pending / running / failed / partial). Mounted
+// BEFORE `/apple-pay/jobs/:id` so the literal `pending-count` segment is
+// not captured by the `:id` param. System-admin only — same gate as the
+// rest of the apple-pay job routes.
+router.get('/apple-pay/jobs/pending-count', async (req: any, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
+    }
+    const count = await storage.countApplePayJobsNeedingAttention();
+    sendSuccess(res, { count });
+  } catch (error) {
+    log.error('Apple Pay pending-count error:', error);
+    sendError(res, 'Failed to compute pending Apple Pay jobs count', 500);
+  }
+});
+
 router.get('/apple-pay/jobs/:id', async (req: any, res) => {
   try {
     if (req.user?.role !== 'system_admin') {
