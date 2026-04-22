@@ -112,6 +112,26 @@ describe('PATCH /api/account/profile/:id phone clearing', () => {
     expect(after[0].phone).toBe('+15555550999');
   });
 
+  it('writes phone = NULL when the client submits an empty string (profile UI default)', async () => {
+    const { userId, session } = await createUserWithPhoneAndLogin('+15555550103');
+
+    const res = await apiPatch(`/api/account/profile/${userId}`, { phone: '' }, session);
+    expect(res.status).toBe(200);
+
+    const after = await db.select().from(users).where(eq(users.id, userId));
+    expect(after[0].phone).toBeNull();
+  });
+
+  it('writes phone = NULL when the client submits a whitespace-only string', async () => {
+    const { userId, session } = await createUserWithPhoneAndLogin('+15555550104');
+
+    const res = await apiPatch(`/api/account/profile/${userId}`, { phone: '   ' }, session);
+    expect(res.status).toBe(200);
+
+    const after = await db.select().from(users).where(eq(users.id, userId));
+    expect(after[0].phone).toBeNull();
+  });
+
   it('still clears phone when the user already had no phone on file (idempotent)', async () => {
     const { userId, session } = await createUserWithPhoneAndLogin(null);
 

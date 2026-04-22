@@ -18,6 +18,16 @@ describe('profile update — phone tri-state semantics', () => {
     expect(parsed.phone).toBe('555-0100');
   });
 
+  it('coerces an empty string to null (clear intent from blank-input clients)', () => {
+    const parsed = profileUpdateSchema.parse({ phone: '' });
+    expect(parsed.phone).toBeNull();
+  });
+
+  it('coerces a whitespace-only string to null', () => {
+    const parsed = profileUpdateSchema.parse({ phone: '   ' });
+    expect(parsed.phone).toBeNull();
+  });
+
   it('rejects a non-string non-null phone value', () => {
     const result = profileUpdateSchema.safeParse({ phone: 12345 });
     expect(result.success).toBe(false);

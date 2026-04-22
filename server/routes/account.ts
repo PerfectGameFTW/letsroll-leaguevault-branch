@@ -28,14 +28,25 @@ const router = Router();
 
 // PATCH /profile/:id body schema. Phone is intentionally tri-state so
 // the handler can distinguish three caller intents:
-//   undefined → field omitted, leave the column untouched
-//   null      → caller is explicitly clearing the field, write NULL
-//   string    → caller is setting a new value
+//   undefined            → field omitted, leave the column untouched
+//   null OR ""           → caller is explicitly clearing the field, write NULL
+//   non-empty string     → caller is setting a new value
+// We collapse empty / whitespace-only strings to null at the schema
+// boundary so older clients (and the profile form, which submits a
+// blank Input as "") get the same "clear it" behaviour as a JSON null.
 // Exported for unit tests.
 export const profileUpdateSchema = updateUserSchemaBase
   .pick({ name: true, email: true, phone: true })
   .extend({
-    phone: z.string().nullable().optional(),
+    phone: z
+      .string()
+      .nullable()
+      .optional()
+      .transform((v) => {
+        if (v === undefined) return undefined;
+        if (v === null) return null;
+        return v.trim() === '' ? null : v;
+      }),
   });
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {

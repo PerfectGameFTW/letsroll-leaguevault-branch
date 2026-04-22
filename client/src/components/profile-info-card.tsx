@@ -43,10 +43,16 @@ export function ProfileInfoCard({ currentUser }: { currentUser: User }) {
 
   const mutation = useMutation({
     mutationFn: async (data: ProfileFormData) => {
+      const trimmedPhone = (data.phone ?? "").trim();
+      const payload = {
+        name: data.name,
+        email: data.email,
+        phone: trimmedPhone === "" ? null : trimmedPhone,
+      };
       return apiRequest<{ paymentSyncStatus?: "synced" | "skipped" | "pending_retry" | "not_applicable" }>(
         `/api/account/profile/${currentUser.id}`,
         "PATCH",
-        data,
+        payload,
       );
     },
     onSuccess: (response) => {
