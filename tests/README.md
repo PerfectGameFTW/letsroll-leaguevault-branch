@@ -91,16 +91,41 @@ override credentials without editing source:
 Some test files mutate shared state (e.g. delete and re-seed the system
 admin row) and would race with other test files under the default
 `vitest run`. They are gated behind their own env vars and must be
-invoked in a dedicated, serial step:
+invoked in a dedicated, serial step.
+
+The convenience wrapper `scripts/test-race.sh` runs the full opt-in
+race suite with the right env var pre-set:
+
+```bash
+bash scripts/test-race.sh
+```
+
+…which is equivalent to:
 
 ```bash
 RUN_BOOTSTRAP_RACE_TESTS=1 npx vitest run \
   tests/api/setup-admin-bootstrap-race.test.ts
 ```
 
-| Env var                          | File(s)                                              |
-|----------------------------------|------------------------------------------------------|
-| `RUN_BOOTSTRAP_RACE_TESTS=1`     | `tests/api/setup-admin-bootstrap-race.test.ts`       |
+#### CI wiring
+
+CI pipelines should invoke `scripts/test-race.sh` as a **separate,
+serial step that runs AFTER the main `npm test` job has finished** —
+never in parallel with it. The race suite deletes and re-seeds the
+`system_admin` row, so concurrent workers (whether other vitest files
+or another instance of CI) will fight over that row and produce
+flaky failures.
+
+A typical GitHub Actions job ordering looks like:
+
+```yaml
+- run: npm test               # main suite
+- run: bash scripts/test-race.sh   # opt-in race suite, serial
+```
+
+| Env var                          | File(s)                                              | Wrapper                       |
+|----------------------------------|------------------------------------------------------|-------------------------------|
+| `RUN_BOOTSTRAP_RACE_TESTS=1`     | `tests/api/setup-admin-bootstrap-race.test.ts`       | `bash scripts/test-race.sh`   |
 
 ## Layout
 
