@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { Layout } from '@/components/layout';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,132 @@ function formatDate(value: string | null): string {
   }
 }
 
+/**
+ * The deletion-requests row stores `executionSummary` as a
+ * JSON-serialized string in a TEXT column. Parse defensively so a
+ * malformed legacy row never crashes the page.
+ */
+function parseExecutionSummary(raw: string | null): DeletionExecutionSummary | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as DeletionExecutionSummary;
+  } catch {
+    return null;
+  }
+}
+
+function ExecutionSummaryPanel({ summary }: { summary: DeletionExecutionSummary }) {
+  const bowlersDone = summary.bowlers.filter((b) => b.anonymized).length;
+  const bowlersFailed = summary.bowlers.filter((b) => !b.anonymized);
+  const providersDone = summary.paymentProvider.filter((p) => p.deleted).length;
+  const providersFailed = summary.paymentProvider.filter((p) => !p.deleted);
+
+  return (
+    <div className="rounded-md border bg-muted/30 p-4 space-y-4 text-sm" data-testid="execution-summary-panel">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
+        <div>
+          <span className="text-muted-foreground">Executed at: </span>
+          <span className="font-medium">{formatDate(summary.executedAt)}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Executed by user ID: </span>
+          <span className="font-medium">{summary.executedBy}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">User account: </span>
+          {summary.user.deleted ? (
+            <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-3.5 w-3.5" /> deleted (id {summary.user.userId})
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {summary.user.reason || 'not deleted'}
+            </span>
+          )}
+        </div>
+        <div>
+          <span className="text-muted-foreground">Pending email-change requests removed: </span>
+          <span className="font-medium">{summary.emailChangeRequestsDeleted}</span>
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <h4 className="font-semibold">Bowler records</h4>
+          <span className="text-xs text-muted-foreground">
+            {bowlersDone} of {summary.bowlers.length} anonymized
+          </span>
+        </div>
+        {summary.bowlers.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No bowler records were matched for this email.</p>
+        ) : bowlersFailed.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            All matching bowler records were anonymized successfully.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {bowlersFailed.map((b) => (
+              <li
+                key={b.bowlerId}
+                className="text-xs text-destructive flex items-start gap-2"
+                data-testid={`bowler-failed-${b.bowlerId}`}
+              >
+                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <span>
+                  Bowler #{b.bowlerId}: failed to anonymize
+                  {b.reason ? ` — ${b.reason}` : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <h4 className="font-semibold">Payment-provider customer records</h4>
+          <span className="text-xs text-muted-foreground">
+            {providersDone} of {summary.paymentProvider.length} deleted
+          </span>
+        </div>
+        {summary.paymentProvider.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            No payment-provider customer records were associated with these bowlers.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {summary.paymentProvider.map((p, i) => (
+              <li
+                key={`${p.locationId}-${p.customerId}-${i}`}
+                className={`text-xs flex items-start gap-2 ${p.deleted ? 'text-muted-foreground' : 'text-destructive'}`}
+                data-testid={p.deleted ? `provider-ok-${i}` : `provider-failed-${i}`}
+              >
+                {p.deleted ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                ) : (
+                  <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                )}
+                <span>
+                  <span className="font-mono">{p.providerName}</span> · location {p.locationId} ·
+                  customer <span className="font-mono">{p.customerId}</span>
+                  {p.deleted ? ' — deleted' : ` — failed${p.error ? `: ${p.error}` : ''}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {providersFailed.length > 0 && (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+            Follow up manually with the listed payment processor(s) to confirm the customer
+            record is gone.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DeletionRequestsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -59,6 +186,16 @@ export default function DeletionRequestsPage() {
   const [reviewMode, setReviewMode] = useState<ReviewMode>('completed');
   const [adminNote, setAdminNote] = useState('');
   const [executeConfirmText, setExecuteConfirmText] = useState('');
+  const [expandedRequestIds, setExpandedRequestIds] = useState<Set<number>>(new Set());
+
+  const toggleExpanded = (id: number) => {
+    setExpandedRequestIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const { data: requestsResponse, isLoading } = useQuery<ApiResponse<DeletionRequest[]>>({
     queryKey: ['/api/system-admin/deletion-requests', statusFilter],
@@ -177,51 +314,95 @@ export default function DeletionRequestsPage() {
                     <TableBody>
                       {requests.map((req) => {
                         const meta = STATUS_LABELS[req.status as DeletionRequestStatus] ?? STATUS_LABELS.pending;
+                        const summary = parseExecutionSummary(req.executionSummary);
+                        const expanded = expandedRequestIds.has(req.id);
+                        const providerFailures = summary?.paymentProvider.filter((p) => !p.deleted).length ?? 0;
                         return (
-                          <TableRow key={req.id}>
-                            <TableCell className="font-medium">{req.email}</TableCell>
-                            <TableCell className="whitespace-nowrap">{formatDate(req.createdAt)}</TableCell>
-                            <TableCell className="max-w-xs">
-                              <span className="line-clamp-2 text-sm text-muted-foreground">
-                                {req.reason || '—'}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={meta.variant}>{meta.label}</Badge>
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                              {req.reviewedAt ? formatDate(req.reviewedAt) : '—'}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {req.status === 'pending' ? (
-                                <div className="flex gap-2 justify-end flex-wrap">
-                                  <Button
-                                    size="sm"
-                                    variant="destructive"
-                                    onClick={() => openReview(req, 'execute')}
-                                  >
-                                    Delete account data
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => openReview(req, 'completed')}
-                                  >
-                                    Mark completed
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    onClick={() => openReview(req, 'rejected')}
-                                  >
-                                    Reject
-                                  </Button>
-                                </div>
-                              ) : req.adminNote ? (
-                                <span className="text-xs text-muted-foreground italic">{req.adminNote}</span>
-                              ) : null}
-                            </TableCell>
-                          </TableRow>
+                          <Fragment key={req.id}>
+                              <TableRow data-testid={`deletion-request-row-${req.id}`}>
+                                <TableCell className="font-medium">{req.email}</TableCell>
+                                <TableCell className="whitespace-nowrap">{formatDate(req.createdAt)}</TableCell>
+                                <TableCell className="max-w-xs">
+                                  <span className="line-clamp-2 text-sm text-muted-foreground">
+                                    {req.reason || '—'}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={meta.variant}>{meta.label}</Badge>
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                                  {req.reviewedAt ? formatDate(req.reviewedAt) : '—'}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex gap-2 justify-end flex-wrap items-center">
+                                    {req.status === 'pending' ? (
+                                      <>
+                                        <Button
+                                          size="sm"
+                                          variant="destructive"
+                                          onClick={() => openReview(req, 'execute')}
+                                        >
+                                          Delete account data
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => openReview(req, 'completed')}
+                                        >
+                                          Mark completed
+                                        </Button>
+                                        <Button
+                                          size="sm"
+                                          variant="ghost"
+                                          onClick={() => openReview(req, 'rejected')}
+                                        >
+                                          Reject
+                                        </Button>
+                                      </>
+                                    ) : req.adminNote ? (
+                                      <span className="text-xs text-muted-foreground italic">{req.adminNote}</span>
+                                    ) : null}
+                                    {summary && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        data-testid={`toggle-summary-${req.id}`}
+                                        aria-expanded={expanded}
+                                        aria-label={expanded ? 'Hide execution details' : 'Show execution details'}
+                                        onClick={() => toggleExpanded(req.id)}
+                                      >
+                                        {expanded ? (
+                                          <ChevronDown className="h-4 w-4" />
+                                        ) : (
+                                          <ChevronRight className="h-4 w-4" />
+                                        )}
+                                        <span className="ml-1 text-xs">
+                                          Execution details
+                                          {providerFailures > 0 && (
+                                            <Badge
+                                              variant="destructive"
+                                              className="ml-2 px-1.5 py-0 text-[10px]"
+                                            >
+                                              {providerFailures} failed
+                                            </Badge>
+                                          )}
+                                        </span>
+                                      </Button>
+                                    )}
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                              {expanded && summary && (
+                                <TableRow
+                                  data-testid={`deletion-request-summary-row-${req.id}`}
+                                  className="bg-transparent hover:bg-transparent"
+                                >
+                                  <TableCell colSpan={6} className="p-3">
+                                    <ExecutionSummaryPanel summary={summary} />
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                          </Fragment>
                         );
                       })}
                     </TableBody>
