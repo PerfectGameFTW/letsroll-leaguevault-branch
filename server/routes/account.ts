@@ -492,8 +492,39 @@ router.post(
   },
 );
 
+// Slow down credential-stuffing / current-password brute-forcing on a
+// session that's already been hijacked. Keyed on (userId|ip) so a
+// single attacker can't burn through attempts on multiple accounts
+// from one IP, and a single legit user behind CG-NAT isn't blocked
+// by an unrelated stranger. Returns the standard 429 error shape via
+// `sendError` so the existing client-side error handling keeps working.
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => {
+    const userId = (req.user as { id?: number } | undefined)?.id;
+    // Fall through to IP if not yet authenticated — requireAuth runs
+    // AFTER this limiter, so an unauth caller still gets per-IP
+    // throttling instead of bypassing the limit by omitting cookies.
+    return userId ? `u:${userId}` : `ip:${req.ip ?? 'unknown'}`;
+  },
+  handler: (req, res) => {
+    log.warn('Password-change attempts throttled', {
+      userId: (req.user as { id?: number } | undefined)?.id,
+    });
+    return sendError(
+      res,
+      'Too many password-change attempts. Please wait a few minutes and try again.',
+      429,
+      'RATE_LIMITED',
+    );
+  },
+});
+
 // Change password for the currently authenticated user
-router.post('/change-password', requireAuth, async (req: Request, res: Response) => {
+router.post('/change-password', changePasswordLimiter, requireAuth, async (req: Request, res: Response) => {
   try {
     const user = req.user!;
 

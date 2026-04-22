@@ -179,6 +179,38 @@ describe('POST /api/account/change-password', () => {
     expect(afterA.status).toBe(200);
   });
 
+  it('throttles repeated change-password attempts with RATE_LIMITED (task #317)', async () => {
+    const { session } = await createUserAndLogin();
+
+    // Limiter is set to 10/15min keyed on userId. Burn through the
+    // budget with intentionally-wrong current passwords (so we
+    // exercise the limiter without actually rotating the password)
+    // and assert the 11th call is rejected as throttled instead of
+    // INVALID_PASSWORD.
+    let lastStatus = 0;
+    let lastBody: any = null;
+    for (let i = 0; i < 10; i++) {
+      const r = await apiPost(
+        '/api/account/change-password',
+        { currentPassword: `wrong-${i}`, newPassword: NEW_STRONG_PASSWORD },
+        session,
+      );
+      lastStatus = r.status;
+      lastBody = r.data;
+    }
+    expect(lastStatus).toBe(400);
+    expect(lastBody?.error?.code).toBe('INVALID_PASSWORD');
+
+    const throttled = await apiPost(
+      '/api/account/change-password',
+      { currentPassword: 'wrong-final', newPassword: NEW_STRONG_PASSWORD },
+      session,
+    );
+    expect(throttled.status).toBe(429);
+    expect(throttled.data.success).toBe(false);
+    expect(throttled.data.error?.code).toBe('RATE_LIMITED');
+  });
+
   it('rejects an unauthenticated request with AUTH_REQUIRED', async () => {
     // Fetch CSRF token+cookie without logging in so the request reaches
     // requireAuth instead of being 403'd by CSRF middleware first.
