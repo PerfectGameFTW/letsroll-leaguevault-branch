@@ -269,6 +269,20 @@ export interface IAlerterStateStorage {
     kind: string,
     minIntervalMs: number,
   ): Promise<{ claimed: boolean; suppressedCount: number }>;
+  recordAlerterSummary(
+    kind: string,
+    summary: import("@shared/schema").AlerterSummary,
+  ): Promise<void>;
+  getRecentAlerterEvent(
+    kind: string,
+    withinMs: number,
+  ): Promise<
+    | {
+        lastSentAt: Date;
+        summary: import("@shared/schema").AlerterSummary | null;
+      }
+    | null
+  >;
 }
 
 export interface IStorage extends

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { useSearch } from 'wouter';
 import { Layout } from '@/components/layout';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -339,6 +340,21 @@ function CountTile({ label, value, tone }: { label: string; value: number; tone?
 export default function ApplePayJobsPage() {
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
 
+  // Optional `?jobs=1,2,3` filter. Used by the dashboard recovery
+  // banner (#272) to deep-link admins straight to the jobs that just
+  // triggered an alert. Invalid / missing values fall back to "show all".
+  const search = useSearch();
+  const filteredJobIds = useMemo(() => {
+    const params = new URLSearchParams(search);
+    const raw = params.get('jobs');
+    if (!raw) return null;
+    const ids = raw
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    return ids.length > 0 ? new Set(ids) : null;
+  }, [search]);
+
   // Each job is augmented server-side with `recoveredItemCount` so the
   // list view can flag anomalous jobs (#270) without per-row fetches.
   const { data: jobsResponse, isLoading, isError, error, refetch, isFetching } = useQuery<ApiResponse<{ jobs: Array<ApplePayJob & { recoveredItemCount?: number }> }>>({
@@ -349,7 +365,10 @@ export default function ApplePayJobsPage() {
     },
   });
 
-  const jobs = jobsResponse?.data?.jobs ?? [];
+  const allJobs = jobsResponse?.data?.jobs ?? [];
+  const jobs = filteredJobIds
+    ? allJobs.filter((j) => filteredJobIds.has(j.id))
+    : allJobs;
 
   return (
     <Layout>
@@ -360,6 +379,23 @@ export default function ApplePayJobsPage() {
             <p className="text-sm text-muted-foreground mt-1">
               Bulk Apple Pay domain registration jobs. The latest 25 jobs are shown.
             </p>
+            {filteredJobIds && (
+              <div
+                className="mt-3 inline-flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-900 dark:text-amber-200"
+                data-testid="banner-jobs-filter-active"
+              >
+                <span>
+                  Filtered to {jobs.length} job{jobs.length === 1 ? '' : 's'} from a recovery alert
+                </span>
+                <a
+                  href="/admin/apple-pay-jobs"
+                  className="font-semibold underline underline-offset-2 hover:opacity-80"
+                  data-testid="link-clear-jobs-filter"
+                >
+                  Clear filter
+                </a>
+              </div>
+            )}
           </div>
 
           <Card>

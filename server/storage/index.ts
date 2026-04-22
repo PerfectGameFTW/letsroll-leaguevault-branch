@@ -188,6 +188,8 @@ export class DatabaseStorage implements IStorage {
   retryApplePayJobItem!: IStorage["retryApplePayJobItem"];
 
   tryClaimAlerterSlot!: IStorage["tryClaimAlerterSlot"];
+  recordAlerterSummary!: IStorage["recordAlerterSummary"];
+  getRecentAlerterEvent!: IStorage["getRecentAlerterEvent"];
 
   constructor() {
     Object.assign(this, {

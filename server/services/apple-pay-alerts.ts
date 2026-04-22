@@ -12,6 +12,13 @@ interface RecoveredItem {
   itemId: number;
 }
 
+export interface AlertSummary {
+  itemCount: number;
+  affectedJobIds: number[];
+  itemIds: number[];
+  suppressedSinceLastAlert: number;
+}
+
 export interface AlerterDeps {
   send: typeof sendApplePayRecoveryAlert;
   getAdminEmails: () => Promise<string[]>;
@@ -26,6 +33,13 @@ export interface AlerterDeps {
     kind: string,
     minIntervalMs: number,
   ) => Promise<{ claimed: boolean; suppressedCount: number }>;
+  /**
+   * Persist a description of the most recent alert so the admin
+   * dashboard can render an in-app banner ("N items recovered at
+   * HH:MM, click to investigate") without needing the operator to
+   * dig the email back out (#272).
+   */
+  recordSummary: (kind: string, summary: AlertSummary) => Promise<void>;
 }
 
 const defaultDeps: AlerterDeps = {
@@ -44,6 +58,7 @@ const defaultDeps: AlerterDeps = {
   },
   minIntervalMs: () => env.APPLE_PAY_RECOVERY_ALERT_MIN_INTERVAL_MS,
   tryClaimSlot: (kind, ms) => storage.tryClaimAlerterSlot(kind, ms),
+  recordSummary: (kind, summary) => storage.recordAlerterSummary(kind, summary),
 };
 
 export type NotifyResult =
@@ -102,15 +117,32 @@ export class ApplePayRecoveryAlerter {
     const affectedJobIds = Array.from(new Set(items.map((i) => i.jobId)));
     const itemIds = items.map((i) => i.itemId);
 
-    const sent = await this.deps.send(toEmails, {
+    const summary: AlertSummary = {
       itemCount: items.length,
       affectedJobIds,
       itemIds,
       suppressedSinceLastAlert: claim.suppressedCount,
-    });
+    };
+
+    const sent = await this.deps.send(toEmails, summary);
+
+    if (sent) {
+      // Persist the summary so the admin dashboard banner can describe
+      // what just fired without re-reading server logs (#272). A failure
+      // to record is non-fatal — the email already went out.
+      try {
+        await this.deps.recordSummary(ALERT_KIND, summary);
+      } catch (err) {
+        log.warn("Failed to persist Apple Pay alert summary for in-app banner", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
     return sent ? "sent" : "failed";
   }
 }
+
+export const APPLE_PAY_RECOVERY_ALERT_KIND = ALERT_KIND;
 
 export const applePayRecoveryAlerter = new ApplePayRecoveryAlerter();

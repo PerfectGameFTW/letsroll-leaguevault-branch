@@ -15,6 +15,13 @@ import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/p
 import { hasWalletSupport } from '../../services/payment-provider';
 import { applePayWorker } from '../../services/apple-pay-worker';
 import { acceptedApplePayDomainsForOrg, isAcceptedApplePayDomain } from '../../services/apple-pay-domains';
+import { APPLE_PAY_RECOVERY_ALERT_KIND } from '../../services/apple-pay-alerts';
+
+// How far back the admin dashboard banner should consider an Apple Pay
+// recovery alert "recent". 24 hours is generous enough to survive an
+// overnight outage but tight enough that stale, already-investigated
+// events don't keep nagging the next admin who logs in (#272).
+const RECENT_ALERT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const log = createLogger('Payments');
 
@@ -192,6 +199,29 @@ router.post('/apple-pay/jobs/:id/items/:itemId/retry', async (req: any, res) => 
   } catch (error) {
     log.error('Apple Pay item retry error:', error);
     sendError(res, 'Failed to retry item', 500);
+  }
+});
+
+router.get('/apple-pay/recovery-alerts/recent', async (req: any, res) => {
+  try {
+    if (req.user?.role !== 'system_admin') {
+      return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
+    }
+    const event = await storage.getRecentAlerterEvent(
+      APPLE_PAY_RECOVERY_ALERT_KIND,
+      RECENT_ALERT_WINDOW_MS,
+    );
+    if (!event) return sendSuccess(res, { alert: null });
+    sendSuccess(res, {
+      alert: {
+        sentAt: event.lastSentAt.toISOString(),
+        itemCount: event.summary?.itemCount ?? 0,
+        affectedJobIds: event.summary?.affectedJobIds ?? [],
+      },
+    });
+  } catch (error) {
+    log.error('Apple Pay recent recovery alert error:', error);
+    sendError(res, 'Failed to load recent recovery alert', 500);
   }
 });
 

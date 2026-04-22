@@ -62,7 +62,7 @@ export type {
 } from "./apple-pay-jobs";
 
 export { alerterState } from "./alerter-state";
-export type { AlerterState } from "./alerter-state";
+export type { AlerterState, AlerterSummary } from "./alerter-state";
 
 export { sessions } from "./sessions";
 

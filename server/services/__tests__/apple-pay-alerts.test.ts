@@ -36,6 +36,9 @@ class FakeAlerterStore {
 describe("ApplePayRecoveryAlerter", () => {
   let send: ReturnType<typeof vi.fn<SendFn>>;
   let getAdminEmails: ReturnType<typeof vi.fn<() => Promise<string[]>>>;
+  let recordSummary: ReturnType<
+    typeof vi.fn<(kind: string, summary: unknown) => Promise<void>>
+  >;
   let nowMs: number;
   let enabled: boolean;
   let intervalMs: number;
@@ -49,6 +52,7 @@ describe("ApplePayRecoveryAlerter", () => {
       isEnabled: () => enabled,
       minIntervalMs: () => intervalMs,
       tryClaimSlot: store.tryClaim,
+      recordSummary: (kind, summary) => recordSummary(kind, summary),
       ...overrides,
     });
 
@@ -58,6 +62,9 @@ describe("ApplePayRecoveryAlerter", () => {
     intervalMs = 30 * 60 * 1000;
     send = vi.fn<SendFn>().mockResolvedValue(true);
     getAdminEmails = vi.fn<() => Promise<string[]>>().mockResolvedValue(["admin@example.com"]);
+    recordSummary = vi
+      .fn<(kind: string, summary: unknown) => Promise<void>>()
+      .mockResolvedValue(undefined);
     store = new FakeAlerterStore(() => nowMs);
     alerter = buildAlerter();
   });
@@ -135,6 +142,34 @@ describe("ApplePayRecoveryAlerter", () => {
     expect(resultB).toBe("rate-limited");
 
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists the alert summary after a successful send so the admin banner can describe it", async () => {
+    const result = await alerter.notifyRecovered([
+      { jobId: 7, itemId: 11 },
+      { jobId: 9, itemId: 12 },
+    ]);
+    expect(result).toBe("sent");
+    expect(recordSummary).toHaveBeenCalledTimes(1);
+    expect(recordSummary).toHaveBeenCalledWith("apple_pay_recovery", {
+      itemCount: 2,
+      affectedJobIds: [7, 9],
+      itemIds: [11, 12],
+      suppressedSinceLastAlert: 0,
+    });
+  });
+
+  it("does not persist a summary when the send itself fails", async () => {
+    send.mockResolvedValueOnce(false);
+    const result = await alerter.notifyRecovered([{ jobId: 1, itemId: 1 }]);
+    expect(result).toBe("failed");
+    expect(recordSummary).not.toHaveBeenCalled();
+  });
+
+  it("still returns sent when persisting the summary throws (banner is best-effort)", async () => {
+    recordSummary.mockRejectedValueOnce(new Error("db down"));
+    const result = await alerter.notifyRecovered([{ jobId: 1, itemId: 1 }]);
+    expect(result).toBe("sent");
   });
 
   it("returns failed (and does not call send) when the persisted slot claim throws", async () => {
