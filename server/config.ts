@@ -34,6 +34,15 @@ export const envSchema = z.object({
     )
     .default("leaguevault.app"),
 
+  LOG_LEVEL: z
+    .enum(["debug", "info", "warn", "error"], {
+      errorMap: () => ({
+        message:
+          "LOG_LEVEL must be one of: debug, info, warn, error. Leave it unset to use the safe per-environment default (info in production, debug in dev).",
+      }),
+    })
+    .optional(),
+
   REPLIT_DOMAINS: z.string().optional(),
   REPL_SLUG: z.string().optional(),
   REPL_OWNER: z.string().optional(),
@@ -138,6 +147,24 @@ export const env = validateEnv();
   if (!check.ok) {
     log.error(`Environment validation failed: ${check.reason}`);
     process.exit(1);
+  }
+}
+
+// Production-like deploys MUST NOT silently run at `debug` — that would
+// dump `userId × resourceId` correlations from the org-less drift signal
+// in `server/utils/access-control.ts` (task #296) into the prod log sink.
+// Operators who explicitly opt back into debug get a loud warning so the
+// choice is auditable. The logger itself defaults to `info` in production
+// when `LOG_LEVEL` is unset, so this branch only fires on an explicit opt-in.
+{
+  const isProdLike = env.NODE_ENV === "production" || !!env.REPLIT_DEPLOYMENT;
+  if (isProdLike && env.LOG_LEVEL === "debug") {
+    log.warn(
+      "LOG_LEVEL=debug is set on a production-like deploy. " +
+        "Debug-level logs include developer-only diagnostics (e.g. userId×resourceId " +
+        "correlations from the org-less drift signal in access-control.ts). " +
+        "Unset LOG_LEVEL or set LOG_LEVEL=info on production deploys.",
+    );
   }
 }
 

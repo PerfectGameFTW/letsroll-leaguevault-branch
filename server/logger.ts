@@ -38,11 +38,36 @@ export interface Logger {
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
 type LogLevel = keyof typeof LOG_LEVELS;
 
-function getMinLevel(): LogLevel {
-  const env = (process.env.LOG_LEVEL || 'debug').toLowerCase();
-  if (env in LOG_LEVELS) return env as LogLevel;
-  return 'debug';
+function isProductionLikeRuntime(): boolean {
+  // Treat both `NODE_ENV=production` and any Replit deploy environment
+  // (`REPLIT_DEPLOYMENT` is set on Reserved-VM and Autoscale deploys) as
+  // production-like for logging purposes. This guarantees that a deploy
+  // that forgot to set `LOG_LEVEL` still defaults to `info`, not `debug`,
+  // so the org-less drift `userId × resourceId` correlations in
+  // `server/utils/access-control.ts` (task #296) are dropped at the sink.
+  return process.env.NODE_ENV === 'production' || !!process.env.REPLIT_DEPLOYMENT;
 }
+
+/**
+ * Resolves the minimum log level for the current process.
+ *
+ * Precedence:
+ *   1. An explicit `LOG_LEVEL` env var, if it names a known level.
+ *   2. `info` in production-like runtimes (see {@link isProductionLikeRuntime}).
+ *   3. `debug` in development.
+ *
+ * `server/config.ts` validates `LOG_LEVEL` at boot and warns if a
+ * production deploy explicitly opts back into `debug`, so a typo or a
+ * developer-only setting can't silently sneak `debug` lines (often
+ * containing user IDs paired with resource IDs) into prod log sinks.
+ */
+function getMinLevel(): LogLevel {
+  const raw = process.env.LOG_LEVEL?.toLowerCase();
+  if (raw && raw in LOG_LEVELS) return raw as LogLevel;
+  return isProductionLikeRuntime() ? 'info' : 'debug';
+}
+
+export { getMinLevel as _getMinLevelForTests, isProductionLikeRuntime as _isProductionLikeRuntimeForTests };
 
 function serializeArg(arg: any): any {
   if (arg instanceof Error) {
