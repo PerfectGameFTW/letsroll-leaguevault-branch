@@ -43,12 +43,23 @@ export function ProfileInfoCard({ currentUser }: { currentUser: User }) {
 
   const mutation = useMutation({
     mutationFn: async (data: ProfileFormData) => {
-      return apiRequest(`/api/account/profile/${currentUser.id}`, "PATCH", data);
+      return apiRequest<{ paymentSyncStatus?: "synced" | "skipped" | "pending_retry" | "not_applicable" }>(
+        `/api/account/profile/${currentUser.id}`,
+        "PATCH",
+        data,
+      );
     },
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       setIsEditing(false);
       toast({ title: "Profile Updated", description: "Your profile has been saved successfully." });
+      if (response?.data?.paymentSyncStatus === "pending_retry") {
+        toast({
+          title: "Payment record will be retried",
+          description:
+            "Your payment profile is temporarily out of date and will be retried automatically. Charges or saved cards may behave oddly for the next few minutes.",
+        });
+      }
     },
     onError: (error: Error) => {
       toast({ title: "Update Failed", description: error.message || "Failed to update profile", variant: "destructive" });
