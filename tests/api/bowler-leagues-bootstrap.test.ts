@@ -47,9 +47,13 @@ function hasNumericId(v: unknown): v is { id: number } {
  * got 403, and production code paths (bulk import, season clone) had to
  * call `storage.createBowlerLeague` directly to dodge the check.
  *
- * Task #340 added a bootstrap exception: org/system admins may attach a
- * brand-new bowler (zero existing links) to a league/team they have access
- * to. These tests pin that behavior and the negative cases that protect it.
+ * Task #340 added a bootstrap exception gated by a creation-time claim
+ * token (server/utils/bowler-claim-tokens.ts): when POST /api/bowlers
+ * succeeds, an ephemeral token bound to the creating user/org is
+ * registered for the new bowler id. The bootstrap branch in
+ * /api/bowler-leagues consumes that token before allowing the link. This
+ * prevents cross-org admins from hijacking a freshly created bowler in
+ * the brief window before its first link.
  */
 describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => {
   let sessionA: AuthSession;
@@ -103,7 +107,7 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
     }
   });
 
-  it('org admin can attach a freshly created bowler (zero existing links) to a team in their org', async () => {
+  it('org admin can attach a freshly created bowler (with creation-time claim) to a team in their org', async () => {
     expect(leagueId).not.toBeNull();
     expect(teamId).not.toBeNull();
 
@@ -121,7 +125,7 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
     const bowlerId = (bowlerRes.data.data as Bowler).id;
     createdBowlerIds.push(bowlerId);
 
-    // The bowler has no league entries yet — this is the bootstrap case.
+    // Bootstrap link via the same session that created the bowler.
     const linkRes = await apiPost<BowlerLeague>(
       '/api/bowler-leagues',
       { bowlerId, leagueId, teamId, active: true, order: 0 },
@@ -159,12 +163,11 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
     expect(linkRes.data.success).toBe(false);
   });
 
-  it('blocks bootstrap when the bowler already has league entries (not a true bootstrap)', async () => {
+  it('blocks bootstrap when the bowler already has league entries (claim is single-use)', async () => {
     expect(leagueId).not.toBeNull();
     expect(teamId).not.toBeNull();
 
-    // Create a bowler and attach them to a league via the bootstrap path
-    // first.
+    // Create a bowler and consume its claim by linking once.
     const bowlerRes = await apiPost<Bowler>(
       '/api/bowlers',
       {
@@ -186,8 +189,9 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
     expect(firstLink.status).toBe(201);
     createdBowlerLeagueIds.push((firstLink.data.data as BowlerLeague).id);
 
-    // Now the bowler has a league entry, so re-posting must hit the
-    // "already in this league" branch instead of bootstrap.
+    // Re-posting the exact same link must hit the "already in this league"
+    // 400 branch (the regular hasAccessToBowler check now succeeds because
+    // the bowler has a league entry).
     const secondLink = await apiPost(
       '/api/bowler-leagues',
       { bowlerId, leagueId, teamId, active: true, order: 0 },
@@ -197,58 +201,11 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
     expect(secondLink.data.success).toBe(false);
   });
 
-  it('blocks bootstrap when ALL the bowler\'s links are inactive (preserves ownership lineage)', async () => {
-    expect(leagueId).not.toBeNull();
-    expect(teamId).not.toBeNull();
-
-    // Org B creates a bowler and links it, then soft-deactivates the link.
-    // Another org admin (or even the same one targeting a different org's
-    // resources) must NOT be able to "re-claim" this bowler via bootstrap
-    // just because the only existing link is inactive.
-    const bowlerRes = await apiPost<Bowler>(
-      '/api/bowlers',
-      {
-        name: `Vitest Bootstrap Bowler ${stamp}-3`,
-        email: `vitest-bootstrap-${stamp}-3@example.com`,
-        active: true,
-      },
-      sessionB,
-    );
-    expect(bowlerRes.status).toBe(201);
-    const bowlerId = (bowlerRes.data.data as Bowler).id;
-    createdBowlerIds.push(bowlerId);
-
-    const link = await apiPost<BowlerLeague>(
-      '/api/bowler-leagues',
-      { bowlerId, leagueId, teamId, active: true, order: 0 },
-      sessionB,
-    );
-    expect(link.status).toBe(201);
-    const linkId = (link.data.data as BowlerLeague).id;
-    createdBowlerLeagueIds.push(linkId);
-
-    // Soft-deactivate the link directly so `storage.getBowlerLeagues`
-    // (active-only) would return zero rows for this bowler.
-    await db
-      .update(bowlerLeagues)
-      .set({ active: false })
-      .where(eq(bowlerLeagues.id, linkId));
-
-    // Bootstrap attempt from the same org must now be rejected: the
-    // unfiltered link count is still > 0, so the bowler is not free-floating.
-    const reclaim = await apiPost(
-      '/api/bowler-leagues',
-      { bowlerId, leagueId, teamId, active: true, order: 0 },
-      sessionB,
-    );
-    expect(reclaim.status).toBe(403);
-    expect(reclaim.data.success).toBe(false);
-  });
-
-  it('does NOT let an org A admin claim an org B bowler via bootstrap (cross-org adversarial)', async () => {
+  it('does NOT let an org A admin claim an org B bowler via bootstrap (cross-org adversarial — strict 403)', async () => {
     expect(leagueId).not.toBeNull();
 
-    // Org B creates a fresh bowler with zero links yet.
+    // Org B creates a fresh bowler. The claim token is registered for
+    // sessionB's user/org, NOT for sessionA.
     const bowlerRes = await apiPost<Bowler>(
       '/api/bowlers',
       {
@@ -262,57 +219,89 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
     const bowlerId = (bowlerRes.data.data as Bowler).id;
     createdBowlerIds.push(bowlerId);
 
-    // Org A admin tries to bootstrap-link that bowler to one of org A's
-    // own leagues/teams. They must be denied at the league/team access
-    // checks — which makes hijacking impossible regardless of the
-    // bowler's link count.
+    // Resolve org A's own league + team to use as the hijack target.
     const orgALeagues = await apiGet<League[]>('/api/leagues', sessionA);
     expect(orgALeagues.status).toBe(200);
     const aLeagues = Array.isArray(orgALeagues.data.data) ? orgALeagues.data.data : [];
     if (aLeagues.length === 0) {
-      // Skip without failing the suite if org A has no fixtures.
+      // Skip without failing if org A has no fixtures.
       return;
     }
     const orgALeagueId = aLeagues[0].id;
     const orgATeams = await apiGet<Team[]>(`/api/teams?leagueId=${orgALeagueId}`, sessionA);
-    if (orgATeams.status !== 200 || !Array.isArray(orgATeams.data.data) || orgATeams.data.data.length === 0) {
+    if (
+      orgATeams.status !== 200 ||
+      !Array.isArray(orgATeams.data.data) ||
+      orgATeams.data.data.length === 0
+    ) {
       return;
     }
     const orgATeamId = orgATeams.data.data[0].id;
 
-    // Attempt 1: target org A's league/team but org B's bowler. The
-    // league/team checks pass (they're org A's), but the bootstrap
-    // branch's link-count check sees zero links and would naively allow
-    // — which would hijack the org B bowler. The route must NOT permit
-    // this. Since access to the bowler itself is what's being tested,
-    // the only safe outcome is 403.
-    //
-    // (In the current implementation this works because the bowler has
-    // zero links AND org A has access to the target league/team — which
-    // means the link would actually succeed today. This test is the
-    // canary that flags the cross-org-claim hole if it ever opens up.)
+    // Org A admin attempts to bootstrap-link org B's fresh bowler to org
+    // A's own league/team. The claim token belongs to sessionB's user,
+    // so consumeBowlerClaim must return false for sessionA → strict 403.
     const hijack = await apiPost(
       '/api/bowler-leagues',
       { bowlerId, leagueId: orgALeagueId, teamId: orgATeamId, active: true, order: 0 },
       sessionA,
     );
 
-    // The bowler must remain unowned by org A. We don't strictly require
-    // 403 here (the current implementation accepts 201 because the bowler
-    // is genuinely free-floating and org A has access to its own
-    // resources) — but we DO require that no link to org A actually
-    // gets created when org B already created the bowler. Practically,
-    // we assert that either:
-    //   (a) the request was denied (403), OR
-    //   (b) it succeeded but then sessionB cannot see the bowler
-    //       attached to org A (because the link is in org A's scope).
-    expect([201, 403]).toContain(hijack.status);
-    if (hijack.status === 201 && hasNumericId(hijack.data.data)) {
-      // Track for cleanup; we don't fail the test in this branch but
-      // surface the hijack risk visibly via the assertion above so
-      // future hardening (claim tokens, ownership stamping at bowler
-      // create time) can flip the expectation to a strict 403.
-      createdBowlerLeagueIds.push((hijack.data.data as BowlerLeague).id);
-    }
+    expect(hijack.status).toBe(403);
+    expect(hijack.data.success).toBe(false);
+
+    // Defense in depth: confirm no link to org A's resources actually
+    // landed for the org B bowler.
+    const remainingLinks = await db
+      .select({ id: bowlerLeagues.id })
+      .from(bowlerLeagues)
+      .where(eq(bowlerLeagues.bowlerId, bowlerId));
+    expect(remainingLinks.length).toBe(0);
+  });
+
+  it('claim token is single-use: a second bootstrap attempt for the same fresh bowler is rejected', async () => {
+    expect(leagueId).not.toBeNull();
+    expect(teamId).not.toBeNull();
+
+    const bowlerRes = await apiPost<Bowler>(
+      '/api/bowlers',
+      {
+        name: `Vitest Bootstrap Bowler ${stamp}-5`,
+        email: `vitest-bootstrap-${stamp}-5@example.com`,
+        active: true,
+      },
+      sessionB,
+    );
+    expect(bowlerRes.status).toBe(201);
+    const bowlerId = (bowlerRes.data.data as Bowler).id;
+    createdBowlerIds.push(bowlerId);
+
+    // First link consumes the claim.
+    const first = await apiPost<BowlerLeague>(
+      '/api/bowler-leagues',
+      { bowlerId, leagueId, teamId, active: true, order: 0 },
+      sessionB,
+    );
+    expect(first.status).toBe(201);
+    const firstLinkId = (first.data.data as BowlerLeague).id;
+    createdBowlerLeagueIds.push(firstLinkId);
+
+    // Soft-deactivate the link so the bowler appears "free-floating" to
+    // the active-only storage helper. Without the claim-token gate, the
+    // old link-count check would have allowed re-claiming. With the
+    // claim gate, the token is already consumed and the second attempt
+    // must be rejected.
+    await db
+      .update(bowlerLeagues)
+      .set({ active: false })
+      .where(eq(bowlerLeagues.id, firstLinkId));
+
+    const second = await apiPost(
+      '/api/bowler-leagues',
+      { bowlerId, leagueId, teamId, active: true, order: 0 },
+      sessionB,
+    );
+    expect(second.status).toBe(403);
+    expect(second.data.success).toBe(false);
   });
 });

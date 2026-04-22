@@ -7,6 +7,7 @@ import { getPaymentProvider, ProviderNotConfiguredError } from '../services/paym
 import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
+import { registerBowlerClaim } from '../utils/bowler-claim-tokens.js';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
 
@@ -321,6 +322,14 @@ router.post("/", async (req, res) => {
     const created = await storage.createBowler(bowler);
     const orgId: number | undefined = req.user?.organizationId ?? undefined;
     const synced = await runBowlerPostCreateSync(created, orgId);
+    // Register an ephemeral creation-time claim so this caller (and only
+    // this caller, in the same org) may bootstrap-link the new bowler to
+    // its first league via POST /api/bowler-leagues. Prevents cross-org
+    // hijack of the bowler row in the brief window before its first link.
+    // See server/utils/bowler-claim-tokens.ts for full rationale.
+    if (synced && typeof (synced as { id?: unknown }).id === 'number') {
+      registerBowlerClaim((synced as { id: number }).id, req);
+    }
     sendSuccess(res, synced, 201);
   } catch (error) {
     log.error('Error creating bowler:', error);
