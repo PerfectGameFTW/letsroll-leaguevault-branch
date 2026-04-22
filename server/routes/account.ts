@@ -350,6 +350,21 @@ const confirmEmailChangeLimiter = rateLimit({
   },
 });
 
+// Test-only: reset the limiter counter for a single bucket so tests can
+// exercise the "fresh window allows requests again" behavior without
+// waiting 10 minutes of wall-clock time. Available only when
+// NODE_ENV !== 'production'; mounted as a sibling of the limited route.
+if (process.env.NODE_ENV !== 'production') {
+  router.post('/_test/reset-confirm-email-change-limit', (req, res) => {
+    const bucket = req.headers['x-test-rl-bucket'];
+    if (typeof bucket !== 'string' || bucket.length === 0) {
+      return sendError(res, 'bucket required', 400, 'BAD_REQUEST');
+    }
+    confirmEmailChangeLimiter.resetKey(`test:${bucket}`);
+    return sendSuccess(res, { reset: true });
+  });
+}
+
 // Confirm a pending email-change request. The token itself is the
 // authentication factor (like password reset), so this endpoint is open
 // to unauthenticated callers — anyone who clicks the link in the

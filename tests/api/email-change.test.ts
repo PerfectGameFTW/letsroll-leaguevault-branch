@@ -671,6 +671,49 @@ describe('POST /api/account/confirm-email-change rate limiting', () => {
     expect(fromOther.body.error?.code).toBe('INVALID_TOKEN');
   });
 
+  it('a fresh window allows requests again after the bucket counter resets', async () => {
+    // Burn the bucket to 429, then ask the test-only reset endpoint to
+    // clear that bucket's counter — semantically equivalent to the
+    // express-rate-limit MemoryStore expiring the bucket once the
+    // 10-minute window elapses, but without the wall-clock wait.
+    const bucket = newBucketId();
+
+    for (let i = 0; i < 30; i++) {
+      const r = await postWithBucket(
+        '/api/account/confirm-email-change',
+        { token: `reset-${bucket}-${i}` },
+        bucket,
+      );
+      expect(r.status).toBe(400);
+    }
+    const blocked = await postWithBucket(
+      '/api/account/confirm-email-change',
+      { token: `reset-${bucket}-blocked` },
+      bucket,
+    );
+    expect(blocked.status).toBe(429);
+    expect(blocked.body.error?.code).toBe('RATE_LIMITED');
+
+    // Simulate the window rolling over.
+    const reset = await postWithBucket(
+      '/api/account/_test/reset-confirm-email-change-limit',
+      {},
+      bucket,
+    );
+    expect(reset.status).toBe(200);
+
+    // A fresh window means the very next failed attempt is allowed
+    // through to the route again (400, not 429), proving the limiter
+    // does not permanently lock out callers.
+    const afterReset = await postWithBucket(
+      '/api/account/confirm-email-change',
+      { token: `reset-${bucket}-post` },
+      bucket,
+    );
+    expect(afterReset.status).toBe(400);
+    expect(afterReset.body.error?.code).toBe('INVALID_TOKEN');
+  });
+
   it('successful confirms do not count toward the limit (skipSuccessfulRequests)', async () => {
     // Burn 29 failed attempts on a fresh bucket, then successfully confirm
     // a real token, then verify we still have budget for one more failed

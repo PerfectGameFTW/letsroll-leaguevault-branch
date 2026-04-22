@@ -31,6 +31,11 @@ const EXEMPT_PATHS = [
   // token. The handler validates a single-use, expiring token from the
   // request body before mutating any state.
   '/account/confirm-email-change',
+  // Test-only endpoint mounted under /account/_test/ when NODE_ENV !== 'production'
+  // (resets the confirm-email-change rate-limit bucket so route-level tests
+  // can exercise the post-window-reset path without 10 minutes of waiting).
+  // Production never mounts the route, so the exemption is inert there.
+  '/account/_test',
 ];
 
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
