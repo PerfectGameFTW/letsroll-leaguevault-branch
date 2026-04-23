@@ -319,12 +319,92 @@ function classify(src: string): {
   return { codeNoStrings, strings, comments };
 }
 
+/**
+ * Compute the [start, end) byte ranges of every `// ...` and
+ * `/* ... *\/` comment in `src`, respecting string- and
+ * template-literal contexts so a `//` inside a string is NOT
+ * treated as a comment. Used to skip `log.debug(...)` matches
+ * that are themselves sitting inside a comment region (commented
+ * documentation examples).
+ */
+function commentRanges(src: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  let mode: 'code' | 'sq' | 'dq' | 'tpl' = 'code';
+  const tplStack: number[] = [];
+  for (let i = 0; i < src.length; ) {
+    const c = src[i];
+    const n = src[i + 1];
+    if (mode === 'code') {
+      if (c === '/' && n === '/') {
+        const start = i;
+        i += 2;
+        while (i < src.length && src[i] !== '\n') i++;
+        ranges.push([start, i]);
+        continue;
+      }
+      if (c === '/' && n === '*') {
+        const start = i;
+        i += 2;
+        while (i < src.length - 1 && !(src[i] === '*' && src[i + 1] === '/'))
+          i++;
+        i = Math.min(src.length, i + 2);
+        ranges.push([start, i]);
+        continue;
+      }
+      if (c === "'") { mode = 'sq'; i++; continue; }
+      if (c === '"') { mode = 'dq'; i++; continue; }
+      if (c === '`') { mode = 'tpl'; i++; continue; }
+      if (c === '}' && tplStack.length > 0) {
+        tplStack.pop();
+        mode = 'tpl';
+        i++;
+        continue;
+      }
+      i++;
+    } else if (mode === 'sq' || mode === 'dq') {
+      if (c === '\\') { i += 2; continue; }
+      if ((mode === 'sq' && c === "'") || (mode === 'dq' && c === '"')) {
+        mode = 'code';
+        i++;
+        continue;
+      }
+      i++;
+    } else {
+      if (c === '\\') { i += 2; continue; }
+      if (c === '`') { mode = 'code'; i++; continue; }
+      if (c === '$' && n === '{') {
+        tplStack.push(i);
+        mode = 'code';
+        i += 2;
+        continue;
+      }
+      i++;
+    }
+  }
+  return ranges;
+}
+
+function isInsideComment(
+  ranges: Array<[number, number]>,
+  pos: number,
+): boolean {
+  for (const [a, b] of ranges) {
+    if (pos >= a && pos < b) return true;
+    if (a > pos) break;
+  }
+  return false;
+}
+
 function scanFile(file: string): Hit[] {
   const src = readFileSync(file, 'utf8');
   const hits: Hit[] = [];
+  const comments = commentRanges(src);
   DEBUG_CALL_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
   while ((m = DEBUG_CALL_RE.exec(src)) !== null) {
+    // Skip matches that sit inside a `//` or `/* */` comment —
+    // commented documentation examples are NOT real call sites.
+    if (isInsideComment(comments, m.index)) continue;
     const openParen = m.index + m[0].length - 1;
     const close = findMatchingParen(src, openParen);
     if (close === -1) continue;

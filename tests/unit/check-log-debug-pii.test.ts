@@ -343,25 +343,48 @@ log.debug(\`for \${maskEmail(user.email)}\`);
   });
 
   it('does not match log.debug inside a comment or block string', () => {
-    // A `log.debug(...)` example inside a JSDoc block (which is the
-    // exact situation in the audit doc — well, in source comments)
-    // must not be flagged. A naive scanner would treat the doc
-    // example as a real call site.
+    // A `log.debug(...)` example inside a JSDoc / line comment is
+    // documentation, not a real call site, and must not be flagged.
+    // The scanner uses `commentRanges` to skip matches whose
+    // position falls inside a `// ...` or `/* ... */` region.
     const dir = makeFixture({
       'server/foo.ts': `import { log } from './logger.js';
 /**
  * Example: log.debug(\`email=\${u.email}\`); // never do this
  */
+// also ok: log.debug('password=' + p);
 log.debug(\`bowler=\${bowlerId}\`);
 `,
     });
     const r = runIn(dir, ['--strict']);
-    // The block-comment example uses a backtick which we don't
-    // perfectly track inside line/block comments; the simpler
-    // contract is that calls inside /** ... */ are still scanned,
-    // because a naive author could un-comment them. Document the
-    // current behavior: this fixture's commented example DOES get
-    // scanned and flagged, by design.
+    expect(r.status, r.stderr || r.stdout).toBe(0);
+  });
+
+  it('still flags a real log.debug call that follows a commented example', () => {
+    // Defensive check: comment-skipping must not accidentally bleed
+    // past the comment region and silence a real follow-up call.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+// Example: log.debug(\`email=\${u.email}\`);
+log.debug(\`leak=\${user.email}\`);
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/email/);
+  });
+
+  it('treats `//` inside a string as part of the string, not a comment', () => {
+    // `commentRanges` must not start a "comment" inside a string
+    // literal — otherwise `'http://x'` could swallow real code that
+    // follows on the same line.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+const url = 'http://example.com';
+log.debug('email=' + user.email + ' url=' + url);
+`,
+    });
+    const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/email/);
   });
