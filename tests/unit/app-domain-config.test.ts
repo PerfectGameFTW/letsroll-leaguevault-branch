@@ -53,6 +53,30 @@ describe('APP_DOMAIN env-schema entry', () => {
     if (result.success) expect(result.data).toBe('leaguevault.app');
   });
 
+  // Task #335 — hostnames are case-insensitive. The schema must
+  // normalise to lowercase at parse-time so an operator who sets
+  // `APP_DOMAIN=Staging.Example.com` can't silently break CORS or
+  // subdomain matching downstream (every consumer compares against
+  // an already-lowercased request hostname).
+  describe('lowercase normalisation (task #335)', () => {
+    it.each([
+      ['LEAGUEVAULT.APP', 'leaguevault.app'],
+      ['Staging.LeagueVault.App', 'staging.leaguevault.app'],
+      ['MIXED-Case.Example.CO.UK', 'mixed-case.example.co.uk'],
+      ['leaguevault.app', 'leaguevault.app'],
+    ])('normalises %s to %s', (input, expected) => {
+      const result = appDomain.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toBe(expected);
+    });
+
+    it('still defaults to "leaguevault.app" (lowercase) when unset', () => {
+      const result = appDomain.safeParse(undefined);
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toBe('leaguevault.app');
+    });
+  });
+
   it('surfaces the operator-friendly error message on a bad value', () => {
     const result = appDomain.safeParse('https://leaguevault.app');
     expect(result.success).toBe(false);

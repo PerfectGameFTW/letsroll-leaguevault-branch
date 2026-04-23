@@ -25,6 +25,14 @@ export const envSchema = z.object({
   SQUARE_APP_ID: z.string().min(1).optional(),
   SQUARE_LOCATION_ID: z.string().min(1).optional(),
 
+  // Hostnames are case-insensitive but JS string comparisons aren't.
+  // `isAllowedOrigin` and `extractSubdomain` already lowercase the
+  // *incoming* request hostname before comparing, but env.APP_DOMAIN
+  // was previously used as-is. An operator who set
+  // APP_DOMAIN=Staging.Example.com would silently break CORS and
+  // subdomain matching even though the value passes the regex.
+  // Normalising once at parse-time means every downstream consumer
+  // sees a lowercase hostname (task #335).
   APP_DOMAIN: z
     .string()
     .min(1)
@@ -32,7 +40,8 @@ export const envSchema = z.object({
       /^(?!-)[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/,
       "APP_DOMAIN must be a bare hostname like 'leaguevault.app' (no scheme, no path, no leading dot)",
     )
-    .default("leaguevault.app"),
+    .default("leaguevault.app")
+    .transform((v) => v.toLowerCase()),
 
   LOG_LEVEL: z
     .enum(["debug", "info", "warn", "error"], {

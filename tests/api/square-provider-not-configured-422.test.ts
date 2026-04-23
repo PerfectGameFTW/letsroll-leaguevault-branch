@@ -79,7 +79,7 @@ describe('POST /api/payments-provider/customers — 422 PROVIDER_NOT_CONFIGURED 
         locationId: loc.id,
         seasonStart: '2026-01-01',
         seasonEnd: '2026-12-31',
-        weekDay: 'monday',
+        weekDay: 'Monday',
       })
       .returning();
     createdLeagueIds.push(league.id);
