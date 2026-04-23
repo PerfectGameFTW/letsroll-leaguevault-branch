@@ -66,7 +66,7 @@ log the values.
 **Verdict: safe.** Diagnostic for debugging schema-validation failures
 during org creation. No PII.
 
-### `server/utils/wait-for-port.ts` — 16 sites
+### `server/utils/wait-for-port.ts` — 19 sites
 Lines 36, 41, 46, 50, 56, 63, 69, 81, 87, 93, 97, 108, 122, 128, 141,
 154, 160, 169, 180. Dev-only utility that waits for the Replit dev
 workflow's port to be listening before firing health checks.
@@ -80,7 +80,7 @@ startup orchestration. No request bodies, no user data, no auth state.
 
 ## Summary
 
-- **Total `log.debug` call sites audited**: 23 (5 + 1 + 1 + 16).
+- **Total `log.debug` call sites audited**: 26 (5 + 1 + 1 + 19).
 - **Sites that needed redaction**: 0.
 - **Sites converted to `log.warn` with sanitized payload**: 0.
 
