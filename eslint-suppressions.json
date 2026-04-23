@@ -4,11 +4,6 @@
       "count": 22
     }
   },
-  "client/src/components/layout.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
-    }
-  },
   "client/src/components/organization-form-dialog.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
@@ -19,11 +14,6 @@
       "count": 1
     }
   },
-  "client/src/hooks/use-wallet-payments.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 9
-    }
-  },
   "client/src/pages/bowlers-page.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
@@ -32,16 +22,6 @@
   "client/src/pages/payments-page.tsx": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
-    }
-  },
-  "client/src/pages/sign-up-page.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 3
-    }
-  },
-  "server/storage/email-change-requests.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 3
     }
   }
 }

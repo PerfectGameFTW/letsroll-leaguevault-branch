@@ -1,6 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { initializeSquare } from "@/lib/square";
-import type { SquarePaymentRequest, SquareWalletPayment } from "@/lib/square";
+import type { SquarePaymentRequest, SquareWalletPayment, TokenizeError } from "@/lib/square";
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const m = (err as { message?: unknown }).message;
+    if (typeof m === 'string') return m;
+  }
+  return String(err);
+}
+
+function isCancelError(errors: TokenizeError[] | undefined): boolean {
+  return !!errors?.some((e) =>
+    e.message?.toLowerCase().includes('cancel') ||
+    e.type?.toLowerCase().includes('cancel'),
+  );
+}
 
 interface UseWalletPaymentsOptions {
   locationId?: number | null;
@@ -153,8 +170,8 @@ export function useWalletPayments({
             setApplePayTokenizeOnly(true);
             appleResult = 'tokenize-only';
           }
-        } catch (appleErr: any) {
-          appleResult = `ERR:${appleErr?.message || appleErr}`;
+        } catch (appleErr: unknown) {
+          appleResult = `ERR:${errorMessage(appleErr)}`;
         }
 
         let googleResult = 'skip';
@@ -182,8 +199,8 @@ export function useWalletPayments({
             setGooglePayTokenizeOnly(true);
             googleResult = 'tokenize-only';
           }
-        } catch (googleErr: any) {
-          googleResult = `ERR:${googleErr?.message || googleErr}`;
+        } catch (googleErr: unknown) {
+          googleResult = `ERR:${errorMessage(googleErr)}`;
         }
 
         if (!cancelled) {
@@ -193,8 +210,8 @@ export function useWalletPayments({
           }
         }
         setDebugStatus(`done|apple:${appleResult}|google:${googleResult}`);
-      } catch (err: any) {
-        setDebugStatus(`FAIL:${err?.message || err}`);
+      } catch (err: unknown) {
+        setDebugStatus(`FAIL:${errorMessage(err)}`);
       }
     }
 
@@ -215,17 +232,13 @@ export function useWalletPayments({
         await onTokenReceivedRef.current(result.token, 'apple_pay');
       } else if (result.status === 'CANCEL' || result.status === 'Cancel') {
       } else {
-        const isCancelLike = result.errors?.some((e: any) =>
-          e.message?.toLowerCase().includes('cancel') ||
-          e.type?.toLowerCase().includes('cancel')
-        );
-        if (!isCancelLike) {
-          const errorMsg = result.errors?.map((e: any) => e.message).join(', ') || 'Apple Pay payment was not completed';
+        if (!isCancelError(result.errors)) {
+          const errorMsg = result.errors?.map((e) => e.message).join(', ') || 'Apple Pay payment was not completed';
           onErrorRef.current(errorMsg);
         }
       }
-    } catch (err: any) {
-      const msg = err?.message || String(err);
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
       if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('abort')) {
         onErrorRef.current(msg || 'Apple Pay failed');
       }
@@ -247,17 +260,13 @@ export function useWalletPayments({
         await onTokenReceivedRef.current(result.token, 'google_pay');
       } else if (result.status === 'CANCEL' || result.status === 'Cancel') {
       } else {
-        const isCancelLike = result.errors?.some((e: any) =>
-          e.message?.toLowerCase().includes('cancel') ||
-          e.type?.toLowerCase().includes('cancel')
-        );
-        if (!isCancelLike) {
-          const errorMsg = result.errors?.map((e: any) => e.message).join(', ') || 'Google Pay payment was not completed';
+        if (!isCancelError(result.errors)) {
+          const errorMsg = result.errors?.map((e) => e.message).join(', ') || 'Google Pay payment was not completed';
           onErrorRef.current(errorMsg);
         }
       }
-    } catch (err: any) {
-      const msg = err?.message || String(err);
+    } catch (err: unknown) {
+      const msg = errorMessage(err);
       if (!msg.toLowerCase().includes('cancel') && !msg.toLowerCase().includes('abort')) {
         onErrorRef.current(msg || 'Google Pay failed');
       }

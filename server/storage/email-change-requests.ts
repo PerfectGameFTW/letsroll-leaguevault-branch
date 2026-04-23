@@ -1,5 +1,4 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
-import type { PgTransaction } from "drizzle-orm/pg-core";
 import { db } from "../db.js";
 import {
   emailChangeRequests,
@@ -7,7 +6,12 @@ import {
   type InsertEmailChangeRequest,
 } from "@shared/schema";
 
-type Executor = typeof db | PgTransaction<any, any, any>;
+// Accepts either the root `db` or a transaction handle from
+// `db.transaction(...)`. Derived from the transaction callback's
+// parameter type so we don't have to spell out the Drizzle generics
+// (which require three `any`s to satisfy and would otherwise need an
+// eslint suppression).
+type Executor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export async function createEmailChangeRequest(
   data: InsertEmailChangeRequest,

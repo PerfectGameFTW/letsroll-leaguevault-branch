@@ -58,10 +58,15 @@ interface SquareCard {
   destroy(): void;
 }
 
-interface TokenizeResult {
+export interface TokenizeError {
+  message: string;
+  type?: string;
+}
+
+export interface TokenizeResult {
   status: string;
   token?: string;
-  errors?: Array<{ message: string }>;
+  errors?: TokenizeError[];
 }
 
 interface SquareConfigResponse {

@@ -22,17 +22,17 @@ import {
 } from "@/components/ui/sheet";
 
 
-const getStoredValue = (key: string, defaultValue: any) => {
+function getStoredValue<T>(key: string, defaultValue: T): T {
   try {
     if (typeof window === 'undefined') return defaultValue;
     const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
+    return item ? (JSON.parse(item) as T) : defaultValue;
   } catch {
     return defaultValue;
   }
-};
+}
 
-const setStoredValue = (key: string, value: any) => {
+const setStoredValue = (key: string, value: unknown) => {
   try {
     if (typeof window !== 'undefined') {
       localStorage.setItem(key, JSON.stringify(value));

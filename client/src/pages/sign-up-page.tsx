@@ -95,7 +95,7 @@ interface League {
   name: string;
 }
 
-const PasswordRequirements: FC<{ errors: Record<string, any> }> = ({ errors }) => {
+const PasswordRequirements: FC<{ errors: Record<string, unknown> }> = ({ errors }) => {
   const requirements = [
     { text: `At least ${PASSWORD_MIN_LENGTH} characters long`, regex: new RegExp(`.{${PASSWORD_MIN_LENGTH},}`) },
     { text: "One uppercase letter", regex: /[A-Z]/ },
@@ -202,9 +202,10 @@ const SignUpPage: FC = () => {
       }
       const bowlersData = await bowlersResponse.json();
 
-      const existingBowler = bowlersData.data.find((bowler: any) =>
-        bowler.name.toLowerCase() === data.name.toLowerCase() &&
-        bowler.email.toLowerCase() === data.email.toLowerCase()
+      const bowlersList = (bowlersData?.data ?? []) as Array<{ name?: string | null; email?: string | null }>;
+      const existingBowler = bowlersList.find((bowler) =>
+        bowler.name?.toLowerCase() === data.name.toLowerCase() &&
+        bowler.email?.toLowerCase() === data.email.toLowerCase()
       );
 
       if (existingBowler) {
@@ -215,7 +216,7 @@ const SignUpPage: FC = () => {
         });
       }
 
-      const registerBody: any = { ...data };
+      const registerBody: Record<string, unknown> = { ...data };
       if (orgInfo?.id) {
         registerBody.organizationId = orgInfo.id;
       }
