@@ -91,7 +91,7 @@ function getAllowedOrigins(): string[] {
 
 const allowedOrigins = getAllowedOrigins();
 
-function isAllowedOrigin(origin: string): boolean {
+export function isAllowedOrigin(origin: string): boolean {
   if (allowedOrigins.includes(origin)) return true;
   if (origin === 'capacitor://localhost' || origin === 'ionic://localhost') return true;
   if (origin === 'http://localhost') return true;
