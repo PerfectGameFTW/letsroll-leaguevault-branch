@@ -50,6 +50,13 @@
       "when": 1776756941868,
       "tag": "0006_nostalgic_black_knight",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776978619390,
+      "tag": "0007_add_bowler_payment_provider_location",
+      "breakpoints": true
     }
   ]
 }
