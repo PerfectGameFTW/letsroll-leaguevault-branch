@@ -134,6 +134,9 @@ export async function syncBowlerForUser(
   let needsWrite = false;
   if (providerCustomer && providerCustomer.id !== bowler.paymentCustomerId) {
     updates.paymentCustomerId = providerCustomer.id;
+    // Stamp the originating location so account-deletion can target
+    // exactly this processor for saved-card cleanup. See task #346.
+    updates.paymentProviderLocationId = resolvedSquareLocationId;
     needsWrite = true;
     log.info('Linked payment customer to bowler:', providerCustomer.id);
   }

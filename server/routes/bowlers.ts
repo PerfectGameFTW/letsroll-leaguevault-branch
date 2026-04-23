@@ -397,6 +397,10 @@ router.patch("/:id", async (req, res) => {
               updated = await storage.updateBowler(id, {
                 ...updated,
                 paymentCustomerId: providerCustomer.id,
+                // Stamp the originating location so account-deletion
+                // can target exactly this processor for cleanup. See
+                // task #346.
+                paymentProviderLocationId: patchSquareLocation.id,
               });
             }
           } else {

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { nameSchema, emailSchema, positiveIntSchema } from "./constants";
 import { leagues } from "./leagues";
 import { teams } from "./teams";
+import { locations } from "./locations";
 
 export const bowlers = pgTable("bowlers", {
   id: serial("id").primaryKey(),
@@ -14,6 +15,16 @@ export const bowlers = pgTable("bowlers", {
   order: integer("order").notNull().default(0),
   paymentCustomerId: text("payment_customer_id"),
   cardpointeProfileId: text("cardpointe_profile_id"),
+  // Records which location's payment processor created the bowler's
+  // saved-customer record (`paymentCustomerId` / `cardpointeProfileId`).
+  // Set whenever either of those columns is first written and used by
+  // the account-deletion service to target exactly one processor for
+  // saved-card cleanup instead of fanning out to every location
+  // reachable through the bowler's leagues. NULL on legacy rows; the
+  // deletion service falls back to the join-based scan in that case.
+  // See server/services/account-deletion.ts (collectProviderTargets)
+  // and task #346.
+  paymentProviderLocationId: integer("payment_provider_location_id").references(() => locations.id, { onDelete: 'set null' }),
   bnContactId: text("bn_contact_id"),
   // Set when a profile-update tried to push the bowler to the payment
   // provider and the call failed for a non-config reason (auth, rate
@@ -77,6 +88,7 @@ export const insertBowlerSchema = baseBowlerSchema.extend({
   order: z.number().min(0).default(0),
   paymentCustomerId: z.string().nullable().optional(),
   cardpointeProfileId: z.string().nullable().optional(),
+  paymentProviderLocationId: z.number().int().positive().nullable().optional(),
   paymentSyncPendingAt: z.string().nullable().optional(),
   paymentSyncAttempts: z.number().int().min(0).optional(),
   paymentSyncLastAttemptAt: z.string().nullable().optional(),
@@ -98,6 +110,7 @@ export const updateBowlerSchema = z.object({
   order: z.number().min(0),
   paymentCustomerId: z.string().nullable(),
   cardpointeProfileId: z.string().nullable(),
+  paymentProviderLocationId: z.number().int().positive().nullable(),
   bnContactId: z.string().nullable(),
   paymentSyncPendingAt: z.string().nullable(),
   paymentSyncAttempts: z.number().int().min(0),

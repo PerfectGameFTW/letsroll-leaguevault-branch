@@ -149,10 +149,17 @@ async function makeBowlerWithCustomerIds(
   email: string,
   paymentCustomerId: string | null,
   cardpointeProfileId: string | null,
+  paymentProviderLocationId: number | null = null,
 ): Promise<number> {
   const [row] = await db
     .insert(bowlers)
-    .values({ name: 'Vitest Bowler', email, paymentCustomerId, cardpointeProfileId })
+    .values({
+      name: 'Vitest Bowler',
+      email,
+      paymentCustomerId,
+      cardpointeProfileId,
+      paymentProviderLocationId,
+    })
     .returning({ id: bowlers.id });
   createdBowlerIds.push(row.id);
   return row.id;
@@ -414,6 +421,126 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
     const [bowlerAfter] = await db.select().from(bowlers).where(eq(bowlers.id, bowlerId));
     expect(bowlerAfter.email).toBeNull();
     expect(bowlerAfter.paymentCustomerId).toBeNull();
+  });
+
+  // Task #346: bowlers now record `paymentProviderLocationId` at the
+  // time the customer record is first written. The deletion service
+  // uses that column to target exactly one processor per saved card
+  // instead of fanning out across every league-reachable location.
+  // The next two tests pin that contract.
+  it('targets only the recorded paymentProviderLocationId when present, ignoring other league-reachable locations', async () => {
+    const orgId = await makeOrg();
+    const adminId = await makeUser(uniqueEmail('admin'), orgId);
+    const targetEmail = uniqueEmail('origin-recorded');
+    await makeUser(targetEmail, orgId);
+
+    // Two locations the bowler is reachable through, but the
+    // customer record was originally created at locA.
+    const locA = await makeLocation(orgId);
+    const locB = await makeLocation(orgId);
+    const leagueA = await makeLeague(orgId, locA);
+    const leagueB = await makeLeague(orgId, locB);
+    const teamA = await makeTeam(leagueA);
+    const teamB = await makeTeam(leagueB);
+    const bowlerId = await makeBowlerWithCustomerIds(
+      targetEmail,
+      'sq-recorded',
+      null,
+      locA, // <- origin recorded
+    );
+    await linkBowlerToLeague(bowlerId, leagueA, teamA);
+    await linkBowlerToLeague(bowlerId, leagueB, teamB);
+
+    const deleteCustomer = vi.fn().mockResolvedValue(undefined);
+    const provider: MockProvider = { providerName: 'square', deleteCustomer };
+    getPaymentProviderSpy.mockResolvedValue(provider as unknown as Awaited<
+      ReturnType<typeof paymentProviderFactory.getPaymentProvider>
+    >);
+
+    const summary = await executeAccountDeletion(targetEmail, adminId);
+
+    // Only one provider call — locA — and the spurious (locB, sq-recorded)
+    // entry that the legacy fan-out would have produced is gone.
+    expect(deleteCustomer).toHaveBeenCalledTimes(1);
+    expect(deleteCustomer).toHaveBeenCalledWith('sq-recorded');
+    const resolvedLocationIds = (getPaymentProviderSpy.mock.calls as [number | null][])
+      .map((c) => c[0]);
+    expect(resolvedLocationIds).toEqual([locA]);
+
+    expect(summary.paymentProvider).toHaveLength(1);
+    expect(summary.paymentProvider[0]).toMatchObject({
+      locationId: locA,
+      customerId: 'sq-recorded',
+      deleted: true,
+    });
+    // Audit summary must NOT contain a (locB, sq-recorded) failure
+    // record like the pre-#346 noise.
+    expect(
+      summary.paymentProvider.find((p) => p.locationId === locB),
+    ).toBeUndefined();
+  });
+
+  it('mixes recorded-origin bowlers and legacy (NULL) bowlers in the same deletion', async () => {
+    const orgId = await makeOrg();
+    const adminId = await makeUser(uniqueEmail('admin'), orgId);
+    const targetEmail = uniqueEmail('mixed-origin');
+    await makeUser(targetEmail, orgId);
+
+    const locA = await makeLocation(orgId);
+    const locB = await makeLocation(orgId);
+    const leagueA = await makeLeague(orgId, locA);
+    const leagueB = await makeLeague(orgId, locB);
+    const teamA = await makeTeam(leagueA);
+    const teamB = await makeTeam(leagueB);
+
+    // Bowler 1: modern row — origin = locA, reachable through locA + locB.
+    //           Should produce ONLY (locA, sq-modern).
+    const modernBowler = await makeBowlerWithCustomerIds(
+      targetEmail,
+      'sq-modern',
+      null,
+      locA,
+    );
+    await linkBowlerToLeague(modernBowler, leagueA, teamA);
+    await linkBowlerToLeague(modernBowler, leagueB, teamB);
+
+    // Bowler 2: legacy row — origin NULL, reachable through locA + locB.
+    //           Falls back to the join: produces (locA, sq-legacy)
+    //           and (locB, sq-legacy).
+    const legacyBowler = await makeBowlerWithCustomerIds(
+      targetEmail,
+      'sq-legacy',
+      null,
+      null,
+    );
+    const teamA2 = await makeTeam(leagueA);
+    const teamB2 = await makeTeam(leagueB);
+    await linkBowlerToLeague(legacyBowler, leagueA, teamA2);
+    await linkBowlerToLeague(legacyBowler, leagueB, teamB2);
+
+    const deleteCustomer = vi.fn().mockResolvedValue(undefined);
+    const provider: MockProvider = { providerName: 'square', deleteCustomer };
+    getPaymentProviderSpy.mockResolvedValue(provider as unknown as Awaited<
+      ReturnType<typeof paymentProviderFactory.getPaymentProvider>
+    >);
+
+    const summary = await executeAccountDeletion(targetEmail, adminId);
+
+    // 3 calls total: 1 from modernBowler (locA only) + 2 from
+    // legacyBowler (locA + locB). The locA call for modernBowler is
+    // for sq-modern, distinct from sq-legacy, so no dedup collapse.
+    expect(deleteCustomer).toHaveBeenCalledTimes(3);
+    const pairs = summary.paymentProvider
+      .map((p) => `${p.locationId}:${p.customerId}`)
+      .sort();
+    expect(pairs).toEqual(
+      [
+        `${locA}:sq-modern`,
+        `${locA}:sq-legacy`,
+        `${locB}:sq-legacy`,
+      ].sort(),
+    );
+    expect(summary.paymentProvider.every((p) => p.deleted)).toBe(true);
   });
 
   it('records ProviderNotConfiguredError without aborting and proceeds to anonymize', async () => {

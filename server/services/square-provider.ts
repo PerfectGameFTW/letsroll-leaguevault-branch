@@ -31,7 +31,7 @@ function buildSquareClient(accessToken: string, appId?: string): Client {
 
 export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, WalletProvider {
   readonly providerName = 'square';
-  private readonly locationId: number;
+  readonly locationId: number;
 
   constructor(locationId: number) {
     this.locationId = locationId;

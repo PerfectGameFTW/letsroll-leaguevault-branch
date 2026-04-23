@@ -64,6 +64,14 @@ export interface CatalogItem {
 
 export interface PaymentProvider {
   readonly providerName: string;
+  /**
+   * The location whose credentials this provider instance was
+   * resolved from. Exposed so callers that persist provider-derived
+   * state on a row (e.g. `bowlers.paymentProviderLocationId`, see
+   * task #346) can record which location's processor created the
+   * record without a second DB lookup.
+   */
+  readonly locationId: number;
 
   processPayment(
     sourceId: string,

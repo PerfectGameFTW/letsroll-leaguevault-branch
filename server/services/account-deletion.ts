@@ -21,12 +21,31 @@ interface ProviderTarget {
 /**
  * Collect every distinct (locationId, paymentCustomerId) pair we should
  * try to delete on the payment processor side for this set of bowlers.
- * The bowler's customer record was created at one specific provider, but
- * we don't store which one — we attempt every location reachable through
- * the bowler's leagues so the cleanup is best-effort but exhaustive.
+ *
+ * Modern rows carry `bowlers.paymentProviderLocationId`, which records
+ * the originating processor at the time the customer record was first
+ * written (see task #346 and the writers in
+ * `server/services/payment-customer-sync.ts`,
+ * `server/services/bowler-sync.ts`,
+ * `server/services/payment-utils.ts::persistCardpointeProfile`,
+ * and the bowlers PATCH route). For those rows we emit a single
+ * (locationId, customerId) pair per saved id — no fan-out across
+ * unrelated locations and no spurious `provider does not support
+ * customer deletion` audit entries.
+ *
+ * Legacy rows (column NULL — written before #346) still need the old
+ * best-effort behaviour: scan every location reachable through the
+ * bowler's leagues and try each one. We carry the legacy code path
+ * unchanged for those rows and skip the join entirely if every row
+ * has the column populated.
  */
 async function collectProviderTargets(
-  bowlers: { id: number; paymentCustomerId: string | null; cardpointeProfileId: string | null }[],
+  bowlers: {
+    id: number;
+    paymentCustomerId: string | null;
+    cardpointeProfileId: string | null;
+    paymentProviderLocationId: number | null;
+  }[],
 ): Promise<ProviderTarget[]> {
   const customerByBowler = new Map<number, string[]>();
   for (const b of bowlers) {
@@ -39,25 +58,43 @@ async function collectProviderTargets(
   }
   if (customerByBowler.size === 0) return [];
 
-  const bowlerIds = Array.from(customerByBowler.keys());
-  const rows = await db
-    .selectDistinct({ bowlerId: bowlerLeagues.bowlerId, locationId: leagues.locationId })
-    .from(bowlerLeagues)
-    .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
-    .where(inArray(bowlerLeagues.bowlerId, bowlerIds));
-
   const targets: ProviderTarget[] = [];
   const seen = new Set<string>();
-  for (const r of rows) {
-    if (r.locationId == null) continue;
-    const ids = customerByBowler.get(r.bowlerId) ?? [];
-    for (const cid of ids) {
-      const key = `${r.locationId}:${cid}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      targets.push({ locationId: r.locationId, customerId: cid });
+  const pushTarget = (locationId: number, customerId: string) => {
+    const key = `${locationId}:${customerId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    targets.push({ locationId, customerId });
+  };
+
+  // Direct-lookup path: bowlers whose origin location is recorded.
+  const legacyBowlerIds: number[] = [];
+  for (const b of bowlers) {
+    const ids = customerByBowler.get(b.id);
+    if (!ids) continue;
+    if (b.paymentProviderLocationId != null) {
+      for (const cid of ids) pushTarget(b.paymentProviderLocationId, cid);
+    } else {
+      legacyBowlerIds.push(b.id);
     }
   }
+
+  // Legacy fan-out path: only run the join for rows that lack the
+  // origin column, so modern callers don't pay for it.
+  if (legacyBowlerIds.length > 0) {
+    const rows = await db
+      .selectDistinct({ bowlerId: bowlerLeagues.bowlerId, locationId: leagues.locationId })
+      .from(bowlerLeagues)
+      .innerJoin(leagues, eq(bowlerLeagues.leagueId, leagues.id))
+      .where(inArray(bowlerLeagues.bowlerId, legacyBowlerIds));
+
+    for (const r of rows) {
+      if (r.locationId == null) continue;
+      const ids = customerByBowler.get(r.bowlerId) ?? [];
+      for (const cid of ids) pushTarget(r.locationId, cid);
+    }
+  }
+
   return targets;
 }
 

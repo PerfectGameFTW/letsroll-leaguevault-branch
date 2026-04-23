@@ -29,7 +29,7 @@ const log = createLogger('CardPointeProvider');
 
 export class CardPointePaymentProvider implements PaymentProvider {
   readonly providerName = 'cardpointe';
-  private readonly locationId: number;
+  readonly locationId: number;
 
   constructor(locationId: number) {
     this.locationId = locationId;
