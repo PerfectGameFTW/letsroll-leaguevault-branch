@@ -111,7 +111,7 @@ router.get('/:id/logo', async (req, res) => {
 });
 
 // Get an organization by ID (admin only)
-router.get('/:id', async (req: any, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {

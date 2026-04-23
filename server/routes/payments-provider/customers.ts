@@ -18,7 +18,7 @@ const router = Router();
 
 router.post('/customers', paymentLimiter, async (req, res) => {
   try {
-    let team: any = null;
+    let team: Awaited<ReturnType<typeof storage.getTeam>> | null = null;
     if (req.body.teamId) {
       team = await storage.getTeam(req.body.teamId);
 

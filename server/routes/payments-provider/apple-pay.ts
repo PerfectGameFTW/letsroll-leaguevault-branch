@@ -27,7 +27,7 @@ const log = createLogger('Payments');
 
 const router = Router();
 
-router.post('/apple-pay/register-all-domains', async (req: any, res) => {
+router.post('/apple-pay/register-all-domains', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin') {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
@@ -50,7 +50,7 @@ router.post('/apple-pay/register-all-domains', async (req: any, res) => {
   }
 });
 
-router.get('/apple-pay/jobs', async (req: any, res) => {
+router.get('/apple-pay/jobs', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin') {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
@@ -77,7 +77,7 @@ router.get('/apple-pay/jobs', async (req: any, res) => {
 // BEFORE `/apple-pay/jobs/:id` so the literal `pending-count` segment is
 // not captured by the `:id` param. System-admin only — same gate as the
 // rest of the apple-pay job routes.
-router.get('/apple-pay/jobs/pending-count', async (req: any, res) => {
+router.get('/apple-pay/jobs/pending-count', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin') {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
@@ -90,7 +90,7 @@ router.get('/apple-pay/jobs/pending-count', async (req: any, res) => {
   }
 });
 
-router.get('/apple-pay/jobs/:id', async (req: any, res) => {
+router.get('/apple-pay/jobs/:id', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin') {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
@@ -133,7 +133,7 @@ router.get('/apple-pay/jobs/:id', async (req: any, res) => {
   }
 });
 
-router.post('/apple-pay/jobs/:id/cancel', async (req: any, res) => {
+router.post('/apple-pay/jobs/:id/cancel', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin') {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
@@ -161,7 +161,7 @@ router.post('/apple-pay/jobs/:id/cancel', async (req: any, res) => {
   }
 });
 
-router.post('/apple-pay/jobs/:id/retry', async (req: any, res) => {
+router.post('/apple-pay/jobs/:id/retry', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin') {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
@@ -190,7 +190,7 @@ router.post('/apple-pay/jobs/:id/retry', async (req: any, res) => {
   }
 });
 
-router.post('/apple-pay/jobs/:id/items/:itemId/retry', async (req: any, res) => {
+router.post('/apple-pay/jobs/:id/items/:itemId/retry', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin') {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
@@ -220,7 +220,7 @@ router.post('/apple-pay/jobs/:id/items/:itemId/retry', async (req: any, res) => 
   }
 });
 
-router.get('/apple-pay/recovery-alerts/recent', async (req: any, res) => {
+router.get('/apple-pay/recovery-alerts/recent', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin') {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
@@ -243,7 +243,7 @@ router.get('/apple-pay/recovery-alerts/recent', async (req: any, res) => {
   }
 });
 
-router.post('/apple-pay/register-domain', async (req: any, res) => {
+router.post('/apple-pay/register-domain', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
       return sendError(res, 'Admin access required', 403, 'FORBIDDEN');

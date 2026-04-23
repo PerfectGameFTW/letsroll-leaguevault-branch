@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
 import type { OrgIntegrations } from '@shared/schema';
@@ -9,7 +9,7 @@ const log = createLogger("Integrations");
 
 const router = Router();
 
-router.use((req: any, res: Response, next) => {
+router.use((req: Request, res: Response, next) => {
   if (!req.isAuthenticated || !req.isAuthenticated()) {
     return sendError(res, 'Authentication required', 401, 'UNAUTHORIZED');
   }
@@ -19,15 +19,16 @@ router.use((req: any, res: Response, next) => {
   next();
 });
 
-function resolveOrgId(req: any): number | null {
+function resolveOrgId(req: Request): number | null {
   const isSystemAdmin = req.user?.role === 'system_admin';
 
   if (isSystemAdmin) {
     const fromQuery = req.query?.organizationId
-      ? parseInt(req.query.organizationId as string, 10)
+      ? parseInt(String(req.query.organizationId), 10)
       : null;
-    const fromBody = req.body?.organizationId
-      ? parseInt(String(req.body.organizationId), 10)
+    const bodyOrgId = (req.body as { organizationId?: unknown } | undefined)?.organizationId;
+    const fromBody = bodyOrgId !== undefined && bodyOrgId !== null
+      ? parseInt(String(bodyOrgId), 10)
       : null;
     const resolved = fromQuery || fromBody || req.user?.organizationId;
     return resolved ?? null;
@@ -36,7 +37,7 @@ function resolveOrgId(req: any): number | null {
   return req.user?.organizationId ?? null;
 }
 
-router.get('/', async (req: any, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const orgId = resolveOrgId(req);
     if (!orgId) {
@@ -69,7 +70,7 @@ const updateIntegrationsSchema = z.object({
   }).optional(),
 });
 
-router.patch('/', async (req: any, res: Response) => {
+router.patch('/', async (req: Request, res: Response) => {
   try {
     const orgId = resolveOrgId(req);
     if (!orgId) {

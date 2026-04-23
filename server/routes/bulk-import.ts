@@ -135,17 +135,18 @@ router.get('/template', (_req, res) => {
   res.send(csvContent);
 });
 
-router.post('/', (req: any, res, next) => {
-  upload.single('file')(req, res, (err: any) => {
+router.post('/', (req, res, next) => {
+  upload.single('file')(req, res, (err: unknown) => {
     if (err) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
+      const errObj = (err && typeof err === 'object') ? err as { code?: string; message?: string } : {};
+      if (errObj.code === 'LIMIT_FILE_SIZE') {
         return sendError(res, 'File is too large. Maximum size is 5MB.', 400);
       }
-      return sendError(res, 'File upload error: ' + err.message, 400);
+      return sendError(res, 'File upload error: ' + (errObj.message ?? 'unknown'), 400);
     }
     next();
   });
-}, async (req: any, res) => {
+}, async (req, res) => {
   try {
     if (!req.file) {
       return sendError(res, 'No file uploaded', 400);
@@ -166,7 +167,7 @@ router.post('/', (req: any, res, next) => {
       return sendError(res, 'Invalid file type. The uploaded file does not appear to be a valid CSV or XLSX file.', 400);
     }
 
-    const organizationId: number | undefined = req.user?.organizationId;
+    const organizationId: number | null | undefined = req.user?.organizationId;
     if (!organizationId) {
       return sendError(res, 'Organization context required', 403, 'FORBIDDEN');
     }

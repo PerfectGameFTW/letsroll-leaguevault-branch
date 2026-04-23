@@ -187,7 +187,7 @@ router.patch('/:id', adminWriteLimiter, async (req, res) => {
       return sendError(res, 'Frequency must be "weekly", "monthly", or "upfront"', 400, 'VALIDATION_ERROR');
     }
 
-    const updates: Record<string, any> = {};
+    const updates: Record<string, unknown> = {};
 
     if (frequency && frequency !== schedule.frequency) {
       const league = await storage.getLeague(schedule.leagueId);

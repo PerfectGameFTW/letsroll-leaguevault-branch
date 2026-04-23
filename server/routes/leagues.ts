@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { randomBytes } from 'crypto';
 import { storage } from '../storage';
 import { insertLeagueSchema, updateLeagueSchema, DEFAULT_TIMEZONE } from "@shared/schema";
@@ -24,7 +24,7 @@ const router = Router();
 // Apply organization filtering to all league routes
 router.use(filterByOrganization);
 
-router.get("/", async (req: any, res) => {
+router.get("/", async (req: Request, res) => {
   try {
     const organizationId = getOrganizationFilter(req);
     const isSystemAdmin = req.user?.role === 'system_admin';
@@ -38,7 +38,7 @@ router.get("/", async (req: any, res) => {
       return sendSuccess(res, []);
     }
     
-    const locationId = req.query.locationId ? parseInt(req.query.locationId) : null;
+    const locationId = req.query.locationId ? parseInt(String(req.query.locationId)) : null;
     if (locationId) {
       leagues = leagues.filter(l => l.locationId === locationId);
     }
@@ -49,7 +49,7 @@ router.get("/", async (req: any, res) => {
   }
 });
 
-router.get("/:id", async (req: any, res) => {
+router.get("/:id", async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id);
     const league = await storage.getLeague(id);
@@ -68,7 +68,7 @@ router.get("/:id", async (req: any, res) => {
   }
 });
 
-router.post("/", async (req: any, res) => {
+router.post("/", async (req: Request, res) => {
   try {
     // Derive seasonEnd server-side when totalBowlingWeeks is provided
     let derivedSeasonEnd = req.body.seasonEnd ? new Date(req.body.seasonEnd) : undefined;
@@ -132,7 +132,7 @@ router.post("/", async (req: any, res) => {
   }
 });
 
-router.patch("/:id", async (req: any, res) => {
+router.patch("/:id", async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id);
     
@@ -247,7 +247,7 @@ router.patch("/:id", async (req: any, res) => {
 });
 
 // Archive a league
-router.patch("/:id/archive", async (req: any, res) => {
+router.patch("/:id/archive", async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id);
     const league = await storage.getLeague(id);
@@ -265,7 +265,7 @@ router.patch("/:id/archive", async (req: any, res) => {
 });
 
 // Restore an archived league
-router.patch("/:id/restore", async (req: any, res) => {
+router.patch("/:id/restore", async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id);
     const league = await storage.getLeague(id);
@@ -282,7 +282,7 @@ router.patch("/:id/restore", async (req: any, res) => {
   }
 });
 
-router.delete("/:id", async (req: any, res) => {
+router.delete("/:id", async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id);
     
@@ -314,7 +314,7 @@ router.delete("/:id", async (req: any, res) => {
   }
 });
 
-router.post("/:id/send-invites", async (req: any, res) => {
+router.post("/:id/send-invites", async (req: Request, res) => {
   try {
     const leagueId = parseInt(req.params.id);
     const league = await storage.getLeague(leagueId);
@@ -379,7 +379,7 @@ router.post("/:id/send-invites", async (req: any, res) => {
   }
 });
 
-router.post("/:id/new-season", async (req: any, res) => {
+router.post("/:id/new-season", async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -482,7 +482,7 @@ router.post("/:id/new-season", async (req: any, res) => {
   }
 });
 
-router.get("/:id/season-history", async (req: any, res) => {
+router.get("/:id/season-history", async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {
@@ -502,7 +502,7 @@ router.get("/:id/season-history", async (req: any, res) => {
     } else {
       allLeagues = [league];
     }
-    const seasons: any[] = [];
+    const seasons: typeof league[] = [];
 
     let current: typeof league | undefined = league;
     while (current?.previousSeasonId) {

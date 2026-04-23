@@ -16,7 +16,7 @@ const log = createLogger('Payments');
 
 const router = Router();
 
-router.get('/catalog/categories', async (req: any, res) => {
+router.get('/catalog/categories', async (req, res) => {
   try {
     const locationIdParam = req.query.locationId as string | undefined;
     const lvLocationId = locationIdParam ? parseInt(locationIdParam) : null;
@@ -52,7 +52,7 @@ router.get('/catalog/categories', async (req: any, res) => {
   }
 });
 
-router.get('/catalog/items', async (req: any, res) => {
+router.get('/catalog/items', async (req, res) => {
   try {
     const categoryId = req.query.categoryId as string | undefined;
     const locationIdParam = req.query.locationId as string | undefined;

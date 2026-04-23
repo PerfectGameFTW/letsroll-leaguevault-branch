@@ -7,6 +7,20 @@ import { maskEmail } from '../utils/pii';
 
 const log = createLogger("Email");
 
+type SendgridLikeError = {
+  response?: { body?: unknown };
+  message?: string;
+};
+
+function describeMailError(error: unknown): unknown {
+  if (error && typeof error === 'object') {
+    const e = error as SendgridLikeError;
+    if (e.response?.body !== undefined) return e.response.body;
+    if (typeof e.message === 'string') return e.message;
+  }
+  return error;
+}
+
 const SENDGRID_API_KEY = env.SENDGRID_API_KEY;
 const FROM_EMAIL = `noreply@${env.APP_DOMAIN}`;
 const FROM_NAME = 'LeagueVault';
@@ -159,8 +173,8 @@ export async function sendTemplatedEmail(
     await sgMail.send(msg);
     log.info(`Templated email '${slug}' sent to:`, isDev ? toEmail : maskEmail(toEmail));
     return true;
-  } catch (error: any) {
-    log.error(`Failed to send templated email '${slug}':`, error?.response?.body || error.message);
+  } catch (error) {
+    log.error(`Failed to send templated email '${slug}':`, describeMailError(error));
     return false;
   }
 }
@@ -248,8 +262,8 @@ export async function sendInviteEmail(
     await sgMail.send(msg);
     log.info('Invite email sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
-  } catch (error: any) {
-    log.error('Failed to send invite email:', error?.response?.body || error.message);
+  } catch (error) {
+    log.error('Failed to send invite email:', describeMailError(error));
     return false;
   }
 }
@@ -292,8 +306,8 @@ export async function sendTestEmail(
     });
     log.info(`Test email for '${template.slug}' sent to:`, isDev ? toEmail : maskEmail(toEmail));
     return true;
-  } catch (error: any) {
-    log.error(`Failed to send test email:`, error?.response?.body || error.message);
+  } catch (error) {
+    log.error(`Failed to send test email:`, describeMailError(error));
     return false;
   }
 }
@@ -357,8 +371,8 @@ export async function sendPasswordResetFallbackEmail(
     await sgMail.send(msg);
     log.info('Password reset email sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
-  } catch (error: any) {
-    log.error('Failed to send password reset email:', error?.response?.body || error.message);
+  } catch (error) {
+    log.error('Failed to send password reset email:', describeMailError(error));
     return false;
   }
 }
@@ -406,8 +420,8 @@ export async function sendDeletionRequestNotification(
     await sgMail.send(msg, true);
     log.info(`Deletion request notification sent to ${toEmails.length} admin(s) for request ${request.id}`);
     return true;
-  } catch (error: any) {
-    log.error('Failed to send deletion request notification:', error?.response?.body || error.message);
+  } catch (error) {
+    log.error('Failed to send deletion request notification:', describeMailError(error));
     return false;
   }
 }
@@ -476,8 +490,8 @@ export async function sendApplePayRecoveryAlert(
       `Apple Pay recovery alert sent to ${toEmails.length} admin(s) for ${details.itemCount} item(s)`,
     );
     return true;
-  } catch (error: any) {
-    log.error('Failed to send Apple Pay recovery alert:', error?.response?.body || error.message);
+  } catch (error) {
+    log.error('Failed to send Apple Pay recovery alert:', describeMailError(error));
     return false;
   }
 }
@@ -536,8 +550,8 @@ export async function sendEmailChangeConfirmation(
     await sgMail.send(msg);
     log.info('Email-change confirmation sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
-  } catch (error: any) {
-    log.error('Failed to send email-change confirmation:', error?.response?.body || error.message);
+  } catch (error) {
+    log.error('Failed to send email-change confirmation:', describeMailError(error));
     return false;
   }
 }
@@ -591,8 +605,8 @@ export async function sendEmailChangeNotification(
     await sgMail.send(msg);
     log.info('Email-change notification sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
-  } catch (error: any) {
-    log.error('Failed to send email-change notification:', error?.response?.body || error.message);
+  } catch (error) {
+    log.error('Failed to send email-change notification:', describeMailError(error));
     return false;
   }
 }
@@ -682,10 +696,10 @@ export async function sendAccountDeletionConfirmation(
     await sgMail.send(msg);
     log.info('Account-deletion confirmation sent to:', isDev ? toEmail : maskEmail(toEmail));
     return true;
-  } catch (error: any) {
+  } catch (error) {
     log.error(
       'Failed to send account-deletion confirmation:',
-      error?.response?.body || error.message,
+      describeMailError(error),
     );
     return false;
   }

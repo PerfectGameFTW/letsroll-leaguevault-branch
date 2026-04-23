@@ -18,7 +18,7 @@ const log = createLogger("Payments");
 
 const router = Router();
 
-router.post("/:id/refund", paymentWriteLimiter, async (req: any, res) => {
+router.post("/:id/refund", paymentWriteLimiter, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     if (isNaN(id)) {

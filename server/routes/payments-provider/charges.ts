@@ -24,10 +24,10 @@ const log = createLogger('Payments');
 
 const router = Router();
 
-router.get('/payments/:paymentId/verify', async (req: any, res) => {
+router.get('/payments/:paymentId/verify', async (req, res) => {
   try {
     const userRole = req.user?.role;
-    if (userRole !== 'system_admin' && userRole !== 'admin') {
+    if (userRole !== 'system_admin' && userRole !== 'org_admin') {
       return sendError(res, 'Admin access required', 403, 'FORBIDDEN');
     }
 
@@ -85,13 +85,13 @@ router.get('/payments/:paymentId/verify', async (req: any, res) => {
         ? `Payment found: ${providerPayment.status}, $${(parseInt(providerPayment.amountMoney.amount) / 100).toFixed(2)}`
         : 'Payment NOT found — payment may have failed or been processed under different credentials',
     });
-  } catch (error: any) {
+  } catch (error) {
     log.error('Payment verification error:', error);
     sendError(res, 'Failed to verify payment', 500);
   }
 });
 
-router.post('/payments', paymentLimiter, async (req: any, res) => {
+router.post('/payments', paymentLimiter, async (req, res) => {
   try {
     const { sourceId, amount, bowlerId, leagueId } = req.body;
 
@@ -152,8 +152,8 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
 
     const existingPayments = await storage.getPayments({ bowlerId, leagueId, organizationId: league.organizationId! });
     const totalPaid = existingPayments
-      .filter((p: any) => p.status === 'paid')
-      .reduce((sum: number, p: any) => sum + (p.amount || 0), 0);
+      .filter((p) => p.status === 'paid')
+      .reduce((sum, p) => sum + (p.amount || 0), 0);
 
     const remainingBalance = Math.max(0, fullSeasonAmount - totalPaid);
 
@@ -281,7 +281,7 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
       dbPaymentId: dbPayment.id,
       savedCardId: storedCardId ?? null,
     });
-  } catch (error: any) {
+  } catch (error) {
     if (error instanceof ProviderNotConfiguredError) {
       return sendError(res, 'Payment system is not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
     }
@@ -290,7 +290,13 @@ router.post('/payments', paymentLimiter, async (req: any, res) => {
       message: error.message,
       stack: error.stack?.split('\n').slice(0, 5).join('\n'),
     } : error;
-    const providerErrors = error?.errors || error?.body?.errors;
+    type ProviderErrorDetail = { detail?: string };
+    const providerErrors: ProviderErrorDetail[] | undefined = (() => {
+      if (!error || typeof error !== 'object') return undefined;
+      const e = error as { errors?: unknown; body?: { errors?: unknown } };
+      const found = e.errors ?? e.body?.errors;
+      return Array.isArray(found) ? (found as ProviderErrorDetail[]) : undefined;
+    })();
     log.error('Payment processing error:', { error: errDetail, providerErrors });
     let userMessage = 'Payment processing failed. Please try again.';
     if (providerErrors?.[0]?.detail) {

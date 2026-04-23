@@ -13,7 +13,7 @@ const log = createLogger('Payments');
 
 const router = Router();
 
-router.get('/config', async (req: any, res) => {
+router.get('/config', async (req, res) => {
   const locationIdParam = req.query.locationId as string | undefined;
   if (locationIdParam) {
     const lvLocationId = parseInt(locationIdParam);

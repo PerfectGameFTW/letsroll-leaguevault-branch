@@ -5,11 +5,22 @@ import { createLogger } from '../logger';
 
 const log = createLogger("OrgMiddleware");
 
+declare module 'express-serve-static-core' {
+  interface Request {
+    organizationFilter?: number | null;
+  }
+}
+
+type OrgScopedRequest = Request & {
+  organizationFilter?: number | null;
+  isAuthenticated?: () => boolean;
+};
+
 /**
  * Middleware to ensure a user can only access resources from their organization
  * This middleware should be used after the authentication middleware
  */
-export function requireOrganizationAccess(req: any, res: Response, next: NextFunction) {
+export function requireOrganizationAccess(req: OrgScopedRequest, res: Response, next: NextFunction) {
   // If the user is not authenticated, deny access
   if (!req.isAuthenticated || !req.isAuthenticated()) {
     return sendError(
@@ -36,7 +47,7 @@ export function requireOrganizationAccess(req: any, res: Response, next: NextFun
  * Middleware to filter resources by the user's organization
  * This automatically adds the organization filter to the request
  */
-export function filterByOrganization(req: any, res: Response, next: NextFunction) {
+export function filterByOrganization(req: OrgScopedRequest, res: Response, next: NextFunction) {
   // If the user is not authenticated, don't apply any filter
   if (!req.isAuthenticated || !req.isAuthenticated()) {
     req.organizationFilter = null;
@@ -52,7 +63,7 @@ export function filterByOrganization(req: any, res: Response, next: NextFunction
 
   // If a specific organization is requested in the query string
   if (req.query.organizationId) {
-    const orgId = parseInt(req.query.organizationId);
+    const orgId = parseInt(String(req.query.organizationId));
 
     // System admins can access any organization
     if (req.user.role === 'system_admin') {
@@ -83,7 +94,7 @@ export function filterByOrganization(req: any, res: Response, next: NextFunction
 /**
  * Middleware to check if a league belongs to the user's organization
  */
-export async function hasAccessToLeague(req: any, leagueId: number): Promise<boolean> {
+export async function hasAccessToLeague(req: OrgScopedRequest, leagueId: number): Promise<boolean> {
   if (!req.user) {
     return false;
   }
@@ -115,7 +126,7 @@ export async function hasAccessToLeague(req: any, leagueId: number): Promise<boo
  * This utility function gets the organization ID from the request
  * accounting for user permissions and query parameters
  */
-export function getOrganizationFilter(req: any): number | null {
+export function getOrganizationFilter(req: OrgScopedRequest): number | null {
   // If organization filter was already determined, use it
   if (req.organizationFilter !== undefined) {
     return req.organizationFilter;
@@ -128,7 +139,7 @@ export function getOrganizationFilter(req: any): number | null {
 
   // If query has organization ID, validate access
   if (req.query.organizationId) {
-    const orgId = parseInt(req.query.organizationId);
+    const orgId = parseInt(String(req.query.organizationId));
     
     // System admins can access any organization
     if (req.user && req.user.role === 'system_admin') {

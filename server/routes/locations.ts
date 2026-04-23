@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
 import { storage } from '../storage';
@@ -11,7 +11,7 @@ const log = createLogger("Locations");
 
 const router = Router();
 
-router.get('/', filterByOrganization, async (req: any, res) => {
+router.get('/', filterByOrganization, async (req: Request, res) => {
   try {
     const organizationId = req.organizationFilter;
     const isSystemAdmin = req.user?.role === 'system_admin';
@@ -30,7 +30,7 @@ router.get('/', filterByOrganization, async (req: any, res) => {
   }
 });
 
-router.get('/:id', async (req: any, res) => {
+router.get('/:id', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -53,7 +53,7 @@ router.get('/:id', async (req: any, res) => {
   }
 });
 
-router.post('/', async (req: any, res) => {
+router.post('/', async (req: Request, res) => {
   try {
     const organizationId = req.user?.organizationId;
     if (!organizationId && req.user?.role !== 'system_admin') {
@@ -78,7 +78,7 @@ router.post('/', async (req: any, res) => {
   }
 });
 
-router.patch('/:id', async (req: any, res) => {
+router.patch('/:id', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -95,7 +95,7 @@ router.patch('/:id', async (req: any, res) => {
     }
 
     const validatedData = updateLocationSchema.parse(req.body);
-    const cleanedData: Record<string, any> = {};
+    const cleanedData: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(validatedData)) {
       if (value !== undefined && value !== null) {
         cleanedData[key] = value;
@@ -160,7 +160,7 @@ router.patch('/:id', async (req: any, res) => {
   }
 });
 
-router.patch('/:id/archive', async (req: any, res) => {
+router.patch('/:id/archive', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -184,7 +184,7 @@ router.patch('/:id/archive', async (req: any, res) => {
   }
 });
 
-router.patch('/:id/restore', async (req: any, res) => {
+router.patch('/:id/restore', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -208,7 +208,7 @@ router.patch('/:id/restore', async (req: any, res) => {
   }
 });
 
-router.delete('/:id', async (req: any, res) => {
+router.delete('/:id', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
@@ -232,7 +232,7 @@ router.delete('/:id', async (req: any, res) => {
   }
 });
 
-router.get('/:id/square-config', async (req: any, res) => {
+router.get('/:id/square-config', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
@@ -258,7 +258,7 @@ router.get('/:id/square-config', async (req: any, res) => {
   }
 });
 
-router.patch('/:id/square-config', async (req: any, res) => {
+router.patch('/:id/square-config', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
@@ -300,7 +300,7 @@ router.patch('/:id/square-config', async (req: any, res) => {
   }
 });
 
-router.get('/:id/cardpointe-config', async (req: any, res) => {
+router.get('/:id/cardpointe-config', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
@@ -327,7 +327,7 @@ router.get('/:id/cardpointe-config', async (req: any, res) => {
   }
 });
 
-router.patch('/:id/cardpointe-config', async (req: any, res) => {
+router.patch('/:id/cardpointe-config', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
@@ -369,7 +369,7 @@ router.patch('/:id/cardpointe-config', async (req: any, res) => {
   }
 });
 
-router.patch('/:id/payment-provider', async (req: any, res) => {
+router.patch('/:id/payment-provider', async (req: Request, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');

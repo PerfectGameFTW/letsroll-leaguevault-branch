@@ -77,11 +77,11 @@ async function createSquareCustomers() {
         }
 
         await sleep(100);
-      } catch (error: any) {
+      } catch (error) {
         log.error(`Error creating Square Customer for ${bowler.name}:`, error);
         errorCount++;
 
-        if (error.statusCode === 429) {
+        if ((error as { statusCode?: number } | null)?.statusCode === 429) {
           log.info('Rate limit hit, waiting 5 seconds...');
           await sleep(5000);
         }

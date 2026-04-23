@@ -16,6 +16,26 @@ const CUSTOM_FIELD_IDS = {
   organization: 'poVtF90VhO1CZ2TdD6qQ',
 };
 
+export interface BNContact {
+  id?: string;
+  email?: string | null;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  locationId?: string;
+  customFields?: { id: string; value: string | string[] }[];
+  [extra: string]: unknown;
+}
+
+interface BNContactWriteBody {
+  locationId?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  customFields?: { id: string; value: string | string[] }[];
+}
+
 function getGlobalApiKey(): string | undefined {
   return env.BN_API_KEY;
 }
@@ -59,7 +79,7 @@ export async function getOrgBNConfig(orgId: number): Promise<OrgIntegrations | n
   return storage.getOrgIntegrations(orgId);
 }
 
-export async function findContactByEmail(email: string, orgConfig?: OrgIntegrations | null): Promise<any | null> {
+export async function findContactByEmail(email: string, orgConfig?: OrgIntegrations | null): Promise<BNContact | null> {
   try {
     const apiKey = resolveApiKey(orgConfig);
     if (!apiKey) return null;
@@ -82,8 +102,8 @@ export async function findContactByEmail(email: string, orgConfig?: OrgIntegrati
 
     const data = await response.json();
     const contacts = data.contacts || [];
-    const match = contacts.find((c: any) =>
-      c.email && c.email.toLowerCase() === email.toLowerCase()
+    const match = (contacts as BNContact[]).find((c) =>
+      c.email !== undefined && c.email !== null && c.email.toLowerCase() === email.toLowerCase()
     );
     return match || null;
   } catch (error) {
@@ -98,13 +118,13 @@ export async function createContact(contactData: {
   email?: string;
   phone?: string;
   customFields?: { id: string; value: string | string[] }[];
-}, orgConfig?: OrgIntegrations | null): Promise<any | null> {
+}, orgConfig?: OrgIntegrations | null): Promise<BNContact | null> {
   try {
     const apiKey = resolveApiKey(orgConfig);
     if (!apiKey) return null;
     const locationId = resolveLocationId(orgConfig);
 
-    const body: any = {
+    const body: BNContactWriteBody = {
       locationId,
       firstName: contactData.firstName,
       lastName: contactData.lastName,
@@ -142,12 +162,12 @@ export async function updateContact(contactId: string, contactData: {
   email?: string;
   phone?: string;
   customFields?: { id: string; value: string | string[] }[];
-}, orgConfig?: OrgIntegrations | null): Promise<any | null> {
+}, orgConfig?: OrgIntegrations | null): Promise<BNContact | null> {
   try {
     const apiKey = resolveApiKey(orgConfig);
     if (!apiKey) return null;
 
-    const body: any = {};
+    const body: BNContactWriteBody = {};
     if (contactData.firstName !== undefined) body.firstName = contactData.firstName;
     if (contactData.lastName !== undefined) body.lastName = contactData.lastName;
     if (contactData.email !== undefined) body.email = contactData.email;
@@ -234,8 +254,8 @@ export async function syncBowlerToBN(
       customFields.push({ id: CUSTOM_FIELD_IDS.organization, value: orgName });
     }
 
-    let contact: any = null;
-    let existingContact: any = null;
+    let contact: BNContact | null = null;
+    let existingContact: BNContact | null = null;
 
     if (bowler.bnContactId) {
       contact = await updateContact(bowler.bnContactId, {
@@ -254,16 +274,17 @@ export async function syncBowlerToBN(
       existingContact = await findContactByEmail(bowler.email, effectiveConfig);
     }
 
-    if (existingContact) {
-      contact = await updateContact(existingContact.id, {
+    if (existingContact?.id) {
+      const existingId = existingContact.id;
+      contact = await updateContact(existingId, {
         firstName,
         lastName,
         phone: bowler.phone || undefined,
         customFields,
       }, effectiveConfig);
       if (contact) {
-        await storage.updateBowlerBnContactId(bowlerId, existingContact.id);
-        return { success: true, contactId: existingContact.id };
+        await storage.updateBowlerBnContactId(bowlerId, existingId);
+        return { success: true, contactId: existingId };
       }
     }
 
@@ -275,7 +296,7 @@ export async function syncBowlerToBN(
       customFields,
     }, effectiveConfig);
 
-    if (contact) {
+    if (contact?.id) {
       await storage.updateBowlerBnContactId(bowlerId, contact.id);
       return { success: true, contactId: contact.id };
     }

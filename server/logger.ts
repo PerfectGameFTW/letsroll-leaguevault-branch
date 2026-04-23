@@ -9,7 +9,7 @@ class ConsoleBuffer extends Writable {
     this.buffer = [];
   }
 
-  _write(chunk: any, encoding: string, callback: (error?: Error) => void) {
+  _write(chunk: Buffer | string, encoding: string, callback: (error?: Error) => void) {
     const timestamp = new Date().toISOString();
     const formattedLog = `[${timestamp}] ${chunk.toString()}`;
     this.buffer.push(formattedLog);
@@ -29,10 +29,10 @@ class ConsoleBuffer extends Writable {
 export const consoleBuffer = new ConsoleBuffer();
 
 export interface Logger {
-  info: (message: string, ...args: any[]) => void;
-  error: (message: string, ...args: any[]) => void;
-  warn: (message: string, ...args: any[]) => void;
-  debug: (message: string, ...args: any[]) => void;
+  info: (message: string, ...args: unknown[]) => void;
+  error: (message: string, ...args: unknown[]) => void;
+  warn: (message: string, ...args: unknown[]) => void;
+  debug: (message: string, ...args: unknown[]) => void;
 }
 
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
@@ -69,14 +69,14 @@ function getMinLevel(): LogLevel {
 
 export { getMinLevel as _getMinLevelForTests, isProductionLikeRuntime as _isProductionLikeRuntimeForTests };
 
-function serializeArg(arg: any): any {
+function serializeArg(arg: unknown): unknown {
   if (arg instanceof Error) {
     return { message: arg.message, stack: arg.stack };
   }
   return arg;
 }
 
-function formatArgs(args: any[]): string {
+function formatArgs(args: unknown[]): string {
   if (args.length === 0) return '';
   const serialized = args.map(serializeArg);
   if (serialized.length === 1 && typeof serialized[0] === 'object') {
@@ -92,22 +92,22 @@ function shouldLog(level: LogLevel): boolean {
 function makeLogger(prefix?: string): Logger {
   const tag = prefix ? `[${prefix}] ` : '';
   return {
-    info: (message: string, ...args: any[]) => {
+    info: (message: string, ...args: unknown[]) => {
       if (!shouldLog('info')) return;
       const log = `[INFO] ${tag}${message}${formatArgs(args)}`;
       consoleBuffer.write(Buffer.from(`${log}\n`));
     },
-    error: (message: string, ...args: any[]) => {
+    error: (message: string, ...args: unknown[]) => {
       if (!shouldLog('error')) return;
       const log = `[ERROR] ${tag}${message}${formatArgs(args)}`;
       consoleBuffer.write(Buffer.from(`${log}\n`));
     },
-    warn: (message: string, ...args: any[]) => {
+    warn: (message: string, ...args: unknown[]) => {
       if (!shouldLog('warn')) return;
       const log = `[WARN] ${tag}${message}${formatArgs(args)}`;
       consoleBuffer.write(Buffer.from(`${log}\n`));
     },
-    debug: (message: string, ...args: any[]) => {
+    debug: (message: string, ...args: unknown[]) => {
       if (!shouldLog('debug')) return;
       const log = `[DEBUG] ${tag}${message}${formatArgs(args)}`;
       consoleBuffer.write(Buffer.from(`${log}\n`));

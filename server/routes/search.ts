@@ -12,7 +12,7 @@ const router = Router();
 
 const MAX_RESULTS_PER_CATEGORY = 5;
 
-router.get("/", async (req: any, res) => {
+router.get("/", async (req, res) => {
   try {
     const q = (req.query.q as string || '').trim();
     if (!q || q.length < 2) {

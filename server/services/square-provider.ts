@@ -1,5 +1,5 @@
 import { Client, Environment } from 'square';
-import type { ApiError } from 'square';
+import type { ApiError, CreatePaymentRequest, CatalogObject } from 'square';
 import crypto from 'crypto';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
@@ -100,7 +100,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         }));
       }
 
-      const paymentRequest: any = {
+      const paymentRequest: CreatePaymentRequest = {
         sourceId,
         idempotencyKey: idempotencyKey || `${Date.now()}-${Math.random()}`,
         amountMoney: {
@@ -220,7 +220,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
 
       log.info('Order created:', order.id);
 
-      const paymentRequest: any = {
+      const paymentRequest: CreatePaymentRequest = {
         sourceId,
         idempotencyKey: idempotencyKey ? `${idempotencyKey}-pay` : `pay-${Date.now()}-${Math.random()}`,
         amountMoney: {
@@ -552,7 +552,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     }
 
     try {
-      const allObjects: any[] = [];
+      const allObjects: CatalogObject[] = [];
       let cursor: string | undefined;
       do {
         const response = await client.catalogApi.listCatalog(cursor, 'CATEGORY');

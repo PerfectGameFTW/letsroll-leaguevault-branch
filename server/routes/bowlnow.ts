@@ -8,7 +8,7 @@ const log = createLogger("BowlNow");
 
 const router = Router();
 
-router.get('/status', async (req: any, res: Response) => {
+router.get('/status', async (req, res) => {
   try {
     const isSystemAdmin = req.user?.role === 'system_admin';
 
@@ -34,7 +34,7 @@ router.get('/status', async (req: any, res: Response) => {
   }
 });
 
-router.post('/sync-bowler/:id', async (req: any, res: Response) => {
+router.post('/sync-bowler/:id', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
       return sendError(res, 'Admin access required', 403, 'FORBIDDEN');
@@ -65,7 +65,7 @@ router.post('/sync-bowler/:id', async (req: any, res: Response) => {
   }
 });
 
-router.post('/sync-all', async (req: any, res: Response) => {
+router.post('/sync-all', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin' && req.user?.role !== 'org_admin') {
       return sendError(res, 'Admin access required', 403, 'FORBIDDEN');

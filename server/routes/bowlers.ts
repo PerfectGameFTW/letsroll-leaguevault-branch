@@ -16,7 +16,7 @@ const log = createLogger("Bowlers");
 const router = Router();
 
 
-router.get("/unlinked", async (req: any, res) => {
+router.get("/unlinked", async (req, res) => {
   try {
     const rawUnlinkedOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
     if (rawUnlinkedOrgId !== undefined && isNaN(rawUnlinkedOrgId)) {

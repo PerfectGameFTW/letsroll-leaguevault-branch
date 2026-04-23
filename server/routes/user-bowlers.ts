@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { storage } from '../storage';
 import { sendSuccess, sendError, handleZodError, sanitizeUser } from '../utils/api';
 import { z } from 'zod';
@@ -7,11 +7,11 @@ import { hasAccessToBowler } from '../utils/access-control.js';
 
 const router = Router();
 
-function requireAuth(req: any, res: any, next: any) {
-  if (!req.isAuthenticated()) {
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
     return sendError(res, 'Authentication required', 401, 'AUTH_REQUIRED');
   }
-  const user = req.user as SelectUser;
+  const user = req.user as SelectUser | undefined;
   if (!user) {
     return sendError(res, 'Invalid session', 401, 'INVALID_SESSION');
   }

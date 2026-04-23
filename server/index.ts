@@ -183,14 +183,15 @@ if (isDev) {
 
 Sentry.setupExpressErrorHandler(app);
 
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   log.error('Unhandled express error:', err);
   if (!res.headersSent) {
-    const statusCode = (typeof err.status === 'number' && err.status >= 400 && err.status < 500)
-      ? err.status
+    const errObj = (err && typeof err === 'object') ? err as { status?: unknown; message?: unknown } : {};
+    const statusCode = (typeof errObj.status === 'number' && errObj.status >= 400 && errObj.status < 500)
+      ? errObj.status
       : 500;
     const clientMessage = statusCode < 500
-      ? (err.message || "Bad request")
+      ? (typeof errObj.message === 'string' ? errObj.message : "Bad request")
       : "An internal error occurred";
     res.status(statusCode).json({
       success: false,

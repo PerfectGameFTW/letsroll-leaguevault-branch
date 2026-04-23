@@ -57,16 +57,16 @@ async function initDummyHash() {
   DUMMY_HASH = await hashPassword(randomBytes(32).toString("hex"));
 }
 
-function isValidUser(user: any): user is SelectUser {
+function isValidUser(user: unknown): user is SelectUser {
+  if (!user || typeof user !== 'object') return false;
+  const u = user as Record<string, unknown>;
   return (
-    user &&
-    typeof user === 'object' &&
-    typeof user.id === 'number' &&
-    typeof user.email === 'string' &&
-    typeof user.password === 'string' &&
-    typeof user.name === 'string' &&
-    typeof user.role === 'string' &&
-    (user.createdAt instanceof Date || (typeof user.createdAt === 'string' && !isNaN(Date.parse(user.createdAt))))
+    typeof u.id === 'number' &&
+    typeof u.email === 'string' &&
+    typeof u.password === 'string' &&
+    typeof u.name === 'string' &&
+    typeof u.role === 'string' &&
+    (u.createdAt instanceof Date || (typeof u.createdAt === 'string' && !isNaN(Date.parse(u.createdAt))))
   );
 }
 

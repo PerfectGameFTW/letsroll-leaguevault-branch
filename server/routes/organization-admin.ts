@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { randomBytes } from 'crypto';
 import { storage } from '../storage';
 import { sendSuccess, sendError, sanitizeUser, handleZodError, handleUserOrgError } from '../utils/api';
@@ -16,17 +16,17 @@ type ErrorCode = string;
 const router = Router();
 
 // Middleware to check if the user is an organization admin or a system admin
-async function requireOrgAdminOrSystemAdmin(req: any, res: Response, next: any) {
+async function requireOrgAdminOrSystemAdmin(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated() || !req.user) {
     return sendError(res, 'You must be logged in to access this resource', 401, 'UNAUTHORIZED');
   }
 
   // Allow system admins
-  if (req.user.role === 'system_admin') {
+  if (req.user!.role === 'system_admin') {
     return next();
   }
 
-  if (req.user.role === 'org_admin' && req.user.organizationId) {
+  if (req.user!.role === 'org_admin' && req.user!.organizationId) {
     return next();
   }
 
@@ -34,7 +34,7 @@ async function requireOrgAdminOrSystemAdmin(req: any, res: Response, next: any) 
 }
 
 // Get all users in the current user's organization
-router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Response) => {
+router.get('/users', requireOrgAdminOrSystemAdmin, async (req: Request, res: Response) => {
   try {
     // A system admin can specify any organization
     let organizationId: number | null = req.query.organizationId 
@@ -42,8 +42,8 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
       : null;
     
     // For organization admins, force their own organization
-    if (req.user.role === 'org_admin') {
-      organizationId = req.user.organizationId;
+    if (req.user!.role === 'org_admin') {
+      organizationId = req.user!.organizationId;
     }
     
     if (!organizationId) {
@@ -53,8 +53,8 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
     const users = await storage.getOrganizationUsers(organizationId);
     
     const bowlerIds = users
-      .map((u: any) => u.bowlerId)
-      .filter((id: any): id is number => id != null);
+      .map((u) => u.bowlerId)
+      .filter((id): id is number => id != null);
 
     const [allBowlers, allBowlerLeagueEntries] = await Promise.all([
       storage.getBowlersByIds(bowlerIds),
@@ -77,7 +77,7 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
     const leagueMap = new Map(allLeagues.map(l => [l.id, l]));
     const teamMap = new Map(allTeams.map(t => [t.id, t]));
 
-    const usersWithBowlerInfo = users.map((user: any) => {
+    const usersWithBowlerInfo = users.map((user) => {
       const safeUser = sanitizeUser(user);
       if (!user.bowlerId) {
         return { ...safeUser, linkedBowler: null };
@@ -113,7 +113,7 @@ router.get('/users', requireOrgAdminOrSystemAdmin, async (req: any, res: Respons
 });
 
 // Update a user's organization admin status
-router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
+router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
@@ -139,11 +139,11 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
       return sendError(res, 'User not found', 404, 'not_found');
     }
     
-    if (req.user.role === 'org_admin') {
+    if (req.user!.role === 'org_admin') {
       if (user.role === 'system_admin') {
         return sendError(res, 'Organization admins cannot modify system admin accounts', 403, 'forbidden');
       }
-      if (user.organizationId !== req.user.organizationId) {
+      if (user.organizationId !== req.user!.organizationId) {
         return sendError(res, 'You can only update users in your own organization', 403, 'forbidden');
       }
     }
@@ -167,7 +167,7 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
 });
 
 // Add a user to the organization
-router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
+router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
@@ -189,14 +189,17 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
     
     let organizationId: number;
     
-    if (req.user.role === 'system_admin' && req.body.organizationId !== undefined) {
+    if (req.user!.role === 'system_admin' && req.body.organizationId !== undefined) {
       organizationId = parseInt(String(req.body.organizationId), 10);
       if (isNaN(organizationId)) {
         return sendError(res, 'Invalid organization ID', 400, 'bad_request');
       }
     } else {
       // Organization admins must use their own organization
-      organizationId = req.user.organizationId;
+      if (!req.user!.organizationId) {
+        return sendError(res, 'Organization ID is required', 400, 'bad_request');
+      }
+      organizationId = req.user!.organizationId;
     }
     
     if (!organizationId) {
@@ -208,7 +211,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
       return sendError(res, 'User not found', 404, 'not_found');
     }
 
-    if (req.user.role === 'org_admin' && user.role === 'system_admin') {
+    if (req.user!.role === 'org_admin' && user.role === 'system_admin') {
       return sendError(res, 'Organization admins cannot modify system admin accounts', 403, 'forbidden');
     }
 
@@ -254,7 +257,7 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
 // Permanently delete a user account (#268). Replaces the old "remove
 // from organization" path, which can no longer leave a non-admin user
 // orphaned thanks to the `users_role_org_required` CHECK constraint.
-router.delete('/users/:id', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
+router.delete('/users/:id', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
@@ -272,7 +275,7 @@ router.delete('/users/:id', requireOrgAdminOrSystemAdmin, adminWriteLimiter, asy
     //     would brick the platform)
     //   - another system_admin (audit-trail FK is RESTRICT, and admin
     //     accounts must be demoted via system-admin tooling first)
-    if (user.id === req.user.id) {
+    if (user.id === req.user!.id) {
       return sendError(res, 'You cannot delete your own account', 403, 'forbidden');
     }
     if (user.role === 'system_admin') {
@@ -284,7 +287,7 @@ router.delete('/users/:id', requireOrgAdminOrSystemAdmin, adminWriteLimiter, asy
       );
     }
 
-    if (req.user.role === 'org_admin' && user.organizationId !== req.user.organizationId) {
+    if (req.user!.role === 'org_admin' && user.organizationId !== req.user!.organizationId) {
       return sendError(res, 'You can only delete users from your own organization', 403, 'forbidden');
     }
 
@@ -303,15 +306,16 @@ router.delete('/users/:id', requireOrgAdminOrSystemAdmin, adminWriteLimiter, asy
     log.info('User permanently deleted', {
       deletedUserId: deleted.id,
       deletedEmail: deleted.email,
-      actingUserId: req.user.id,
+      actingUserId: req.user!.id,
     });
     return sendSuccess(res, { id: deleted.id, email: deleted.email });
-  } catch (error: any) {
-    if (error?.name === 'CannotDeleteAdminError') {
-      return sendError(res, error.message, 403, 'forbidden');
+  } catch (error) {
+    const errObj = (error && typeof error === 'object') ? error as { name?: string; message?: string } : {};
+    if (errObj.name === 'CannotDeleteAdminError') {
+      return sendError(res, errObj.message ?? 'Cannot delete admin', 403, 'forbidden');
     }
-    if (error?.name === 'UserHasAuditTrailError') {
-      return sendError(res, error.message, 409, 'AUDIT_TRAIL_CONFLICT');
+    if (errObj.name === 'UserHasAuditTrailError') {
+      return sendError(res, errObj.message ?? 'Audit trail conflict', 409, 'AUDIT_TRAIL_CONFLICT');
     }
     log.error('Error deleting user:', error);
     return sendError(res, 'Failed to delete user', 500, 'internal_error');
@@ -319,7 +323,7 @@ router.delete('/users/:id', requireOrgAdminOrSystemAdmin, adminWriteLimiter, asy
 });
 
 // Update a user's location assignment
-router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: any, res: Response) => {
+router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimiter, async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
@@ -340,11 +344,11 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
       return sendError(res, 'User not found', 404, 'not_found');
     }
 
-    if (req.user.role === 'org_admin') {
+    if (req.user!.role === 'org_admin') {
       if (user.role === 'system_admin') {
         return sendError(res, 'Organization admins cannot modify system admin accounts', 403, 'forbidden');
       }
-      if (user.organizationId !== req.user.organizationId) {
+      if (user.organizationId !== req.user!.organizationId) {
         return sendError(res, 'You can only update users in your own organization', 403, 'forbidden');
       }
     }
@@ -357,7 +361,7 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
   }
 });
 
-router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async (req: any, res: Response) => {
+router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async (req: Request, res: Response) => {
   try {
     const schema = z.object({
       firstName: z.string().min(1, 'First name is required').max(50),
@@ -376,10 +380,13 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
     const fullName = `${firstName} ${lastName}`;
 
     let organizationId: number;
-    if (req.user.role === 'system_admin' && req.body.organizationId) {
+    if (req.user!.role === 'system_admin' && req.body.organizationId) {
       organizationId = parseInt(String(req.body.organizationId), 10);
     } else {
-      organizationId = req.user.organizationId;
+      if (!req.user!.organizationId) {
+        return sendError(res, 'Organization ID is required', 400, 'bad_request');
+      }
+      organizationId = req.user!.organizationId;
     }
 
     if (!organizationId) {
@@ -434,7 +441,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
   }
 });
 
-router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, inviteLimiter, async (req: any, res: Response) => {
+router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, inviteLimiter, async (req: Request, res: Response) => {
   try {
     const userId = parseInt(req.params.id, 10);
     if (isNaN(userId)) {
@@ -446,8 +453,8 @@ router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, inviteLimi
       return sendError(res, 'User not found', 404, 'not_found');
     }
 
-    if (req.user.role === 'org_admin') {
-      if (user.organizationId !== req.user.organizationId) {
+    if (req.user!.role === 'org_admin') {
+      if (user.organizationId !== req.user!.organizationId) {
         return sendError(res, 'You can only manage users in your own organization', 403, 'forbidden');
       }
     }

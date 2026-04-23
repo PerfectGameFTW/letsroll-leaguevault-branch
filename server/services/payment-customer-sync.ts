@@ -47,7 +47,7 @@ export async function syncBowlerForUser(
   const bowler = await storage.getBowler(user.bowlerId);
   if (!bowler) return 'not_applicable';
 
-  const bowlerUpdate: Record<string, any> = {};
+  const bowlerUpdate: Record<string, unknown> = {};
   if (changed.nameChanged) bowlerUpdate.name = user.name;
   if (changed.emailChanged) bowlerUpdate.email = user.email;
   if (changed.phoneChanged) bowlerUpdate.phone = user.phone;
@@ -130,7 +130,7 @@ export async function syncBowlerForUser(
     return 'pending_retry';
   }
 
-  const updates: Record<string, any> = { ...bowlerUpdate };
+  const updates: Record<string, unknown> = { ...bowlerUpdate };
   let needsWrite = false;
   if (providerCustomer && providerCustomer.id !== bowler.paymentCustomerId) {
     updates.paymentCustomerId = providerCustomer.id;

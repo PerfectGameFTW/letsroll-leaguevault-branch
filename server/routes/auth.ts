@@ -190,7 +190,7 @@ export function registerAuthRoutes(app: Express): void {
   });
 
   authRouter.post("/login", loginLimiter, (req, res, next) => {
-    passport.authenticate("local", (err: any, user: any, info: any) => {
+    passport.authenticate("local", (err: unknown, user: Express.User | false, info: { message?: string } | undefined) => {
       if (err) {
         log.error('Login error:', err);
         return sendError(res, "Internal server error", 500, "SERVER_ERROR");
