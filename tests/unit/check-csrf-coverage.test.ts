@@ -161,6 +161,41 @@ export default router;
     expect(r.status, r.stderr).toBe(0);
   });
 
+  it('flags a router defined and mounted in the same file at a non-/api prefix', () => {
+    // Real codebase pattern: a single file declares
+    // `const authRouter = Router(); authRouter.post(...); app.use('/api/auth', authRouter);`
+    // The previous version of the guard only resolved imported
+    // routers, so a same-file Router var mounted at non-/api would
+    // silently bypass CSRF. This test pins down that gap.
+    const dir = makeIndexFixture(
+      `import express, { Router } from 'express';
+const app = express();
+const sneakyRouter = Router();
+sneakyRouter.post('/bar', (req, res) => res.sendStatus(200));
+sneakyRouter.patch('/baz/:id', (req, res) => res.sendStatus(200));
+app.use('/foo', sneakyRouter);
+app.use('/api', csrfProtection);
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/POST \/foo\/bar/);
+    expect(r.stderr).toMatch(/PATCH \/foo\/baz\/:id/);
+  });
+
+  it('does not flag a same-file router mounted under /api', () => {
+    const dir = makeIndexFixture(
+      `import express, { Router } from 'express';
+const app = express();
+const goodRouter = Router();
+goodRouter.post('/things', (req, res) => res.sendStatus(200));
+app.use('/api/good', goodRouter);
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
   it('handles middlewares between the prefix and the router in app.use(...)', () => {
     // app.use('/foo', requireAuth, sneakyRouter) — the router is the
     // last identifier, not the first. The guard must still detect

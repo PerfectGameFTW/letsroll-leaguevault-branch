@@ -84,6 +84,12 @@ const ROUTER_ROUTE_RE =
 // Default imports: `import name from 'spec'`.
 const IMPORT_DEFAULT_RE = /import\s+([A-Za-z_$][\w$]*)\s+from\s+(['"])([^'"]+)\2/g;
 
+// Local Router definitions: `const <name> = Router()` or
+// `const <name> = express.Router()`. Tolerates an optional TS type
+// annotation between the name and `=`.
+const LOCAL_ROUTER_RE =
+  /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:express\s*\.\s*)?Router\s*\(/g;
+
 const IDENT_RE = /\b([A-Za-z_$][\w$]*)\b/g;
 
 interface Violation {
@@ -163,18 +169,37 @@ function main(): void {
       if (resolved) importMap.set(localName, resolved);
     }
 
+    // Local Router definitions in this file. Used to attribute
+    // same-file mounts (`const r = Router(); app.use('/foo', r)`)
+    // back to the file's own router routes — without this, a router
+    // defined and mounted in the same file (a real pattern in this
+    // codebase, e.g. `server/routes/auth.ts`) would silently bypass
+    // the guard.
+    const localRouterVars = new Set<string>();
+    for (const m of src.matchAll(LOCAL_ROUTER_RE)) {
+      localRouterVars.add(m[1]);
+    }
+
     // app.use('<prefix>', ..., <router>) — record mount prefix on
-    // the imported router file. We pick the LAST identifier in the
-    // rest-args that's in importMap as the router.
+    // either an imported router file (cross-file mount) OR the
+    // current file (same-file mount on a local Router var). We pick
+    // the LAST identifier in the rest-args that resolves to one of
+    // those, so middlewares between the prefix and the router don't
+    // fool the resolver.
     for (const m of src.matchAll(APP_USE_RE)) {
       const prefix = m[2];
       const restArgs = m[3];
       const idents = [...restArgs.matchAll(IDENT_RE)].map((x) => x[1]);
       let routerFile: string | null = null;
       for (let i = idents.length - 1; i >= 0; i--) {
-        const candidate = importMap.get(idents[i]);
-        if (candidate) {
-          routerFile = candidate;
+        const id = idents[i];
+        const importedFile = importMap.get(id);
+        if (importedFile) {
+          routerFile = importedFile;
+          break;
+        }
+        if (localRouterVars.has(id)) {
+          routerFile = file;
           break;
         }
       }
