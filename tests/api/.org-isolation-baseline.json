@@ -1,0 +1,18 @@
+{
+  "_doc": "Baseline of GET endpoints currently flagged by scripts/check-org-isolation-coverage.ts as lacking a cross-org assertion in tests/api/organization-isolation.test.ts. Closing a gap (removing an entry) is fine. Adding a new uncovered endpoint without listing it here will fail tests/unit/check-org-isolation-coverage.test.ts so the gap is caught at PR time. See task #399 for the plan to drive this list to empty.",
+  "uncovered": [
+    "GET /api/admin/email-templates/:id",
+    "GET /api/bn/status",
+    "GET /api/bowlers",
+    "GET /api/bowlers/unlinked",
+    "GET /api/leagues/:id/season-history",
+    "GET /api/locations/:id",
+    "GET /api/locations/:id/cardpointe-config",
+    "GET /api/locations/:id/square-config",
+    "GET /api/organizations/:id/app-icon",
+    "GET /api/organizations/:id/logo",
+    "GET /api/payments",
+    "GET /api/scores/league/:leagueId/week/:weekNumber",
+    "GET /api/user/avatar/:userId"
+  ]
+}

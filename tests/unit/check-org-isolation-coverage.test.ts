@@ -69,6 +69,44 @@ describe('check-org-isolation-coverage CI guard', () => {
     expect(r.stdout).toMatch(/scanned \d+ id-bearing GET endpoint/);
   });
 
+  /**
+   * This is the actual CI forcing function. We can't add an
+   * `npm run check:org-isolation` script (package.json is locked),
+   * so we rely on vitest — which already runs in CI — to surface
+   * regressions. Running with `--strict` against the real codebase,
+   * we extract the set of currently-flagged endpoints and assert it
+   * is a SUBSET of `tests/api/.org-isolation-baseline.json`.
+   *
+   * Adding a new id-bearing GET endpoint without a cross-org test
+   * adds to the flagged set → not a subset → test fails. Closing
+   * an existing gap (removing a path from the live flagged set)
+   * keeps the subset relation intact and remains green; the
+   * baseline can then be trimmed to keep the lint tight.
+   */
+  it('does not introduce new uncovered cross-org endpoints (baseline check)', () => {
+    const fs = require('node:fs') as typeof import('node:fs');
+    const baselineRaw = fs.readFileSync(
+      join(process.cwd(), 'tests/api/.org-isolation-baseline.json'),
+      'utf8',
+    );
+    const baseline = new Set<string>(
+      (JSON.parse(baselineRaw) as { uncovered: string[] }).uncovered,
+    );
+    const r = runIn(process.cwd(), ['--strict']);
+    const flagged = new Set(
+      [...r.stderr.matchAll(/- (GET \/[^\s]+)/g)].map((m) => m[1]),
+    );
+    const newGaps = [...flagged].filter((p) => !baseline.has(p)).sort();
+    expect(
+      newGaps,
+      `New uncovered cross-org endpoint(s) detected:\n${newGaps
+        .map((p) => `  - ${p}`)
+        .join(
+          '\n',
+        )}\n\nAdd a cross-org assertion in tests/api/organization-isolation.test.ts (preferred), or, with security-team sign-off, append the path to tests/api/.org-isolation-baseline.json.\n\nFull lint output:\n${r.stderr}`,
+    ).toEqual([]);
+  });
+
   it('passes (--strict) when every id-bearing GET endpoint is referenced in the test', () => {
     const dir = makeFixture({
       'server/routes/index.ts': indexMounting('/api/widgets', 'widgets'),
