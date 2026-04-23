@@ -419,7 +419,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
 
     const organization = await storage.getOrganization(organizationId);
 
-    const baseUrl = getBaseUrl(organization?.slug);
+    const baseUrl = getBaseUrl(organization);
     const setupUrl = `${baseUrl}/set-password?token=${inviteToken}`;
     const variables: Record<string, string> = {
       user_name: firstName,

@@ -146,7 +146,7 @@ export function registerAuthRoutes(app: Express): void {
                   storage.setUserOrganization(user.id, league.organizationId),
                   storage.getOrganization(league.organizationId),
                 ]);
-                const baseUrl = getBaseUrl(org?.slug || req.orgSlug);
+                const baseUrl = getBaseUrl(org ?? req.orgSlug);
                 sendTemplatedEmail('self_register_linked', result.data.email, {
                   bowler_name: bowler.name,
                   organization_name: org?.name || '',
@@ -350,7 +350,7 @@ export function registerAuthRoutes(app: Express): void {
         await storage.setUserInviteToken(user.id, token, expiry);
 
         const org = user.organizationId ? await storage.getOrganization(user.organizationId) : null;
-        const baseUrl = getBaseUrl(org?.slug);
+        const baseUrl = getBaseUrl(org);
         const resetUrl = `${baseUrl}/set-password?token=${token}`;
 
         const firstName = user.name?.split(' ')[0] || user.email;
@@ -363,7 +363,7 @@ export function registerAuthRoutes(app: Express): void {
 
         if (!sent) {
           const { sendPasswordResetFallbackEmail } = await import('../services/email.js');
-          await sendPasswordResetFallbackEmail(email, firstName || 'there', token, org?.slug);
+          await sendPasswordResetFallbackEmail(email, firstName || 'there', token, org?.subdomain || org?.slug);
         }
 
         log.info('Password reset email sent', { userId: user.id, email });
@@ -424,7 +424,7 @@ export function registerAuthRoutes(app: Express): void {
               : Promise.resolve(null),
             storage.getOrganization(league.organizationId),
           ]);
-          const baseUrl = getBaseUrl(org?.slug || req.orgSlug);
+          const baseUrl = getBaseUrl(org ?? req.orgSlug);
           sendTemplatedEmail('bowler_claimed', user.email, {
             bowler_name: bowler.name,
             organization_name: org?.name || '',

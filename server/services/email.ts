@@ -30,7 +30,9 @@ if (SENDGRID_API_KEY) {
   log.info('SendGrid initialized');
 }
 
-export function getBaseUrl(orgSlug?: string | null): string {
+export function getBaseUrl(
+  orgOrSlug?: string | { subdomain?: string | null; slug?: string | null } | null,
+): string {
   if (isDev) {
     if (env.REPLIT_DOMAINS) {
       const domains = env.REPLIT_DOMAINS.split(',');
@@ -40,8 +42,18 @@ export function getBaseUrl(orgSlug?: string | null): string {
       return `https://${env.REPL_SLUG}.${env.REPL_OWNER}.repl.co`;
     }
   }
-  if (orgSlug) {
-    return `https://${orgSlug}.${env.APP_DOMAIN}`;
+  // Prefer the org's `subdomain` field (the actual DNS host) over `slug`
+  // (an internal identifier that may contain hyphens not present in DNS).
+  // Falls back to slug for legacy orgs that haven't been assigned a
+  // subdomain yet.
+  let host: string | null | undefined;
+  if (typeof orgOrSlug === 'string') {
+    host = orgOrSlug;
+  } else if (orgOrSlug) {
+    host = orgOrSlug.subdomain || orgOrSlug.slug || null;
+  }
+  if (host) {
+    return `https://${host}.${env.APP_DOMAIN}`;
   }
   return `https://${env.APP_DOMAIN}`;
 }

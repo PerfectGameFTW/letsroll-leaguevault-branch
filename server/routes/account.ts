@@ -257,7 +257,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       const org = existingUser.organizationId
         ? await storage.getOrganization(existingUser.organizationId)
         : null;
-      const baseUrl = getBaseUrl(org?.slug ?? null);
+      const baseUrl = getBaseUrl(org);
       const confirmUrl = `${baseUrl}/confirm-email-change?token=${rawToken}`;
 
       // Best-effort email delivery; do not fail the API call if the SMTP
