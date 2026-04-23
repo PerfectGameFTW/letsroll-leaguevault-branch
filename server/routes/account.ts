@@ -13,6 +13,7 @@ import {
   sendDeletionRequestNotification,
   sendEmailChangeConfirmation,
   sendEmailChangeNotification,
+  sendPasswordChangedNotification,
   getBaseUrl,
 } from '../services/email';
 import { requireSystemAdmin } from '../middleware/auth';
@@ -714,6 +715,48 @@ router.post('/change-password', changePasswordLimiter, requireAuth, async (req: 
       // password update that already committed. Log loudly so this
       // shows up in monitoring.
       log.error('Failed to destroy other sessions on password change', {
+        userId: user.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    // Industry-standard "your password was just changed" notification
+    // (task #353). Sent AFTER the destroy-other-sessions step so the
+    // recipient's mental model lines up with what just happened: any
+    // open tab that wasn't this one has been logged out, and they're
+    // getting a heads-up about the change. Best-effort — a SendGrid
+    // failure must not roll back the password rotation that already
+    // committed; we log loudly and move on.
+    try {
+      // Express's `req.ip` already honors `trust proxy`. Truncate the
+      // UA to a sane bound — the helper truncates again for the email
+      // body, but keeping the bound tight at the call site avoids
+      // logging absurdly long UAs into our own log lines.
+      const rawUa = (req.get('user-agent') ?? '').slice(0, 256);
+      void sendPasswordChangedNotification(existingUser.email, existingUser.name, {
+        changedAt: new Date(),
+        ipAddress: req.ip ?? null,
+        userAgent: rawUa || null,
+      })
+        .then(ok => {
+          if (!ok) {
+            log.warn('Password-changed notification helper returned false', {
+              userId: user.id,
+            });
+          }
+        })
+        .catch(err => {
+          log.error('Password-changed notification threw unexpectedly', {
+            userId: user.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    } catch (err) {
+      // Synchronous throw before the helper runs — extremely
+      // unlikely (the helper is async and self-contained) but
+      // belt-and-suspenders so a bug here can't 500 the request
+      // after the password already rotated.
+      log.error('Failed to dispatch password-changed notification', {
         userId: user.id,
         error: err instanceof Error ? err.message : String(err),
       });

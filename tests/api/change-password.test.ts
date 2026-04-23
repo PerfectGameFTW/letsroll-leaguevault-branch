@@ -211,6 +211,50 @@ describe('POST /api/account/change-password', () => {
     expect(throttled.data.error?.code).toBe('RATE_LIMITED');
   });
 
+  it('dispatches the password-changed notification email without blocking or failing the response (task #353)', async () => {
+    // The notification helper is invoked as fire-and-forget AFTER the
+    // password update + session-cleanup commit. We can't mock SendGrid
+    // across the integration server's process boundary, but we CAN
+    // assert the contract that matters end-to-end:
+    //   1. The change-password route still returns 200 promptly even
+    //      though it now triggers an outbound SendGrid call.
+    //   2. The password rotation actually committed (new credentials
+    //      work; old ones don't), so a SendGrid hiccup didn't somehow
+    //      roll the change back.
+    //   3. The route returns within a tight bound, proving the email
+    //      send is not awaited inline.
+    // A failing helper would surface in server logs; the route itself
+    // must stay successful and snappy.
+    const { email, session } = await createUserAndLogin();
+
+    const startedAt = Date.now();
+    const res = await apiPost<{ message: string }>(
+      '/api/account/change-password',
+      { currentPassword: ORIGINAL_PASSWORD, newPassword: NEW_STRONG_PASSWORD },
+      session,
+    );
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(res.status).toBe(200);
+    expect(res.data.success).toBe(true);
+    // Loose upper bound — the route does a couple of DB writes, a
+    // session-store sweep, and *fires off* (does not await) the
+    // SendGrid call. If we ever accidentally `await` the mailer the
+    // wall-clock here will balloon to seconds.
+    expect(elapsedMs).toBeLessThan(3000);
+
+    // Old creds dead, new creds live → the rotation really happened.
+    const oldLogin = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: ORIGINAL_PASSWORD }),
+    });
+    expect(oldLogin.status).toBe(401);
+
+    const newSession = await login(email, NEW_STRONG_PASSWORD);
+    expect(newSession.user.email).toBe(email);
+  });
+
   it('rejects an unauthenticated request with AUTH_REQUIRED', async () => {
     // Fetch CSRF token+cookie without logging in so the request reaches
     // requireAuth instead of being 403'd by CSRF middleware first.

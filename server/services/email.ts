@@ -624,6 +624,100 @@ export async function sendEmailChangeNotification(
 }
 
 /**
+ * Best-effort security notification sent after a successful change to
+ * the user's password. Mirrors the industry-standard "your password
+ * was just changed" email (Google, GitHub, Stripe). The change is
+ * already committed by the time we get here — a SendGrid failure
+ * MUST NOT roll the password back, so callers should ignore the
+ * boolean return value beyond logging.
+ *
+ * Includes a coarse fingerprint of the request that triggered the
+ * change (timestamp, approximate IP, truncated user-agent) so a
+ * recipient who DIDN'T initiate the change has enough context to
+ * recognize it as suspicious without leaking precise location data.
+ */
+export async function sendPasswordChangedNotification(
+  toEmail: string,
+  userName: string,
+  context: {
+    changedAt: Date;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  },
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    log.error('Cannot send password-changed notification — SENDGRID_API_KEY not configured');
+    return false;
+  }
+
+  const safeName = escapeHtml(userName || 'there');
+  // Format the timestamp in UTC with the offset spelled out so the
+  // recipient (who could be in any timezone) can sanity-check it.
+  const safeChangedAt = escapeHtml(context.changedAt.toUTCString());
+  const safeIp = escapeHtml(context.ipAddress?.trim() || 'unknown');
+  // Truncate the UA to keep the email body bounded; full UAs can be
+  // hundreds of characters and a coarse hint is all we need for the
+  // "was this you?" sniff test.
+  const rawUa = (context.userAgent ?? '').trim();
+  const safeUa = escapeHtml(rawUa ? (rawUa.length > 120 ? `${rawUa.slice(0, 120)}…` : rawUa) : 'unknown');
+  const supportUrl = `${getBaseUrl()}/support`;
+
+  const msg = {
+    to: toEmail,
+    from: { email: FROM_EMAIL, name: FROM_NAME },
+    subject: 'Your LeagueVault password was just changed',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <p style="font-size: 16px; color: #333;">Hi ${safeName},</p>
+        <p style="font-size: 16px; color: #333;">
+          The password on your LeagueVault account was just changed. As a
+          security precaution, every other device that was signed in to
+          your account has been signed out.
+        </p>
+        <table style="font-size: 14px; color: #555; border-collapse: collapse; margin: 16px 0;">
+          <tr>
+            <td style="padding: 4px 12px 4px 0; color: #888;">When</td>
+            <td style="padding: 4px 0;">${safeChangedAt}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 12px 4px 0; color: #888;">From IP</td>
+            <td style="padding: 4px 0;">${safeIp}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 12px 4px 0; color: #888;">Browser</td>
+            <td style="padding: 4px 0;">${safeUa}</td>
+          </tr>
+        </table>
+        <p style="font-size: 16px; color: #333;">
+          <strong>If this was you</strong>, no action is needed — you can
+          ignore this email.
+        </p>
+        <p style="font-size: 16px; color: #333;">
+          <strong>If this wasn't you</strong>, your account may be
+          compromised. Contact support immediately so we can help you
+          regain control.
+        </p>
+        <p style="font-size: 14px; color: #666; word-break: break-all;">
+          <a href="${escapeHtml(supportUrl)}">${escapeHtml(supportUrl)}</a>
+        </p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="font-size: 12px; color: #999; text-align: center;">Powered by LeagueVault</p>
+      </div>
+    `,
+    trackingSettings: { clickTracking: { enable: false, enableText: false } },
+  };
+
+  try {
+    await sgMail.send(msg);
+    log.info('Password-changed notification sent to:', isDev ? toEmail : maskEmail(toEmail));
+    return true;
+  } catch (error) {
+    log.error('Failed to send password-changed notification:', describeMailError(error));
+    return false;
+  }
+}
+
+/**
  * Confirmation email sent to the original requester after an admin
  * runs the automated account-data deletion. Best-effort: callers
  * should NOT roll back the deletion if this returns false.
