@@ -309,7 +309,12 @@ export async function hasAccessToBowlers(
     if (userBowlerId !== null && entry.bowlerId === userBowlerId) {
       userLeagueIds.add(entry.leagueId);
     }
-    if (idsToCheck.has(entry.bowlerId)) {
+    // Only collect league entries for IDs that ARE still in the
+    // fallback pool. IDs already decided by the org-stamp gate above
+    // (allowed for matching org, denied for admin/mismatch) must NOT
+    // be re-evaluated here — otherwise an admin-denied stamped bowler
+    // could be incorrectly re-allowed via a league overlap.
+    if (stillToCheck.has(entry.bowlerId)) {
       const list = leagueIdsByBowler.get(entry.bowlerId);
       if (list) {
         list.push(entry.leagueId);
@@ -334,7 +339,10 @@ export async function hasAccessToBowlers(
   const userIsSystemAdmin = isSystemAdmin(req.user);
   const userOrgId = req.user.organizationId ?? null;
 
-  for (const bowlerId of idsToCheck) {
+  // Iterate ONLY the IDs that still need a fallback decision. IDs
+  // already settled by the org-stamp gate above (allowed-on-match,
+  // denied-on-admin-mismatch) must not be revisited here.
+  for (const bowlerId of stillToCheck) {
     const bowlerLeagueIds = leagueIdsByBowler.get(bowlerId);
     if (!bowlerLeagueIds || bowlerLeagueIds.length === 0) {
       continue;
