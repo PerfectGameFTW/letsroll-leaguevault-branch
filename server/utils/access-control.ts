@@ -119,6 +119,32 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
     return true;
   }
 
+  // Owning-organization short-circuit (task #342). Every bowler created
+  // after task #342 carries an explicit `organizationId` stamp, so we can
+  // gate access on that single column instead of fanning out to league
+  // lookups. Sysadmins are allowed for any non-null org. Org users are
+  // allowed when the stamp matches their own org. Legacy/orphan rows
+  // with `organizationId === null` are NOT short-circuited here — they
+  // fall through to the league-based scan below, which preserves the
+  // pre-#342 behavior (denied per the org-less policy unless a shared
+  // league grants self-membership). This way the new positive
+  // short-circuit can never widen access for legacy rows.
+  const bowlerRow = await storage.getBowler(bowlerId);
+  if (bowlerRow && bowlerRow.organizationId !== null) {
+    if (isSystemAdmin(req.user)) {
+      return true;
+    }
+    if (req.user.organizationId && req.user.organizationId === bowlerRow.organizationId) {
+      return true;
+    }
+    // Cross-org: fall through. The legacy league-scan below can still
+    // grant access via the self-membership shortcut (the user shares a
+    // league with the target bowler) — preserving the existing
+    // bowler-to-bowler same-league semantics for shared leagues. It
+    // will NOT grant cross-org admins access to fresh bowlers (zero
+    // links → empty scan → denied).
+  }
+
   const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId });
 
   if (bowlerLeagueEntries.length === 0) {
@@ -211,9 +237,42 @@ export async function hasAccessToBowlers(
     return result;
   }
 
+  // Owning-organization short-circuit (task #342). Mirror the single-bowler
+  // helper above: batch-fetch the bowler rows and grant access for every id
+  // whose stamped `organizationId` matches the caller's (or for any non-null
+  // stamp when the caller is sysadmin). IDs whose org stamp does NOT
+  // short-circuit allow stay in `stillToCheck` and fall through to the
+  // existing league-based scan below — preserving the same-league
+  // self-membership semantics for legacy/orphan rows.
+  const callerIsSystemAdmin = isSystemAdmin(req.user);
+  const callerOrgIdShort = req.user.organizationId ?? null;
+  const fetchedBowlers = await storage.getBowlersByIds([...idsToCheck]);
+  const stampedOrgByBowler = new Map<number, number | null>();
+  for (const b of fetchedBowlers) {
+    stampedOrgByBowler.set(b.id, b.organizationId);
+  }
+  const stillToCheck = new Set<number>();
+  for (const id of idsToCheck) {
+    const stamp = stampedOrgByBowler.get(id);
+    if (stamp !== undefined && stamp !== null) {
+      if (callerIsSystemAdmin) {
+        result.set(id, true);
+        continue;
+      }
+      if (callerOrgIdShort !== null && callerOrgIdShort === stamp) {
+        result.set(id, true);
+        continue;
+      }
+    }
+    stillToCheck.add(id);
+  }
+  if (stillToCheck.size === 0) {
+    return result;
+  }
+
   // Fold the requesting user's own bowlerId into the same batched lookup so
   // we can compute their league memberships in the same DB round-trip.
-  const lookupIds = new Set<number>(idsToCheck);
+  const lookupIds = new Set<number>(stillToCheck);
   if (userBowlerId !== null) {
     lookupIds.add(userBowlerId);
   }

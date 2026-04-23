@@ -19,6 +19,7 @@ const bowlerColumns = {
   phone: bowlers.phone,
   active: bowlers.active,
   order: bowlers.order,
+  organizationId: bowlers.organizationId,
   paymentCustomerId: bowlers.paymentCustomerId,
   cardpointeProfileId: bowlers.cardpointeProfileId,
   paymentProviderLocationId: bowlers.paymentProviderLocationId,

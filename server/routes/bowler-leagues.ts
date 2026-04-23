@@ -109,39 +109,61 @@ router.post("/", async (req, res) => {
     }
 
     if (!(await hasAccessToBowler(req, data.bowlerId))) {
-      // Bootstrap exception (creation-time claim token).
+      // Bootstrap exception (creation-time claim token + org-stamp gate).
       //
-      // A freshly created bowler has zero league entries, which makes
-      // `hasAccessToBowler` deny every caller — so the public API would
-      // otherwise have no way to attach a brand-new bowler to its first
-      // league. Production bootstrap paths (bulk import, season clone)
-      // call `storage.createBowlerLeague` directly to dodge this same
+      // A freshly created bowler that has zero league entries fails the
+      // regular access check via the legacy fallback path (no shared
+      // league with the caller), so the public API would otherwise have
+      // no way to attach a brand-new bowler to its first league.
+      // Production bootstrap paths (bulk import, season clone) call
+      // `storage.createBowlerLeague` directly to dodge the same
       // chicken-egg problem.
       //
-      // We allow the bootstrap ONLY when:
-      //   1. The caller is org_admin or system_admin. Regular bowler
-      //      users that pass `hasAccessToTeam` via the league
-      //      self-membership shortcut must not be able to claim other
-      //      bowlers through this branch.
-      //   2. The caller holds a non-expired creation-time claim token
-      //      for this bowler id, registered by the same user/org via
-      //      `POST /api/bowlers`. This is the safeguard against
-      //      cross-org hijack: bowler rows have no owning-organization
-      //      column today, so without a claim binding any org admin
-      //      that knew/guessed a fresh bowler id could attach it to
-      //      their own org. The claim is single-use and time-limited
-      //      (see `server/utils/bowler-claim-tokens.ts`).
+      // After task #342, every newly-created bowler carries an
+      // `organizationId` stamp, so `hasAccessToBowler` will positively
+      // short-circuit for the legitimate same-org admin case before we
+      // ever reach this branch. The branch therefore now matters only
+      // for two residual cases — both of which we want to deny:
+      //   - cross-org admin trying to bootstrap-link a fresh bowler
+      //     stamped to a different org
+      //   - any admin trying to bootstrap-link a legacy/orphan bowler
+      //     whose stamp is NULL (org-less policy)
       //
-      // Every failure mode below collapses to the same 403 to avoid
-      // leaking which gate denied (existence-oracle, claim-presence
-      // oracle, etc.).
+      // Gates (all must pass):
+      //   1. Caller is org_admin or system_admin. Bowler-role users that
+      //      passed `hasAccessToTeam` via the league self-membership
+      //      shortcut must not be able to claim other bowlers here.
+      //   2. The bowler row exists and its stamped `organizationId`
+      //      strictly matches the target league's `organizationId`.
+      //      NULL stamps deny (org-less policy). This is the task #342
+      //      tightening: the bootstrap branch is no longer authoritative
+      //      on the claim token alone — it requires the bowler's own
+      //      stamp to agree with the link target.
+      //   3. The caller holds a non-expired creation-time claim token
+      //      for this bowler id (defense in depth on top of the org
+      //      stamp; see server/utils/bowler-claim-tokens.ts).
+      //
+      // Every failure mode collapses to the same 403 to avoid leaking
+      // which gate denied (existence-oracle, claim-presence oracle,
+      // org-mismatch oracle, etc.).
       if (!isOrgOrHigher(req.user)) {
+        return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
+      }
+      const bowlerRow = await storage.getBowler(data.bowlerId);
+      const targetLeague = await storage.getLeague(data.leagueId);
+      if (
+        !bowlerRow ||
+        bowlerRow.organizationId === null ||
+        !targetLeague ||
+        targetLeague.organizationId === null ||
+        bowlerRow.organizationId !== targetLeague.organizationId
+      ) {
         return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
       }
       if (!consumeBowlerClaim(data.bowlerId, req)) {
         return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
       }
-      // OK: org/system admin holding a valid creation-time claim.
+      // OK: org/system admin, bowler stamp matches league org, valid claim.
     }
 
     const existing = await storage.getBowlerLeagues({

@@ -319,8 +319,33 @@ router.post("/", async (req, res) => {
       }
     }
 
-    const created = await storage.createBowler(bowler);
-    const orgId: number | undefined = req.user?.organizationId ?? undefined;
+    // Stamp the owning organization on the new bowler at creation time
+    // (task #342). This closes the cross-org hijack window between the
+    // bowler insert and its first `bowler_leagues` row: a bowler is now
+    // org-bound from the moment it exists, not retroactively inferred
+    // from league links. System admins may scope by ?organizationId, but
+    // every other role MUST have an org context — without one, the
+    // resulting bowler would be an instant orphan and unreachable to its
+    // own creator.
+    const callerOrgId: number | undefined = req.user?.organizationId ?? undefined;
+    const isSystemAdmin = req.user?.role === 'system_admin';
+    let stampOrgId: number | undefined = callerOrgId;
+    if (isSystemAdmin) {
+      const rawQueryOrgId = req.query.organizationId
+        ? parseInt(req.query.organizationId as string)
+        : undefined;
+      if (rawQueryOrgId !== undefined && isNaN(rawQueryOrgId)) {
+        return sendError(res, "Invalid organization ID format", 400);
+      }
+      stampOrgId = rawQueryOrgId ?? callerOrgId;
+    }
+    if (stampOrgId === undefined) {
+      return sendError(res, "Organization context required to create a bowler", 403, 'FORBIDDEN');
+    }
+    const stampedBowler = { ...bowler, organizationId: stampOrgId };
+
+    const created = await storage.createBowler(stampedBowler);
+    const orgId: number | undefined = stampOrgId;
     const synced = await runBowlerPostCreateSync(created, orgId);
     // Register an ephemeral creation-time claim so this caller (and only
     // this caller, in the same org) may bootstrap-link the new bowler to

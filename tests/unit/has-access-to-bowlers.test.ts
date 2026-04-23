@@ -12,11 +12,19 @@ import type { Request } from 'express';
 
 const mockGetBowlerLeaguesByBowlerIds = vi.fn();
 const mockGetLeaguesByIds = vi.fn();
+const mockGetBowlersByIds = vi.fn();
 
 vi.mock('../../server/storage', () => ({
   storage: {
     getBowlerLeaguesByBowlerIds: (...args: unknown[]) => mockGetBowlerLeaguesByBowlerIds(...args),
     getLeaguesByIds: (...args: unknown[]) => mockGetLeaguesByIds(...args),
+    // Task #342: hasAccessToBowlers now batch-fetches the bowler rows
+    // first to short-circuit on the stamped `organizationId` before
+    // falling back to the league-based scan. Default the mock to an
+    // empty list so existing tests behave as if every bowler is a
+    // legacy/orphan row (organizationId === null) — that path matches
+    // the pre-#342 behavior the rest of these tests pin.
+    getBowlersByIds: (...args: unknown[]) => mockGetBowlersByIds(...args),
   },
 }));
 
@@ -39,6 +47,12 @@ const ORG_B = 200;
 beforeEach(() => {
   mockGetBowlerLeaguesByBowlerIds.mockReset();
   mockGetLeaguesByIds.mockReset();
+  mockGetBowlersByIds.mockReset();
+  // Default: no bowler rows returned → every id falls through to the
+  // legacy league-based scan (preserving pre-#342 semantics for these
+  // unit tests). Tests that want to exercise the org-stamp short-circuit
+  // can override this with `.mockResolvedValueOnce(...)`.
+  mockGetBowlersByIds.mockResolvedValue([]);
 });
 
 afterEach(() => {

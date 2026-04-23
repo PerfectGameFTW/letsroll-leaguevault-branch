@@ -333,6 +333,11 @@ router.post('/', (req, res, next) => {
           order: 0,
           email: vRow.email || null,
           phone: vRow.phone || null,
+          // Stamp the importing admin's organization on every imported
+          // bowler at creation time (task #342). Bulk import is admin-
+          // only and is gated on `req.user.organizationId` above, so
+          // `organizationId` is guaranteed to be a valid number here.
+          organizationId,
         };
 
         const created = await storage.createBowler(bowlerData);

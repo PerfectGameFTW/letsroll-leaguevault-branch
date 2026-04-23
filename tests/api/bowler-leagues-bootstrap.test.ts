@@ -259,7 +259,16 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
     expect(remainingLinks.length).toBe(0);
   });
 
-  it('claim token is single-use: a second bootstrap attempt for the same fresh bowler is rejected', async () => {
+  it('same-org admin can re-link a soft-deactivated fresh bowler — the org stamp grants access without needing the bootstrap branch', async () => {
+    // Pre-#342 this case was rejected by the single-use claim-token gate
+    // because the bowler had zero `organizationId` of its own and the
+    // fallback `hasAccessToBowler` denied any caller with no shared
+    // league. Post-#342 the bowler carries an explicit `organizationId`
+    // stamped at creation time, so a same-org admin gets a positive
+    // short-circuit in `hasAccessToBowler` and never enters the
+    // bootstrap branch — they're a legitimately authorized caller for
+    // their own org's bowler. Re-linking after a soft-delete is a
+    // normal admin operation and must succeed (201).
     expect(leagueId).not.toBeNull();
     expect(teamId).not.toBeNull();
 
@@ -276,7 +285,6 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
     const bowlerId = (bowlerRes.data.data as Bowler).id;
     createdBowlerIds.push(bowlerId);
 
-    // First link consumes the claim.
     const first = await apiPost<BowlerLeague>(
       '/api/bowler-leagues',
       { bowlerId, leagueId, teamId, active: true, order: 0 },
@@ -286,22 +294,20 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
     const firstLinkId = (first.data.data as BowlerLeague).id;
     createdBowlerLeagueIds.push(firstLinkId);
 
-    // Soft-deactivate the link so the bowler appears "free-floating" to
-    // the active-only storage helper. Without the claim-token gate, the
-    // old link-count check would have allowed re-claiming. With the
-    // claim gate, the token is already consumed and the second attempt
-    // must be rejected.
     await db
       .update(bowlerLeagues)
       .set({ active: false })
       .where(eq(bowlerLeagues.id, firstLinkId));
 
-    const second = await apiPost(
+    const second = await apiPost<BowlerLeague>(
       '/api/bowler-leagues',
       { bowlerId, leagueId, teamId, active: true, order: 0 },
       sessionB,
     );
-    expect(second.status).toBe(403);
-    expect(second.data.success).toBe(false);
+    expect(second.status, JSON.stringify(second.data)).toBe(201);
+    expect(second.data.success).toBe(true);
+    if (hasNumericId(second.data.data)) {
+      createdBowlerLeagueIds.push((second.data.data as BowlerLeague).id);
+    }
   });
 });
