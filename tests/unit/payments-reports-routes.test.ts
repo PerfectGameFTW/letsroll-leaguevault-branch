@@ -1,25 +1,18 @@
 /**
- * Route-level tests for /api/payments LIST endpoint (task #339).
+ * Route-level tests for /api/payments LIST (task #339).
  *
- * `payment-reports.ts` exposes the single GET / endpoint that powers
- * every reporting view (per-bowler, per-league, per-team, per-org).
- * It branches on caller role + query params:
+ * Scope note: at the time of writing, `payment-reports.ts` exposes
+ * exactly one endpoint — `GET /`. The task description also mentions
+ * `GET /:id` and `GET /by-bowler/:id`, but `grep -n "router.get"`
+ * confirms neither exists in `server/routes/payments/`; the only
+ * `getPaymentById` callers are PATCH/DELETE/refund, already covered
+ * by `payments-routes.test.ts`. If those routes are added later,
+ * extend this file with the corresponding 200/404/403 cases.
  *
- *   - unauthenticated / no-org user      → empty list (200)
- *   - org user, scoped to caller.orgId   → storage.getPayments({organizationId})
- *   - sysadmin, no org context           → storage.getAllPaymentsSystemAdmin()
- *   - sysadmin, ?organizationId=X        → storage.getPayments({organizationId: X})
- *   - sysadmin, own user.organizationId  → storage.getPayments({organizationId})
- *   - ?page / ?limit                     → *Paginated variant + sendPaginatedSuccess envelope
- *   - ?leagueId not found                → 404 NOT_FOUND
- *   - ?leagueId in another org           → 403 FORBIDDEN
- *   - ?organizationId=NaN                → 400
- *   - storage throws                     → 500 with generic message
- *
- * Companion to `payments-by-org.test.ts` (which pins the in-memory
- * filter helper) and `payments-routes.test.ts` (which pins
- * create/update/delete/refund). This file mounts the real reports
- * router on an isolated express app and drives it over real HTTP.
+ * Companion to `payments-by-org.test.ts` (pins the in-memory filter
+ * helper) and `payments-routes.test.ts` (pins create/update/delete/
+ * refund). This file mounts the real reports router on an isolated
+ * express app and drives it over real HTTP via `fetch`.
  */
 import {
   afterAll,
@@ -187,9 +180,8 @@ describe('GET /api/payments — caller scope', () => {
   });
 
   it('ignores ?organizationId from a non-sysadmin (uses caller.orgId, never the param)', async () => {
-    // Defense-in-depth: an org user passing ?organizationId=2 must
-    // still be filtered to their own org (1), not allowed to peek
-    // into org 2's payments.
+    // Defense-in-depth: an org user must not be able to peek into
+    // another org's payments by passing ?organizationId.
     mockStorage.getPayments.mockResolvedValue([]);
 
     const res = await get('/api/payments?organizationId=2', ORG_A_USER);
@@ -277,11 +269,9 @@ describe('GET /api/payments — pagination', () => {
     expect(mockStorage.getAllPaymentsSystemAdmin).not.toHaveBeenCalled();
   });
 
-  it('routes a sysadmin WITH an own organizationId to the SCOPED paginated path, not the all-orgs one', async () => {
-    // Architect-flagged regression: a sysadmin who is also bound to
-    // an org must page through getPaymentsPaginated (scoped to that
-    // org), NOT the all-orgs sysadmin variant — otherwise the
-    // pagination call would silently leak rows from other orgs.
+  it('routes a sysadmin WITH an own organizationId to the scoped paginated path, not the all-orgs one', async () => {
+    // Sysadmins bound to an org must page through the scoped
+    // helper; otherwise pagination would leak other orgs' rows.
     mockStorage.getPaymentsPaginated.mockResolvedValue({
       items: [{ id: 1 }],
       pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
@@ -298,8 +288,7 @@ describe('GET /api/payments — pagination', () => {
   });
 
   it('returns empty for a no-org non-sysadmin even when pagination params are present', async () => {
-    // Pagination params must NOT bypass the early empty-list short
-    // circuit for users without an org.
+    // ?page must not bypass the early empty-list short circuit.
     const noOrgUser = { id: 9, role: 'user' as TestRole, organizationId: null, bowlerId: null };
     const res = await get('/api/payments?page=1&limit=10', noOrgUser);
     expect(res.status).toBe(200);
@@ -348,22 +337,17 @@ describe('GET /api/payments — base filter passthrough', () => {
 
 describe('GET /api/payments — malformed filter inputs', () => {
   it('silently drops a non-numeric ?leagueId (parseInt → NaN, treated as no filter)', async () => {
-    // Architect-flagged behavior gap: today the route only validates
-    // ?organizationId. ?leagueId=foo parses to NaN which the
-    // `if (leagueId)` branch treats as "no filter", so the request
-    // proceeds without the league access check. Pinning the CURRENT
-    // behavior here so any future tightening (e.g. → 400) is an
-    // explicit, reviewed change.
+    // Pin current behavior — only ?organizationId is validated.
+    // ?leagueId=foo parses to NaN; the `if (leagueId)` branch is
+    // falsy so the league access check is skipped and the NaN is
+    // forwarded into baseFilters. See follow-up #406 for the
+    // tightening to 400.
     mockStorage.getPayments.mockResolvedValue([]);
 
     const res = await get('/api/payments?leagueId=foo', ORG_A_USER);
     expect(res.status).toBe(200);
-    // The league access check is gated on `if (leagueId)` which is
-    // falsy for NaN, so storage.getLeague is never consulted.
     expect(mockStorage.getLeague).not.toHaveBeenCalled();
     const filters = mockStorage.getPayments.mock.calls[0][0];
-    // Current behavior: the NaN is forwarded into baseFilters and
-    // the storage layer is responsible for ignoring/coercing it.
     expect(Number.isNaN(filters.leagueId)).toBe(true);
   });
 
