@@ -135,6 +135,48 @@ cookie: {
 |------|--------|---------|--------|
 | `/api/setup/first-system-admin/:id` | POST | Operationally broken (not exploitable; just unreachable for the curl flow) | Added `/setup/first-system-admin` to `EXEMPT_PATHS`; auth remains `x-setup-secret` header. Regression test in `tests/api/csrf-coverage.test.ts`. |
 
+## Logging contract
+
+`server/middleware/csrf.ts` emits warn-level log lines on every reject
+branch (no session, missing session token, header missing or mismatched).
+Those log lines **must not** interpolate any of the following — at any
+log level, including `debug`:
+
+- The session-bound CSRF token (`req.session.csrfToken`)
+- The header CSRF token (`req.headers['x-csrf-token']`)
+- The session ID (`req.session.id`)
+- Any prefix of those values long enough to be useful (treat 8+
+  contiguous bytes as a leak)
+
+Why this matters: an operator who turns on `LOG_LEVEL=debug` to
+investigate an incident must not end up shipping live, replayable CSRF
+tokens to the production log sink, where any operator with log access
+could reuse them until the session expires. This is a defense-in-depth
+contract on top of the `httpOnly`/`sameSite=lax` cookie posture
+documented above — the tokens are session-bound and short-lived, but
+that is no excuse to log them.
+
+The current warn-line shape is:
+
+```
+CSRF token mismatch for ${req.method} ${req.path}
+```
+
+(plus the analogous `Missing session CSRF token for ...` and
+`No session available for ...` variants.) Only the request method and
+path are interpolated. The path is logged verbatim — if a caller puts
+token-shaped bytes into the URL itself, that's the caller's choice and
+not a middleware leak.
+
+**Regression guard:** `tests/unit/csrf-no-token-leak.test.ts` mocks the
+logger, drives every reject branch with known token bytes, and asserts
+that no captured log line contains the session token, header token,
+session ID, or an 8-byte prefix of either. The exact warn-line shape
+shown above is also pinned by that test — any change to the warn-line
+format requires updating the assertion. If you need to add a new log
+line in `server/middleware/csrf.ts`, extend the test with the new
+branch first; do not weaken the existing assertions.
+
 ## Regression tests
 
 `tests/api/csrf-coverage.test.ts` pins:
