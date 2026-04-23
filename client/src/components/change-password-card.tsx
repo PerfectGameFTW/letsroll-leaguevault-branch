@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
-import { Loader2, Lock } from "lucide-react";
+import { AlertTriangle, Loader2, Lock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,6 +19,25 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+
+type ApiErrorLike = Error & {
+  status?: number;
+  code?: string;
+  retryAfterSeconds?: number | null;
+};
+
+function isRateLimitError(err: unknown): err is ApiErrorLike {
+  if (!(err instanceof Error)) return false;
+  const e = err as ApiErrorLike;
+  return e.code === "RATE_LIMITED" || e.status === 429 || e.message.startsWith("429:");
+}
+
+function formatCountdown(seconds: number): string {
+  if (seconds <= 0) return "any moment now";
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  const m = Math.ceil(seconds / 60);
+  return `${m} minute${m === 1 ? "" : "s"}`;
+}
 
 const passwordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
@@ -32,11 +53,31 @@ type PasswordFormData = z.infer<typeof passwordSchema>;
 export function ChangePasswordCard() {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
+  const [throttledUntil, setThrottledUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   const form = useForm<PasswordFormData>({
     resolver: zodResolver(passwordSchema),
     defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
   });
+
+  // Tick once a second while throttled so the countdown re-renders.
+  useEffect(() => {
+    if (throttledUntil == null) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [throttledUntil]);
+
+  // Clear the throttle banner once the window has elapsed.
+  useEffect(() => {
+    if (throttledUntil != null && now >= throttledUntil) {
+      setThrottledUntil(null);
+    }
+  }, [now, throttledUntil]);
+
+  const remainingSeconds =
+    throttledUntil != null ? Math.max(0, Math.ceil((throttledUntil - now) / 1000)) : 0;
+  const isThrottled = throttledUntil != null && remainingSeconds > 0;
 
   const mutation = useMutation({
     mutationFn: async (data: PasswordFormData) => {
@@ -48,10 +89,25 @@ export function ChangePasswordCard() {
     onSuccess: () => {
       form.reset();
       setShowForm(false);
+      setThrottledUntil(null);
       toast({ title: "Password Changed", description: "Your password has been updated successfully." });
     },
     onError: (error: Error) => {
-      toast({ title: "Password Change Failed", description: error.message || "Failed to change password", variant: "destructive" });
+      if (isRateLimitError(error)) {
+        const retry = (error as ApiErrorLike).retryAfterSeconds;
+        // Default to 5 minutes (half the 15-minute window) when the
+        // server doesn't expose a Retry-After header. We don't block
+        // the user forever — the banner just guides them to the
+        // recovery flow.
+        const waitSeconds = retry != null && retry > 0 ? retry : 300;
+        setThrottledUntil(Date.now() + waitSeconds * 1000);
+        return;
+      }
+      toast({
+        title: "Password Change Failed",
+        description: error.message || "Failed to change password",
+        variant: "destructive",
+      });
     },
   });
 
@@ -70,6 +126,32 @@ export function ChangePasswordCard() {
         ) : (
           <Form {...form}>
             <form onSubmit={form.handleSubmit((data) => mutation.mutate(data))} className="space-y-5">
+              {isThrottled && (
+                <Alert variant="destructive" data-testid="alert-change-password-throttled">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Too many attempts</AlertTitle>
+                  <AlertDescription className="space-y-2">
+                    <p>
+                      You've made too many password change attempts. Please wait about{" "}
+                      <span data-testid="text-change-password-retry-in">
+                        {formatCountdown(remainingSeconds)}
+                      </span>{" "}
+                      and try again.
+                    </p>
+                    <p>
+                      Can't remember your current password?{" "}
+                      <Link
+                        href="/forgot-password"
+                        className="font-medium underline underline-offset-2"
+                        data-testid="link-change-password-forgot"
+                      >
+                        Reset it instead
+                      </Link>
+                      .
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              )}
               <FormField
                 control={form.control}
                 name="currentPassword"
@@ -104,9 +186,15 @@ export function ChangePasswordCard() {
                 )}
               />
               <div className="flex gap-2 pt-1">
-                <Button type="submit" disabled={mutation.isPending}>
+                <Button
+                  type="submit"
+                  disabled={mutation.isPending || isThrottled}
+                  data-testid="button-change-password-submit"
+                >
                   {mutation.isPending ? (
                     <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating...</>
+                  ) : isThrottled ? (
+                    `Try again in ${formatCountdown(remainingSeconds)}`
                   ) : "Update Password"}
                 </Button>
                 <Button

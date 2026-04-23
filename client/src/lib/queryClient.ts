@@ -63,6 +63,38 @@ export async function csrfFetch(input: RequestInfo | URL, init?: RequestInit): P
   return res;
 }
 
+function parseRetryAfterSeconds(
+  retryAfter: string | null,
+  rateLimitReset: string | null,
+): number | null {
+  const nowSec = Math.floor(Date.now() / 1000);
+  // Retry-After: either a non-negative integer "delta-seconds" or an HTTP-date.
+  if (retryAfter != null) {
+    const trimmed = retryAfter.trim();
+    if (/^\d+$/.test(trimmed)) {
+      const n = Number.parseInt(trimmed, 10);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+    const dateMs = Date.parse(trimmed);
+    if (Number.isFinite(dateMs)) {
+      const delta = Math.max(0, Math.ceil((dateMs - Date.now()) / 1000));
+      return delta;
+    }
+  }
+  // RateLimit-Reset: typically delta-seconds (RFC draft), but some servers
+  // emit absolute unix-epoch seconds — heuristically treat very large
+  // values as absolute.
+  if (rateLimitReset != null) {
+    const n = Number.parseInt(rateLimitReset.trim(), 10);
+    if (Number.isFinite(n) && n >= 0) {
+      // Anything beyond ~1 day in the "delta" interpretation is almost
+      // certainly an absolute epoch — convert by subtracting now.
+      return n > 86400 ? Math.max(0, n - nowSec) : n;
+    }
+  }
+  return null;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     let errorMessage;
@@ -84,7 +116,20 @@ async function throwIfResNotOk(res: Response) {
       csrfToken = null;
     }
 
-    throw new Error(`${res.status}: ${errorMessage}`);
+    const err = new Error(`${res.status}: ${errorMessage}`) as Error & {
+      status?: number;
+      code?: string;
+      retryAfterSeconds?: number | null;
+    };
+    err.status = res.status;
+    if (errorCode) err.code = errorCode;
+    if (res.status === 429) {
+      err.retryAfterSeconds = parseRetryAfterSeconds(
+        res.headers.get('retry-after'),
+        res.headers.get('ratelimit-reset'),
+      );
+    }
+    throw err;
   }
   return res;
 }
