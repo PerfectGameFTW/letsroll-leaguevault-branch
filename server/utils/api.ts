@@ -2,39 +2,74 @@ import { Response } from 'express';
 import { ZodError } from 'zod';
 import { type User, type Organization, type PaginationMeta } from '@shared/schema';
 
-// Fields on `users` that must never leave the server. Any new column whose
-// name matches /token|secret|password/i must either be added here or
-// explicitly justified as safe to return — the regression test in
-// `tests/unit/sanitize-user.test.ts` enforces that contract by scanning a
-// fully-populated User and failing loudly on any leaked sensitive-looking
-// field name.
-const SENSITIVE_USER_FIELDS = ['password', 'inviteToken', 'inviteTokenExpiry'] as const;
+// Allowlist projection (deny-by-default) — the safer of the two
+// strategies in task #327. Switching from a strip-list (`omit`) to an
+// allowlist (`pick`) means a future column on `users` cannot leak
+// just because its name happens to dodge the sensitive-name regex
+// (e.g. `apiKey`, `clientSecret`, `webhookKey`, `credentials`,
+// `authConfig`). Anything not on this list is dropped before the
+// payload ever reaches the wire.
+//
+// Adding a new safe column? Add it here AND extend `SanitizedUser`
+// implicitly via the `Pick<>` below. Adding a sensitive column?
+// Don't list it. The regression test in
+// `tests/unit/sanitize-user.test.ts` walks the live Drizzle schema
+// and pins both halves of the contract.
+const SAFE_USER_FIELDS = [
+  'id',
+  'email',
+  'bowlerId',
+  'name',
+  'phone',
+  'avatar',
+  'role',
+  'organizationId',
+  'locationId',
+  'createdAt',
+] as const;
 
-export type SanitizedUser = Omit<User, typeof SENSITIVE_USER_FIELDS[number]>;
+export type SanitizedUser = Pick<User, typeof SAFE_USER_FIELDS[number]>;
 
 export function sanitizeUser(user: User): SanitizedUser {
-  const safeUser = { ...user } as Record<string, unknown>;
-  for (const field of SENSITIVE_USER_FIELDS) {
-    delete safeUser[field];
+  const input = user as Record<string, unknown>;
+  const safeUser: Record<string, unknown> = {};
+  for (const field of SAFE_USER_FIELDS) {
+    if (field in input) safeUser[field] = input[field];
   }
   return safeUser as SanitizedUser;
 }
 
-// Fields on `organizations` that must never leave the server. The
-// `integrations` JSONB column holds OAuth tokens and provider API keys
-// (see `OrgIntegrations` in shared/schema/organizations.ts). Any new
-// column whose name matches /token|secret|password/i must either be
-// added here or explicitly justified as safe to return — the regression
-// test in `tests/unit/sanitize-org.test.ts` enforces that contract by
-// scanning every column on the live Drizzle schema.
-const SENSITIVE_ORG_FIELDS = ['integrations'] as const;
+// Same allowlist strategy for organizations. The `integrations` JSONB
+// column holds OAuth tokens and provider API keys (see
+// `OrgIntegrations` in shared/schema/organizations.ts) and was the
+// concrete motivating case — but more importantly, anything new that
+// lands on the table will be dropped by default until it's
+// deliberately added here.
+const SAFE_ORG_FIELDS = [
+  'id',
+  'name',
+  'slug',
+  'subdomain',
+  'address',
+  'city',
+  'state',
+  'zipCode',
+  'phone',
+  'email',
+  'logo',
+  'darkLogo',
+  'appIcon',
+  'active',
+  'createdAt',
+] as const;
 
-export type SanitizedOrganization = Omit<Organization, typeof SENSITIVE_ORG_FIELDS[number]>;
+export type SanitizedOrganization = Pick<Organization, typeof SAFE_ORG_FIELDS[number]>;
 
 export function sanitizeOrg(org: Organization): SanitizedOrganization {
-  const safeOrg = { ...org } as Record<string, unknown>;
-  for (const field of SENSITIVE_ORG_FIELDS) {
-    delete safeOrg[field];
+  const input = org as Record<string, unknown>;
+  const safeOrg: Record<string, unknown> = {};
+  for (const field of SAFE_ORG_FIELDS) {
+    if (field in input) safeOrg[field] = input[field];
   }
   return safeOrg as SanitizedOrganization;
 }

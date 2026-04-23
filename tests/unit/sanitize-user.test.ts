@@ -3,10 +3,17 @@ import { getTableColumns } from 'drizzle-orm';
 import { sanitizeUser } from '../../server/utils/api';
 import { users, type User } from '@shared/schema';
 
-// Field-name patterns we never want to leak in any user-facing response.
-// If a future column on `users` matches one of these, either add it to the
-// strip list in `server/utils/api.ts` or rename the column.
-const SENSITIVE_NAME_PATTERN = /token|secret|password/i;
+// Field-name patterns we never want to leak in any user-facing
+// response. Broadened from the original /token|secret|password/i
+// (task #327) to also catch `apiKey`, `clientSecret`, `webhookKey`,
+// `credentials`, `authConfig`, etc. The implementation now uses an
+// allowlist projection (`pick`), so anything not on the safe list is
+// already dropped — this regex is the schema-side belt-and-suspenders.
+const SENSITIVE_NAME_PATTERN = /token|secret|password|key|credential|auth/i;
+// Benign columns whose names happen to match the broadened pattern
+// but are safe to return (e.g. an `authProvider` enum). Add here
+// only with explicit justification.
+const SENSITIVE_NAME_ALLOWLIST = new Set<string>([]);
 
 // Build a fully-populated `User` so the test exercises every column the
 // schema currently defines. This way, adding a new sensitive-looking column
@@ -59,7 +66,9 @@ describe('sanitizeUser', () => {
   // until either `sanitizeUser` strips it or the column is renamed.
   it('strips every column on the users schema whose name looks sensitive', () => {
     const cols = Object.keys(getTableColumns(users));
-    const sensitiveCols = cols.filter(c => SENSITIVE_NAME_PATTERN.test(c));
+    const sensitiveCols = cols.filter(
+      c => SENSITIVE_NAME_PATTERN.test(c) && !SENSITIVE_NAME_ALLOWLIST.has(c),
+    );
     // Build an object that has every column populated with a non-undefined
     // marker so `delete` is the only thing that can remove it.
     const fakeUser = Object.fromEntries(cols.map(c => [c, `__${c}__`])) as unknown as User;
@@ -70,6 +79,39 @@ describe('sanitizeUser', () => {
         `users.${col} matches the sensitive name pattern but sanitizeUser still returns it`,
       ).not.toHaveProperty(col);
     }
+  });
+
+  // Deny-by-default contract for the new allowlist projection (task
+  // #327). A future column slipped in with a name the regex doesn't
+  // catch (e.g. `apiKey`, `clientSecret`, `webhookKey`, `credentials`,
+  // `authConfig`) must STILL be dropped, because it isn't on the
+  // safe list. This is what makes the helper resistant to
+  // unconventional column names.
+  it('drops any field that is not on the allowlist, even if its name does not look sensitive', () => {
+    const sneaky = {
+      id: 1,
+      email: 'a@b.com',
+      name: 'A',
+      role: 'user',
+      // None of these names match the sensitive regex, but every
+      // single one is a plausible secret-bearing column name.
+      apiKey: 'sk_live_should_not_leak',
+      clientSecret: 'cs_should_not_leak',
+      webhookKey: 'whk_should_not_leak',
+      credentials: { user: 'a', pass: 'b' },
+      authConfig: { provider: 'oauth', clientSecret: 'leak' },
+      arbitraryFutureColumn: 'should also be dropped',
+    } as unknown as User;
+    const sanitized = sanitizeUser(sneaky) as Record<string, unknown>;
+    expect(sanitized).not.toHaveProperty('apiKey');
+    expect(sanitized).not.toHaveProperty('clientSecret');
+    expect(sanitized).not.toHaveProperty('webhookKey');
+    expect(sanitized).not.toHaveProperty('credentials');
+    expect(sanitized).not.toHaveProperty('authConfig');
+    expect(sanitized).not.toHaveProperty('arbitraryFutureColumn');
+    // Safe fields still pass through.
+    expect(sanitized.id).toBe(1);
+    expect(sanitized.email).toBe('a@b.com');
   });
 
   it('does not mutate the input user', () => {
