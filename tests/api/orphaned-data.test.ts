@@ -1,3 +1,21 @@
+/**
+ * Serial-execution contract (task #331)
+ * ------------------------------------------------------------------
+ * This suite must NOT run concurrently with any other test file that
+ * writes to the `users` table. The fixture below temporarily drops
+ * the `users_role_org_required` CHECK constraint and the FK
+ * constraints on teams / bowler_leagues / payments so it can stage
+ * legacy "orphaned" rows the org-less repair endpoints exist to
+ * clean up. Those `ALTER TABLE` statements take ACCESS EXCLUSIVE
+ * locks; a sibling suite writing to the same tables at the same
+ * moment would fail with mysterious lock or constraint errors.
+ *
+ * We rely on the project-level `fileParallelism: false` flag in
+ * `vitest.config.ts` to keep file execution serial. If anyone ever
+ * flips that flag to `true`, this fixture must be refactored first
+ * (e.g. moved to a per-suite isolated database, or rewritten to
+ * synthesize orphan rows without DDL) to keep this contract.
+ */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql, eq } from 'drizzle-orm';
 import { db } from '../../server/db';
