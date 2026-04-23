@@ -119,16 +119,24 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
     return true;
   }
 
-  // Owning-organization short-circuit (task #342). Every bowler created
-  // after task #342 carries an explicit `organizationId` stamp, so we can
-  // gate access on that single column instead of fanning out to league
-  // lookups. Sysadmins are allowed for any non-null org. Org users are
-  // allowed when the stamp matches their own org. Legacy/orphan rows
-  // with `organizationId === null` are NOT short-circuited here — they
-  // fall through to the league-based scan below, which preserves the
-  // pre-#342 behavior (denied per the org-less policy unless a shared
-  // league grants self-membership). This way the new positive
-  // short-circuit can never widen access for legacy rows.
+  // Owning-organization gate (task #342). Every bowler created after
+  // task #342 carries an explicit `organizationId` stamp. For stamped
+  // rows the stamp is AUTHORITATIVE: it is the single source of truth
+  // for which org "owns" this bowler, and admin/sysadmin callers are
+  // gated on it directly without falling back to the league-based scan.
+  //   - Sysadmin → allowed for any non-null stamp.
+  //   - Org user matching the stamp → allowed.
+  //   - Org user with a different stamp → DENIED (no league fallback
+  //     for admins; this is the hardening the task explicitly required).
+  //   - Caller is a non-admin "user" role with their own bowlerId →
+  //     fall through to the league scan so the long-standing
+  //     bowler-to-bowler same-league self-membership rule still holds
+  //     (two bowlers who share a league can see each other regardless
+  //     of stamps). This narrowly scoped fall-through preserves the
+  //     bowler-self UX without widening admin access.
+  // Legacy/orphan rows with `organizationId === null` are NOT gated
+  // here — they fall through to the league-based scan below, which
+  // preserves the pre-#342 behavior unchanged.
   const bowlerRow = await storage.getBowler(bowlerId);
   if (bowlerRow && bowlerRow.organizationId !== null) {
     if (isSystemAdmin(req.user)) {
@@ -137,12 +145,12 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
     if (req.user.organizationId && req.user.organizationId === bowlerRow.organizationId) {
       return true;
     }
-    // Cross-org: fall through. The legacy league-scan below can still
-    // grant access via the self-membership shortcut (the user shares a
-    // league with the target bowler) — preserving the existing
-    // bowler-to-bowler same-league semantics for shared leagues. It
-    // will NOT grant cross-org admins access to fresh bowlers (zero
-    // links → empty scan → denied).
+    // Stamp mismatch. Only fall through if the caller is a non-admin
+    // "user" who might still share a league with the target bowler.
+    // For admins, deny authoritatively.
+    if (isOrgOrHigher(req.user)) {
+      return false;
+    }
   }
 
   const bowlerLeagueEntries = await storage.getBowlerLeagues({ bowlerId });
@@ -237,14 +245,22 @@ export async function hasAccessToBowlers(
     return result;
   }
 
-  // Owning-organization short-circuit (task #342). Mirror the single-bowler
-  // helper above: batch-fetch the bowler rows and grant access for every id
-  // whose stamped `organizationId` matches the caller's (or for any non-null
-  // stamp when the caller is sysadmin). IDs whose org stamp does NOT
-  // short-circuit allow stay in `stillToCheck` and fall through to the
-  // existing league-based scan below — preserving the same-league
-  // self-membership semantics for legacy/orphan rows.
+  // Owning-organization gate (task #342). Mirror the single-bowler
+  // helper: batch-fetch the bowler rows and decide each id authoritatively
+  // by its stamped `organizationId`. The semantics match `hasAccessToBowler`
+  // exactly:
+  //   - Stamp present + sysadmin → allow (decided here, no fallthrough).
+  //   - Stamp present + same org → allow (decided here, no fallthrough).
+  //   - Stamp present + admin caller from a different org → DENY here
+  //     (no league fallback for admins; this is the hardening required).
+  //   - Stamp present + non-admin "user" caller → fall through so the
+  //     bowler-to-bowler same-league self-membership rule below can
+  //     still grant access (two bowlers sharing a league can see each
+  //     other regardless of stamps).
+  //   - Stamp NULL (legacy/orphan) → fall through to the legacy
+  //     league-based scan below, preserving pre-#342 behavior unchanged.
   const callerIsSystemAdmin = isSystemAdmin(req.user);
+  const callerIsOrgOrHigher = isOrgOrHigher(req.user);
   const callerOrgIdShort = req.user.organizationId ?? null;
   const fetchedBowlers = await storage.getBowlersByIds([...idsToCheck]);
   const stampedOrgByBowler = new Map<number, number | null>();
@@ -261,6 +277,14 @@ export async function hasAccessToBowlers(
       }
       if (callerOrgIdShort !== null && callerOrgIdShort === stamp) {
         result.set(id, true);
+        continue;
+      }
+      // Stamp mismatch. Admins are denied authoritatively. Non-admin
+      // users fall through to the league scan for the self-membership
+      // rule.
+      if (callerIsOrgOrHigher) {
+        // result already initialized to false above; keep as-is and
+        // do NOT add to stillToCheck.
         continue;
       }
     }
