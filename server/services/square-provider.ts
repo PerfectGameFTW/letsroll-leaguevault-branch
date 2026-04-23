@@ -73,12 +73,13 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   ): Promise<PaymentResult> {
     const client = await this.getSquareClient();
     if (!client) {
-      throw new Error(JSON.stringify({
-        error: {
-          message: "Payment system is temporarily unavailable",
-          code: "INITIALIZATION_ERROR"
-        }
-      }));
+      // Surface the structured "not configured" signal so the
+      // /api/payments-provider/payments route maps it to 422
+      // PROVIDER_NOT_CONFIGURED instead of 500. See task #332.
+      throw new ProviderNotConfiguredError(
+        'Square client not configured for this location',
+        this.locationId,
+      );
     }
 
     try {
@@ -192,9 +193,11 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     ]);
 
     if (!client) {
-      throw new Error(JSON.stringify({
-        error: { message: "Payment system is temporarily unavailable", code: "INITIALIZATION_ERROR" }
-      }));
+      // Same structured "not configured" contract as processPayment.
+      throw new ProviderNotConfiguredError(
+        'Square client not configured for this location',
+        this.locationId,
+      );
     }
 
     if (!squareLocationId) {
@@ -291,7 +294,13 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   ): Promise<RefundResult> {
     const client = await this.getSquareClient();
     if (!client) {
-      throw new Error('Square client not initialized');
+      // /api/payments/:id/refund maps this to 422 PROVIDER_NOT_CONFIGURED
+      // so admins can tell "Square isn't connected for this location"
+      // apart from "Square rejected the refund". See task #332.
+      throw new ProviderNotConfiguredError(
+        'Square client not configured for this location',
+        this.locationId,
+      );
     }
 
     try {
@@ -335,7 +344,17 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     customerId: string,
   ): Promise<SavedCard | null> {
     const client = await this.getSquareClient();
-    if (!client) return null;
+    if (!client) {
+      // Throw the structured "not configured" error so the
+      // POST /cards/:bowlerId route surfaces 422
+      // PROVIDER_NOT_CONFIGURED. The opportunistic save-card
+      // call inside POST /payments wraps this in a try/catch
+      // that just logs, so it stays non-fatal there. Task #332.
+      throw new ProviderNotConfiguredError(
+        'Square client not configured for this location',
+        this.locationId,
+      );
+    }
 
     try {
       if (isDev) log.info('Saving card on file for customer:', customerId.substring(0, 10) + '...');
@@ -362,7 +381,14 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     customerId: string,
   ): Promise<SavedCard[]> {
     const client = await this.getSquareClient();
-    if (!client) return [];
+    if (!client) {
+      // Intentionally degraded: GET /cards/:bowlerId is a read
+      // path that already treats "no provider configured" as
+      // "no saved cards" and returns []. Throwing here would
+      // turn a benign empty list into a 500 in the route's
+      // outer catch. Task #332 — kept silent on purpose.
+      return [];
+    }
 
     try {
       const response = await client.cardsApi.listCards(undefined, customerId);
@@ -388,7 +414,12 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   ): Promise<void> {
     const client = await this.getSquareClient();
     if (!client) {
-      throw new Error('No Square client available for this location');
+      // DELETE /cards/:bowlerId/:cardId maps PNCE → 422
+      // PROVIDER_NOT_CONFIGURED. Task #332.
+      throw new ProviderNotConfiguredError(
+        'Square client not configured for this location',
+        this.locationId,
+      );
     }
 
     const listResponse = await client.cardsApi.listCards(undefined, customerId);
@@ -408,8 +439,16 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   ): Promise<PaymentCustomer | null> {
     const client = await this.getSquareClient();
     if (!client) {
-      log.error('Square client not initialized');
-      return null;
+      // POST /customers, the bowler-update sync, the bowler-create
+      // sync, and the user-update sync all already catch
+      // ProviderNotConfiguredError — the route maps it to 422 and
+      // the background syncs log it and continue. Returning null
+      // here used to leak as a generic 500 from the customers
+      // route. Task #332.
+      throw new ProviderNotConfiguredError(
+        'Square client not configured for this location',
+        this.locationId,
+      );
     }
 
     try {
@@ -492,7 +531,15 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   async deleteCustomer(customerId: string): Promise<void> {
     const client = await this.getSquareClient();
     if (!client) {
-      throw new Error('Square client not initialized');
+      // Account-deletion explicitly catches PNCE and records
+      // `error: '<message>'` on the per-target audit summary so
+      // operators can see "Square wasn't connected for that
+      // location" rather than a vague provider failure.
+      // Task #332.
+      throw new ProviderNotConfiguredError(
+        'Square client not configured for this location',
+        this.locationId,
+      );
     }
     try {
       await client.customersApi.deleteCustomer(customerId);
@@ -511,6 +558,12 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   ): Promise<PaymentVerification | null> {
     const client = await this.getSquareClient();
     if (!client) {
+      // Intentionally degraded: GET /payments/:id/verify is a
+      // diagnostic read used by the admin reconciliation UI. It
+      // wraps the call in a try/catch that already turns PNCE
+      // (from the factory) and any thrown verification error
+      // into a "providerPayment: null" response. Returning null
+      // here keeps that contract stable. Task #332.
       log.warn('Cannot verify payment — no Square client for location:', this.locationId);
       return null;
     }
@@ -548,6 +601,11 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   async listCatalogCategories(): Promise<CatalogCategory[]> {
     const client = await this.getSquareClient();
     if (!client) {
+      // Intentionally degraded: GET /catalog/categories already
+      // converts a factory-level PNCE into an empty list (the
+      // admin UI shows a "no catalog yet" empty state in that
+      // case). Throwing here would turn that into a 500 inside
+      // the route's outer catch. Task #332.
       return [];
     }
 
@@ -586,6 +644,8 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   async listCatalogItems(categoryId?: string): Promise<CatalogItem[]> {
     const client = await this.getSquareClient();
     if (!client) {
+      // Intentionally degraded: same contract as
+      // listCatalogCategories above. Task #332.
       return [];
     }
 

@@ -127,11 +127,16 @@ describe('Square Service', () => {
       );
     });
 
-    it('should return null when no Square credentials configured', async () => {
+    it('throws ProviderNotConfiguredError when no Square credentials configured (task #332)', async () => {
       mocks.getLocationSquareConfig.mockResolvedValue(null);
       const noCredsProvider = new SquarePaymentProvider(999);
-      const result = await noCredsProvider.createOrUpdateCustomer('John Doe', 'john@example.com');
-      expect(result).toBeNull();
+      await expect(
+        noCredsProvider.createOrUpdateCustomer('John Doe', 'john@example.com'),
+      ).rejects.toMatchObject({
+        name: 'ProviderNotConfiguredError',
+        code: 'PROVIDER_NOT_CONFIGURED',
+        locationId: 999,
+      });
     });
 
     it('should handle API errors', async () => {
@@ -182,12 +187,90 @@ describe('Square Service', () => {
       );
     });
 
-    it('should throw when no Square credentials configured', async () => {
+    it('throws ProviderNotConfiguredError when no Square credentials configured (task #332)', async () => {
       mocks.getLocationSquareConfig.mockResolvedValue(null);
       const noCredsProvider = new SquarePaymentProvider(999);
-      await expect(noCredsProvider.processPayment('source-id', 1000)).rejects.toThrow(
-        'INITIALIZATION_ERROR',
-      );
+      await expect(
+        noCredsProvider.processPayment('source-id', 1000),
+      ).rejects.toMatchObject({
+        name: 'ProviderNotConfiguredError',
+        code: 'PROVIDER_NOT_CONFIGURED',
+        locationId: 999,
+      });
+    });
+  });
+
+  // Task #332: every Square wallet/customer/payment method that
+  // previously returned `{ success: false }` or null when the
+  // Square client wasn't configured now throws
+  // ProviderNotConfiguredError, so the routes can map it to a
+  // uniform 422 PROVIDER_NOT_CONFIGURED. The four read-only
+  // methods (listCardsOnFile, getPayment, listCatalogCategories,
+  // listCatalogItems) intentionally stay degraded — pinned below.
+  describe('ProviderNotConfiguredError contract (task #332)', () => {
+    let noCredsProvider: InstanceType<typeof SquarePaymentProvider>;
+
+    beforeEach(() => {
+      mocks.getLocationSquareConfig.mockResolvedValue(null);
+      noCredsProvider = new SquarePaymentProvider(999);
+    });
+
+    const expectsPnce = (p: Promise<unknown>) =>
+      expect(p).rejects.toMatchObject({
+        name: 'ProviderNotConfiguredError',
+        code: 'PROVIDER_NOT_CONFIGURED',
+        locationId: 999,
+      });
+
+    it('processPayment throws PNCE', async () => {
+      await expectsPnce(noCredsProvider.processPayment('src', 1000));
+    });
+
+    it('createOrderWithPayment throws PNCE', async () => {
+      await expectsPnce(noCredsProvider.createOrderWithPayment('src', 1000, []));
+    });
+
+    it('refundPayment throws PNCE', async () => {
+      await expectsPnce(noCredsProvider.refundPayment('pay-id', 1000));
+    });
+
+    it('saveCardOnFile throws PNCE', async () => {
+      await expectsPnce(noCredsProvider.saveCardOnFile('src', 'cust'));
+    });
+
+    it('disableCard throws PNCE', async () => {
+      await expectsPnce(noCredsProvider.disableCard('card-id', 'cust'));
+    });
+
+    it('createOrUpdateCustomer throws PNCE', async () => {
+      await expectsPnce(noCredsProvider.createOrUpdateCustomer('John', 'j@x.com'));
+    });
+
+    it('deleteCustomer throws PNCE', async () => {
+      await expectsPnce(noCredsProvider.deleteCustomer('cust-id'));
+    });
+
+    it('registerApplePayDomain throws PNCE (task #302 baseline)', async () => {
+      await expectsPnce(noCredsProvider.registerApplePayDomain('example.com'));
+    });
+
+    // Read-only methods kept intentionally degraded — pin the
+    // contract so a future refactor doesn't accidentally flip
+    // them to throwing without revisiting their callers.
+    it('listCardsOnFile stays degraded (returns [])', async () => {
+      await expect(noCredsProvider.listCardsOnFile('cust')).resolves.toEqual([]);
+    });
+
+    it('getPayment stays degraded (returns null)', async () => {
+      await expect(noCredsProvider.getPayment('pay-id')).resolves.toBeNull();
+    });
+
+    it('listCatalogCategories stays degraded (returns [])', async () => {
+      await expect(noCredsProvider.listCatalogCategories()).resolves.toEqual([]);
+    });
+
+    it('listCatalogItems stays degraded (returns [])', async () => {
+      await expect(noCredsProvider.listCatalogItems()).resolves.toEqual([]);
     });
   });
 });
