@@ -101,7 +101,30 @@ When adding a new `log.debug` call site under `server/`:
 4. If a debug payload would only be safe in dev, gate the call with
    `if (isDev) log.debug(...)` so it cannot be opted into in prod.
 
-A future task (#388-class follow-up) could enforce this with a CI lint
-that flags new `log.debug` lines whose template-string contains
-suspicious identifiers like `email`, `password`, `token`, `phone`, or
-`address` without a `mask*` call on the adjacent expression.
+## Enforcement (task #389)
+
+The contract above is enforced in CI by
+[`scripts/check-log-debug-pii.ts`](../scripts/check-log-debug-pii.ts),
+driven by the vitest forcing function in
+[`tests/unit/check-log-debug-pii.test.ts`](../tests/unit/check-log-debug-pii.test.ts).
+The guard walks every `.ts` file under `server/` (excluding
+`*.test.ts` and `__tests__/`), extracts each `log.debug(...)` /
+`logger.debug(...)` call expression, and fails the build when its
+argument list contains any of `email`, `password`, `token`, `phone`,
+`address`, or `secret` without one of:
+
+1. A `mask*` helper call (`maskEmail`, etc.) inside the same call
+   expression. Add new redactors to `server/utils/pii.ts`.
+2. An inline `/* pii-lint-ok: <reason> */` annotation comment, used
+   only when reviewers can verify the payload is structural (e.g.
+   logging field *names* rather than values).
+
+Run the guard locally with:
+
+```
+tsx scripts/check-log-debug-pii.ts            # advisory
+tsx scripts/check-log-debug-pii.ts --strict   # CI gate
+```
+
+When the team picks a CI provider, wire the `--strict` invocation as
+its own step alongside the existing checks.
