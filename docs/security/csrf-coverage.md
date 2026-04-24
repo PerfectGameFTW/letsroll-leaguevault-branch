@@ -177,6 +177,12 @@ format requires updating the assertion. If you need to add a new log
 line in `server/middleware/csrf.ts`, extend the test with the new
 branch first; do not weaken the existing assertions.
 
+The same contract is applied to every other auth surface that handles
+secret material (login passwords, invite / reset / email-change
+tokens, the `x-setup-secret` header). The full audit table — with the
+shared assertion helper and one regression test per surface — lives in
+[`no-secrets-in-logs.md`](./no-secrets-in-logs.md).
+
 ## Regression tests
 
 `tests/api/csrf-coverage.test.ts` pins:

@@ -16,8 +16,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextFunction, Request, Response } from 'express';
+import {
+  assertNoTokenLeak as sharedAssertNoTokenLeak,
+  type CapturedLogLine,
+} from '../helpers/no-token-leak';
 
-const captured: { level: string; line: string }[] = [];
+const captured: CapturedLogLine[] = [];
 
 function record(level: string) {
   return (message: string, ...args: unknown[]) => {
@@ -63,14 +67,15 @@ function makeReq(opts: {
 }
 
 function assertNoTokenLeak() {
-  for (const { line } of captured) {
-    expect(line).not.toContain(SESSION_TOKEN);
-    expect(line).not.toContain(HEADER_TOKEN_WRONG);
-    expect(line).not.toContain(SESSION_ID);
-    // Catch any partial leak (>= 8 contiguous bytes from the token).
-    expect(line).not.toMatch(new RegExp(SESSION_TOKEN.slice(0, 8)));
-    expect(line).not.toMatch(new RegExp(HEADER_TOKEN_WRONG.slice(0, 8)));
-  }
+  // Delegates to the shared helper (`tests/helpers/no-token-leak.ts`)
+  // so every sibling no-leak test (task #396) uses the same regex /
+  // 8-byte-prefix check. SESSION_ID has no useful prefix to enforce
+  // (it's not a token), so it goes in `partials` to keep the prefix
+  // assertion meaningful for the actual tokens.
+  sharedAssertNoTokenLeak(captured, {
+    full: [SESSION_TOKEN, HEADER_TOKEN_WRONG],
+    partials: [SESSION_ID],
+  });
 }
 
 beforeEach(() => {
