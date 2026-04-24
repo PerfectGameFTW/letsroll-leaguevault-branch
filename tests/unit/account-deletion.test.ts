@@ -651,6 +651,133 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
     });
   });
 
+  // --------------------------------------------------------------------
+  // Task #351: pin the contract between executeAccountDeletion and
+  // sendAccountDeletionConfirmation.
+  //
+  // The #349 block above proves the *outcome* is recorded on the
+  // summary (sent / suppressed / error). This block proves the
+  // *contract* with the SendGrid helper:
+  //   1. the helper is called once with a payload whose counts match
+  //      the rest of the summary (so the email body can't drift away
+  //      from what was actually deleted),
+  //   2. a SendGrid soft failure (return false) does NOT roll back any
+  //      part of the deletion — the GDPR scrub still completes,
+  //   3. a SendGrid hard failure (thrown exception) is swallowed and
+  //      logged at error level — the caller never sees the throw.
+  // --------------------------------------------------------------------
+  describe('confirmation email contract (#351)', () => {
+    let sendSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      sendSpy = vi.spyOn(emailService, 'sendAccountDeletionConfirmation');
+    });
+
+    afterEach(() => {
+      sendSpy.mockRestore();
+    });
+
+    it('calls sendAccountDeletionConfirmation once with counts that match the summary', async () => {
+      const orgId = await makeOrg();
+      const adminId = await makeUser(uniqueEmail('admin'), orgId);
+      const targetEmail = uniqueEmail('contract-happy');
+      await makeUser(targetEmail, orgId);
+
+      // Two bowlers + one payment-provider customer-id so the
+      // payload counts are non-trivial (catches a regression where
+      // the call site hard-codes 1 or forgets a count).
+      const locA = await makeLocation(orgId);
+      const leagueA = await makeLeague(orgId, locA);
+      const teamA = await makeTeam(leagueA);
+      const bowlerA = await makeBowlerWithCustomerIds(targetEmail, 'cust-happy-1', null, orgId);
+      await linkBowlerToLeague(bowlerA, leagueA, teamA);
+      await makeBowler(targetEmail, orgId);
+
+      // Square call must succeed so paymentProviderRecordsDeleted=1.
+      const fakeProvider = {
+        deleteCustomer: vi.fn().mockResolvedValue(undefined),
+      };
+      getPaymentProviderSpy.mockResolvedValue(fakeProvider as never);
+
+      sendSpy.mockResolvedValue(true);
+
+      const summary = await executeAccountDeletion(targetEmail, adminId);
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      const [emailArg, payloadArg] = sendSpy.mock.calls[0]!;
+      expect(emailArg).toBe(targetEmail);
+
+      // The payload that lands in the email body must agree with the
+      // numbers the admin sees in the audit summary — otherwise the
+      // user gets a misleading confirmation.
+      const bowlersAnonymized = summary.bowlers.filter((b) => b.anonymized).length;
+      const providerDeletes = summary.paymentProvider.filter((p) => p.deleted).length;
+      expect(payloadArg).toMatchObject({
+        bowlersAnonymized,
+        userAccountDeleted: summary.user.deleted,
+        paymentProviderRecordsDeleted: providerDeletes,
+        emailChangeRequestsDeleted: summary.emailChangeRequestsDeleted,
+        executedAt: summary.executedAt,
+      });
+      expect(bowlersAnonymized).toBeGreaterThanOrEqual(2);
+      expect(providerDeletes).toBe(1);
+    });
+
+    it('still resolves with a complete summary (and user.deleted=true) when SendGrid returns false', async () => {
+      const orgId = await makeOrg();
+      const adminId = await makeUser(uniqueEmail('admin'), orgId);
+      const targetEmail = uniqueEmail('contract-soft-fail');
+      await makeUser(targetEmail, orgId);
+      await makeBowler(targetEmail, orgId);
+
+      sendSpy.mockResolvedValue(false);
+
+      // Critically: this call must not throw. A SendGrid outage is
+      // not allowed to roll back the GDPR scrub.
+      const summary = await executeAccountDeletion(targetEmail, adminId);
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      // Every load-bearing field on the summary is still populated.
+      expect(summary.executedAt).toEqual(expect.any(String));
+      expect(summary.executedBy).toBe(adminId);
+      expect(summary.email).toBe(targetEmail);
+      expect(summary.user.deleted).toBe(true);
+      expect(summary.bowlers.length).toBeGreaterThan(0);
+      expect(summary.bowlers.every((b) => b.anonymized)).toBe(true);
+    });
+
+    it('still resolves (no throw) and logs the error when sendAccountDeletionConfirmation throws', async () => {
+      const orgId = await makeOrg();
+      const adminId = await makeUser(uniqueEmail('admin'), orgId);
+      const targetEmail = uniqueEmail('contract-hard-fail');
+      await makeUser(targetEmail, orgId);
+      await makeBowler(targetEmail, orgId);
+
+      const boom = new Error('SendGrid hard failure: connection reset');
+      sendSpy.mockRejectedValue(boom);
+
+      // The whole point of catching the throw inside the service is
+      // so a flaky email provider can't masquerade as a failed
+      // deletion. If a future refactor lets the rejection bubble out,
+      // this `await` will throw and the test will fail loudly.
+      const summary = await executeAccountDeletion(targetEmail, adminId);
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      // GDPR scrub still completed end-to-end despite the email blowup.
+      expect(summary.user.deleted).toBe(true);
+      expect(summary.bowlers.length).toBeGreaterThan(0);
+      expect(summary.bowlers.every((b) => b.anonymized)).toBe(true);
+      // The thrown message lands on the audit summary so admins (and
+      // the #350 UI) can see WHY the email didn't go. The presence of
+      // this string is also our proof the catch block ran — we don't
+      // spy on the logger directly because it uses a custom
+      // process.stdout transport rather than console.error, and we
+      // don't want this test to break on an unrelated logger refactor.
+      expect(summary.confirmationEmail?.sent).toBe(false);
+      expect(summary.confirmationEmail?.error).toMatch(/connection reset/);
+    });
+  });
+
   it('records ProviderNotConfiguredError without aborting and proceeds to anonymize', async () => {
     const orgId = await makeOrg();
     const adminId = await makeUser(uniqueEmail('admin'), orgId);
