@@ -39,6 +39,12 @@ export interface OrgLikeForApplePay {
  */
 function resolveSuffix(suffix?: string): string {
   if (suffix && suffix.trim()) return suffix.trim().toLowerCase();
+  // The defensive `.toLowerCase()` is redundant with the parse-time
+  // normalisation introduced in task #335 (env.APP_DOMAIN is already
+  // lowercase) but is kept as belt-and-braces because the test-only
+  // `suffix` override path above is also lowercased — both sides of the
+  // accepted-domain compare in `isAcceptedApplePayDomain` lowercase
+  // their inputs, so this stays case-insensitive end-to-end.
   return env.APP_DOMAIN.toLowerCase();
 }
 

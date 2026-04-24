@@ -243,6 +243,7 @@ the other receives `ADMIN_EXISTS` (HTTP 403).
   - `APP_DOMAIN` env var (default `leaguevault.app`) is the single source of truth for the production hostname suffix
   - Used by the session cookie domain (`server/auth.ts`) and the Apple Pay accepted-domain check (`server/services/apple-pay-domains.ts`)
   - Native iOS/Android entitlements stay hardcoded — those are build-time artifacts, not runtime config
+  - **Invariant (task #335 / #395)**: `envSchema.APP_DOMAIN` normalises the value to lowercase at parse-time via `.transform((v) => v.toLowerCase())`. Every consumer (`server/auth.ts`, `server/middleware/security.ts` CSP + CORS, `server/middleware/subdomain.ts` `extractSubdomain`, `server/services/email.ts` `getBaseUrl` / `FROM_EMAIL`, `server/services/apple-pay-domains.ts`) compares it against an already-lowercased request hostname or interpolates it into a header / URL where the canonical form must be lowercase. Each call site carries a `// safe: APP_DOMAIN is normalised to lowercase at parse-time (task #335)` comment, and `tests/unit/app-domain-mixed-case-pins.test.ts` parses a deliberately mixed-case operator value through `envSchema` and pins every consumer end-to-end so a regression on the schema transform cannot silently break CORS / cookies / subdomain matching.
 - Org form dialog has a Subdomain field for admin configuration
 - **Org session isolation**: `orgSessionGuard` middleware (`server/middleware/subdomain.ts`) prevents sessions from leaking across org subdomains
   - Runs after passport session deserialization on all routes

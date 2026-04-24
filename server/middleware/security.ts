@@ -59,6 +59,9 @@ export const securityHeaders: RequestHandler = helmet({
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
       formAction: ["'self'"],
+      // safe: APP_DOMAIN is normalised to lowercase at parse-time (task #335).
+      // CSP host-source matching is case-insensitive per CSP3 §6.6.2.6, but
+      // emitting the canonical lowercase form keeps the directive readable.
       frameAncestors: isDev
         ? ["*"]
         : ["'self'", `https://${env.APP_DOMAIN}`, `https://*.${env.APP_DOMAIN}`],
@@ -71,6 +74,10 @@ export const securityHeaders: RequestHandler = helmet({
 
 function getAllowedOrigins(): string[] {
   const origins: string[] = [];
+  // safe: APP_DOMAIN is normalised to lowercase at parse-time (task #335).
+  // The Origin header sent by browsers has its host lowercased by the URL
+  // parser, so the literal `allowedOrigins.includes(origin)` compare in
+  // `isAllowedOrigin` would silently fail if APP_DOMAIN were mixed-case.
   origins.push(`https://${env.APP_DOMAIN}`);
   if (isDev) {
     if (env.REPLIT_DOMAINS) {
@@ -97,6 +104,10 @@ export function isAllowedOrigin(origin: string): boolean {
   if (origin === 'http://localhost') return true;
   try {
     const url = new URL(origin);
+    // safe: APP_DOMAIN is normalised to lowercase at parse-time (task #335).
+    // `url.hostname` is lowercased by the WHATWG URL parser, so the suffix
+    // compare is implicitly case-insensitive only because both sides are
+    // already lowercase.
     if (url.hostname.endsWith(`.${env.APP_DOMAIN}`) && url.protocol === 'https:') {
       return true;
     }

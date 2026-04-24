@@ -23,6 +23,10 @@ function describeMailError(error: unknown): unknown {
 }
 
 const SENDGRID_API_KEY = env.SENDGRID_API_KEY;
+// safe: APP_DOMAIN is normalised to lowercase at parse-time (task #335).
+// The domain part of an email address is case-insensitive per RFC 5321
+// §2.4, but we still want a canonical lowercase From: address so SPF /
+// DKIM logs and bounce records read uniformly.
 const FROM_EMAIL = `noreply@${env.APP_DOMAIN}`;
 const FROM_NAME = 'LeagueVault';
 
@@ -53,6 +57,9 @@ export function getBaseUrl(
   } else if (orgOrSlug) {
     host = orgOrSlug.subdomain || orgOrSlug.slug || null;
   }
+  // safe: APP_DOMAIN is normalised to lowercase at parse-time (task #335).
+  // Hostnames in URLs are case-insensitive but we want a canonical
+  // lowercase URL in outgoing emails so links don't look mangled.
   if (host) {
     return `https://${host}.${env.APP_DOMAIN}`;
   }

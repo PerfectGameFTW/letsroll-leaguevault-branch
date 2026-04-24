@@ -7,6 +7,10 @@ import { env } from '../config';
 
 const log = createLogger("Subdomain");
 
+// safe: APP_DOMAIN is normalised to lowercase at parse-time (task #335).
+// `extractSubdomain` lowercases the incoming `host` (line below) and
+// then string-compares it against `MAIN_DOMAIN`. Both sides must be
+// lowercase or the equality / `endsWith` checks would silently fail.
 const MAIN_DOMAIN = env.APP_DOMAIN;
 const IGNORED_SUBDOMAINS = new Set(['www', 'api', 'admin', 'mail', 'smtp', 'ftp']);
 const SLUG_REGEX = /^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$/;

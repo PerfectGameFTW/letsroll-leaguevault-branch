@@ -88,6 +88,10 @@ export async function setupAuth(app: Express) {
       sameSite: (isDev && !!env.REPLIT_DOMAINS) ? "none" as const : "lax" as const,
       maxAge: 24 * 60 * 60 * 1000,
       httpOnly: true,
+      // safe: APP_DOMAIN is normalised to lowercase at parse-time (task #335).
+      // Cookie domain matching is case-insensitive per RFC 6265 §5.1.3, but
+      // we still emit the canonical lowercase form so the Set-Cookie header
+      // is readable.
       ...(isProduction ? { domain: `.${env.APP_DOMAIN}` } : {}),
     },
   };
