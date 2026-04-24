@@ -33,7 +33,13 @@ export function useThrottleCountdown(): {
   const throttle = useCallback((seconds: number) => {
     // Clamp to at least 1s so a near-zero Retry-After still paints the banner.
     const safe = Math.max(1, Math.floor(seconds));
-    setThrottledUntil(Date.now() + safe * 1000);
+    // Resync `now` here too: the form may have been mounted minutes before
+    // the user actually triggered the 429, so the stale `now` from initial
+    // useState would push the first remainingSeconds past the requested
+    // window (e.g. throttle(60) reading as "2 minutes" instead of "1").
+    const start = Date.now();
+    setNow(start);
+    setThrottledUntil(start + safe * 1000);
   }, []);
 
   const clear = useCallback(() => setThrottledUntil(null), []);

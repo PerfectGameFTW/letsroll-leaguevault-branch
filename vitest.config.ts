@@ -56,6 +56,28 @@ export default defineConfig({
           exclude: SHARED_TABLE_WRITERS,
         },
       },
+      {
+        // Client-side React component tests run in jsdom so they
+        // can render shadcn / Radix widgets, fire user-event
+        // interactions, and assert against the resulting DOM.
+        // Kept in a separate project (not just a separate env)
+        // so the node-environment suites above don't pay the
+        // jsdom setup cost.
+        // Vite's React plugin isn't loaded for vitest, so opt in to
+        // esbuild's automatic JSX runtime here so .tsx test files
+        // don't need to import React explicitly.
+        esbuild: { jsx: 'automatic' },
+        test: {
+          name: 'client-components',
+          globals: true,
+          environment: 'jsdom',
+          testTimeout: 10000,
+          hookTimeout: 10000,
+          alias: sharedAlias,
+          include: ['tests/components/**/*.test.tsx'],
+          setupFiles: ['./tests/setup/component-test-setup.ts'],
+        },
+      },
     ],
   },
 });
