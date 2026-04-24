@@ -21,19 +21,26 @@ const router = Router();
  * filter" sentinel) and `null` when the caller sent something we
  * couldn't make sense of — the route maps `null` to a 400.
  *
- * Note: we deliberately mirror the existing `?organizationId`
- * validation (`parseInt` + `isNaN`), so a partially-numeric value
- * like `42abc` is still parsed as 42. Tightening that to a strict
- * digits-only check is a separate, broader decision (see follow-up).
+ * The validation is intentionally STRICT (digits with an optional
+ * leading minus, nothing else): the previous `parseInt` + `isNaN`
+ * pattern silently accepted partially-numeric input like
+ * `?leagueId=42abc` as `42`, which doesn't match the task #406
+ * intent of "reject malformed numeric filters". A bare `?x=` is
+ * still treated as "no filter" so existing UIs that submit cleared
+ * form inputs are not broken (regression-pinned in the test file).
  */
 function parseOptionalIntParam(raw: unknown): number | undefined | null {
   if (raw === undefined) return undefined;
-  // Empty string from `?leagueId=` should be treated the same as
-  // "missing" — that's what the old `req.query.X ? ... : undefined`
-  // ternary did and existing callers rely on it.
-  if (typeof raw === 'string' && raw === '') return undefined;
-  const n = parseInt(raw as string, 10);
-  return Number.isNaN(n) ? null : n;
+  // Express normalizes single-occurrence query params to strings;
+  // anything else (array, object) is malformed by definition.
+  if (typeof raw !== 'string') return null;
+  if (raw === '') return undefined;
+  // Strict: optional sign + digits only — no decimals, no trailing
+  // letters. This is a small tightening over the pre-existing
+  // organization-id check, in the same spirit.
+  if (!/^-?\d+$/.test(raw)) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
@@ -47,8 +54,9 @@ function parseOptionalIntParam(raw: unknown): number | undefined | null {
  */
 function parseOptionalDateParam(raw: unknown): Date | undefined | null {
   if (raw === undefined) return undefined;
-  if (typeof raw === 'string' && raw === '') return undefined;
-  const d = new Date(raw as string);
+  if (typeof raw !== 'string') return null;
+  if (raw === '') return undefined;
+  const d = new Date(raw);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 

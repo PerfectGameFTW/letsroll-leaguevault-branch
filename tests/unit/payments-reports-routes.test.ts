@@ -371,6 +371,18 @@ describe('GET /api/payments — malformed filter inputs', () => {
     expect(mockStorage.getPayments).not.toHaveBeenCalled();
   });
 
+  it('rejects a partially-numeric ?leagueId (e.g. "42abc") with a 400', async () => {
+    // Strict-digit check: previously the route used parseInt which
+    // silently coerces "42abc" → 42, hiding a malformed request as
+    // a "successful" filter for league 42. The tightened parser
+    // requires digits-only (with optional leading minus).
+    const res = await get('/api/payments?leagueId=42abc', ORG_A_USER);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/league/i);
+    expect(mockStorage.getLeague).not.toHaveBeenCalled();
+    expect(mockStorage.getPayments).not.toHaveBeenCalled();
+  });
+
   it('rejects an unparseable ?weekOf date with a 400', async () => {
     // `new Date('not-a-date')` returns Invalid Date silently — the
     // old behaviour forwarded that into storage, which usually blew
