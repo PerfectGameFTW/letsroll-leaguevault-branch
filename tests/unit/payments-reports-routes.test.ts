@@ -336,32 +336,63 @@ describe('GET /api/payments — base filter passthrough', () => {
 });
 
 describe('GET /api/payments — malformed filter inputs', () => {
-  it('silently drops a non-numeric ?leagueId (parseInt → NaN, treated as no filter)', async () => {
-    // Pin current behavior — only ?organizationId is validated.
-    // ?leagueId=foo parses to NaN; the `if (leagueId)` branch is
-    // falsy so the league access check is skipped and the NaN is
-    // forwarded into baseFilters. See follow-up #406 for the
-    // tightening to 400.
-    mockStorage.getPayments.mockResolvedValue([]);
+  // task #406: previously the route forwarded NaN / Invalid Date
+  // straight to the storage layer for everything except
+  // ?organizationId, producing confusing 500s and noisy DB error
+  // logs. These tests now pin the tightened 400 contract.
 
+  it('rejects a non-numeric ?leagueId with a 400 and never touches storage', async () => {
     const res = await get('/api/payments?leagueId=foo', ORG_A_USER);
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+    // The error message should call out which filter was bad so the
+    // caller can fix their request without grepping logs.
+    expect(body.error.message).toMatch(/league/i);
+    // The route must short-circuit before any DB lookups — the
+    // league access check should not fire (a NaN ID would otherwise
+    // generate a low-value 404 in the logs) and no payments query
+    // should run.
     expect(mockStorage.getLeague).not.toHaveBeenCalled();
-    const filters = mockStorage.getPayments.mock.calls[0][0];
-    expect(Number.isNaN(filters.leagueId)).toBe(true);
+    expect(mockStorage.getPayments).not.toHaveBeenCalled();
   });
 
-  it('silently drops a non-numeric ?bowlerId / ?teamId', async () => {
+  it('rejects a non-numeric ?bowlerId with a 400 (call-out which filter)', async () => {
+    const res = await get('/api/payments?bowlerId=foo', ORG_A_USER);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/bowler/i);
+    expect(mockStorage.getPayments).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-numeric ?teamId with a 400 (call-out which filter)', async () => {
+    const res = await get('/api/payments?teamId=bar', ORG_A_USER);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/team/i);
+    expect(mockStorage.getPayments).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unparseable ?weekOf date with a 400', async () => {
+    // `new Date('not-a-date')` returns Invalid Date silently — the
+    // old behaviour forwarded that into storage, which usually blew
+    // up further down the stack. The route now rejects up front.
+    const res = await get('/api/payments?weekOf=not-a-date', ORG_A_USER);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/week/i);
+    expect(mockStorage.getPayments).not.toHaveBeenCalled();
+  });
+
+  it('still accepts an empty filter value as "no filter" (no regression on `?leagueId=`)', async () => {
+    // `req.query.leagueId === ''` used to be treated as "missing"
+    // by the `if (req.query.leagueId)` ternary; preserve that so
+    // existing clients that emit empty params (e.g. a cleared form
+    // input) don't suddenly get 400s.
     mockStorage.getPayments.mockResolvedValue([]);
 
-    const res = await get(
-      '/api/payments?bowlerId=foo&teamId=bar',
-      ORG_A_USER,
-    );
+    const res = await get('/api/payments?leagueId=&bowlerId=', ORG_A_USER);
     expect(res.status).toBe(200);
     const filters = mockStorage.getPayments.mock.calls[0][0];
-    expect(Number.isNaN(filters.bowlerId)).toBe(true);
-    expect(Number.isNaN(filters.teamId)).toBe(true);
+    expect(filters.leagueId).toBeUndefined();
+    expect(filters.bowlerId).toBeUndefined();
   });
 });
 

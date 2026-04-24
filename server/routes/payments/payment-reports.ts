@@ -14,15 +14,75 @@ const log = createLogger("Payments");
 
 const router = Router();
 
+/**
+ * Parse an optional integer query-string parameter.
+ *
+ * Returns `undefined` when the param is missing (the route's "no
+ * filter" sentinel) and `null` when the caller sent something we
+ * couldn't make sense of — the route maps `null` to a 400.
+ *
+ * Note: we deliberately mirror the existing `?organizationId`
+ * validation (`parseInt` + `isNaN`), so a partially-numeric value
+ * like `42abc` is still parsed as 42. Tightening that to a strict
+ * digits-only check is a separate, broader decision (see follow-up).
+ */
+function parseOptionalIntParam(raw: unknown): number | undefined | null {
+  if (raw === undefined) return undefined;
+  // Empty string from `?leagueId=` should be treated the same as
+  // "missing" — that's what the old `req.query.X ? ... : undefined`
+  // ternary did and existing callers rely on it.
+  if (typeof raw === 'string' && raw === '') return undefined;
+  const n = parseInt(raw as string, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
+/**
+ * Parse an optional date query-string parameter.
+ *
+ * Same tri-state contract as `parseOptionalIntParam`:
+ * `undefined` = not provided, `null` = unparseable (→ 400), Date =
+ * good. `new Date('garbage')` returns an Invalid Date silently, so
+ * the route used to forward those straight into the storage layer
+ * and trip a confusing 500.
+ */
+function parseOptionalDateParam(raw: unknown): Date | undefined | null {
+  if (raw === undefined) return undefined;
+  if (typeof raw === 'string' && raw === '') return undefined;
+  const d = new Date(raw as string);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 // Get payments with optional filters
 router.get("/", async (req, res) => {
   try {
-    const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
+    // task #406: validate every numeric/date filter up front instead
+    // of forwarding NaN / Invalid Date into the storage layer (which
+    // produced confusing 500s and noisy logs). Each param is
+    // independently checked so the 400 message tells the caller
+    // exactly which one was malformed.
     const isSystemAdmin = req.user?.role === 'system_admin';
-    const rawQueryOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
-    if (rawQueryOrgId !== undefined && isNaN(rawQueryOrgId)) {
+
+    const rawQueryOrgId = parseOptionalIntParam(req.query.organizationId);
+    if (rawQueryOrgId === null) {
       return sendError(res, "Invalid organization ID format", 400);
     }
+    const leagueId = parseOptionalIntParam(req.query.leagueId);
+    if (leagueId === null) {
+      return sendError(res, "Invalid league ID format", 400);
+    }
+    const bowlerId = parseOptionalIntParam(req.query.bowlerId);
+    if (bowlerId === null) {
+      return sendError(res, "Invalid bowler ID format", 400);
+    }
+    const teamId = parseOptionalIntParam(req.query.teamId);
+    if (teamId === null) {
+      return sendError(res, "Invalid team ID format", 400);
+    }
+    const weekOf = parseOptionalDateParam(req.query.weekOf);
+    if (weekOf === null) {
+      return sendError(res, "Invalid weekOf date format", 400);
+    }
+
     // Effective org context: explicit param > sysadmin's own org > null (unaffiliated sysadmin)
     const effectiveOrgId: number | null = isSystemAdmin
       ? (rawQueryOrgId ?? req.user?.organizationId ?? null)
@@ -43,10 +103,10 @@ router.get("/", async (req, res) => {
     }
 
     const baseFilters = {
-      bowlerId: req.query.bowlerId ? parseInt(req.query.bowlerId as string) : undefined,
+      bowlerId,
       leagueId,
-      teamId: req.query.teamId ? parseInt(req.query.teamId as string) : undefined,
-      weekOf: req.query.weekOf ? new Date(req.query.weekOf as string) : undefined,
+      teamId,
+      weekOf,
     };
 
     const paginationParams = parsePaginationParams(req.query);

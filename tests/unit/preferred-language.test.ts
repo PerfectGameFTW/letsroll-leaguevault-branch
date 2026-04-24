@@ -292,9 +292,10 @@ describe('PATCH /api/account/profile — preferredLanguage round trip', () => {
     //    notification helper is invoked with — otherwise the email
     //    would silently render in English regardless of preference.
     expect(mockSendPasswordChangedNotification).toHaveBeenCalledTimes(1);
-    const ctx = mockSendPasswordChangedNotification.mock.calls[0][2] as {
-      locale?: string | null;
-    };
+    // The vi.fn() factory has no signature so its `calls` are typed
+    // as `[]`; widen through `unknown` to read positional args.
+    const call = mockSendPasswordChangedNotification.mock.calls[0] as unknown as unknown[];
+    const ctx = call[2] as { locale?: string | null };
     expect(ctx.locale).toBe('es');
   });
 
