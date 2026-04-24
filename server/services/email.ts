@@ -651,6 +651,17 @@ export async function sendPasswordChangedNotification(
      * collapse to their base language inside the resolver.
      */
     locale?: string | null;
+    /**
+     * Who initiated the password change (task #416). When `'admin'`,
+     * the email body includes an extra translator-supplied line
+     * stating that the change was performed by an administrator on
+     * the recipient's account, so the user can immediately
+     * distinguish a legitimate delegated rotation from an attacker
+     * who happens to have access to their account. Defaults to
+     * `'self'` for backwards compatibility — the existing
+     * change-password and set-password call sites stay unchanged.
+     */
+    actor?: 'self' | 'admin';
   },
 ): Promise<boolean> {
   if (!SENDGRID_API_KEY) {
@@ -682,6 +693,16 @@ export async function sendPasswordChangedNotification(
   const displayName = userName || 'there';
   const safeGreeting = escapeHtml(strings.greeting(displayName));
   const safeIntro = escapeHtml(strings.intro);
+  // Only render the admin-actor line when the caller asked for it
+  // (task #416). Defaults to self-service so existing call sites at
+  // server/routes/account.ts and server/routes/auth.ts keep their
+  // pre-#416 wording verbatim — this prevents the admin sentence
+  // from leaking into a normal user-driven password change just
+  // because someone forgot to pass the actor flag.
+  const adminLineHtml =
+    context.actor === 'admin'
+      ? `<p style="font-size: 16px; color: #333;">${escapeHtml(strings.performedByAdmin)}</p>`
+      : '';
 
   const msg = {
     to: toEmail,
@@ -691,6 +712,7 @@ export async function sendPasswordChangedNotification(
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;" lang="${localeCode}">
         <p style="font-size: 16px; color: #333;">${safeGreeting}</p>
         <p style="font-size: 16px; color: #333;">${safeIntro}</p>
+        ${adminLineHtml}
         <table style="font-size: 14px; color: #555; border-collapse: collapse; margin: 16px 0;">
           <tr>
             <td style="padding: 4px 12px 4px 0; color: #888;">${escapeHtml(strings.whenLabel)}</td>

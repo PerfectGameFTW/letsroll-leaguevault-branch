@@ -54,6 +54,10 @@ describe('pickPasswordChangedLocale (task #410)', () => {
       'ifThisWasntYou',
       'footer',
       'unknown',
+      // Added in task #416 — the admin-actor sentence. Every locale
+      // must ship a translation so an admin reset never falls back
+      // silently to the English string for non-English recipients.
+      'performedByAdmin',
     ];
     for (const [code, strings] of Object.entries(PASSWORD_CHANGED_I18N)) {
       for (const key of required) {
@@ -146,6 +150,75 @@ describe('sendPasswordChangedNotification — locale rendering (task #410)', () 
     const { subject, html } = await renderedHtml('klingon');
     expect(subject).toBe(PASSWORD_CHANGED_I18N.en.subject);
     expect(html).toContain('lang="en"');
+  });
+
+  it('includes the "performed by an administrator" sentence ONLY when actor="admin" (task #416)', async () => {
+    const { sendPasswordChangedNotification } = await import('../../server/services/email');
+
+    // Self / default actor: admin sentence must NOT appear.
+    sendMock.mockClear();
+    await sendPasswordChangedNotification(
+      'recipient@vitest.local',
+      'Pat Bowler',
+      {
+        changedAt: new Date('2026-04-24T15:00:00Z'),
+        ipAddress: '203.0.113.9',
+        userAgent: 'ua',
+        locale: 'en',
+      },
+    );
+    const selfMsg = (sendMock.mock.calls[0] as unknown as Array<{ html: string }>)[0];
+    expect(selfMsg.html).not.toContain(PASSWORD_CHANGED_I18N.en.performedByAdmin);
+
+    // Explicit self actor: same — no admin sentence.
+    sendMock.mockClear();
+    await sendPasswordChangedNotification(
+      'recipient@vitest.local',
+      'Pat Bowler',
+      {
+        changedAt: new Date('2026-04-24T15:00:00Z'),
+        ipAddress: '203.0.113.9',
+        userAgent: 'ua',
+        locale: 'en',
+        actor: 'self',
+      },
+    );
+    const explicitSelfMsg = (sendMock.mock.calls[0] as unknown as Array<{ html: string }>)[0];
+    expect(explicitSelfMsg.html).not.toContain(PASSWORD_CHANGED_I18N.en.performedByAdmin);
+
+    // Admin actor in English: the sentence appears verbatim.
+    sendMock.mockClear();
+    await sendPasswordChangedNotification(
+      'recipient@vitest.local',
+      'Pat Bowler',
+      {
+        changedAt: new Date('2026-04-24T15:00:00Z'),
+        ipAddress: '203.0.113.9',
+        userAgent: 'ua',
+        locale: 'en',
+        actor: 'admin',
+      },
+    );
+    const adminEnMsg = (sendMock.mock.calls[0] as unknown as Array<{ html: string }>)[0];
+    expect(adminEnMsg.html).toContain(PASSWORD_CHANGED_I18N.en.performedByAdmin);
+
+    // Admin actor in Spanish: the locale's translation appears,
+    // and the English copy does NOT leak in.
+    sendMock.mockClear();
+    await sendPasswordChangedNotification(
+      'recipient@vitest.local',
+      'Pat Bowler',
+      {
+        changedAt: new Date('2026-04-24T15:00:00Z'),
+        ipAddress: '203.0.113.9',
+        userAgent: 'ua',
+        locale: 'es',
+        actor: 'admin',
+      },
+    );
+    const adminEsMsg = (sendMock.mock.calls[0] as unknown as Array<{ html: string }>)[0];
+    expect(adminEsMsg.html).toContain(PASSWORD_CHANGED_I18N.es.performedByAdmin);
+    expect(adminEsMsg.html).not.toContain(PASSWORD_CHANGED_I18N.en.performedByAdmin);
   });
 
   it('escapes name HTML exactly once (regression: previously double-encoded "&")', async () => {

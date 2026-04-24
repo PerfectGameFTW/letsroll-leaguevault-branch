@@ -32,6 +32,13 @@ export interface PasswordChangedStrings {
   ifThisWasntYou: string;
   footer: string;
   unknown: string;
+  /**
+   * Extra sentence inserted when the change was performed by an
+   * administrator on the user's account, NOT by the user themselves
+   * (task #416). Plain text — escaped by the email helper at splice
+   * time. Omitted from the rendered HTML when the actor is `'self'`.
+   */
+  performedByAdmin: string;
 }
 
 const en: PasswordChangedStrings = {
@@ -48,6 +55,8 @@ const en: PasswordChangedStrings = {
     "<strong>If this wasn't you</strong>, your account may be compromised. Contact support immediately so we can help you regain control.",
   footer: 'Powered by LeagueVault',
   unknown: 'unknown',
+  performedByAdmin:
+    'This change was performed by an administrator on your account.',
 };
 
 const es: PasswordChangedStrings = {
@@ -64,6 +73,8 @@ const es: PasswordChangedStrings = {
     '<strong>Si no fuiste tú</strong>, tu cuenta podría estar comprometida. Contacta con soporte de inmediato para que te ayudemos a recuperar el control.',
   footer: 'Servicio de LeagueVault',
   unknown: 'desconocido',
+  performedByAdmin:
+    'Un administrador realizó este cambio en tu cuenta.',
 };
 
 export const PASSWORD_CHANGED_I18N: Record<string, PasswordChangedStrings> = {
