@@ -697,7 +697,9 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       const fakeProvider = {
         deleteCustomer: vi.fn().mockResolvedValue(undefined),
       };
-      getPaymentProviderSpy.mockResolvedValue(fakeProvider as never);
+      getPaymentProviderSpy.mockResolvedValue(fakeProvider as unknown as Awaited<
+        ReturnType<typeof paymentProviderFactory.getPaymentProvider>
+      >);
 
       sendSpy.mockResolvedValue(true);
 
@@ -756,6 +758,15 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       const boom = new Error('SendGrid hard failure: connection reset');
       sendSpy.mockRejectedValue(boom);
 
+      // The project's logger writes formatted lines through
+      // `process.stdout.write` (see server/logger.ts). Spying there
+      // is the most direct way to pin the "logged at error level"
+      // half of the contract without coupling the test to the
+      // logger's internal API.
+      const stdoutSpy = vi
+        .spyOn(process.stdout, 'write')
+        .mockImplementation(() => true);
+
       // The whole point of catching the throw inside the service is
       // so a flaky email provider can't masquerade as a failed
       // deletion. If a future refactor lets the rejection bubble out,
@@ -768,13 +779,23 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       expect(summary.bowlers.length).toBeGreaterThan(0);
       expect(summary.bowlers.every((b) => b.anonymized)).toBe(true);
       // The thrown message lands on the audit summary so admins (and
-      // the #350 UI) can see WHY the email didn't go. The presence of
-      // this string is also our proof the catch block ran — we don't
-      // spy on the logger directly because it uses a custom
-      // process.stdout transport rather than console.error, and we
-      // don't want this test to break on an unrelated logger refactor.
+      // the #350 UI) can see WHY the email didn't go.
       expect(summary.confirmationEmail?.sent).toBe(false);
       expect(summary.confirmationEmail?.error).toMatch(/connection reset/);
+
+      // And the same throw was logged at ERROR level with both the
+      // helpful prefix and the underlying error message so on-call
+      // can trace it.
+      const errorLogged = stdoutSpy.mock.calls.some((args) => {
+        const line = String(args[0] ?? '');
+        return (
+          /\[ERROR\]/.test(line) &&
+          /Account-deletion confirmation email threw/.test(line) &&
+          /connection reset/.test(line)
+        );
+      });
+      stdoutSpy.mockRestore();
+      expect(errorLogged).toBe(true);
     });
   });
 
