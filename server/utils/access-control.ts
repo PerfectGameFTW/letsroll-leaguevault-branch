@@ -136,9 +136,17 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
   //     bowler-self UX without widening admin access.
   // A missing bowler row (deleted concurrently) falls through to the
   // league-based scan, which will then deny because there are no
-  // league entries for a non-existent bowler.
+  // league entries for a non-existent bowler. A row whose
+  // `organizationId` is NULL is treated as an org-less / orphaned row
+  // per the file-level policy at the top of this module — the stamp
+  // gate cannot decide it (no role may short-circuit-allow on a null
+  // stamp), so it also falls through to the league scan, which will
+  // skip every org-less league with a debug log and effectively deny.
+  // The schema currently enforces NOT NULL on this column, but the
+  // gate is hardened defensively so a future schema drift or stale
+  // mock can't silently widen access.
   const bowlerRow = await storage.getBowler(bowlerId);
-  if (bowlerRow) {
+  if (bowlerRow && bowlerRow.organizationId !== null) {
     if (isSystemAdmin(req.user)) {
       return true;
     }
@@ -263,14 +271,20 @@ export async function hasAccessToBowlers(
   const callerIsOrgOrHigher = isOrgOrHigher(req.user);
   const callerOrgIdShort = req.user.organizationId ?? null;
   const fetchedBowlers = await storage.getBowlersByIds([...idsToCheck]);
-  const stampedOrgByBowler = new Map<number, number>();
+  // Map value is `number | null` defensively: the schema enforces
+  // NOT NULL on `bowlers.organizationId` today, but a null stamp
+  // (drift / stale data) must NOT short-circuit-allow per the
+  // file-level org-less resource policy, and the gate below relies
+  // on being able to distinguish "no row" (undefined) from "null
+  // stamp" (null) so the latter falls through to the league scan.
+  const stampedOrgByBowler = new Map<number, number | null>();
   for (const b of fetchedBowlers) {
     stampedOrgByBowler.set(b.id, b.organizationId);
   }
   const stillToCheck = new Set<number>();
   for (const id of idsToCheck) {
     const stamp = stampedOrgByBowler.get(id);
-    if (stamp !== undefined) {
+    if (stamp !== undefined && stamp !== null) {
       if (callerIsSystemAdmin) {
         result.set(id, true);
         continue;

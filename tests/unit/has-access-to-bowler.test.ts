@@ -136,6 +136,31 @@ describe('hasAccessToBowler — owning-org fast path (#342/#407 short-circuit)',
     expect(mockGetLeaguesByIds).not.toHaveBeenCalled();
   });
 
+  it('null stamp (defense-in-depth): falls through to league scan, no short-circuit allow even for sysadmin', async () => {
+    // The schema enforces NOT NULL on `bowlers.organizationId` today,
+    // so a null stamp is unreachable through normal CRUD. This test
+    // pins the defensive guard against drift / orphaned rows: per the
+    // file-level org-less resource policy, NO role (including
+    // system_admin) may short-circuit-allow on a null stamp. The
+    // request must instead fall through to the league scan, which
+    // then enforces the same policy via continue+debug-log.
+    const req = makeReq({ id: 1, role: 'system_admin', organizationId: null, bowlerId: null });
+
+    // Cast through `unknown` because the schema type is `number`; we
+    // are deliberately constructing an "impossible per schema" row to
+    // exercise the defensive runtime guard.
+    mockGetBowler.mockResolvedValueOnce({ id: 510, organizationId: null } as unknown as { id: number; organizationId: number });
+    mockGetBowlerLeagues.mockResolvedValue([]); // no league entries → deny
+
+    const allowed = await hasAccessToBowler(req, 510);
+
+    expect(allowed).toBe(false);
+    // Crucially: the league scan WAS consulted — proves the helper
+    // fell through past the stamp gate instead of short-circuiting.
+    expect(mockGetBowlerLeagues).toHaveBeenCalledTimes(1);
+    expect(mockGetBowlerLeagues).toHaveBeenCalledWith({ bowlerId: 510 });
+  });
+
   it('missing bowler row (no stamp present): falls through to league scan and denies', async () => {
     // After #407, `bowlers.organizationId` is NOT NULL, so "no stamp"
     // means the row is missing entirely (e.g. deleted concurrently).
