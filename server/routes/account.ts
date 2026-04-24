@@ -24,6 +24,7 @@ import { randomBytes, createHash } from 'crypto';
 import { db } from '../db';
 import { emailChangeRequests, users } from '@shared/schema';
 import { recordAdminEmailChangeAudit } from '../storage/admin-email-change-audits';
+import { createSharedRateLimitStore } from '../utils/rate-limit-store';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 
 const log = createLogger('Account');
@@ -94,6 +95,10 @@ const deletionRequestLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  // Task #356: shared Postgres store so the quota holds across
+  // multi-replica deployments. Anti-enumeration response above is
+  // unaffected.
+  store: createSharedRateLimitStore('deletion-request'),
   handler: (req, res) => {
     log.warn('Deletion request throttled (per-IP limit reached)');
     res.status(200).json(GENERIC_DELETION_RESPONSE);
@@ -381,6 +386,9 @@ const confirmEmailChangeLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
+  // Task #356: shared Postgres store so failed-attempt budget holds
+  // across multi-replica deployments.
+  store: createSharedRateLimitStore('confirm-email-change'),
   keyGenerator: (req: Request) => {
     // In non-prod, allow tests to claim an isolated bucket via header so a
     // single suite can exercise the limit without polluting (or being
@@ -670,6 +678,9 @@ const changePasswordLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  // Task #356: shared Postgres store so the per-user budget can't be
+  // bypassed by spreading attempts across multiple replicas.
+  store: createSharedRateLimitStore('change-password'),
   keyGenerator: (req: Request) => {
     const userId = (req.user as { id?: number } | undefined)?.id;
     // Fall through to IP if not yet authenticated — requireAuth runs

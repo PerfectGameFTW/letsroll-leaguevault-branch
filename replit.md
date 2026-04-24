@@ -200,6 +200,19 @@ transaction under the same lock, so two concurrent requests holding
 the same `SETUP_SECRET` cannot both succeed — exactly one wins, and
 the other receives `ADMIN_EXISTS` (HTTP 403).
 
+## Recent Changes (2026-04-24)
+- **Shared rate-limit store across replicas (#356)**: The default `MemoryStore` from `express-rate-limit` keeps counts in process-local memory, so a multi-replica deployment effectively gave each client `max * replicas` requests per window. Every per-route limiter now passes a `store: createSharedRateLimitStore('<prefix>')` backed by the existing pg pool so the budget holds across processes.
+  - New helper: `server/utils/rate-limit-store.ts` exports `PostgresRateLimitStore` (implements `Store` from `express-rate-limit` against a single shared `rate_limit_buckets` table) plus a `createSharedRateLimitStore(prefix)` factory. The factory returns `undefined` when `NODE_ENV !== 'production'` so dev/tests fall back to MemoryStore — without that, tests that share the loopback IP would inherit accumulated hits from prior runs and 429 immediately.
+  - Migration: `migrations/0028_add_rate_limit_buckets.sql` (`rate_limit_buckets(key text PK, count int, reset_at timestamptz)` + `reset_at` index for the GC sweep). The table is owned by the rate-limit helper, not the Drizzle schema, so it's not part of `db:push`.
+  - Limiters wired through the shared store (each gets a unique `prefix`; a single table holds them all because the prefix namespaces the keys):
+    - `server/routes/auth.ts` — `login`, `register`, `set-password`, `forgot-password`, `claim`
+    - `server/routes/account.ts` — `deletion-request`, `confirm-email-change`, `change-password`
+    - `server/middleware/rate-limit.ts` — `payment-write`, `payment`, `admin-write`, `email-test`, `setup-admin`, `invite`
+  - GC: `PostgresRateLimitStore.init` starts a single process-wide 5-min interval that deletes expired rows in batches of 1000. The timer is `unref`'d so it doesn't block process shutdown, and `stopRateLimitGc()` is exported for tests. Correctness doesn't depend on the sweep — `increment`'s `ON CONFLICT … DO UPDATE` already resets expired rows on next use.
+  - Atomicity: a single `INSERT … ON CONFLICT DO UPDATE … RETURNING count, reset_at` SQL statement does the increment so two concurrent requests across replicas can't race past `max`.
+  - Test isolation preserved: `confirmEmailChangeLimiter` keeps its `x-test-rl-bucket` header escape hatch and the `_test/reset-confirm-email-change-limit` route — `resetKey()` works on either store implementation.
+  - Tests: `tests/unit/rate-limit-store.test.ts` (6 tests) covers the headline multi-instance behaviour (two stores against the same pool see each other's hits), per-prefix isolation, window stickiness, `resetKey`, `decrement` floor at 0, and prefix-scoped `resetAll`. All previously-passing rate-limit-touching test suites (`change-password`, `email-change`, `set-password`, `setup-admin-header`) still pass.
+
 ## Recent Changes (2026-04-21)
 - **Apple Pay worker lease-based recovery (#265)**: True at-most-once provider calls across rolling restarts
   - Schema: added `claimed_at` timestamp column to `apple_pay_job_items`; new `APPLE_PAY_ITEM_LEASE_MS` constant (10 min) shared between schema + storage

@@ -14,8 +14,14 @@ import { createLogger } from "../logger";
 import { hashPassword, safeTokenCompare } from "../lib/password";
 import { destroyOtherSessionsForUser } from "../auth";
 import { sendTemplatedEmail, getBaseUrl, sendPasswordChangedNotification } from "../services/email.js";
+import { createSharedRateLimitStore } from "../utils/rate-limit-store";
 
 const log = createLogger("AuthRoutes");
+
+// Task #356: every limiter below is backed by the shared Postgres
+// store so quotas hold across multiple app processes / replicas.
+// Each limiter MUST pass a unique `prefix` to keep its key
+// namespace isolated from sibling limiters.
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -25,6 +31,7 @@ const loginLimiter = rateLimit({
   // The test suite logs in many times per run; rate-limiting locally
   // also makes development painful. Production keeps the limit enforced.
   skip: () => isDev,
+  store: createSharedRateLimitStore('login'),
   message: {
     success: false,
     error: { message: "Too many login attempts, please try again later", code: "RATE_LIMITED" },
@@ -37,6 +44,7 @@ const registerLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: () => isDev,
+  store: createSharedRateLimitStore('register'),
   message: {
     success: false,
     error: { message: "Too many requests, please try again later", code: "RATE_LIMITED" },
@@ -48,6 +56,7 @@ const setPasswordLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  store: createSharedRateLimitStore('set-password'),
   message: {
     success: false,
     error: { message: "Too many requests, please try again later", code: "RATE_LIMITED" },
@@ -59,6 +68,7 @@ const forgotPasswordLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  store: createSharedRateLimitStore('forgot-password'),
   message: {
     success: false,
     error: { message: "Too many password reset requests, please try again later", code: "RATE_LIMITED" },
@@ -70,6 +80,7 @@ const claimLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  store: createSharedRateLimitStore('claim'),
   message: {
     success: false,
     error: { message: "Too many requests, please try again later", code: "RATE_LIMITED" },
