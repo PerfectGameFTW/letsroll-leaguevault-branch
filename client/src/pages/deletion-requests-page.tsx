@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Copy, Download } from 'lucide-react';
 import {
   Dialog,
@@ -317,6 +318,12 @@ export default function DeletionRequestsPage() {
   const [adminNote, setAdminNote] = useState('');
   const [executeConfirmText, setExecuteConfirmText] = useState('');
   const [expandedRequestIds, setExpandedRequestIds] = useState<Set<number>>(new Set());
+  // Sweep-mode filter for the Completed tab: when on, only requests
+  // whose execution summary records at least one undeleted
+  // payment-provider customer remain visible. The filter itself is
+  // only meaningful for completed rows (pending/rejected rows have
+  // no execution summary), so it is hidden on the other tabs.
+  const [providerFailuresOnly, setProviderFailuresOnly] = useState(false);
 
   const toggleExpanded = (id: number) => {
     setExpandedRequestIds((prev) => {
@@ -338,7 +345,14 @@ export default function DeletionRequestsPage() {
     },
   });
 
-  const requests = requestsResponse?.data ?? [];
+  const allRequests = requestsResponse?.data ?? [];
+  const requests =
+    statusFilter === 'completed' && providerFailuresOnly
+      ? allRequests.filter((req) => {
+          const summary = parseExecutionSummary(req.executionSummary);
+          return !!summary?.paymentProvider.some((p) => !p.deleted);
+        })
+      : allRequests;
 
   const reviewMutation = useMutation({
     mutationFn: async (vars: { id: number; status: ReviewMode; adminNote: string | null }) => {
@@ -405,17 +419,43 @@ export default function DeletionRequestsPage() {
             </div>
           </div>
 
-          <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as DeletionRequestStatus)} className="mb-4">
-            <TabsList>
-              <TabsTrigger value="pending">Pending</TabsTrigger>
-              <TabsTrigger value="completed">Completed</TabsTrigger>
-              <TabsTrigger value="rejected">Rejected</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex items-center justify-between mb-4 gap-4 flex-wrap">
+            <Tabs
+              value={statusFilter}
+              onValueChange={(v) => setStatusFilter(v as DeletionRequestStatus)}
+            >
+              <TabsList>
+                <TabsTrigger value="pending">Pending</TabsTrigger>
+                <TabsTrigger value="completed">Completed</TabsTrigger>
+                <TabsTrigger value="rejected">Rejected</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {statusFilter === 'completed' && (
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="filter-provider-failures"
+                  checked={providerFailuresOnly}
+                  onCheckedChange={setProviderFailuresOnly}
+                  data-testid="switch-provider-failures-only"
+                />
+                <Label
+                  htmlFor="filter-provider-failures"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Only with provider failures
+                </Label>
+              </div>
+            )}
+          </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>{STATUS_LABELS[statusFilter].label} requests ({requests.length})</CardTitle>
+              <CardTitle data-testid="text-requests-count">
+                {STATUS_LABELS[statusFilter].label} requests
+                {statusFilter === 'completed' && providerFailuresOnly
+                  ? ` with provider failures (${requests.length} of ${allRequests.length})`
+                  : ` (${requests.length})`}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {isLoading ? (
