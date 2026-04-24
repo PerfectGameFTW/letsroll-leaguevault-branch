@@ -1,6 +1,6 @@
 import { FC, useState } from "react";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { queryClient } from "@/lib/queryClient";
+import { parseRetryAfterSeconds, queryClient } from "@/lib/queryClient";
 import {
   Card,
   CardContent,
@@ -9,6 +9,7 @@ import {
   CardTitle,
   CardFooter,
 } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -24,7 +25,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Link, useLocation } from "wouter";
 import { useSubdomainOrg } from "@/hooks/use-subdomain-org";
-import { AlertCircle, Loader2 } from "lucide-react";
+import {
+  DEFAULT_THROTTLE_FALLBACK_SECONDS,
+  formatCountdown,
+  useThrottleCountdown,
+} from "@/hooks/use-throttle-countdown";
+import { AlertCircle, AlertTriangle, Loader2 } from "lucide-react";
 
 const loginSchema = z.object({
   email: z
@@ -42,6 +48,11 @@ const LoginPage: FC = () => {
   const { org: subdomainOrg } = useSubdomainOrg();
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Surface 429 from the login limiter as the same friendly inline
+  // banner the change-password card uses (task #411). The toast-style
+  // generic message before this used to read like a transient outage.
+  const { isThrottled, remainingSeconds, throttle, clear: clearThrottle } =
+    useThrottleCountdown();
 
   const form = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -64,6 +75,26 @@ const LoginPage: FC = () => {
         credentials: "include",
       });
 
+      if (response.status === 429) {
+        // Promote rate-limited responses to a dedicated UI state
+        // (banner + disabled submit) instead of falling through to
+        // the generic loginError pipeline. We honor the server's
+        // Retry-After / RateLimit-Reset headers when present, and
+        // otherwise fall back to a sane default so the user is
+        // nudged toward "Forgot password?" instead of bouncing
+        // attempts off the limiter.
+        const retryAfter = parseRetryAfterSeconds(
+          response.headers.get('retry-after'),
+          response.headers.get('ratelimit-reset'),
+        );
+        const waitSeconds =
+          retryAfter != null && retryAfter > 0
+            ? retryAfter
+            : DEFAULT_THROTTLE_FALLBACK_SECONDS;
+        throttle(waitSeconds);
+        return;
+      }
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error?.message || "Invalid email or password");
@@ -72,6 +103,7 @@ const LoginPage: FC = () => {
       const userData = await response.json();
 
       queryClient.setQueryData(['/api/user'], userData);
+      clearThrottle();
 
       setLocation("/");
     } catch (error) {
@@ -142,18 +174,52 @@ const LoginPage: FC = () => {
                   </FormItem>
                 )}
               />
-              {loginError && (
+              {isThrottled && (
+                <Alert variant="destructive" data-testid="alert-login-throttled">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Too many sign-in attempts</AlertTitle>
+                  <AlertDescription className="space-y-2">
+                    <p>
+                      For your protection, we've paused sign-ins for this
+                      account for about{" "}
+                      <span data-testid="text-login-retry-in">
+                        {formatCountdown(remainingSeconds)}
+                      </span>
+                      . Please try again then.
+                    </p>
+                    <p>
+                      Forgot your password?{" "}
+                      <Link
+                        href="/forgot-password"
+                        className="font-medium underline underline-offset-2"
+                        data-testid="link-login-throttled-forgot"
+                      >
+                        Reset it instead
+                      </Link>
+                      .
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              )}
+              {loginError && !isThrottled && (
                 <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{loginError}</span>
                 </div>
               )}
-              <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                className="w-full mt-2"
+                disabled={isSubmitting || isThrottled}
+                data-testid="button-login-submit"
+              >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Signing in...
                   </>
+                ) : isThrottled ? (
+                  `Try again in ${formatCountdown(remainingSeconds)}`
                 ) : (
                   "Sign In"
                 )}

@@ -63,7 +63,7 @@ export async function csrfFetch(input: RequestInfo | URL, init?: RequestInit): P
   return res;
 }
 
-function parseRetryAfterSeconds(
+export function parseRetryAfterSeconds(
   retryAfter: string | null,
   rateLimitReset: string | null,
 ): number | null {

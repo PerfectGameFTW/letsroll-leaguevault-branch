@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +19,11 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import {
+  DEFAULT_THROTTLE_FALLBACK_SECONDS,
+  formatCountdown,
+  useThrottleCountdown,
+} from "@/hooks/use-throttle-countdown";
 
 type ApiErrorLike = Error & {
   status?: number;
@@ -30,13 +35,6 @@ function isRateLimitError(err: unknown): err is ApiErrorLike {
   if (!(err instanceof Error)) return false;
   const e = err as ApiErrorLike;
   return e.code === "RATE_LIMITED" || e.status === 429 || e.message.startsWith("429:");
-}
-
-function formatCountdown(seconds: number): string {
-  if (seconds <= 0) return "any moment now";
-  if (seconds < 60) return `${seconds} second${seconds === 1 ? "" : "s"}`;
-  const m = Math.ceil(seconds / 60);
-  return `${m} minute${m === 1 ? "" : "s"}`;
 }
 
 const passwordSchema = z.object({
@@ -53,31 +51,15 @@ type PasswordFormData = z.infer<typeof passwordSchema>;
 export function ChangePasswordCard() {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
-  const [throttledUntil, setThrottledUntil] = useState<number | null>(null);
-  const [now, setNow] = useState(() => Date.now());
+  // Throttle banner state lives in `useThrottleCountdown` (task #411
+  // factored this out so login + forgot-password can share it).
+  const { isThrottled, remainingSeconds, throttle, clear: clearThrottle } =
+    useThrottleCountdown();
 
   const form = useForm<PasswordFormData>({
     resolver: zodResolver(passwordSchema),
     defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
   });
-
-  // Tick once a second while throttled so the countdown re-renders.
-  useEffect(() => {
-    if (throttledUntil == null) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [throttledUntil]);
-
-  // Clear the throttle banner once the window has elapsed.
-  useEffect(() => {
-    if (throttledUntil != null && now >= throttledUntil) {
-      setThrottledUntil(null);
-    }
-  }, [now, throttledUntil]);
-
-  const remainingSeconds =
-    throttledUntil != null ? Math.max(0, Math.ceil((throttledUntil - now) / 1000)) : 0;
-  const isThrottled = throttledUntil != null && remainingSeconds > 0;
 
   const mutation = useMutation({
     mutationFn: async (data: PasswordFormData) => {
@@ -89,18 +71,15 @@ export function ChangePasswordCard() {
     onSuccess: () => {
       form.reset();
       setShowForm(false);
-      setThrottledUntil(null);
+      clearThrottle();
       toast({ title: "Password Changed", description: "Your password has been updated successfully." });
     },
     onError: (error: Error) => {
       if (isRateLimitError(error)) {
         const retry = (error as ApiErrorLike).retryAfterSeconds;
-        // Default to 5 minutes (half the 15-minute window) when the
-        // server doesn't expose a Retry-After header. We don't block
-        // the user forever — the banner just guides them to the
-        // recovery flow.
-        const waitSeconds = retry != null && retry > 0 ? retry : 300;
-        setThrottledUntil(Date.now() + waitSeconds * 1000);
+        const waitSeconds =
+          retry != null && retry > 0 ? retry : DEFAULT_THROTTLE_FALLBACK_SECONDS;
+        throttle(waitSeconds);
         return;
       }
       toast({

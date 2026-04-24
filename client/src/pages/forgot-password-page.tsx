@@ -1,5 +1,6 @@
 import { FC, useState } from "react";
 import { ErrorBoundary } from "@/components/error-boundary";
+import { parseRetryAfterSeconds } from "@/lib/queryClient";
 import {
   Card,
   CardContent,
@@ -8,12 +9,18 @@ import {
   CardTitle,
   CardFooter,
 } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
 import { useSubdomainOrg } from "@/hooks/use-subdomain-org";
-import { AlertCircle, ArrowLeft, Loader2, Mail } from "lucide-react";
+import {
+  DEFAULT_THROTTLE_FALLBACK_SECONDS,
+  formatCountdown,
+  useThrottleCountdown,
+} from "@/hooks/use-throttle-countdown";
+import { AlertCircle, AlertTriangle, ArrowLeft, Loader2, Mail } from "lucide-react";
 
 const ForgotPasswordPage: FC = () => {
   const { org: subdomainOrg } = useSubdomainOrg();
@@ -21,6 +28,10 @@ const ForgotPasswordPage: FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  // Surface 429 from the forgot-password limiter the same way the
+  // login form does (task #411). No "reset password instead" link
+  // here — the user is already on the recovery surface.
+  const { isThrottled, remainingSeconds, throttle } = useThrottleCountdown();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +45,24 @@ const ForgotPasswordPage: FC = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
       });
+
+      if (response.status === 429) {
+        // Promote rate-limited responses to the dedicated throttle
+        // banner instead of leaving the generic toast in place; the
+        // forgot-password limiter is intentionally aggressive
+        // (anti-enumeration), so users hit it more often than other
+        // auth endpoints and deserve a clear "try again later" UX.
+        const retryAfter = parseRetryAfterSeconds(
+          response.headers.get('retry-after'),
+          response.headers.get('ratelimit-reset'),
+        );
+        const waitSeconds =
+          retryAfter != null && retryAfter > 0
+            ? retryAfter
+            : DEFAULT_THROTTLE_FALLBACK_SECONDS;
+        throttle(waitSeconds);
+        return;
+      }
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
@@ -108,18 +137,41 @@ const ForgotPasswordPage: FC = () => {
                   required
                 />
               </div>
-              {error && (
+              {isThrottled && (
+                <Alert variant="destructive" data-testid="alert-forgot-throttled">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Too many reset requests</AlertTitle>
+                  <AlertDescription>
+                    To protect your account, we've paused password reset
+                    emails for about{" "}
+                    <span data-testid="text-forgot-retry-in">
+                      {formatCountdown(remainingSeconds)}
+                    </span>
+                    . Please try again then. (If you've already received a
+                    reset email, it's still valid — check your inbox and
+                    spam folder.)
+                  </AlertDescription>
+                </Alert>
+              )}
+              {error && !isThrottled && (
                 <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   <span>{error}</span>
                 </div>
               )}
-              <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                className="w-full mt-2"
+                disabled={isSubmitting || isThrottled}
+                data-testid="button-forgot-submit"
+              >
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Sending...
                   </>
+                ) : isThrottled ? (
+                  `Try again in ${formatCountdown(remainingSeconds)}`
                 ) : (
                   "Send reset link"
                 )}
