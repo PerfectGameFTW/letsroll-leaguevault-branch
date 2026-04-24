@@ -33,6 +33,11 @@ const TEST_USER = {
   organizationId: 9,
   bowlerId: null,
   password: 'hashed:original',
+  // task #410 — verify the route reads this column and forwards it
+  // to the email helper so the notification renders in the user's
+  // preferred language. Spanish was chosen because it's the second
+  // bundled translation; any non-default value would prove wiring.
+  preferredLanguage: 'es',
 };
 
 // --- Module mocks. These must be declared before the route module
@@ -203,7 +208,12 @@ describe('POST /api/account/change-password — password-changed email dispatch'
     const call = mockSendPasswordChangedNotification.mock.calls[0] as unknown as [
       string,
       string,
-      { changedAt: Date; ipAddress: string | null; userAgent: string | null },
+      {
+        changedAt: Date;
+        ipAddress: string | null;
+        userAgent: string | null;
+        locale?: string | null;
+      },
     ];
     const [toEmail, name, ctx] = call;
     expect(toEmail).toBe(TEST_USER.email);
@@ -213,6 +223,10 @@ describe('POST /api/account/change-password — password-changed email dispatch'
     // node-fetch sets a UA header on outgoing requests; the helper
     // shouldn't get an empty string when the caller has one.
     expect(typeof ctx.userAgent === 'string' || ctx.userAgent === null).toBe(true);
+    // task #410 — the recipient's stored language preference must
+    // flow through to the email helper, otherwise the email always
+    // renders in English regardless of preference.
+    expect(ctx.locale).toBe('es');
 
     // Strict ordering: the password row must be persisted BEFORE we
     // dispatch the "your password was changed" email. Otherwise a

@@ -21,6 +21,11 @@ export const users = pgTable("users", {
   locationId: integer("location_id").references(() => locations.id),
   inviteToken: text("invite_token"),
   inviteTokenExpiry: timestamp("invite_token_expiry", { mode: "string" }),
+  // Two-letter ISO 639-1 code (e.g. 'en', 'es') used to localize
+  // user-facing notifications (security emails, etc.). Nullable; the
+  // email helpers fall back to English when this is null/unset/
+  // unknown. See `server/services/email-i18n/` for supported locales.
+  preferredLanguage: text("preferred_language"),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 }, (table) => ({
   organizationIdx: index("users_organization_idx").on(table.organizationId),
@@ -79,6 +84,7 @@ export const updateUserSchemaBase = z.object({
   locationId: z.number().nullable(),
   bowlerId: z.number().nullable(),
   password: passwordSchema,
+  preferredLanguage: z.string().nullable(),
 }).partial();
 
 // Strict update schema: refuses payloads that would set a non-admin

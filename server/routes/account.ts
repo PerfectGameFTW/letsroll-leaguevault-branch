@@ -737,6 +737,9 @@ router.post('/change-password', changePasswordLimiter, requireAuth, async (req: 
         changedAt: new Date(),
         ipAddress: req.ip ?? null,
         userAgent: rawUa || null,
+        // Render in the recipient's preferred language (task #410);
+        // resolver falls back to English when null/unknown.
+        locale: existingUser.preferredLanguage ?? null,
       })
         .then(ok => {
           if (!ok) {

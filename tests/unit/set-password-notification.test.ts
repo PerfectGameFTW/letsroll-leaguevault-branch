@@ -189,7 +189,12 @@ describe('POST /api/auth/set-password — password-changed email dispatch (task 
     const call = mockSendPasswordChangedNotification.mock.calls[0] as unknown as [
       string,
       string,
-      { changedAt: Date; ipAddress: string | null; userAgent: string | null },
+      {
+        changedAt: Date;
+        ipAddress: string | null;
+        userAgent: string | null;
+        locale?: string | null;
+      },
     ];
     const [toEmail, name, ctx] = call;
     expect(toEmail).toBe(TEST_USER.email);
@@ -197,6 +202,12 @@ describe('POST /api/auth/set-password — password-changed email dispatch (task 
     expect(ctx.changedAt).toBeInstanceOf(Date);
     expect(ctx.ipAddress).toBe('198.51.100.7');
     expect(typeof ctx.userAgent === 'string' || ctx.userAgent === null).toBe(true);
+    // task #410 — TEST_USER has no preferredLanguage column set, so
+    // the route should forward `null` and the helper will fall back
+    // to English. Pinning this guards against the route silently
+    // dropping the field or sending undefined (which would also
+    // English-fallback today, but masks future regressions).
+    expect(ctx.locale).toBeNull();
 
     // Strict ordering: the password row must be persisted BEFORE we
     // dispatch the notice. Otherwise a crash between the two could

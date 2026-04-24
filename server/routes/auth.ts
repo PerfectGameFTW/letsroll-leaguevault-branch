@@ -306,6 +306,9 @@ export function registerAuthRoutes(app: Express): void {
           changedAt: new Date(),
           ipAddress: req.ip ?? null,
           userAgent: rawUa || null,
+          // Render in the recipient's preferred language (task #410);
+          // resolver falls back to English when null/unknown.
+          locale: user.preferredLanguage ?? null,
         }).then(ok => {
           if (!ok) {
             log.warn('Password-changed notification returned false (set-password)', { userId: user.id });

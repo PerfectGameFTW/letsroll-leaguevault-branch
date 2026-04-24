@@ -4,6 +4,7 @@ import { storage } from '../storage';
 import { env, isDev } from '../config';
 import { createLogger } from '../logger';
 import { maskEmail } from '../utils/pii';
+import { pickPasswordChangedLocale } from './email-i18n/password-changed';
 
 const log = createLogger("Email");
 
@@ -643,6 +644,13 @@ export async function sendPasswordChangedNotification(
     changedAt: Date;
     ipAddress?: string | null;
     userAgent?: string | null;
+    /**
+     * ISO 639-1 two-letter locale (e.g. 'en', 'es') taken from the
+     * recipient's `users.preferred_language`. Unknown / null values
+     * fall back to English (task #410). Region tags like `es-MX`
+     * collapse to their base language inside the resolver.
+     */
+    locale?: string | null;
   },
 ): Promise<boolean> {
   if (!SENDGRID_API_KEY) {
@@ -650,58 +658,60 @@ export async function sendPasswordChangedNotification(
     return false;
   }
 
+  const { code: localeCode, strings } = pickPasswordChangedLocale(context.locale);
+
   const safeName = escapeHtml(userName || 'there');
   // Format the timestamp in UTC with the offset spelled out so the
   // recipient (who could be in any timezone) can sanity-check it.
   const safeChangedAt = escapeHtml(context.changedAt.toUTCString());
-  const safeIp = escapeHtml(context.ipAddress?.trim() || 'unknown');
+  const safeIp = escapeHtml(context.ipAddress?.trim() || strings.unknown);
   // Truncate the UA to keep the email body bounded; full UAs can be
   // hundreds of characters and a coarse hint is all we need for the
   // "was this you?" sniff test.
   const rawUa = (context.userAgent ?? '').trim();
-  const safeUa = escapeHtml(rawUa ? (rawUa.length > 120 ? `${rawUa.slice(0, 120)}…` : rawUa) : 'unknown');
+  const safeUa = escapeHtml(rawUa ? (rawUa.length > 120 ? `${rawUa.slice(0, 120)}…` : rawUa) : strings.unknown);
   const supportUrl = `${getBaseUrl()}/support`;
+  // Greeting / intro are translator-supplied plain text, so escape
+  // them ONCE at splice time. We feed the raw (un-escaped) display
+  // name into `strings.greeting` and then escape the resulting
+  // sentence — escaping `safeName` first AND then escaping the
+  // whole greeting would double-encode (`A&B` → `A&amp;amp;B`).
+  // ifThisWasYou / ifThisWasntYou intentionally contain a small
+  // <strong> wrapper from the translator and are spliced raw —
+  // they MUST NOT include user-controlled data.
+  const displayName = userName || 'there';
+  const safeGreeting = escapeHtml(strings.greeting(displayName));
+  const safeIntro = escapeHtml(strings.intro);
 
   const msg = {
     to: toEmail,
     from: { email: FROM_EMAIL, name: FROM_NAME },
-    subject: 'Your LeagueVault password was just changed',
+    subject: strings.subject,
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <p style="font-size: 16px; color: #333;">Hi ${safeName},</p>
-        <p style="font-size: 16px; color: #333;">
-          The password on your LeagueVault account was just changed. As a
-          security precaution, every other device that was signed in to
-          your account has been signed out.
-        </p>
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;" lang="${localeCode}">
+        <p style="font-size: 16px; color: #333;">${safeGreeting}</p>
+        <p style="font-size: 16px; color: #333;">${safeIntro}</p>
         <table style="font-size: 14px; color: #555; border-collapse: collapse; margin: 16px 0;">
           <tr>
-            <td style="padding: 4px 12px 4px 0; color: #888;">When</td>
+            <td style="padding: 4px 12px 4px 0; color: #888;">${escapeHtml(strings.whenLabel)}</td>
             <td style="padding: 4px 0;">${safeChangedAt}</td>
           </tr>
           <tr>
-            <td style="padding: 4px 12px 4px 0; color: #888;">From IP</td>
+            <td style="padding: 4px 12px 4px 0; color: #888;">${escapeHtml(strings.fromIpLabel)}</td>
             <td style="padding: 4px 0;">${safeIp}</td>
           </tr>
           <tr>
-            <td style="padding: 4px 12px 4px 0; color: #888;">Browser</td>
+            <td style="padding: 4px 12px 4px 0; color: #888;">${escapeHtml(strings.browserLabel)}</td>
             <td style="padding: 4px 0;">${safeUa}</td>
           </tr>
         </table>
-        <p style="font-size: 16px; color: #333;">
-          <strong>If this was you</strong>, no action is needed — you can
-          ignore this email.
-        </p>
-        <p style="font-size: 16px; color: #333;">
-          <strong>If this wasn't you</strong>, your account may be
-          compromised. Contact support immediately so we can help you
-          regain control.
-        </p>
+        <p style="font-size: 16px; color: #333;">${strings.ifThisWasYou}</p>
+        <p style="font-size: 16px; color: #333;">${strings.ifThisWasntYou}</p>
         <p style="font-size: 14px; color: #666; word-break: break-all;">
           <a href="${escapeHtml(supportUrl)}">${escapeHtml(supportUrl)}</a>
         </p>
         <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
-        <p style="font-size: 12px; color: #999; text-align: center;">Powered by LeagueVault</p>
+        <p style="font-size: 12px; color: #999; text-align: center;">${escapeHtml(strings.footer)}</p>
       </div>
     `,
     trackingSettings: { clickTracking: { enable: false, enableText: false } },
@@ -709,7 +719,7 @@ export async function sendPasswordChangedNotification(
 
   try {
     await sgMail.send(msg);
-    log.info('Password-changed notification sent to:', isDev ? toEmail : maskEmail(toEmail));
+    log.info('Password-changed notification sent to:', isDev ? toEmail : maskEmail(toEmail), { locale: localeCode });
     return true;
   } catch (error) {
     log.error('Failed to send password-changed notification:', describeMailError(error));
