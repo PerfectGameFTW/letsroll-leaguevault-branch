@@ -2,11 +2,18 @@ import { useState, useEffect } from 'react';
 import { ErrorBoundary } from "@/components/error-boundary";
 import { useLocation, useSearch } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Check, X, Eye, EyeOff } from 'lucide-react';
+import { parseRetryAfterSeconds } from '@/lib/queryClient';
+import {
+  DEFAULT_THROTTLE_FALLBACK_SECONDS,
+  formatCountdown,
+  useThrottleCountdown,
+} from '@/hooks/use-throttle-countdown';
+import { AlertTriangle, Loader2, Check, X, Eye, EyeOff } from 'lucide-react';
 import { PageLoadingState } from "@/components/page-states";
 
 export default function SetPasswordPage() {
@@ -24,6 +31,7 @@ export default function SetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const { isThrottled, remainingSeconds, throttle } = useThrottleCountdown();
 
   const requirements = [
     { label: 'At least 8 characters', met: password.length >= 8 },
@@ -75,6 +83,24 @@ export default function SetPasswordPage() {
         credentials: 'include',
         body: JSON.stringify({ token, password }),
       });
+
+      // Throttle handling (task #418) — mirror the forgot-password
+      // and login pages' inline-banner UX. The set-password limiter
+      // is per-IP, so a shared kiosk hitting the cap should still
+      // see a clear "wait N minutes, your link is fine" message
+      // instead of a generic toast that looks like the link broke.
+      if (response.status === 429) {
+        const retryAfter = parseRetryAfterSeconds(
+          response.headers.get('retry-after'),
+          response.headers.get('ratelimit-reset'),
+        );
+        const waitSeconds =
+          retryAfter != null && retryAfter > 0
+            ? retryAfter
+            : DEFAULT_THROTTLE_FALLBACK_SECONDS;
+        throttle(waitSeconds);
+        return;
+      }
 
       const data = await response.json();
       if (data.success) {
@@ -185,16 +211,36 @@ export default function SetPasswordPage() {
               </div>
             )}
 
+            {isThrottled && (
+              <Alert variant="destructive" data-testid="alert-set-password-throttled">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Too many attempts</AlertTitle>
+                <AlertDescription>
+                  To protect your account, we've paused password submissions
+                  from this device for about{" "}
+                  <span data-testid="text-set-password-retry-in">
+                    {formatCountdown(remainingSeconds)}
+                  </span>
+                  . Please try again then — your{" "}
+                  {userName ? 'invitation' : 'reset'} link is still valid,
+                  so you don't need to request a new one.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <Button
               type="submit"
               className="w-full"
-              disabled={!allMet || !passwordsMatch || submitting}
+              disabled={!allMet || !passwordsMatch || submitting || isThrottled}
+              data-testid="button-set-password-submit"
             >
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Setting password...
                 </>
+              ) : isThrottled ? (
+                `Try again in ${formatCountdown(remainingSeconds)}`
               ) : (
                 'Set Password & Sign In'
               )}
