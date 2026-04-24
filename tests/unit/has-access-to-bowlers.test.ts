@@ -250,3 +250,148 @@ describe('hasAccessToBowlers', () => {
     expect(new Set(passedIds)).toEqual(new Set([80]));
   });
 });
+
+/**
+ * Task #408 — fast-path safety tests for the owning-organization shortcut.
+ *
+ * After task #407 made `bowlers.organizationId` NOT NULL, every existing
+ * bowler row carries an authoritative org stamp. `hasAccessToBowlers`
+ * now uses a fast path: same-org / sysadmin callers are decided directly
+ * by the stamp without ever invoking the league-based scan, and admin
+ * cross-org callers are denied authoritatively (no league fallback).
+ *
+ * The cases above intentionally default `getBowlersByIds` to `[]` to
+ * pin the *fallback* path. The tests in this block flip that default
+ * to pin the *fast path* — specifically:
+ *   - same-org caller is decided without a league lookup,
+ *   - cross-org admin caller is denied without a league lookup,
+ *   - cross-org NON-admin caller falls through to the league scan
+ *     (so the bowler-to-bowler same-league rule still works),
+ *   - system admin with a stamped bowler is decided without a league lookup,
+ *   - missing bowler row (no stamp) falls through to the league scan
+ *     and is decided there.
+ */
+describe('hasAccessToBowlers — owning-org fast path (#342/#407 short-circuit)', () => {
+  it('same-org caller: allowed via short-circuit, no league lookups invoked', async () => {
+    const req = makeReq({ id: 1, role: 'org_admin', organizationId: ORG_A, bowlerId: null });
+
+    // Stamp matches the caller's org → fast-path allow. The mocks for
+    // `getBowlerLeaguesByBowlerIds` / `getLeaguesByIds` are NOT primed
+    // because the helper must not reach them.
+    mockGetBowlersByIds.mockResolvedValueOnce([
+      { id: 100, organizationId: ORG_A },
+      { id: 101, organizationId: ORG_A },
+    ]);
+
+    const result = await hasAccessToBowlers(req, [100, 101]);
+
+    expect(result.get(100)).toBe(true);
+    expect(result.get(101)).toBe(true);
+    // The whole point of the fast path: no fallback round-trips.
+    expect(mockGetBowlerLeaguesByBowlerIds).not.toHaveBeenCalled();
+    expect(mockGetLeaguesByIds).not.toHaveBeenCalled();
+  });
+
+  it('cross-org admin caller: denied via short-circuit, no league fallback', async () => {
+    // Admin cross-org is the exact hardening task #407 added: an org_admin
+    // with a different stamp must be DENIED without falling through to the
+    // league scan, even if a (theoretical) shared-league overlap existed.
+    // We prime the league mocks with data that *would* allow access if the
+    // helper incorrectly fell through, to guarantee this is a real test
+    // of the no-fallback contract.
+    const req = makeReq({ id: 1, role: 'org_admin', organizationId: ORG_A, bowlerId: null });
+
+    mockGetBowlersByIds.mockResolvedValueOnce([
+      { id: 200, organizationId: ORG_B }, // mismatched stamp
+    ]);
+    mockGetBowlerLeaguesByBowlerIds.mockResolvedValue([
+      { bowlerId: 200, leagueId: 9999, teamId: 1 },
+    ]);
+    mockGetLeaguesByIds.mockResolvedValue([
+      { id: 9999, organizationId: ORG_A }, // would erroneously allow on fallback
+    ]);
+
+    const result = await hasAccessToBowlers(req, [200]);
+
+    expect(result.get(200)).toBe(false);
+    // Caller has `bowlerId: null` and bowler 200 is decided by the
+    // stamp gate (admin-deny, no fallthrough), so `stillToCheck` is
+    // empty and the helper must early-return BEFORE the batched
+    // league lookups. Pinning the no-call here makes the "no fallback
+    // for admins" hardening from #407 a real assertion, not just a
+    // boolean check that would silently still pass on a regression
+    // that re-allowed admin cross-org via the league scan.
+    expect(mockGetBowlerLeaguesByBowlerIds).not.toHaveBeenCalled();
+    expect(mockGetLeaguesByIds).not.toHaveBeenCalled();
+  });
+
+  it('cross-org NON-admin caller: short-circuit does NOT allow; falls through to league scan', async () => {
+    // The fall-through is intentional for the bowler-to-bowler case: two
+    // bowlers who share a league can see each other regardless of stamps.
+    // Caller is bowler 70 in ORG_B; target is bowler 71 stamped to ORG_A
+    // but they share league 7000. Stamp gate should NOT allow (different
+    // org), and the league scan should then allow on the shared league.
+    const req = makeReq({ id: 1, role: 'user', organizationId: ORG_B, bowlerId: 70 });
+
+    mockGetBowlersByIds.mockResolvedValueOnce([
+      { id: 71, organizationId: ORG_A }, // stamp doesn't match caller's org
+    ]);
+    mockGetBowlerLeaguesByBowlerIds.mockResolvedValue([
+      { bowlerId: 70, leagueId: 7000, teamId: 1 }, // caller's league
+      { bowlerId: 71, leagueId: 7000, teamId: 2 }, // shared league
+    ]);
+    mockGetLeaguesByIds.mockResolvedValue([
+      { id: 7000, organizationId: ORG_A },
+    ]);
+
+    const result = await hasAccessToBowlers(req, [71]);
+
+    // Allowed via the league scan, NOT via the stamp gate.
+    expect(result.get(71)).toBe(true);
+    // The league scan must have been consulted — proves we fell through.
+    expect(mockGetBowlerLeaguesByBowlerIds).toHaveBeenCalledTimes(1);
+    expect(mockGetLeaguesByIds).toHaveBeenCalledTimes(1);
+  });
+
+  it('system admin + stamped bowler: allowed via short-circuit, no league lookups invoked', async () => {
+    const req = makeReq({ id: 1, role: 'system_admin', organizationId: null, bowlerId: null });
+
+    mockGetBowlersByIds.mockResolvedValueOnce([
+      { id: 300, organizationId: ORG_A },
+      { id: 301, organizationId: ORG_B },
+    ]);
+
+    const result = await hasAccessToBowlers(req, [300, 301]);
+
+    // Sysadmin gets allowed regardless of which org each bowler is stamped to.
+    expect(result.get(300)).toBe(true);
+    expect(result.get(301)).toBe(true);
+    expect(mockGetBowlerLeaguesByBowlerIds).not.toHaveBeenCalled();
+    expect(mockGetLeaguesByIds).not.toHaveBeenCalled();
+  });
+
+  it('missing bowler row (no stamp present): falls through to league scan', async () => {
+    // After #407 the schema makes `bowlers.organizationId` NOT NULL, so
+    // "no stamp" in practice means the row is missing entirely (e.g.
+    // deleted concurrently). The helper must NOT short-circuit-allow
+    // such rows — it must fall through to the league scan, which will
+    // deny because no league entries exist for a non-existent bowler.
+    const req = makeReq({ id: 1, role: 'org_admin', organizationId: ORG_A, bowlerId: null });
+
+    mockGetBowlersByIds.mockResolvedValueOnce([]); // no bowler row returned
+    mockGetBowlerLeaguesByBowlerIds.mockResolvedValue([]); // no league entries
+    mockGetLeaguesByIds.mockResolvedValue([]);
+
+    const result = await hasAccessToBowlers(req, [400]);
+
+    expect(result.get(400)).toBe(false);
+    // Fell through past the stamp gate into the league scan — proves
+    // the short-circuit didn't incorrectly grant access on a missing
+    // row. Pin the lookup payload too so a future refactor can't pass
+    // this test by querying an unrelated bowler id (which would also
+    // happen to return empty here).
+    expect(mockGetBowlerLeaguesByBowlerIds).toHaveBeenCalledTimes(1);
+    const lookupArg = mockGetBowlerLeaguesByBowlerIds.mock.calls[0][0] as number[];
+    expect(new Set(lookupArg)).toEqual(new Set([400]));
+  });
+});
