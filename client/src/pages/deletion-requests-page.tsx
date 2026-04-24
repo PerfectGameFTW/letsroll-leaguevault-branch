@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Copy, Download } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -92,14 +92,118 @@ function parseExecutionSummary(raw: string | null): DeletionExecutionSummary | n
   };
 }
 
-function ExecutionSummaryPanel({ summary }: { summary: DeletionExecutionSummary }) {
+/**
+ * Build the export filename for a single deletion-request execution
+ * summary. The shape is intentionally compliance-friendly:
+ *
+ *   deletion-request-<requestId>-<executedAtIsoZ>.json
+ *
+ * Colons in the ISO timestamp are replaced with dashes because
+ * Windows file systems reject `:` in filenames, and SAR / GDPR
+ * tickets often live in Windows-hosted SharePoint or Outlook
+ * attachments. We fall back to "now" if `executedAt` is missing
+ * (which can only happen for legacy malformed rows that survived
+ * the parser's normalization).
+ */
+function buildSummaryFilename(requestId: number, executedAt: string | undefined): string {
+  const raw = executedAt && executedAt.length > 0 ? executedAt : new Date().toISOString();
+  const date = new Date(raw);
+  const stamp = (Number.isNaN(date.getTime()) ? new Date() : date)
+    .toISOString()
+    .replace(/[:.]/g, '-');
+  return `deletion-request-${requestId}-${stamp}.json`;
+}
+
+function ExecutionSummaryPanel({
+  summary,
+  requestId,
+}: {
+  summary: DeletionExecutionSummary;
+  requestId: number;
+}) {
+  const { toast } = useToast();
   const bowlersDone = summary.bowlers.filter((b) => b.anonymized).length;
   const bowlersFailed = summary.bowlers.filter((b) => !b.anonymized);
   const providersDone = summary.paymentProvider.filter((p) => p.deleted).length;
   const providersFailed = summary.paymentProvider.filter((p) => !p.deleted);
 
+  // Pretty-print so the JSON is grep-able and diffable when an
+  // admin pastes it straight into a SAR ticket. Using two-space
+  // indent matches the convention used across the codebase's
+  // other JSON exports.
+  const summaryJson = JSON.stringify(summary, null, 2);
+
+  const handleCopy = async () => {
+    // navigator.clipboard is gated on a secure context. In dev
+    // over plain HTTP the API is undefined, so guard before calling
+    // and surface a clear error toast — failing silently here
+    // would leave the admin staring at an unchanged button thinking
+    // the copy worked.
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard API unavailable in this browser context');
+      }
+      await navigator.clipboard.writeText(summaryJson);
+      toast({
+        title: 'Copied execution summary',
+        description: 'The JSON payload has been copied to your clipboard.',
+      });
+    } catch (err) {
+      toast({
+        title: 'Copy failed',
+        description: err instanceof Error ? err.message : 'Could not copy to clipboard.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleDownload = () => {
+    try {
+      const blob = new Blob([summaryJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = buildSummaryFilename(requestId, summary.executedAt);
+      // Some browsers require the anchor to be in the DOM for the
+      // synthetic click to be honored, so attach + detach.
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      // Revoke on the next tick: a few browsers fire the actual
+      // download asynchronously after click(), and revoking the
+      // blob URL synchronously can cancel the download mid-flight.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (err) {
+      toast({
+        title: 'Download failed',
+        description: err instanceof Error ? err.message : 'Could not start the download.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <div className="rounded-md border bg-muted/30 p-4 space-y-4 text-sm" data-testid="execution-summary-panel">
+      <div className="flex items-center justify-end gap-2 -mb-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleCopy}
+          data-testid={`button-copy-summary-${requestId}`}
+        >
+          <Copy className="h-3.5 w-3.5 mr-1.5" />
+          Copy JSON
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleDownload}
+          data-testid={`button-download-summary-${requestId}`}
+        >
+          <Download className="h-3.5 w-3.5 mr-1.5" />
+          Download .json
+        </Button>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
         <div>
           <span className="text-muted-foreground">Executed at: </span>
@@ -424,7 +528,7 @@ export default function DeletionRequestsPage() {
                                   className="bg-transparent hover:bg-transparent"
                                 >
                                   <TableCell colSpan={6} className="p-3">
-                                    <ExecutionSummaryPanel summary={summary} />
+                                    <ExecutionSummaryPanel summary={summary} requestId={req.id} />
                                   </TableCell>
                                 </TableRow>
                               )}
