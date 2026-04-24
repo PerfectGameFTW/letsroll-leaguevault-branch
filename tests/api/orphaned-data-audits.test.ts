@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { sql, eq, and, gt, asc } from 'drizzle-orm';
+import { insertOrphanUser } from '../helpers/orphan-staging';
 import { db } from '../../server/db';
 import {
   leagues,
@@ -76,12 +77,21 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
     auditWatermark = Number(row?.value ?? 0);
   }
 
-  async function newAuditRows() {
-    return db
+  // Audit-row reads must be scoped to the resource we just operated on.
+  // Sibling test files run concurrently and write their own audit rows
+  // for unrelated resources; without scoping, those would leak into our
+  // assertions. The watermark by itself is not enough because audit IDs
+  // grow globally.
+  async function newAuditRows(scope?: { resourceType: string; resourceId: number }) {
+    const rows = await db
       .select()
       .from(orphanCleanupAudits)
       .where(gt(orphanCleanupAudits.id, auditWatermark))
       .orderBy(asc(orphanCleanupAudits.id));
+    if (!scope) return rows;
+    return rows.filter(
+      (r) => r.resourceType === scope.resourceType && r.resourceId === scope.resourceId,
+    );
   }
 
   beforeAll(async () => {
@@ -95,12 +105,12 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
     if (!org) throw new Error('No organization available for audit tests');
     targetOrgId = org.id;
 
-    // Mirror the orphaned-data.test.ts setup: relax constraints so we can
-    // create org-less rows and child rows whose parent league is missing.
-    await db.execute(sql`ALTER TABLE leagues ALTER COLUMN organization_id DROP NOT NULL`);
-    await db.execute(sql`ALTER TABLE teams DROP CONSTRAINT IF EXISTS teams_league_id_leagues_id_fk`);
-    await db.execute(sql`ALTER TABLE bowler_leagues DROP CONSTRAINT IF EXISTS bowler_leagues_league_id_leagues_id_fk`);
-    await db.execute(sql`ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_league_id_leagues_id_fk`);
+    // `leagues.organization_id` is nullable in the schema, so org-less
+    // leagues are inserted directly. This suite never references a
+    // non-existent parent league, so no FK bypass is needed. The two
+    // org-less user rows are inserted via `insertOrphanUser`, which
+    // briefly disables the `users_role_org_required` trigger inside a
+    // single transaction.
 
     const leagueDefaults = {
       seasonStart: '2025-01-01 00:00:00',
@@ -163,28 +173,20 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
     const pwd = await hashPassword('Throwaway-Password-123!');
     const stamp = Date.now();
 
-    const [u1] = await db
-      .insert(users)
-      .values({
-        email: `vitest-audit-orphan-reassign-${stamp}@example.com`,
-        password: pwd,
-        name: 'Vitest Audit Orphan User (reassign)',
-        role: 'user',
-        organizationId: null,
-      })
-      .returning({ id: users.id });
+    const u1 = await insertOrphanUser({
+      email: `vitest-audit-orphan-reassign-${stamp}@example.com`,
+      password: pwd,
+      name: 'Vitest Audit Orphan User (reassign)',
+      role: 'user',
+    });
     userForReassign = u1.id;
 
-    const [u2] = await db
-      .insert(users)
-      .values({
-        email: `vitest-audit-orphan-delete-${stamp}@example.com`,
-        password: pwd,
-        name: 'Vitest Audit Orphan User (delete)',
-        role: 'user',
-        organizationId: null,
-      })
-      .returning({ id: users.id });
+    const u2 = await insertOrphanUser({
+      email: `vitest-audit-orphan-delete-${stamp}@example.com`,
+      password: pwd,
+      name: 'Vitest Audit Orphan User (delete)',
+      role: 'user',
+    });
     userForDelete = u2.id;
 
     const [u3] = await db
@@ -247,25 +249,6 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
     for (const id of [leagueForReassign, leagueForDelete, parentOrphanLeagueId, nonOrphanLeagueId]) {
       if (id) await tryRun(() => db.delete(leagues).where(eq(leagues.id, id)));
     }
-
-    await tryRun(() =>
-      db.execute(
-        sql`ALTER TABLE teams ADD CONSTRAINT teams_league_id_leagues_id_fk FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE`,
-      ),
-    );
-    await tryRun(() =>
-      db.execute(
-        sql`ALTER TABLE bowler_leagues ADD CONSTRAINT bowler_leagues_league_id_leagues_id_fk FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE`,
-      ),
-    );
-    await tryRun(() =>
-      db.execute(
-        sql`ALTER TABLE payments ADD CONSTRAINT payments_league_id_leagues_id_fk FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE`,
-      ),
-    );
-    await tryRun(() =>
-      db.execute(sql`ALTER TABLE leagues ALTER COLUMN organization_id SET NOT NULL`),
-    );
   });
 
   // -------------------------------------------------------------------
@@ -281,7 +264,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         admin,
       );
       expect(status).toBe(400);
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'teams', resourceId: teamForDelete })).toEqual([]);
     });
 
     it('reassign of non-existent league (404) writes nothing', async () => {
@@ -292,7 +275,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         admin,
       );
       expect(status).toBe(404);
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'leagues', resourceId: BOGUS_LEAGUE_ID })).toEqual([]);
     });
 
     it('reassign of a non-orphan league (409) writes nothing', async () => {
@@ -304,7 +287,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       );
       expect(status).toBe(409);
       expect(data.error?.code).toBe('NOT_ORPHANED');
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'leagues', resourceId: nonOrphanLeagueId })).toEqual([]);
     });
 
     it('reassign of a non-orphan user (409) writes nothing', async () => {
@@ -315,7 +298,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         admin,
       );
       expect(status).toBe(409);
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'users', resourceId: nonOrphanUserId })).toEqual([]);
     });
 
     it('delete of non-existent league (404) writes nothing', async () => {
@@ -326,7 +309,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         admin,
       );
       expect(status).toBe(404);
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'leagues', resourceId: BOGUS_LEAGUE_ID })).toEqual([]);
     });
 
     it('delete of non-existent team (404) writes nothing', async () => {
@@ -337,7 +320,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         admin,
       );
       expect(status).toBe(404);
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'teams', resourceId: BOGUS_LEAGUE_ID })).toEqual([]);
     });
 
     it('delete of a non-orphan league (409) writes nothing', async () => {
@@ -348,7 +331,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         admin,
       );
       expect(status).toBe(409);
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'leagues', resourceId: nonOrphanLeagueId })).toEqual([]);
     });
 
     it('delete of a non-orphan user (409) writes nothing', async () => {
@@ -359,7 +342,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         admin,
       );
       expect(status).toBe(409);
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'users', resourceId: nonOrphanUserId })).toEqual([]);
     });
 
     it('unauthorized reassign (org admin, not system admin) writes nothing', async () => {
@@ -370,7 +353,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         orgAdmin,
       );
       expect(status).toBe(403);
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'leagues', resourceId: leagueForReassign })).toEqual([]);
     });
 
     it('unauthorized delete (org admin, not system admin) writes nothing', async () => {
@@ -381,7 +364,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         orgAdmin,
       );
       expect(status).toBe(403);
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'leagues', resourceId: leagueForDelete })).toEqual([]);
     });
 
     it('unauthenticated reassign writes nothing', async () => {
@@ -391,7 +374,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         { organizationId: targetOrgId },
       );
       expect([401, 403]).toContain(status);
-      expect(await newAuditRows()).toEqual([]);
+      expect(await newAuditRows({ resourceType: 'leagues', resourceId: leagueForReassign })).toEqual([]);
     });
   });
 
@@ -409,7 +392,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       );
       expect(status).toBe(200);
 
-      const rows = await newAuditRows();
+      const rows = await newAuditRows({ resourceType: 'leagues', resourceId: leagueForReassign });
       expect(rows.length).toBe(1);
       expect(rows[0]).toMatchObject({
         adminUserId: admin.user.id,
@@ -429,7 +412,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       );
       expect(status).toBe(200);
 
-      const rows = await newAuditRows();
+      const rows = await newAuditRows({ resourceType: 'users', resourceId: userForReassign });
       expect(rows.length).toBe(1);
       expect(rows[0]).toMatchObject({
         adminUserId: admin.user.id,
@@ -449,7 +432,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       );
       expect(status).toBe(200);
 
-      const rows = await newAuditRows();
+      const rows = await newAuditRows({ resourceType: 'payments', resourceId: paymentForDelete });
       expect(rows.length).toBe(1);
       expect(rows[0]).toMatchObject({
         adminUserId: admin.user.id,
@@ -470,7 +453,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       );
       expect(status).toBe(200);
 
-      const rows = await newAuditRows();
+      const rows = await newAuditRows({ resourceType: 'bowlerLeagues', resourceId: bowlerLeagueForDelete });
       expect(rows.length).toBe(1);
       expect(rows[0]).toMatchObject({
         resourceType: 'bowlerLeagues',
@@ -490,7 +473,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       );
       expect(status).toBe(200);
 
-      const rows = await newAuditRows();
+      const rows = await newAuditRows({ resourceType: 'teams', resourceId: teamForDelete });
       expect(rows.length).toBe(1);
       expect(rows[0]).toMatchObject({
         resourceType: 'teams',
@@ -510,7 +493,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       );
       expect(status).toBe(200);
 
-      const rows = await newAuditRows();
+      const rows = await newAuditRows({ resourceType: 'leagues', resourceId: leagueForDelete });
       expect(rows.length).toBe(1);
       expect(rows[0]).toMatchObject({
         resourceType: 'leagues',
@@ -530,7 +513,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
       );
       expect(status).toBe(200);
 
-      const rows = await newAuditRows();
+      const rows = await newAuditRows({ resourceType: 'users', resourceId: userForDelete });
       expect(rows.length).toBe(1);
       expect(rows[0]).toMatchObject({
         resourceType: 'users',
@@ -582,8 +565,20 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
         admin,
       );
       const rows = data.data ?? [];
+      // The endpoint orders by `createdAt DESC, id DESC`. With sibling
+      // suites running in parallel, two inserts can land in the same
+      // millisecond and the secondary id-tiebreaker takes over — so we
+      // compare timestamps (primary) and fall back to id only when the
+      // timestamps tie.
       for (let i = 1; i < rows.length; i++) {
-        expect(rows[i - 1].id).toBeGreaterThanOrEqual(rows[i].id);
+        const prev = rows[i - 1];
+        const curr = rows[i];
+        const prevTs = new Date(prev.createdAt as unknown as string).getTime();
+        const currTs = new Date(curr.createdAt as unknown as string).getTime();
+        expect(prevTs).toBeGreaterThanOrEqual(currTs);
+        if (prevTs === currTs) {
+          expect(prev.id).toBeGreaterThanOrEqual(curr.id);
+        }
       }
     });
 

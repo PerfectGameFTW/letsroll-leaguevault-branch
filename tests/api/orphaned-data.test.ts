@@ -1,23 +1,19 @@
 /**
- * Serial-execution contract (task #331)
+ * Orphan-data fixture
  * ------------------------------------------------------------------
- * This suite must NOT run concurrently with any other test file that
- * writes to the `users` table. The fixture below temporarily drops
- * the `users_role_org_required` CHECK constraint and the FK
- * constraints on teams / bowler_leagues / payments so it can stage
- * legacy "orphaned" rows the org-less repair endpoints exist to
- * clean up. Those `ALTER TABLE` statements take ACCESS EXCLUSIVE
- * locks; a sibling suite writing to the same tables at the same
- * moment would fail with mysterious lock or constraint errors.
+ * Stages "legacy" rows that the org-less repair endpoints exist to
+ * clean up. The two row shapes the live schema would otherwise reject
+ * — child rows pointing at a non-existent league, and a non-admin user
+ * with no org — are inserted via `tests/helpers/orphan-staging.ts`,
+ * which lifts the relevant constraint (FK or trigger) only for the
+ * single inserting transaction. That keeps locks tight enough for the
+ * suite to run alongside other test files in parallel.
  *
- * We rely on the project-level `fileParallelism: false` flag in
- * `vitest.config.ts` to keep file execution serial. If anyone ever
- * flips that flag to `true`, this fixture must be refactored first
- * (e.g. moved to a per-suite isolated database, or rewritten to
- * synthesize orphan rows without DDL) to keep this contract.
+ * `leagues.organization_id` is nullable in the schema, so org-less
+ * leagues are inserted directly without any DDL.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { sql, eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   leagues,
@@ -37,6 +33,11 @@ import {
   TEST_ADMIN_EMAIL,
   TEST_ADMIN_PASSWORD,
 } from '../helpers';
+import {
+  insertChildBypassingLeagueFk,
+  insertOrphanUser,
+  validateLeagueFk,
+} from '../helpers/orphan-staging';
 
 interface OrphanedLeagueRow { id: number; name: string }
 interface OrphanedTeamRow {
@@ -84,13 +85,6 @@ describe('Orphaned Data API (system-admin)', () => {
       .limit(1);
     if (!org) throw new Error('No organization available for orphaned-data tests');
     targetOrgId = org.id;
-
-    // Allow nullable organization_id and let us insert child rows pointing
-    // at non-existent leagues so we can exercise both orphan variants.
-    await db.execute(sql`ALTER TABLE leagues ALTER COLUMN organization_id DROP NOT NULL`);
-    await db.execute(sql`ALTER TABLE teams DROP CONSTRAINT IF EXISTS teams_league_id_leagues_id_fk`);
-    await db.execute(sql`ALTER TABLE bowler_leagues DROP CONSTRAINT IF EXISTS bowler_leagues_league_id_leagues_id_fk`);
-    await db.execute(sql`ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_league_id_leagues_id_fk`);
 
     const leagueDefaults = {
       seasonStart: '2025-01-01 00:00:00',
@@ -141,11 +135,11 @@ describe('Orphaned Data API (system-admin)', () => {
       .returning({ id: teams.id });
     orphanTeamId = t1.id;
 
-    const [t2] = await db
-      .insert(teams)
-      .values({ name: 'Vitest Parent-Missing Team', number: 9992, leagueId: BOGUS_LEAGUE_ID })
-      .returning({ id: teams.id });
-    parentMissingTeamId = t2.id;
+    parentMissingTeamId = await insertChildBypassingLeagueFk(teams, 'teams', {
+      name: 'Vitest Parent-Missing Team',
+      number: 9992,
+      leagueId: BOGUS_LEAGUE_ID,
+    });
 
     const [t3] = await db
       .insert(teams)
@@ -159,11 +153,11 @@ describe('Orphaned Data API (system-admin)', () => {
       .returning({ id: bowlerLeagues.id });
     orphanBowlerLeagueId = bl1.id;
 
-    const [bl2] = await db
-      .insert(bowlerLeagues)
-      .values({ bowlerId, leagueId: BOGUS_LEAGUE_ID, teamId: orphanTeamId })
-      .returning({ id: bowlerLeagues.id });
-    parentMissingBowlerLeagueId = bl2.id;
+    parentMissingBowlerLeagueId = await insertChildBypassingLeagueFk(
+      bowlerLeagues,
+      'bowler_leagues',
+      { bowlerId, leagueId: BOGUS_LEAGUE_ID, teamId: orphanTeamId },
+    );
 
     const [p1] = await db
       .insert(payments)
@@ -177,53 +171,31 @@ describe('Orphaned Data API (system-admin)', () => {
       .returning({ id: payments.id });
     orphanPaymentId = p1.id;
 
-    const [p2] = await db
-      .insert(payments)
-      .values({
-        bowlerId,
-        leagueId: BOGUS_LEAGUE_ID,
-        amount: 100,
-        weekOf: '2025-01-06 00:00:00',
-        type: 'cash',
-      })
-      .returning({ id: payments.id });
-    parentMissingPaymentId = p2.id;
+    parentMissingPaymentId = await insertChildBypassingLeagueFk(payments, 'payments', {
+      bowlerId,
+      leagueId: BOGUS_LEAGUE_ID,
+      amount: 100,
+      weekOf: '2025-01-06 00:00:00',
+      type: 'cash',
+    });
 
     const pwd = await hashPassword('Throwaway-Password-123!');
     const stamp = Date.now();
 
-    // The DB enforces a `users_role_org_required` CHECK constraint
+    // The DB enforces a `users_role_org_required` BEFORE-INSERT trigger
     // that forbids creating a non-admin user with `organizationId =
-    // NULL`. Production rows that pre-date the constraint can still
-    // exist as orphans, which is exactly what the orphan-data admin
-    // endpoints exist to clean up. To recreate that legacy state in a
-    // test, we insert the user normally (with an org), then in a
-    // single transaction drop the constraint, null out the org, and
-    // re-add the constraint as NOT VALID so it still enforces on all
-    // future writes but doesn't re-validate the row we just orphaned.
-    const [u1] = await db
-      .insert(users)
-      .values({
-        email: `vitest-orphan-${stamp}@example.com`,
-        password: pwd,
-        name: 'Vitest Orphan User',
-        role: 'user',
-        organizationId: targetOrgId,
-      })
-      .returning({ id: users.id });
-    orphanUserId = u1.id;
-
-    await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`ALTER TABLE users DROP CONSTRAINT users_role_org_required`,
-      );
-      await tx.execute(
-        sql`UPDATE users SET organization_id = NULL WHERE id = ${orphanUserId}`,
-      );
-      await tx.execute(
-        sql`ALTER TABLE users ADD CONSTRAINT users_role_org_required CHECK (role = 'system_admin' OR organization_id IS NOT NULL) NOT VALID`,
-      );
+    // NULL`. Production rows that pre-date the trigger can still exist
+    // as orphans, which is exactly what the orphan-data admin endpoints
+    // exist to clean up. `insertOrphanUser` briefly disables the
+    // trigger inside a single transaction so we can stage that legacy
+    // state without dropping the trigger globally.
+    const orphanUser = await insertOrphanUser({
+      email: `vitest-orphan-${stamp}@example.com`,
+      password: pwd,
+      name: 'Vitest Orphan User',
+      role: 'user',
     });
+    orphanUserId = orphanUser.id;
 
     const [u2] = await db
       .insert(users)
@@ -272,33 +244,13 @@ describe('Orphaned Data API (system-admin)', () => {
       if (id) await tryRun(() => db.delete(leagues).where(eq(leagues.id, id)));
     }
 
-    await tryRun(() =>
-      db.execute(
-        sql`ALTER TABLE teams ADD CONSTRAINT teams_league_id_leagues_id_fk FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE`,
-      ),
-    );
-    await tryRun(() =>
-      db.execute(
-        sql`ALTER TABLE bowler_leagues ADD CONSTRAINT bowler_leagues_league_id_leagues_id_fk FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE`,
-      ),
-    );
-    await tryRun(() =>
-      db.execute(
-        sql`ALTER TABLE payments ADD CONSTRAINT payments_league_id_leagues_id_fk FOREIGN KEY (league_id) REFERENCES leagues(id) ON DELETE CASCADE`,
-      ),
-    );
-    await tryRun(() =>
-      db.execute(sql`ALTER TABLE leagues ALTER COLUMN organization_id SET NOT NULL`),
-    );
-
-    // The fixture re-added `users_role_org_required` as NOT VALID so
-    // the legacy orphan rows wouldn't trip back-validation. Now that
-    // those rows are deleted, mark the constraint VALID again so the
-    // schema metadata isn't left in a half-state for any sibling
-    // suite that introspects it.
-    await tryRun(() =>
-      db.execute(sql`ALTER TABLE users VALIDATE CONSTRAINT users_role_org_required`),
-    );
+    // The per-insert FK helpers re-added each constraint as NOT VALID
+    // so the orphan row wouldn't trip back-validation. Now that the
+    // orphan rows are gone, mark them VALID again. VALIDATE CONSTRAINT
+    // takes only SHARE UPDATE EXCLUSIVE (does not block reads/writes).
+    await validateLeagueFk('teams');
+    await validateLeagueFk('bowler_leagues');
+    await validateLeagueFk('payments');
   });
 
   // ---- list endpoints --------------------------------------------------
@@ -720,18 +672,21 @@ describe('Orphaned Data API (system-admin)', () => {
       // Strip the system_admin role so the delete repair endpoint will
       // accept it. The user has `organization_id = NULL` (it's an
       // orphan sysadmin), so a normal UPDATE would trip the
-      // `users_role_org_required` CHECK. Use the same constraint
-      // drop / NOT-VALID re-add dance as the orphan-user fixture.
+      // `users_role_org_required` trigger. Briefly disable it inside a
+      // single transaction.
       await db.transaction(async (tx) => {
         await tx.execute(
-          sql`ALTER TABLE users DROP CONSTRAINT users_role_org_required`,
+          sql`ALTER TABLE users DISABLE TRIGGER users_role_org_required`,
         );
-        await tx.execute(
-          sql`UPDATE users SET role = 'user' WHERE id = ${orphanSysAdminId}`,
-        );
-        await tx.execute(
-          sql`ALTER TABLE users ADD CONSTRAINT users_role_org_required CHECK (role = 'system_admin' OR organization_id IS NOT NULL) NOT VALID`,
-        );
+        try {
+          await tx.execute(
+            sql`UPDATE users SET role = 'user' WHERE id = ${orphanSysAdminId}`,
+          );
+        } finally {
+          await tx.execute(
+            sql`ALTER TABLE users ENABLE TRIGGER users_role_org_required`,
+          );
+        }
       });
 
       const { status } = await apiPost(

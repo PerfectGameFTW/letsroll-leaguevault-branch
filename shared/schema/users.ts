@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, index, check } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -26,13 +26,15 @@ export const users = pgTable("users", {
   organizationIdx: index("users_organization_idx").on(table.organizationId),
   bowlerIdx: index("users_bowler_idx").on(table.bowlerId),
   locationIdx: index("users_location_idx").on(table.locationId),
-  // Mirrors the DB-side `users_role_org_required` CHECK: every non-admin
-  // user must be attached to an organization. Bootstrap system_admin
-  // users legitimately have no org and remain exempt.
-  roleOrgRequired: check(
-    "users_role_org_required",
-    sql`${table.role} = 'system_admin' OR ${table.organizationId} IS NOT NULL`,
-  ),
+  // The role/org invariant — every non-admin user must be attached to
+  // an organization — is enforced by a DB-side TRIGGER named
+  // `users_role_org_required` (installed by `tests/setup/global-setup.ts`
+  // for tests, and by the production migration). It used to be a CHECK
+  // constraint, but a trigger is required so the system-admin "orphan
+  // data" cleanup tooling tests can stage legacy org-less rows in
+  // parallel by setting `session_replication_role = replica` for the
+  // duration of a single transaction (CHECK constraints can't be
+  // bypassed that way, while triggers can).
 }));
 
 

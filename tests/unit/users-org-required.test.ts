@@ -243,14 +243,14 @@ describe('users_role_org_required invariant — storage', () => {
       const password = await hashPassword('vitest-pw');
       const email = uniqueEmail('direct-insert');
       // Bypass the storage helper and try to insert directly. The
-      // `users_role_org_required` CHECK constraint should reject this
-      // even when application-level guards are skipped.
+      // `users_role_org_required` BEFORE-INSERT trigger should reject
+      // this even when application-level guards are skipped.
       await expect(
         db.execute(
           sql`INSERT INTO users (email, password, name, role, organization_id)
               VALUES (${email}, ${password}, 'Direct Insert', 'user', NULL)`,
         ),
-      ).rejects.toThrow(/users_role_org_required|check constraint/i);
+      ).rejects.toThrow(/users_role_org_required|check constraint|non-admin users must have organization_id/i);
     });
   });
 });
