@@ -32,6 +32,7 @@ import { executeAccountDeletion } from '../../server/services/account-deletion';
 import { hashPassword } from '../../server/lib/password';
 import * as paymentProviderFactory from '../../server/services/payment-provider-factory';
 import { ProviderNotConfiguredError } from '../../server/services/payment-provider-factory';
+import * as emailService from '../../server/services/email';
 
 const createdUserIds: number[] = [];
 const createdOrgIds: number[] = [];
@@ -546,6 +547,108 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       ].sort(),
     );
     expect(summary.paymentProvider.every((p) => p.deleted)).toBe(true);
+  });
+
+  // --------------------------------------------------------------------
+  // Task #349: requester opt-out of the post-deletion confirmation email.
+  //
+  // The previous round wired up a third `notifyOnCompletion` argument
+  // that defaults to true (so legacy 2-arg callers, including these
+  // tests, keep their behavior). The block below pins both the gate
+  // and the structured `summary.confirmationEmail` audit field that
+  // the admin history view consumes.
+  // --------------------------------------------------------------------
+  describe('confirmation email gate (#349)', () => {
+    let sendSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      sendSpy = vi.spyOn(emailService, 'sendAccountDeletionConfirmation');
+    });
+
+    afterEach(() => {
+      sendSpy.mockRestore();
+    });
+
+    it('skips the SendGrid call and marks suppressedByUser when notifyOnCompletion=false', async () => {
+      const orgId = await makeOrg();
+      const adminId = await makeUser(uniqueEmail('admin'), orgId);
+      const targetEmail = uniqueEmail('opt-out');
+      await makeUser(targetEmail, orgId);
+      await makeBowler(targetEmail, orgId);
+
+      // Stub sendgrid so even if the gate were wrong, no real email
+      // would leave the test environment.
+      sendSpy.mockResolvedValue(true);
+
+      const summary = await executeAccountDeletion(targetEmail, adminId, false);
+
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(summary.confirmationEmail).toEqual({
+        sent: false,
+        suppressedByUser: true,
+      });
+      // The deletion itself must still happen — opting out of the
+      // confirmation email is unrelated to the actual scrub.
+      expect(summary.user.deleted).toBe(true);
+      expect(summary.bowlers[0].anonymized).toBe(true);
+    });
+
+    it('records sent=true when SendGrid succeeds (default notifyOnCompletion)', async () => {
+      const orgId = await makeOrg();
+      const adminId = await makeUser(uniqueEmail('admin'), orgId);
+      const targetEmail = uniqueEmail('notify-default');
+      await makeUser(targetEmail, orgId);
+      await makeBowler(targetEmail, orgId);
+
+      sendSpy.mockResolvedValue(true);
+
+      const summary = await executeAccountDeletion(targetEmail, adminId);
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(summary.confirmationEmail).toEqual({
+        sent: true,
+        suppressedByUser: false,
+      });
+    });
+
+    it('records suppressedByUser=false and error when SendGrid throws', async () => {
+      const orgId = await makeOrg();
+      const adminId = await makeUser(uniqueEmail('admin'), orgId);
+      const targetEmail = uniqueEmail('notify-throws');
+      await makeUser(targetEmail, orgId);
+      await makeBowler(targetEmail, orgId);
+
+      sendSpy.mockRejectedValue(new Error('SendGrid 502 Bad Gateway'));
+
+      const summary = await executeAccountDeletion(targetEmail, adminId, true);
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(summary.confirmationEmail?.sent).toBe(false);
+      expect(summary.confirmationEmail?.suppressedByUser).toBe(false);
+      expect(summary.confirmationEmail?.error).toMatch(/502 Bad Gateway/);
+      // The deletion must complete even when the post-deletion email
+      // fails — per task #314 the email is best-effort.
+      expect(summary.user.deleted).toBe(true);
+    });
+
+    it('records suppressedByUser=false and error when SendGrid returns false', async () => {
+      const orgId = await makeOrg();
+      const adminId = await makeUser(uniqueEmail('admin'), orgId);
+      const targetEmail = uniqueEmail('notify-returns-false');
+      await makeUser(targetEmail, orgId);
+      await makeBowler(targetEmail, orgId);
+
+      sendSpy.mockResolvedValue(false);
+
+      const summary = await executeAccountDeletion(targetEmail, adminId, true);
+
+      expect(sendSpy).toHaveBeenCalledTimes(1);
+      expect(summary.confirmationEmail?.sent).toBe(false);
+      expect(summary.confirmationEmail?.suppressedByUser).toBe(false);
+      // Distinct, non-empty error string so the admin UI shows
+      // something useful in the "failed to send" pill.
+      expect(summary.confirmationEmail?.error).toMatch(/SendGrid send returned false/);
+    });
   });
 
   it('records ProviderNotConfiguredError without aborting and proceeds to anonymize', async () => {
