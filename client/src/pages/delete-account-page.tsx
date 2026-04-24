@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Trash2, Loader2, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -13,6 +14,12 @@ const DeleteAccountPage: FC = () => {
   const { toast } = useToast();
   const [email, setEmail] = useState("");
   const [reason, setReason] = useState("");
+  // Task #349: requester can opt out of the post-deletion confirmation
+  // email. Default true so the existing GDPR/CCPA "we confirm we
+  // deleted your data" flow keeps working unless the user explicitly
+  // turns it off (e.g. harassment victims who do not want any further
+  // contact at the address being scrubbed).
+  const [notifyOnCompletion, setNotifyOnCompletion] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
@@ -41,7 +48,11 @@ const DeleteAccountPage: FC = () => {
       const response = await fetch("/api/account/request-deletion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), reason: reason.trim() }),
+        body: JSON.stringify({
+          email: email.trim(),
+          reason: reason.trim(),
+          notifyOnCompletion,
+        }),
       });
 
       if (!response.ok) {
@@ -72,7 +83,10 @@ const DeleteAccountPage: FC = () => {
             </div>
             <CardTitle className="text-xl">Request Received</CardTitle>
             <CardDescription>
-              Your account deletion request has been submitted. If an account exists with the provided email, we will process your request within 30 days. You will receive a confirmation email once your account and associated data have been deleted.
+              Your account deletion request has been submitted. If an account exists with the provided email, we will process your request within 30 days.{" "}
+              {notifyOnCompletion
+                ? "You will receive a confirmation email once your account and associated data have been deleted."
+                : "Per your request, we will not send a confirmation email when your data is deleted."}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
@@ -138,6 +152,31 @@ const DeleteAccountPage: FC = () => {
                 <li>Payment history and saved cards</li>
                 <li>Bowler profile linkage</li>
               </ul>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-md border border-input p-3">
+              <Checkbox
+                id="notify-on-completion"
+                checked={notifyOnCompletion}
+                onCheckedChange={(checked) =>
+                  setNotifyOnCompletion(checked === true)
+                }
+                className="mt-0.5"
+              />
+              <div className="space-y-1">
+                <Label
+                  htmlFor="notify-on-completion"
+                  className="font-medium cursor-pointer"
+                >
+                  Email me a confirmation when my data is deleted
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Uncheck this if you do not want any further email at this
+                  address — for example if it has been compromised, or if
+                  you no longer have access to it. We will still process the
+                  deletion either way.
+                </p>
+              </div>
             </div>
 
             <Button

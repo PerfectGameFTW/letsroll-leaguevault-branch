@@ -207,7 +207,14 @@ router.post('/deletion-requests/:id/execute', requireAdmin, async (req: Request,
       return sendError(res, 'Request has already been reviewed', 400, 'ALREADY_REVIEWED');
     }
 
-    const summary = await executeAccountDeletion(existing.email, reviewerId);
+    // Task #349: forward the requester's opt-out preference so the
+    // service can skip the SendGrid confirmation email when they
+    // unchecked the box on the public deletion-request form.
+    const summary = await executeAccountDeletion(
+      existing.email,
+      reviewerId,
+      existing.notifyOnCompletion,
+    );
     const updated = await storage.completeDeletionRequestWithExecution(
       id,
       reviewerId,

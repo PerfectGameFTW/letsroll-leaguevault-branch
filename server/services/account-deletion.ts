@@ -113,6 +113,13 @@ async function collectProviderTargets(
 export async function executeAccountDeletion(
   email: string,
   reviewerId: number,
+  // Task #349: when false, skip the post-deletion confirmation email
+  // entirely. The originating deletion request stores this flag (set
+  // by the requester on the public form); the admin /execute route
+  // reads it off the row and forwards it here. Defaults to true so
+  // direct callers (e.g. the existing test suite) and historic rows
+  // — where the column did not exist — keep the original behaviour.
+  notifyOnCompletion: boolean = true,
 ): Promise<DeletionExecutionSummary> {
   const summary: DeletionExecutionSummary = {
     executedAt: new Date().toISOString(),
@@ -122,6 +129,10 @@ export async function executeAccountDeletion(
     bowlers: [],
     paymentProvider: [],
     emailChangeRequestsDeleted: 0,
+    confirmationEmail: {
+      sent: false,
+      suppressedByUser: !notifyOnCompletion,
+    },
   };
 
   const bowlersToScrub = await storage.getBowlersByEmailSystemAdmin(email);
@@ -245,22 +256,40 @@ export async function executeAccountDeletion(
   // Per task #314: a SendGrid failure (or missing key, or a thrown
   // exception inside the email helper) must NEVER roll back the
   // deletion that just happened — log and move on.
-  try {
-    const sent = await sendAccountDeletionConfirmation(email, {
-      bowlersAnonymized,
-      userAccountDeleted: summary.user.deleted,
-      paymentProviderRecordsDeleted,
-      emailChangeRequestsDeleted: summary.emailChangeRequestsDeleted,
-      executedAt: summary.executedAt,
-    });
-    if (!sent) {
-      log.warn('Account-deletion confirmation email was not sent', { email });
-    }
-  } catch (err) {
-    log.error('Account-deletion confirmation email threw', {
+  //
+  // Task #349: skip the send entirely when the requester opted out on
+  // the public deletion-request form. The summary's
+  // `confirmationEmail` block was already initialised above to
+  // `{ sent: false, suppressedByUser: !notifyOnCompletion }`, so the
+  // admin history view can render "suppressed by user" without an
+  // additional flag.
+  if (!notifyOnCompletion) {
+    log.info('Skipping account-deletion confirmation email (requester opted out)', {
       email,
-      error: err instanceof Error ? err.message : String(err),
     });
+  } else {
+    try {
+      const sent = await sendAccountDeletionConfirmation(email, {
+        bowlersAnonymized,
+        userAccountDeleted: summary.user.deleted,
+        paymentProviderRecordsDeleted,
+        emailChangeRequestsDeleted: summary.emailChangeRequestsDeleted,
+        executedAt: summary.executedAt,
+      });
+      if (sent) {
+        summary.confirmationEmail!.sent = true;
+      } else {
+        summary.confirmationEmail!.error = 'SendGrid send returned false (see server logs)';
+        log.warn('Account-deletion confirmation email was not sent', { email });
+      }
+    } catch (err) {
+      summary.confirmationEmail!.error =
+        err instanceof Error ? err.message : String(err);
+      log.error('Account-deletion confirmation email threw', {
+        email,
+        error: summary.confirmationEmail!.error,
+      });
+    }
   }
 
   return summary;

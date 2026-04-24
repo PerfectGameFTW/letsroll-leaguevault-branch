@@ -113,6 +113,13 @@ router.post('/request-deletion', deletionRequestLimiter, async (req, res) => {
       reason: typeof req.body?.reason === 'string' && req.body.reason.trim().length > 0
         ? req.body.reason.trim()
         : null,
+      // Task #349: requester can opt out of the post-deletion
+      // confirmation email. Default true (matches the schema default)
+      // so legacy clients that don't send the field still get email.
+      notifyOnCompletion:
+        typeof req.body?.notifyOnCompletion === 'boolean'
+          ? req.body.notifyOnCompletion
+          : true,
     });
 
     if (!parsed.success) {
@@ -123,7 +130,7 @@ router.post('/request-deletion', deletionRequestLimiter, async (req, res) => {
       return res.json(GENERIC_DELETION_RESPONSE);
     }
 
-    const { email, reason } = parsed.data;
+    const { email, reason, notifyOnCompletion } = parsed.data;
 
     // Per-email throttle on top of per-IP limiter
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -141,6 +148,7 @@ router.post('/request-deletion', deletionRequestLimiter, async (req, res) => {
       reason: reason ?? null,
       ipAddress,
       userAgent,
+      notifyOnCompletion,
     });
 
     log.info('Account deletion request recorded', { id: created.id });

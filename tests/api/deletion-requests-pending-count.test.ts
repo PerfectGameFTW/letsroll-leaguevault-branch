@@ -162,6 +162,7 @@ describe('GET /api/system-admin/deletion-requests/pending-count', () => {
       reason: 'pending-count regression test',
       ipAddress: null,
       userAgent: null,
+      notifyOnCompletion: true,
     });
     seededIds.push(pendingA.id);
     const pendingB = await storage.createDeletionRequest({
@@ -169,6 +170,7 @@ describe('GET /api/system-admin/deletion-requests/pending-count', () => {
       reason: 'pending-count regression test',
       ipAddress: null,
       userAgent: null,
+      notifyOnCompletion: true,
     });
     seededIds.push(pendingB.id);
 
@@ -177,6 +179,7 @@ describe('GET /api/system-admin/deletion-requests/pending-count', () => {
       reason: 'pending-count regression test',
       ipAddress: null,
       userAgent: null,
+      notifyOnCompletion: true,
     });
     seededIds.push(completed.id);
     await storage.updateDeletionRequestStatus(
@@ -191,6 +194,7 @@ describe('GET /api/system-admin/deletion-requests/pending-count', () => {
       reason: 'pending-count regression test',
       ipAddress: null,
       userAgent: null,
+      notifyOnCompletion: true,
     });
     seededIds.push(rejected.id);
     await storage.updateDeletionRequestStatus(

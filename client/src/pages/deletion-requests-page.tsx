@@ -71,6 +71,21 @@ function parseExecutionSummary(raw: string | null): DeletionExecutionSummary | n
   if (!parsed || typeof parsed !== 'object') return null;
   const p = parsed as Record<string, unknown>;
   const user = (p.user && typeof p.user === 'object' ? p.user : {}) as Record<string, unknown>;
+  // Task #349: confirmationEmail is optional — older audit summaries
+  // (written before this task) won't have it, and the panel renders a
+  // neutral "unknown" pill in that case. Keep the field undefined
+  // rather than synthesizing a default so the panel can tell the
+  // difference between "we wrote a record saying we sent it" and
+  // "this row predates the field".
+  let confirmationEmail: DeletionExecutionSummary['confirmationEmail'];
+  if (p.confirmationEmail && typeof p.confirmationEmail === 'object') {
+    const ce = p.confirmationEmail as Record<string, unknown>;
+    confirmationEmail = {
+      sent: ce.sent === true,
+      suppressedByUser: ce.suppressedByUser === true,
+      error: typeof ce.error === 'string' ? ce.error : undefined,
+    };
+  }
   return {
     executedAt: typeof p.executedAt === 'string' ? p.executedAt : '',
     executedBy: typeof p.executedBy === 'number' ? p.executedBy : 0,
@@ -90,6 +105,7 @@ function parseExecutionSummary(raw: string | null): DeletionExecutionSummary | n
       : [],
     emailChangeRequestsDeleted:
       typeof p.emailChangeRequestsDeleted === 'number' ? p.emailChangeRequestsDeleted : 0,
+    confirmationEmail,
   };
 }
 
@@ -230,6 +246,39 @@ function ExecutionSummaryPanel({
         <div>
           <span className="text-muted-foreground">Pending email-change requests removed: </span>
           <span className="font-medium">{summary.emailChangeRequestsDeleted}</span>
+        </div>
+        {/*
+          Task #349: surface the post-deletion confirmation email
+          outcome so the admin history view can distinguish "user
+          opted out on the public form" from "we tried but SendGrid
+          failed" without consulting the server logs. Older summaries
+          (written before this field existed) render as a neutral
+          "unknown" pill; the parser leaves the field undefined in
+          that case rather than synthesizing a misleading default.
+        */}
+        <div data-testid={`confirmation-email-status-${requestId}`}>
+          <span className="text-muted-foreground">Confirmation email: </span>
+          {!summary.confirmationEmail ? (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <AlertTriangle className="h-3.5 w-3.5" /> not recorded (legacy run)
+            </span>
+          ) : summary.confirmationEmail.suppressedByUser ? (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <CheckCircle2 className="h-3.5 w-3.5" /> suppressed by user choice
+            </span>
+          ) : summary.confirmationEmail.sent ? (
+            <span className="inline-flex items-center gap-1 text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-3.5 w-3.5" /> sent
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-destructive">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              failed to send
+              {summary.confirmationEmail.error
+                ? ` — ${summary.confirmationEmail.error}`
+                : ''}
+            </span>
+          )}
         </div>
       </div>
 
