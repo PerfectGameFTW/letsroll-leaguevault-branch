@@ -6,6 +6,7 @@ import { storage } from '../storage';
 import { hashPassword, destroyOtherSessionsForUser } from '../auth';
 import { passwordSchema } from '@shared/password-validation';
 import { updateUserSchemaBase, insertDeletionRequestSchema } from '@shared/schema';
+import { PASSWORD_CHANGED_I18N } from '../services/email-i18n/password-changed';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
 import { comparePasswords } from '../lib/password';
@@ -28,6 +29,15 @@ import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 const log = createLogger('Account');
 const router = Router();
 
+// Languages we currently ship translations for. Sourced from the
+// password-changed email bundle so adding a new locale there
+// automatically widens the accepted set on this endpoint (and, by
+// extension, the account-settings selector that hits it). Exported
+// so the test pinning the round trip can assert the same set.
+export const SUPPORTED_PREFERRED_LANGUAGES = Object.keys(
+  PASSWORD_CHANGED_I18N,
+) as ReadonlyArray<string>;
+
 // PATCH /profile/:id body schema. Phone is intentionally tri-state so
 // the handler can distinguish three caller intents:
 //   undefined            → field omitted, leave the column untouched
@@ -36,6 +46,14 @@ const router = Router();
 // We collapse empty / whitespace-only strings to null at the schema
 // boundary so older clients (and the profile form, which submits a
 // blank Input as "") get the same "clear it" behaviour as a JSON null.
+//
+// `preferredLanguage` follows the same tri-state shape (omit /
+// explicit null / known locale code). The base schema's loose
+// `z.string().nullable()` is tightened here to an allowlist drawn
+// from the bundled translations — anything else gets a 400 instead
+// of being silently persisted as garbage that the email helper would
+// then fall back to English on (task #417).
+//
 // Exported for unit tests.
 export const profileUpdateSchema = updateUserSchemaBase
   .pick({ name: true, email: true, phone: true })
@@ -49,6 +67,12 @@ export const profileUpdateSchema = updateUserSchemaBase
         if (v === null) return null;
         return v.trim() === '' ? null : v;
       }),
+    preferredLanguage: z
+      .union([
+        z.enum(SUPPORTED_PREFERRED_LANGUAGES as [string, ...string[]]),
+        z.null(),
+      ])
+      .optional(),
   });
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -294,6 +318,12 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
     const storagePatch: Parameters<typeof storage.updateUser>[1] = {};
     if (updateData.name !== undefined) storagePatch.name = updateData.name;
     if (updateData.phone !== undefined) storagePatch.phone = updateData.phone;
+    // task #417: persist the user's UI / notification language. Same
+    // tri-state semantics as phone — `undefined` skips the column,
+    // `null` clears it ("follow the default"), a known code sets it.
+    if (updateData.preferredLanguage !== undefined) {
+      storagePatch.preferredLanguage = updateData.preferredLanguage;
+    }
 
     const updatedUser =
       Object.keys(storagePatch).length > 0

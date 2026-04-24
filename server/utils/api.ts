@@ -25,6 +25,11 @@ const SAFE_USER_FIELDS = [
   'role',
   'organizationId',
   'locationId',
+  // The user's chosen UI / notification language (task #410 / #417).
+  // Safe to expose so the account-settings selector can pre-fill the
+  // currently saved value. The column is nullable — null means
+  // "no preference, follow the default" (English today).
+  'preferredLanguage',
   'createdAt',
 ] as const;
 
