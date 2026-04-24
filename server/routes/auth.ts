@@ -296,37 +296,26 @@ export function registerAuthRoutes(app: Express): void {
         storage.invalidatePendingEmailChangeRequestsForUser(user.id),
       ]);
 
-      // Industry-standard "your password was just changed" notification
-      // (task #409 — symmetry with the authenticated change-password
-      // path added in task #353). The forgot-password flow is the more
-      // attacker-relevant rotation path, so the notice here is what
-      // gives a legitimate owner a chance to react if their email was
-      // pivoted through. Best-effort and not awaited: a SendGrid hiccup
-      // must never roll back a password rotation that already
-      // committed. The When/From IP/Browser fields reflect THIS reset
-      // request, not any earlier change. Fires for invite-acceptance
-      // too, which is fine — confirming the password was set via a
-      // mailed token is useful in either case.
+      // Task #409: best-effort "your password was just changed" notice,
+      // mirroring the authenticated change-password path (#353). Not
+      // awaited — an outbound email failure must never roll back a
+      // password rotation that already committed.
       try {
         const rawUa = (req.get('user-agent') ?? '').slice(0, 256);
         void sendPasswordChangedNotification(user.email, user.name, {
           changedAt: new Date(),
           ipAddress: req.ip ?? null,
           userAgent: rawUa || null,
-        })
-          .then(ok => {
-            if (!ok) {
-              log.warn('Password-changed notification helper returned false (set-password)', {
-                userId: user.id,
-              });
-            }
-          })
-          .catch(err => {
-            log.error('Password-changed notification threw unexpectedly (set-password)', {
-              userId: user.id,
-              error: err instanceof Error ? err.message : String(err),
-            });
+        }).then(ok => {
+          if (!ok) {
+            log.warn('Password-changed notification returned false (set-password)', { userId: user.id });
+          }
+        }).catch(err => {
+          log.error('Password-changed notification threw (set-password)', {
+            userId: user.id,
+            error: err instanceof Error ? err.message : String(err),
           });
+        });
       } catch (notifyError) {
         log.error('Failed to schedule password-changed notification (set-password)', {
           userId: user.id,
