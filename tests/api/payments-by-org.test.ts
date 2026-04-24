@@ -98,7 +98,7 @@ describe('GET /api/payments — SQL-level org filtering', () => {
 
     const [bw] = await db
       .insert(bowlers)
-      .values({ name: 'Vitest #295 Bowler' })
+      .values({ name: 'Vitest #295 Bowler', organizationId: orgAId })
       .returning({ id: bowlers.id });
     bowlerId = bw.id;
 

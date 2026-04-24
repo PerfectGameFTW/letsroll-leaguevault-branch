@@ -119,12 +119,12 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
     return true;
   }
 
-  // Owning-organization gate (task #342). Every bowler created after
-  // task #342 carries an explicit `organizationId` stamp. For stamped
-  // rows the stamp is AUTHORITATIVE: it is the single source of truth
-  // for which org "owns" this bowler, and admin/sysadmin callers are
-  // gated on it directly without falling back to the league-based scan.
-  //   - Sysadmin → allowed for any non-null stamp.
+  // Owning-organization gate (task #342, tightened in task #407 once
+  // `bowlers.organizationId` became NOT NULL). Every bowler row that
+  // exists carries an authoritative org stamp; admin/sysadmin callers
+  // are gated on it directly without falling back to the league-based
+  // scan.
+  //   - Sysadmin → allowed.
   //   - Org user matching the stamp → allowed.
   //   - Org user with a different stamp → DENIED (no league fallback
   //     for admins; this is the hardening the task explicitly required).
@@ -134,11 +134,11 @@ export async function hasAccessToBowler(req: Request, bowlerId: number): Promise
   //     (two bowlers who share a league can see each other regardless
   //     of stamps). This narrowly scoped fall-through preserves the
   //     bowler-self UX without widening admin access.
-  // Legacy/orphan rows with `organizationId === null` are NOT gated
-  // here — they fall through to the league-based scan below, which
-  // preserves the pre-#342 behavior unchanged.
+  // A missing bowler row (deleted concurrently) falls through to the
+  // league-based scan, which will then deny because there are no
+  // league entries for a non-existent bowler.
   const bowlerRow = await storage.getBowler(bowlerId);
-  if (bowlerRow && bowlerRow.organizationId !== null) {
+  if (bowlerRow) {
     if (isSystemAdmin(req.user)) {
       return true;
     }
@@ -245,32 +245,32 @@ export async function hasAccessToBowlers(
     return result;
   }
 
-  // Owning-organization gate (task #342). Mirror the single-bowler
+  // Owning-organization gate (task #342, tightened in task #407 once
+  // `bowlers.organizationId` became NOT NULL). Mirror the single-bowler
   // helper: batch-fetch the bowler rows and decide each id authoritatively
-  // by its stamped `organizationId`. The semantics match `hasAccessToBowler`
-  // exactly:
-  //   - Stamp present + sysadmin → allow (decided here, no fallthrough).
-  //   - Stamp present + same org → allow (decided here, no fallthrough).
-  //   - Stamp present + admin caller from a different org → DENY here
+  // by its stamped `organizationId`:
+  //   - Row present + sysadmin → allow (decided here, no fallthrough).
+  //   - Row present + same org → allow (decided here, no fallthrough).
+  //   - Row present + admin caller from a different org → DENY here
   //     (no league fallback for admins; this is the hardening required).
-  //   - Stamp present + non-admin "user" caller → fall through so the
-  //     bowler-to-bowler same-league self-membership rule below can
-  //     still grant access (two bowlers sharing a league can see each
-  //     other regardless of stamps).
-  //   - Stamp NULL (legacy/orphan) → fall through to the legacy
-  //     league-based scan below, preserving pre-#342 behavior unchanged.
+  //   - Row present + non-admin "user" caller with a stamp mismatch →
+  //     fall through so the bowler-to-bowler same-league self-membership
+  //     rule below can still grant access (two bowlers sharing a league
+  //     can see each other regardless of stamps).
+  //   - Row missing (deleted concurrently) → fall through to the league
+  //     scan, which will deny because no league entries exist.
   const callerIsSystemAdmin = isSystemAdmin(req.user);
   const callerIsOrgOrHigher = isOrgOrHigher(req.user);
   const callerOrgIdShort = req.user.organizationId ?? null;
   const fetchedBowlers = await storage.getBowlersByIds([...idsToCheck]);
-  const stampedOrgByBowler = new Map<number, number | null>();
+  const stampedOrgByBowler = new Map<number, number>();
   for (const b of fetchedBowlers) {
     stampedOrgByBowler.set(b.id, b.organizationId);
   }
   const stillToCheck = new Set<number>();
   for (const id of idsToCheck) {
     const stamp = stampedOrgByBowler.get(id);
-    if (stamp !== undefined && stamp !== null) {
+    if (stamp !== undefined) {
       if (callerIsSystemAdmin) {
         result.set(id, true);
         continue;

@@ -142,7 +142,7 @@ describe('Orphaned cleanup audit logging (system-admin)', () => {
 
     const [bw] = await db
       .insert(bowlers)
-      .values({ name: 'Vitest Audit Bowler' })
+      .values({ name: 'Vitest Audit Bowler', organizationId: targetOrgId })
       .returning({ id: bowlers.id });
     bowlerId = bw.id;
 

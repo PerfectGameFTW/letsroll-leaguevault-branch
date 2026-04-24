@@ -76,7 +76,9 @@ export async function getBowler(id: number): Promise<Bowler | undefined> {
   return result;
 }
 
-export async function createBowler(bowler: InsertBowler): Promise<Bowler> {
+export async function createBowler(
+  bowler: InsertBowler & { organizationId: number },
+): Promise<Bowler> {
   const [result] = await db.insert(bowlers).values(bowler).returning();
   cacheInvalidate('bowlers:');
   return result;

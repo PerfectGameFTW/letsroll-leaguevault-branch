@@ -76,10 +76,10 @@ async function makeUser(email: string, organizationId: number): Promise<number> 
   return row.id;
 }
 
-async function makeBowler(email: string): Promise<number> {
+async function makeBowler(email: string, organizationId: number): Promise<number> {
   const [row] = await db
     .insert(bowlers)
-    .values({ name: 'Vitest Bowler', email })
+    .values({ name: 'Vitest Bowler', email, organizationId })
     .returning({ id: bowlers.id });
   createdBowlerIds.push(row.id);
   return row.id;
@@ -149,6 +149,7 @@ async function makeBowlerWithCustomerIds(
   email: string,
   paymentCustomerId: string | null,
   cardpointeProfileId: string | null,
+  organizationId: number,
   paymentProviderLocationId: number | null = null,
 ): Promise<number> {
   const [row] = await db
@@ -156,6 +157,7 @@ async function makeBowlerWithCustomerIds(
     .values({
       name: 'Vitest Bowler',
       email,
+      organizationId,
       paymentCustomerId,
       cardpointeProfileId,
       paymentProviderLocationId,
@@ -198,9 +200,9 @@ describe('executeAccountDeletion — service', () => {
     const adminId = await makeUser(uniqueEmail('admin'), orgId);
     const targetEmail = uniqueEmail('target');
     const userId = await makeUser(targetEmail, orgId);
-    const bowlerOneId = await makeBowler(targetEmail);
-    const bowlerTwoId = await makeBowler(targetEmail);
-    const otherBowlerId = await makeBowler(uniqueEmail('other'));
+    const bowlerOneId = await makeBowler(targetEmail, orgId);
+    const bowlerTwoId = await makeBowler(targetEmail, orgId);
+    const otherBowlerId = await makeBowler(uniqueEmail('other'), orgId);
 
     const summary = await executeAccountDeletion(targetEmail, adminId);
 
@@ -242,7 +244,7 @@ describe('executeAccountDeletion — service', () => {
     const orgId = await makeOrg();
     const adminId = await makeUser(uniqueEmail('admin'), orgId);
     const targetEmail = uniqueEmail('orphan-target');
-    const bowlerId = await makeBowler(targetEmail);
+    const bowlerId = await makeBowler(targetEmail, orgId);
 
     const summary = await executeAccountDeletion(targetEmail, adminId);
 
@@ -311,9 +313,9 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
     //                leagueA only
     //                -> (locA,sq-1) — must collapse into bowlerOne's
     //                target, not produce a 5th call
-    const bowlerOne = await makeBowlerWithCustomerIds(targetEmail, 'sq-1', null);
-    const bowlerTwo = await makeBowlerWithCustomerIds(targetEmail, 'sq-2', 'cp-2');
-    const bowlerThree = await makeBowlerWithCustomerIds(targetEmail, 'sq-1', null);
+    const bowlerOne = await makeBowlerWithCustomerIds(targetEmail, 'sq-1', null, orgId);
+    const bowlerTwo = await makeBowlerWithCustomerIds(targetEmail, 'sq-2', 'cp-2', orgId);
+    const bowlerThree = await makeBowlerWithCustomerIds(targetEmail, 'sq-1', null, orgId);
     await linkBowlerToLeague(bowlerOne, leagueA, teamA1);
     await linkBowlerToLeague(bowlerOne, leagueB, teamB);
     await linkBowlerToLeague(bowlerTwo, leagueA, teamA2);
@@ -370,7 +372,7 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
     const teamA = await makeTeam(leagueA);
     const teamB = await makeTeam(leagueB);
 
-    const bowlerId = await makeBowlerWithCustomerIds(targetEmail, 'cust-x', null);
+    const bowlerId = await makeBowlerWithCustomerIds(targetEmail, 'cust-x', null, orgId);
     await linkBowlerToLeague(bowlerId, leagueA, teamA);
     await linkBowlerToLeague(bowlerId, leagueB, teamB);
 
@@ -446,6 +448,7 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       targetEmail,
       'sq-recorded',
       null,
+      orgId,
       locA, // <- origin recorded
     );
     await linkBowlerToLeague(bowlerId, leagueA, teamA);
@@ -499,6 +502,7 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       targetEmail,
       'sq-modern',
       null,
+      orgId,
       locA,
     );
     await linkBowlerToLeague(modernBowler, leagueA, teamA);
@@ -511,6 +515,7 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
       targetEmail,
       'sq-legacy',
       null,
+      orgId,
       null,
     );
     const teamA2 = await makeTeam(leagueA);
@@ -552,7 +557,7 @@ describe('executeAccountDeletion — payment-provider cleanup (#316)', () => {
     const locA = await makeLocation(orgId);
     const leagueA = await makeLeague(orgId, locA);
     const teamA = await makeTeam(leagueA);
-    const bowlerId = await makeBowlerWithCustomerIds(targetEmail, 'cust-y', null);
+    const bowlerId = await makeBowlerWithCustomerIds(targetEmail, 'cust-y', null, orgId);
     await linkBowlerToLeague(bowlerId, leagueA, teamA);
 
     getPaymentProviderSpy.mockRejectedValue(

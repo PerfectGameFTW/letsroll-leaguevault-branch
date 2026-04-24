@@ -124,7 +124,7 @@ describe('Orphaned Data API (system-admin)', () => {
 
     const [bw] = await db
       .insert(bowlers)
-      .values({ name: 'Vitest Orphan Bowler' })
+      .values({ name: 'Vitest Orphan Bowler', organizationId: targetOrgId })
       .returning({ id: bowlers.id });
     bowlerId = bw.id;
 

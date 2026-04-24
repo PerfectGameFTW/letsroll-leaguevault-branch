@@ -94,6 +94,7 @@ describe('PATCH /api/account/profile/:id payment sync status', () => {
         phone: null,
         active: true,
         order: 0,
+        organizationId: org.id,
         paymentCustomerId: null,
         cardpointeProfileId: null,
         bnContactId: null,
@@ -173,6 +174,7 @@ describe('PATCH /api/account/profile/:id payment sync status', () => {
         phone: null,
         active: true,
         order: 0,
+        organizationId: org.id,
         paymentCustomerId: null,
         cardpointeProfileId: null,
         bnContactId: null,
@@ -244,6 +246,12 @@ describe('POST /api/account/bowlers/:id/retry-payment-sync', () => {
   it('returns 422 when the bowler has no linked user', async () => {
     const admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
 
+    const [org] = await db
+      .insert(organizations)
+      .values({ name: uniq('422-org'), slug: uniq('422-org').toLowerCase(), active: true })
+      .returning();
+    createdOrgIds.push(org.id);
+
     // Create an isolated bowler with no linked user
     const [bowler] = await db
       .insert(bowlers)
@@ -253,6 +261,7 @@ describe('POST /api/account/bowlers/:id/retry-payment-sync', () => {
         phone: null,
         active: true,
         order: 0,
+        organizationId: org.id,
         paymentCustomerId: null,
         cardpointeProfileId: null,
         bnContactId: null,

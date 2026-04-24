@@ -123,11 +123,9 @@ router.post("/", async (req, res) => {
       // `organizationId` stamp, so `hasAccessToBowler` will positively
       // short-circuit for the legitimate same-org admin case before we
       // ever reach this branch. The branch therefore now matters only
-      // for two residual cases — both of which we want to deny:
-      //   - cross-org admin trying to bootstrap-link a fresh bowler
-      //     stamped to a different org
-      //   - any admin trying to bootstrap-link a legacy/orphan bowler
-      //     whose stamp is NULL (org-less policy)
+      // for the cross-org admin trying to bootstrap-link a fresh bowler
+      // stamped to a different org. (Task #407 made the stamp NOT
+      // NULL, so the legacy-NULL case can no longer occur.)
       //
       // Gates (all must pass):
       //   1. Caller is org_admin or system_admin. Bowler-role users that
@@ -135,10 +133,11 @@ router.post("/", async (req, res) => {
       //      shortcut must not be able to claim other bowlers here.
       //   2. The bowler row exists and its stamped `organizationId`
       //      strictly matches the target league's `organizationId`.
-      //      NULL stamps deny (org-less policy). This is the task #342
-      //      tightening: the bootstrap branch is no longer authoritative
-      //      on the claim token alone — it requires the bowler's own
-      //      stamp to agree with the link target.
+      //      Org-less leagues still deny (per the org-less policy).
+      //      This is the task #342 tightening: the bootstrap branch is
+      //      no longer authoritative on the claim token alone — it
+      //      requires the bowler's own stamp to agree with the link
+      //      target.
       //   3. The caller holds a non-expired creation-time claim token
       //      for this bowler id (defense in depth on top of the org
       //      stamp; see server/utils/bowler-claim-tokens.ts).
@@ -153,7 +152,6 @@ router.post("/", async (req, res) => {
       const targetLeague = await storage.getLeague(data.leagueId);
       if (
         !bowlerRow ||
-        bowlerRow.organizationId === null ||
         !targetLeague ||
         targetLeague.organizationId === null ||
         bowlerRow.organizationId !== targetLeague.organizationId

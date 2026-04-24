@@ -14,22 +14,14 @@ export const bowlers = pgTable("bowlers", {
   phone: text("phone"),
   active: boolean("active").notNull().default(true),
   order: integer("order").notNull().default(0),
-  // Owning organization stamped at creation time (task #342). Every
-  // route that creates a bowler MUST set this from the caller's org so
-  // a bowler is org-bound from the moment it exists, not retroactively
-  // inferred from league links. Without the stamp, the brief window
-  // between creation and the first `bowler_leagues` row left a
-  // cross-org admin able to bootstrap-link a fresh bowler into their
-  // own org.
-  //
-  // Nullable for now: the deployed DB carries legacy orphan bowler
-  // rows (no league links, or only org-less league links) that the
-  // initial backfill couldn't resolve. Those rows are surfaced via the
-  // existing orphaned-data admin tooling and `hasAccessToBowler` denies
-  // them for every role per the org-less policy. Once those orphans
-  // are remediated, this column should be flipped to NOT NULL — see
-  // the follow-up task.
-  organizationId: integer("organization_id").references(() => organizations.id),
+  // Owning organization stamped at creation time (task #342, hardened
+  // to NOT NULL in task #407). Every route that creates a bowler MUST
+  // set this from the caller's org so a bowler is org-bound from the
+  // moment it exists, not retroactively inferred from league links.
+  // Enforced at the database level: any future code path that forgets
+  // to stamp the owner is rejected by the constraint instead of
+  // silently producing an orphan row that's invisible to its own org.
+  organizationId: integer("organization_id").notNull().references(() => organizations.id),
   paymentCustomerId: text("payment_customer_id"),
   cardpointeProfileId: text("cardpointe_profile_id"),
   // Records which location's payment processor created the bowler's
@@ -104,10 +96,12 @@ export const insertBowlerSchema = baseBowlerSchema.extend({
   active: z.boolean().default(true),
   order: z.number().min(0).default(0),
   // Server stamps this from the caller's org in every creation route;
-  // accepted as optional in the schema so the Zod parse on `req.body`
-  // (which never carries it) doesn't reject. See server/routes/bowlers.ts
-  // and server/routes/bulk-import.ts for the actual stamping.
-  organizationId: z.number().int().positive().nullable().optional(),
+  // accepted as optional in the Zod schema so the parse on `req.body`
+  // (which never carries it) doesn't reject. The stamping code adds
+  // it before calling `storage.createBowler`, and the DB-level NOT
+  // NULL constraint (task #407) is the final safety net that rejects
+  // any creation path that forgets to set it.
+  organizationId: z.number().int().positive().optional(),
   paymentCustomerId: z.string().nullable().optional(),
   cardpointeProfileId: z.string().nullable().optional(),
   paymentProviderLocationId: z.number().int().positive().nullable().optional(),

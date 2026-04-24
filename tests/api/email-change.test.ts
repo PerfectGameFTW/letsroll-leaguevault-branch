@@ -283,6 +283,7 @@ describe('POST /api/account/confirm-email-change', () => {
         phone: null,
         active: true,
         order: 0,
+        organizationId: testOrgId,
         paymentCustomerId: null,
         cardpointeProfileId: null,
         bnContactId: null,

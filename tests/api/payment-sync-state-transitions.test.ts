@@ -114,6 +114,7 @@ describe('payment_sync_pending_at lifecycle (mocked provider)', () => {
         phone: null,
         active: true,
         order: 0,
+        organizationId: org.id,
         paymentCustomerId: null,
         cardpointeProfileId: null,
         bnContactId: null,
