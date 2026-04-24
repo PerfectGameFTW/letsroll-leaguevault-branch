@@ -19,6 +19,7 @@ import { db } from '../db';
 import { bowlers } from '@shared/schema';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
+import { lockedSweep } from './_internal/locked-sweep';
 import {
   PAYMENT_SYNC_MAX_ATTEMPTS,
   syncBowlerForUser,
@@ -104,17 +105,27 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
   );
 
   const { candidates, skippedByLock } = await db.transaction(async (tx) => {
-    const totalRow = await tx
-      .select({ total: count() })
-      .from(bowlers)
-      .where(conditions);
-    const totalMatching = totalRow[0]?.total ?? 0;
-
-    const locked = await tx
-      .select()
-      .from(bowlers)
-      .where(conditions)
-      .for('update', { of: bowlers, skipLocked: true });
+    // The shared lockedSweep helper handles count + FOR UPDATE SKIP
+    // LOCKED + contention math (see ./_internal/locked-sweep.ts) so
+    // every sweep service uses the same predicate-consistency
+    // contract. We still own the surrounding transaction because the
+    // lease-stamp UPDATE below has to commit atomically with the lock
+    // claim.
+    const { rows: locked, skippedByLock: skipped } = await lockedSweep({
+      countMatching: async () => {
+        const totalRow = await tx
+          .select({ total: count() })
+          .from(bowlers)
+          .where(conditions);
+        return totalRow[0]?.total ?? 0;
+      },
+      lockMatching: () =>
+        tx
+          .select()
+          .from(bowlers)
+          .where(conditions)
+          .for('update', { of: bowlers, skipLocked: true }),
+    });
 
     // Critical for cross-process safety: row locks are released as
     // soon as this transaction commits, but `syncBowlerForUser` runs
@@ -143,7 +154,7 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
 
     return {
       candidates: locked,
-      skippedByLock: Math.max(0, totalMatching - locked.length),
+      skippedByLock: skipped,
     };
   });
 
