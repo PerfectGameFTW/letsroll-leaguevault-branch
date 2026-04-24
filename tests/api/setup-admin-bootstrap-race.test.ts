@@ -119,8 +119,24 @@ describe('first-admin bootstrap — race + status-code coverage', () => {
     it.skip('opt-in via RUN_BOOTSTRAP_RACE_TESTS=1 (mutates shared admin row)', () => {});
     return;
   }
+  // Task #360: when the suite is *explicitly* opted into
+  // (RUN_BOOTSTRAP_RACE_TESTS=1) but SETUP_SECRET is missing, the
+  // POSTs below will all 401 and every meaningful assertion would
+  // be impossible to evaluate. Historically we used `it.skip` here,
+  // which made a misconfigured CI step look like "6 skipped — pass"
+  // and silently destroyed the safety net this suite is supposed to
+  // be. Hard-fail with a clear remediation instead so a missing
+  // secret cannot be ignored.
   if (!SETUP_SECRET) {
-    it.skip('SETUP_SECRET not set', () => {});
+    it('FAILS LOUDLY: SETUP_SECRET must be set when RUN_BOOTSTRAP_RACE_TESTS=1', () => {
+      throw new Error(
+        'SETUP_SECRET is required for the bootstrap-race suite. ' +
+          'Set it in your CI secrets (and locally export it) before running ' +
+          '`bash scripts/test-race.sh` / `RUN_BOOTSTRAP_RACE_TESTS=1 npx vitest run ' +
+          'tests/api/setup-admin-bootstrap-race.test.ts`. ' +
+          'See tests/README.md → "CI wiring" for the full list of required CI secrets.',
+      );
+    });
     return;
   }
 

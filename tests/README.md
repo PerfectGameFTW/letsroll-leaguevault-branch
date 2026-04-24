@@ -127,6 +127,12 @@ A typical GitHub Actions job ordering looks like:
 |----------------------------------|------------------------------------------------------|-------------------------------|
 | `RUN_BOOTSTRAP_RACE_TESTS=1`     | `tests/api/setup-admin-bootstrap-race.test.ts`       | `bash scripts/test-race.sh`   |
 
+**Required CI secrets for the race suite (task #360):**
+
+| Secret           | Why it's required                                                                                                                                                                                                       |
+|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SETUP_SECRET`   | The `/api/setup/*` endpoints check this header on every request. Without it, every POST in the race suite returns `401` and no race coverage runs. Both `scripts/test-race.sh` AND the test file hard-fail when it's missing — a CI job that forgets to wire it through will exit non-zero with a clear remediation message instead of silently reporting `6 skipped`. |
+
 ## Layout
 
 - `tests/api/*.test.ts` — black-box API/integration tests that go over
