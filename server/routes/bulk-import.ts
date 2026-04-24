@@ -334,9 +334,12 @@ router.post('/', (req, res, next) => {
           email: vRow.email || null,
           phone: vRow.phone || null,
           // Stamp the importing admin's organization on every imported
-          // bowler at creation time (task #342). Bulk import is admin-
-          // only and is gated on `req.user.organizationId` above, so
-          // `organizationId` is guaranteed to be a valid number here.
+          // bowler at creation time (task #342, audited in #415). Bulk
+          // import is gated on `req.user.organizationId` at the top of
+          // this handler (line ~170) which 403s with a clean message
+          // before any rows are processed, so `organizationId` is
+          // guaranteed to be a valid number here. The DB-level NOT
+          // NULL constraint from #407 is the final safety net.
           organizationId,
         };
 

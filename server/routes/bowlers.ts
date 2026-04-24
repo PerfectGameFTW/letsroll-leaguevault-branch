@@ -320,13 +320,18 @@ router.post("/", async (req, res) => {
     }
 
     // Stamp the owning organization on the new bowler at creation time
-    // (task #342). This closes the cross-org hijack window between the
-    // bowler insert and its first `bowler_leagues` row: a bowler is now
-    // org-bound from the moment it exists, not retroactively inferred
-    // from league links. System admins may scope by ?organizationId, but
-    // every other role MUST have an org context — without one, the
-    // resulting bowler would be an instant orphan and unreachable to its
-    // own creator.
+    // (task #342, hardened to NOT NULL at the DB layer in #407, audited
+    // for completeness in #415). This closes the cross-org hijack
+    // window between the bowler insert and its first `bowler_leagues`
+    // row: a bowler is now org-bound from the moment it exists, not
+    // retroactively inferred from league links.
+    //
+    // Org id source: caller's session org. System admins MAY override
+    // via the `?organizationId` query param; for every other role the
+    // session org is the only source. If neither is present we 403
+    // here so the user gets a clean error instead of letting the
+    // `bowlers.organization_id` NOT NULL DB constraint fire as a 500.
+    // Pinned by tests/api/bowler-creation-org-required.test.ts.
     const callerOrgId: number | undefined = req.user?.organizationId ?? undefined;
     const isSystemAdmin = req.user?.role === 'system_admin';
     let stampOrgId: number | undefined = callerOrgId;
