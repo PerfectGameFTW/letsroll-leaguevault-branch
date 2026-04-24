@@ -54,11 +54,17 @@ const TEST_USER = {
 
 // --- Module mocks (same shape as change-password-notification.test.ts).
 
+// Captured by closure inside the factory below so we can assert
+// against it after the change-password route fires its
+// best-effort notification.
+const mockSendPasswordChangedNotification = vi.fn(async () => true);
+
 vi.mock('../../server/services/email', () => ({
   sendDeletionRequestNotification: vi.fn(async () => true),
   sendEmailChangeConfirmation: vi.fn(async () => true),
   sendEmailChangeNotification: vi.fn(async () => true),
-  sendPasswordChangedNotification: vi.fn(async () => true),
+  sendPasswordChangedNotification: (...a: unknown[]) =>
+    mockSendPasswordChangedNotification.apply(null, a as never),
   getBaseUrl: () => 'https://test.example',
 }));
 
@@ -159,6 +165,8 @@ beforeEach(() => {
     ...TEST_USER,
     ...patch,
   }));
+  mockSendPasswordChangedNotification.mockClear();
+  mockSendPasswordChangedNotification.mockResolvedValue(true);
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -169,6 +177,23 @@ async function patchProfile(body: unknown) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+}
+
+async function postChangePassword(body: unknown) {
+  return fetch(`${baseUrl}/api/account/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+// The change-password route dispatches the email helper as
+// fire-and-forget. Yield the microtask queue a few times so the
+// floating promise settles before we inspect the mock.
+async function flushFireAndForget() {
+  for (let i = 0; i < 5; i++) {
+    await new Promise(r => setImmediate(r));
+  }
 }
 
 describe('PATCH /api/account/profile — preferredLanguage round trip', () => {
@@ -236,6 +261,41 @@ describe('PATCH /api/account/profile — preferredLanguage round trip', () => {
     expect(profileUpdateSchema.safeParse({ preferredLanguage: null }).success).toBe(true);
     // Field stays optional — saving without it must not fail validation.
     expect(profileUpdateSchema.safeParse({}).success).toBe(true);
+  });
+
+  it("end-to-end round trip: PATCH preferredLanguage='es', then POST /change-password reads the stored value and dispatches the email with locale:'es'", async () => {
+    // 1. The user (currently 'auto') updates their preferred
+    //    language through the same account-settings endpoint the UI
+    //    hits.
+    const patchRes = await patchProfile({ preferredLanguage: 'es' });
+    expect(patchRes.status).toBe(200);
+    expect(mockUpdateUser).toHaveBeenCalledTimes(1);
+
+    // 2. From here on, getUser() should reflect the persisted
+    //    choice — that's what the change-password handler reads to
+    //    pick the email locale. Simulate that without coupling to
+    //    storage internals.
+    mockGetUser.mockReset();
+    mockGetUser.mockResolvedValue({ ...TEST_USER, preferredLanguage: 'es' });
+    mockUpdateUser.mockClear();
+
+    // 3. The same user changes their password.
+    const cpRes = await postChangePassword({
+      currentPassword: 'OriginalPw!2026',
+      newPassword: 'BrandNewPw!2026XX',
+    });
+    expect(cpRes.status).toBe(200);
+
+    await flushFireAndForget();
+
+    // 4. The locale stored by step 1 must be the locale the
+    //    notification helper is invoked with — otherwise the email
+    //    would silently render in English regardless of preference.
+    expect(mockSendPasswordChangedNotification).toHaveBeenCalledTimes(1);
+    const ctx = mockSendPasswordChangedNotification.mock.calls[0][2] as {
+      locale?: string | null;
+    };
+    expect(ctx.locale).toBe('es');
   });
 
   it('exports the same supported-language set as the bundled email translations', () => {
