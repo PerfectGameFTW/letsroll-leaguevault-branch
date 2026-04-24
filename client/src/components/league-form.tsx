@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
+import { useToast } from "@/hooks/use-toast";
 import { insertLeagueSchema, type InsertLeague, type League, type Location, DEFAULT_WEEKLY_FEE_CENTS, DEFAULT_TIMEZONE, DEFAULT_FINAL_TWO_WEEKS_DUE_WEEK } from "@shared/schema";
 import { calculateSeasonEnd, getAllBowlingDates, getEffectiveBowlingWeeks } from "@shared/schedule-utils";
 import { LeagueSchedulePreview } from "@/components/league-schedule-preview";
@@ -38,6 +39,7 @@ interface LeagueFormProps {
 }
 
 export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
+  const { toast } = useToast();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [bowlingWeeks, setBowlingWeeks] = useState<number>(30);
@@ -176,7 +178,24 @@ export function LeagueForm({ open, onClose, league }: LeagueFormProps) {
 
           <Form {...form}>
             <form
-              onSubmit={form.handleSubmit((data) => mutation.mutate(data))}
+              onSubmit={form.handleSubmit(
+                (data) => mutation.mutate(data),
+                (errors) => {
+                  const messages = Object.entries(errors)
+                    .map(([field, err]) => {
+                      const msg = (err as { message?: string })?.message;
+                      return msg ? `${field}: ${msg}` : field;
+                    })
+                    .filter(Boolean);
+                  toast({
+                    title: "Please fix the highlighted fields",
+                    description: messages.length > 0
+                      ? messages.join("; ")
+                      : "Some required fields are missing or invalid.",
+                    variant: "destructive",
+                  });
+                }
+              )}
               className="space-y-4"
             >
               <div className="space-y-4 pb-4">
