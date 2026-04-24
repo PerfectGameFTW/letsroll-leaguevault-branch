@@ -5,6 +5,7 @@ import compression from "compression";
 import { registerRoutes } from "./routes/index";
 import { setupVite } from "./vite";
 import { testConnection } from "./db";
+import { installDbInvariants } from "./db-invariants";
 import { createServer } from 'http';
 import path from 'path';
 import { setupAuth } from "./auth";
@@ -226,6 +227,15 @@ async function startServer() {
       process.exit(1);
     }
     log.info('Database connected');
+
+    // Install schema invariants that aren't expressible in the Drizzle
+    // schema (currently the users_role_org_required trigger). Idempotent.
+    try {
+      await installDbInvariants();
+    } catch (error) {
+      log.error('Failed to install database invariants:', error);
+      process.exit(1);
+    }
 
     ensureAvatarsDirectory();
 

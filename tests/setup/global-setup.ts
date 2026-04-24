@@ -11,55 +11,20 @@
  * loop alive after the last test resolves, which is what produced the
  * "close timed out after 10000ms" warning on every run.
  *
- * Also installs the `users_role_org_required` invariant as a TRIGGER
- * (replacing the legacy CHECK constraint of the same name). A trigger is
- * required so the system-admin orphan-data fixtures can stage legacy
- * org-less user rows in parallel by toggling
- * `session_replication_role = replica` for the duration of a single
- * transaction (CHECK constraints can't be bypassed that way; triggers
- * can). The trigger enforces the same invariant the CHECK did for all
- * normal application traffic.
+ * Also installs schema invariants (currently the
+ * `users_role_org_required` trigger) via `installDbInvariants`. The same
+ * function runs on production server boot in `server/index.ts`, so the
+ * test environment and production stay in sync. The trigger replaces the
+ * legacy CHECK constraint of the same name; orphan-data fixtures need a
+ * trigger because triggers can be temporarily disabled for one
+ * transaction (CHECK constraints cannot).
  */
-import { sql } from 'drizzle-orm';
 import { seedTestUsers } from './seed-test-users';
-import { db, cleanup as closeDbPool } from '../../server/db';
-
-async function installRoleOrgRequiredTrigger() {
-  // Drop the legacy CHECK constraint if it still exists. Idempotent.
-  await db.execute(
-    sql`ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_org_required`,
-  );
-
-  // Trigger function — same invariant the CHECK enforced.
-  await db.execute(sql`
-    CREATE OR REPLACE FUNCTION users_role_org_required_fn()
-    RETURNS trigger
-    LANGUAGE plpgsql
-    AS $$
-    BEGIN
-      IF NEW.role <> 'system_admin' AND NEW.organization_id IS NULL THEN
-        RAISE EXCEPTION 'users_role_org_required: non-admin users must have organization_id'
-          USING ERRCODE = 'check_violation';
-      END IF;
-      RETURN NEW;
-    END;
-    $$;
-  `);
-
-  // Replace any prior trigger with the same name (idempotent).
-  await db.execute(
-    sql`DROP TRIGGER IF EXISTS users_role_org_required ON users`,
-  );
-  await db.execute(sql`
-    CREATE TRIGGER users_role_org_required
-    BEFORE INSERT OR UPDATE ON users
-    FOR EACH ROW
-    EXECUTE FUNCTION users_role_org_required_fn();
-  `);
-}
+import { cleanup as closeDbPool } from '../../server/db';
+import { installDbInvariants } from '../../server/db-invariants';
 
 export default async function setup() {
-  await installRoleOrgRequiredTrigger();
+  await installDbInvariants();
 
   if (process.env.SKIP_TEST_SEED !== '1') {
     await seedTestUsers();

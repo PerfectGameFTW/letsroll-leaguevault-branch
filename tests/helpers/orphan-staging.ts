@@ -18,15 +18,14 @@
  * Each helper opens a tight single-statement-window transaction so the
  * required DDL is held only for the duration of one INSERT and then
  * immediately restored, instead of being dropped for the full test
- * file (which is what blocked file-parallel test execution).
+ * file.
  *
  * Lock impact
  * ------------------------------------------------------------------
  * - `insertChildBypassingLeagueFk`: takes ACCESS EXCLUSIVE on the
  *   target child table for ~tens of milliseconds (one DROP + one ADD
- *   CONSTRAINT). Sibling sessions writing to the same table briefly
- *   wait but never fail. The constraint is re-added as `NOT VALID` so
- *   the orphan row we just inserted does not block the operation; new
+ *   CONSTRAINT). The constraint is re-added as `NOT VALID` so the
+ *   orphan row we just inserted does not block the operation; new
  *   writes are still validated. Call `validateLeagueFk(<table>)` from
  *   `afterAll` once the orphan rows have been deleted to mark the
  *   constraint VALID again.
@@ -34,6 +33,14 @@
  * - `insertOrphanUser`: takes only SHARE ROW EXCLUSIVE on `users`
  *   (DISABLE/ENABLE TRIGGER is much cheaper than DROP CONSTRAINT) and
  *   is similarly tight.
+ *
+ * Concurrency
+ * ------------------------------------------------------------------
+ * Because both helpers still take table-level locks, every test file
+ * that writes to the affected tables runs under the
+ * `serial-fk-bypass` vitest project (see `vitest.config.ts`), which
+ * forces those files to run one-at-a-time. All other suites continue
+ * to run in parallel.
  */
 import { sql } from 'drizzle-orm';
 import { db } from '../../server/db';

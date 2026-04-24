@@ -28,13 +28,16 @@ export const users = pgTable("users", {
   locationIdx: index("users_location_idx").on(table.locationId),
   // The role/org invariant — every non-admin user must be attached to
   // an organization — is enforced by a DB-side TRIGGER named
-  // `users_role_org_required` (installed by `tests/setup/global-setup.ts`
-  // for tests, and by the production migration). It used to be a CHECK
-  // constraint, but a trigger is required so the system-admin "orphan
-  // data" cleanup tooling tests can stage legacy org-less rows in
-  // parallel by setting `session_replication_role = replica` for the
-  // duration of a single transaction (CHECK constraints can't be
-  // bypassed that way, while triggers can).
+  // `users_role_org_required`, installed idempotently by
+  // `installDbInvariants` in `server/db-invariants.ts` (called from
+  // both `server/index.ts` on every server boot and
+  // `tests/setup/global-setup.ts` from vitest's globalSetup).
+  // It used to be a CHECK constraint, but a trigger is required so
+  // the system-admin "orphan data" cleanup tooling tests can stage
+  // legacy org-less rows by briefly disabling the trigger inside a
+  // single transaction (`ALTER TABLE ... DISABLE TRIGGER` only takes
+  // SHARE ROW EXCLUSIVE — CHECK constraints can't be bypassed
+  // per-session at all without superuser privileges).
 }));
 
 
