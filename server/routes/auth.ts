@@ -12,6 +12,7 @@ import { checkUserBelongsToOrg } from "../middleware/subdomain";
 import { csrfProtection } from "../middleware/csrf";
 import { createLogger } from "../logger";
 import { hashPassword, safeTokenCompare } from "../lib/password";
+import { destroyOtherSessionsForUser } from "../auth";
 import { sendTemplatedEmail, getBaseUrl, sendPasswordChangedNotification } from "../services/email.js";
 
 const log = createLogger("AuthRoutes");
@@ -295,6 +296,31 @@ export function registerAuthRoutes(app: Express): void {
         // owner reclaims their account via reset.
         storage.invalidatePendingEmailChangeRequestsForUser(user.id),
       ]);
+
+      // Task #352: force-log-out every existing session for this user.
+      // The reset/set-password flow runs unauthenticated, so unlike the
+      // change-password handler (#318) we have no current session to
+      // preserve — the user is most likely here BECAUSE they suspect
+      // a stolen device or a leaked credential, so any leftover
+      // cookies must die. We pass `keepSid = null` to nuke them all;
+      // the auto-login below (`req.login`) creates a fresh session
+      // for the device that just completed the reset. Best-effort: a
+      // session-store hiccup must not roll back the password rotation
+      // that already committed.
+      try {
+        const dropped = await destroyOtherSessionsForUser(user.id, null);
+        if (dropped > 0) {
+          log.info('Destroyed all existing sessions on set-password', {
+            userId: user.id,
+            count: dropped,
+          });
+        }
+      } catch (err) {
+        log.error('Failed to destroy sessions on set-password', {
+          userId: user.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
 
       // Task #409: best-effort "your password was just changed" notice,
       // mirroring the authenticated change-password path (#353). Not
