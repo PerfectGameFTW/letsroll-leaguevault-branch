@@ -1,71 +1,124 @@
 /**
  * Unit tests for the shared row-locking sweep helper (task #361).
  *
- * The helper itself is intentionally tiny — its value is in
- * guaranteeing the count→lock→diff math is consistent across every
- * sweep service. These tests pin that math:
- *
- *   - rows.length === totalMatching → skippedByLock === 0
- *   - rows.length <  totalMatching → skippedByLock === diff
- *   - rows.length >  totalMatching (count was stale) → clamped to 0
- *   - countMatching is awaited before lockMatching (ordering matters
- *     so the count predicate sees the same snapshot the lock will)
- *   - both closures are invoked exactly once per sweep
- *   - errors from either closure propagate (no silent swallowing)
+ * The helper takes a Drizzle table + a single `where` predicate and
+ * runs both `SELECT count(*)` and `SELECT … FOR UPDATE OF <table>
+ * SKIP LOCKED` against the same table+predicate, so callers can't
+ * silently drift one query from the other. These tests pin both the
+ * arithmetic (count - locked = skippedByLock) and the structural
+ * contract (count + lock issued against the SAME table & predicate,
+ * lock query uses FOR UPDATE SKIP LOCKED with `of: <table>`).
  */
 import { describe, expect, it, vi } from 'vitest';
 
+// `lockedSweep` imports `db` from `../db` purely for its TYPE (to
+// derive the SweepDb union). The mock keeps that side-effectful
+// import a no-op so this test stays in-memory.
+vi.mock('../../server/db', () => ({
+  db: {
+    transaction: async <T,>(fn: (tx: unknown) => Promise<T>) => fn({}),
+  },
+}));
+
 import { lockedSweep } from '../../server/services/_internal/locked-sweep';
+
+// A fake Drizzle "table" — the helper passes it straight through to
+// `.from()` and `.for('update', { of: <table>, … })`, so any shape
+// works as long as the test asserts on object identity.
+const fakeTable = { __brand: 'fake-table' } as unknown as Parameters<typeof lockedSweep>[1];
+const fakePredicate = { __brand: 'fake-predicate' } as unknown as Parameters<typeof lockedSweep>[2];
+
+interface SelectCall {
+  projection: Record<string, unknown> | undefined;
+  from: unknown;
+  where: unknown;
+  forArgs: unknown[] | null;
+}
+
+function buildFakeDb(opts: {
+  countResult: number;
+  lockedRows: unknown[];
+}) {
+  const calls: SelectCall[] = [];
+  const db = {
+    select(projection?: Record<string, unknown>) {
+      const call: SelectCall = {
+        projection,
+        from: undefined,
+        where: undefined,
+        forArgs: null,
+      };
+      calls.push(call);
+      const isCount = projection !== undefined;
+      return {
+        from(table: unknown) {
+          call.from = table;
+          return {
+            where(predicate: unknown) {
+              call.where = predicate;
+              if (isCount) {
+                return Promise.resolve([{ total: opts.countResult }]);
+              }
+              const lockChain = {
+                for(...args: unknown[]) {
+                  call.forArgs = args;
+                  return Promise.resolve(opts.lockedRows);
+                },
+              };
+              return lockChain;
+            },
+          };
+        },
+      };
+    },
+  };
+  return { db, calls };
+}
 
 describe('lockedSweep', () => {
   it('returns skippedByLock=0 when every matching row was locked', async () => {
-    const rows = [{ id: 1 }, { id: 2 }, { id: 3 }];
-    const result = await lockedSweep({
-      countMatching: async () => 3,
-      lockMatching: async () => rows,
-    });
+    const lockedRows = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const { db } = buildFakeDb({ countResult: 3, lockedRows });
+
+    const result = await lockedSweep(db as never, fakeTable, fakePredicate);
 
     expect(result).toEqual({
-      rows,
+      rows: lockedRows,
       totalMatching: 3,
       skippedByLock: 0,
     });
   });
 
   it('reports the correct diff when peers held some rows', async () => {
-    const rows = [{ id: 1 }, { id: 2 }];
-    const result = await lockedSweep({
-      countMatching: async () => 5,
-      lockMatching: async () => rows,
-    });
+    const lockedRows = [{ id: 1 }, { id: 2 }];
+    const { db } = buildFakeDb({ countResult: 5, lockedRows });
 
-    expect(result.rows).toBe(rows);
+    const result = await lockedSweep(db as never, fakeTable, fakePredicate);
+
+    expect(result.rows).toBe(lockedRows);
     expect(result.totalMatching).toBe(5);
     expect(result.skippedByLock).toBe(3);
   });
 
   it('clamps skippedByLock to 0 when the count was stale (locked > total)', async () => {
-    // In practice this happens if a row gets inserted between the
-    // count and the lock query — the lock query then returns more
-    // rows than the count saw. Returning a negative contention
-    // number would be confusing in dashboards/log lines, so the
-    // helper clamps.
-    const rows = [{ id: 1 }, { id: 2 }, { id: 3 }];
-    const result = await lockedSweep({
-      countMatching: async () => 1,
-      lockMatching: async () => rows,
-    });
+    // Happens if a row gets inserted between the count and the lock
+    // query — the lock query then returns more rows than the count
+    // saw. Returning a negative contention number would be confusing
+    // in dashboards/log lines, so the helper clamps.
+    const lockedRows = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    const { db } = buildFakeDb({ countResult: 1, lockedRows });
+
+    const result = await lockedSweep(db as never, fakeTable, fakePredicate);
 
     expect(result.totalMatching).toBe(1);
-    expect(result.rows).toBe(rows);
+    expect(result.rows).toBe(lockedRows);
     expect(result.skippedByLock).toBe(0);
   });
 
   it('handles the empty-candidate case', async () => {
-    const result = await lockedSweep({
-      countMatching: async () => 0,
-      lockMatching: async () => [],
-    });
+    const { db } = buildFakeDb({ countResult: 0, lockedRows: [] });
+
+    const result = await lockedSweep(db as never, fakeTable, fakePredicate);
 
     expect(result).toEqual({
       rows: [],
@@ -74,49 +127,89 @@ describe('lockedSweep', () => {
     });
   });
 
-  it('awaits countMatching before lockMatching and invokes each exactly once', async () => {
+  it('issues count and lock against the SAME table and predicate', async () => {
+    // Structural guarantee: the whole point of the helper is that a
+    // caller can't accidentally count one predicate and lock another.
+    const { db, calls } = buildFakeDb({ countResult: 2, lockedRows: [{ id: 1 }, { id: 2 }] });
+
+    await lockedSweep(db as never, fakeTable, fakePredicate);
+
+    expect(calls).toHaveLength(2);
+    const [countCall, lockCall] = calls;
+    expect(countCall.projection).toEqual({ total: expect.anything() });
+    expect(countCall.from).toBe(fakeTable);
+    expect(countCall.where).toBe(fakePredicate);
+    expect(lockCall.projection).toBeUndefined();
+    expect(lockCall.from).toBe(fakeTable);
+    expect(lockCall.where).toBe(fakePredicate);
+  });
+
+  it("issues the lock query as FOR UPDATE OF <table> SKIP LOCKED", async () => {
+    const { db, calls } = buildFakeDb({ countResult: 1, lockedRows: [{ id: 1 }] });
+
+    await lockedSweep(db as never, fakeTable, fakePredicate);
+
+    const lockCall = calls[1];
+    expect(lockCall.forArgs).toEqual([
+      'update',
+      { of: fakeTable, skipLocked: true },
+    ]);
+  });
+
+  it('runs the count query before the lock query', async () => {
+    // Order matters: the count is the snapshot the contention math
+    // is computed against. A reversed order would let the count see
+    // an inflated set if a peer commits between the two queries.
     const order: string[] = [];
-    const countMatching = vi.fn(async () => {
-      order.push('count-start');
-      await Promise.resolve();
-      order.push('count-end');
-      return 2;
-    });
-    const lockMatching = vi.fn(async () => {
-      order.push('lock-start');
-      await Promise.resolve();
-      order.push('lock-end');
-      return [{ id: 'a' }, { id: 'b' }];
-    });
+    const db = {
+      select(projection?: Record<string, unknown>) {
+        const isCount = projection !== undefined;
+        return {
+          from() {
+            return {
+              where() {
+                if (isCount) {
+                  order.push('count');
+                  return Promise.resolve([{ total: 1 }]);
+                }
+                return {
+                  for() {
+                    order.push('lock');
+                    return Promise.resolve([{ id: 1 }]);
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    };
 
-    await lockedSweep({ countMatching, lockMatching });
-
-    expect(countMatching).toHaveBeenCalledTimes(1);
-    expect(lockMatching).toHaveBeenCalledTimes(1);
-    expect(order).toEqual(['count-start', 'count-end', 'lock-start', 'lock-end']);
+    await lockedSweep(db as never, fakeTable, fakePredicate);
+    expect(order).toEqual(['count', 'lock']);
   });
 
-  it('propagates errors from countMatching without invoking lockMatching', async () => {
-    const lockMatching = vi.fn(async () => []);
-    await expect(
-      lockedSweep({
-        countMatching: async () => {
-          throw new Error('count exploded');
-        },
-        lockMatching,
-      }),
-    ).rejects.toThrow('count exploded');
-    expect(lockMatching).not.toHaveBeenCalled();
-  });
+  it('falls back to totalMatching=0 if the count row is missing', async () => {
+    // Defensive: a count query should always return one row, but if
+    // a future driver ever returns [] we don't want NaN telemetry.
+    const db = {
+      select(projection?: Record<string, unknown>) {
+        const isCount = projection !== undefined;
+        return {
+          from() {
+            return {
+              where() {
+                if (isCount) return Promise.resolve([]);
+                return { for: () => Promise.resolve([]) };
+              },
+            };
+          },
+        };
+      },
+    };
 
-  it('propagates errors from lockMatching', async () => {
-    await expect(
-      lockedSweep({
-        countMatching: async () => 1,
-        lockMatching: async () => {
-          throw new Error('lock exploded');
-        },
-      }),
-    ).rejects.toThrow('lock exploded');
+    const result = await lockedSweep(db as never, fakeTable, fakePredicate);
+    expect(result.totalMatching).toBe(0);
+    expect(result.skippedByLock).toBe(0);
   });
 });

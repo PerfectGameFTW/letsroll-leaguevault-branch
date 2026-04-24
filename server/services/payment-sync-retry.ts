@@ -14,7 +14,7 @@
  * error at that point). The admin retry endpoint stays available as a
  * manual override regardless of attempt count.
  */
-import { and, count, inArray, isNotNull, lt, sql } from 'drizzle-orm';
+import { and, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { bowlers } from '@shared/schema';
 import { storage } from '../storage';
@@ -105,27 +105,17 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
   );
 
   const { candidates, skippedByLock } = await db.transaction(async (tx) => {
-    // The shared lockedSweep helper handles count + FOR UPDATE SKIP
-    // LOCKED + contention math (see ./_internal/locked-sweep.ts) so
-    // every sweep service uses the same predicate-consistency
-    // contract. We still own the surrounding transaction because the
-    // lease-stamp UPDATE below has to commit atomically with the lock
-    // claim.
-    const { rows: locked, skippedByLock: skipped } = await lockedSweep({
-      countMatching: async () => {
-        const totalRow = await tx
-          .select({ total: count() })
-          .from(bowlers)
-          .where(conditions);
-        return totalRow[0]?.total ?? 0;
-      },
-      lockMatching: () =>
-        tx
-          .select()
-          .from(bowlers)
-          .where(conditions)
-          .for('update', { of: bowlers, skipLocked: true }),
-    });
+    // The shared lockedSweep helper drives both the count query and
+    // the FOR UPDATE SKIP LOCKED select off the same `conditions`
+    // predicate (see ./_internal/locked-sweep.ts) so the contention
+    // math can never drift from the lock query. We still own the
+    // surrounding transaction because the lease-stamp UPDATE below
+    // has to commit atomically with the lock claim.
+    const { rows: locked, skippedByLock: skipped } = await lockedSweep(
+      tx,
+      bowlers,
+      conditions!,
+    );
 
     // Critical for cross-process safety: row locks are released as
     // soon as this transaction commits, but `syncBowlerForUser` runs

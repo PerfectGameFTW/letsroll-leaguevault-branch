@@ -402,43 +402,31 @@ export class PaymentScheduler {
         });
 
         const missedIds = missedSchedules.map(r => r.schedule.id);
-        // Same predicate gates the count and the lock query so the
-        // shared lockedSweep helper (see
-        // ./_internal/locked-sweep.ts) computes a meaningful
-        // contention number. Pre-task #361 this code subtracted
-        // `lockedRows.length` from the JS-side `missedSchedules.length`
-        // — that attributed rows that became inactive in the brief
-        // window between the pre-select and the lock query to lock
-        // contention. The helper's SQL `count(*)` measures only rows
-        // that were still candidates at lock time, which is the
-        // number an operator actually wants in alerts.
+        // Same predicate gates the count and the lock query inside
+        // the shared lockedSweep helper (see
+        // ./_internal/locked-sweep.ts) so the contention number can
+        // never drift from the lock query. Pre-task #361 this code
+        // subtracted `lockedRows.length` from the JS-side
+        // `missedSchedules.length` — that attributed rows that
+        // became inactive in the brief window between the pre-select
+        // and the lock query to lock contention. The helper's SQL
+        // `count(*)` measures only rows still candidates at lock
+        // time, which is the number an operator actually wants in
+        // alerts. The legacy `{ schedule: ... }` projection wrapper
+        // was historical baggage from initializeFromDatabase's JOIN;
+        // this block has no JOIN, so we use the row directly.
         const candidatesPredicate = and(
           eq(paymentSchedules.active, true),
           lte(paymentSchedules.nextPaymentDate, now.toISOString()),
           inArray(paymentSchedules.id, missedIds),
         );
-        const { rows: lockedRows, skippedByLock } = await db.transaction(async (tx) => {
-          return lockedSweep({
-            countMatching: async () => {
-              const totalRow = await tx
-                .select({ total: count() })
-                .from(paymentSchedules)
-                .where(candidatesPredicate);
-              return totalRow[0]?.total ?? 0;
-            },
-            lockMatching: () =>
-              tx
-                .select({ schedule: paymentSchedules })
-                .from(paymentSchedules)
-                .where(candidatesPredicate)
-                .for('update', { of: paymentSchedules, skipLocked: true }),
-          });
-        });
+        const { rows: lockedRows, skippedByLock } = await db.transaction(async (tx) =>
+          lockedSweep(tx, paymentSchedules, candidatesPredicate!),
+        );
 
         lockContention = skippedByLock;
 
-        for (const row of lockedRows) {
-          const s = row.schedule;
+        for (const s of lockedRows) {
           const isValid = await this.validateCardForProvider(s.paymentCardId, s.leagueId);
           if (!isValid) {
             logger.error(`[PaymentScheduler] Sweep: invalid card token for schedule ${s.id}, skipping`);
