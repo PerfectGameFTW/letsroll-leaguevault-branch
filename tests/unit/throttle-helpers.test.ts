@@ -1,14 +1,8 @@
 /**
- * Unit tests for the pure helpers behind the auth-throttle UI
- * (tasks #355, #411). These don't need a DOM — they cover the
- * `parseRetryAfterSeconds` parser exposed from the query client
- * and the `formatCountdown` phrasing helper used by the throttle
- * banner across change-password, login, and forgot-password.
- *
- * The hook itself (`useThrottleCountdown`) is intentionally NOT
- * exercised here because the project's vitest config runs in a
- * `node` environment with no React renderer; component-level
- * coverage is the job of task #412.
+ * Unit tests for the pure helpers behind the auth-throttle UI:
+ * `parseRetryAfterSeconds` (queryClient) and `formatCountdown`
+ * (use-throttle-countdown). The hook itself is covered by the
+ * component-level UI tests since vitest runs in a node env here.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseRetryAfterSeconds } from '../../client/src/lib/queryClient';
@@ -17,7 +11,7 @@ import {
   formatCountdown,
 } from '../../client/src/hooks/use-throttle-countdown';
 
-describe('parseRetryAfterSeconds (task #411 made it exported)', () => {
+describe('parseRetryAfterSeconds', () => {
   beforeEach(() => {
     // Pin "now" so HTTP-date arithmetic and RateLimit-Reset
     // heuristics are deterministic across environments.
@@ -91,11 +85,7 @@ describe('formatCountdown', () => {
 });
 
 describe('DEFAULT_THROTTLE_FALLBACK_SECONDS', () => {
-  it('is a sane positive number under typical limiter windows', () => {
-    // Pin the contract: must be a positive number AND strictly less
-    // than the typical 15-minute auth-limiter window so the local
-    // banner clears before the server-side window does (otherwise
-    // users would still see "wait" after the limiter has reset).
+  it('stays under the typical 15-minute auth-limiter window', () => {
     expect(DEFAULT_THROTTLE_FALLBACK_SECONDS).toBeGreaterThan(0);
     expect(DEFAULT_THROTTLE_FALLBACK_SECONDS).toBeLessThan(15 * 60);
   });

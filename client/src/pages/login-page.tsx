@@ -48,9 +48,6 @@ const LoginPage: FC = () => {
   const { org: subdomainOrg } = useSubdomainOrg();
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Surface 429 from the login limiter as the same friendly inline
-  // banner the change-password card uses (task #411). The toast-style
-  // generic message before this used to read like a transient outage.
   const { isThrottled, remainingSeconds, throttle, clear: clearThrottle } =
     useThrottleCountdown();
 
@@ -76,13 +73,8 @@ const LoginPage: FC = () => {
       });
 
       if (response.status === 429) {
-        // Promote rate-limited responses to a dedicated UI state
-        // (banner + disabled submit) instead of falling through to
-        // the generic loginError pipeline. We honor the server's
-        // Retry-After / RateLimit-Reset headers when present, and
-        // otherwise fall back to a sane default so the user is
-        // nudged toward "Forgot password?" instead of bouncing
-        // attempts off the limiter.
+        // Surface limiter throttling as a dedicated banner + disabled submit
+        // instead of the generic error pipeline; nudges the user to recovery.
         const retryAfter = parseRetryAfterSeconds(
           response.headers.get('retry-after'),
           response.headers.get('ratelimit-reset'),

@@ -51,8 +51,6 @@ type PasswordFormData = z.infer<typeof passwordSchema>;
 export function ChangePasswordCard() {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
-  // Throttle banner state lives in `useThrottleCountdown` (task #411
-  // factored this out so login + forgot-password can share it).
   const { isThrottled, remainingSeconds, throttle, clear: clearThrottle } =
     useThrottleCountdown();
 

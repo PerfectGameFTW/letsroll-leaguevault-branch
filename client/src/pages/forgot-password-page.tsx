@@ -28,9 +28,6 @@ const ForgotPasswordPage: FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  // Surface 429 from the forgot-password limiter the same way the
-  // login form does (task #411). No "reset password instead" link
-  // here — the user is already on the recovery surface.
   const { isThrottled, remainingSeconds, throttle } = useThrottleCountdown();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -47,11 +44,8 @@ const ForgotPasswordPage: FC = () => {
       });
 
       if (response.status === 429) {
-        // Promote rate-limited responses to the dedicated throttle
-        // banner instead of leaving the generic toast in place; the
-        // forgot-password limiter is intentionally aggressive
-        // (anti-enumeration), so users hit it more often than other
-        // auth endpoints and deserve a clear "try again later" UX.
+        // Forgot-password limiter is aggressive (anti-enumeration) — show a
+        // dedicated throttle banner so users get a clear "try again later".
         const retryAfter = parseRetryAfterSeconds(
           response.headers.get('retry-after'),
           response.headers.get('ratelimit-reset'),
