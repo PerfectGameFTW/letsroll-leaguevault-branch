@@ -22,14 +22,28 @@
  * org_admin / user roles are blocked by the `users_role_org_required`
  * invariant from ever reaching this code path with a null org.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { eq, inArray } from 'drizzle-orm';
+import { db } from '../../server/db';
+import { bowlers } from '@shared/schema';
 import {
   BASE_URL,
   TEST_ADMIN_EMAIL,
   TEST_ADMIN_PASSWORD,
+  TEST_ORG_A_EMAIL,
+  TEST_ORG_PASSWORD,
   apiPost,
   login,
 } from '../helpers';
+
+const createdBowlerIds: number[] = [];
+
+afterEach(async () => {
+  if (createdBowlerIds.length > 0) {
+    await db.delete(bowlers).where(inArray(bowlers.id, createdBowlerIds));
+    createdBowlerIds.length = 0;
+  }
+});
 
 describe('Bowler creation routes — organization context guards (task #415)', () => {
   describe('POST /api/bowlers', () => {
@@ -88,9 +102,43 @@ describe('Bowler creation routes — organization context guards (task #415)', (
       expect(data.success).toBe(false);
       expect(data.error?.message).toMatch(/invalid organization id format/i);
     });
+
+    it('happy path: stamps the bowler with the caller\'s session org', async () => {
+      // Closes the matrix opposite the two negative tests above: a
+      // valid creation actually persists `organizationId` on the row,
+      // proving the stamping path itself works (not just that the
+      // guards fail). Uses an org_admin so the stamp source is the
+      // session, not the sysadmin override branch.
+      const session = await login(TEST_ORG_A_EMAIL, TEST_ORG_PASSWORD);
+      expect(session.user.role).toBe('org_admin');
+      expect(typeof session.user.organizationId).toBe('number');
+
+      const { status, data } = await apiPost<{ id: number; organizationId: number }>(
+        '/api/bowlers',
+        {
+          name: 'Vitest Happy Path #415',
+          email: null,
+          phone: null,
+          active: true,
+          order: 0,
+        },
+        session,
+      );
+
+      expect(status).toBe(201);
+      expect(data.success).toBe(true);
+      const created = data.data!;
+      createdBowlerIds.push(created.id);
+
+      // The new row in the database carries the caller's session org
+      // (not null, not some other org) — the whole point of #415.
+      const [row] = await db.select().from(bowlers).where(eq(bowlers.id, created.id));
+      expect(row).toBeDefined();
+      expect(row.organizationId).toBe(session.user.organizationId);
+    });
   });
 
-  describe('POST /api/bulk-import', () => {
+  describe('POST /api/bowlers/bulk-import', () => {
     it('returns 403 FORBIDDEN when a system_admin uploads without a session org', async () => {
       const session = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
       expect(session.user.role).toBe('system_admin');
