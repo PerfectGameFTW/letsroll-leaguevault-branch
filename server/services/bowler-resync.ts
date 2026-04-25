@@ -92,12 +92,13 @@ async function runBowlerResync(
     }
 
     // BowlNow branch: requires org context to look up the org's BN
-    // credentials. Prefer the BOWLER'S OWN organizationId over the
-    // caller-provided one so a system_admin acting cross-org doesn't
-    // make us look up the WRONG org's BowlNow config (review feedback
-    // on the architect pass for #429). The caller-provided value
-    // remains the override for callers that pass it deliberately,
-    // but bowler.organizationId is the safer default.
+    // credentials. We always prefer the BOWLER'S OWN organizationId
+    // and only fall back to the caller-provided value when the bowler
+    // record itself has no org set (data-integrity fallback only).
+    // Rationale: a system_admin acting cross-org would otherwise have
+    // us look up the WRONG org's BowlNow config (architect feedback
+    // on #429). The caller-provided value is a fallback, NOT an
+    // override.
     const effectiveOrgId = bowler.organizationId ?? organizationId ?? null;
     if (effectiveOrgId) {
       try {
