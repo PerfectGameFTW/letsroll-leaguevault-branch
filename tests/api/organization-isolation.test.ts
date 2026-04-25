@@ -879,5 +879,174 @@ describe('Organization Isolation', () => {
         expect(collectIds(ownerLocations.data.data)).toContain(orgBLocationId);
       }
     });
+
+    // ----------------------------------------------------------------
+    // Task #399 — backfill cross-org coverage for the remaining
+    // id-bearing GET endpoints flagged by
+    // `scripts/check-org-isolation-coverage.ts`. Public branding/avatar
+    // endpoints are intentionally allowlisted in the script and not
+    // tested here. Each test below requests an org B id (or org B's
+    // organizationId) as session A and asserts either a strict 403/404
+    // or a 200 with no leaking row/payload.
+    // ----------------------------------------------------------------
+    describe('task #399 — additional cross-org coverage (lint backfill)', () => {
+      it('org A GET /api/admin/email-templates/:id → 403 (admin-only endpoint denies org_admin)', async () => {
+        // The admin router is gated by requireOrgAdmin at mount and
+        // each handler additionally calls requireAdmin (system_admin
+        // only). An org_admin caller hits the 403 from requireAdmin
+        // before any id lookup happens, so a placeholder id is enough
+        // to exercise the gate without provisioning a template.
+        const placeholderTemplateId = 999999;
+        const { status, data } = await apiGet(
+          `/api/admin/email-templates/${placeholderTemplateId}`,
+          sessionA,
+        );
+        expect(status).toBe(403);
+        expect(data.success).toBe(false);
+      });
+
+      it('org A GET /api/leagues/:id/season-history (org B league) → 403/404 and does not leak the season chain', async () => {
+        // Pre-#399 this handler walked the full season chain via
+        // storage.getLeagues(league.organizationId) with no access
+        // check — pointing it at an org B league id would surface
+        // org B's whole season history to org A. The fix gates on
+        // hasAccessToLeague; verify the gate stays in place.
+        expect(orgBLeagueId).not.toBeNull();
+        const { status, data } = await apiGet(
+          `/api/leagues/${orgBLeagueId}/season-history`,
+          sessionA,
+        );
+        expect([403, 404]).toContain(status);
+        expect(data.success).toBe(false);
+
+        // Positive control: the owning org reaches the handler so the
+        // 403 above is meaningful and not just a route mis-mount.
+        const owner = await apiGet(
+          `/api/leagues/${orgBLeagueId}/season-history`,
+          sessionB,
+        );
+        expect(owner.status).toBe(200);
+        expect(owner.data.success).toBe(true);
+      });
+
+      it('org A GET /api/locations/:id (org B location) → 403 and does not leak the row', async () => {
+        expect(orgBLocationId).not.toBeNull();
+        const { status, data } = await apiGet<Location>(
+          `/api/locations/${orgBLocationId}`,
+          sessionA,
+        );
+        expect(status).toBe(403);
+        expect(data.success).toBe(false);
+        const payload = JSON.stringify(data);
+        expect(payload).not.toContain(`Vitest Iso Location ${stamp}`);
+      });
+
+      it('org A GET /api/locations/:id/cardpointe-config (org B location) → 403', async () => {
+        expect(orgBLocationId).not.toBeNull();
+        const { status, data } = await apiGet(
+          `/api/locations/${orgBLocationId}/cardpointe-config`,
+          sessionA,
+        );
+        expect(status).toBe(403);
+        expect(data.success).toBe(false);
+      });
+
+      it('org A GET /api/locations/:id/square-config (org B location) → 403', async () => {
+        expect(orgBLocationId).not.toBeNull();
+        const { status, data } = await apiGet(
+          `/api/locations/${orgBLocationId}/square-config`,
+          sessionA,
+        );
+        expect(status).toBe(403);
+        expect(data.success).toBe(false);
+      });
+
+      it('org A GET /api/scores/league/:leagueId/week/:weekNumber (org B league) → 403 (hasAccessToLeague gate)', async () => {
+        expect(orgBLeagueId).not.toBeNull();
+        // Bind the week number to a variable so both segments are
+        // template-literal `${...}` references — the coverage lint's
+        // regex requires every `:param` segment of the effective path
+        // to appear that way for the test to count as referencing it.
+        const weekNumber = 1;
+        const { status, data } = await apiGet(
+          `/api/scores/league/${orgBLeagueId}/week/${weekNumber}`,
+          sessionA,
+        );
+        expect(status).toBe(403);
+        expect(data.success).toBe(false);
+      });
+
+      it('org A GET /api/bn/status?organizationId=<orgB> returns the same body as the own-org call (param ignored for org_admin)', async () => {
+        // For non-system-admin callers the handler always uses
+        // req.user.organizationId and silently ignores the
+        // ?organizationId query param. The cross-org call must
+        // therefore reveal exactly zero new information vs an
+        // unparameterised own-org call from the same session.
+        expect(orgBId).not.toBeNull();
+        const cross = await apiGet(
+          `/api/bn/status?organizationId=${orgBId}`,
+          sessionA,
+        );
+        const own = await apiGet('/api/bn/status', sessionA);
+        expect(cross.status).toBe(200);
+        expect(own.status).toBe(200);
+        expect(cross.data).toEqual(own.data);
+      });
+
+      it('org A GET /api/bowlers?organizationId=<orgB> must not include the org B bowler', async () => {
+        expect(orgBBowlerId).not.toBeNull();
+        expect(orgBId).not.toBeNull();
+        const { status, data } = await apiGet<Bowler[]>(
+          `/api/bowlers?organizationId=${orgBId}`,
+          sessionA,
+        );
+        // Org admins are scoped to their own organizationId regardless
+        // of the query param, so this should resolve to org A's own
+        // bowlers (with org B's bowler absent).
+        expect(status).toBe(200);
+        if (Array.isArray(data.data) && orgBBowlerId != null) {
+          expect(collectIds(data.data)).not.toContain(orgBBowlerId);
+        }
+        const payload = JSON.stringify(data);
+        expect(payload).not.toContain(`Vitest #341 Bowler ${stamp}`);
+        expect(payload).not.toContain(`vitest-341-${stamp}@example.com`);
+      });
+
+      it('org A GET /api/bowlers/unlinked?organizationId=<orgB> must not surface any org B bowler', async () => {
+        // The handler clamps non-system-admin callers to their own
+        // org, so even though we're passing org B's id the response
+        // must reflect org A's data and never reveal org B's bowler
+        // name.
+        expect(orgBBowlerId).not.toBeNull();
+        expect(orgBId).not.toBeNull();
+        const { status, data } = await apiGet(
+          `/api/bowlers/unlinked?organizationId=${orgBId}`,
+          sessionA,
+        );
+        expect(status).toBe(200);
+        const payload = JSON.stringify(data);
+        expect(payload).not.toContain(`Vitest #341 Bowler ${stamp}`);
+        expect(payload).not.toContain(`vitest-341-${stamp}@example.com`);
+      });
+
+      it('org A GET /api/payments?organizationId=<orgB> must not include the org B payment', async () => {
+        // For non-system-admin callers payment-reports.ts always uses
+        // req.user.organizationId and ignores the ?organizationId
+        // query param. Pointing it at org B's id from session A must
+        // therefore yield zero rows pointing at the org B payment row.
+        expect(orgBPaymentId).not.toBeNull();
+        expect(orgBId).not.toBeNull();
+        const { status, data } = await apiGet<Payment[]>(
+          `/api/payments?organizationId=${orgBId}`,
+          sessionA,
+        );
+        expect(status).toBe(200);
+        if (Array.isArray(data.data) && orgBPaymentId != null) {
+          expect(collectIds(data.data)).not.toContain(orgBPaymentId);
+        }
+        const payload = JSON.stringify(data);
+        expect(payload).not.toContain(`Vitest #341 Payment ${stamp}`);
+      });
+    });
   });
 });

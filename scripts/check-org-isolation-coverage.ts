@@ -47,7 +47,20 @@ const STRICT = process.argv.includes('--strict');
  * cross-org-sensitive.
  */
 const EXPLICIT_ALLOWLIST: Record<string, string> = {
-  // example: '/api/foo/:id': 'enforced by requireOrgOwner middleware (covered in middleware.test.ts)',
+  // Public branding assets — served unauthenticated so the sign-up page
+  // and dynamic browser icons can fetch any org's logo/app-icon by id
+  // without a session. There is no cross-org sensitivity by design.
+  '/api/organizations/:id/logo':
+    'public branding asset (sign-up page); served unauthenticated by design',
+  '/api/organizations/:id/app-icon':
+    'public branding asset (browser/app icon); served unauthenticated by design',
+  // Profile avatar redirect — mounted under requireAuth (so a session
+  // is required), but the handler only 302-redirects to a static file
+  // under /uploads/avatars/<userId>.<ext>. The response carries no
+  // org-scoped payload, so cross-org id traversal yields nothing more
+  // than a public image already addressable at /uploads/avatars/...
+  '/api/user/avatar/:userId':
+    'authenticated avatar redirect; response is a 302 to a static image with no org-sensitive payload',
 };
 
 const APP_USE_RE = /\bapp\s*\.\s*use\s*\(\s*(['"`])([^'"`]+)\1\s*,\s*([^)]+)\)/g;
