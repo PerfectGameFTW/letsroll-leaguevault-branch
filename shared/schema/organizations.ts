@@ -8,6 +8,17 @@ export interface OrgIntegrations {
     enabled: boolean;
     apiKey?: string;
     locationId?: string;
+    // Per-org overrides for the BowlNow custom-field IDs. Each
+    // BowlNow (LeadConnector) location has its own opaque field IDs
+    // — they cannot be created via the BN API, so ops creates the
+    // field in the BN dashboard and then pastes the resulting ID
+    // here. When unset, we fall back to the platform-default IDs in
+    // `server/services/bowlnow.ts`. Task #478 added
+    // `leagueSeasonFieldId`; without it the season tag write is
+    // skipped silently rather than failing, so orgs that haven't
+    // created the field yet keep working as before.
+    leagueNameFieldId?: string;
+    leagueSeasonFieldId?: string;
   };
 }
 
@@ -16,6 +27,8 @@ export const orgIntegrationsSchema = z.object({
     enabled: z.boolean(),
     apiKey: z.string().optional(),
     locationId: z.string().optional(),
+    leagueNameFieldId: z.string().optional(),
+    leagueSeasonFieldId: z.string().optional(),
   }).optional(),
 }).nullable().optional();
 

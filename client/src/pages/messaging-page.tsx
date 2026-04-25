@@ -205,12 +205,27 @@ function MessagingContent({ orgId }: MessagingContentProps) {
           </CardHeader>
           <CardContent className="text-sm space-y-4">
             <p className="text-muted-foreground">
-              Bowler league assignments flow into BowlNow as the{" "}
-              <span className="font-mono text-xs bg-white border px-1.5 py-0.5 rounded">
-                League Name
-              </span>{" "}
-              custom field. Use it to build a Smart List for any league.
+              Bowler league assignments flow into BowlNow as two custom
+              fields you can use to build Smart Lists.
             </p>
+            <div className="rounded-md border bg-slate-50 p-4 space-y-2">
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-xs bg-white border px-1.5 py-0.5 rounded">
+                  League Name
+                </span>
+                <span className="text-muted-foreground text-xs">
+                  e.g. "Tuesday Night Mixed"
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-xs bg-white border px-1.5 py-0.5 rounded">
+                  League Season
+                </span>
+                <span className="text-muted-foreground text-xs">
+                  e.g. "Fall '25 Season"
+                </span>
+              </div>
+            </div>
             <div>
               <h4 className="font-medium mb-2">Send a Targeted Email or SMS</h4>
               <ol className="list-decimal pl-5 space-y-1.5 text-muted-foreground">
@@ -219,8 +234,9 @@ function MessagingContent({ orgId }: MessagingContentProps) {
                   Click <strong>+ New Smart List</strong>.
                 </li>
                 <li>
-                  Add a filter on <strong>Custom Field → League Name</strong>{" "}
-                  and choose the league(s) you want to reach.
+                  Add a filter on{" "}
+                  <strong>Custom Field → League Name</strong> (or League
+                  Season) and pick the value you want to message.
                 </li>
                 <li>
                   Save the list, then create a Campaign or SMS blast and
@@ -229,10 +245,17 @@ function MessagingContent({ orgId }: MessagingContentProps) {
               </ol>
             </div>
             {bowlnowConnected && (
-              <p className="text-muted-foreground text-xs">
-                Custom field updates may take a few seconds after a bowler is
-                added, removed, or moved between leagues.
-              </p>
+              <>
+                <p className="text-muted-foreground text-xs">
+                  League Season requires the custom field to exist in your
+                  BowlNow account first — paste its field ID into the
+                  organization's BowlNow integration settings to enable it.
+                </p>
+                <p className="text-muted-foreground text-xs">
+                  Custom field updates may take a few seconds after a bowler
+                  is added, removed, or moved between leagues.
+                </p>
+              </>
             )}
           </CardContent>
         </Card>

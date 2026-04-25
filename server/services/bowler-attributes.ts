@@ -38,15 +38,36 @@ export interface ResolvedBowlerAttributes {
    * label string so two leagues running the same season collapse.
    */
   leagueSeason: string;
+  /**
+   * Same content as `leagueName`, in array form (alphabetical, unique).
+   * Used by BowlNow (task #478) where the custom field is a multi-
+   * value type and an array preserves per-league filterability — a
+   * Smart List filter for "Tuesday Night Mixed" matches even when
+   * the bowler is in multiple leagues. Empty array when none.
+   */
+  leagueNames: string[];
+  /**
+   * Same content as `leagueSeason`, in array form (chronological,
+   * deduped). Same multi-value rationale as `leagueNames` for the
+   * BowlNow side. Empty array when none.
+   */
+  leagueSeasons: string[];
 }
 
 export async function resolveBowlerLeagueAttributes(
   bowlerId: number,
 ): Promise<ResolvedBowlerAttributes> {
+  const empty: ResolvedBowlerAttributes = {
+    leagueName: '',
+    leagueSeason: '',
+    leagueNames: [],
+    leagueSeasons: [],
+  };
+
   const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
   const activeAssociations = bowlerLeagues.filter((bl) => bl.active);
   if (activeAssociations.length === 0) {
-    return { leagueName: '', leagueSeason: '' };
+    return empty;
   }
 
   // Hydrate league rows. We tolerate `null` (a join row whose league
@@ -59,7 +80,7 @@ export async function resolveBowlerLeagueAttributes(
     (l): l is NonNullable<typeof l> => l !== undefined && l !== null && l.active === true,
   );
   if (activeLeagues.length === 0) {
-    return { leagueName: '', leagueSeason: '' };
+    return empty;
   }
 
   // league_name: alphabetical, unique. Sorting in the writer rather
@@ -90,7 +111,12 @@ export async function resolveBowlerLeagueAttributes(
   }
   const leagueSeason = orderedLabels.join(', ');
 
-  return { leagueName, leagueSeason };
+  return {
+    leagueName,
+    leagueSeason,
+    leagueNames: uniqueNames,
+    leagueSeasons: orderedLabels,
+  };
 }
 
 /**

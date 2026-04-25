@@ -95,6 +95,14 @@ const updateIntegrationsSchema = z.object({
     enabled: z.boolean(),
     apiKey: z.string().optional(),
     locationId: z.string().optional(),
+    // Optional per-org overrides for the BowlNow custom-field IDs
+    // (task #478). Each is an opaque ID copied from the BowlNow
+    // dashboard. The PATCH merge below preserves any prior value
+    // when omitted from the request body — the existing settings
+    // form sends only the legacy fields and we MUST NOT wipe these
+    // on a routine settings save.
+    leagueNameFieldId: z.string().optional(),
+    leagueSeasonFieldId: z.string().optional(),
   }).optional(),
 });
 
@@ -133,6 +141,17 @@ router.patch('/', async (req: Request, res: Response) => {
         locationId: incoming.locationId !== undefined
           ? incoming.locationId
           : existing?.bowlnow?.locationId,
+        // Preserve any previously-stored custom field IDs when the
+        // request body omits them (task #478) — the legacy settings
+        // form has no input for these yet, so a routine save would
+        // otherwise silently disable league/season tag writes for
+        // the org. Explicit empty string from the body clears it.
+        leagueNameFieldId: incoming.leagueNameFieldId !== undefined
+          ? (incoming.leagueNameFieldId || undefined)
+          : existing?.bowlnow?.leagueNameFieldId,
+        leagueSeasonFieldId: incoming.leagueSeasonFieldId !== undefined
+          ? (incoming.leagueSeasonFieldId || undefined)
+          : existing?.bowlnow?.leagueSeasonFieldId,
       };
     }
 
@@ -143,6 +162,8 @@ router.patch('/', async (req: Request, res: Response) => {
         enabled: updated.bowlnow?.enabled ?? false,
         apiKeyConfigured: !!updated.bowlnow?.apiKey,
         locationId: updated.bowlnow?.locationId ?? '',
+        leagueNameFieldId: updated.bowlnow?.leagueNameFieldId ?? '',
+        leagueSeasonFieldId: updated.bowlnow?.leagueSeasonFieldId ?? '',
       },
     };
 

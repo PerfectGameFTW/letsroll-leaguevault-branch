@@ -2,6 +2,7 @@ import { storage } from '../storage';
 import type { OrgIntegrations } from '@shared/schema';
 import { env } from '../config';
 import { createLogger } from '../logger';
+import { resolveBowlerLeagueAttributes } from './bowler-attributes';
 
 const log = createLogger("BowlNowService");
 
@@ -9,12 +10,28 @@ const BN_API_BASE = 'https://services.leadconnectorhq.com';
 const DEFAULT_BN_LOCATION_ID = 'zQw4JcOJlKfJWCWvJ2pw';
 const BN_API_VERSION = '2021-07-28';
 
+// Platform-default custom-field IDs for the canonical BowlNow
+// location. Per-org overrides live on
+// `OrgIntegrations.bowlnow.{leagueName,leagueSeason}FieldId` because
+// each BowlNow location has its own opaque field IDs created
+// manually in the BN dashboard. The season-field ID has NO default
+// — orgs that haven't pasted one in get the season-tag write skipped
+// (task #478), keeping legacy behavior intact for existing setups.
 const CUSTOM_FIELD_IDS = {
   leagueName: 'IQpvYJcn3CbOCA85QCfX',
   teamName: 'xbuBfmYpiXJMx7gcFebZ',
   squareCustomerId: 'K4k6AW8BYc4EWdd76IPD',
   organization: 'poVtF90VhO1CZ2TdD6qQ',
 };
+
+function resolveLeagueNameFieldId(orgConfig?: OrgIntegrations | null): string {
+  return orgConfig?.bowlnow?.leagueNameFieldId || CUSTOM_FIELD_IDS.leagueName;
+}
+
+function resolveLeagueSeasonFieldId(orgConfig?: OrgIntegrations | null): string | undefined {
+  // No platform default — see comment on CUSTOM_FIELD_IDS above.
+  return orgConfig?.bowlnow?.leagueSeasonFieldId || undefined;
+}
 
 export interface BNContact {
   id?: string;
@@ -219,17 +236,26 @@ export async function syncBowlerToBN(
 
     const { firstName, lastName } = splitName(bowler.name);
 
+    // League names + season labels come from the SHARED helper used by
+    // the Square sync (task #478), so a Square Smart List filter and a
+    // BowlNow Smart List filter on the same value resolve to the same
+    // bowler audience. The team/org enrichment below stays distinct
+    // from the league-attribute helper because BowlNow needs the org-
+    // name pretty string and any team association for its own Smart
+    // List filters — those have no Square parallel today.
+    const attrs = await resolveBowlerLeagueAttributes(bowlerId);
+    const leagueNames = attrs.leagueNames;
+    const leagueSeasons = attrs.leagueSeasons;
+
     const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId });
-    const leagueNames: string[] = [];
     const teamNames: string[] = [];
     let orgName = '';
 
     const activeAssociations = bowlerLeagues.filter(bl => bl.active);
     for (const bl of activeAssociations.length > 0 ? activeAssociations : bowlerLeagues.slice(0, 1)) {
-      const league = await storage.getLeague(bl.leagueId);
-      if (league) {
-        if (!leagueNames.includes(league.name)) leagueNames.push(league.name);
-        if (!orgName && league.organizationId) {
+      if (!orgName) {
+        const league = await storage.getLeague(bl.leagueId);
+        if (league?.organizationId) {
           const org = await storage.getOrganization(league.organizationId);
           if (org) orgName = org.name;
         }
@@ -240,12 +266,31 @@ export async function syncBowlerToBN(
       }
     }
 
+    const leagueNameFieldId = resolveLeagueNameFieldId(effectiveConfig);
+    const leagueSeasonFieldId = resolveLeagueSeasonFieldId(effectiveConfig);
+
     const customFields: { id: string; value: string | string[] }[] = [];
     if (bowler.paymentCustomerId) {
       customFields.push({ id: CUSTOM_FIELD_IDS.squareCustomerId, value: bowler.paymentCustomerId });
     }
     if (leagueNames.length > 0) {
-      customFields.push({ id: CUSTOM_FIELD_IDS.leagueName, value: leagueNames.length === 1 ? leagueNames[0] : leagueNames });
+      // Single string for length 1 / array for length 2+ matches the
+      // pre-existing convention so existing BN Smart Lists keep
+      // working. BowlNow's multi-value field accepts both shapes.
+      customFields.push({
+        id: leagueNameFieldId,
+        value: leagueNames.length === 1 ? leagueNames[0] : leagueNames,
+      });
+    }
+    if (leagueSeasonFieldId && leagueSeasons.length > 0) {
+      // Same single/array convention as `leagueName`. Skipped
+      // entirely when the org hasn't pasted a season-field ID into
+      // their integration settings yet — the sync stays non-fatal
+      // (task #478 spec).
+      customFields.push({
+        id: leagueSeasonFieldId,
+        value: leagueSeasons.length === 1 ? leagueSeasons[0] : leagueSeasons,
+      });
     }
     if (teamNames.length > 0) {
       customFields.push({ id: CUSTOM_FIELD_IDS.teamName, value: teamNames.length === 1 ? teamNames[0] : teamNames });
