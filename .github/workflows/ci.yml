@@ -40,9 +40,11 @@ jobs:
   # deliberately preserved as "Type check & lint" so any GitHub
   # branch-protection rule keyed on that name keeps working — when
   # adding a fifth static check, append a step rather than rename the
-  # job. Broader checks (vitest, the eslint-baseline ratchet from
-  # #404, etc.) are owned by their own follow-up tasks and will land
-  # in their own workflow files or as additional steps here over time.
+  # job. The vitest suite (including the eslint-baseline ratchet's
+  # self-test from #404) runs in the sibling `Tests` job below,
+  # wired in by task #442. The opt-in race suite has its own
+  # workflow (`race-suite.yml`); see `docs/ci.md` for the full
+  # layout.
   check-and-lint:
     name: Type check & lint
     runs-on: ubuntu-latest
@@ -115,3 +117,199 @@ jobs:
       # #400.
       - name: Cross-org isolation coverage
         run: npm run check:org-isolation
+
+  # Sibling job that runs the full vitest suite (`npm test`) on every PR
+  # and push to `main`. Task #442 wired this in: before this job
+  # existed, the test suite was the safety net the project was leaning
+  # on most heavily — the eslint-suppressions ratchet from #404
+  # (`tests/unit/check-eslint-baseline.test.ts`, which deliberately
+  # asserts itself via vitest because `package.json` is locked), the
+  # CSRF and cross-org coverage guards' own self-tests, the auth /
+  # CSRF / payment-sync route contracts, and ~hundreds of unit tests
+  # — but it was only invoked when a contributor remembered to run
+  # `npm test` locally. CI now runs it on every PR so a regression in
+  # any of those guards fails the build instead of slipping past.
+  #
+  # Why a sibling job and not a step on `check-and-lint`:
+  #   * `check-and-lint` is intentionally pinned at "Type check & lint"
+  #     for branch-protection rules and is fast (~1 minute, no
+  #     services, no DB). Adding the test step there would force every
+  #     PR to wait on Postgres + dev-server boot for a check that is
+  #     conceptually different.
+  #   * Running tests in their own job lets the static checks fail
+  #     fast and surface their result in the PR status list
+  #     independently of the slower test job.
+  #   * The two jobs run in parallel, so total wall-clock for the PR
+  #     is ~max(check-and-lint, tests), not the sum.
+  #
+  # The race suite (`scripts/test-race.sh`) is NOT invoked here — it
+  # has its own workflow (`.github/workflows/race-suite.yml`) which
+  # gates on touched files and runs the two opt-in race files
+  # serially. That suite is gated behind `RUN_BOOTSTRAP_RACE_TESTS=1`
+  # so it is naturally skipped by `npm test`.
+  #
+  # See `docs/ci.md` for the full layout of which suite runs in which
+  # job and the env-var contract.
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    # The full vitest suite (parallel + serial-fk-bypass +
+    # client-components projects) takes ~3-4 minutes locally on top of
+    # ~1 minute for npm ci and Postgres bring-up. 20 is a generous
+    # ceiling that still kills a hung dev-server boot or a deadlocked
+    # test before it eats CI budget for an hour. Mirrors the ceiling
+    # used in `race-suite.yml` for the same reason.
+    timeout-minutes: 20
+
+    # Ephemeral Postgres so the API tests (and the unit tests that
+    # import `server/db` for fixture seeding via `installDbInvariants`
+    # in `tests/setup/global-setup.ts`) can talk to a real database.
+    # Using `postgres:16` matches the prod runtime and the version the
+    # Drizzle migrations have been validated against — same pin as
+    # `race-suite.yml`, deliberately, so a future runtime bump only
+    # has to be applied in one place at a time.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: leaguevault_test
+        ports:
+          - 5432:5432
+        # Wait for `pg_isready` before the job's own steps can connect.
+        # Without this, `npm run db:push` can race the container's
+        # initdb and fail on a cold cache.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Check out the PR
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Pinned to the runtime declared in `replit.md` so CI matches
+          # the dev/prod environment. Bump in lockstep when that file
+          # gets bumped (mirrors `check-and-lint` and `race-suite`).
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Apply the Drizzle schema to the empty Postgres container.
+      # `db:push` is idempotent and matches what `npm run dev` expects
+      # to find on first boot. Same step name + invocation as
+      # `race-suite.yml` so the two workflows can share remediation
+      # docs.
+      - name: Apply database schema
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/leaguevault_test
+        run: npm run db:push
+
+      # Boot the same dev server the API tests talk to. The HTTP-based
+      # tests under `tests/api/` resolve their base URL through
+      # `tests/helpers.ts`, which falls back to
+      # `http://localhost:5000` when no `REPLIT_DEV_DOMAIN` /
+      # `TEST_BASE_URL` is set — that's the path CI takes.
+      #
+      # `tests/setup/global-setup.ts` runs `installDbInvariants()` and
+      # `seedTestUsers()` at vitest start, so we don't need a separate
+      # `npm run seed` step.
+      #
+      # Env var contract (kept in sync with `race-suite.yml`):
+      #   * DATABASE_URL — points at the service container above.
+      #   * SESSION_SECRET — any non-empty value; tests don't rely on
+      #     cookie persistence beyond the request lifetime.
+      #   * FIELD_ENCRYPTION_KEY — must be 64 hex chars (32 bytes) per
+      #     `server/config.ts`. The value below is a deterministic
+      #     CI-only key; it is never used to decrypt real data because
+      #     the Postgres container is fresh each run.
+      #   * SETUP_SECRET — pulled from the `SETUP_SECRET` repository
+      #     secret. Required by `tests/api/setup-admin-header.test.ts`
+      #     and the `/api/setup/*` route guards. Tests that explicitly
+      #     need a value compare against this env var via
+      #     `tests/helpers.ts`.
+      #   * NODE_ENV=development — keeps the auth rate limiter in dev
+      #     mode (see `server/routes/auth.ts`) so repeated requests
+      #     during the test run don't trip the per-IP cap.
+      - name: Start dev server
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/leaguevault_test
+          SESSION_SECRET: ci-tests-session-secret
+          FIELD_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          NODE_ENV: development
+          PORT: '5000'
+        run: |
+          # Background the dev server and capture its PID so the
+          # cleanup step can SIGTERM it cleanly even if the test step
+          # fails. Output goes to a logfile we tail on failure for
+          # debugging.
+          npm run dev > /tmp/dev-server.log 2>&1 &
+          echo $! > /tmp/dev-server.pid
+          echo "Dev server started with PID $(cat /tmp/dev-server.pid)"
+
+      # Poll `/api/health` until the server reports healthy. 60
+      # attempts × 2s = 2 min ceiling, which comfortably covers a cold
+      # Vite startup on a GitHub-hosted runner. Identical to the
+      # corresponding step in `race-suite.yml` — keep the two in sync
+      # if the boot path ever changes.
+      - name: Wait for dev server
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:5000/api/health > /dev/null; then
+              echo "Dev server is healthy after ${i} attempt(s)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Dev server failed to become healthy within 120s." >&2
+          echo "--- last 200 lines of /tmp/dev-server.log ---" >&2
+          tail -n 200 /tmp/dev-server.log >&2 || true
+          exit 1
+
+      # `npm test` = `vitest run`, which executes the three projects
+      # declared in `vitest.config.ts` (parallel, serial-fk-bypass,
+      # client-components). The two opt-in race files are gated behind
+      # `RUN_BOOTSTRAP_RACE_TESTS=1` and are NOT run here — they have
+      # their own workflow (`race-suite.yml`).
+      #
+      # Env vars match the dev-server step above so tests that read
+      # the same secrets (e.g. `setup-admin-header.test.ts` reads
+      # `SETUP_SECRET` via `tests/helpers.ts`) see the same value the
+      # server was booted with.
+      - name: Run tests
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/leaguevault_test
+          SESSION_SECRET: ci-tests-session-secret
+          FIELD_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          NODE_ENV: development
+        run: npm test
+
+      # Always-run cleanup: SIGTERM the backgrounded dev server so the
+      # job finishes promptly even when the test step fails. `|| true`
+      # absorbs the case where the server already exited (e.g. crashed
+      # during the run, in which case the failed test step already
+      # surfaced the failure).
+      - name: Stop dev server
+        if: always()
+        run: |
+          if [ -f /tmp/dev-server.pid ]; then
+            kill "$(cat /tmp/dev-server.pid)" 2>/dev/null || true
+          fi
+
+      # On failure, dump the dev server log so the failing run is
+      # debuggable from the GH Actions UI without having to re-run
+      # locally. Skipped on success so the green-path log stays clean.
+      - name: Dump dev server log on failure
+        if: failure()
+        run: |
+          echo "--- /tmp/dev-server.log ---"
+          tail -n 500 /tmp/dev-server.log || true

@@ -33,6 +33,12 @@ Lint is **enforced** in CI. The `check-and-lint` job in
 to `main`); the build fails on a non-zero exit code from either
 step.
 
+The vitest suite (which includes the eslint-suppressions ratchet's
+self-test in `tests/unit/check-eslint-baseline.test.ts`) runs in the
+sibling `Tests` job in the same workflow. See `docs/ci.md` for the
+full CI layout (which suite runs in which job, required secrets,
+where to add a new check).
+
 Concretely, lint will fail the build on any net-new violation of:
 
 - a new `as any` cast or `: any` annotation, **or**
