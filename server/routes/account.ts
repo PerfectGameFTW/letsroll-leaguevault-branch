@@ -607,6 +607,44 @@ router.post(
   },
 );
 
+// Throttle the self-serve retry endpoint (task #365). Every call
+// makes an external payment-provider request and bumps the
+// `payment_sync_attempts` counter, so a user mashing the "Retry now"
+// button — or a script doing so — can both pressure the provider's
+// own rate limits and wear out our DB row. A small budget (5 / min
+// per user) is plenty for legitimate use; the background retry sweep
+// (task #284) handles the long-tail recovery anyway. Same shape as
+// `changePasswordLimiter` below: per-user keying with IP fallback so
+// pre-auth callers still get throttled, shared Postgres store so the
+// budget holds across replicas (task #356), and the standard
+// `RATE_LIMITED` error envelope so the client's existing 429 handling
+// continues to work.
+const retryPaymentSyncLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: createSharedRateLimitStore('retry-payment-sync'),
+  keyGenerator: (req: Request) => {
+    const userId = (req.user as { id?: number } | undefined)?.id;
+    // Fall through to IP if not yet authenticated — `requireAuth`
+    // runs AFTER this limiter, so an unauth caller still gets per-IP
+    // throttling instead of bypassing the limit by omitting cookies.
+    return userId ? `u:${userId}` : `ip:${req.ip ?? 'unknown'}`;
+  },
+  handler: (req, res) => {
+    log.warn('Self-serve payment-sync retry throttled', {
+      userId: (req.user as { id?: number } | undefined)?.id,
+    });
+    return sendError(
+      res,
+      'Too many retry attempts. Please wait a minute and try again.',
+      429,
+      'RATE_LIMITED',
+    );
+  },
+});
+
 // Self-serve retry for the *current* user's bowler when an earlier
 // profile-update left the payment-customer sync in `pending_retry`
 // (task #323). The ProfileInfoCard surfaces a "Retry now" button
@@ -622,6 +660,7 @@ router.post(
 // `requireSystemAdmin` and takes an :id from the URL).
 router.post(
   '/profile/retry-payment-sync',
+  retryPaymentSyncLimiter,
   requireAuth,
   async (req: Request, res: Response) => {
     try {
