@@ -15,26 +15,41 @@
  * same location whose Square access token is in SQUARE_ACCESS_TOKEN —
  * mismatching them will permanently mis-route future cleanup calls.
  *
+ * The --organizationId flag is also required (task #437). Bowlers carry
+ * a NOT NULL `organizationId` since task #407, and Square access tokens
+ * are issued per location which always belongs to exactly one org. If
+ * this script ran globally (its previous behaviour) and an operator
+ * supplied one org's token + locationId, the script would happily create
+ * Square customers for bowlers owned by *other* organizations and stamp
+ * them with this location id — those rows would then be permanently
+ * mis-routed for account-deletion cleanup. Requiring --organizationId
+ * makes the operator declare which org's bowlers they intend to touch,
+ * and the script refuses to start unless the supplied --locationId
+ * actually belongs to that org.
+ *
  * Usage:
- *   SQUARE_ACCESS_TOKEN=<location_token> npx tsx server/scripts/create-square-customers.ts --locationId=<id>
+ *   SQUARE_ACCESS_TOKEN=<location_token> npx tsx server/scripts/create-square-customers.ts \
+ *     --organizationId=<id> --locationId=<id>
  */
 import { Client, Environment } from "square";
 import { db, cleanup as closeDbPool } from "../db";
-import { bowlers, locations } from "@shared/schema";
-import { eq, isNull } from "drizzle-orm";
+import { bowlers, locations, organizations } from "@shared/schema";
+import { and, eq, isNull } from "drizzle-orm";
 import { createLogger } from "../logger";
 
 const log = createLogger("SquareCustomerScript");
 
-function parseLocationIdFlag(argv: string[]): number | null {
+function parseIntFlag(argv: string[], name: string): number | null {
+  const long = `--${name}`;
+  const longEq = `--${name}=`;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--locationId' && i + 1 < argv.length) {
+    if (arg === long && i + 1 < argv.length) {
       const n = Number(argv[i + 1]);
       return Number.isInteger(n) && n > 0 ? n : null;
     }
-    if (arg.startsWith('--locationId=')) {
-      const n = Number(arg.slice('--locationId='.length));
+    if (arg.startsWith(longEq)) {
+      const n = Number(arg.slice(longEq.length));
       return Number.isInteger(n) && n > 0 ? n : null;
     }
   }
@@ -48,7 +63,14 @@ if (!accessToken) {
   process.exit(1);
 }
 
-const parsedLocationIdFlag = parseLocationIdFlag(process.argv.slice(2));
+const parsedOrgIdFlag = parseIntFlag(process.argv.slice(2), 'organizationId');
+if (!parsedOrgIdFlag) {
+  log.error('--organizationId=<id> is required so the script only touches bowlers in the org that owns the supplied location/access token. See task #437.');
+  process.exit(1);
+}
+const organizationIdFlag: number = parsedOrgIdFlag;
+
+const parsedLocationIdFlag = parseIntFlag(process.argv.slice(2), 'locationId');
 if (!parsedLocationIdFlag) {
   log.error('--locationId=<id> is required so paymentProviderLocationId can be stamped on every imported bowler. See task #402.');
   process.exit(1);
@@ -62,15 +84,27 @@ const squareClient = new Client({
   environment: isProductionToken ? Environment.Production : Environment.Sandbox,
 });
 
-log.info(`Running in ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'} mode against location ${locationIdFlag}.`);
+log.info(`Running in ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'} mode against organization ${organizationIdFlag} / location ${locationIdFlag}.`);
 
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function assertLocationExists(locationId: number): Promise<void> {
+async function assertOrganizationExists(orgId: number): Promise<void> {
   const [row] = await db
-    .select({ id: locations.id })
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(eq(organizations.id, orgId))
+    .limit(1);
+  if (!row) {
+    log.error(`Organization ${orgId} does not exist. Refusing to backfill against a non-existent org.`);
+    process.exit(1);
+  }
+}
+
+async function assertLocationBelongsToOrg(locationId: number, orgId: number): Promise<void> {
+  const [row] = await db
+    .select({ id: locations.id, organizationId: locations.organizationId })
     .from(locations)
     .where(eq(locations.id, locationId))
     .limit(1);
@@ -78,18 +112,43 @@ async function assertLocationExists(locationId: number): Promise<void> {
     log.error(`Location ${locationId} does not exist. Refusing to stamp paymentProviderLocationId for a non-existent location.`);
     process.exit(1);
   }
+  if (row.organizationId !== orgId) {
+    log.error(
+      `Location ${locationId} belongs to organization ${row.organizationId}, not the requested organization ${orgId}. ` +
+      `Refusing to cross-stamp bowlers in a different org. See task #437.`,
+    );
+    process.exit(1);
+  }
 }
 
 async function createSquareCustomers() {
-  await assertLocationExists(locationIdFlag);
+  await assertOrganizationExists(organizationIdFlag);
+  await assertLocationBelongsToOrg(locationIdFlag, organizationIdFlag);
 
   try {
-    const bowlersWithoutSquareId = await db
-      .select()
+    // Count globally-eligible bowlers first so we can show the operator
+    // exactly how many were excluded by the org filter. This is the
+    // "safety log line" called out in task #437 — it lets the operator
+    // sanity-check that the org/location flags they passed match what
+    // they expected before any Square API call is made.
+    const globalEligible = await db
+      .select({ id: bowlers.id })
       .from(bowlers)
       .where(isNull(bowlers.paymentCustomerId));
 
-    log.info(`Found ${bowlersWithoutSquareId.length} bowlers without Square Customer IDs`);
+    const bowlersWithoutSquareId = await db
+      .select()
+      .from(bowlers)
+      .where(and(
+        eq(bowlers.organizationId, organizationIdFlag),
+        isNull(bowlers.paymentCustomerId),
+      ));
+
+    const excluded = globalEligible.length - bowlersWithoutSquareId.length;
+    log.info(
+      `Found ${bowlersWithoutSquareId.length} bowlers without Square Customer IDs in organization ${organizationIdFlag} ` +
+      `(excluded ${excluded} bowlers in other organizations from a global pool of ${globalEligible.length}).`,
+    );
 
     let successCount = 0;
     let errorCount = 0;
@@ -121,7 +180,14 @@ async function createSquareCustomers() {
               // task #402 (this bulk path).
               paymentProviderLocationId: locationIdFlag,
             })
-            .where(eq(bowlers.id, bowler.id));
+            // Defense in depth: even though we already filtered the
+            // SELECT by organizationId, re-assert it on the UPDATE so a
+            // future change to the loop body (e.g. retry-from-list)
+            // can't accidentally write across orgs. See task #437.
+            .where(and(
+              eq(bowlers.id, bowler.id),
+              eq(bowlers.organizationId, organizationIdFlag),
+            ));
 
           log.info(`Created Square Customer for ${bowler.name} (ID: ${response.result.customer.id}, locationId: ${locationIdFlag})`);
           successCount++;
