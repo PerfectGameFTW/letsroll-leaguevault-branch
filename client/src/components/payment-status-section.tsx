@@ -179,8 +179,9 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       queryClient.invalidateQueries({ queryKey: [`/api/payment-schedules/${bowler.id}/${league.id}`] });
       queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id] });
       setShowPaymentSetup(false);
-    } catch (err: any) {
-      toast({ title: "Payment Failed", description: err?.message || 'Payment could not be processed', variant: "destructive" });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Payment could not be processed';
+      toast({ title: "Payment Failed", description: message, variant: "destructive" });
     } finally {
       setIsSubmitting(false);
     }

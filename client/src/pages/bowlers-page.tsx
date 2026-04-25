@@ -78,13 +78,16 @@ export default function BowlersPage() {
 
   const bnSyncAllMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("/api/bn/sync-all", "POST");
+      return apiRequest<{ total: number; synced: number; failed: number; errors: string[] }>(
+        "/api/bn/sync-all",
+        "POST",
+      );
     },
-    onSuccess: (resp: any) => {
-      const d = resp?.data || resp;
+    onSuccess: (resp) => {
+      const d = resp?.data;
       toast({
         title: "BowlNow Sync Complete",
-        description: `Synced ${d?.synced || 0} bowlers. ${d?.failed || 0} failed.`,
+        description: `Synced ${d?.synced ?? 0} bowlers. ${d?.failed ?? 0} failed.`,
       });
     },
     onError: (error: Error) => {

@@ -7,7 +7,7 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { Input } from "@/components/ui/input";
 import { Loader2, Plus, Search } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
-import type { Payment, Bowler, League, PaginationMeta, ApiResponse } from "@shared/schema";
+import type { Payment, Bowler, League, PaginationMeta, ApiResponse, User } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -40,7 +40,7 @@ export default function PaymentsPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const { toast } = useToast();
 
-  const { data: userResponse } = useQuery<ApiResponse<any>>({
+  const { data: userResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
     staleTime: 1000 * 60 * 5,
   });

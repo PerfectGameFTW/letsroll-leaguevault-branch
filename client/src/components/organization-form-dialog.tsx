@@ -68,7 +68,7 @@ export function OrganizationFormDialog({ open, onClose, editOrg }: OrganizationF
     }
   }, [open, editOrg]);
 
-  const createMutation = useMutation<any, Error, InsertOrganization, unknown>({
+  const createMutation = useMutation({
     mutationFn: async (org: InsertOrganization) => {
       return apiRequest('/api/organizations', 'POST', org);
     },
