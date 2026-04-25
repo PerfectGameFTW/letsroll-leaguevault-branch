@@ -226,10 +226,14 @@ jobs:
           tail -n 200 /tmp/dev-server.log >&2 || true
           exit 1
 
-      # The actual gate. `scripts/test-race.sh` exports
-      # RUN_BOOTSTRAP_RACE_TESTS=1 and runs the two race files
+      # The actual gate. `npm run test:race` is a thin alias for
+      # `bash scripts/test-race.sh` (defined in package.json), which
+      # exports RUN_BOOTSTRAP_RACE_TESTS=1 and runs the two race files
       # serially with `--no-file-parallelism` (see the comment block
-      # at the top of the script for why).
+      # at the top of the script for why). Using the npm-script form
+      # keeps this workflow consistent with `npm test` in `ci.yml` and
+      # lets a CI template that expects npm-script names drop in
+      # unchanged.
       - name: Run race suite
         if: steps.decide.outputs.run == 'true'
         env:
@@ -238,7 +242,7 @@ jobs:
           FIELD_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
           SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
           NODE_ENV: development
-        run: bash scripts/test-race.sh
+        run: npm run test:race
 
       # Always-run cleanup: SIGTERM the backgrounded dev server so the
       # job finishes promptly even when the race step fails. `|| true`

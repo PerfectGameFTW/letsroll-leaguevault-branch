@@ -11,6 +11,7 @@
     "db:push": "drizzle-kit push",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:race": "bash scripts/test-race.sh",
     "seed": "tsx scripts/seed.ts",
     "lint": "eslint .",
     "check:csrf": "tsx scripts/check-csrf-coverage.ts",

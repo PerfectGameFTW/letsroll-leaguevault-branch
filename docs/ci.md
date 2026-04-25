@@ -11,7 +11,7 @@ suite never gates the fast static checks (and vice versa).
 |---|---|---|---|
 | `ci.yml` | `Type check & lint` | Every PR to `main`, every push to `main` | `tsc`, `eslint .`, `check:csrf`, `check:org-isolation` |
 | `ci.yml` | `Tests` | Every PR to `main`, every push to `main` | `npm test` (vitest: parallel + serial-fk-bypass + client-components projects) |
-| `race-suite.yml` | `Race suite` | PRs that touch the sweep / bootstrap files (and every push to `main`) | `bash scripts/test-race.sh` (the two `RUN_BOOTSTRAP_RACE_TESTS=1` race files, serially) |
+| `race-suite.yml` | `Race suite` | PRs that touch the sweep / bootstrap files (and every push to `main`) | `npm run test:race` — alias for `bash scripts/test-race.sh` (the two `RUN_BOOTSTRAP_RACE_TESTS=1` race files, serially) |
 
 The two jobs in `ci.yml` (`Type check & lint` and `Tests`) run in
 parallel, so total wall-clock for a PR is roughly the slower of the
