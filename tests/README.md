@@ -142,7 +142,7 @@ A typical GitHub Actions job ordering looks like:
 
 | Env var                          | File(s)                                              | Wrapper                       |
 |----------------------------------|------------------------------------------------------|-------------------------------|
-| `RUN_BOOTSTRAP_RACE_TESTS=1`     | `tests/api/setup-admin-bootstrap-race.test.ts`       | `bash scripts/test-race.sh`   |
+| `RUN_BOOTSTRAP_RACE_TESTS=1`     | `tests/api/setup-admin-bootstrap-race.test.ts`, `tests/api/payment-sync-retry-race.test.ts` | `bash scripts/test-race.sh`   |
 
 **Required CI secrets for the race suite (task #360):**
 

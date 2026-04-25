@@ -312,22 +312,39 @@ describe('payment-sync retry sweep — multi-process race coverage', () => {
 
       const SENTINEL_HOLD_MS = 1500;
 
-      // Sentinel transaction: lock the row, then sleep, then commit.
-      // We do NOT await this promise yet — we want it running while
-      // we race the sweeps.
+      // Explicit lock-ready handshake: the sentinel resolves
+      // `lockAcquired` AFTER its `SELECT ... FOR UPDATE` returns,
+      // which is the exact moment the row lock is held. We then
+      // await that promise before racing the sweeps — eliminating
+      // the timing-flake risk of a fixed head-start delay.
+      let signalLockAcquired!: () => void;
+      const lockAcquired = new Promise<void>((resolve) => {
+        signalLockAcquired = resolve;
+      });
+
+      // Sentinel transaction: lock the row, signal acquisition,
+      // then sleep, then commit. We do NOT await this promise yet —
+      // we want it running while we race the sweeps.
       const sentinelPromise = db.transaction(async (tx) => {
         // Use a raw SELECT FOR UPDATE on the seeded row so the lock
         // shape matches what the sweep would acquire. We pin to the
         // single row (no predicate) to avoid racing the sweep's own
         // eligibility filter.
         await tx.execute(sql`SELECT id FROM ${bowlers} WHERE id = ${seeded.id} FOR UPDATE`);
+        signalLockAcquired();
         await new Promise<void>((resolve) => setTimeout(resolve, SENTINEL_HOLD_MS));
       });
 
-      // Give the sentinel a brief head-start so it definitely owns
-      // the row lock before we kick off the sweep race. 100ms is
-      // generous against typical local DB roundtrips.
-      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      // Wait until the sentinel has actually acquired the row lock
+      // before kicking off the race. Cap the wait so a sentinel
+      // failure surfaces as a clear timeout rather than hanging the
+      // suite.
+      await Promise.race([
+        lockAcquired,
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('sentinel never acquired the row lock')), 5000),
+        ),
+      ]);
 
       const start = Date.now();
       const [a, b] = await Promise.all([
