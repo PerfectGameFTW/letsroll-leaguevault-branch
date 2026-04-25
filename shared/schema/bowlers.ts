@@ -73,6 +73,35 @@ export const bowlers = pgTable("bowlers", {
 // to the server. Both values must stay in lockstep — see task #320.
 export const PAYMENT_SYNC_MAX_ATTEMPTS = 5;
 
+// Single source of truth for the payment-sync status union returned by
+// PATCH /api/account/profile, /api/account/profile/retry-payment-sync,
+// /api/account/confirm-email-change, and surfaced on /api/user. Adding
+// a fifth state means changing this tuple — and only this tuple — so
+// the server, the profile card, the users page, and the email-confirm
+// page can never drift from each other (task #374). Keep alphabetized
+// only by intent: the order here is the natural lifecycle order
+// (success → no-op → retryable failure → not relevant), and tests do
+// not depend on the order.
+export const PAYMENT_SYNC_STATUSES = [
+  'synced',
+  'skipped',
+  'pending_retry',
+  'not_applicable',
+] as const;
+
+export type PaymentSyncStatus = (typeof PAYMENT_SYNC_STATUSES)[number];
+
+// Defensive parser used by clients that read `paymentSyncStatus` off
+// an arbitrary JSON response. An unknown value (older client + newer
+// server adding a fifth state, or a malformed response) collapses to
+// `not_applicable` so the UI stays silent rather than rendering a
+// stale or misleading retry notice.
+export function parsePaymentSyncStatus(value: unknown): PaymentSyncStatus {
+  return (PAYMENT_SYNC_STATUSES as readonly string[]).includes(value as string)
+    ? (value as PaymentSyncStatus)
+    : 'not_applicable';
+}
+
 // Same shape as PAYMENT_SYNC_MAX_ATTEMPTS but for the BowlNow retry
 // sweep (task #480). Kept as a distinct constant so we can tune the
 // two providers' attempt budgets independently if one ends up flakier

@@ -31,7 +31,8 @@ import {
   languageSelectionToWire,
   normalizeStoredLanguage,
 } from "@/lib/preferred-language";
-import type { User } from "@shared/schema";
+import type { PaymentSyncStatus, User } from "@shared/schema";
+import { parsePaymentSyncStatus } from "@shared/schema";
 
 // Server augments the /api/user response with a derived
 // `paymentSyncStatus` ('pending_retry' if the linked bowler row has
@@ -54,8 +55,6 @@ const profileSchema = z.object({
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
-
-type PaymentSyncStatus = "synced" | "skipped" | "pending_retry" | "not_applicable";
 
 // Defensive fallback when a 429 response from the retry endpoint is
 // missing both `Retry-After` and `RateLimit-Reset` headers (task #441).
@@ -252,7 +251,15 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       setIsEditing(false);
       toast({ title: "Profile Updated", description: "Your profile has been saved successfully." });
-      const status = response?.data?.paymentSyncStatus ?? null;
+      // Coerce any unknown server value to `not_applicable` via the
+      // shared parser (task #374) so an old client + future server
+      // adding a fifth state stays silent rather than rendering a
+      // misleading retry notice. `null`/missing stays meaningful here
+      // (it means "no edit has happened yet") so we keep that branch
+      // out of the parser.
+      const raw = response?.data?.paymentSyncStatus;
+      const status: PaymentSyncStatus | null =
+        raw == null ? null : parsePaymentSyncStatus(raw);
       setLastSyncStatus(status);
       if (status === "pending_retry") {
         toast({
@@ -284,7 +291,12 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
         "POST",
       ),
     onSuccess: (response) => {
-      const status = response?.data?.paymentSyncStatus ?? null;
+      // Same defensive parse as the profile-edit mutation above
+      // (task #374): unknown values collapse to `not_applicable` so
+      // the post-retry UX stays silent on a future fifth state.
+      const raw = response?.data?.paymentSyncStatus;
+      const status: PaymentSyncStatus | null =
+        raw == null ? null : parsePaymentSyncStatus(raw);
       setLastSyncStatus(status);
       // Latch the resolved timestamp so the hydration effect ignores
       // any stale 'pending_retry' that races back from /api/user

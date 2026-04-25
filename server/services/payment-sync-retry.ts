@@ -23,8 +23,8 @@ import { lockedSweep } from './_internal/locked-sweep';
 import {
   PAYMENT_SYNC_MAX_ATTEMPTS,
   syncBowlerForUser,
-  type PaymentSyncStatus,
 } from './payment-customer-sync';
+import type { PaymentSyncStatus } from '@shared/schema';
 
 const log = createLogger('PaymentSyncRetry');
 

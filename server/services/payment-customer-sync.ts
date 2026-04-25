@@ -16,10 +16,15 @@ import type { PaymentProvider } from './payment-provider';
 import { syncBowlerLeagueAttributesToProvider } from './bowler-attributes';
 import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
 import { flagBowlerForBnRetry, clearBowlerBnRetry } from './bowlnow-retry-flag.js';
+import type { PaymentSyncStatus } from '@shared/schema';
 
 const log = createLogger('PaymentCustomerSync');
 
-export type PaymentSyncStatus = 'synced' | 'skipped' | 'pending_retry' | 'not_applicable';
+// Re-exported for backwards compatibility with the many call sites that
+// already import `PaymentSyncStatus` from this service. The single
+// source of truth lives in `shared/schema/bowlers.ts` (task #374) so
+// the client and server can never drift on the union's members.
+export type { PaymentSyncStatus };
 
 // Background retry sweep gives up after this many consecutive failed
 // attempts (task #284). Surfaced here so the sweep service and the

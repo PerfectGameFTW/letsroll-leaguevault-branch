@@ -20,11 +20,11 @@ import {
   getBaseUrl,
 } from '../services/email';
 import { requireSystemAdmin } from '../middleware/auth';
-import { syncBowlerForUser, type PaymentSyncStatus } from '../services/payment-customer-sync';
+import { syncBowlerForUser } from '../services/payment-customer-sync';
 import { maskEmail } from '../utils/pii';
 import { randomBytes, createHash } from 'crypto';
 import { db } from '../db';
-import { emailChangeRequests, users } from '@shared/schema';
+import { emailChangeRequests, users, type PaymentSyncStatus } from '@shared/schema';
 import { recordAdminEmailChangeAudit } from '../storage/admin-email-change-audits';
 import { createSharedRateLimitStore } from '../utils/rate-limit-store';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';

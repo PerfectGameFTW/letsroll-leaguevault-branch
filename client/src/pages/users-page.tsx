@@ -31,6 +31,7 @@ import { Plus } from 'lucide-react';
 import { UsersTable, type UsersTableUser, type UsersTableLocation } from '@/components/users-table';
 import { AddUserDialog } from '@/components/add-user-dialog';
 import { passwordSchema } from '@shared/password-validation';
+import { parsePaymentSyncStatus, type PaymentSyncStatus } from '@shared/schema';
 
 const resetPasswordFormSchema = z.object({
   newPassword: passwordSchema,
@@ -41,12 +42,6 @@ const changeEmailFormSchema = z.object({
   email: z.string().email('Please enter a valid email'),
 });
 type ChangeEmailFormValues = z.infer<typeof changeEmailFormSchema>;
-
-// Mirrors the union returned by PATCH /api/account/profile/:id so we
-// can surface the same "Payment record will be retried" notice that
-// ProfileInfoCard (#284) and the email-confirmation page (#322) show
-// when an admin's edit triggers a `pending_retry` (#373).
-type PaymentSyncStatus = 'synced' | 'skipped' | 'pending_retry' | 'not_applicable';
 
 export default function UsersPage() {
   const { toast } = useToast();
@@ -164,7 +159,12 @@ export default function UsersPage() {
       // Wording mirrors the toast in client/src/components/profile-info-card.tsx
       // and the alert in client/src/pages/confirm-email-change-page.tsx so an
       // admin who edits another user's email sees the same explanation.
-      const status = response?.data?.paymentSyncStatus ?? null;
+      // The shared parser (task #374) collapses any unrecognized server
+      // value to `not_applicable`, so an old client + future server
+      // adding a fifth state silently no-ops here instead of toasting.
+      const raw = response?.data?.paymentSyncStatus;
+      const status: PaymentSyncStatus | null =
+        raw == null ? null : parsePaymentSyncStatus(raw);
       if (status === 'pending_retry') {
         toast({
           title: 'Payment record will be retried',

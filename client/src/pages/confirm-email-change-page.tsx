@@ -12,15 +12,11 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, XCircle } from "lucide-react";
 
-// Mirrors the union returned by /api/account/confirm-email-change so we
-// can surface the same "payment record will be retried" notice the
-// profile-edit form shows when the post-confirm sync ends up in
-// `pending_retry` (task #322).
-type PaymentSyncStatus =
-  | "synced"
-  | "skipped"
-  | "pending_retry"
-  | "not_applicable";
+// Single source of truth for the payment-sync union lives in
+// shared/schema/bowlers.ts (task #374). Importing the type and the
+// parser from there means a future fifth state only has to be added in
+// one place.
+import { parsePaymentSyncStatus, type PaymentSyncStatus } from "@shared/schema";
 
 type Status =
   | { kind: "pending" }
@@ -68,15 +64,13 @@ const ConfirmEmailChangePage: FC = () => {
             kind: "success",
             email: body?.data?.email ?? "your new address",
             // Server defaults to "not_applicable" when there's no linked
-            // bowler. Treat any unrecognized value as "not_applicable"
-            // too so a future server-side addition never trips a notice
-            // an old client doesn't know how to interpret.
-            paymentSyncStatus:
-              body?.data?.paymentSyncStatus === "synced" ||
-              body?.data?.paymentSyncStatus === "skipped" ||
-              body?.data?.paymentSyncStatus === "pending_retry"
-                ? body.data.paymentSyncStatus
-                : "not_applicable",
+            // bowler. The shared parser (task #374) collapses any
+            // unrecognized value to "not_applicable" too so a future
+            // server-side addition never trips a notice an old client
+            // doesn't know how to interpret.
+            paymentSyncStatus: parsePaymentSyncStatus(
+              body?.data?.paymentSyncStatus,
+            ),
           });
         } else {
           const code: string = body?.error?.code ?? "INVALID_TOKEN";

@@ -13,8 +13,8 @@ export type { League, InsertLeague, UpdateLeague } from "./leagues";
 export { teams, insertTeamSchema, updateTeamSchema, reorderTeamsSchema } from "./teams";
 export type { Team, InsertTeam, UpdateTeam } from "./teams";
 
-export { bowlers, bowlerLeagues, insertBowlerSchema, insertBowlerLeagueSchema, updateBowlerSchema, updateBowlerLeagueSchema, PAYMENT_SYNC_MAX_ATTEMPTS, BN_SYNC_MAX_ATTEMPTS } from "./bowlers";
-export type { Bowler, InsertBowler, UpdateBowler, BowlerLeague, InsertBowlerLeague, UpdateBowlerLeague } from "./bowlers";
+export { bowlers, bowlerLeagues, insertBowlerSchema, insertBowlerLeagueSchema, updateBowlerSchema, updateBowlerLeagueSchema, PAYMENT_SYNC_MAX_ATTEMPTS, BN_SYNC_MAX_ATTEMPTS, PAYMENT_SYNC_STATUSES, parsePaymentSyncStatus } from "./bowlers";
+export type { Bowler, InsertBowler, UpdateBowler, BowlerLeague, InsertBowlerLeague, UpdateBowlerLeague, PaymentSyncStatus } from "./bowlers";
 
 export { payments, paymentSchedules, insertPaymentSchema, insertPaymentScheduleSchema, updatePaymentSchema, updatePaymentScheduleSchema } from "./payments";
 export type { Payment, InsertPayment, UpdatePayment, PaymentSchedule, InsertPaymentSchedule, UpdatePaymentSchedule } from "./payments";
