@@ -27,8 +27,13 @@ Exit code is non-zero on any new violation.
 
 ## CI integration
 
-Add `npm run lint` to the same CI step that runs `npm run check`. The
-build fails on any net-new violation of either rule above:
+Lint is **enforced** in CI. The `check-and-lint` job in
+`.github/workflows/ci.yml` runs `npm run check` followed by
+`npm run lint` on every pull request to `main` (and on every push
+to `main`); the build fails on a non-zero exit code from either
+step.
+
+Concretely, lint will fail the build on any net-new violation of:
 
 - a new `as any` cast or `: any` annotation, **or**
 - a new `@ts-ignore`, `@ts-nocheck`, or undescribed `@ts-expect-error`

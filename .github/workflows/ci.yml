@@ -1,0 +1,70 @@
+name: CI
+
+# Run on every pull request to main and on every push to main.
+# Push-to-main is included so the dashboard shows a green/red
+# checkmark for the tip of main even after a merge bypasses the PR
+# gate (e.g. a fast-forward from a privileged user).
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel any in-flight run for the same ref when a new push lands.
+# A PR that gets a quick follow-up commit shouldn't burn an extra
+# few minutes finishing the now-superseded run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimum-privilege GITHUB_TOKEN. This job only needs to read the
+# repo to check it out; it doesn't write anything back, doesn't
+# touch issues/PRs, and doesn't publish packages. Adding any of
+# those will require a deliberate, in-diff escalation.
+permissions:
+  contents: read
+
+jobs:
+  # Single job that runs the type checker and the lint suite. Task
+  # #372 explicitly scopes this to `npm run check` + `npm run lint`
+  # so the freshly-wired step starts green; broader checks (vitest,
+  # CSRF coverage, the eslint-baseline ratchet from #404, etc.) are
+  # owned by their own follow-up tasks and will land in their own
+  # workflow files or as additional steps here over time.
+  check-and-lint:
+    name: Type check & lint
+    runs-on: ubuntu-latest
+    # The check+lint pair takes ~1 minute locally; 10 is a generous
+    # ceiling that still kills a runaway install / hung dev-server
+    # spawn before it eats CI budget for an hour.
+    timeout-minutes: 10
+    steps:
+      - name: Check out the PR
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Pinned to the runtime declared in `replit.md` so CI matches
+          # the dev/prod environment. Bump in lockstep when that file
+          # gets bumped.
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # `npm run check` = `tsc`. Catches the `noImplicitAny` /
+      # `strict` half of the escape-hatch contract enforced by the
+      # lint step below — together they pin both compile-time and
+      # source-level escape hatches.
+      - name: Type check
+        run: npm run check
+
+      # `npm run lint` = `eslint .`. Fails (non-zero exit) on any
+      # net-new violation of `@typescript-eslint/no-explicit-any`
+      # (#299) or `@typescript-eslint/ban-ts-comment` (#328) — see
+      # `docs/lint.md` for the contract and the existing-debt
+      # baseline in `eslint-suppressions.json`.
+      - name: Lint
+        run: npm run lint
