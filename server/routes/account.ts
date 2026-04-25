@@ -550,6 +550,68 @@ router.post('/confirm-email-change', confirmEmailChangeLimiter, async (req: Requ
   }
 });
 
+// Throttle the admin-initiated retry endpoint (task #440), companion
+// to `retryPaymentSyncLimiter` (defined below) for the self-serve
+// path. Same cost shape — every call makes a payment-provider
+// request and bumps `payment_sync_attempts` — so a slipping admin
+// finger or a runaway script in an admin browser tab can still
+// hammer one user even though admins are otherwise trusted.
+//
+// The bucket is keyed on the **target bowler id** from the URL (not
+// the admin's own user id) so:
+//   - one admin walking through many users in quick succession
+//     (a common bulk-fix flow) is NOT throttled, but
+//   - any single user can never be ground against the provider
+//     past ~10 retries / minute, no matter how many admins are
+//     poking at them in parallel.
+//
+// The cap is intentionally a touch more generous than the self-serve
+// 5/min because the legitimate admin workflow does sometimes need a
+// couple of close-together retries on the same account (e.g.
+// waiting for a webhook to land or a transient provider blip to
+// clear).
+//
+// Ordering: this limiter runs AFTER `requireAuth` +
+// `requireSystemAdmin`, unlike the self-serve limiter which runs
+// BEFORE `requireAuth` and falls back to per-IP keying. The reason
+// is the keying surface — the per-bowler bucket here comes from a
+// path param, so an unauth attacker reaching the limiter first
+// could pile hits onto an arbitrary bowler-id bucket and DoS the
+// admin's retry budget for that user without ever authenticating.
+// Gating on `requireSystemAdmin` first means only authorized
+// callers can ever increment a bucket.
+const adminRetryPaymentSyncLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  store: createSharedRateLimitStore('admin-retry-payment-sync'),
+  // The key MUST be the same canonical id the handler uses to talk
+  // to the payment provider — otherwise the budget can be trivially
+  // bypassed by requesting equivalent variants of the same bowler
+  // id ('9001', '09001', '9001abc' all parse to bowler 9001 but
+  // would land in three separate buckets if we keyed off the raw
+  // string). Mirror the handler's `parseInt(req.params.id, 10)`
+  // exactly; route to a single 'invalid' bucket on NaN so garbage
+  // path callers can't spawn unbounded fresh buckets either.
+  keyGenerator: (req: Request) => {
+    const parsed = Number.parseInt(req.params.id ?? '', 10);
+    return Number.isNaN(parsed) ? 'b:invalid' : `b:${parsed}`;
+  },
+  handler: (req, res) => {
+    log.warn('Admin payment-sync retry throttled', {
+      adminUserId: (req.user as { id?: number } | undefined)?.id,
+      targetBowlerId: req.params.id,
+    });
+    return sendError(
+      res,
+      'Too many retry attempts for this user. Please wait a minute before retrying.',
+      429,
+      'RATE_LIMITED',
+    );
+  },
+});
+
 // Admin-initiated retry for a bowler whose payment-customer sync failed.
 // Re-runs the same provider call the profile-update path uses; success
 // clears `payment_sync_pending_at`, failure leaves it set.
@@ -557,6 +619,7 @@ router.post(
   '/bowlers/:id/retry-payment-sync',
   requireAuth,
   requireSystemAdmin,
+  adminRetryPaymentSyncLimiter,
   async (req: Request, res: Response) => {
     try {
       const bowlerId = parseInt(req.params.id, 10);

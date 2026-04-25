@@ -1,6 +1,16 @@
 /**
- * Route-level throttle test for the self-serve payment-sync retry
- * endpoint (task #365).
+ * Route-level throttle test for the payment-sync retry endpoints.
+ *
+ * Two budgets are exercised here:
+ *   - the SELF-SERVE limiter (#365) on `POST /api/account/profile/
+ *     retry-payment-sync` — keyed on the authenticated user id with
+ *     IP fallback; 5/min cap; runs BEFORE `requireAuth` so unauth
+ *     bursts are throttled too.
+ *   - the ADMIN limiter (#440) on `POST /api/account/bowlers/:id/
+ *     retry-payment-sync` — keyed on the **target bowler id** from
+ *     the URL; 10/min cap; runs AFTER `requireAuth` +
+ *     `requireSystemAdmin` so an unauth attacker can't pile hits
+ *     onto an arbitrary bowler-id bucket.
  *
  * The companion suite tests/unit/retry-payment-sync-routes.test.ts
  * mocks `express-rate-limit` out of the way so it can exercise the
@@ -8,16 +18,25 @@
  * file deliberately does NOT mock the limiter — it loads the real
  * express-rate-limit middleware so we can prove that:
  *
- *   - the first 5 retry calls in a one-minute window succeed
- *   - the 6th call from the same authenticated user is rejected with
- *     429 RATE_LIMITED via the standard sendError envelope
+ *   - the first 5 self-serve retry calls in a one-minute window
+ *     succeed; the 6th call from the same authenticated user is
+ *     rejected with 429 RATE_LIMITED via the standard sendError
+ *     envelope
+ *   - the first 10 admin retries against ONE target succeed; the
+ *     11th is rejected with 429 RATE_LIMITED
+ *   - bursting the admin endpoint across DIFFERENT targets from one
+ *     admin does NOT trigger the limit (proves the keying is on
+ *     bowler id, not admin user id)
  *   - the rate-limited request never reaches the sync worker (so the
  *     limiter is wired BEFORE the handler, not after)
  *
  * The shared-Postgres store is replaced with `undefined` so the
  * limiter falls back to express-rate-limit's in-memory store; this
  * gives us a fresh per-process budget that the test can fully
- * consume without contaminating other tests.
+ * consume without contaminating other tests. Each test uses a
+ * disjoint set of bucket keys (distinct user ids, IPs, or bowler
+ * ids) so no test ever inherits a partially-spent bucket from a
+ * sibling.
  */
 import {
   afterAll,
@@ -48,18 +67,41 @@ const PLAIN_USER_LINKED = {
   createdAt: new Date('2025-01-01T00:00:00Z'),
 };
 
+// system_admin used by the #440 admin-route tests. The id is
+// deliberately distinct from any bowler id we burst against so a
+// future regression that swaps the limiter's keying back to
+// `req.user.id` would NOT accidentally still pass — the test would
+// now share a bucket per admin id rather than per bowler id and the
+// cross-target burst would fail on call #11.
+const ADMIN_USER = {
+  id: 7001,
+  email: 'admin@vitest.local',
+  name: 'Admin User',
+  role: 'system_admin' as const,
+  organizationId: 12,
+  locationId: 7,
+  bowlerId: null,
+  phone: null,
+  preferredLanguage: null,
+  avatar: null,
+  password: 'hashed:irrelevant',
+  createdAt: new Date('2025-01-01T00:00:00Z'),
+};
+
 // --- Module mocks. Hoisted by vitest. ----------------------------
 //
 // IMPORTANT: we do NOT mock 'express-rate-limit' here — that is the
 // whole point of this file.
 
 const mockGetBowler = vi.fn();
+const mockGetUserByBowlerId = vi.fn();
 const mockSyncBowlerForUser = vi.fn();
 
 vi.mock('../../server/storage', () => ({
   storage: {
     getBowler: (...a: unknown[]) => mockGetBowler.apply(null, a as never),
-    getUserByBowlerId: vi.fn(),
+    getUserByBowlerId: (...a: unknown[]) =>
+      mockGetUserByBowlerId.apply(null, a as never),
     getEmailChangeRequestByTokenHash: vi.fn(),
     consumeEmailChangeRequest: vi.fn(),
   },
@@ -123,7 +165,10 @@ let baseUrl: string;
 // limiter bucket because tests use distinct user ids / IPs (or the
 // limiter's in-memory store is reset between cases via a fresh
 // keyGenerator key) so cross-case pollution is avoided.
-let nextAuthState: { isAuthenticated: boolean; user: typeof PLAIN_USER_LINKED | null } = {
+let nextAuthState: {
+  isAuthenticated: boolean;
+  user: typeof PLAIN_USER_LINKED | typeof ADMIN_USER | null;
+} = {
   isAuthenticated: true,
   user: PLAIN_USER_LINKED,
 };
@@ -158,6 +203,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   mockGetBowler.mockReset();
+  mockGetUserByBowlerId.mockReset();
   mockSyncBowlerForUser.mockReset();
   mockGetBowler.mockResolvedValue({
     id: PLAIN_USER_LINKED.bowlerId,
@@ -236,5 +282,140 @@ describe('POST /api/account/profile/retry-payment-sync rate limit (#365)', () =>
     // outright on the 6th).
     expect(mockSyncBowlerForUser).not.toHaveBeenCalled();
     expect(mockGetBowler).not.toHaveBeenCalled();
+  });
+});
+
+async function postAdminRetry(targetBowlerId: number | string) {
+  // Accept string here so the canonicalization regression test can
+  // pass equivalent-but-non-canonical id forms (e.g. '09001').
+  const res = await fetch(
+    `${baseUrl}/api/account/bowlers/${targetBowlerId}/retry-payment-sync`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    },
+  );
+  return { status: res.status, body: await res.json() };
+}
+
+describe('POST /api/account/bowlers/:id/retry-payment-sync rate limit (#440)', () => {
+  beforeEach(() => {
+    // Promote the default authenticated user to system_admin so the
+    // requireSystemAdmin gate (which sits in front of the limiter on
+    // this route — see the comment block above the limiter in
+    // server/routes/account.ts) lets requests through.
+    nextAuthState = { isAuthenticated: true, user: ADMIN_USER };
+    // The admin handler resolves the linked user from the bowler id
+    // before calling the sync worker; return a plausible row so the
+    // handler always reaches the worker on legit (non-throttled)
+    // calls. The exact contents don't matter — only the presence of
+    // a row matters for the throttling assertions.
+    mockGetUserByBowlerId.mockResolvedValue(PLAIN_USER_LINKED);
+  });
+
+  it('allows the first 10 admin retries against one target and rejects the 11th with 429 RATE_LIMITED', async () => {
+    // Distinct bowler id from any used in the cross-target test
+    // below so the two tests cannot share a bucket regardless of
+    // execution order.
+    const TARGET = 9001;
+
+    for (let i = 0; i < 10; i++) {
+      const { status, body } = await postAdminRetry(TARGET);
+      expect(
+        status,
+        `admin call #${i + 1} against bowler ${TARGET} should still be within budget`,
+      ).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.data.paymentSyncStatus).toBe('synced');
+    }
+
+    const { status, body } = await postAdminRetry(TARGET);
+    expect(status).toBe(429);
+    expect(body.success).toBe(false);
+    expect(body.error?.code).toBe('RATE_LIMITED');
+
+    // Limiter must short-circuit BEFORE the handler runs — otherwise
+    // the throttle wouldn't actually relieve provider pressure on
+    // the targeted user, which is the whole point of #440. Worker
+    // count is exactly the number of allowed calls (10); the 11th
+    // never reached the handler.
+    expect(mockSyncBowlerForUser).toHaveBeenCalledTimes(10);
+    expect(mockGetBowler).toHaveBeenCalledTimes(10);
+  });
+
+  it('keys per target bowler id — bursting across different bowlers from one admin does NOT trigger the limit', async () => {
+    // 11 calls from the SAME admin against 11 DISTINCT bowlers. If
+    // the limiter were accidentally keyed on the admin's own user
+    // id (a tempting bug — the self-serve limiter IS keyed on user
+    // id, and the admin user id is the easiest thing to reach for
+    // in keyGenerator) then call #11 would 429 because the admin
+    // would have spent their per-key budget. With per-target
+    // keying each bowler bucket only sees ONE hit, so every call
+    // must succeed.
+    //
+    // The bowler-id range (9101-9111) is disjoint from the 9001
+    // used in the single-target test above so this test can be run
+    // in any order or in isolation without inheriting a partially-
+    // spent bucket.
+    for (let i = 0; i < 11; i++) {
+      const targetBowlerId = 9101 + i;
+      const { status, body } = await postAdminRetry(targetBowlerId);
+      expect(
+        status,
+        `cross-target call #${i + 1} (bowler ${targetBowlerId}) must not be rate-limited`,
+      ).toBe(200);
+      expect(body.success).toBe(true);
+      expect(body.data.paymentSyncStatus).toBe('synced');
+    }
+
+    // Every call reached the handler — no 429 short-circuits.
+    expect(mockSyncBowlerForUser).toHaveBeenCalledTimes(11);
+    expect(mockGetBowler).toHaveBeenCalledTimes(11);
+  });
+
+  it('canonicalizes the limiter key — equivalent id forms (9201, 09201) share one bucket and the 11th combined call 429s', async () => {
+    // Regression guard for the architect-flagged bypass: if the
+    // limiter keyed off the raw `req.params.id` string instead of
+    // the parsed numeric id the handler actually uses, an admin
+    // could trivially defeat the per-target budget by alternating
+    // the URL form. The handler treats '9201' and '09201' as the
+    // same bowler (parseInt -> 9201) so the limiter MUST too.
+    //
+    // Uses bowler 9201 (disjoint from 9001 above and 9101..9111
+    // below/above) so the bucket is fresh when this test runs.
+    const variants: Array<string> = [
+      '9201',
+      '09201',
+      '9201',
+      '09201',
+      '9201',
+      '09201',
+      '9201',
+      '09201',
+      '9201',
+      '09201',
+    ];
+
+    for (let i = 0; i < variants.length; i++) {
+      const { status, body } = await postAdminRetry(variants[i]!);
+      expect(
+        status,
+        `combined call #${i + 1} (variant ${variants[i]}) should still be within shared budget`,
+      ).toBe(200);
+      expect(body.success).toBe(true);
+    }
+
+    // 11th combined call across the two equivalent forms must 429.
+    // The variant chosen here ('9201abc') also parses to 9201 via
+    // JavaScript's lenient parseInt, locking down a third bypass
+    // path on the same regression.
+    const { status, body } = await postAdminRetry('9201abc');
+    expect(status).toBe(429);
+    expect(body.error?.code).toBe('RATE_LIMITED');
+
+    // Worker reached exactly 10 times across the equivalent forms;
+    // the throttled 11th never reached the handler.
+    expect(mockSyncBowlerForUser).toHaveBeenCalledTimes(10);
   });
 });
