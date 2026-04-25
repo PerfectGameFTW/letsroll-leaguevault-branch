@@ -857,11 +857,33 @@ router.post('/change-password', changePasswordLimiter, requireAuth, async (req: 
       // this attempt crossed the threshold. The storage helper is
       // race-safe (FOR UPDATE inside a transaction) so two concurrent
       // failures can't double-fire the side effects.
+      //
+      // Counter semantics — by design this is a CUMULATIVE counter
+      // ("N failed attempts since the last successful change-password"
+      // or since the last lock auto-expired), not a strict rolling
+      // 25-in-1-hour window. The task #357 spec says "consecutive
+      // failed attempts", which the cumulative model satisfies
+      // exactly: any successful rotation OR an expired lock fully
+      // resets the count to zero (see resetFailedPasswordChangeAttempts
+      // and the expired-lock branch inside recordFailedPasswordChangeAttempt).
+      // If product/security later wants a true sliding window, that
+      // requires a separate timestamp-array column.
+      //
+      // Failure posture — if the storage helper itself throws (e.g.
+      // a transient DB blip), we deliberately DEGRADE GRACEFULLY:
+      // log loudly, continue with lockResult=null, and return the
+      // normal INVALID_PASSWORD response. Returning 5xx here would
+      // be more secure (fail-closed against brute force) but punishes
+      // legitimate users mistyping during a database incident with a
+      // confusing server error. The log line below is the operational
+      // signal — alerting on `[SECURITY] lockout-counter-write-failed`
+      // will catch sustained outages that would otherwise erode the
+      // lockout guarantee.
       let lockResult: Awaited<ReturnType<typeof storage.recordFailedPasswordChangeAttempt>> | null = null;
       try {
         lockResult = await storage.recordFailedPasswordChangeAttempt(user.id);
       } catch (err) {
-        log.error('Failed to record failed password-change attempt', {
+        log.error('[SECURITY] lockout-counter-write-failed: change-password failure was NOT counted toward the account lockout threshold. If this fires repeatedly, the lockout protection is degraded — investigate the database immediately.', {
           userId: user.id,
           error: err instanceof Error ? err.message : String(err),
         });
