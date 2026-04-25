@@ -72,6 +72,7 @@ export interface IBowlerStorage {
   getBowlerLeague(id: number): Promise<BowlerLeague | undefined>;
   getBowlerLeaguesByBowlerIds(bowlerIds: number[]): Promise<BowlerLeague[]>;
   createBowlerLeague(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague>;
+  createBowlerLeagueIfBowlerFree(bowlerLeague: InsertBowlerLeague): Promise<BowlerLeague | null>;
   updateBowlerLeague(id: number, bowlerLeague: UpdateBowlerLeague): Promise<BowlerLeague>;
   updateBowlerLeagueOrder(id: number, newOrder: number): Promise<BowlerLeague[]>;
   deleteBowlerLeague(id: number): Promise<boolean>;

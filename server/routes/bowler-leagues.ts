@@ -108,6 +108,7 @@ router.post("/", async (req, res) => {
       return sendError(res, "You don't have access to this team", 403, 'FORBIDDEN');
     }
 
+    let bootstrapPath = false;
     if (!(await hasAccessToBowler(req, data.bowlerId))) {
       // Bootstrap exception (creation-time claim token + org-stamp gate).
       //
@@ -162,8 +163,31 @@ router.post("/", async (req, res) => {
         return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
       }
       // OK: org/system admin, bowler stamp matches league org, valid claim.
+      bootstrapPath = true;
     }
 
+    if (bootstrapPath) {
+      // Bootstrap path: do the "bowler is free-floating" check and the
+      // insert atomically (task #343). Two admins racing to bootstrap
+      // the same fresh bowler used to be able to both pass a separate
+      // count check and both insert links, producing unintended
+      // multi-affiliation in the few-millisecond window before either
+      // insert landed. The storage helper wraps both in a transaction
+      // with `SELECT ... FOR UPDATE` on the bowler row, so racing
+      // bootstrap attempts serialize and only the first observes the
+      // bowler as free. Any other request gets null back (mapped to
+      // the same 400 the non-atomic check used to return).
+      const created = await storage.createBowlerLeagueIfBowlerFree(data);
+      if (!created) {
+        return sendError(res, "Bowler is already in this league", 400);
+      }
+      return sendSuccess(res, created, 201);
+    }
+
+    // Non-bootstrap path: caller already has access to this bowler via
+    // the normal access-control rules, so additional league memberships
+    // are allowed. We still guard against duplicate (bowler, league)
+    // pairs with the same uniqueness check the route has always done.
     const existing = await storage.getBowlerLeagues({
       bowlerId: data.bowlerId,
       leagueId: data.leagueId

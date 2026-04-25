@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db } from '../../server/db';
 import { bowlerLeagues, bowlers as bowlersTable, teams as teamsTable } from '@shared/schema';
+import { createBowlerLeagueIfBowlerFree } from '../../server/storage/bowlers';
 import {
   login,
   apiGet,
@@ -257,6 +258,70 @@ describe('POST /api/bowler-leagues — bootstrap path for fresh bowlers', () => 
       .from(bowlerLeagues)
       .where(eq(bowlerLeagues.bowlerId, bowlerId));
     expect(remainingLinks.length).toBe(0);
+  });
+
+  it('createBowlerLeagueIfBowlerFree: 5 concurrent storage calls for the same fresh bowler land exactly one row (task #343 storage atomicity)', async () => {
+    // Regression for the check-then-insert race in the bootstrap branch.
+    //
+    // Why test the storage helper directly instead of the HTTP route:
+    // the route-level race for the bootstrap branch is not actually
+    // exercisable end-to-end. The bootstrap branch only fires when
+    // `hasAccessToBowler` returns false (cross-org / no-shared-league
+    // caller). For any caller for whom the branch DOES fire, the
+    // single-use claim token (consumed atomically inside one Node turn
+    // — `Map.get` + `Map.delete` are synchronous) lets at most one
+    // request through to the insert. So at the HTTP layer there is
+    // never more than one in-flight bootstrap insert for a given
+    // bowler in a single process anyway.
+    //
+    // The race the task is hardening against assumes the claim
+    // mechanism has been bypassed (e.g. multi-process deploys where
+    // the in-memory map isn't shared, or a future change that removes
+    // the claim token entirely). This test simulates that by calling
+    // the storage helper directly. Without `SELECT ... FOR UPDATE` on
+    // the bowler row inside the helper, all 5 calls would observe an
+    // empty active-bowler-leagues set and all 5 would insert.
+    expect(leagueId).not.toBeNull();
+    expect(teamId).not.toBeNull();
+
+    const bowlerRes = await apiPost<Bowler>(
+      '/api/bowlers',
+      {
+        name: `Vitest Bootstrap Bowler ${stamp}-storage-race`,
+        email: `vitest-bootstrap-${stamp}-storage-race@example.com`,
+        active: true,
+      },
+      sessionB,
+    );
+    expect(bowlerRes.status).toBe(201);
+    const bowlerId = (bowlerRes.data.data as Bowler).id;
+    createdBowlerIds.push(bowlerId);
+
+    const concurrency = 5;
+    const results = await Promise.all(
+      Array.from({ length: concurrency }, () =>
+        createBowlerLeagueIfBowlerFree({
+          bowlerId,
+          leagueId: leagueId!,
+          teamId: teamId!,
+          active: true,
+          order: 0,
+        }),
+      ),
+    );
+
+    const created = results.filter((r) => r !== null);
+    const skipped = results.filter((r) => r === null);
+    expect(created).toHaveLength(1);
+    expect(skipped).toHaveLength(concurrency - 1);
+
+    const linksInDb = await db
+      .select({ id: bowlerLeagues.id })
+      .from(bowlerLeagues)
+      .where(eq(bowlerLeagues.bowlerId, bowlerId));
+    expect(linksInDb).toHaveLength(1);
+
+    if (created[0]) createdBowlerLeagueIds.push(created[0].id);
   });
 
   it('same-org admin can re-link a soft-deactivated fresh bowler — the org stamp grants access without needing the bootstrap branch', async () => {
