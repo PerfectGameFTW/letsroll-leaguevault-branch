@@ -1,0 +1,262 @@
+name: Race suite
+
+# Task #436: gate the opt-in race suite (`bash scripts/test-race.sh`) on
+# PRs that touch the sweep-locking and admin-bootstrap critical sections.
+#
+# Both files in the suite are gated behind RUN_BOOTSTRAP_RACE_TESTS=1 and
+# are NOT picked up by the default `npm test` run, so a regression to
+# `FOR UPDATE SKIP LOCKED` in `server/services/_internal/locked-sweep.ts`
+# (#321/#361) or to the bootstrap-admin advisory-lock + in-txn pre-check
+# in `server/setup/admin-bootstrap.ts` (#319/#360) could land on main
+# without anyone running the suite. This workflow closes that gap.
+#
+# Why a separate workflow file (and not a step on `ci.yml`):
+#   * `ci.yml`'s `Type check & lint` job is fast (~1 minute) and runs on
+#     every PR. The race suite needs a real Postgres, has to boot the
+#     dev server, and is materially slower; folding it into the same
+#     job would slow down every PR for the 95% that don't touch the
+#     sweep code.
+#   * The existing job's name (`Type check & lint`) is intentionally
+#     pinned for branch-protection rules — adding race coverage as a
+#     fifth step would either rename it or hide the failure under a
+#     misleading job name.
+#   * The race suite needs a service container (`services: postgres`)
+#     and a backgrounded dev server. Keeping that plumbing isolated
+#     here means a future tweak to the static-check job can't
+#     accidentally break the integration job.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Don't burn a runner finishing a superseded race-suite run when a quick
+# follow-up commit lands on the same PR. Mirrors the cancellation policy
+# in `ci.yml` but uses a distinct group name so the two workflows don't
+# cancel each other (they trigger on the same events).
+concurrency:
+  group: race-suite-${{ github.ref }}
+  cancel-in-progress: true
+
+# Minimum-privilege GITHUB_TOKEN. We only need to read the repo to check
+# it out; no issue/PR writes, no package publishing.
+permissions:
+  contents: read
+
+jobs:
+  race-suite:
+    # NOTE: this job's `name:` is the value branch-protection rules will
+    # match against. If you rename it, update branch protection too.
+    name: Race suite
+    runs-on: ubuntu-latest
+    # The race suite spins up a Postgres container, runs `db:push`,
+    # boots the dev server, and runs two race files serially. Locally
+    # it finishes in ~3 minutes; 20 is a generous ceiling that still
+    # kills a hung dev-server boot or a deadlocked test before it eats
+    # the CI budget for an hour.
+    timeout-minutes: 20
+
+    # Ephemeral Postgres so the race tests can take real row locks.
+    # Using `postgres:16` matches the prod runtime and the version the
+    # Drizzle migrations have been validated against.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: leaguevault_race
+        ports:
+          - 5432:5432
+        # Wait for `pg_isready` before the job's own steps can connect.
+        # Without this, `npm run db:push` can race the container's
+        # initdb and fail on a cold cache.
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Check out the PR
+        uses: actions/checkout@v4
+
+      # Detect whether this PR (or push) actually touched any of the
+      # files the race suite covers. Done inside the job (rather than
+      # as a workflow-level `on.pull_request.paths` filter) so the
+      # `Race suite` check always shows up in the PR status list — a
+      # required branch-protection rule keyed on this job will see a
+      # green "skipped" result on unrelated PRs instead of getting
+      # stuck waiting for a check that never reports. Only when one of
+      # the listed files changes does the heavy work below actually
+      # run.
+      #
+      # Files watched (keep in sync with the task #436 spec and with
+      # the comment block at the top of `scripts/test-race.sh`):
+      #   * server/services/_internal/locked-sweep.ts — the shared
+      #     `lockedSweep` helper that owns FOR UPDATE SKIP LOCKED
+      #     (#321 / #361).
+      #   * server/services/payment-sync-retry.ts — the sweep that
+      #     uses lockedSweep and is exercised by
+      #     payment-sync-retry-race.test.ts (#362).
+      #   * server/setup/admin-bootstrap.ts — the first-admin
+      #     critical section exercised by
+      #     setup-admin-bootstrap-race.test.ts (#319 / #360).
+      #   * The two race test files themselves — so changes to the
+      #     test fixtures get re-validated.
+      #   * scripts/test-race.sh — so the wrapper itself stays
+      #     covered.
+      #   * This workflow file — so a tweak here re-runs the suite to
+      #     prove the tweak didn't break the gate.
+      - name: Detect sweep-related changes
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            sweep:
+              - 'server/services/_internal/locked-sweep.ts'
+              - 'server/services/payment-sync-retry.ts'
+              - 'server/setup/admin-bootstrap.ts'
+              - 'tests/api/payment-sync-retry-race.test.ts'
+              - 'tests/api/setup-admin-bootstrap-race.test.ts'
+              - 'scripts/test-race.sh'
+              - '.github/workflows/race-suite.yml'
+
+      # Push events to `main` (post-merge) always run the suite so the
+      # tip of main keeps a green/red signal even if a PR was
+      # fast-forwarded by a privileged user without the gate firing.
+      # PRs only run when the filter says relevant files changed.
+      - name: Decide whether to run
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.changes.outputs.sweep }}" = "true" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No sweep-related files changed; skipping race suite."
+          fi
+
+      - name: Set up Node.js
+        if: steps.decide.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          # Pinned to the runtime declared in `replit.md` so CI matches
+          # the dev/prod environment. Bump in lockstep when that file
+          # gets bumped (mirrors `ci.yml`).
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.decide.outputs.run == 'true'
+        run: npm ci
+
+      # Apply the Drizzle schema to the empty Postgres container.
+      # `db:push` is idempotent and matches what `npm run dev` expects
+      # to find on first boot.
+      - name: Apply database schema
+        if: steps.decide.outputs.run == 'true'
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/leaguevault_race
+        run: npm run db:push
+
+      # Boot the same dev server the tests talk to. The race files hit
+      # `http://localhost:5000` directly (see the `BASE_URL` constant in
+      # `tests/api/setup-admin-bootstrap-race.test.ts`), so we need a
+      # live Express + Vite process, not just an ad-hoc test harness.
+      #
+      # `tests/setup/global-setup.ts` runs the seeder at vitest start,
+      # so we don't need a separate `npm run seed` step.
+      #
+      # Env var contract:
+      #   * DATABASE_URL — points at the service container above.
+      #   * SESSION_SECRET — any non-empty value; the race tests don't
+      #     rely on cookie persistence beyond the request lifetime.
+      #   * FIELD_ENCRYPTION_KEY — must be 64 hex chars (32 bytes) per
+      #     `server/config.ts`. The value below is a deterministic
+      #     CI-only key; it is never used to decrypt real data because
+      #     the Postgres container is fresh each run.
+      #   * SETUP_SECRET — must be >= 32 chars (`MIN_SETUP_SECRET_LENGTH`
+      #     in `server/config.ts`). Pulled from the `SETUP_SECRET`
+      #     repository secret. The wrapper script and the test file
+      #     BOTH hard-fail if it's missing, so a misconfigured CI step
+      #     exits non-zero with a clear message instead of silently
+      #     skipping coverage (see comment block in
+      #     `scripts/test-race.sh`).
+      #   * NODE_ENV=development — keeps the auth rate limiter in dev
+      #     mode (see `server/routes/auth.ts`) so repeated requests
+      #     during the race loop don't trip the per-IP cap.
+      - name: Start dev server
+        if: steps.decide.outputs.run == 'true'
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/leaguevault_race
+          SESSION_SECRET: ci-race-suite-session-secret
+          FIELD_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          NODE_ENV: development
+          PORT: '5000'
+        run: |
+          # Background the dev server and capture its PID so the
+          # cleanup step can SIGTERM it cleanly even if the test step
+          # fails. Output goes to a logfile we tail on failure for
+          # debugging.
+          npm run dev > /tmp/dev-server.log 2>&1 &
+          echo $! > /tmp/dev-server.pid
+          echo "Dev server started with PID $(cat /tmp/dev-server.pid)"
+
+      # Poll `/api/health` until the server reports healthy. Mirrors
+      # the wait-for-port helper in `server/utils/wait-for-port.ts` but
+      # implemented inline here so the workflow doesn't depend on a
+      # specific code path inside the app. 60 attempts × 2s = 2 min
+      # ceiling, which comfortably covers a cold Vite startup on a
+      # GitHub-hosted runner.
+      - name: Wait for dev server
+        if: steps.decide.outputs.run == 'true'
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:5000/api/health > /dev/null; then
+              echo "Dev server is healthy after ${i} attempt(s)."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Dev server failed to become healthy within 120s." >&2
+          echo "--- last 200 lines of /tmp/dev-server.log ---" >&2
+          tail -n 200 /tmp/dev-server.log >&2 || true
+          exit 1
+
+      # The actual gate. `scripts/test-race.sh` exports
+      # RUN_BOOTSTRAP_RACE_TESTS=1 and runs the two race files
+      # serially with `--no-file-parallelism` (see the comment block
+      # at the top of the script for why).
+      - name: Run race suite
+        if: steps.decide.outputs.run == 'true'
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/leaguevault_race
+          SESSION_SECRET: ci-race-suite-session-secret
+          FIELD_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          NODE_ENV: development
+        run: bash scripts/test-race.sh
+
+      # Always-run cleanup: SIGTERM the backgrounded dev server so the
+      # job finishes promptly even when the race step fails. `|| true`
+      # absorbs the case where the server already exited (e.g. crashed
+      # during the test run, in which case the failed test step
+      # already surfaced the failure).
+      - name: Stop dev server
+        if: always() && steps.decide.outputs.run == 'true'
+        run: |
+          if [ -f /tmp/dev-server.pid ]; then
+            kill "$(cat /tmp/dev-server.pid)" 2>/dev/null || true
+          fi
+
+      # On failure, dump the dev server log so the failing run is
+      # debuggable from the GH Actions UI without having to re-run
+      # locally. Skipped on success so the green-path log stays clean.
+      - name: Dump dev server log on failure
+        if: failure() && steps.decide.outputs.run == 'true'
+        run: |
+          echo "--- /tmp/dev-server.log ---"
+          tail -n 500 /tmp/dev-server.log || true
