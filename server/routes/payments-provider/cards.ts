@@ -8,7 +8,7 @@
  */
 import { Router } from 'express';
 import { storage } from '../../storage';
-import { sendSuccess, sendError } from '../../utils/api.js';
+import { sendSuccess, sendError, parseOptionalIntParam } from '../../utils/api.js';
 import { hasAccessToBowler } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
@@ -85,8 +85,16 @@ router.get('/cards/:bowlerId', async (req, res) => {
       return sendSuccess(res, []);
     }
 
-    const listLeagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : null;
-    let resolvedLeagueId = listLeagueId;
+    // task #421: reject malformed `?leagueId` instead of forwarding
+    // NaN into `getProviderForLeague` (which would surface as a
+    // confusing provider-not-configured / 500). Empty string is
+    // still treated as "no filter" → fall through to the bowler's
+    // own league below.
+    const listLeagueIdParsed = parseOptionalIntParam(req.query.leagueId);
+    if (listLeagueIdParsed === null) {
+      return sendError(res, "Invalid league ID format", 400);
+    }
+    let resolvedLeagueId: number | null = listLeagueIdParsed ?? null;
     if (!resolvedLeagueId) {
       const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: bowlerId });
       if (bowlerLeagues.length > 0) {
@@ -141,8 +149,11 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
       return sendError(res, 'Bowler not found', 404);
     }
 
-    const delLeagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : null;
-    let resolvedLeagueId = delLeagueId;
+    const delLeagueIdParsed = parseOptionalIntParam(req.query.leagueId);
+    if (delLeagueIdParsed === null) {
+      return sendError(res, "Invalid league ID format", 400);
+    }
+    let resolvedLeagueId: number | null = delLeagueIdParsed ?? null;
     if (!resolvedLeagueId) {
       const bowlerLeagues = await storage.getBowlerLeagues({ bowlerId: bowlerId });
       if (bowlerLeagues.length > 0) {

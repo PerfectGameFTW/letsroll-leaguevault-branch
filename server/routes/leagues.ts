@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import { storage } from '../storage';
 import { insertLeagueSchema, updateLeagueSchema, DEFAULT_TIMEZONE } from "@shared/schema";
 import { z } from "zod";
-import { sendSuccess, sendError, handleZodError } from '../utils/api';
+import { sendSuccess, sendError, handleZodError, parseOptionalIntParam } from '../utils/api';
 import { requireOrganizationAccess, hasAccessToLeague } from '../utils/access-control';
 import { getOrganizationFilter, filterByOrganization } from '../middleware/organization';
 import { hashPassword } from '../auth';
@@ -26,6 +26,23 @@ router.use(filterByOrganization);
 
 router.get("/", async (req: Request, res) => {
   try {
+    // task #421: validate the optional `?locationId` filter BEFORE
+    // any storage lookup. Two reasons:
+    //   1. Don't burn a DB round trip on a request we're going to
+    //      400 anyway.
+    //   2. The previous `parseInt(String(req.query.locationId))`
+    //      silently accepted partially-numeric input like
+    //      `?locationId=42abc` as `42` and returned filtered
+    //      results for the wrong location.
+    // The `if (locationId)` truthy check below preserves the prior
+    // semantics for `?locationId=0` (treated as "no filter" — 0 is
+    // not a valid location id), so this is a malformed-input-only
+    // tightening with no behaviour change for valid callers.
+    const locationId = parseOptionalIntParam(req.query.locationId);
+    if (locationId === null) {
+      return sendError(res, "Invalid location ID format", 400);
+    }
+
     const organizationId = getOrganizationFilter(req);
     const isSystemAdmin = req.user?.role === 'system_admin';
     
@@ -37,8 +54,7 @@ router.get("/", async (req: Request, res) => {
     } else {
       return sendSuccess(res, []);
     }
-    
-    const locationId = req.query.locationId ? parseInt(String(req.query.locationId)) : null;
+
     if (locationId) {
       leagues = leagues.filter(l => l.locationId === locationId);
     }

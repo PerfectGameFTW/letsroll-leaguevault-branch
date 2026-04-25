@@ -7,7 +7,7 @@
  */
 import { Router } from 'express';
 import { storage } from '../../storage';
-import { sendSuccess, sendError } from '../../utils/api.js';
+import { sendSuccess, sendError, parseOptionalIntParam } from '../../utils/api.js';
 import { createLogger } from '../../logger';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
 import { hasCatalogSupport } from '../../services/payment-provider';
@@ -18,10 +18,24 @@ const router = Router();
 
 router.get('/catalog/categories', async (req, res) => {
   try {
-    const locationIdParam = req.query.locationId as string | undefined;
-    const lvLocationId = locationIdParam ? parseInt(locationIdParam) : null;
+    // task #421: tighten the `?locationId` filter. The previous
+    // `parseInt` + `!isNaN` ternary had a real security smell: when
+    // the caller sent something unparseable like `?locationId=foo`,
+    // `lvLocationId` was NaN, the `!isNaN` guard skipped the org
+    // ownership check ENTIRELY, and the request fell through to
+    // `getPaymentProvider(NaN)` (which then 404'd on the provider
+    // lookup). Rejecting up front closes that bypass and gives the
+    // caller a clear error message.
+    const parsedLocationId = parseOptionalIntParam(req.query.locationId);
+    if (parsedLocationId === null) {
+      return sendError(res, 'Invalid location ID format', 400);
+    }
+    // Preserve the prior truthy semantics for `?locationId=0` (treated
+    // as "no filter" — 0 is not a valid serial id) so this change is
+    // strictly a malformed-input tightening.
+    const lvLocationId: number | null = parsedLocationId ?? null;
 
-    if (lvLocationId && !isNaN(lvLocationId)) {
+    if (lvLocationId) {
       const loc = await storage.getLocation(lvLocationId);
       if (!loc) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
       const isAuthorized =
@@ -55,10 +69,13 @@ router.get('/catalog/categories', async (req, res) => {
 router.get('/catalog/items', async (req, res) => {
   try {
     const categoryId = req.query.categoryId as string | undefined;
-    const locationIdParam = req.query.locationId as string | undefined;
-    const lvLocationId = locationIdParam ? parseInt(locationIdParam) : null;
+    const parsedLocationId = parseOptionalIntParam(req.query.locationId);
+    if (parsedLocationId === null) {
+      return sendError(res, 'Invalid location ID format', 400);
+    }
+    const lvLocationId: number | null = parsedLocationId ?? null;
 
-    if (lvLocationId && !isNaN(lvLocationId)) {
+    if (lvLocationId) {
       const loc = await storage.getLocation(lvLocationId);
       if (!loc) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
       const isAuthorized =

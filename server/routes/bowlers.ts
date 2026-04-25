@@ -2,7 +2,13 @@ import { Router } from 'express';
 import { storage } from '../storage';
 import { insertBowlerSchema, updateBowlerSchema } from "@shared/schema";
 import { z } from "zod";
-import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
+import {
+  sendSuccess,
+  sendError,
+  handleZodError,
+  parseOptionalIntParam,
+  parseOptionalIntListParam,
+} from '../utils/api.js';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
@@ -18,8 +24,12 @@ const router = Router();
 
 router.get("/unlinked", async (req, res) => {
   try {
-    const rawUnlinkedOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
-    if (rawUnlinkedOrgId !== undefined && isNaN(rawUnlinkedOrgId)) {
+    // task #421: replace the loose `parseInt + isNaN` pattern with
+    // the strict shared helper so partially-numeric input like
+    // `?organizationId=1abc` is rejected too (not silently coerced
+    // to `1`).
+    const rawUnlinkedOrgId = parseOptionalIntParam(req.query.organizationId);
+    if (rawUnlinkedOrgId === null) {
       return sendError(res, "Invalid organization ID format", 400);
     }
 
@@ -110,16 +120,16 @@ router.get("/unlinked", async (req, res) => {
 
 router.get("/", async (req, res) => {
   try {
-    const teamId = req.query.teamId ? parseInt(req.query.teamId as string) : undefined;
-    const ids = req.query.ids ? (req.query.ids as string).split(',').map(id => parseInt(id)) : undefined;
-
-    // Validate the teamId if provided
-    if (teamId !== undefined && isNaN(teamId)) {
+    // task #421: tighten both filters with the strict shared
+    // helpers — previously `parseInt` accepted "42abc" as 42 and the
+    // ids-list split would silently drop bad elements as NaN.
+    const teamId = parseOptionalIntParam(req.query.teamId);
+    if (teamId === null) {
       return sendError(res, "Invalid team ID format", 400);
     }
 
-    // Validate the ids if provided
-    if (ids && ids.some(isNaN)) {
+    const ids = parseOptionalIntListParam(req.query.ids);
+    if (ids === null) {
       return sendError(res, "Invalid bowler ID format in list", 400);
     }
 
@@ -144,8 +154,8 @@ router.get("/", async (req, res) => {
 
     // Determine the effective organization context
     const isSystemAdmin = req.user?.role === 'system_admin';
-    const rawQueryOrgId = req.query.organizationId ? parseInt(req.query.organizationId as string) : undefined;
-    if (rawQueryOrgId !== undefined && isNaN(rawQueryOrgId)) {
+    const rawQueryOrgId = parseOptionalIntParam(req.query.organizationId);
+    if (rawQueryOrgId === null) {
       return sendError(res, "Invalid organization ID format", 400);
     }
     const effectiveOrgId: number | null = isSystemAdmin

@@ -109,6 +109,71 @@ export function sendPaginatedSuccess<T>(res: Response, data: T[], pagination: Pa
   });
 }
 
+/**
+ * Parse an optional integer query-string parameter (task #421, lifted
+ * out of `server/routes/payments/payment-reports.ts` so every list
+ * endpoint can adopt the same contract).
+ *
+ * Returns `undefined` when the param is missing or is the empty
+ * string (the route's "no filter" sentinel — clients that submit a
+ * cleared form input must not get a 400) and `null` when the caller
+ * sent something we couldn't make sense of — the route maps `null`
+ * to a 400 with a per-filter error message.
+ *
+ * The validation is intentionally STRICT (digits with an optional
+ * leading minus, nothing else): the previous `parseInt` + `isNaN`
+ * pattern silently accepted partially-numeric input like
+ * `?leagueId=42abc` as `42`, which is exactly the failure mode
+ * task #406 set out to fix.
+ */
+export function parseOptionalIntParam(raw: unknown): number | undefined | null {
+  if (raw === undefined) return undefined;
+  // Express normalizes single-occurrence query params to strings;
+  // anything else (array, object) is malformed by definition.
+  if (typeof raw !== 'string') return null;
+  if (raw === '') return undefined;
+  if (!/^-?\d+$/.test(raw)) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Parse an optional date query-string parameter. Same tri-state
+ * contract as `parseOptionalIntParam`: `undefined` = not provided,
+ * `null` = unparseable (→ 400), Date = good. `new Date('garbage')`
+ * returns an Invalid Date silently, so the old pattern would forward
+ * those straight into the storage layer and trip a confusing 500.
+ */
+export function parseOptionalDateParam(raw: unknown): Date | undefined | null {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string') return null;
+  if (raw === '') return undefined;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/**
+ * Parse an optional comma-separated integer-list query-string
+ * parameter (e.g. `?ids=1,2,3`). Same tri-state contract — and a
+ * single bad element (`?ids=1,foo,3`) makes the whole list `null` so
+ * the caller learns that the request was malformed instead of
+ * silently dropping the bad id.
+ */
+export function parseOptionalIntListParam(raw: unknown): number[] | undefined | null {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string') return null;
+  if (raw === '') return undefined;
+  const parts = raw.split(',');
+  const result: number[] = [];
+  for (const part of parts) {
+    if (!/^-?\d+$/.test(part)) return null;
+    const n = Number.parseInt(part, 10);
+    if (!Number.isFinite(n)) return null;
+    result.push(n);
+  }
+  return result;
+}
+
 export function parsePaginationParams(query: Record<string, unknown>): { page: number; limit: number } | null {
   const page = query.page ? parseInt(query.page as string) : undefined;
   const limit = query.limit ? parseInt(query.limit as string) : undefined;

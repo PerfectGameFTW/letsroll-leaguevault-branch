@@ -2,13 +2,19 @@ import { Router } from 'express';
 import { storage } from '../storage';
 import { insertTeamSchema, updateTeamSchema, reorderTeamsSchema, type Team } from "@shared/schema";
 import { z } from "zod";
-import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
+import { sendSuccess, sendError, handleZodError, parseOptionalIntParam } from '../utils/api.js';
 
 const router = Router();
 
 router.get("/", async (req, res) => {
   try {
-    const leagueId = req.query.leagueId ? parseInt(req.query.leagueId as string) : undefined;
+    // task #421: reject malformed `?leagueId` up front instead of
+    // forwarding NaN into `storage.getLeague` (which would surface as
+    // a confusing 404 in the logs and an empty teams list).
+    const leagueId = parseOptionalIntParam(req.query.leagueId);
+    if (leagueId === null) {
+      return sendError(res, "Invalid league ID format", 400);
+    }
     
     // If a league ID is provided, we need to check if the user has access to that league
     let teams: Team[] = [];

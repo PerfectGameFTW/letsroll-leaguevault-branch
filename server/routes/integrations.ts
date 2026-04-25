@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
+import { sendSuccess, sendError, handleZodError, parseOptionalIntParam } from '../utils/api.js';
 import { storage } from '../storage';
 import type { OrgIntegrations } from '@shared/schema';
 import { z } from 'zod';
@@ -19,27 +19,55 @@ router.use((req: Request, res: Response, next) => {
   next();
 });
 
-function resolveOrgId(req: Request): number | null {
+// task #421: tagged-union return so the caller can distinguish a
+// genuinely-missing org (→ 400 'No organization context') from a
+// caller who SENT something but it was malformed (→ 400 'Invalid
+// organization ID format'). The previous `parseInt + ||` chain
+// silently fell back to the caller's session org when a system
+// admin's `?organizationId=foo` produced NaN, hiding the bad input.
+type ResolveOrgResult =
+  | { kind: 'ok'; orgId: number | null }
+  | { kind: 'invalid' };
+
+function resolveOrgId(req: Request): ResolveOrgResult {
   const isSystemAdmin = req.user?.role === 'system_admin';
 
-  if (isSystemAdmin) {
-    const fromQuery = req.query?.organizationId
-      ? parseInt(String(req.query.organizationId), 10)
-      : null;
-    const bodyOrgId = (req.body as { organizationId?: unknown } | undefined)?.organizationId;
-    const fromBody = bodyOrgId !== undefined && bodyOrgId !== null
-      ? parseInt(String(bodyOrgId), 10)
-      : null;
-    const resolved = fromQuery || fromBody || req.user?.organizationId;
-    return resolved ?? null;
+  if (!isSystemAdmin) {
+    return { kind: 'ok', orgId: req.user?.organizationId ?? null };
   }
 
-  return req.user?.organizationId ?? null;
+  const fromQuery = parseOptionalIntParam(req.query?.organizationId);
+  if (fromQuery === null) return { kind: 'invalid' };
+
+  // The body may already be a JSON number (e.g. PATCH); only run the
+  // string parser on string inputs. Non-integer numbers and any other
+  // shape are rejected the same way a malformed query would be.
+  const bodyOrgIdRaw = (req.body as { organizationId?: unknown } | undefined)?.organizationId;
+  let fromBody: number | undefined;
+  if (bodyOrgIdRaw !== undefined && bodyOrgIdRaw !== null && bodyOrgIdRaw !== '') {
+    if (typeof bodyOrgIdRaw === 'number') {
+      if (!Number.isInteger(bodyOrgIdRaw)) return { kind: 'invalid' };
+      fromBody = bodyOrgIdRaw;
+    } else if (typeof bodyOrgIdRaw === 'string') {
+      const parsed = parseOptionalIntParam(bodyOrgIdRaw);
+      if (parsed === null) return { kind: 'invalid' };
+      fromBody = parsed;
+    } else {
+      return { kind: 'invalid' };
+    }
+  }
+
+  const resolved = fromQuery ?? fromBody ?? req.user?.organizationId;
+  return { kind: 'ok', orgId: resolved ?? null };
 }
 
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const orgId = resolveOrgId(req);
+    const result = resolveOrgId(req);
+    if (result.kind === 'invalid') {
+      return sendError(res, 'Invalid organization ID format', 400);
+    }
+    const orgId = result.orgId;
     if (!orgId) {
       return sendError(res, 'No organization context', 400, 'BAD_REQUEST');
     }
@@ -72,7 +100,11 @@ const updateIntegrationsSchema = z.object({
 
 router.patch('/', async (req: Request, res: Response) => {
   try {
-    const orgId = resolveOrgId(req);
+    const result = resolveOrgId(req);
+    if (result.kind === 'invalid') {
+      return sendError(res, 'Invalid organization ID format', 400);
+    }
+    const orgId = result.orgId;
     if (!orgId) {
       return sendError(res, 'No organization context', 400, 'BAD_REQUEST');
     }

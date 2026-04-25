@@ -1,0 +1,591 @@
+/**
+ * Route-level filter-validation tests for task #421.
+ *
+ * Task #406 hardened GET /api/payments so non-numeric / unparseable
+ * query filters return a clear 400 instead of being forwarded into
+ * storage as NaN / Invalid Date (`payments-reports-routes.test.ts`
+ * pins that behaviour). #421 lifts the same tri-state parser
+ * contract into `server/utils/api.ts` and applies it across the
+ * other list endpoints; this file pins the new per-filter 400s for
+ * each one.
+ *
+ * Pattern per route: a per-filter 400 for non-numeric /
+ * partially-numeric input, a regression pin for the
+ * empty-string-as-no-filter case, and an assertion that the
+ * downstream storage method is never invoked when validation
+ * rejects.
+ */
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import express from 'express';
+import type { AddressInfo } from 'node:net';
+import type { Server } from 'node:http';
+
+// ---------------------------------------------------------------------------
+// Module mocks. Hoisted to file scope by vitest so every router import below
+// receives the mocked versions. The route handlers under test all run their
+// validation BEFORE touching any of these, so the no-op shapes below are
+// enough to exercise the 400 path; the few "happy" assertions verify the
+// validation gate doesn't accidentally short-circuit a clean request.
+// ---------------------------------------------------------------------------
+const mockStorage = {
+  getLeagues: vi.fn(),
+  getAllLeaguesSystemAdmin: vi.fn(),
+  getLeague: vi.fn(),
+  getTeams: vi.fn(),
+  getBowlers: vi.fn(),
+  getAllBowlersSystemAdmin: vi.fn(),
+  getLinkedBowlerIds: vi.fn(),
+  getBowlerLeaguesByBowlerIds: vi.fn(),
+  getLeaguesByIds: vi.fn(),
+  getTeamsByIds: vi.fn(),
+  getBowlerLeagues: vi.fn(),
+  getBowler: vi.fn(),
+  getLocation: vi.fn(),
+  getOrgIntegrations: vi.fn(),
+  updateOrgIntegrations: vi.fn(),
+};
+vi.mock('../../server/storage', () => ({ storage: mockStorage }));
+
+vi.mock('../../server/utils/access-control', () => ({
+  requireOrganizationAccess: () => true,
+  hasAccessToLeague: vi.fn().mockResolvedValue(true),
+  hasAccessToTeam: vi.fn().mockResolvedValue(true),
+  hasAccessToBowler: vi.fn().mockResolvedValue(true),
+  hasAccessToBowlers: vi.fn().mockResolvedValue(new Map()),
+}));
+
+vi.mock('../../server/utils/access-control.js', () => ({
+  requireOrganizationAccess: () => true,
+  hasAccessToLeague: vi.fn().mockResolvedValue(true),
+  hasAccessToTeam: vi.fn().mockResolvedValue(true),
+  hasAccessToBowler: vi.fn().mockResolvedValue(true),
+  hasAccessToBowlers: vi.fn().mockResolvedValue(new Map()),
+}));
+
+// `filterByOrganization` is the only middleware leagues.ts mounts;
+// the validation logic under test runs after it, so a passthrough
+// is enough.
+vi.mock('../../server/middleware/organization', () => ({
+  filterByOrganization: (_req: unknown, _res: unknown, next: () => void) => next(),
+  getOrganizationFilter: () => 1,
+}));
+
+// bowlers.ts pulls in the payment provider factory, the bowlnow
+// service, and a few utils for its POST/PATCH paths. None of those
+// run for the GET filter-validation tests below, but vi.mock has to
+// satisfy the import graph at module-eval time.
+vi.mock('../../server/services/payment-provider-factory', () => ({
+  getPaymentProvider: vi.fn().mockResolvedValue({ providerName: 'square' }),
+  ProviderNotConfiguredError: class ProviderNotConfiguredError extends Error {},
+}));
+vi.mock('../../server/services/bowlnow', () => ({
+  isOrgBNConfigured: () => false,
+  syncBowlerToBN: vi.fn(),
+  syncAllBowlersToBN: vi.fn(),
+}));
+vi.mock('../../server/services/bowlnow.js', () => ({
+  isOrgBNConfigured: () => false,
+  syncBowlerToBN: vi.fn(),
+  syncAllBowlersToBN: vi.fn(),
+}));
+vi.mock('../../server/services/bowler-sync.js', () => ({
+  runBowlerPostCreateSync: vi.fn(async (b: unknown) => b),
+}));
+vi.mock('../../server/utils/bowler-claim-tokens.js', () => ({
+  registerBowlerClaim: vi.fn(),
+}));
+
+// catalog.ts / cards.ts dependencies — same story.
+vi.mock('../../server/services/payment-provider', () => ({
+  hasCatalogSupport: () => false,
+}));
+vi.mock('../../server/services/payment-utils', () => ({
+  getProviderCustomerId: () => 'cust_1',
+  persistCardpointeProfile: vi.fn(),
+}));
+vi.mock('../../server/routes/payments-provider/shared.js', () => ({
+  getProviderForLeague: vi.fn().mockResolvedValue({ providerName: 'square' }),
+}));
+
+// leagues.ts pulls in additional service modules for its mutating
+// routes. They're never invoked here but must be importable.
+vi.mock('../../server/services/email', () => ({
+  sendInviteEmail: vi.fn(),
+}));
+vi.mock('../../server/services/payment-scheduler.js', () => ({
+  paymentScheduler: { schedule: vi.fn() },
+}));
+
+// ---------------------------------------------------------------------------
+// Lazy router imports — must come AFTER vi.mock so the mocked
+// modules are wired in.
+// ---------------------------------------------------------------------------
+const leaguesRouter = (await import('../../server/routes/leagues')).default;
+const teamsRouter = (await import('../../server/routes/teams')).default;
+const bowlersRouter = (await import('../../server/routes/bowlers')).default;
+const bowlnowRouter = (await import('../../server/routes/bowlnow')).default;
+const integrationsRouter = (await import('../../server/routes/integrations')).default;
+const cardsRouter = (await import('../../server/routes/payments-provider/cards')).default;
+const catalogRouter = (await import('../../server/routes/payments-provider/catalog')).default;
+
+// ---------------------------------------------------------------------------
+// Test app — every router mounted under its real-world prefix so the
+// URLs in the tests below match what production clients send.
+// ---------------------------------------------------------------------------
+type TestRole = 'system_admin' | 'org_admin' | 'admin' | 'user';
+
+interface TestUser {
+  id: number;
+  role: TestRole;
+  organizationId: number | null;
+  bowlerId?: number | null;
+}
+
+let server: Server;
+let baseUrl: string;
+
+beforeAll(async () => {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    const raw = req.header('x-test-user');
+    if (raw) {
+      const parsed = JSON.parse(raw) as TestUser;
+      (req as unknown as { user: TestUser }).user = parsed;
+      // Several routes / middlewares branch on `req.isAuthenticated()`.
+      // The fake user means the request is authenticated for this test.
+      (req as unknown as { isAuthenticated: () => boolean }).isAuthenticated =
+        () => true;
+    } else {
+      (req as unknown as { isAuthenticated: () => boolean }).isAuthenticated =
+        () => false;
+    }
+    next();
+  });
+  app.use('/api/leagues', leaguesRouter);
+  app.use('/api/teams', teamsRouter);
+  app.use('/api/bowlers', bowlersRouter);
+  app.use('/api/bn', bowlnowRouter);
+  app.use('/api/integrations', integrationsRouter);
+  app.use('/api/payments-provider', cardsRouter);
+  app.use('/api/payments-provider', catalogRouter);
+
+  await new Promise<void>((resolve) => {
+    server = app.listen(0, '127.0.0.1', () => resolve());
+  });
+  const addr = server.address() as AddressInfo;
+  baseUrl = `http://127.0.0.1:${addr.port}`;
+});
+
+afterAll(async () => {
+  await new Promise<void>((resolve, reject) =>
+    server.close((err) => (err ? reject(err) : resolve())),
+  );
+});
+
+beforeEach(() => {
+  for (const fn of Object.values(mockStorage)) {
+    (fn as ReturnType<typeof vi.fn>).mockReset();
+  }
+  // Sensible defaults so happy-path assertions don't trip on `undefined`.
+  mockStorage.getLeagues.mockResolvedValue([]);
+  mockStorage.getAllLeaguesSystemAdmin.mockResolvedValue([]);
+  mockStorage.getTeams.mockResolvedValue([]);
+  mockStorage.getBowlers.mockResolvedValue([]);
+  mockStorage.getAllBowlersSystemAdmin.mockResolvedValue([]);
+  mockStorage.getLinkedBowlerIds.mockResolvedValue([]);
+  mockStorage.getBowlerLeaguesByBowlerIds.mockResolvedValue([]);
+  mockStorage.getLeaguesByIds.mockResolvedValue([]);
+  mockStorage.getTeamsByIds.mockResolvedValue([]);
+  mockStorage.getBowlerLeagues.mockResolvedValue([]);
+  mockStorage.getBowler.mockResolvedValue({
+    id: 99,
+    name: 'b',
+    organizationId: 1,
+    paymentCustomerId: 'cust_1',
+  });
+  mockStorage.getLocation.mockResolvedValue({ id: 1, organizationId: 1 });
+  mockStorage.getOrgIntegrations.mockResolvedValue({ bowlnow: { enabled: false } });
+  mockStorage.updateOrgIntegrations.mockResolvedValue(undefined);
+  mockStorage.getLeague.mockResolvedValue({ id: 11, organizationId: 1 });
+});
+
+afterEach(() => vi.clearAllMocks());
+
+const ORG_USER: TestUser = { id: 7, role: 'org_admin', organizationId: 1, bowlerId: null };
+const SYSADMIN: TestUser = { id: 1, role: 'system_admin', organizationId: null, bowlerId: null };
+
+function userHeader(user: TestUser) {
+  return { 'x-test-user': JSON.stringify(user) };
+}
+
+async function get(path: string, user?: TestUser) {
+  return fetch(`${baseUrl}${path}`, {
+    method: 'GET',
+    headers: user ? userHeader(user) : {},
+  });
+}
+
+async function patchJson(path: string, body: unknown, user?: TestUser) {
+  return fetch(`${baseUrl}${path}`, {
+    method: 'PATCH',
+    headers: {
+      ...(user ? userHeader(user) : {}),
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function deleteReq(path: string, user?: TestUser) {
+  return fetch(`${baseUrl}${path}`, {
+    method: 'DELETE',
+    headers: user ? userHeader(user) : {},
+  });
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/leagues — locationId filter
+// ---------------------------------------------------------------------------
+describe('GET /api/leagues — locationId filter', () => {
+  it('rejects a non-numeric ?locationId with a 400 (call-out which filter)', async () => {
+    const res = await get('/api/leagues?locationId=foo', ORG_USER);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/location/i);
+  });
+
+  it('rejects a partially-numeric ?locationId (the parseInt-coercion bug)', async () => {
+    const res = await get('/api/leagues?locationId=42abc', ORG_USER);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/location/i);
+  });
+
+  it('does not hit storage when ?locationId is rejected', async () => {
+    // Architect note: the validation gate must run BEFORE the
+    // storage round trip so we don't burn a DB query on a request
+    // we're going to 400 anyway.
+    const res = await get('/api/leagues?locationId=foo', ORG_USER);
+    expect(res.status).toBe(400);
+    expect(mockStorage.getLeagues).not.toHaveBeenCalled();
+    expect(mockStorage.getAllLeaguesSystemAdmin).not.toHaveBeenCalled();
+  });
+
+  it('still accepts an empty ?locationId= as "no filter"', async () => {
+    // Regression pin: the old `req.query.locationId ? ... : null` ternary
+    // treated `''` as falsy → no filter; the new strict parser must
+    // preserve that so cleared-form-input clients keep working.
+    const res = await get('/api/leagues?locationId=', ORG_USER);
+    expect(res.status).toBe(200);
+  });
+
+  it('treats ?locationId=0 as "no filter" (preserves prior truthy semantics)', async () => {
+    // Behaviour pin: the original code used `if (locationId)` which
+    // treated 0 as falsy; we kept that semantic deliberately
+    // because 0 is not a valid serial id and would otherwise filter
+    // the result down to an empty list — a silent behaviour change
+    // for any client that sends `?locationId=0` to mean "all".
+    mockStorage.getLeagues.mockResolvedValue([
+      { id: 1, locationId: 1, organizationId: 1 },
+      { id: 2, locationId: 2, organizationId: 1 },
+    ]);
+    const res = await get('/api/leagues?locationId=0', ORG_USER);
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/teams — leagueId filter
+// ---------------------------------------------------------------------------
+describe('GET /api/teams — leagueId filter', () => {
+  it('rejects a non-numeric ?leagueId with a 400 and never touches storage', async () => {
+    const res = await get('/api/teams?leagueId=foo', ORG_USER);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/league/i);
+    expect(mockStorage.getLeague).not.toHaveBeenCalled();
+    expect(mockStorage.getTeams).not.toHaveBeenCalled();
+  });
+
+  it('rejects a partially-numeric ?leagueId (e.g. "11x")', async () => {
+    const res = await get('/api/teams?leagueId=11x', ORG_USER);
+    expect(res.status).toBe(400);
+    expect(mockStorage.getLeague).not.toHaveBeenCalled();
+  });
+
+  it('still accepts an empty ?leagueId= as "no filter"', async () => {
+    const res = await get('/api/teams?leagueId=', ORG_USER);
+    expect(res.status).toBe(200);
+    // No leagueId means we go through the "scope to user's org"
+    // branch — that path doesn't call getLeague.
+    expect(mockStorage.getLeague).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/bowlers — teamId / ids / organizationId filters
+// ---------------------------------------------------------------------------
+describe('GET /api/bowlers — list filter validation', () => {
+  it('rejects a non-numeric ?teamId with a 400 (call-out which filter)', async () => {
+    const res = await get('/api/bowlers?teamId=foo', ORG_USER);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/team/i);
+    expect(mockStorage.getBowlers).not.toHaveBeenCalled();
+  });
+
+  it('rejects a partially-numeric ?teamId (e.g. "7abc")', async () => {
+    const res = await get('/api/bowlers?teamId=7abc', ORG_USER);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/team/i);
+  });
+
+  it('rejects a malformed ?ids list (any bad element fails the whole list)', async () => {
+    const res = await get('/api/bowlers?ids=1,foo,3', ORG_USER);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/bowler id/i);
+    expect(mockStorage.getBowlers).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-numeric ?organizationId with a 400', async () => {
+    const res = await get('/api/bowlers?organizationId=foo', SYSADMIN);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/organization/i);
+    expect(mockStorage.getBowlers).not.toHaveBeenCalled();
+    expect(mockStorage.getAllBowlersSystemAdmin).not.toHaveBeenCalled();
+  });
+
+  it('still accepts empty ?teamId=&ids=&organizationId= as "no filter"', async () => {
+    const res = await get(
+      '/api/bowlers?teamId=&ids=&organizationId=',
+      ORG_USER,
+    );
+    expect(res.status).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/bowlers/unlinked — organizationId filter
+// ---------------------------------------------------------------------------
+describe('GET /api/bowlers/unlinked — organizationId filter', () => {
+  it('rejects a non-numeric ?organizationId with a 400', async () => {
+    const res = await get('/api/bowlers/unlinked?organizationId=foo', SYSADMIN);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/organization/i);
+    expect(mockStorage.getBowlers).not.toHaveBeenCalled();
+    expect(mockStorage.getAllBowlersSystemAdmin).not.toHaveBeenCalled();
+  });
+
+  it('rejects partially-numeric ?organizationId (e.g. "1abc") — the strict-parser tightening', async () => {
+    // The old isNaN check would let "1abc" through as 1.
+    const res = await get('/api/bowlers/unlinked?organizationId=1abc', SYSADMIN);
+    expect(res.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/bn/status — organizationId filter
+// ---------------------------------------------------------------------------
+describe('GET /api/bn/status — organizationId filter', () => {
+  it('rejects a non-numeric ?organizationId with a 400 instead of silently ignoring it', async () => {
+    // Pre-#421 the route silently treated NaN as "no org" and
+    // returned `{ configured: false }` — indistinguishable from a
+    // legitimately unaffiliated sysadmin. The 400 makes the bad
+    // input explicit.
+    const res = await get('/api/bn/status?organizationId=foo', SYSADMIN);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/organization/i);
+    expect(mockStorage.getOrgIntegrations).not.toHaveBeenCalled();
+  });
+
+  it('still treats an empty ?organizationId= as "no org" → configured:false', async () => {
+    const res = await get('/api/bn/status?organizationId=', SYSADMIN);
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual({ configured: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET / PATCH /api/integrations — organizationId filter on both verbs
+// ---------------------------------------------------------------------------
+describe('GET /api/integrations — organizationId filter', () => {
+  it('rejects a non-numeric ?organizationId with a 400 (Invalid format, NOT "No organization context")', async () => {
+    // The pre-#421 `parseInt + ||` fallback chain would silently
+    // coerce NaN → falsy → fall back to the caller's session org;
+    // a sysadmin with no session org would then see the generic
+    // "No organization context" message. The new tagged-union
+    // resolver surfaces the malformed input directly.
+    const res = await get('/api/integrations?organizationId=foo', SYSADMIN);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/invalid organization/i);
+    expect(mockStorage.getOrgIntegrations).not.toHaveBeenCalled();
+  });
+
+  it('rejects partially-numeric ?organizationId (e.g. "1abc")', async () => {
+    const res = await get('/api/integrations?organizationId=1abc', SYSADMIN);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/invalid organization/i);
+  });
+
+  it('treats an empty ?organizationId= as missing and falls back to session org', async () => {
+    // Regression pin: empty-string must continue to mean "no
+    // override" so the resolver falls back to the caller's session
+    // org. With ORG_USER (org=1) and an empty query param, we
+    // expect the storage lookup to be made for org 1.
+    const res = await get('/api/integrations?organizationId=', ORG_USER);
+    expect(res.status).toBe(200);
+    expect(mockStorage.getOrgIntegrations).toHaveBeenCalledWith(1);
+  });
+});
+
+describe('PATCH /api/integrations — organizationId filter', () => {
+  it('rejects a non-numeric ?organizationId in the query string with the same 400', async () => {
+    // The resolver checks the query string first, so a malformed
+    // value there must 400 even when the body is well-formed.
+    const res = await patchJson(
+      '/api/integrations?organizationId=foo',
+      { bowlnow: { enabled: false } },
+      SYSADMIN,
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/invalid organization/i);
+    expect(mockStorage.updateOrgIntegrations).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-numeric body.organizationId with the same 400', async () => {
+    // Same `Invalid organization ID format` message regardless of
+    // whether the bad input came from the query string or the body.
+    const res = await patchJson(
+      '/api/integrations',
+      { organizationId: 'foo', bowlnow: { enabled: false } },
+      SYSADMIN,
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/invalid organization/i);
+    expect(mockStorage.updateOrgIntegrations).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-integer body.organizationId (e.g. 1.5)', async () => {
+    const res = await patchJson(
+      '/api/integrations',
+      { organizationId: 1.5, bowlnow: { enabled: false } },
+      SYSADMIN,
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/invalid organization/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /api/payments-provider/cards — leagueId filter on GET and DELETE
+// ---------------------------------------------------------------------------
+describe('GET /api/payments-provider/cards/:bowlerId — leagueId filter', () => {
+  it('rejects a non-numeric ?leagueId with a 400 (call-out which filter)', async () => {
+    const res = await get(
+      '/api/payments-provider/cards/99?leagueId=foo',
+      ORG_USER,
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/league/i);
+  });
+
+  it('rejects partially-numeric ?leagueId (e.g. "11abc")', async () => {
+    const res = await get(
+      '/api/payments-provider/cards/99?leagueId=11abc',
+      ORG_USER,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('still accepts an empty ?leagueId= as "no filter"', async () => {
+    // Regression pin: cleared form input shouldn't 400.
+    const res = await get('/api/payments-provider/cards/99?leagueId=', ORG_USER);
+    expect(res.status).not.toBe(400);
+  });
+});
+
+describe('DELETE /api/payments-provider/cards/:bowlerId/:cardId — leagueId filter', () => {
+  it('rejects a non-numeric ?leagueId with a 400 and never touches the provider', async () => {
+    const res = await deleteReq(
+      '/api/payments-provider/cards/99/card_abc?leagueId=foo',
+      ORG_USER,
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/league/i);
+  });
+
+  it('still accepts an empty ?leagueId= as "no filter"', async () => {
+    const res = await deleteReq(
+      '/api/payments-provider/cards/99/card_abc?leagueId=',
+      ORG_USER,
+    );
+    expect(res.status).not.toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /api/payments-provider/catalog — locationId filter on both endpoints
+// ---------------------------------------------------------------------------
+describe('GET /api/payments-provider/catalog/categories — locationId filter', () => {
+  it('rejects a non-numeric ?locationId with a 400 (closes the auth-bypass smell)', async () => {
+    // Pre-#421 a `parseInt` of "foo" produced NaN; the `!isNaN`
+    // guard then SKIPPED the location-ownership check entirely and
+    // the request fell through to `getPaymentProvider(NaN)`. That's
+    // a real defence-in-depth concern for tenants who could have
+    // peeked at a sibling org's provider config if the DB had ever
+    // returned a NaN-keyed row. The 400 closes the bypass.
+    const res = await get(
+      '/api/payments-provider/catalog/categories?locationId=foo',
+      ORG_USER,
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/location/i);
+    expect(mockStorage.getLocation).not.toHaveBeenCalled();
+  });
+
+  it('rejects partially-numeric ?locationId (e.g. "1abc")', async () => {
+    const res = await get(
+      '/api/payments-provider/catalog/categories?locationId=1abc',
+      ORG_USER,
+    );
+    expect(res.status).toBe(400);
+    expect(mockStorage.getLocation).not.toHaveBeenCalled();
+  });
+
+  it('still accepts an empty ?locationId= as "no filter" (skips ownership check)', async () => {
+    const res = await get(
+      '/api/payments-provider/catalog/categories?locationId=',
+      ORG_USER,
+    );
+    expect(res.status).not.toBe(400);
+    expect(mockStorage.getLocation).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/payments-provider/catalog/items — locationId filter', () => {
+  it('rejects a non-numeric ?locationId with a 400', async () => {
+    const res = await get(
+      '/api/payments-provider/catalog/items?locationId=foo',
+      ORG_USER,
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.message).toMatch(/location/i);
+    expect(mockStorage.getLocation).not.toHaveBeenCalled();
+  });
+
+  it('still accepts an empty ?locationId= as "no filter"', async () => {
+    const res = await get(
+      '/api/payments-provider/catalog/items?locationId=',
+      ORG_USER,
+    );
+    expect(res.status).not.toBe(400);
+    expect(mockStorage.getLocation).not.toHaveBeenCalled();
+  });
+});

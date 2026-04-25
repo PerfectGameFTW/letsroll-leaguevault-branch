@@ -6,7 +6,14 @@
  */
 import { Router } from 'express';
 import { storage } from '../../storage';
-import { sendSuccess, sendError, sendPaginatedSuccess, parsePaginationParams } from '../../utils/api.js';
+import {
+  sendSuccess,
+  sendError,
+  sendPaginatedSuccess,
+  parsePaginationParams,
+  parseOptionalIntParam,
+  parseOptionalDateParam,
+} from '../../utils/api.js';
 import { requireOrganizationAccess } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
 
@@ -14,51 +21,11 @@ const log = createLogger("Payments");
 
 const router = Router();
 
-/**
- * Parse an optional integer query-string parameter.
- *
- * Returns `undefined` when the param is missing (the route's "no
- * filter" sentinel) and `null` when the caller sent something we
- * couldn't make sense of — the route maps `null` to a 400.
- *
- * The validation is intentionally STRICT (digits with an optional
- * leading minus, nothing else): the previous `parseInt` + `isNaN`
- * pattern silently accepted partially-numeric input like
- * `?leagueId=42abc` as `42`, which doesn't match the task #406
- * intent of "reject malformed numeric filters". A bare `?x=` is
- * still treated as "no filter" so existing UIs that submit cleared
- * form inputs are not broken (regression-pinned in the test file).
- */
-function parseOptionalIntParam(raw: unknown): number | undefined | null {
-  if (raw === undefined) return undefined;
-  // Express normalizes single-occurrence query params to strings;
-  // anything else (array, object) is malformed by definition.
-  if (typeof raw !== 'string') return null;
-  if (raw === '') return undefined;
-  // Strict: optional sign + digits only — no decimals, no trailing
-  // letters. This is a small tightening over the pre-existing
-  // organization-id check, in the same spirit.
-  if (!/^-?\d+$/.test(raw)) return null;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * Parse an optional date query-string parameter.
- *
- * Same tri-state contract as `parseOptionalIntParam`:
- * `undefined` = not provided, `null` = unparseable (→ 400), Date =
- * good. `new Date('garbage')` returns an Invalid Date silently, so
- * the route used to forward those straight into the storage layer
- * and trip a confusing 500.
- */
-function parseOptionalDateParam(raw: unknown): Date | undefined | null {
-  if (raw === undefined) return undefined;
-  if (typeof raw !== 'string') return null;
-  if (raw === '') return undefined;
-  const d = new Date(raw);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
+// Tri-state filter-parser helpers (`parseOptionalIntParam`,
+// `parseOptionalDateParam`) live in `server/utils/api.ts` as of task
+// #421 so every list endpoint can adopt the same contract. The
+// behavior below is unchanged — same `null` → 400 short-circuit, same
+// empty-string-as-no-filter regression pin in the test file.
 
 // Get payments with optional filters
 router.get("/", async (req, res) => {

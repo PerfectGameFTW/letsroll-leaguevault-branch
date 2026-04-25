@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { sendSuccess, sendError } from '../utils/api.js';
+import { sendSuccess, sendError, parseOptionalIntParam } from '../utils/api.js';
 import { isOrgBNConfigured, syncBowlerToBN, syncAllBowlersToBN } from '../services/bowlnow.js';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
@@ -15,10 +15,18 @@ router.get('/status', async (req, res) => {
     let orgId: number | null = req.user?.organizationId ?? null;
 
     if (isSystemAdmin && !orgId) {
-      const fromQuery = req.query?.organizationId
-        ? parseInt(req.query.organizationId as string, 10)
-        : null;
-      if (fromQuery && !isNaN(fromQuery)) {
+      // task #421: reject malformed `?organizationId` with a clear
+      // 400 instead of silently treating it as "no org" (which was
+      // confusingly indistinguishable from a real "no org" response).
+      const fromQuery = parseOptionalIntParam(req.query.organizationId);
+      if (fromQuery === null) {
+        return sendError(res, "Invalid organization ID format", 400);
+      }
+      // Truthy check preserves the prior `if (fromQuery && !isNaN(...))`
+      // semantics — `?organizationId=0` is not a real org and should
+      // continue to fall through to the "no org → configured:false"
+      // branch instead of triggering a storage lookup for org 0.
+      if (fromQuery) {
         orgId = fromQuery;
       }
     }
