@@ -40,6 +40,9 @@ export type { AdminEmailChangeAudit, InsertAdminEmailChangeAudit } from "./admin
 export { adminPasswordResetAudits, insertAdminPasswordResetAuditSchema } from "./admin-password-reset-audits";
 export type { AdminPasswordResetAudit, InsertAdminPasswordResetAudit } from "./admin-password-reset-audits";
 
+export { adminRoleChangeAudits, insertAdminRoleChangeAuditSchema } from "./admin-role-change-audits";
+export type { AdminRoleChangeAudit, InsertAdminRoleChangeAudit } from "./admin-role-change-audits";
+
 export {
   orphanCleanupAudits,
   insertOrphanCleanupAuditSchema,

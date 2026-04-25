@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit';
 import { createLogger } from '../logger';
 import { recordAdminPasswordResetAudit } from '../storage/admin-password-reset-audits';
+import { recordAdminRoleChangeAudit } from '../storage/admin-role-change-audits';
 
 const log = createLogger("OrgAdmin");
 
@@ -166,6 +167,27 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
     }
 
     const updatedUser = await storage.updateUserRole(userId, newRole);
+
+    // Persistent audit row for compliance/security review (task #459).
+    // Mirrors the same fail-closed pattern as the admin-driven password
+    // reset audit (task #424): the insert is awaited and not locally
+    // caught — a failure bubbles to the route's outer 500 handler. The
+    // role row is already persisted at that point, so the admin's
+    // retry will set the same target role (idempotent) and the audit
+    // row is written on the second attempt. Strict ordering matters
+    // and is asserted by the unit test: this MUST run AFTER
+    // updateUserRole and BEFORE sendSuccess.
+    const rawUaForAudit = (req.get('user-agent') ?? '').slice(0, 512);
+    await recordAdminRoleChangeAudit({
+      actorUserId: req.user!.id,
+      targetUserId: user.id,
+      organizationId: user.organizationId ?? null,
+      oldRole: user.role,
+      newRole,
+      ipAddress: req.ip ?? null,
+      userAgent: rawUaForAudit || null,
+    });
+
     return sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
     if (handleUserOrgError(res, error)) return;
