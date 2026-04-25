@@ -80,11 +80,18 @@ vi.mock('../../server/middleware/organization', () => ({
 }));
 
 // bowlers.ts pulls in the payment provider factory, the bowlnow
-// service, and a few utils for its POST/PATCH paths. None of those
-// run for the GET filter-validation tests below, but vi.mock has to
-// satisfy the import graph at module-eval time.
+// service, and a few utils for its POST/PATCH paths. The cards
+// route also calls listCardsOnFile / disableCard on the returned
+// provider, so the mock has to ship stubs for those — without them
+// the `?leagueId=` empty-string regression tests would 500 and
+// muddy the assertion.
+const fakeProvider = {
+  providerName: 'square',
+  listCardsOnFile: vi.fn().mockResolvedValue([]),
+  disableCard: vi.fn().mockResolvedValue(undefined),
+};
 vi.mock('../../server/services/payment-provider-factory', () => ({
-  getPaymentProvider: vi.fn().mockResolvedValue({ providerName: 'square' }),
+  getPaymentProvider: vi.fn().mockResolvedValue(fakeProvider),
   ProviderNotConfiguredError: class ProviderNotConfiguredError extends Error {},
 }));
 vi.mock('../../server/services/bowlnow', () => ({
@@ -113,7 +120,7 @@ vi.mock('../../server/services/payment-utils', () => ({
   persistCardpointeProfile: vi.fn(),
 }));
 vi.mock('../../server/routes/payments-provider/shared.js', () => ({
-  getProviderForLeague: vi.fn().mockResolvedValue({ providerName: 'square' }),
+  getProviderForLeague: vi.fn(async () => fakeProvider),
 }));
 
 // leagues.ts pulls in additional service modules for its mutating
@@ -504,10 +511,14 @@ describe('GET /api/payments-provider/cards/:bowlerId — leagueId filter', () =>
     expect(res.status).toBe(400);
   });
 
-  it('still accepts an empty ?leagueId= as "no filter"', async () => {
-    // Regression pin: cleared form input shouldn't 400.
+  it('still accepts an empty ?leagueId= as "no filter" and returns the card list', async () => {
+    // Regression pin: cleared form input shouldn't 400 — and the
+    // request should actually flow through to the provider's
+    // listCardsOnFile (mocked to return []) so we can pin the full
+    // happy path, not just "didn't 400".
     const res = await get('/api/payments-provider/cards/99?leagueId=', ORG_USER);
-    expect(res.status).not.toBe(400);
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual([]);
   });
 });
 
@@ -519,14 +530,16 @@ describe('DELETE /api/payments-provider/cards/:bowlerId/:cardId — leagueId fil
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error.message).toMatch(/league/i);
+    expect(fakeProvider.disableCard).not.toHaveBeenCalled();
   });
 
-  it('still accepts an empty ?leagueId= as "no filter"', async () => {
+  it('still accepts an empty ?leagueId= as "no filter" and disables the card', async () => {
     const res = await deleteReq(
       '/api/payments-provider/cards/99/card_abc?leagueId=',
       ORG_USER,
     );
-    expect(res.status).not.toBe(400);
+    expect(res.status).toBe(200);
+    expect(fakeProvider.disableCard).toHaveBeenCalledWith('card_abc', 'cust_1');
   });
 });
 
@@ -559,12 +572,15 @@ describe('GET /api/payments-provider/catalog/categories — locationId filter', 
     expect(mockStorage.getLocation).not.toHaveBeenCalled();
   });
 
-  it('still accepts an empty ?locationId= as "no filter" (skips ownership check)', async () => {
+  it('still accepts an empty ?locationId= as "no filter" (skips ownership check) and returns []', async () => {
+    // Provider mock has hasCatalogSupport→false, so the route
+    // returns sendSuccess(res, []) — a clean 200, not just "not 400".
     const res = await get(
       '/api/payments-provider/catalog/categories?locationId=',
       ORG_USER,
     );
-    expect(res.status).not.toBe(400);
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual([]);
     expect(mockStorage.getLocation).not.toHaveBeenCalled();
   });
 });
@@ -580,12 +596,13 @@ describe('GET /api/payments-provider/catalog/items — locationId filter', () =>
     expect(mockStorage.getLocation).not.toHaveBeenCalled();
   });
 
-  it('still accepts an empty ?locationId= as "no filter"', async () => {
+  it('still accepts an empty ?locationId= as "no filter" and returns []', async () => {
     const res = await get(
       '/api/payments-provider/catalog/items?locationId=',
       ORG_USER,
     );
-    expect(res.status).not.toBe(400);
+    expect(res.status).toBe(200);
+    expect((await res.json()).data).toEqual([]);
     expect(mockStorage.getLocation).not.toHaveBeenCalled();
   });
 });
