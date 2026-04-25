@@ -368,13 +368,25 @@ export async function syncAllBowlersToBN(
   const bowlers = await storage.getBowlers({ organizationId });
   const results = { total: bowlers.length, synced: 0, failed: 0, errors: [] as string[] };
 
+  // Lazy-import the retry-flag helper to avoid a hard dependency cycle:
+  // bowlnow.ts is the lowest BN layer and is imported by both the
+  // retry sweep and the flag helper.
+  const { flagBowlerForBnRetry } = await import('./bowlnow-retry-flag.js');
   for (const bowler of bowlers) {
-    const result = await syncBowlerToBN(bowler.id, orgConfig);
+    let result: { success: boolean; error?: string };
+    try {
+      result = await syncBowlerToBN(bowler.id, orgConfig);
+    } catch (e) {
+      result = { success: false, error: e instanceof Error ? e.message : String(e) };
+    }
     if (result.success) {
       results.synced++;
     } else {
       results.failed++;
       results.errors.push(`Bowler ${bowler.id} (${bowler.name}): ${result.error}`);
+      // Queue the bowler into the retry sweep so transient BN failures
+      // during the org-wide sync get picked up later (task #480 review).
+      await flagBowlerForBnRetry(bowler.id);
     }
   }
 

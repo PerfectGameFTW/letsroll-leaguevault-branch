@@ -1,6 +1,7 @@
 import { storage } from '../storage';
 import { getPaymentProvider, ProviderNotConfiguredError } from './payment-provider-factory';
 import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
+import { flagBowlerForBnRetry } from './bowlnow-retry-flag.js';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
 import type { Bowler } from '@shared/schema';
@@ -108,9 +109,24 @@ export async function runBowlerPostCreateSync(
     try {
       const orgConfig = await storage.getOrgIntegrations(organizationId);
       if (isOrgBNConfigured(orgConfig)) {
-        syncBowlerToBN(current.id, orgConfig).catch((e) =>
-          log.error('BowlNow sync error:', e),
-        );
+        // Inspect the resolved value too — `syncBowlerToBN` returns
+        // `{success:false}` for most BN failures rather than throwing,
+        // so the prior `.catch()`-only handler dropped them silently
+        // (task #480 architect review).
+        void syncBowlerToBN(current.id, orgConfig)
+          .then(async (result) => {
+            if (!result.success) {
+              log.warn('BowlNow sync returned failure during bowler sync', {
+                bowlerId: current.id,
+                error: result.error,
+              });
+              await flagBowlerForBnRetry(current.id);
+            }
+          })
+          .catch(async (e) => {
+            log.error('BowlNow sync error:', e);
+            await flagBowlerForBnRetry(current.id);
+          });
       }
     } catch (bnError) {
       log.error('BowlNow config error during bowler sync:', bnError);

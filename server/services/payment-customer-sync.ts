@@ -15,6 +15,7 @@ import { isDev } from '../config';
 import type { PaymentProvider } from './payment-provider';
 import { syncBowlerLeagueAttributesToProvider } from './bowler-attributes';
 import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
+import { flagBowlerForBnRetry } from './bowlnow-retry-flag.js';
 
 const log = createLogger('PaymentCustomerSync');
 
@@ -166,15 +167,29 @@ export async function syncBowlerForUser(
     try {
       const orgConfig = await storage.getOrgIntegrations(bnOrgId);
       if (isOrgBNConfigured(orgConfig)) {
-        await syncBowlerToBN(bowler.id, orgConfig);
+        // Inspect the result: `syncBowlerToBN` returns `{success:false}`
+        // for most BN failures rather than throwing. Without this flag,
+        // a transient BN 5xx during a profile-update / email-confirm
+        // flow would silently leave the bowler's BN contact stale until
+        // the next manual sync-all (architect feedback on #480).
+        const bnResult = await syncBowlerToBN(bowler.id, orgConfig);
+        if (!bnResult.success) {
+          log.warn('BowlNow re-sync returned failure during payment-customer sync', {
+            bowlerId: bowler.id,
+            organizationId: bnOrgId,
+            error: bnResult.error,
+          });
+          await flagBowlerForBnRetry(bowler.id);
+        }
       }
     } catch (bnErr) {
-      log.warn('BowlNow re-sync failed during payment-customer sync', {
+      log.warn('BowlNow re-sync threw during payment-customer sync', {
         bowlerId: bowler.id,
         organizationId: bnOrgId,
         errorName: bnErr instanceof Error ? bnErr.name : 'unknown',
         errorMessage: bnErr instanceof Error ? bnErr.message : String(bnErr),
       });
+      await flagBowlerForBnRetry(bowler.id);
     }
   }
 

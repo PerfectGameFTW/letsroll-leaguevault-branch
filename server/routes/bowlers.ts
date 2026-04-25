@@ -13,6 +13,7 @@ import { getPaymentProvider, ProviderNotConfiguredError } from '../services/paym
 import type { PaymentProvider } from '../services/payment-provider';
 import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
+import { flagBowlerForBnRetry } from '../services/bowlnow-retry-flag.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
 import { syncBowlerLeagueAttributesToProvider } from '../services/bowler-attributes';
 import { registerBowlerClaim } from '../utils/bowler-claim-tokens.js';
@@ -504,7 +505,25 @@ router.patch("/:id", async (req, res) => {
     if (updateOrgId) {
       const updateOrgConfig = await storage.getOrgIntegrations(updateOrgId);
       if (isOrgBNConfigured(updateOrgConfig)) {
-        syncBowlerToBN(updated.id, updateOrgConfig).catch(e => log.error('BowlNow sync error:', e));
+        // Fire-and-forget but inspect the resolved value too:
+        // `syncBowlerToBN` returns `{success:false}` for most BN
+        // failures (only auth/network errors throw), so the prior
+        // `.catch()`-only handler dropped them silently. Flag for
+        // the retry sweep on either path (task #480 architect review).
+        void syncBowlerToBN(updated.id, updateOrgConfig)
+          .then(async (result) => {
+            if (!result.success) {
+              log.warn('BowlNow sync returned failure on bowler PATCH', {
+                bowlerId: updated.id,
+                error: result.error,
+              });
+              await flagBowlerForBnRetry(updated.id);
+            }
+          })
+          .catch(async (e) => {
+            log.error('BowlNow sync error:', e);
+            await flagBowlerForBnRetry(updated.id);
+          });
       }
     }
     sendSuccess(res, updated);

@@ -35,6 +35,7 @@ import { storage } from '../storage';
 import { getPaymentProvider, ProviderNotConfiguredError } from './payment-provider-factory';
 import { syncBowlerLeagueAttributesToProvider } from './bowler-attributes';
 import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
+import { flagBowlerForBnRetry } from './bowlnow-retry-flag.js';
 import { createLogger } from '../logger';
 
 const log = createLogger('BowlerResync');
@@ -55,30 +56,10 @@ async function flagBowlerForRetry(bowlerId: number): Promise<void> {
   }
 }
 
-/**
- * Sister to `flagBowlerForRetry` for the BowlNow side (task #480).
- * Sets `bnSyncPendingAt` so `server/services/bowlnow-sync-retry.ts`
- * picks the bowler up on its next tick and re-runs `syncBowlerToBN`.
- * No-op when the flag is already set so a tight burst of failures
- * (e.g., 200 bowlers in a renamed league all hitting a BN outage)
- * doesn't keep re-stamping the timestamp and resetting the backoff
- * window.
- */
-async function flagBowlerForBnRetry(bowlerId: number): Promise<void> {
-  try {
-    const fresh = await storage.getBowler(bowlerId);
-    if (!fresh || fresh.bnSyncPendingAt != null) return;
-    await storage.updateBowler(bowlerId, {
-      ...fresh,
-      bnSyncPendingAt: new Date().toISOString(),
-    });
-  } catch (markErr) {
-    log.error('External resync: failed to flag bowler for BN retry', {
-      bowlerId,
-      error: markErr instanceof Error ? { name: markErr.name, message: markErr.message } : markErr,
-    });
-  }
-}
+// flagBowlerForBnRetry now lives in `bowlnow-retry-flag.ts` so other
+// BN call sites (payment-customer-sync, bowler PATCH route, etc.)
+// share the same "no-op when already pending" semantics. Imported
+// at the top of this file.
 
 async function runBowlerResync(
   bowlerId: number,
