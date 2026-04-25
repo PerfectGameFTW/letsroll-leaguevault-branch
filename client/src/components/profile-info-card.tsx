@@ -3,7 +3,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import { Loader2, Save, Pencil, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,16 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
+
+// Server augments the /api/user response with a derived
+// `paymentSyncStatus` ('pending_retry' if the linked bowler row has
+// `payment_sync_pending_at` set, otherwise null) so the retry button
+// can be hydrated on initial page load — see auth.ts /user handler
+// (#363). Optional because older API consumers (or unit-test fixtures
+// that pass a bare User row) won't include it; treat missing as null.
+export type CurrentUserWithSyncStatus = User & {
+  paymentSyncStatus?: 'pending_retry' | null;
+};
 
 // Sentinel the Select uses for the "follow my browser" / unset option.
 // shadcn's SelectItem disallows an empty `value`, so we map this
@@ -76,17 +86,35 @@ function languageLabelFor(code: string | null | undefined): string {
 
 type PaymentSyncStatus = "synced" | "skipped" | "pending_retry" | "not_applicable";
 
-export function ProfileInfoCard({ currentUser }: { currentUser: User }) {
+export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithSyncStatus }) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
   // Tracks the most recent payment-sync outcome so the "Retry now"
   // button (task #323) shows up immediately after a profile edit
   // returns `pending_retry`, and disappears once a manual retry
-  // succeeds. Server doesn't currently surface a persistent
-  // `payment_sync_pending_at` flag on /api/user, so this stays in
-  // component state for the session — follow-up on the backend will
-  // let us hydrate it on initial load too.
-  const [lastSyncStatus, setLastSyncStatus] = useState<PaymentSyncStatus | null>(null);
+  // succeeds. Hydrated from the server-provided
+  // `currentUser.paymentSyncStatus` (#363) so the button persists
+  // across page reloads while the underlying flag is set, and the
+  // useEffect below keeps it in sync after /api/user is invalidated
+  // (e.g. by a profile save or a successful retry).
+  const [lastSyncStatus, setLastSyncStatus] = useState<PaymentSyncStatus | null>(
+    () => currentUser.paymentSyncStatus ?? null,
+  );
+
+  // The mutations below invalidate `['/api/user']`, which produces a
+  // fresh `currentUser` prop with an updated `paymentSyncStatus`. We
+  // mirror that into local state so a successful retry clears the
+  // button without needing a manual setLastSyncStatus(null), and so a
+  // background sweep that re-flags the bowler (after the user already
+  // saw `synced` in this session) re-shows the action on next refetch.
+  // Guarded so we only overwrite local state when the server-derived
+  // value differs from what we already have — avoids clobbering a
+  // freshly-set transient status (e.g. 'synced' from the retry mutation
+  // before the next /api/user refetch lands) on every parent re-render.
+  useEffect(() => {
+    const next = currentUser.paymentSyncStatus ?? null;
+    setLastSyncStatus((prev) => (prev === next ? prev : next));
+  }, [currentUser.paymentSyncStatus]);
 
   const form = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),

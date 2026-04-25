@@ -10,10 +10,10 @@ import { BowlerLayout } from "@/components/bowler-layout";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, clearCsrfToken } from "@/lib/queryClient";
-import { ProfileInfoCard } from "@/components/profile-info-card";
+import { ProfileInfoCard, type CurrentUserWithSyncStatus } from "@/components/profile-info-card";
 import { ChangePasswordCard } from "@/components/change-password-card";
 import { SavedPaymentMethodsCard } from "@/components/saved-payment-methods-card";
-import type { User, ApiResponse } from "@shared/schema";
+import type { ApiResponse } from "@shared/schema";
 
 const STALE_TIME = 1000 * 60 * 5;
 
@@ -21,7 +21,11 @@ export const ProfileSettingsPage: FC = () => {
   const { toast } = useToast();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const { data: userResponse, isLoading: isLoadingUser } = useQuery<ApiResponse<User>>({
+  // The /api/user response augments the bare User row with a derived
+  // `paymentSyncStatus` (#363) so ProfileInfoCard can hydrate the
+  // self-serve retry button on first paint. Use the augmented type
+  // here so the prop-flow stays type-correct end-to-end.
+  const { data: userResponse, isLoading: isLoadingUser } = useQuery<ApiResponse<CurrentUserWithSyncStatus>>({
     queryKey: ['/api/user'],
     staleTime: STALE_TIME,
   });

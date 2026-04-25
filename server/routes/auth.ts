@@ -267,7 +267,36 @@ export function registerAuthRoutes(app: Express): void {
         }
       }
 
-      sendSuccess(res, sanitizeUser(user));
+      // Surface a persistent "payment sync pending" flag for the
+      // self-serve retry button on ProfileInfoCard (#323/#363). The
+      // button used to live entirely in component state, so closing
+      // the tab while `payment_sync_pending_at` was set on the linked
+      // bowler row hid the action on next visit even though the
+      // background sweep was still trying. Hydrating from this field
+      // means the button reappears on every page load until the
+      // pending flag actually clears.
+      //
+      // Failure mode: if the bowler lookup throws (DB blip), we log
+      // and return `null` rather than failing the whole /api/user
+      // request — the rest of the auth response is more important
+      // than the retry hint, and the next refetch will recover.
+      let paymentSyncStatus: 'pending_retry' | null = null;
+      if (user.bowlerId !== null && user.bowlerId !== undefined) {
+        try {
+          const bowler = await storage.getBowler(user.bowlerId);
+          if (bowler?.paymentSyncPendingAt) {
+            paymentSyncStatus = 'pending_retry';
+          }
+        } catch (err) {
+          log.error('Failed to look up bowler for /api/user paymentSyncStatus', {
+            userId: user.id,
+            bowlerId: user.bowlerId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      sendSuccess(res, { ...sanitizeUser(user), paymentSyncStatus });
     } catch (error) {
       log.error('Error in /api/user route:', error);
       sendError(res, "Internal server error", 500, "SERVER_ERROR");
