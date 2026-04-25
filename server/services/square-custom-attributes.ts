@@ -145,11 +145,44 @@ export async function ensureDefinitions(client: Client): Promise<boolean> {
 }
 
 /**
+ * Detects "the definition for this key does not exist on this seller"
+ * responses. Square returns these as HTTP 404 with a `NOT_FOUND` error
+ * code whose detail mentions the missing custom-attribute definition.
+ * The caller's recovery path is to (re-)bootstrap the definitions and
+ * retry the upsert once.
+ */
+export function isDefinitionMissingError(err: unknown): boolean {
+  const apiErr = err as ApiError | undefined;
+  if (!apiErr) return false;
+  const errors = (apiErr.result as
+    | { errors?: Array<{ code?: string; detail?: string; field?: string }> }
+    | undefined)?.errors;
+  if (errors?.length) {
+    for (const e of errors) {
+      const code = (e.code ?? '').toUpperCase();
+      const detail = (e.detail ?? '').toLowerCase();
+      if (code === 'NOT_FOUND' && /custom[_ ]?attribute|definition/.test(detail)) {
+        return true;
+      }
+    }
+  }
+  // Some surfaces return a bare 404 without per-error detail. Treat a
+  // 404 on the upsert path as definition-missing too — the customer
+  // record was already verified by the caller before we got here.
+  return apiErr.statusCode === 404;
+}
+
+export type UpsertAttributeResult =
+  | { ok: true }
+  | { ok: false; reason: 'definition_missing' | 'other' };
+
+/**
  * Upserts a single string custom attribute on a Square customer.
  *
- * Returns true on success, false on failure. Failure is the caller's
- * cue to flip the bowler's `payment_sync_pending_at` flag so the
- * background retry sweep picks it up.
+ * On failure, returns a discriminated result so the caller can
+ * distinguish "definition was deleted out-of-band" (recoverable via
+ * bootstrap + retry) from any other error (flag the bowler for the
+ * background retry sweep).
  */
 export async function upsertCustomerStringAttribute(
   client: Client,
@@ -157,7 +190,7 @@ export async function upsertCustomerStringAttribute(
   key: string,
   value: string,
   bowlerId: number | string,
-): Promise<boolean> {
+): Promise<UpsertAttributeResult> {
   try {
     // Idempotency key includes a short hash of the payload so:
     //   - A true retry of the SAME write (transient network error,
@@ -177,14 +210,16 @@ export async function upsertCustomerStringAttribute(
       },
       idempotencyKey: `lv-${bowlerId}-${key}-${valueHash}`,
     });
-    return true;
+    return { ok: true };
   } catch (err) {
+    const definitionMissing = isDefinitionMissingError(err);
     log.warn('Failed to upsert customer custom attribute', {
       customerId,
       key,
       bowlerId,
+      definitionMissing,
       error: err instanceof Error ? { name: err.name, message: err.message } : err,
     });
-    return false;
+    return { ok: false, reason: definitionMissing ? 'definition_missing' : 'other' };
   }
 }

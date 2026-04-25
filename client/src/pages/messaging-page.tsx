@@ -65,6 +65,19 @@ function MessagingContent({ orgId }: MessagingContentProps) {
   const squareConfigQueries = useQueries({
     queries: locations.map((loc) => ({
       queryKey: ["/api/locations", loc.id, "square-config"] as const,
+      // Default fetcher only uses queryKey[0] as the URL, so per-
+      // location queries MUST supply their own queryFn — otherwise
+      // every entry would hit `/api/locations` and `squareConnected`
+      // would silently be wrong.
+      queryFn: async () => {
+        const res = await fetch(`/api/locations/${loc.id}/square-config`, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to fetch Square config: ${res.status}`);
+        }
+        return res.json() as Promise<ApiResponse<SquareLocationConfig>>;
+      },
       staleTime: 1000 * 60 * 5,
     })),
   });

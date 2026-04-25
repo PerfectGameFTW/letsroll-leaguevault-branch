@@ -577,6 +577,26 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
   }
 
   /**
+   * Public bootstrap entry point used by the startup pass in
+   * `server/index.ts`. Pre-creates the league_name + league_season
+   * custom-attribute definitions on this seller account so the very
+   * first customer-attr write of the process is fast (and so the
+   * definitions exist even before any bowler has been synced this
+   * boot). NON-FATAL: any failure leaves the cache empty so the lazy
+   * path retries on next use.
+   */
+  async ensureCustomAttributeDefinitions(): Promise<boolean> {
+    let client: Client | null;
+    try {
+      client = await this.getSquareClient();
+    } catch {
+      return false;
+    }
+    if (!client) return false;
+    return this.ensureDefinitionsOnce(client);
+  }
+
+  /**
    * Pushes the bowler's current league_name + league_season strings to
    * the customer's Square profile (task #429). NON-FATAL by contract —
    * see `Failure semantics` below — the customer record itself is
@@ -625,28 +645,47 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     // after that is in-memory cached.
     let bootstrapped = await this.ensureDefinitionsOnce(client);
 
-    const writeBoth = async (): Promise<{ ok: boolean }> => {
-      const nameOk = await upsertCustomerStringAttribute(
+    const writeBoth = async (): Promise<{ ok: boolean; definitionMissing: boolean }> => {
+      const nameRes = await upsertCustomerStringAttribute(
         client!,
         customerId,
         LEAGUE_NAME_KEY,
         attributes.leagueName,
         bowlerId,
       );
-      const seasonOk = await upsertCustomerStringAttribute(
+      const seasonRes = await upsertCustomerStringAttribute(
         client!,
         customerId,
         LEAGUE_SEASON_KEY,
         attributes.leagueSeason,
         bowlerId,
       );
-      return { ok: nameOk && seasonOk };
+      const ok = nameRes.ok && seasonRes.ok;
+      const definitionMissing =
+        (!nameRes.ok && nameRes.reason === 'definition_missing') ||
+        (!seasonRes.ok && seasonRes.reason === 'definition_missing');
+      return { ok, definitionMissing };
     };
 
     let result = await writeBoth();
-    if (!result.ok && !bootstrapped) {
-      // Bootstrap had failed; the upsert may have failed because the
-      // definitions don't exist yet. Force one more bootstrap+retry.
+    // Force one bootstrap + single retry when EITHER:
+    //   (a) we never successfully bootstrapped this process (cold-
+    //       start failure), OR
+    //   (b) the cache says we DID bootstrap but Square still rejected
+    //       the upsert with definition-missing — meaning the
+    //       definition was deleted out-of-band (e.g. a seller manually
+    //       removed it from their Square dashboard, or another app on
+    //       the same seller account did so via the API). Bust the
+    //       cache so the next call also re-bootstraps.
+    if (!result.ok && (!bootstrapped || result.definitionMissing)) {
+      if (result.definitionMissing && bootstrapped) {
+        log.warn('Custom-attr sync: definition missing despite cached bootstrap; busting cache', {
+          bowlerId,
+          customerId,
+          locationId: this.locationId,
+        });
+        SquarePaymentProvider.definitionsBootstrapped.delete(this.locationId);
+      }
       log.info('Custom-attr sync: retrying after forced bootstrap', { bowlerId, customerId });
       bootstrapped = await ensureDefinitions(client);
       if (bootstrapped) {

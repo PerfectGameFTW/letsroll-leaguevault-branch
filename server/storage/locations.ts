@@ -72,6 +72,21 @@ export async function getFirstSquareConfiguredLocation(orgId: number): Promise<L
   });
 }
 
+export async function getAllSquareConfiguredLocations(): Promise<Location[]> {
+  // System-wide read used by the startup bootstrap pass that
+  // pre-creates the Square customer-custom-attribute definitions
+  // (task #429) on every connected seller. No org filter — the
+  // bootstrap iterates all sellers regardless of which org owns
+  // them, because each seller's Square account needs its own
+  // definition pair.
+  const all = await db.select().from(locations).orderBy(locations.id);
+  return all.filter((loc) => {
+    const parsed = locationSquareCredentialsSchema.safeParse(loc.squareCredentials);
+    if (!parsed.success || !parsed.data) return false;
+    return (parsed.data.accessToken ?? '').trim().length > 0;
+  });
+}
+
 export async function getLocation(id: number): Promise<Location | undefined> {
   const [result] = await db.select().from(locations).where(eq(locations.id, id));
   return result;

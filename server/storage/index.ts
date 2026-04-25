@@ -141,6 +141,7 @@ export class DatabaseStorage implements IStorage {
   getLocationSquareConfig!: IStorage["getLocationSquareConfig"];
   updateLocationSquareConfig!: IStorage["updateLocationSquareConfig"];
   getFirstSquareConfiguredLocation!: IStorage["getFirstSquareConfiguredLocation"];
+  getAllSquareConfiguredLocations!: IStorage["getAllSquareConfiguredLocations"];
   getLocationCardPointeConfig!: IStorage["getLocationCardPointeConfig"];
   updateLocationCardPointeConfig!: IStorage["updateLocationCardPointeConfig"];
   getFirstPaymentConfiguredLocation!: IStorage["getFirstPaymentConfiguredLocation"];

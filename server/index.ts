@@ -11,6 +11,7 @@ import path from 'path';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
 import { startPaymentSyncRetrySweep } from './services/payment-sync-retry';
+import { bootstrapAllSquareCustomAttributeDefinitions } from './services/square-startup-bootstrap';
 import { applePayWorker } from './services/apple-pay-worker';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDiskUrls } from './migrations/migrate-avatars';
 import { createLogger } from './logger';
@@ -261,6 +262,15 @@ async function startServer() {
       // (task #284). Walks bowlers flagged with payment_sync_pending_at
       // and re-runs syncBowlerForUser with exponential backoff.
       startPaymentSyncRetrySweep();
+
+      // Pre-create the Square customer-custom-attribute definitions
+      // (`league_name`, `league_season`) on every Square-connected
+      // seller (task #429). Fire-and-forget: failures are non-fatal
+      // and the lazy bootstrap inside `syncCustomerLeagueAttributes`
+      // will retry on the first bowler sync.
+      bootstrapAllSquareCustomAttributeDefinitions().catch((err) => {
+        log.error('Square custom-attribute bootstrap failed:', err);
+      });
 
       // Resume any in-flight or pending Apple Pay bulk-registration jobs that
       // were interrupted by a previous server restart.

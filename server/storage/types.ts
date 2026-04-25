@@ -175,6 +175,7 @@ export interface ILocationStorage {
   getLocationSquareConfig(locationId: number): Promise<LocationSquareCredentials | null>;
   updateLocationSquareConfig(locationId: number, creds: LocationSquareCredentials): Promise<Location>;
   getFirstSquareConfiguredLocation(orgId: number): Promise<Location | undefined>;
+  getAllSquareConfiguredLocations(): Promise<Location[]>;
   getLocationCardPointeConfig(locationId: number): Promise<LocationCardPointeCredentials | null>;
   updateLocationCardPointeConfig(locationId: number, creds: LocationCardPointeCredentials): Promise<Location>;
   getFirstPaymentConfiguredLocation(orgId: number): Promise<Location | undefined>;
