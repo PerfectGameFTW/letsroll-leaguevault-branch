@@ -57,6 +57,23 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 
 type PaymentSyncStatus = "synced" | "skipped" | "pending_retry" | "not_applicable";
 
+// How long after a successful retry we ignore a server-derived
+// `paymentSyncStatus === 'pending_retry'` from /api/user (task #438).
+//
+// Background: the retry endpoint runs `syncBowlerForUser` synchronously
+// and returns a fresh status, but the bowler row's
+// `payment_sync_pending_at` column is cleared by the same sync helper
+// — and the next /api/user refetch can race ahead of the commit
+// becoming visible to a fresh read. Without a guard, the hydration
+// effect below would briefly mirror that stale 'pending_retry' back
+// into local state and the button would flicker into view for a beat
+// before the next refetch settles. 30 seconds is comfortably longer
+// than any one round-trip plus DB-replica lag we've seen, and short
+// enough that a *legitimately* re-flagged pending state (e.g. a
+// background re-sync) will surface to the user in well under a
+// minute.
+const RETRY_FLICKER_GUARD_MS = 30_000;
+
 export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithSyncStatus }) {
   const { toast } = useToast();
   const [isEditing, setIsEditing] = useState(false);
@@ -72,6 +89,17 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
     () => currentUser.paymentSyncStatus ?? null,
   );
 
+  // Wall-clock timestamp of the most recent retry that the server
+  // reported as resolved (status !== 'pending_retry'). Lives in state
+  // (not a ref) so the hydration effect below has a real dependency
+  // to re-run on when the latch is set, cleared, or expires —
+  // otherwise a stale 'pending_retry' could stay hidden forever
+  // (task #438): the effect's other dep is `currentUser.paymentSyncStatus`,
+  // and that string doesn't change between consecutive refetches that
+  // both return the same value, so the effect would never naturally
+  // re-evaluate the latch's age.
+  const [latchedRetryAt, setLatchedRetryAt] = useState<number | null>(null);
+
   // The mutations below invalidate `['/api/user']`, which produces a
   // fresh `currentUser` prop with an updated `paymentSyncStatus`. We
   // mirror that into local state so a successful retry clears the
@@ -82,10 +110,51 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
   // value differs from what we already have — avoids clobbering a
   // freshly-set transient status (e.g. 'synced' from the retry mutation
   // before the next /api/user refetch lands) on every parent re-render.
+  //
+  // Flicker guard (task #438): when the server-derived value is
+  // 'pending_retry' but the user has just clicked Retry and that retry
+  // resolved (status !== 'pending_retry'), ignore the value if it
+  // arrived within RETRY_FLICKER_GUARD_MS. The bowler row's
+  // `payment_sync_pending_at` may not yet have been cleared visibly
+  // when this refetch raced through. We schedule a setTimeout to drop
+  // the latch at expiry and trigger one more effect-run so a server
+  // that *never* reports cleared (e.g. a real lingering pending state
+  // that the retry didn't actually fix) eventually surfaces the
+  // button to the user instead of being trapped by the latch. The
+  // latch is also dropped immediately on the first refetch that
+  // confirms a non-'pending_retry' value, so a fresh re-flag arriving
+  // after that isn't masked by an old latch.
   useEffect(() => {
     const next = currentUser.paymentSyncStatus ?? null;
+
+    if (next === "pending_retry" && latchedRetryAt !== null) {
+      const elapsed = Date.now() - latchedRetryAt;
+      if (elapsed < RETRY_FLICKER_GUARD_MS) {
+        // Suppress this stale value AND deterministically re-evaluate
+        // at expiry. Setting the state to null re-triggers this effect
+        // (latchedRetryAt is in its dep array), at which point the
+        // suppression branch is skipped and the value is mirrored
+        // normally.
+        const timer = window.setTimeout(() => {
+          setLatchedRetryAt(null);
+        }, RETRY_FLICKER_GUARD_MS - elapsed);
+        return () => window.clearTimeout(timer);
+      }
+      // Latch already expired (e.g. the user opened the tab again
+      // long after the retry); drop it and fall through.
+      setLatchedRetryAt(null);
+      return;
+    }
+
+    // Server confirmed a non-'pending_retry' value. Drop the latch so
+    // a future legitimate re-flag surfaces immediately instead of
+    // being masked.
+    if (next !== "pending_retry" && latchedRetryAt !== null) {
+      setLatchedRetryAt(null);
+    }
+
     setLastSyncStatus((prev) => (prev === next ? prev : next));
-  }, [currentUser.paymentSyncStatus]);
+  }, [currentUser.paymentSyncStatus, latchedRetryAt]);
 
   const form = useForm<ProfileFormData>({
     resolver: zodResolver(profileSchema),
@@ -157,6 +226,15 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
     onSuccess: (response) => {
       const status = response?.data?.paymentSyncStatus ?? null;
       setLastSyncStatus(status);
+      // Latch the resolved timestamp so the hydration effect ignores
+      // any stale 'pending_retry' that races back from /api/user
+      // before the bowler's payment_sync_pending_at clear becomes
+      // visible to a fresh read (task #438). Only latch on outcomes
+      // that mean "done" — 'pending_retry' here means the retry
+      // itself didn't go through, so the button SHOULD stay visible.
+      if (status !== "pending_retry") {
+        setLatchedRetryAt(Date.now());
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       if (status === "synced") {
         toast({ title: "Payment record updated", description: "Your payment profile is back in sync." });
