@@ -74,6 +74,49 @@ describe('Bowler creation routes — organization context guards (task #415)', (
       expect(data.error?.message).toMatch(/organization context required/i);
     });
 
+    it('returns 404 when a system_admin supplies a numeric ?organizationId for a non-existent org (task #422)', async () => {
+      // Pins the existence check at server/routes/bowlers.ts so a
+      // typoed or stale org id returns a clean 404 instead of letting
+      // the `bowlers.organization_id -> organizations.id` foreign key
+      // constraint surface as a generic 500. Sister guard to the 403
+      // above (no org id at all) and the 400 below (malformed id).
+      const session = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+
+      // 2_000_000_000 is well above any seeded org id and well within
+      // int range, so it parses cleanly but cannot exist in the table.
+      const missingOrgId = 2_000_000_000;
+      const res = await fetch(`${BASE_URL}/api/bowlers?organizationId=${missingOrgId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: session.cookies,
+          'x-csrf-token': session.csrfToken,
+        },
+        body: JSON.stringify({
+          name: 'Vitest Missing Org #422',
+          email: null,
+          phone: null,
+          active: true,
+          order: 0,
+        }),
+      });
+      const data = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.code).toBe('NOT_FOUND');
+      expect(data.error?.message).toMatch(/organization not found/i);
+
+      // Belt-and-suspenders: prove no row was inserted for the
+      // missing org id. If the guard ever regresses to a 500-after-
+      // insert, this would catch it.
+      const orphan = await db
+        .select()
+        .from(bowlers)
+        .where(eq(bowlers.organizationId, missingOrgId));
+      expect(orphan).toHaveLength(0);
+    });
+
     it('returns 400 when a system_admin supplies a non-numeric ?organizationId query param', async () => {
       // Pins the explicit NaN guard at server/routes/bowlers.ts:337
       // so a malformed override returns a clean 400 instead of

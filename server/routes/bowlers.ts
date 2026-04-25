@@ -341,10 +341,20 @@ router.post("/", async (req, res) => {
     // session org is the only source. If neither is present we 403
     // here so the user gets a clean error instead of letting the
     // `bowlers.organization_id` NOT NULL DB constraint fire as a 500.
+    //
+    // Task #422: when the org id comes from an admin-supplied source
+    // (today only the `?organizationId` query param), verify the org
+    // actually exists before we attempt the insert. Without this, a
+    // typo or stale id falls through to the `bowlers.organization_id
+    // -> organizations.id` foreign key and surfaces as a generic 500.
+    // Session-derived ids (every non-system-admin role) cannot point
+    // at a missing org because the user row itself FKs to it, so we
+    // only pay for the lookup on the override path.
     // Pinned by tests/api/bowler-creation-org-required.test.ts.
     const callerOrgId: number | undefined = req.user?.organizationId ?? undefined;
     const isSystemAdmin = req.user?.role === 'system_admin';
     let stampOrgId: number | undefined = callerOrgId;
+    let adminSuppliedOrgId: number | undefined;
     if (isSystemAdmin) {
       const rawQueryOrgId = req.query.organizationId
         ? parseInt(req.query.organizationId as string)
@@ -352,10 +362,17 @@ router.post("/", async (req, res) => {
       if (rawQueryOrgId !== undefined && isNaN(rawQueryOrgId)) {
         return sendError(res, "Invalid organization ID format", 400);
       }
+      adminSuppliedOrgId = rawQueryOrgId;
       stampOrgId = rawQueryOrgId ?? callerOrgId;
     }
     if (stampOrgId === undefined) {
       return sendError(res, "Organization context required to create a bowler", 403, 'FORBIDDEN');
+    }
+    if (adminSuppliedOrgId !== undefined) {
+      const targetOrg = await storage.getOrganization(adminSuppliedOrgId);
+      if (!targetOrg) {
+        return sendError(res, "Organization not found", 404, 'NOT_FOUND');
+      }
     }
     const stampedBowler = { ...bowler, organizationId: stampOrgId };
 
