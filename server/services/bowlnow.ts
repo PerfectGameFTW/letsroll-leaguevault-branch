@@ -371,7 +371,7 @@ export async function syncAllBowlersToBN(
   // Lazy-import the retry-flag helper to avoid a hard dependency cycle:
   // bowlnow.ts is the lowest BN layer and is imported by both the
   // retry sweep and the flag helper.
-  const { flagBowlerForBnRetry } = await import('./bowlnow-retry-flag.js');
+  const { flagBowlerForBnRetry, clearBowlerBnRetry } = await import('./bowlnow-retry-flag.js');
   for (const bowler of bowlers) {
     let result: { success: boolean; error?: string };
     try {
@@ -381,6 +381,10 @@ export async function syncAllBowlersToBN(
     }
     if (result.success) {
       results.synced++;
+      // Clear any prior pending/attempt state on success so a row that
+      // hit max attempts earlier doesn't stay stuck (architect review
+      // on #480).
+      await clearBowlerBnRetry(bowler.id);
     } else {
       results.failed++;
       results.errors.push(`Bowler ${bowler.id} (${bowler.name}): ${result.error}`);

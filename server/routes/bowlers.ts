@@ -13,7 +13,7 @@ import { getPaymentProvider, ProviderNotConfiguredError } from '../services/paym
 import type { PaymentProvider } from '../services/payment-provider';
 import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
-import { flagBowlerForBnRetry } from '../services/bowlnow-retry-flag.js';
+import { flagBowlerForBnRetry, clearBowlerBnRetry } from '../services/bowlnow-retry-flag.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
 import { syncBowlerLeagueAttributesToProvider } from '../services/bowler-attributes';
 import { registerBowlerClaim } from '../utils/bowler-claim-tokens.js';
@@ -518,6 +518,11 @@ router.patch("/:id", async (req, res) => {
                 error: result.error,
               });
               await flagBowlerForBnRetry(updated.id);
+            } else {
+              // Clear any prior pending/attempt state on success so a
+              // row that hit max attempts earlier isn't stuck forever
+              // (architect review on #480).
+              await clearBowlerBnRetry(updated.id);
             }
           })
           .catch(async (e) => {

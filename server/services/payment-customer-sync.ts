@@ -15,7 +15,7 @@ import { isDev } from '../config';
 import type { PaymentProvider } from './payment-provider';
 import { syncBowlerLeagueAttributesToProvider } from './bowler-attributes';
 import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
-import { flagBowlerForBnRetry } from './bowlnow-retry-flag.js';
+import { flagBowlerForBnRetry, clearBowlerBnRetry } from './bowlnow-retry-flag.js';
 
 const log = createLogger('PaymentCustomerSync');
 
@@ -180,6 +180,12 @@ export async function syncBowlerForUser(
             error: bnResult.error,
           });
           await flagBowlerForBnRetry(bowler.id);
+        } else {
+          // Symmetry with the sweep: a successful foreground BN sync
+          // also clears any prior pending/attempt state so a row that
+          // hit BN_SYNC_MAX_ATTEMPTS earlier doesn't stay stuck
+          // (architect review on #480).
+          await clearBowlerBnRetry(bowler.id);
         }
       }
     } catch (bnErr) {

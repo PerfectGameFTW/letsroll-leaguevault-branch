@@ -1,7 +1,7 @@
 import { storage } from '../storage';
 import { getPaymentProvider, ProviderNotConfiguredError } from './payment-provider-factory';
 import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
-import { flagBowlerForBnRetry } from './bowlnow-retry-flag.js';
+import { flagBowlerForBnRetry, clearBowlerBnRetry } from './bowlnow-retry-flag.js';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
 import type { Bowler } from '@shared/schema';
@@ -121,6 +121,11 @@ export async function runBowlerPostCreateSync(
                 error: result.error,
               });
               await flagBowlerForBnRetry(current.id);
+            } else {
+              // Clear any prior pending/attempt state on success so a
+              // row that hit max attempts earlier isn't stuck forever
+              // (architect review on #480).
+              await clearBowlerBnRetry(current.id);
             }
           })
           .catch(async (e) => {

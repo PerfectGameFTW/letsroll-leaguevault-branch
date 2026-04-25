@@ -57,8 +57,10 @@ vi.mock('../../server/services/bowlnow', () => ({
 }));
 
 const mockFlagBowlerForBnRetry = vi.fn();
+const mockClearBowlerBnRetry = vi.fn();
 vi.mock('../../server/services/bowlnow-retry-flag', () => ({
   flagBowlerForBnRetry: (...args: unknown[]) => mockFlagBowlerForBnRetry(...args),
+  clearBowlerBnRetry: (...args: unknown[]) => mockClearBowlerBnRetry(...args),
 }));
 
 import { syncBowlerForUser, type SyncableUser } from '../../server/services/payment-customer-sync';
@@ -99,6 +101,7 @@ beforeEach(() => {
   mockSyncBowlerToBN.mockReset();
   mockIsOrgBNConfigured.mockReset();
   mockFlagBowlerForBnRetry.mockReset();
+  mockClearBowlerBnRetry.mockReset();
   // Default: org has NO BN configured, so the BN branch is a no-op
   // for tests that only care about Square. The dedicated BN-failure
   // test below overrides this.
@@ -220,7 +223,11 @@ describe('syncBowlerForUser', () => {
     expect(mockFlagBowlerForBnRetry).toHaveBeenCalledWith(42);
   });
 
-  it('does NOT queue for BN retry when syncBowlerToBN succeeds', async () => {
+  it('clears BN retry state and does NOT queue when syncBowlerToBN succeeds (rescues stuck-at-max rows)', async () => {
+    // Architect review on #480 (round 2): a row that previously hit
+    // BN_SYNC_MAX_ATTEMPTS would otherwise stay flagged forever
+    // because the sweep's `attempts < cap` filter excludes it. A
+    // foreground success must reset the retry state symmetrically.
     mockGetBowler.mockResolvedValue(baseBowler);
     mockGetLocationSquareConfig.mockResolvedValue({ accessToken: 'live-token' });
     mockUpdateBowler.mockResolvedValue(baseBowler);
@@ -235,6 +242,8 @@ describe('syncBowlerForUser', () => {
 
     expect(mockSyncBowlerToBN).toHaveBeenCalledTimes(1);
     expect(mockFlagBowlerForBnRetry).not.toHaveBeenCalled();
+    expect(mockClearBowlerBnRetry).toHaveBeenCalledTimes(1);
+    expect(mockClearBowlerBnRetry).toHaveBeenCalledWith(42);
   });
 
   it('returns skipped when the user has no email even if a bowler is linked', async () => {

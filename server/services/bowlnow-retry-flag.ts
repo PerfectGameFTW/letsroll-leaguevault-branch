@@ -34,3 +34,41 @@ export async function flagBowlerForBnRetry(bowlerId: number): Promise<void> {
     });
   }
 }
+
+/**
+ * Inverse of `flagBowlerForBnRetry`: clears the BN retry state when a
+ * foreground (non-sweep) BowlNow call succeeds. The sweep itself
+ * already clears on success, but a row that previously hit
+ * BN_SYNC_MAX_ATTEMPTS would otherwise stay flagged forever — even
+ * after a later foreground edit/sync put the contact back in sync —
+ * because the sweep's `bn_sync_attempts < cap` filter excludes it.
+ * Added per architect review on #480.
+ *
+ * Also resets `bn_sync_attempts` and `bn_sync_last_attempt_at` so the
+ * next failure starts a fresh backoff window. No-op when the row is
+ * already in a clean state to avoid pointless writes.
+ */
+export async function clearBowlerBnRetry(bowlerId: number): Promise<void> {
+  try {
+    const fresh = await storage.getBowler(bowlerId);
+    if (!fresh) return;
+    if (
+      fresh.bnSyncPendingAt == null &&
+      (fresh.bnSyncAttempts ?? 0) === 0 &&
+      fresh.bnSyncLastAttemptAt == null
+    ) {
+      return;
+    }
+    await storage.updateBowler(bowlerId, {
+      ...fresh,
+      bnSyncPendingAt: null,
+      bnSyncAttempts: 0,
+      bnSyncLastAttemptAt: null,
+    });
+  } catch (clearErr) {
+    log.error('Failed to clear bowler BN retry state', {
+      bowlerId,
+      error: clearErr instanceof Error ? { name: clearErr.name, message: clearErr.message } : clearErr,
+    });
+  }
+}
