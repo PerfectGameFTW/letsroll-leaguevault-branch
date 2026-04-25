@@ -1,4 +1,4 @@
-import { Link2, Unlink2, MapPin, Shield, Send, Trash2, KeyRound } from "lucide-react";
+import { Link2, Unlink2, MapPin, Shield, Send, Trash2, KeyRound, Mail } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,11 +52,12 @@ interface Props {
   orgLocations: UsersTableLocation[];
   onDeleteUser: (id: number) => void;
   onResetPassword: (id: number) => void;
+  onChangeEmail: (id: number) => void;
 }
 
 const hasPendingInvite = (user: UsersTableUser) => !!user.inviteToken;
 
-export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onResetPassword }: Props) {
+export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onResetPassword, onChangeEmail }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -217,16 +218,28 @@ export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onR
                   && user.role !== "system_admin"
                   && (currentUser?.role !== "org_admin"
                     || user.organizationId === currentUser?.organizationId) && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onResetPassword(user.id)}
-                    title="Reset password"
-                    aria-label={`Reset password for ${user.name || user.email}`}
-                    data-testid={`button-reset-password-${user.id}`}
-                  >
-                    <KeyRound className="h-4 w-4" />
-                  </Button>
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onChangeEmail(user.id)}
+                      title="Change email"
+                      aria-label={`Change email for ${user.name || user.email}`}
+                      data-testid={`button-change-email-${user.id}`}
+                    >
+                      <Mail className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onResetPassword(user.id)}
+                      title="Reset password"
+                      aria-label={`Reset password for ${user.name || user.email}`}
+                      data-testid={`button-reset-password-${user.id}`}
+                    >
+                      <KeyRound className="h-4 w-4" />
+                    </Button>
+                  </>
                 )}
                 {user.id !== currentUser?.id && (
                   <Button

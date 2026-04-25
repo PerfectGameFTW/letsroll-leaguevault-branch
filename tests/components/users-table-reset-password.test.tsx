@@ -32,6 +32,7 @@ function renderTable(props: {
   currentUser?: UsersTableUser;
   onResetPassword?: (id: number) => void;
   onDeleteUser?: (id: number) => void;
+  onChangeEmail?: (id: number) => void;
   orgLocations?: UsersTableLocation[];
 }) {
   const qc = new QueryClient({
@@ -45,6 +46,7 @@ function renderTable(props: {
         orgLocations={props.orgLocations ?? []}
         onDeleteUser={props.onDeleteUser ?? (() => {})}
         onResetPassword={props.onResetPassword ?? (() => {})}
+        onChangeEmail={props.onChangeEmail ?? (() => {})}
       />
     </QueryClientProvider>,
   );

@@ -37,16 +37,33 @@ const resetPasswordFormSchema = z.object({
 });
 type ResetPasswordFormValues = z.infer<typeof resetPasswordFormSchema>;
 
+const changeEmailFormSchema = z.object({
+  email: z.string().email('Please enter a valid email'),
+});
+type ChangeEmailFormValues = z.infer<typeof changeEmailFormSchema>;
+
+// Mirrors the union returned by PATCH /api/account/profile/:id so we
+// can surface the same "Payment record will be retried" notice that
+// ProfileInfoCard (#284) and the email-confirmation page (#322) show
+// when an admin's edit triggers a `pending_retry` (#373).
+type PaymentSyncStatus = 'synced' | 'skipped' | 'pending_retry' | 'not_applicable';
+
 export default function UsersPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState<number | null>(null);
   const [resetPasswordUserId, setResetPasswordUserId] = useState<number | null>(null);
+  const [changeEmailUserId, setChangeEmailUserId] = useState<number | null>(null);
 
   const resetPasswordForm = useForm<ResetPasswordFormValues>({
     resolver: zodResolver(resetPasswordFormSchema),
     defaultValues: { newPassword: '' },
+  });
+
+  const changeEmailForm = useForm<ChangeEmailFormValues>({
+    resolver: zodResolver(changeEmailFormSchema),
+    defaultValues: { email: '' },
   });
 
   useEffect(() => {
@@ -54,6 +71,12 @@ export default function UsersPage() {
       resetPasswordForm.reset({ newPassword: '' });
     }
   }, [resetPasswordUserId, resetPasswordForm]);
+
+  useEffect(() => {
+    if (changeEmailUserId === null) {
+      changeEmailForm.reset({ email: '' });
+    }
+  }, [changeEmailUserId, changeEmailForm]);
 
   const { data: currentUserResponse } = useQuery<{ success: boolean; data: UsersTableUser }>({
     queryKey: ['/api/user'],
@@ -114,8 +137,50 @@ export default function UsersPage() {
     },
   });
 
+  // Admin email change goes through the same PATCH /api/account/profile/:id
+  // endpoint a user uses for their own profile (system_admin is allowed to
+  // act on another user). The endpoint defers the actual email swap until
+  // the target user clicks the confirmation link, but the response also
+  // includes a `paymentSyncStatus` from any inline name/phone sync — and
+  // for admin-initiated changes we want to surface the same retry notice
+  // that ProfileInfoCard (#284) and the email-confirmation page (#322)
+  // already show on `pending_retry` (#373).
+  const changeEmailMutation = useMutation({
+    mutationFn: async ({ userId, email }: { userId: number; email: string }) => {
+      return apiRequest<{ paymentSyncStatus?: PaymentSyncStatus; emailChangeRequested?: boolean }>(
+        `/api/account/profile/${userId}`,
+        'PATCH',
+        { email },
+      );
+    },
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/org-admin/users'] });
+      setChangeEmailUserId(null);
+      toast({
+        title: 'Confirmation email sent',
+        description:
+          "We've emailed the user's new address. Their sign-in email will only change once they click the confirmation link.",
+      });
+      // Wording mirrors the toast in client/src/components/profile-info-card.tsx
+      // and the alert in client/src/pages/confirm-email-change-page.tsx so an
+      // admin who edits another user's email sees the same explanation.
+      const status = response?.data?.paymentSyncStatus ?? null;
+      if (status === 'pending_retry') {
+        toast({
+          title: 'Payment record will be retried',
+          description:
+            'Your payment profile is temporarily out of date and will be retried automatically. Charges or saved cards may behave oddly for the next few minutes.',
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   const getUserToDelete = deleteUserId ? orgUsers.find(u => u.id === deleteUserId) : null;
   const getUserToReset = resetPasswordUserId ? orgUsers.find(u => u.id === resetPasswordUserId) : null;
+  const getUserToChangeEmail = changeEmailUserId ? orgUsers.find(u => u.id === changeEmailUserId) : null;
 
   return (
     <Layout>
@@ -149,6 +214,7 @@ export default function UsersPage() {
                   orgLocations={orgLocations}
                   onDeleteUser={setDeleteUserId}
                   onResetPassword={setResetPasswordUserId}
+                  onChangeEmail={setChangeEmailUserId}
                 />
               )}
             </CardContent>
@@ -219,6 +285,72 @@ export default function UsersPage() {
                       data-testid="button-confirm-reset-password"
                     >
                       {resetPasswordMutation.isPending ? 'Resetting…' : 'Reset password'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={!!changeEmailUserId}
+            onOpenChange={(open) => !open && setChangeEmailUserId(null)}
+          >
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Change email</DialogTitle>
+                <DialogDescription>
+                  Request a new sign-in email for{' '}
+                  <span className="font-medium">
+                    {getUserToChangeEmail?.name || getUserToChangeEmail?.email}
+                  </span>
+                  . The new address will receive a confirmation link, and their sign-in email will only change once they click it.
+                </DialogDescription>
+              </DialogHeader>
+              <Form {...changeEmailForm}>
+                <form
+                  onSubmit={changeEmailForm.handleSubmit((values) => {
+                    if (changeEmailUserId === null) return;
+                    changeEmailMutation.mutate({
+                      userId: changeEmailUserId,
+                      email: values.email,
+                    });
+                  })}
+                  className="space-y-4"
+                >
+                  <FormField
+                    control={changeEmailForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>New email</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            autoComplete="off"
+                            placeholder="user@example.com"
+                            data-testid="input-change-email"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setChangeEmailUserId(null)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={changeEmailMutation.isPending}
+                      data-testid="button-confirm-change-email"
+                    >
+                      {changeEmailMutation.isPending ? 'Sending…' : 'Send confirmation'}
                     </Button>
                   </DialogFooter>
                 </form>
