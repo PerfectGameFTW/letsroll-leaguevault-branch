@@ -128,12 +128,33 @@ The wrapper currently runs two race files:
 
 CI pipelines should invoke `scripts/test-race.sh` as a **separate,
 serial step that runs AFTER the main `npm test` job has finished** —
-never in parallel with it. The race suite deletes and re-seeds the
-`system_admin` row, so concurrent workers (whether other vitest files
-or another instance of CI) will fight over that row and produce
-flaky failures.
+never in parallel with it on the same database. The race suite deletes
+and re-seeds the `system_admin` row, so concurrent workers (whether
+other vitest files or another instance of CI sharing the same DB) will
+fight over that row and produce flaky failures.
 
-A typical GitHub Actions job ordering looks like:
+This project's GitHub Actions setup realises that contract across two
+workflow files (see [`docs/ci.md`](../docs/ci.md) for the full layout):
+
+| Workflow file | Job | What it runs |
+|---|---|---|
+| [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) | `Tests` | `npm test` against an ephemeral `postgres:16` + backgrounded dev server |
+| [`.github/workflows/race-suite.yml`](../.github/workflows/race-suite.yml) | `Race suite` | `bash scripts/test-race.sh` against its own ephemeral `postgres:16` + backgrounded dev server, gated on touched files |
+
+The race suite lives in its own workflow (rather than as a serial step
+appended to the `Tests` job) so it can run in parallel with `npm test`
+*safely* — each workflow points `DATABASE_URL` at a distinct ephemeral
+Postgres database (`leaguevault_test` vs `leaguevault_race`), so the
+two never share the `system_admin` row that the "never in parallel"
+rule above is protecting. Within the race-suite workflow itself,
+`scripts/test-race.sh` still runs the two race files serially via
+`vitest --no-file-parallelism` (see the comment block in the script).
+
+If you wire this project into a different CI provider (or fold both
+suites into a single job on a single database), you must put
+`bash scripts/test-race.sh` *after* `npm test` as a serial step and
+ensure `RUN_BOOTSTRAP_RACE_TESTS=1` is not exported during the
+`npm test` step. The minimal job ordering looks like:
 
 ```yaml
 - run: npm test               # main suite
