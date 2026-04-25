@@ -11,13 +11,20 @@
  *
  * These tests:
  *   1. Run the real script against the real codebase in advisory
- *      mode and assert it exits 0 (the script is wired as a warn,
- *      not a blocker, until the team chooses to flip it).
+ *      mode and assert it exits 0. (Advisory-mode behavior is still
+ *      worth pinning even though the primary CI gate now runs in
+ *      strict mode — see `npm run check:org-isolation` and the
+ *      "Cross-org isolation coverage" step in `.github/workflows/ci.yml`,
+ *      both wired in task #400.)
  *   2. Drive the script against synthetic fixtures via a `--strict`
  *      run to pin down its detection logic for: filtered lists with
  *      and without coverage, fetch-by-id endpoints with and without
  *      coverage, multi-param paths, plain GETs that don't qualify,
  *      and id-shape filtering for path params.
+ *   3. Cross-check the live `--strict` run against
+ *      `tests/api/.org-isolation-baseline.json` (currently empty) so
+ *      a new gap fails this suite even if the dedicated CI step is
+ *      ever skipped.
  */
 import { spawnSync } from 'node:child_process';
 import { writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
