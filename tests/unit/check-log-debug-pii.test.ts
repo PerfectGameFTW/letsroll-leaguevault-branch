@@ -388,4 +388,314 @@ log.debug('email=' + user.email + ' url=' + url);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/email/);
   });
+
+  // ---------------------------------------------------------------
+  // Task #405 — AST upgrade: per-argument and aliased detection.
+  // The old regex scanner would have let the leaks below slip past
+  // because (a) any `mask*` call exempted the WHOLE call, and
+  // (b) it never saw debug calls reached through an alias or
+  // destructured binding.
+  // ---------------------------------------------------------------
+
+  it('per-argument: a mask* call on one argument does NOT exempt sibling arguments', () => {
+    // Pre-AST behavior would have exempted the whole call because
+    // `maskEmail(...)` appears anywhere in it. The AST scanner only
+    // exempts the subtree rooted at the mask call, so the sibling
+    // argument that leaks `phone` is still flagged.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+import { maskEmail } from './pii.js';
+log.debug(\`for \${maskEmail(user.email)}\`, { phone: u.phone });
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/contains phone/);
+    // And the masked email must NOT appear as a separate leak. The
+    // word "email" still appears in the printed source line (the
+    // `maskEmail(...)` call), so we assert specifically on the
+    // "contains <kw>" verdict line, which is the scanner's only
+    // claim about what is actually leaking.
+    expect(r.stderr).not.toMatch(/contains email/);
+  });
+
+  it('per-argument: a mask* call on one object field does NOT exempt sibling fields', () => {
+    // Same per-argument rule, this time inside a single object
+    // literal argument. The mask exemption is scoped to one
+    // property's value, not the whole object.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+import { maskEmail } from './pii.js';
+log.debug({ masked: maskEmail(u.email), rawPhone: u.phone });
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/phone/);
+  });
+
+  it('detects aliased debug calls reached through `const d = log.debug`', () => {
+    // The pre-AST regex `(log|logger)\.debug` never matched the
+    // aliased call site. The AST scanner walks variable declarations
+    // and treats identifiers bound to `log.debug` / `logger.debug`
+    // as debug calls.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+const d = log.debug;
+d(\`leaked=\${user.email}\`);
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/email/);
+  });
+
+  it('detects aliased debug calls reached through `const d = logger.debug`', () => {
+    const dir = makeFixture({
+      'server/foo.ts': `import { logger } from './logger.js';
+const d = logger.debug;
+d(\`pw=\${user.password}\`);
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/password/);
+  });
+
+  it('detects aliased debug calls reached through `const d = log["debug"]`', () => {
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+const d = log["debug"];
+d(\`token=\${resetToken}\`);
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/token/);
+  });
+
+  it('detects destructured debug calls (`const { debug } = log`)', () => {
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+const { debug } = log;
+debug(\`pw=\${user.password}\`);
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/password/);
+  });
+
+  it('detects renamed destructured debug calls (`const { debug: dd } = logger`)', () => {
+    const dir = makeFixture({
+      'server/foo.ts': `import { logger } from './logger.js';
+const { debug: dd } = logger;
+dd(\`addr=\${user.address}\`);
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/address/);
+  });
+
+  it('does NOT misclassify an unrelated identifier as a debug alias', () => {
+    // A bare `debug` identifier that wasn't bound to `log.debug` /
+    // `logger.debug` must not become a false positive — so an
+    // imported `debug` from the npm `debug` package, or a local
+    // function, can leak only if the AST actually identifies it as
+    // a debug-of-our-logger call. Here the variable is bound to a
+    // different function, and the call below must NOT be flagged.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+const debug = (msg: string) => msg;
+debug(\`leaked email=\${user.email}\`);
+log.debug('safe', { id: 1 });
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status, r.stderr || r.stdout).toBe(0);
+  });
+
+  it('still exempts a call that routes through a mask* helper (per-arg, value-only)', () => {
+    // Positive complement of the per-arg tests: when the only PII
+    // surface is the value going through the mask call AND the
+    // surrounding text doesn't independently mention a forbidden
+    // word, the call is exempt.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+import { maskEmail } from './pii.js';
+log.debug('user', { id: 1, masked: maskEmail(u.email) });
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status, r.stderr || r.stdout).toBe(0);
+  });
+
+  it('rejects a pii-lint-ok annotation with NO reason after the colon', () => {
+    // Auditability requirement: the suppression tag MUST carry a
+    // non-empty reason so reviewers can verify the rationale.
+    // `// pii-lint-ok:` (empty) and bare `pii-lint-ok` (no colon)
+    // do not suppress.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+log.debug(\`pw=\${user.password}\`); // pii-lint-ok:
+log.debug(\`pw=\${user.password}\`); // pii-lint-ok
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    // Two distinct violations should be reported.
+    const fails = r.stderr.match(/FAIL:.*password/g) ?? [];
+    expect(fails.length).toBe(2);
+  });
+
+  it('documents the masked-template tradeoff: head/middle/tail label text is NOT scanned when the template contains a mask call', () => {
+    // Tradeoff doc + regression pin. When a template literal has at
+    // least one `mask*(...)` interpolation, the scanner stops
+    // scanning the literal head/middle/tail segments to avoid
+    // false-positives on captioned messages like
+    // `` `user email: ${maskEmail(u.email)}` ``. The cost is that
+    // a contrived case where the forbidden token only appears in
+    // the literal label AND the sibling interpolation expression
+    // happens to be a neutral identifier (`s`, `x`, `value`) is
+    // not flagged when a mask call is also present in the template.
+    // The two key calls live on lines 4 and 5 of the fixture below;
+    // line 4 is intentionally NOT flagged (the documented tradeoff)
+    // while the analogous template WITHOUT a mask call (line 5) IS
+    // flagged. The real-leak case where the sibling expression
+    // names a forbidden field (`user.password`) is still caught
+    // and is covered by the per-argument test above.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+import { maskEmail } from './pii.js';
+const s = 'sentinel';
+log.debug(\`shared secret: \${s}, also \${maskEmail(u.email)}\`);
+log.debug(\`shared secret: \${s}\`);
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    // Only one violation: line 5 (no mask call in the template).
+    const fails = r.stderr.match(/FAIL:.*secret/g) ?? [];
+    expect(fails.length).toBe(1);
+    expect(r.stderr).toMatch(/foo\.ts:5/);
+    expect(r.stderr).not.toMatch(/foo\.ts:4/);
+  });
+
+  it('detects a `var` debug alias hoisted to the enclosing function scope', () => {
+    // `var` hoists to the nearest function scope, not the block.
+    // A `var d = log.debug` inside a block must therefore be
+    // visible to a `d(...)` call OUTSIDE that block but inside the
+    // same function. Without function-scope hoisting handling, this
+    // bypass would slip past the alias resolver.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+function withVar() {
+  if (true) {
+    var d = log.debug;
+  }
+  d(\`var-leak email=\${user.email}\`);
+}
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/contains email/);
+  });
+
+  it('detects an assignment-alias debug call (`d = log.debug; d(...)`)', () => {
+    // Aliases can be bound by a plain assignment to a previously-
+    // declared (or globally-declared) name, not just by an
+    // initializer in a const/let/var declaration. The scanner
+    // recognizes the assignment expression as an alias source.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+function withAssign() {
+  let d2: any;
+  d2 = log.debug;
+  d2(\`assign-leak phone=\${user.phone}\`);
+}
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/contains phone/);
+  });
+
+  it('resolves an assignment-alias to the declaring scope (cross-block)', () => {
+    // Pin the cross-block assignment-alias case. The variable `d`
+    // is declared at function scope but the alias-binding
+    // assignment happens inside a nested block. A naive
+    // implementation that records the alias only against the
+    // assignment's own block scope would miss the call placed
+    // outside that block — a real bypass. The resolver must walk
+    // up to the declaration scope and record the alias there so
+    // sibling statements in the same function still see it.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+function crossBlock(cond: boolean, user: any) {
+  let d: any;
+  if (cond) {
+    d = log.debug;
+  }
+  d({ email: user.email });
+}
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/contains email/);
+  });
+
+  it('alias resolution is scope-aware: an inner shadowing binding hides the outer alias', () => {
+    // Pin the scope-aware alias resolver. An outer `const d =
+    // log.debug` is a real debug alias, but inner functions that
+    // re-bind `d` (as a parameter, an inner const, a catch
+    // variable, or a function declaration) MUST shadow the alias
+    // so the inner `d(...)` is not falsely treated as a debug call.
+    // Without scope-aware resolution this file would produce three
+    // false positives (lines 7, 11, 14); with it, only line 4 (the
+    // genuine leaky call through the outer alias) is flagged.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+const d = log.debug;
+function leaky() {
+  d(\`leaked email=\${user.email}\`);
+}
+function shadowedParam(d: (m: string) => void) {
+  d(\`unrelated email=\${user.email}\`);
+}
+function shadowedConst() {
+  const d = (m: string) => m;
+  d(\`unrelated email=\${user.email}\`);
+}
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    const fails = r.stderr.match(/FAIL:.*email/g) ?? [];
+    expect(fails.length).toBe(1);
+    expect(r.stderr).toMatch(/foo\.ts:4/);
+    expect(r.stderr).not.toMatch(/foo\.ts:7/);
+    expect(r.stderr).not.toMatch(/foo\.ts:11/);
+  });
+
+  it('rejects an EMPTY block-comment pii-lint-ok with no reason between `:` and `*/`', () => {
+    // The auditability requirement also has to hold for block
+    // comments. A bare `/* pii-lint-ok: */` looks like it has a
+    // non-empty body to a naive `\\S` check (the `*` of the closing
+    // `*/` is non-whitespace), so the suppressor must explicitly
+    // strip the block-comment terminator before verifying that a
+    // real reason is present.
+    const dir = makeFixture({
+      'server/foo.ts': `import { log } from './logger.js';
+log.debug(\`pw=\${user.password}\`); /* pii-lint-ok: */
+log.debug(\`pw=\${user.password}\`); /* pii-lint-ok:    */
+`,
+    });
+    const r = runIn(dir, ['--strict']);
+    expect(r.status).toBe(1);
+    const fails = r.stderr.match(/FAIL:.*password/g) ?? [];
+    expect(fails.length).toBe(2);
+  });
 });
