@@ -57,6 +57,17 @@ type ProfileFormData = z.infer<typeof profileSchema>;
 
 type PaymentSyncStatus = "synced" | "skipped" | "pending_retry" | "not_applicable";
 
+// Defensive fallback when a 429 response from the retry endpoint is
+// missing both `Retry-After` and `RateLimit-Reset` headers (task #441).
+// The self-serve `retryPaymentSyncLimiter` (task #365) sets
+// `standardHeaders: true` so this branch is unreachable in practice
+// against our own server, but a misconfigured proxy or a future
+// limiter swap could strip the headers — falling back to the
+// limiter's 60s window keeps the cooldown UX correct (button stays
+// disabled, countdown still shows) instead of silently letting a
+// confused user mash the button straight into another 429.
+const RETRY_COOLDOWN_FALLBACK_SECONDS = 60;
+
 // How long after a successful retry we ignore a server-derived
 // `paymentSyncStatus === 'pending_retry'` from /api/user (task #438).
 //
@@ -99,6 +110,55 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
   // both return the same value, so the effect would never naturally
   // re-evaluate the latch's age.
   const [latchedRetryAt, setLatchedRetryAt] = useState<number | null>(null);
+
+  // Cooldown UX for the self-serve retry endpoint's per-user 5/min
+  // throttle (task #441). When the retry mutation gets a 429, we read
+  // the `Retry-After` (or `RateLimit-Reset`) header — already parsed
+  // into `err.retryAfterSeconds` by `apiRequest` — and freeze the
+  // button until that wall-clock deadline. `cooldownUntilMs` is the
+  // absolute Date.now() the cooldown ends; `nowMs` ticks via
+  // setInterval below to drive the per-second countdown render.
+  // Storing wall-clock (not seconds-remaining) means a tab that's
+  // backgrounded and brought back resumes with the correct remaining
+  // time instead of the count it was paused on.
+  const [cooldownUntilMs, setCooldownUntilMs] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+
+  // Drive the countdown render. Only schedules an interval while a
+  // cooldown is pending — otherwise the component is silent. Each
+  // tick advances `nowMs` so `secondsLeft` recomputes; once the
+  // deadline passes we clear `cooldownUntilMs` so the inline message
+  // disappears and the button re-enables on its own (per the task
+  // spec — no manual refresh needed).
+  //
+  // The 1000ms cadence is good enough for a "Try again in Ns" label;
+  // `Math.ceil` on the remaining delta keeps the displayed count
+  // monotonically decreasing (no off-by-one "0s" frame before the
+  // unmount). The early-expiry branch handles a tab that was
+  // backgrounded past the deadline — Date.now() jumps forward
+  // enormously between renders, and we'd otherwise schedule one
+  // useless tick before clearing.
+  useEffect(() => {
+    if (cooldownUntilMs == null) return;
+    if (cooldownUntilMs <= Date.now()) {
+      setCooldownUntilMs(null);
+      return;
+    }
+    setNowMs(Date.now());
+    const id = window.setInterval(() => {
+      const t = Date.now();
+      setNowMs(t);
+      if (t >= cooldownUntilMs) {
+        setCooldownUntilMs(null);
+      }
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [cooldownUntilMs]);
+
+  const cooldownSecondsLeft = cooldownUntilMs != null
+    ? Math.max(0, Math.ceil((cooldownUntilMs - nowMs) / 1000))
+    : 0;
+  const inRetryCooldown = cooldownSecondsLeft > 0;
 
   // The mutations below invalidate `['/api/user']`, which produces a
   // fresh `currentUser` prop with an updated `paymentSyncStatus`. We
@@ -250,7 +310,22 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
         toast({ title: "Nothing to retry", description: "No pending payment-sync work for your account." });
       }
     },
-    onError: (error: Error) => {
+    onError: (error: Error & { status?: number; retryAfterSeconds?: number | null }) => {
+      // 429 → freeze the button until the limiter window elapses
+      // (task #441). `apiRequest` already parsed the standard
+      // `Retry-After` / `RateLimit-Reset` headers into
+      // `retryAfterSeconds`; if both were absent (defensive — our
+      // limiter sets `standardHeaders: true`), fall back to the
+      // limiter's 60s window so the user still sees a working
+      // countdown instead of an undisabled button that 429s again on
+      // the next click.
+      if (error.status === 429) {
+        const headerSeconds = error.retryAfterSeconds;
+        const seconds = typeof headerSeconds === "number" && headerSeconds >= 0
+          ? headerSeconds
+          : RETRY_COOLDOWN_FALLBACK_SECONDS;
+        setCooldownUntilMs(Date.now() + seconds * 1000);
+      }
       toast({
         title: "Retry failed",
         description: error.message || "Could not retry payment-sync right now.",
@@ -297,7 +372,7 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
                 <Button
                   variant="outline"
                   onClick={() => retryMutation.mutate()}
-                  disabled={retryMutation.isPending}
+                  disabled={retryMutation.isPending || inRetryCooldown}
                   className="flex items-center gap-2"
                   data-testid="button-retry-payment-sync"
                 >
@@ -310,7 +385,15 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
                 </Button>
               )}
             </div>
-            {showRetry && (
+            {showRetry && inRetryCooldown && (
+              <p
+                className="text-xs text-muted-foreground"
+                data-testid="text-retry-cooldown"
+              >
+                Try again in {cooldownSecondsLeft}s
+              </p>
+            )}
+            {showRetry && !inRetryCooldown && (
               <p className="text-xs text-muted-foreground">
                 Your payment profile is temporarily out of date. We're retrying in the background — use this button to retry now.
               </p>
