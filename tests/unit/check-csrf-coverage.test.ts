@@ -196,6 +196,196 @@ app.use('/api/good', goodRouter);
     expect(r.status, r.stderr).toBe(0);
   });
 
+  it('flags a nested sub-router composed inside a parent that has no direct routes (task #397)', () => {
+    // The exact regression this task targets: parent router lives at
+    // /foo and has NO direct routes of its own — its only role is to
+    // compose a child via `router.use('/sub', child)`. Before #397,
+    // there was no `parent.<method>` call to trip the guard, so the
+    // mistake of mounting the parent at non-/api would slip through.
+    // After #397, the child file's effective prefix is computed
+    // transitively as /foo + /sub, so its post('/x') is flagged at
+    // /foo/sub/x.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import parentRouter from './routes/parent.js';
+const app = express();
+app.use('/foo', parentRouter);
+app.use('/api', csrfProtection);
+`,
+      'server/routes/parent.ts': `import { Router } from 'express';
+import childRouter from './child.js';
+const router = Router();
+router.use('/sub', childRouter);
+export default router;
+`,
+      'server/routes/child.ts': `import { Router } from 'express';
+const router = Router();
+router.post('/x', (req, res) => res.sendStatus(200));
+export default router;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/POST \/foo\/sub\/x/);
+    expect(r.stderr).toMatch(/child\.ts/);
+  });
+
+  it('does not flag a nested sub-router composed under /api', () => {
+    // Same composition shape as the test above, just rooted at /api/...
+    // — should pass cleanly now that propagation is transitive.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import parentRouter from './routes/parent.js';
+const app = express();
+app.use('/api/parent', parentRouter);
+`,
+      'server/routes/parent.ts': `import { Router } from 'express';
+import childRouter from './child.js';
+const router = Router();
+router.use('/sub', childRouter);
+export default router;
+`,
+      'server/routes/child.ts': `import { Router } from 'express';
+const router = Router();
+router.post('/x', (req, res) => res.sendStatus(200));
+export default router;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it('flags a 3-level nested chain whose root mount is non-/api', () => {
+    // grandparent at /foo, grandparent.use('/p', parent),
+    // parent.use('/c', child), child.post('/x').
+    // Effective path: /foo/p/c/x — must be flagged transitively.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import grandparentRouter from './routes/grandparent.js';
+const app = express();
+app.use('/foo', grandparentRouter);
+app.use('/api', csrfProtection);
+`,
+      'server/routes/grandparent.ts': `import { Router } from 'express';
+import parentRouter from './parent.js';
+const router = Router();
+router.use('/p', parentRouter);
+export default router;
+`,
+      'server/routes/parent.ts': `import { Router } from 'express';
+import childRouter from './child.js';
+const router = Router();
+router.use('/c', childRouter);
+export default router;
+`,
+      'server/routes/child.ts': `import { Router } from 'express';
+const router = Router();
+router.post('/x', (req, res) => res.sendStatus(200));
+export default router;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/POST \/foo\/p\/c\/x/);
+  });
+
+  it('flags the same child mounted in two parents when one parent is non-/api (fan-out)', () => {
+    // The same child router is composed under two different parents.
+    // One parent is mounted at /api (safe), the other at /pub (bad).
+    // Propagation must produce BOTH effective prefixes for the child
+    // and only flag the non-/api one.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import safeParent from './routes/safe-parent.js';
+import sneakyParent from './routes/sneaky-parent.js';
+const app = express();
+app.use('/api/safe', safeParent);
+app.use('/pub', sneakyParent);
+app.use('/api', csrfProtection);
+`,
+      'server/routes/safe-parent.ts': `import { Router } from 'express';
+import sharedChild from './shared-child.js';
+const router = Router();
+router.use('/c', sharedChild);
+export default router;
+`,
+      'server/routes/sneaky-parent.ts': `import { Router } from 'express';
+import sharedChild from './shared-child.js';
+const router = Router();
+router.use('/c', sharedChild);
+export default router;
+`,
+      'server/routes/shared-child.ts': `import { Router } from 'express';
+const router = Router();
+router.post('/x', (req, res) => res.sendStatus(200));
+export default router;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/POST \/pub\/c\/x/);
+    // The /api/safe/c/x mount must NOT appear as a violation.
+    expect(r.stderr).not.toMatch(/\/api\/safe\/c\/x/);
+  });
+
+  it('handles middlewares between the prefix and the child in nested router.use(...)', () => {
+    // parent.use('/sub', mwA, mwB, childRouter). The child is the LAST
+    // identifier in the rest-args, mirroring the heuristic for app.use.
+    // The guard must still attribute /foo/sub/x to childRouter, not get
+    // confused by the middleware idents.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import parentRouter from './routes/parent.js';
+const app = express();
+app.use('/foo', parentRouter);
+app.use('/api', csrfProtection);
+`,
+      'server/routes/parent.ts': `import { Router } from 'express';
+import childRouter from './child.js';
+import requireAuth from '../middleware/auth.js';
+import requireOrg from '../middleware/org.js';
+const router = Router();
+router.use('/sub', requireAuth, requireOrg, childRouter);
+export default router;
+`,
+      'server/routes/child.ts': `import { Router } from 'express';
+const router = Router();
+router.post('/x', (req, res) => res.sendStatus(200));
+export default router;
+`,
+      'server/middleware/auth.ts': `export default function requireAuth(req, res, next) { next(); }
+`,
+      'server/middleware/org.ts': `export default function requireOrg(req, res, next) { next(); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/POST \/foo\/sub\/x/);
+  });
+
+  it('does not blow up on same-file nested composition (parent and child Router vars in one file)', () => {
+    // The "file-as-router" model used by this script can't accurately
+    // distinguish parent-router routes from child-router routes when
+    // both live in the same file, so same-file composition is
+    // intentionally NOT propagated (see ROUTER_USE_RE handling in the
+    // script). What matters here is that the script doesn't crash or
+    // hang on the pattern: a parent and a child Router var co-located
+    // in one file, mounted under /api so the file's own routes are
+    // safe. The script should exit 0 cleanly.
+    const dir = makeIndexFixture(
+      `import express, { Router } from 'express';
+const app = express();
+const parentRouter = Router();
+const childRouter = Router();
+childRouter.post('/x', (req, res) => res.sendStatus(200));
+parentRouter.use('/sub', childRouter);
+app.use('/api/parent', parentRouter);
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
   it('handles middlewares between the prefix and the router in app.use(...)', () => {
     // app.use('/foo', requireAuth, sneakyRouter) — the router is the
     // last identifier, not the first. The guard must still detect
