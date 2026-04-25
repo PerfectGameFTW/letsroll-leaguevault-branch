@@ -5,6 +5,12 @@ import { storage } from '../storage';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
 import { ProviderNotConfiguredError } from './payment-provider-factory';
+import {
+  ensureDefinitions,
+  upsertCustomerStringAttribute,
+  LEAGUE_NAME_KEY,
+  LEAGUE_SEASON_KEY,
+} from './square-custom-attributes';
 import type {
   PaymentProvider,
   CatalogProvider,
@@ -436,6 +442,10 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     name: string,
     email: string,
     phone?: string | null,
+    // Optional `bowler:<id>` reference (task #429). When provided we
+    // pass it through as Square's `referenceId` so the seller can see
+    // the LeagueVault bowler id directly in the Square dashboard.
+    referenceId?: string | null,
   ): Promise<PaymentCustomer | null> {
     const client = await this.getSquareClient();
     if (!client) {
@@ -471,6 +481,14 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       const [firstName, ...lastNameParts] = name.split(' ');
       const lastName = lastNameParts.join(' ');
       const phoneNumber = phone || undefined;
+      // Only include referenceId in the payload when a non-empty value
+      // was supplied. Sending `referenceId: undefined` is a no-op, but
+      // sending `null` would CLEAR an existing reference on the Square
+      // side — which we never want from this code path.
+      const referenceIdField =
+        referenceId && referenceId.trim().length > 0
+          ? { referenceId: referenceId.trim() }
+          : {};
 
       if (searchResponse.result.customers?.[0]?.id) {
         if (isDev) log.info('Found existing customer, updating...');
@@ -480,6 +498,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           familyName: lastName || '',
           emailAddress: email.toLowerCase(),
           ...(phoneNumber && { phoneNumber }),
+          ...referenceIdField,
         });
 
         if (!updateResponse?.result?.customer) {
@@ -495,6 +514,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           familyName: lastName || '',
           emailAddress: email.toLowerCase(),
           ...(phoneNumber && { phoneNumber }),
+          ...referenceIdField,
         });
 
         if (!customerResponse?.result?.customer?.id) {
@@ -521,6 +541,128 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       });
       throw new Error('Failed to create/update Square customer: ' + (error instanceof Error ? error.message : String(error)));
     }
+  }
+
+  // Per-Square-seller bootstrap cache for the league_name/league_season
+  // custom attribute definitions (task #429). Keyed by locationId
+  // because that's the unit our credentials are addressed by, even
+  // though definitions are seller-scoped on Square's side. In the
+  // multi-location-same-seller case we may issue a couple of redundant
+  // "already exists" requests on first hits — those return fast and
+  // are treated as success by `ensureDefinitions`.
+  //
+  // We deliberately only cache a TRUE result. A false (failure) flips
+  // the cache to absent so the next call retries — otherwise a brief
+  // Square outage during cold-start would poison the cache for the
+  // life of the process.
+  private static readonly definitionsBootstrapped = new Map<number, true>();
+
+  /**
+   * Test-only: clear the per-process bootstrap cache so unit tests
+   * can verify the lazy-bootstrap path runs again.
+   */
+  static __clearDefinitionsBootstrapCacheForTests(): void {
+    SquarePaymentProvider.definitionsBootstrapped.clear();
+  }
+
+  private async ensureDefinitionsOnce(client: Client): Promise<boolean> {
+    if (SquarePaymentProvider.definitionsBootstrapped.get(this.locationId)) {
+      return true;
+    }
+    const ok = await ensureDefinitions(client);
+    if (ok) {
+      SquarePaymentProvider.definitionsBootstrapped.set(this.locationId, true);
+    }
+    return ok;
+  }
+
+  /**
+   * Pushes the bowler's current league_name + league_season strings to
+   * the customer's Square profile (task #429). NON-FATAL by contract —
+   * see `Failure semantics` below — the customer record itself is
+   * always considered the primary write and must never be rolled back
+   * because of an attribute upsert failure.
+   *
+   * Failure semantics:
+   *   - "Definition does not exist yet" → bootstrap once, retry once.
+   *     If bootstrap *itself* failed, leave the cache empty so the
+   *     next call retries.
+   *   - Hard upsert failure → log + return ok:false so the caller can
+   *     flip `bowlers.payment_sync_pending_at`. The retry sweep picks
+   *     it up on the next tick.
+   *   - Provider not configured → return ok:true and skip silently.
+   *     There is no Square customer to update on this location, so
+   *     there is nothing to retry.
+   *
+   * Empty strings ARE written: that's how we tell Square "this bowler
+   * is no longer in any leagues" rather than leaving a stale value
+   * from a previous sync.
+   */
+  async syncCustomerLeagueAttributes(
+    customerId: string,
+    bowlerId: number,
+    attributes: { leagueName: string; leagueSeason: string },
+  ): Promise<{ ok: boolean }> {
+    let client: Client | null;
+    try {
+      client = await this.getSquareClient();
+    } catch (err) {
+      log.warn('Custom-attr sync: failed to get Square client', {
+        locationId: this.locationId,
+        error: err instanceof Error ? { name: err.name, message: err.message } : err,
+      });
+      return { ok: false };
+    }
+    if (!client) {
+      // Same convention as the rest of the provider: missing creds
+      // means "skip silently", not "fail loudly". The caller already
+      // gated on Square being configured for this location.
+      return { ok: true };
+    }
+
+    // Lazy bootstrap. The first call per cold-start per Square seller
+    // pays the cost of two definition-create round trips; everything
+    // after that is in-memory cached.
+    let bootstrapped = await this.ensureDefinitionsOnce(client);
+
+    const writeBoth = async (): Promise<{ ok: boolean }> => {
+      const nameOk = await upsertCustomerStringAttribute(
+        client!,
+        customerId,
+        LEAGUE_NAME_KEY,
+        attributes.leagueName,
+        bowlerId,
+      );
+      const seasonOk = await upsertCustomerStringAttribute(
+        client!,
+        customerId,
+        LEAGUE_SEASON_KEY,
+        attributes.leagueSeason,
+        bowlerId,
+      );
+      return { ok: nameOk && seasonOk };
+    };
+
+    let result = await writeBoth();
+    if (!result.ok && !bootstrapped) {
+      // Bootstrap had failed; the upsert may have failed because the
+      // definitions don't exist yet. Force one more bootstrap+retry.
+      log.info('Custom-attr sync: retrying after forced bootstrap', { bowlerId, customerId });
+      bootstrapped = await ensureDefinitions(client);
+      if (bootstrapped) {
+        SquarePaymentProvider.definitionsBootstrapped.set(this.locationId, true);
+        result = await writeBoth();
+      }
+    }
+
+    if (!result.ok) {
+      log.warn('Custom-attr sync: leaving bowler flagged for retry', {
+        bowlerId,
+        customerId,
+        locationId: this.locationId,
+      });
+    }
+    return result;
   }
 
   /**

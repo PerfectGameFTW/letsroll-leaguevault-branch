@@ -10,9 +10,11 @@ import {
   parseOptionalIntListParam,
 } from '../utils/api.js';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
+import type { PaymentProvider } from '../services/payment-provider';
 import { hasAccessToTeam, hasAccessToBowler, hasAccessToBowlers } from '../utils/access-control.js';
 import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
+import { syncBowlerLeagueAttributesToProvider } from '../services/bowler-attributes';
 import { registerBowlerClaim } from '../utils/bowler-claim-tokens.js';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
@@ -440,9 +442,18 @@ router.patch("/:id", async (req, res) => {
           const patchSquareLocation = patchOrgId ? await storage.getFirstSquareConfiguredLocation(patchOrgId) : null;
           if (patchSquareLocation?.id) {
             let providerCustomer = null;
+            // Lifted out of the inner try so the post-customer
+            // attribute sync (task #429) can reuse this provider.
+            let patchProvider: PaymentProvider | null = null;
             try {
-              const patchProvider = await getPaymentProvider(patchSquareLocation.id);
-              providerCustomer = await patchProvider.createOrUpdateCustomer(updated.name, updated.email);
+              patchProvider = await getPaymentProvider(patchSquareLocation.id);
+              providerCustomer = await patchProvider.createOrUpdateCustomer(
+                updated.name,
+                updated.email,
+                updated.phone,
+                // Bowler reference for the Square dashboard (#429).
+                `bowler:${id}`,
+              );
             } catch (e) {
               if (e instanceof ProviderNotConfiguredError) {
                 log.warn('Bowler update: provider not configured, skipping customer sync', { locationId: patchSquareLocation.id });
@@ -459,6 +470,26 @@ router.patch("/:id", async (req, res) => {
                 // task #346.
                 paymentProviderLocationId: patchSquareLocation.id,
               });
+            }
+            // Custom-attribute sync (task #429). Non-fatal: failures
+            // flag the bowler for the retry sweep but do NOT roll
+            // back the successful customer record link above.
+            if (providerCustomer && patchProvider) {
+              const attrResult = await syncBowlerLeagueAttributesToProvider(
+                patchProvider,
+                providerCustomer.id,
+                id,
+              );
+              if (!attrResult.ok && updated.paymentSyncPendingAt == null) {
+                try {
+                  updated = await storage.updateBowler(id, {
+                    ...updated,
+                    paymentSyncPendingAt: new Date().toISOString(),
+                  });
+                } catch (markErr) {
+                  log.error('Bowler PATCH: failed to flag for attribute-sync retry', markErr);
+                }
+              }
             }
           } else {
             if (isDev) log.info('No payment-configured location found for org, skipping customer sync on update');

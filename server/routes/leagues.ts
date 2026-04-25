@@ -16,6 +16,11 @@ import { payments as paymentsTable } from '@shared/schema';
 import { eq, isNull, and } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { createLogger } from '../logger';
+import {
+  fireBowlerExternalResync,
+  fireLeagueBowlersExternalResync,
+  fireBowlersExternalResync,
+} from '../services/bowler-resync';
 
 const log = createLogger("Leagues");
 
@@ -197,6 +202,23 @@ router.patch("/:id", async (req: Request, res) => {
     
     const updated = await storage.updateLeague(id, update);
 
+    // Task #429: a name change moves the bowler between Smart Lists
+    // (the `league_name` Square attribute string changes); a season-
+    // date change reshuffles the `league_season` label; flipping
+    // `active=false` removes the league from both attribute strings.
+    // Any of these warrants a league-wide bowler resync.
+    const nameChanged = update.name !== undefined && update.name !== league.name;
+    const seasonStartChanged =
+      update.seasonStart !== undefined &&
+      new Date(update.seasonStart).getTime() !== new Date(league.seasonStart).getTime();
+    const seasonEndChanged =
+      update.seasonEnd !== undefined &&
+      new Date(update.seasonEnd).getTime() !== new Date(league.seasonEnd).getTime();
+    const activeChanged = update.active !== undefined && update.active !== league.active;
+    if (nameChanged || seasonStartChanged || seasonEndChanged || activeChanged) {
+      fireLeagueBowlersExternalResync(id, req.user?.organizationId);
+    }
+
     const feesChanged = update.lineageFee !== undefined || update.prizeFundFee !== undefined;
     if (feesChanged) {
       try {
@@ -274,6 +296,9 @@ router.patch("/:id/archive", async (req: Request, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     const archived = await storage.archiveLeague(id);
+    // Archiving drops this league from every member's `league_name`
+    // and `league_season` strings — push the new values out (task #429).
+    fireLeagueBowlersExternalResync(id, req.user?.organizationId);
     sendSuccess(res, archived);
   } catch (error) {
     sendError(res, 'Failed to archive league');
@@ -292,6 +317,9 @@ router.patch("/:id/restore", async (req: Request, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     const restored = await storage.restoreLeague(id);
+    // Restore puts this league back into every member's attribute
+    // strings — push the new values out (task #429).
+    fireLeagueBowlersExternalResync(id, req.user?.organizationId);
     sendSuccess(res, restored);
   } catch (error) {
     sendError(res, 'Failed to restore league');
@@ -313,6 +341,14 @@ router.delete("/:id", async (req: Request, res) => {
       return sendError(res, "You don't have access to this league", 403, 'FORBIDDEN');
     }
     
+    // Capture the bowler ids in this league BEFORE the destructive
+    // writes so the post-delete resync (task #429) can still find
+    // them. Doing it after delete would observe an empty roster.
+    const preDeleteBowlerLeagues = await storage.getBowlerLeagues({ leagueId: id });
+    const affectedBowlerIds = Array.from(
+      new Set(preDeleteBowlerLeagues.map((bl) => bl.bowlerId)),
+    );
+
     const teams = await storage.getTeams(id);
 
     for (const team of teams) {
@@ -324,6 +360,12 @@ router.delete("/:id", async (req: Request, res) => {
     }
 
     await storage.deleteLeague(id);
+
+    // Bowlers are now in zero leagues from this org's perspective
+    // (assuming this was their only league). Push empty/updated
+    // attribute strings so Smart Lists drop them (task #429).
+    fireBowlersExternalResync(affectedBowlerIds, req.user?.organizationId);
+
     sendSuccess(res, null, 204);
   } catch (error) {
     sendError(res, 'Failed to delete league');
@@ -490,6 +532,15 @@ router.post("/:id/new-season", async (req: Request, res) => {
     }
 
     await storage.updateLeague(sourceLeague.id, { active: false });
+
+    // The source league is now inactive AND the bowlers are in the
+    // freshly-cloned new league — both their `league_name` (likely
+    // unchanged) and `league_season` (definitely changed) attribute
+    // values need to be pushed out. Resync each bowler once. Task #429.
+    const uniqueBowlerIds = Array.from(
+      new Set(sourceBowlerLeagues.map((bl) => bl.bowlerId)),
+    );
+    fireBowlersExternalResync(uniqueBowlerIds, req.user?.organizationId);
 
     sendSuccess(res, newLeague, 201);
   } catch (error) {

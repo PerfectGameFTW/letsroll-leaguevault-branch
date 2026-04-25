@@ -4,6 +4,8 @@ import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
 import type { Bowler } from '@shared/schema';
+import type { PaymentProvider } from './payment-provider';
+import { syncBowlerLeagueAttributesToProvider } from './bowler-attributes';
 
 const log = createLogger("BowlerSync");
 
@@ -38,12 +40,19 @@ export async function runBowlerPostCreateSync(
         : null;
       if (squareLocation?.id) {
         let providerCustomer = null;
+        // Lifted out of the inner `try` so the post-customer attribute
+        // sync (task #429) can reuse the same provider instance —
+        // re-resolving here would either bill us for an extra Square
+        // round trip or, worse, race against a credential rotation.
+        let syncProvider: PaymentProvider | null = null;
         try {
-          const syncProvider = await getPaymentProvider(squareLocation.id);
+          syncProvider = await getPaymentProvider(squareLocation.id);
           providerCustomer = await syncProvider.createOrUpdateCustomer(
             current.name,
             current.email,
             current.phone,
+            // Bowler reference for the Square dashboard (task #429).
+            `bowler:${current.id}`,
           );
         } catch (e) {
           if (e instanceof ProviderNotConfiguredError) {
@@ -61,6 +70,33 @@ export async function runBowlerPostCreateSync(
             paymentProviderLocationId: squareLocation.id,
             active: true,
           });
+
+          // Push the bowler's current league_name + league_season to
+          // Square. NON-FATAL by contract: if the writes fail we flag
+          // the bowler so `payment-sync-retry.ts` re-runs the whole
+          // customer sync (which loops back through this helper) on
+          // the next sweep. We never throw or roll back the customer
+          // record over an attribute failure (task #429).
+          if (syncProvider) {
+            const attrResult = await syncBowlerLeagueAttributesToProvider(
+              syncProvider,
+              providerCustomer.id,
+              current.id,
+            );
+            if (!attrResult.ok && current.paymentSyncPendingAt == null) {
+              try {
+                current = await storage.updateBowler(current.id, {
+                  ...current,
+                  paymentSyncPendingAt: new Date().toISOString(),
+                });
+              } catch (markErr) {
+                log.error(
+                  'Bowler sync: failed to flag bowler for attribute-sync retry',
+                  markErr,
+                );
+              }
+            }
+          }
         }
       }
     } catch (syncError) {

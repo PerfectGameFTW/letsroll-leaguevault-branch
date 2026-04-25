@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
-import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert } from "lucide-react";
+import { Home, Users, CreditCard, ChevronLeft, ChevronRight, Trophy, ClipboardPlus, LayoutDashboard, Loader2, Building2, MapPin, Mail, Plug, Menu, Bell, ChevronDown, Settings, Trash2, Apple, ShieldAlert, MessageSquare } from "lucide-react";
 import { useState, useEffect, Suspense, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
@@ -126,6 +126,12 @@ const navItems: NavItem[] = [
     label: "Integrations",
     href: "/integrations",
     orgAdminOnly: true
+  },
+  {
+    icon: MessageSquare,
+    label: "Messaging",
+    href: "/messaging",
+    orgAdminOnly: true
   }
 ];
 
@@ -144,6 +150,7 @@ const pageLabels: Record<string, string> = {
   "/payments": "Payments",
   "/reports": "Reports",
   "/integrations": "Integrations",
+  "/messaging": "Messaging",
   "/profile": "Profile",
 };
 

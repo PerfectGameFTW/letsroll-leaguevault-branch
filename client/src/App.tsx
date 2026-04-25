@@ -45,6 +45,7 @@ const DeleteAccountPage = lazy(() => import("@/pages/delete-account-page"));
 const DeletionRequestsPage = lazy(() => import("@/pages/deletion-requests-page"));
 const ApplePayJobsPage = lazy(() => import("@/pages/apple-pay-jobs-page"));
 const DataIntegrityPage = lazy(() => import("@/pages/data-integrity-page"));
+const MessagingPage = lazy(() => import("@/pages/messaging-page"));
 
 function PageLoader() {
   return <PageLoadingState />;
@@ -150,6 +151,7 @@ function Router() {
         <Route path="/reports/leagues/:leagueId/past-due">{guard('orgAdmin', <LeaguePastDuePage />)}</Route>
         <Route path="/reports/past-due">{guard('orgAdmin', <PastDuePage />)}</Route>
         <Route path="/integrations">{guard('orgAdmin', <IntegrationsPage />)}</Route>
+        <Route path="/messaging">{guard('orgAdmin', <MessagingPage />)}</Route>
 
         {/* System Admin routes */}
         <Route path="/organizations">{guard('systemAdmin', <OrganizationsPage />)}</Route>

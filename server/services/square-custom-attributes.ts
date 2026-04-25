@@ -1,0 +1,190 @@
+/**
+ * Square Customer Custom Attribute helpers (task #429).
+ *
+ * The bowler-customer sync writes two seller-scoped attributes onto
+ * every Square customer record so admins can build Smart Lists in
+ * Square Marketing without leaving Square:
+ *
+ *   league_name   — alphabetical comma-joined list of leagues the
+ *                   bowler is currently in (active rows only).
+ *   league_season — distinct season labels (e.g. "Fall '25 Season"),
+ *                   chronological by `seasonStart`.
+ *
+ * Each attribute requires a one-time *definition* per Square seller
+ * account. `ensureDefinitions` creates both definitions and treats
+ * "already exists" (HTTP 409 / `BAD_REQUEST` with a duplicate-key
+ * detail) as success so it is safe to call on every cold start AND
+ * lazily before each upsert.
+ *
+ * The definitions are intentionally *neutral* (no LeagueVault wording
+ * or branding leaks into the seller's Square dashboard) per the task
+ * spec: keys + names use generic "League Name" / "League Season".
+ *
+ * Visibility is `VISIBILITY_READ_ONLY` — the documented setting that
+ * surfaces the attribute in Square's Customer Directory UI and in
+ * Square Marketing Smart List filters, while preventing other Square
+ * apps from overwriting our values.
+ *
+ * This module is intentionally STATELESS: it takes a Square `Client`
+ * from the caller (the SquarePaymentProvider) so it can be unit-
+ * tested with a mock client and so it has no circular dependency on
+ * `square-provider.ts`. Per-seller bootstrap caching lives on the
+ * provider where the locationId is naturally available.
+ */
+import type { Client, ApiError } from 'square';
+import { createHash } from 'node:crypto';
+import { createLogger } from '../logger';
+
+const log = createLogger('SquareCustomAttrs');
+
+export const LEAGUE_NAME_KEY = 'league_name';
+export const LEAGUE_SEASON_KEY = 'league_season';
+
+// Square requires a $ref-style JSON schema to mark the attribute as a
+// free-form string (vs Selection / Number / Boolean / Address). This
+// is the documented constant on the public Square schema CDN, called
+// out in the Custom Attributes Overview docs. The SDK accepts the
+// schema as a free-form `Record<string, unknown>` so we pass it raw.
+const STRING_SCHEMA = {
+  $ref: 'https://developer.squareup.com/schemas/v1/common.json#squareup.common.String',
+} as const;
+
+interface DefinitionSpec {
+  key: string;
+  name: string;
+  description: string;
+}
+
+const DEFINITIONS: DefinitionSpec[] = [
+  {
+    key: LEAGUE_NAME_KEY,
+    name: 'League Name',
+    description:
+      'Comma-separated list of leagues this customer is currently in. Updated automatically.',
+  },
+  {
+    key: LEAGUE_SEASON_KEY,
+    name: 'League Season',
+    description:
+      'Comma-separated list of season labels for the leagues this customer is in. Updated automatically.',
+  },
+];
+
+/**
+ * Detects "the definition already exists" responses across the two
+ * shapes Square has been observed to return:
+ *   - HTTP 409 (`statusCode === 409`) — modern responses
+ *   - HTTP 400 with `errors[].code === 'BAD_REQUEST'` and the message
+ *     mentioning a duplicate key — older surfaces
+ * Both are SUCCESS for our idempotent bootstrap.
+ */
+export function isAlreadyExistsError(err: unknown): boolean {
+  const apiErr = err as ApiError | undefined;
+  if (!apiErr) return false;
+  if (apiErr.statusCode === 409) return true;
+  const errors = (apiErr.result as
+    | { errors?: Array<{ code?: string; detail?: string; field?: string }> }
+    | undefined)?.errors;
+  if (!errors?.length) return false;
+  return errors.some((e) => {
+    const code = (e.code ?? '').toUpperCase();
+    if (code === 'CONFLICT' || code === 'ALREADY_EXISTS') return true;
+    const detail = (e.detail ?? '').toLowerCase();
+    return code === 'BAD_REQUEST' && /already (exists|in use|defined)|duplicate/.test(detail);
+  });
+}
+
+async function createDefinition(
+  client: Client,
+  spec: DefinitionSpec,
+): Promise<'created' | 'exists' | 'failed'> {
+  try {
+    await client.customerCustomAttributesApi.createCustomerCustomAttributeDefinition({
+      customAttributeDefinition: {
+        key: spec.key,
+        name: spec.name,
+        description: spec.description,
+        visibility: 'VISIBILITY_READ_ONLY',
+        schema: STRING_SCHEMA as unknown as Record<string, unknown>,
+      },
+      // Hash-free idempotency key: per-seller bootstrap is rare and
+      // re-running the create with the same key is exactly what the
+      // "already exists" branch was designed for.
+      idempotencyKey: `leaguevault-${spec.key}-def-v1`,
+    });
+    log.info('Created Square customer custom attribute definition', { key: spec.key });
+    return 'created';
+  } catch (err) {
+    if (isAlreadyExistsError(err)) {
+      return 'exists';
+    }
+    log.warn('Failed to create Square custom attribute definition', {
+      key: spec.key,
+      error: err instanceof Error ? { name: err.name, message: err.message } : err,
+    });
+    return 'failed';
+  }
+}
+
+/**
+ * Creates both `league_name` and `league_season` definitions on the
+ * Square seller account behind `client`. Idempotent: safe to call on
+ * every cold start AND lazily before each customer attribute upsert.
+ *
+ * Returns true when both definitions are known to exist (created or
+ * pre-existing). Returns false on hard API failure — the caller must
+ * treat false as NON-FATAL and continue with the customer write.
+ */
+export async function ensureDefinitions(client: Client): Promise<boolean> {
+  let allOk = true;
+  for (const spec of DEFINITIONS) {
+    const status = await createDefinition(client, spec);
+    if (status === 'failed') allOk = false;
+  }
+  return allOk;
+}
+
+/**
+ * Upserts a single string custom attribute on a Square customer.
+ *
+ * Returns true on success, false on failure. Failure is the caller's
+ * cue to flip the bowler's `payment_sync_pending_at` flag so the
+ * background retry sweep picks it up.
+ */
+export async function upsertCustomerStringAttribute(
+  client: Client,
+  customerId: string,
+  key: string,
+  value: string,
+  bowlerId: number | string,
+): Promise<boolean> {
+  try {
+    // Idempotency key includes a short hash of the payload so:
+    //   - A true retry of the SAME write (transient network error,
+    //     duplicate fire from two routes) reuses the same key and
+    //     Square correctly dedupes inside its idempotency window.
+    //   - A REAL update (league rename, season change, bowler joins
+    //     a new league) gets a fresh key and is not blocked by a
+    //     previous-payload entry that Square would otherwise either
+    //     dedupe-with-stale-result or reject as a conflict.
+    // Square's idempotency-key limit is 45 chars; a 12-hex-char SHA-
+    // 1 prefix gives 2^48 collision space per (bowler,key) which is
+    // far beyond anything we'd hit in practice.
+    const valueHash = createHash('sha1').update(value).digest('hex').slice(0, 12);
+    await client.customerCustomAttributesApi.upsertCustomerCustomAttribute(customerId, key, {
+      customAttribute: {
+        value,
+      },
+      idempotencyKey: `lv-${bowlerId}-${key}-${valueHash}`,
+    });
+    return true;
+  } catch (err) {
+    log.warn('Failed to upsert customer custom attribute', {
+      customerId,
+      key,
+      bowlerId,
+      error: err instanceof Error ? { name: err.name, message: err.message } : err,
+    });
+    return false;
+  }
+}

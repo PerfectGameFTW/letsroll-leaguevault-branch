@@ -12,6 +12,9 @@ import { storage } from '../storage';
 import { getPaymentProvider, ProviderNotConfiguredError } from './payment-provider-factory';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
+import type { PaymentProvider } from './payment-provider';
+import { syncBowlerLeagueAttributesToProvider } from './bowler-attributes';
+import { syncBowlerToBN, isOrgBNConfigured } from './bowlnow.js';
 
 const log = createLogger('PaymentCustomerSync');
 
@@ -81,12 +84,17 @@ export async function syncBowlerForUser(
   }
 
   let providerCustomer: { id: string } | null = null;
+  // Lifted so the post-customer attribute sync (task #429) can reuse
+  // the same provider instance.
+  let userProvider: PaymentProvider | null = null;
   try {
-    const userProvider = await getPaymentProvider(resolvedSquareLocationId);
+    userProvider = await getPaymentProvider(resolvedSquareLocationId);
     providerCustomer = await userProvider.createOrUpdateCustomer(
       user.name,
       user.email,
       user.phone,
+      // Bowler reference for the Square dashboard (task #429).
+      `bowler:${bowler.id}`,
     );
   } catch (e) {
     if (e instanceof ProviderNotConfiguredError) {
@@ -130,6 +138,46 @@ export async function syncBowlerForUser(
     return 'pending_retry';
   }
 
+  // Custom-attribute sync (task #429). Run BEFORE we clear the pending
+  // flag below so a failure here keeps the bowler in the retry queue
+  // for the next sweep. Non-fatal by contract — the customer record is
+  // still considered successfully synced even if attribute writes fail.
+  let attrSyncOk = true;
+  if (providerCustomer && userProvider) {
+    const attrResult = await syncBowlerLeagueAttributesToProvider(
+      userProvider,
+      providerCustomer.id,
+      bowler.id,
+    );
+    attrSyncOk = attrResult.ok;
+  }
+
+  // BowlNow parity (architect review on #429): the retry sweep
+  // re-runs this helper to recover failed Square attribute writes;
+  // when it does, also re-fire the BowlNow sync so the same
+  // membership state lands on both platforms. Non-fatal — a BowlNow
+  // failure here does NOT mark the bowler pending again (Square
+  // remains the source of truth for the pending flag) but it is
+  // logged for ops visibility. Use `bowler.organizationId` rather
+  // than `user.organizationId` because for cross-org system_admin
+  // edits the user's org may differ from the bowler's owning org.
+  const bnOrgId = bowler.organizationId ?? user.organizationId ?? null;
+  if (bnOrgId) {
+    try {
+      const orgConfig = await storage.getOrgIntegrations(bnOrgId);
+      if (isOrgBNConfigured(orgConfig)) {
+        await syncBowlerToBN(bowler.id, orgConfig);
+      }
+    } catch (bnErr) {
+      log.warn('BowlNow re-sync failed during payment-customer sync', {
+        bowlerId: bowler.id,
+        organizationId: bnOrgId,
+        errorName: bnErr instanceof Error ? bnErr.name : 'unknown',
+        errorMessage: bnErr instanceof Error ? bnErr.message : String(bnErr),
+      });
+    }
+  }
+
   const updates: Record<string, unknown> = { ...bowlerUpdate };
   let needsWrite = false;
   if (providerCustomer && providerCustomer.id !== bowler.paymentCustomerId) {
@@ -140,17 +188,28 @@ export async function syncBowlerForUser(
     needsWrite = true;
     log.info('Linked payment customer to bowler:', providerCustomer.id);
   }
-  if (bowler.paymentSyncPendingAt !== null) {
-    updates.paymentSyncPendingAt = null;
-    needsWrite = true;
-  }
-  if ((bowler.paymentSyncAttempts ?? 0) > 0) {
-    updates.paymentSyncAttempts = 0;
-    needsWrite = true;
-  }
-  if (bowler.paymentSyncLastAttemptAt != null) {
-    updates.paymentSyncLastAttemptAt = null;
-    needsWrite = true;
+  if (attrSyncOk) {
+    if (bowler.paymentSyncPendingAt !== null) {
+      updates.paymentSyncPendingAt = null;
+      needsWrite = true;
+    }
+    if ((bowler.paymentSyncAttempts ?? 0) > 0) {
+      updates.paymentSyncAttempts = 0;
+      needsWrite = true;
+    }
+    if (bowler.paymentSyncLastAttemptAt != null) {
+      updates.paymentSyncLastAttemptAt = null;
+      needsWrite = true;
+    }
+  } else {
+    // Attribute writes failed: keep the bowler flagged so the retry
+    // sweep (`payment-sync-retry.ts`) re-runs `syncBowlerForUser` and
+    // ultimately re-runs the attribute upserts.
+    const nowIso = new Date().toISOString();
+    if (bowler.paymentSyncPendingAt == null) {
+      updates.paymentSyncPendingAt = nowIso;
+      needsWrite = true;
+    }
   }
   if (needsWrite) {
     try {
@@ -160,5 +219,5 @@ export async function syncBowlerForUser(
       return 'pending_retry';
     }
   }
-  return 'synced';
+  return attrSyncOk ? 'synced' : 'pending_retry';
 }

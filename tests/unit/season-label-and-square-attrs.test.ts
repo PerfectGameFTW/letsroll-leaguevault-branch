@@ -1,0 +1,159 @@
+/**
+ * Unit tests for the two pure helpers introduced by task #429:
+ *
+ *   1. `getSeasonLabel` (`shared/season-utils.ts`) — moved from the
+ *      client into shared so the server-side Square custom-attribute
+ *      sync produces the EXACT same string users see in-app. These
+ *      tests pin the season-boundary cases (Dec/Jan/Feb → Winter,
+ *      Mar–May → Spring, etc.) and the cross-year fall-back.
+ *
+ *   2. `isAlreadyExistsError` (`server/services/square-custom-
+ *      attributes.ts`) — the duplicate-definition detector that
+ *      makes `ensureDefinitions` idempotent. Both observed Square
+ *      response shapes (modern HTTP 409 and legacy 400+detail) MUST
+ *      be classified as success, otherwise every cold start would
+ *      log a spurious bootstrap failure.
+ *
+ * Both helpers are stateless and dependency-free, so this file does
+ * not need any storage / Express / Square mocks.
+ */
+import { describe, expect, it } from 'vitest';
+import { getSeasonLabel } from '../../shared/season-utils';
+import { isAlreadyExistsError } from '../../server/services/square-custom-attributes';
+
+describe('getSeasonLabel', () => {
+  it('labels a same-year December start as Winter (current year suffix)', () => {
+    // December → Winter only triggers when start+end are the same
+    // calendar year (cross-year ranges fall into the YY/YY branch
+    // first — covered by its own test below). A short Dec→Dec mini-
+    // season is the realistic case.
+    expect(getSeasonLabel('2025-12-01', '2025-12-31')).toBe("Winter '25 Season");
+  });
+
+  it('labels a January start as Winter', () => {
+    expect(getSeasonLabel('2025-01-15', '2025-04-01')).toBe("Winter '25 Season");
+  });
+
+  it('labels a February start as Winter', () => {
+    expect(getSeasonLabel('2025-02-01', '2025-05-01')).toBe("Winter '25 Season");
+  });
+
+  it('labels a March start as Spring', () => {
+    expect(getSeasonLabel('2025-03-10', '2025-06-10')).toBe("Spring '25 Season");
+  });
+
+  it('labels a May start as Spring (boundary at month index 4)', () => {
+    expect(getSeasonLabel('2025-05-31', '2025-08-31')).toBe("Spring '25 Season");
+  });
+
+  it('labels a June start as Summer', () => {
+    expect(getSeasonLabel('2025-06-01', '2025-09-01')).toBe("Summer '25 Season");
+  });
+
+  it('labels an August start as Summer (boundary at month index 7)', () => {
+    expect(getSeasonLabel('2025-08-15', '2025-11-15')).toBe("Summer '25 Season");
+  });
+
+  it('labels a September start as Fall', () => {
+    expect(getSeasonLabel('2025-09-01', '2025-12-01')).toBe("Fall '25 Season");
+  });
+
+  it('labels a same-year November start as Fall', () => {
+    // Same-year November end (short fall mini-season) hits the Fall
+    // branch. A typical Sept→May fall league straddles two years and
+    // is covered by the cross-year fallback test below instead.
+    expect(getSeasonLabel('2025-11-01', '2025-12-15')).toBe("Fall '25 Season");
+  });
+
+  it('uses the cross-year `YY/YY Season` fallback when start and end span different years', () => {
+    // Cross-year leagues (typical fall-to-spring league) should NOT
+    // get a season name — the year-pair label is the only sensible
+    // way to disambiguate two leagues that started on the same
+    // calendar week one year apart.
+    expect(getSeasonLabel('2025-09-01', '2026-04-30')).toBe('25/26 Season');
+  });
+
+  it('accepts Date objects as well as ISO strings', () => {
+    // Both the client (form data, ISO strings) and the server (DB
+    // rows, Date objects) call this — pinning both call shapes here
+    // protects the server side from accidentally regressing.
+    expect(getSeasonLabel(new Date('2025-09-01'), new Date('2025-12-01'))).toBe(
+      "Fall '25 Season",
+    );
+  });
+});
+
+describe('isAlreadyExistsError', () => {
+  it('returns false for null/undefined', () => {
+    expect(isAlreadyExistsError(undefined)).toBe(false);
+    expect(isAlreadyExistsError(null)).toBe(false);
+  });
+
+  it('returns false for a plain Error', () => {
+    expect(isAlreadyExistsError(new Error('network exploded'))).toBe(false);
+  });
+
+  it('classifies HTTP 409 as already-exists', () => {
+    // Modern Square shape: bare statusCode on the ApiError. This is
+    // the path the SDK takes today; pinning it makes sure a future
+    // SDK upgrade that drops the legacy 400+detail shape still
+    // keeps cold-start bootstrap idempotent.
+    expect(isAlreadyExistsError({ statusCode: 409 })).toBe(true);
+  });
+
+  it('classifies an errors[].code === CONFLICT as already-exists', () => {
+    expect(
+      isAlreadyExistsError({
+        statusCode: 400,
+        result: { errors: [{ code: 'CONFLICT', detail: 'definition exists' }] },
+      }),
+    ).toBe(true);
+  });
+
+  it('classifies an errors[].code === ALREADY_EXISTS as already-exists', () => {
+    expect(
+      isAlreadyExistsError({
+        statusCode: 400,
+        result: { errors: [{ code: 'ALREADY_EXISTS' }] },
+      }),
+    ).toBe(true);
+  });
+
+  it('classifies BAD_REQUEST + duplicate-key detail as already-exists', () => {
+    // Legacy Square response shape: HTTP 400 with a free-form detail
+    // string mentioning duplication. We must treat this as success or
+    // every cold start logs a bogus bootstrap failure for sellers
+    // whose definitions were created before the SDK was upgraded.
+    expect(
+      isAlreadyExistsError({
+        statusCode: 400,
+        result: {
+          errors: [
+            {
+              code: 'BAD_REQUEST',
+              detail: 'A custom attribute definition with that key already exists.',
+            },
+          ],
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it('does NOT classify a generic BAD_REQUEST as already-exists', () => {
+    // Important regression pin: a real validation failure (bad
+    // schema, missing field) returns BAD_REQUEST too. We must NOT
+    // swallow it as success — that would mask a true bootstrap bug.
+    expect(
+      isAlreadyExistsError({
+        statusCode: 400,
+        result: {
+          errors: [{ code: 'BAD_REQUEST', detail: 'Schema is invalid: missing $ref.' }],
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it('does NOT classify an empty errors array as already-exists', () => {
+    expect(isAlreadyExistsError({ statusCode: 400, result: { errors: [] } })).toBe(false);
+  });
+});

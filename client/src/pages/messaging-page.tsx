@@ -1,0 +1,274 @@
+import { useQuery, useQueries } from "@tanstack/react-query";
+import { Layout } from "@/components/layout";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CreditCard, Mail, MessageSquare, Info, ExternalLink } from "lucide-react";
+import { Link } from "wouter";
+import type { ApiResponse, User, Location } from "@shared/schema";
+
+// Square location config payload (mirrors what the Integrations page reads).
+interface SquareLocationConfig {
+  accessTokenConfigured?: boolean;
+  appIdConfigured?: boolean;
+  locationId?: string | null;
+}
+
+// Org-level integrations payload (mirrors BowlNow card).
+interface OrgIntegrations {
+  bowlnow?: {
+    enabled?: boolean;
+    apiKeyConfigured?: boolean;
+  };
+}
+
+function StatusBadge({ connected }: { connected: boolean }) {
+  return (
+    <Badge
+      variant={connected ? "default" : "outline"}
+      className={connected ? "bg-emerald-500 hover:bg-emerald-600" : ""}
+      data-testid={connected ? "badge-connected" : "badge-not-connected"}
+    >
+      {connected ? "Connected" : "Not connected"}
+    </Badge>
+  );
+}
+
+interface MessagingContentProps {
+  orgId: number;
+}
+
+function MessagingContent({ orgId }: MessagingContentProps) {
+  const { data: locationsResp } = useQuery<ApiResponse<Location[]>>({
+    queryKey: ["/api/locations"],
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const { data: integrationsResp } = useQuery<ApiResponse<OrgIntegrations>>({
+    queryKey: ["/api/integrations", orgId],
+    queryFn: async () => {
+      const res = await fetch(`/api/integrations?organizationId=${orgId}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`Failed to fetch integrations: ${res.status}`);
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Per-location Square credential check. `useQueries` is the rules-of-hooks-
+  // safe way to fan out one request per location: the array shape is stable
+  // across renders for a given location set, and React Query keys each entry
+  // independently so we don't lose cache on remount.
+  const locations = locationsResp?.data ?? [];
+  const squareConfigQueries = useQueries({
+    queries: locations.map((loc) => ({
+      queryKey: ["/api/locations", loc.id, "square-config"] as const,
+      staleTime: 1000 * 60 * 5,
+    })),
+  });
+  const squareConnected = squareConfigQueries.some(
+    (q) => (q.data as ApiResponse<SquareLocationConfig> | undefined)?.data?.accessTokenConfigured === true,
+  );
+
+  const bowlnow = integrationsResp?.data?.bowlnow;
+  const bowlnowConnected = !!(bowlnow?.enabled && bowlnow?.apiKeyConfigured);
+  const noneConnected = !squareConnected && !bowlnowConnected;
+
+  return (
+    <>
+      <div className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-10 h-10 rounded-lg bg-indigo-500 flex items-center justify-center">
+            <MessageSquare className="text-white h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="page-title">Messaging</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
+              Reach the right bowlers using your existing tools.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {noneConnected && (
+        <Alert className="mb-6" data-testid="alert-no-platforms">
+          <Info className="h-4 w-4" />
+          <AlertTitle>No messaging platforms connected yet</AlertTitle>
+          <AlertDescription>
+            Connect Square or BowlNow on the{" "}
+            <Link href="/integrations" className="underline font-medium">
+              Integrations page
+            </Link>{" "}
+            to send targeted email or SMS to your bowlers.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Square card — describes Smart Lists driven by custom attributes. */}
+        <Card data-testid="card-square">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-slate-900 flex items-center justify-center">
+                  <CreditCard className="text-white h-5 w-5" />
+                </div>
+                <CardTitle className="text-base">Square Marketing</CardTitle>
+              </div>
+              <StatusBadge connected={squareConnected} />
+            </div>
+          </CardHeader>
+          <CardContent className="text-sm space-y-4">
+            <p className="text-muted-foreground">
+              When you assign a bowler to a league, we automatically tag their
+              Square customer record with two filters you can use to build
+              Smart Lists in Square Marketing.
+            </p>
+            <div className="rounded-md border bg-slate-50 p-4 space-y-2">
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-xs bg-white border px-1.5 py-0.5 rounded">
+                  League Name
+                </span>
+                <span className="text-muted-foreground text-xs">
+                  e.g. "Tuesday Night Mixed"
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-xs bg-white border px-1.5 py-0.5 rounded">
+                  League Season
+                </span>
+                <span className="text-muted-foreground text-xs">
+                  e.g. "Fall '25 Season"
+                </span>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-medium mb-2">Send a Smart Campaign</h4>
+              <ol className="list-decimal pl-5 space-y-1.5 text-muted-foreground">
+                <li>Open Square Dashboard → Customers → Smart Lists.</li>
+                <li>
+                  Click <strong>Create Smart List</strong>.
+                </li>
+                <li>
+                  Add a filter on{" "}
+                  <strong>Custom Attribute → League Name</strong> (or League
+                  Season) and pick the value you want to message.
+                </li>
+                <li>
+                  Save the list, then open Square Marketing and choose this
+                  list as the audience.
+                </li>
+              </ol>
+            </div>
+            {squareConnected && (
+              <a
+                href="https://squareup.com/dashboard/customers/directory"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-medium"
+                data-testid="link-square-dashboard"
+              >
+                Open Square Dashboard
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* BowlNow card — describes Smart Lists driven by League Name. */}
+        <Card data-testid="card-bowlnow">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-orange-500 flex items-center justify-center">
+                  <Mail className="text-white h-5 w-5" />
+                </div>
+                <CardTitle className="text-base">BowlNow Marketing</CardTitle>
+              </div>
+              <StatusBadge connected={bowlnowConnected} />
+            </div>
+          </CardHeader>
+          <CardContent className="text-sm space-y-4">
+            <p className="text-muted-foreground">
+              Bowler league assignments flow into BowlNow as the{" "}
+              <span className="font-mono text-xs bg-white border px-1.5 py-0.5 rounded">
+                League Name
+              </span>{" "}
+              custom field. Use it to build a Smart List for any league.
+            </p>
+            <div>
+              <h4 className="font-medium mb-2">Send a Targeted Email or SMS</h4>
+              <ol className="list-decimal pl-5 space-y-1.5 text-muted-foreground">
+                <li>Open BowlNow → Contacts → Smart Lists.</li>
+                <li>
+                  Click <strong>+ New Smart List</strong>.
+                </li>
+                <li>
+                  Add a filter on <strong>Custom Field → League Name</strong>{" "}
+                  and choose the league(s) you want to reach.
+                </li>
+                <li>
+                  Save the list, then create a Campaign or SMS blast and
+                  select this list as the audience.
+                </li>
+              </ol>
+            </div>
+            {bowlnowConnected && (
+              <p className="text-muted-foreground text-xs">
+                Custom field updates may take a few seconds after a bowler is
+                added, removed, or moved between leagues.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Alert className="mt-6">
+        <Info className="h-4 w-4" />
+        <AlertTitle>How attribute updates work</AlertTitle>
+        <AlertDescription>
+          Whenever a bowler joins, leaves, or moves leagues — or when a league
+          is renamed, archived, or has its season dates changed — we update
+          their record on every connected platform automatically. If a sync
+          fails, it's retried in the background.
+        </AlertDescription>
+      </Alert>
+    </>
+  );
+}
+
+export default function MessagingPage() {
+  const { data: userResp, isLoading } = useQuery<ApiResponse<User>>({
+    queryKey: ["/api/user"],
+    staleTime: 1000 * 60 * 5,
+  });
+  const orgId = userResp?.data?.organizationId;
+
+  return (
+    <Layout>
+      <ErrorBoundary level="section">
+        {isLoading || !orgId ? (
+          <div className="space-y-6">
+            <div className="h-8 w-32 bg-muted animate-pulse rounded" />
+            <div className="grid gap-6 md:grid-cols-2">
+              {[1, 2].map((i) => (
+                <Card key={i}>
+                  <CardHeader>
+                    <div className="h-4 w-32 bg-muted animate-pulse rounded" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-20 bg-muted animate-pulse rounded" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <MessagingContent orgId={orgId} />
+        )}
+      </ErrorBoundary>
+    </Layout>
+  );
+}

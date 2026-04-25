@@ -207,6 +207,8 @@ export class CardPointePaymentProvider implements PaymentProvider {
     _name: string,
     _email: string,
     _phone?: string | null,
+    // CardPointe has no referenceId equivalent on profiles (task #429).
+    _referenceId?: string | null,
   ): Promise<PaymentCustomer | null> {
     log.info(
       'CardPointe does not support standalone customer creation — a card token is required to create a profile. Returning null.',

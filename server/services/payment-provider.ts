@@ -116,6 +116,16 @@ export interface PaymentProvider {
     name: string,
     email: string,
     phone?: string | null,
+    /**
+     * Optional external reference for the customer record on the
+     * processor side. Square stores this as the `referenceId` field
+     * on the customer profile and exposes it in the dashboard so
+     * sellers can look up "who is this in my source system" without
+     * leaving Square. Task #429 sets this to `bowler:<id>` so admins
+     * can drill from a Square Smart List back into LeagueVault. Other
+     * processors that don't surface a referenceId may ignore it.
+     */
+    referenceId?: string | null,
   ): Promise<PaymentCustomer | null>;
 
   getPayment(

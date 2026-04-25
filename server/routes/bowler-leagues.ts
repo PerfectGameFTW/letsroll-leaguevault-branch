@@ -6,6 +6,7 @@ import { sendSuccess, sendError, handleZodError } from '../utils/api';
 import { hasAccessToLeague, hasAccessToTeam, hasAccessToBowler, isOrgOrHigher } from '../utils/access-control.js';
 import { consumeBowlerClaim } from '../utils/bowler-claim-tokens.js';
 import { createLogger } from '../logger';
+import { fireBowlerExternalResync } from '../services/bowler-resync';
 
 const log = createLogger("BowlerLeagues");
 
@@ -181,6 +182,9 @@ router.post("/", async (req, res) => {
       if (!created) {
         return sendError(res, "Bowler is already in this league", 400);
       }
+      // Push updated league_name/league_season to Square + BowlNow
+      // (task #429). Fire-and-forget — never blocks the response.
+      fireBowlerExternalResync(created.bowlerId, req.user?.organizationId);
       return sendSuccess(res, created, 201);
     }
 
@@ -198,6 +202,9 @@ router.post("/", async (req, res) => {
     }
 
     const created = await storage.createBowlerLeague(data);
+    // Push updated league_name/league_season to Square + BowlNow
+    // (task #429). Fire-and-forget — never blocks the response.
+    fireBowlerExternalResync(created.bowlerId, req.user?.organizationId);
     sendSuccess(res, created, 201);
   } catch (error) {
     log.error('Error:', error);
@@ -242,6 +249,10 @@ router.patch("/:id", async (req, res) => {
     if (!updated) {
       return sendError(res, "Bowler league not found", 404);
     }
+    // Re-sync attrs even on team moves: cheap idempotent upsert and
+    // catches the active=false toggle that DOES change `league_name`
+    // (task #429).
+    fireBowlerExternalResync(updated.bowlerId, req.user?.organizationId);
     sendSuccess(res, updated);
   } catch (error) {
     log.error('Error:', error);
@@ -276,10 +287,19 @@ router.delete("/:id", async (req, res) => {
       return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
     }
 
+    // Capture the bowler id BEFORE the delete so we still have it
+    // for the resync call below. After delete, the row is gone and
+    // we'd have to swap it for an extra storage round trip.
+    const affectedBowlerId = bowlerLeague.bowlerId;
     const deleted = await storage.deleteBowlerLeague(id);
     if (!deleted) {
       return sendError(res, "Bowler league not found", 404);
     }
+
+    // Re-push updated league_name/league_season (the bowler may now
+    // be in 0 leagues — we still write "" to clear the value rather
+    // than leave stale data on the Square customer record). Task #429.
+    fireBowlerExternalResync(affectedBowlerId, req.user?.organizationId);
 
     sendSuccess(res, { message: "Bowler league deleted successfully" }, 200);
   } catch (error) {
