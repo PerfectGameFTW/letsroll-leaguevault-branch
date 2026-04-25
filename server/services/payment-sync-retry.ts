@@ -53,6 +53,15 @@ export interface SweepResult {
   skippedNoUser: number;
   skippedMaxAttempts: number;
   errors: number;
+  /**
+   * Rows that matched the eligibility predicate but were locked by a
+   * peer process's concurrent sweep (FOR UPDATE OF bowlers SKIP
+   * LOCKED — see lockedSweep). Surfaced on the result so multi-process
+   * race tests (and any future telemetry) can see contention without
+   * having to scrape log lines. Always 0 when the app runs single-
+   * process. Mirrors the structured `log.info` on contention below.
+   */
+  skippedByLock: number;
 }
 
 export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<SweepResult> {
@@ -65,6 +74,7 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
     skippedNoUser: 0,
     skippedMaxAttempts: 0,
     errors: 0,
+    skippedByLock: 0,
   };
 
   // SQL filter responsibilities:
@@ -155,6 +165,7 @@ export async function runPaymentSyncRetrySweep(now: Date = new Date()): Promise<
     });
   }
 
+  result.skippedByLock = skippedByLock;
   result.scanned = candidates.length;
 
   for (const bowler of candidates) {

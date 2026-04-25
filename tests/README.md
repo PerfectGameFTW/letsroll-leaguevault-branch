@@ -103,9 +103,26 @@ bash scripts/test-race.sh
 …which is equivalent to:
 
 ```bash
-RUN_BOOTSTRAP_RACE_TESTS=1 npx vitest run \
-  tests/api/setup-admin-bootstrap-race.test.ts
+RUN_BOOTSTRAP_RACE_TESTS=1 npx vitest run --no-file-parallelism \
+  tests/api/setup-admin-bootstrap-race.test.ts \
+  tests/api/payment-sync-retry-race.test.ts
 ```
+
+The wrapper currently runs two race files:
+
+- `tests/api/setup-admin-bootstrap-race.test.ts` (#319, #360) — proves
+  the first-admin bootstrap critical section by racing two
+  `POST /api/setup/create-first-admin` requests against each other and
+  asserting exactly one wins.
+- `tests/api/payment-sync-retry-race.test.ts` (#362) — seeds a flagged
+  bowler row with `payment_sync_pending_at` set, fires two
+  `runPaymentSyncRetrySweep()` calls in parallel against the real
+  database, and asserts that the `FOR UPDATE OF bowlers SKIP LOCKED`
+  guard (introduced in #321 and centralised in the `lockedSweep`
+  helper in #361) lets exactly one sweep claim the row while the
+  other reports `skippedByLock >= 1`. This catches a regression where
+  the sweep would no longer take the row lock and two ticks could
+  double-call the payment provider for the same bowler.
 
 #### CI wiring
 
