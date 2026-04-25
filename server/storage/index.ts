@@ -111,6 +111,8 @@ export class DatabaseStorage implements IStorage {
   getUserByInviteToken!: IStorage["getUserByInviteToken"];
   setUserInviteToken!: IStorage["setUserInviteToken"];
   clearUserInviteToken!: IStorage["clearUserInviteToken"];
+  recordFailedPasswordChangeAttempt!: IStorage["recordFailedPasswordChangeAttempt"];
+  resetFailedPasswordChangeAttempts!: IStorage["resetFailedPasswordChangeAttempts"];
 
   getOrganizations!: IStorage["getOrganizations"];
   getOrganization!: IStorage["getOrganization"];

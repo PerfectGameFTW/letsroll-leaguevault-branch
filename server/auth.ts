@@ -43,6 +43,18 @@ export async function destroyOtherSessionsForUser(
   return result.rowCount ?? 0;
 }
 
+/**
+ * Destroy EVERY session belonging to `userId`, including the caller's.
+ * Thin wrapper over `destroyOtherSessionsForUser(userId, null)`; the
+ * separate name keeps the intent unambiguous at call sites where the
+ * caller's own session must die too — for example the change-password
+ * lockout path (task #357), where the locking event itself suggests
+ * the caller may be the attacker.
+ */
+export async function destroyAllSessionsForUser(userId: number): Promise<number> {
+  return destroyOtherSessionsForUser(userId, null);
+}
+
 const PostgresSessionStore = connectPg(session);
 
 declare global {

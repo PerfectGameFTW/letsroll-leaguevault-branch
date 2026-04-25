@@ -104,9 +104,129 @@ export class OrgHasUsersError extends Error {
 // pg_advisory_xact_lock takes a bigint; pick an arbitrary unique constant.
 const BOOTSTRAP_ADVISORY_LOCK_KEY = 7244910283645127n;
 
+// Task #357: change-password lockout policy. The per-user rate limiter
+// (#317, #356) caps attempts at 10 / 15 min (~960/day across windows);
+// the lockout escalates to a hard temporary disable once a higher
+// threshold is crossed and force-logs-out every session for the user.
+//
+// Tuning: 25 hot-streak failures inside one rate-limit cycle is well
+// past anyone fat-fingering their current password while signed in,
+// but low enough to defeat a patient hijacker grinding ~10 guesses
+// per 15-min window. The 1-hour duration keeps the user's recovery
+// path painless (use forgot-password to bypass) without giving an
+// attacker a small fixed cost-window to keep retrying.
+export const PASSWORD_CHANGE_LOCKOUT_THRESHOLD = 25;
+export const PASSWORD_CHANGE_LOCKOUT_DURATION_MS = 60 * 60 * 1000;
+
+export interface RecordFailedPasswordChangeAttemptResult {
+  /** New value of users.failed_password_change_attempts after the bump. */
+  count: number;
+  /** ISO string of the active lock, or null if no lock is engaged. */
+  lockedUntil: string | null;
+  /**
+   * True iff THIS call was the one that engaged the lock. Used by the
+   * route to gate the one-time side effects (destroy all sessions,
+   * send the alert email) so a piled-up second attempt doesn't
+   * re-fire them after the lock is already in effect.
+   */
+  justLocked: boolean;
+}
+
 export async function getUser(id: number): Promise<User | undefined> {
   const [user] = await db.select().from(users).where(eq(users.id, id));
   return user;
+}
+
+/**
+ * Atomically increment `failedPasswordChangeAttempts` for the given
+ * user and engage a temporary lock if the threshold is crossed by
+ * THIS call. Race-safe across concurrent failed attempts via
+ * `SELECT ... FOR UPDATE` inside a transaction — the second attempt
+ * waits for the first to commit, sees the lock, and short-circuits
+ * (no double-fire of side effects).
+ *
+ * Behaviour:
+ *  - If a lock is currently active (lockedUntil > now), do nothing and
+ *    return the existing state. (The route should have already
+ *    rejected the call before reaching this helper, but the no-op
+ *    keeps the helper safe under races and stops attackers from
+ *    extending the lock indefinitely by piling on attempts.)
+ *  - If a lock has expired (lockedUntil <= now), treat this attempt
+ *    as the start of a fresh window: counter is reset to 0 before the
+ *    bump, and the lock column is cleared.
+ *  - Otherwise just bump the counter. If the new value crosses the
+ *    threshold, set `passwordChangeLockedUntil = now + duration` and
+ *    return `justLocked = true` so the route fires the side effects.
+ */
+export async function recordFailedPasswordChangeAttempt(
+  userId: number,
+): Promise<RecordFailedPasswordChangeAttemptResult> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({
+        count: users.failedPasswordChangeAttempts,
+        lockedUntil: users.passwordChangeLockedUntil,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .for('update');
+
+    if (!row) {
+      throw new Error(`User ${userId} not found`);
+    }
+
+    const nowMs = Date.now();
+    const lockedUntilMs = row.lockedUntil ? Date.parse(row.lockedUntil) : null;
+    const wasActiveLock = lockedUntilMs !== null && lockedUntilMs > nowMs;
+
+    if (wasActiveLock) {
+      return {
+        count: row.count,
+        lockedUntil: row.lockedUntil,
+        justLocked: false,
+      };
+    }
+
+    const lockExpired = lockedUntilMs !== null && lockedUntilMs <= nowMs;
+    const baseCount = lockExpired ? 0 : row.count;
+    const newCount = baseCount + 1;
+
+    let newLockedUntil: string | null = null;
+    let justLocked = false;
+    if (newCount >= PASSWORD_CHANGE_LOCKOUT_THRESHOLD) {
+      newLockedUntil = new Date(nowMs + PASSWORD_CHANGE_LOCKOUT_DURATION_MS).toISOString();
+      justLocked = true;
+    }
+
+    await tx
+      .update(users)
+      .set({
+        failedPasswordChangeAttempts: newCount,
+        passwordChangeLockedUntil: newLockedUntil,
+      })
+      .where(eq(users.id, userId));
+
+    cacheInvalidate(`user:${userId}`);
+    return { count: newCount, lockedUntil: newLockedUntil, justLocked };
+  });
+}
+
+/**
+ * Reset the change-password failure counter and clear any active
+ * lock. Called after a successful password change so a previously-
+ * partially-failed user starts from a clean slate. Best-effort —
+ * if this throws after the password update commits, the route
+ * surfaces the error rather than rolling the rotation back.
+ */
+export async function resetFailedPasswordChangeAttempts(userId: number): Promise<void> {
+  await db
+    .update(users)
+    .set({
+      failedPasswordChangeAttempts: 0,
+      passwordChangeLockedUntil: null,
+    })
+    .where(eq(users.id, userId));
+  cacheInvalidate(`user:${userId}`);
 }
 
 export async function getUserByEmail(email: string): Promise<User | undefined> {

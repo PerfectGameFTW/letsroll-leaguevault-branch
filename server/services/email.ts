@@ -5,6 +5,7 @@ import { env, isDev } from '../config';
 import { createLogger } from '../logger';
 import { maskEmail } from '../utils/pii';
 import { pickPasswordChangedLocale } from './email-i18n/password-changed';
+import { pickAccountLockoutLocale } from './email-i18n/account-lockout';
 
 const log = createLogger("Email");
 
@@ -846,6 +847,107 @@ export async function sendAccountDeletionConfirmation(
       'Failed to send account-deletion confirmation:',
       describeMailError(error),
     );
+    return false;
+  }
+}
+
+/**
+ * Task #357: alert email sent when an account is auto-locked after
+ * repeated failed current-password attempts on /api/account/change-password.
+ * Best-effort — caller should NOT roll back the lock if SendGrid throws.
+ *
+ * The body tells the user (a) why the lock fired, (b) the request that
+ * triggered it (when, IP, browser), (c) when the lock lifts, and
+ * (d) a CTA to the forgot-password flow so they can recover without
+ * waiting out the lock or knowing their old password.
+ */
+export async function sendAccountLockoutAlert(
+  toEmail: string,
+  userName: string,
+  context: {
+    lockedAt: Date;
+    unlocksAt: Date;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+    /**
+     * ISO 639-1 two-letter locale (e.g. 'en', 'es') taken from the
+     * recipient's `users.preferred_language`. Unknown / null values
+     * fall back to English. Region tags like `es-MX` collapse to
+     * their base language inside the resolver.
+     */
+    locale?: string | null;
+  },
+): Promise<boolean> {
+  if (!SENDGRID_API_KEY) {
+    log.error('Cannot send account-lockout alert — SENDGRID_API_KEY not configured');
+    return false;
+  }
+
+  const { code: localeCode, strings } = pickAccountLockoutLocale(context.locale);
+
+  const safeLockedAt = escapeHtml(context.lockedAt.toUTCString());
+  const safeUnlocksAt = escapeHtml(context.unlocksAt.toUTCString());
+  const safeIp = escapeHtml(context.ipAddress?.trim() || strings.unknown);
+  const rawUa = (context.userAgent ?? '').trim();
+  const safeUa = escapeHtml(rawUa ? (rawUa.length > 120 ? `${rawUa.slice(0, 120)}…` : rawUa) : strings.unknown);
+  const forgotUrl = `${getBaseUrl()}/forgot-password`;
+  const supportUrl = `${getBaseUrl()}/support`;
+
+  // Greeting / intro are translator-supplied plain text, escape ONCE
+  // at splice time. ifThisWasYou / ifThisWasntYou contain a small
+  // <strong> wrapper from the translator and are spliced raw — they
+  // MUST NOT include user-controlled data.
+  const displayName = userName || 'there';
+  const safeGreeting = escapeHtml(strings.greeting(displayName));
+  const safeIntro = escapeHtml(strings.intro);
+
+  const msg = {
+    to: toEmail,
+    from: { email: FROM_EMAIL, name: FROM_NAME },
+    subject: strings.subject,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;" lang="${localeCode}">
+        <p style="font-size: 16px; color: #333;">${safeGreeting}</p>
+        <p style="font-size: 16px; color: #333;">${safeIntro}</p>
+        <table style="font-size: 14px; color: #555; border-collapse: collapse; margin: 16px 0;">
+          <tr>
+            <td style="padding: 4px 12px 4px 0; color: #888;">${escapeHtml(strings.whenLabel)}</td>
+            <td style="padding: 4px 0;">${safeLockedAt}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 12px 4px 0; color: #888;">${escapeHtml(strings.fromIpLabel)}</td>
+            <td style="padding: 4px 0;">${safeIp}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 12px 4px 0; color: #888;">${escapeHtml(strings.browserLabel)}</td>
+            <td style="padding: 4px 0;">${safeUa}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 12px 4px 0; color: #888;">${escapeHtml(strings.unlocksAtLabel)}</td>
+            <td style="padding: 4px 0;">${safeUnlocksAt}</td>
+          </tr>
+        </table>
+        <p style="font-size: 16px; color: #333;">${strings.ifThisWasYou}</p>
+        <p style="font-size: 16px; color: #333;">${strings.ifThisWasntYou}</p>
+        <div style="margin: 20px 0;">
+          <a href="${escapeHtml(forgotUrl)}" style="display: inline-block; background-color: #1a1a2e; color: #ffffff; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: bold;">${escapeHtml(strings.resetCta)}</a>
+        </div>
+        <p style="font-size: 14px; color: #666; word-break: break-all;">
+          <a href="${escapeHtml(supportUrl)}">${escapeHtml(supportUrl)}</a>
+        </p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+        <p style="font-size: 12px; color: #999; text-align: center;">${escapeHtml(strings.footer)}</p>
+      </div>
+    `,
+    trackingSettings: { clickTracking: { enable: false, enableText: false } },
+  };
+
+  try {
+    await sgMail.send(msg);
+    log.info('Account-lockout alert sent to:', isDev ? toEmail : maskEmail(toEmail), { locale: localeCode });
+    return true;
+  } catch (error) {
+    log.error('Failed to send account-lockout alert:', describeMailError(error));
     return false;
   }
 }

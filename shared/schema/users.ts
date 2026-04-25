@@ -26,6 +26,27 @@ export const users = pgTable("users", {
   // email helpers fall back to English when this is null/unset/
   // unknown. See `server/services/email-i18n/` for supported locales.
   preferredLanguage: text("preferred_language"),
+  // Task #357: hard lockout on /api/account/change-password after
+  // repeated failed current-password checks. The per-user rate limiter
+  // (#317, #356) still slows brute-forcing to ~10/15min, but a patient
+  // attacker on a hijacked session can spread guesses across rate-limit
+  // windows and still grind through ~960/day. This counter escalates
+  // throttling to a temporary lockout once `failedPasswordChangeAttempts`
+  // crosses `PASSWORD_CHANGE_LOCKOUT_THRESHOLD` (see server/storage/users.ts).
+  // The counter is incremented atomically (FOR UPDATE) on every
+  // INVALID_PASSWORD and reset to 0 on a successful change-password.
+  // When the lock engages, every session for the user is destroyed and
+  // an alert email is sent. The counter resets to 0 on the first new
+  // failed attempt AFTER the lock has expired so a returning user gets
+  // a fresh window instead of being re-locked on the very next typo.
+  failedPasswordChangeAttempts: integer("failed_password_change_attempts").notNull().default(0),
+  // When non-null and in the future, the user is locked out of the
+  // change-password endpoint until this timestamp. The route checks
+  // this BEFORE comparing the current password and returns 423
+  // ACCOUNT_LOCKED so the client can prompt the user to use the
+  // forgot-password flow. Naturally clears on success and on the
+  // next failed attempt past expiry.
+  passwordChangeLockedUntil: timestamp("password_change_locked_until", { mode: "string" }),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 }, (table) => ({
   organizationIdx: index("users_organization_idx").on(table.organizationId),

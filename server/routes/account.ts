@@ -3,7 +3,8 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { z } from 'zod';
 import { sendError, sendSuccess, sanitizeUser, handleZodError } from '../utils/api';
 import { storage } from '../storage';
-import { hashPassword, destroyOtherSessionsForUser } from '../auth';
+import { hashPassword, destroyOtherSessionsForUser, destroyAllSessionsForUser } from '../auth';
+import { PASSWORD_CHANGE_LOCKOUT_DURATION_MS } from '../storage/users';
 import { passwordSchema } from '@shared/password-validation';
 import { updateUserSchemaBase, insertDeletionRequestSchema } from '@shared/schema';
 import { PASSWORD_CHANGED_I18N } from '../services/email-i18n/password-changed';
@@ -15,6 +16,7 @@ import {
   sendEmailChangeConfirmation,
   sendEmailChangeNotification,
   sendPasswordChangedNotification,
+  sendAccountLockoutAlert,
   getBaseUrl,
 } from '../services/email';
 import { requireSystemAdmin } from '../middleware/auth';
@@ -825,13 +827,135 @@ router.post('/change-password', changePasswordLimiter, requireAuth, async (req: 
       return sendError(res, 'User not found', 404, 'USER_NOT_FOUND');
     }
 
+    // Task #357: hard lockout check. If the user previously crossed the
+    // failed-attempt threshold and the lock window is still in the
+    // future, refuse the request without ever calling comparePasswords —
+    // even a CORRECT password should bounce while the lock is active,
+    // because the locking event itself is a signal that someone with
+    // session access has been guessing. The user recovers via the
+    // forgot-password flow (which doesn't require the old password).
+    if (existingUser.passwordChangeLockedUntil) {
+      const lockedUntilMs = Date.parse(existingUser.passwordChangeLockedUntil);
+      if (Number.isFinite(lockedUntilMs) && lockedUntilMs > Date.now()) {
+        log.warn('Change-password attempt on locked account', {
+          userId: user.id,
+          lockedUntil: existingUser.passwordChangeLockedUntil,
+        });
+        return sendError(
+          res,
+          'Your account is temporarily locked after too many failed password attempts. Please use the forgot-password flow to reset your password.',
+          423,
+          'ACCOUNT_LOCKED',
+          { lockedUntil: existingUser.passwordChangeLockedUntil },
+        );
+      }
+    }
+
     const isValid = await comparePasswords(currentPassword, existingUser.password);
     if (!isValid) {
+      // Task #357: bump the failure counter and engage the lockout if
+      // this attempt crossed the threshold. The storage helper is
+      // race-safe (FOR UPDATE inside a transaction) so two concurrent
+      // failures can't double-fire the side effects.
+      let lockResult: Awaited<ReturnType<typeof storage.recordFailedPasswordChangeAttempt>> | null = null;
+      try {
+        lockResult = await storage.recordFailedPasswordChangeAttempt(user.id);
+      } catch (err) {
+        log.error('Failed to record failed password-change attempt', {
+          userId: user.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      if (lockResult?.justLocked) {
+        const lockedUntil = lockResult.lockedUntil
+          ? new Date(lockResult.lockedUntil)
+          : new Date(Date.now() + PASSWORD_CHANGE_LOCKOUT_DURATION_MS);
+        log.warn('Account locked after repeated failed change-password attempts', {
+          userId: user.id,
+          count: lockResult.count,
+          lockedUntil: lockedUntil.toISOString(),
+        });
+
+        // Kill EVERY session for this user — including the caller's,
+        // since the locking event itself suggests the caller may be
+        // an attacker with a stolen cookie. Best-effort: a session-
+        // store hiccup must not roll back the lock that already
+        // committed; we log loudly and keep going.
+        try {
+          const dropped = await destroyAllSessionsForUser(user.id);
+          if (dropped > 0) {
+            log.info('Destroyed all sessions on account-lockout', {
+              userId: user.id,
+              count: dropped,
+            });
+          }
+        } catch (err) {
+          log.error('Failed to destroy sessions on account-lockout', {
+            userId: user.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        // Fire-and-forget alert email so the user finds out they're
+        // locked even if they're no longer in front of the browser
+        // that triggered it. A SendGrid failure must NOT roll back
+        // the lock that already committed.
+        try {
+          const rawUa = (req.get('user-agent') ?? '').slice(0, 256);
+          void sendAccountLockoutAlert(existingUser.email, existingUser.name, {
+            lockedAt: new Date(),
+            unlocksAt: lockedUntil,
+            ipAddress: req.ip ?? null,
+            userAgent: rawUa || null,
+            locale: existingUser.preferredLanguage ?? null,
+          })
+            .then(ok => {
+              if (!ok) {
+                log.warn('Account-lockout alert helper returned false', { userId: user.id });
+              }
+            })
+            .catch(err => {
+              log.error('Account-lockout alert threw unexpectedly', {
+                userId: user.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+            });
+        } catch (err) {
+          log.error('Failed to dispatch account-lockout alert', {
+            userId: user.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        return sendError(
+          res,
+          'Your account is temporarily locked after too many failed password attempts. Please use the forgot-password flow to reset your password.',
+          423,
+          'ACCOUNT_LOCKED',
+          { lockedUntil: lockedUntil.toISOString() },
+        );
+      }
+
       return sendError(res, 'Current password is incorrect', 400, 'INVALID_PASSWORD');
     }
 
     const hashedNew = await hashPassword(newPassword);
     await storage.updateUser(user.id, { password: hashedNew });
+
+    // Task #357: clean slate after a successful rotation. Wipe any
+    // accumulated failure counter and clear a stale lock (the route
+    // would have rejected an active lock above, so any value here is
+    // either zero or expired). Best-effort: an error here must not
+    // roll back the password update that already committed.
+    try {
+      await storage.resetFailedPasswordChangeAttempts(user.id);
+    } catch (err) {
+      log.error('Failed to reset failed-password-change counter after rotation', {
+        userId: user.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
 
     // Defense-in-depth: any in-flight email-change tokens for this user
     // may belong to an attacker who recently had access. Invalidating

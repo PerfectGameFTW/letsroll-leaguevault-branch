@@ -136,6 +136,13 @@ export interface IUserStorage {
   getUserByInviteToken(token: string): Promise<User | undefined>;
   setUserInviteToken(userId: number, token: string, expiry: Date): Promise<User>;
   clearUserInviteToken(userId: number): Promise<User>;
+  // Task #357: change-password lockout
+  recordFailedPasswordChangeAttempt(userId: number): Promise<{
+    count: number;
+    lockedUntil: string | null;
+    justLocked: boolean;
+  }>;
+  resetFailedPasswordChangeAttempts(userId: number): Promise<void>;
 }
 
 export interface IOrganizationStorage {
