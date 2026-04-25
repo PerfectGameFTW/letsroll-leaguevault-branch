@@ -25,18 +25,24 @@ permissions:
   contents: read
 
 jobs:
-  # Single job that runs the type checker and the lint suite. Task
-  # #372 explicitly scopes this to `npm run check` + `npm run lint`
-  # so the freshly-wired step starts green; broader checks (vitest,
-  # CSRF coverage, the eslint-baseline ratchet from #404, etc.) are
+  # Single job that runs the static checks (type checker, lint suite,
+  # and CSRF coverage guard) sequentially. Task #372 wired the type
+  # check and lint steps; task #398 added the CSRF coverage step
+  # (`scripts/check-csrf-coverage.ts`) so a regression that mounts a
+  # state-changing route outside the global `/api` CSRF prefix can no
+  # longer slip through review. The job's `name:` is deliberately
+  # preserved as "Type check & lint" so any GitHub branch-protection
+  # rule keyed on that name keeps working — when adding a fourth
+  # static check, append a step rather than rename the job. Broader
+  # checks (vitest, the eslint-baseline ratchet from #404, etc.) are
   # owned by their own follow-up tasks and will land in their own
   # workflow files or as additional steps here over time.
   check-and-lint:
     name: Type check & lint
     runs-on: ubuntu-latest
-    # The check+lint pair takes ~1 minute locally; 10 is a generous
-    # ceiling that still kills a runaway install / hung dev-server
-    # spawn before it eats CI budget for an hour.
+    # The check+lint+csrf trio takes ~1 minute locally; 10 is a
+    # generous ceiling that still kills a runaway install / hung
+    # dev-server spawn before it eats CI budget for an hour.
     timeout-minutes: 10
     steps:
       - name: Check out the PR
@@ -68,3 +74,17 @@ jobs:
       # baseline in `eslint-suppressions.json`.
       - name: Lint
         run: npm run lint
+
+      # `npm run check:csrf` = `tsx scripts/check-csrf-coverage.ts`.
+      # Walks `server/` and fails if any state-changing route has an
+      # effective path outside `/api` without an entry in
+      # `EXPLICIT_NON_API_ALLOWLIST`. Covers direct `app.<method>(...)`
+      # calls, single-level `app.use('<prefix>', router)` mounts, and
+      # nested `parentRouter.use('<sub>', childRouter)` composition
+      # transitively (#397). The guard's own behavior is pinned by
+      # 23 unit fixtures in `tests/unit/check-csrf-coverage.test.ts`,
+      # which run as part of the vitest suite (separate workflow when
+      # that lands). Contract and limitations are documented in
+      # `docs/security/csrf-coverage.md`. Wired into CI in #398.
+      - name: CSRF coverage
+        run: npm run check:csrf

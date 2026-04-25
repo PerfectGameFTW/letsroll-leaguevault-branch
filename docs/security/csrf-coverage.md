@@ -88,19 +88,44 @@ appears in `EXEMPT_PATHS`.
 
 ## Routes mounted outside `/api`
 
-Verified by grep (`grep -n 'app\.\(post\|put\|patch\|delete\)' server/index.ts`)
-**and** by the CI guard `scripts/check-csrf-coverage.ts` (task #308 — wired
-as `npm run check:csrf`): no state-changing app-level routes exist outside
-`/api`. The guard reads `server/index.ts`, finds every
-`app.post|put|patch|delete(...)` call, and exits non-zero if any path does
-not start with `/api/`. Add to `EXPLICIT_NON_API_ALLOWLIST` only with an
+Verified by the CI guard `scripts/check-csrf-coverage.ts` (task #308,
+extended in #338 and #397, wired into CI in #398). The guard walks
+`server/`, finds every state-changing route — direct
+`app.<method>(...)` calls, single-level `app.use('<prefix>', router)`
+mounts, and nested `parentRouter.use('<sub>', childRouter)`
+composition followed transitively — and exits non-zero if any
+effective path falls outside `/api/` without an entry in
+`EXPLICIT_NON_API_ALLOWLIST`. Add to that allowlist only with an
 inline justification (e.g. an out-of-band auth factor like
-`x-setup-secret`). Coverage is pinned by `tests/unit/check-csrf-coverage.test.ts`,
-which is part of the standard `npm test` (vitest) suite — so the guard runs on
-every CI build that runs the test suite, in addition to being callable directly
-via `npm run check:csrf`. CI pipelines that only run a subset of the suite
-should invoke `npm run check:csrf` explicitly to keep the guard active. The non-`/api`
-mounts are:
+`x-setup-secret`).
+
+The guard runs as a standalone step in
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) on every
+pull request to `main` and every push to `main`. A failing run fails
+the workflow alongside the existing type-check and lint steps. The
+guard's own behavior is additionally pinned by 23 unit fixtures in
+`tests/unit/check-csrf-coverage.test.ts` (part of the `npm test`
+vitest suite). Locally, run `npm run check:csrf` to invoke the guard
+directly — it returns in well under a second on the current tree.
+
+### CI / branch protection (operational requirement)
+
+The workflow above only **blocks merges** if GitHub's branch
+protection on `main` requires the `Type check & lint` status check
+to pass before a pull request can be merged. That setting lives in
+GitHub repo settings → Branches → branch protection rules, not in
+this repo. If branch protection isn't configured (or isn't
+configured to require this status), the workflow will still run and
+report red on a failing PR, but the merge button will not be gated.
+
+When extending CI with additional static checks, **append a step to
+the existing `check-and-lint` job** rather than renaming the job or
+splitting into a new job. The job's GitHub-Actions display name
+(`Type check & lint`) is what branch protection keys on; renaming it
+silently de-protects `main` until an operator updates the rule. The
+in-file comment in `ci.yml` repeats this for future contributors.
+
+The non-`/api` mounts are:
 
 - `manifestRouter` — only `GET /manifest.json` (and `GET /api/org-context`,
   which is under `/api` and read-only).
