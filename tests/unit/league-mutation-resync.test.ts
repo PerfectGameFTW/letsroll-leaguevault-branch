@@ -489,14 +489,33 @@ describe('PATCH /api/leagues/:id (rename) → fires Square resync for every bowl
     }
   });
 
-  it('does NOT fire resync when the PATCH does not change name/season/active (e.g. weekDay-only update)', async () => {
-    const league = makeLeague();
+  it('does NOT fire resync when the PATCH does not change name/season/active (e.g. description-only update)', async () => {
+    // We pick `description` deliberately. Other innocuous-looking
+    // fields like `weekDay` actually DO transitively change
+    // `seasonEnd` (the route re-derives it from
+    // `weekDay + seasonStart + totalBowlingWeeks` and that path is
+    // covered by the rename test's trigger logic). `description` has
+    // no derivation side-effects, so it is the cleanest signal that
+    // the trigger gate is honouring the documented contract.
+    // `totalBowlingWeeks: null` bypasses the route's seasonEnd
+    // re-derivation pass — without that, ANY PATCH whose merged inputs
+    // (`weekDay + seasonStart + totalBowlingWeeks`) produce a derived
+    // seasonEnd that differs from the stored one would silently
+    // trigger a resync. Setting totalBowlingWeeks=null lets us
+    // exercise the trigger gate in isolation.
+    const league = makeLeague({ totalBowlingWeeks: null });
     stageLeagueWithBowlers({ league, bowlers: [makeBowler()] });
-    mockStorage.updateLeague.mockResolvedValue(league);
+    mockStorage.updateLeague.mockResolvedValue({
+      ...league,
+      description: 'Updated info',
+    });
 
-    const res = await patch(`/api/leagues/${league.id}`, { weekDay: 3 });
-    expect([200, 400]).toContain(res.status); // schema may reject; either is fine
-    // No resync trigger condition satisfied.
+    const res = await patch(`/api/leagues/${league.id}`, {
+      description: 'Updated info',
+    });
+    expect(res.status, await res.text().catch(() => '')).toBe(200);
+    // No resync trigger condition satisfied — Smart List membership
+    // is independent of the league description.
     await new Promise((r) => setTimeout(r, 50));
     expect(mockSyncCustomerLeagueAttributes).not.toHaveBeenCalled();
   });
@@ -785,6 +804,53 @@ describe('POST /api/bowler-leagues → fires resync for the bowler that just joi
 // 7. PATCH /api/bowler-leagues/:id → resync the affected bowler
 // ---------------------------------------------------------------------------
 describe('PATCH /api/bowler-leagues/:id → fires resync (covers active-flip and team-move)', () => {
+  it('upserts attributes on a teamId-change (team move within the same league)', async () => {
+    // Team moves don't change the bowler's `league_name` /
+    // `league_season` payload — but the resync MUST still fire so
+    // any platform with team-derived smart lists (or a downstream
+    // attribute we add later) sees the update. The contract under
+    // test is "every bowler-league mutation re-pushes attributes",
+    // not "only attribute-relevant mutations re-push".
+    const league = makeLeague({ id: 145, name: 'Thursday Scratch' });
+    const bowler = makeBowler({ id: 5065 });
+    const existing = {
+      id: 9750,
+      bowlerId: bowler.id,
+      leagueId: league.id,
+      teamId: 275,
+      active: true,
+      order: 0,
+    };
+    const moved = { ...existing, teamId: 276 };
+
+    mockStorage.getBowlerLeague.mockResolvedValue(existing);
+    mockStorage.updateBowlerLeague.mockResolvedValue(moved);
+    mockStorage.getLeague.mockResolvedValue(league);
+    mockStorage.getBowler.mockResolvedValue(bowler);
+    mockStorage.getBowlerLeagues.mockImplementation(
+      async (f: { bowlerId?: number }) => {
+        if (f.bowlerId === bowler.id) return [moved];
+        return [];
+      },
+    );
+
+    const res = await patch(`/api/bowler-leagues/${existing.id}`, {
+      teamId: 276,
+    });
+    expect(res.status, await res.text().catch(() => '')).toBe(200);
+
+    await waitForUpserts(1);
+    expect(mockSyncCustomerLeagueAttributes).toHaveBeenCalledTimes(1);
+    const [customerId, bowlerId, attrs] =
+      mockSyncCustomerLeagueAttributes.mock.calls[0];
+    expect(customerId).toBe(bowler.paymentCustomerId);
+    expect(bowlerId).toBe(bowler.id);
+    // League membership is unchanged → attrs reflect the (single)
+    // active league the bowler still belongs to.
+    expect(attrs.leagueName).toBe(league.name);
+    expect(attrs.leagueSeason.length).toBeGreaterThan(0);
+  });
+
   it('upserts attributes when an active=false flip would change the bowler\'s leagueName', async () => {
     const league = makeLeague({ id: 140, name: 'Wednesday Open' });
     const bowler = makeBowler({ id: 5060 });
