@@ -213,7 +213,10 @@ export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onR
                     <Send className="h-4 w-4" />
                   </Button>
                 )}
-                {user.id !== currentUser?.id && user.role !== "system_admin" && (
+                {user.id !== currentUser?.id
+                  && user.role !== "system_admin"
+                  && (currentUser?.role !== "org_admin"
+                    || user.organizationId === currentUser?.organizationId) && (
                   <Button
                     variant="ghost"
                     size="icon"

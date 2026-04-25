@@ -84,6 +84,13 @@ describe('UsersTable — Reset Password button', () => {
     expect(onResetPassword).toHaveBeenCalledWith(target.id);
   });
 
+  it('hides the button when an org_admin somehow sees a cross-org row', () => {
+    const orgAdmin = makeUser({ id: 1, role: 'org_admin', organizationId: 7 });
+    const crossOrgTarget = makeUser({ id: 100, role: 'user', organizationId: 999 });
+    renderTable({ users: [crossOrgTarget], currentUser: orgAdmin });
+    expect(screen.queryByTestId(`button-reset-password-${crossOrgTarget.id}`)).toBeNull();
+  });
+
   it('shows the button alongside Resend Invite for a still-pending invitee', () => {
     const pending = makeUser({
       id: 100,
