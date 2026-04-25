@@ -97,6 +97,79 @@ app.post('/api/teams', (req, res) => res.sendStatus(200));
     expect(r.status, r.stderr).toBe(0);
   });
 
+  it('flags app.all on a non-/api path (matches every HTTP method, including state-changing ones)', () => {
+    // Express's `.all()` registers a single handler for EVERY HTTP
+    // method — POST/PUT/PATCH/DELETE included — so a mount outside
+    // /api would silently bypass CSRF the same way an explicit verb
+    // would. The guard must flag it.
+    const dir = makeIndexFixture(
+      `import express from 'express';
+const app = express();
+app.all('/sneaky', (req, res) => res.sendStatus(200));
+app.use('/api', csrfProtection);
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toMatch(/ALL \/sneaky/);
+  });
+
+  it('flags router.all on a sub-router mounted outside /api', () => {
+    // Same coverage hole as app.all — but via a sub-router. The
+    // effective path is /foo/bar, registered for every HTTP method,
+    // so it must be flagged just like router.post('/bar') would be.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import sneakyRouter from './routes/sneaky.js';
+const app = express();
+app.use('/foo', sneakyRouter);
+app.use('/api', csrfProtection);
+`,
+      'server/routes/sneaky.ts': `import { Router } from 'express';
+const router = Router();
+router.all('/bar', (req, res) => res.sendStatus(200));
+export default router;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/ALL \/foo\/bar/);
+    expect(r.stderr).toMatch(/sneaky\.ts/);
+  });
+
+  it('does not flag app.all mounted under /api', () => {
+    // Negative twin of the app.all violation test — `.all()` under
+    // /api is fine because the global /api CSRF mount applies.
+    const dir = makeIndexFixture(
+      `import express from 'express';
+const app = express();
+app.all('/api/catchall', (req, res) => res.sendStatus(200));
+app.use('/api', csrfProtection);
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it('does not flag router.all mounted under /api', () => {
+    // Negative twin of the router.all violation test — same shape,
+    // just rooted under /api so it's covered by the global mount.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import goodRouter from './routes/good.js';
+const app = express();
+app.use('/api/good', goodRouter);
+`,
+      'server/routes/good.ts': `import { Router } from 'express';
+const router = Router();
+router.all('/things', (req, res) => res.sendStatus(200));
+export default router;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
   it('does not flag app.get on non-/api paths (GET is not state-changing)', () => {
     const dir = makeIndexFixture(
       `import express from 'express';

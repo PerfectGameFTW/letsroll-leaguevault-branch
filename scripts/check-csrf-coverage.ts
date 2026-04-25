@@ -48,6 +48,12 @@
  * no parent-level direct route to trip case 1 or case 2 above.
  *
  * Parser contract / unsupported forms:
+ *   - State-changing verbs covered: POST, PUT, PATCH, DELETE, and
+ *     `.all()`. The Express `.all()` form registers a single handler
+ *     for EVERY HTTP method (including the four explicit verbs above),
+ *     so it's a state-changing mount and is flagged the same way.
+ *     Plain `.get()` is intentionally not covered (GETs aren't
+ *     state-changing for CSRF purposes).
  *   - `app.use(router)` and `parent.use(child)` (no string prefix)
  *     are not modelled — the regexes require a string-literal prefix
  *     as the first argument. Mount-at-root composition is rare in
@@ -81,9 +87,13 @@ const SERVER_DIR = resolve(process.cwd(), 'server');
 const EXPLICIT_NON_API_ALLOWLIST: readonly string[] = [];
 
 // `app.<method>('<path>', ...)` — direct routes on the Express app.
+// `all` is included in the alternation because `app.all(path, handler)`
+// registers the handler for EVERY HTTP method (including POST/PUT/PATCH/
+// DELETE), so an `.all()` mount outside `/api/` would silently bypass
+// CSRF just like an explicit verb would.
 // Groups: 1=method, 2=quote, 3=path.
 const APP_ROUTE_RE =
-  /\bapp\s*\.\s*(post|put|patch|delete)\s*\(\s*(['"`])([^'"`]+)\2/g;
+  /\bapp\s*\.\s*(all|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]+)\2/g;
 
 // Capture `app.use('<prefix>', <restArgs>)`. `restArgs` may include
 // middlewares and ends with the router. We pick the LAST identifier
@@ -101,9 +111,13 @@ const ROUTER_USE_RE =
 
 // `<id>.<method>('<subpath>', ...)` — any router method call. We skip
 // `id === 'app'` because direct app routes are handled separately.
+// `all` is included for the same reason as in APP_ROUTE_RE: a
+// `router.all('<subpath>', handler)` mount registers the handler for
+// every HTTP method, so it's state-changing and must be flagged when
+// its effective path falls outside `/api/`.
 // Groups: 1=id, 2=method, 3=quote, 4=subpath.
 const ROUTER_ROUTE_RE =
-  /\b([A-Za-z_$][\w$]*)\s*\.\s*(post|put|patch|delete)\s*\(\s*(['"`])([^'"`]+)\3/g;
+  /\b([A-Za-z_$][\w$]*)\s*\.\s*(all|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]+)\3/g;
 
 // Default imports: `import name from 'spec'`.
 const IMPORT_DEFAULT_RE = /import\s+([A-Za-z_$][\w$]*)\s+from\s+(['"])([^'"]+)\2/g;
