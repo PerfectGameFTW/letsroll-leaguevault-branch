@@ -212,8 +212,9 @@ export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
               <h4 className="text-sm font-medium">Smart List custom field IDs</h4>
               <p className="text-xs text-muted-foreground">
                 If you've created custom subscriber fields in BowlNow for League Name and League Season,
-                paste their IDs below to keep them in sync. Leave blank to skip the matching tag.
-                Find each ID in BowlNow under <span className="font-medium">Subscribers &rarr; Custom Fields</span>.
+                paste their IDs below to keep them in sync. The two fields behave differently when blank
+                (see each input's hint). Find each ID in BowlNow under{" "}
+                <span className="font-medium">Subscribers &rarr; Custom Fields</span>.
               </p>
             </div>
 
