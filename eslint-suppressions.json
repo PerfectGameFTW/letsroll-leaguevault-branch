@@ -1,7 +1,673 @@
 {
+  "artifacts/mockup-sandbox/src/App.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "artifacts/mockup-sandbox/src/components/mockups/bowler-nav/CleanTabBar.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "artifacts/mockup-sandbox/src/components/ui/chart.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    }
+  },
+  "artifacts/mockup-sandbox/src/main.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
   "client/public/sw.js": {
     "no-undef": {
       "count": 22
+    }
+  },
+  "client/src/components/bowler-layout.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    }
+  },
+  "client/src/components/change-password-card.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/components/league-form-fees.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/components/organization-form-dialog.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "client/src/components/reorder-teams-dialog.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/components/ui/chart.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    }
+  },
+  "client/src/hooks/use-bowler-payment-submit.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 3
+    }
+  },
+  "client/src/hooks/use-league-form-data.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/hooks/use-wallet-payments.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "client/src/lib/league-filter-utils.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "client/src/lib/queryClient.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/lib/square.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/lib/utils/lane-pairing.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/lib/utils/score-organization.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/bowler-view-page.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/data-integrity-page.tsx": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/deletion-requests-page.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/home-page.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/league-past-due-page.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/league-view-page.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/messaging-page.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/organizations-page.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/payment-history-page.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/teams-page.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "client/src/pages/weekly-payments-page.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 6
+    }
+  },
+  "scripts/check-csrf-coverage.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "scripts/check-org-isolation-coverage.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "server/lib/trust-proxy-check.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "server/routes/account.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 4
+    }
+  },
+  "server/routes/auth.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "server/routes/bowler-leagues.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 9
+    }
+  },
+  "server/routes/bowlers.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "server/routes/bulk-import.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 6
+    }
+  },
+  "server/routes/leagues.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 3
+    }
+  },
+  "server/routes/organization-admin.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 33
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "server/routes/payments-provider/charges.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "server/routes/payments/payment-reports.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "server/routes/system-admin.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "server/services/__tests__/apple-pay-worker.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "server/services/account-deletion.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 4
+    }
+  },
+  "server/services/payment-checks.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "server/services/payment-execution.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "server/services/payment-scheduler.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "server/services/payment-sync-retry.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "server/services/square-custom-attributes.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "server/services/square-provider.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 4
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
+  "server/storage/orphaned-data.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 6
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "server/storage/users.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "server/utils/rate-limit-store.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "tests/api/apple-pay-job-cancel-retry.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 3
+    }
+  },
+  "tests/api/apple-pay-register-domain.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 3
+    }
+  },
+  "tests/api/bowler-creation-org-required.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "tests/api/bowler-leagues-bootstrap.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "tests/api/change-password-lockout.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "tests/api/change-password.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "tests/api/csrf-coverage.test.ts": {
+    "@typescript-eslint/consistent-type-assertions": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "tests/api/deletion-requests-pending-count.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "tests/api/organization-isolation.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 6
+    }
+  },
+  "tests/api/orphaned-data-audits.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 4
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "tests/api/orphaned-data.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 19
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "tests/api/payment-sync-state-transitions.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 6
+    }
+  },
+  "tests/api/search.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 13
+    }
+  },
+  "tests/api/setup-admin-bootstrap-race.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
+  "tests/api/setup-admin-header.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 5
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 5
+    },
+    "no-restricted-syntax": {
+      "count": 5
+    }
+  },
+  "tests/api/square-provider-not-configured-422.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    }
+  },
+  "tests/api/users-delete.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 4
+    }
+  },
+  "tests/components/deletion-requests-page-confirmation-email.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/components/deletion-requests-page-export.test.tsx": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 4
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/components/deletion-requests-page-filter.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    },
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "tests/components/forgot-password-page.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/components/login-page.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/components/set-password-page.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/components/users-page-reset-password-dialog.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/account-deletion.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 3
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 4
+    },
+    "no-restricted-syntax": {
+      "count": 6
+    }
+  },
+  "tests/unit/admin-reset-password-notification.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 9
+    }
+  },
+  "tests/unit/admin-role-change-audit.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 7
+    }
+  },
+  "tests/unit/app-domain-mixed-case-pins.test.ts": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "tests/unit/apple-pay-jobs.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 35
+    }
+  },
+  "tests/unit/auth-no-token-leak.test.ts": {
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "tests/unit/auth-user-payment-sync-status.test.ts": {
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "tests/unit/change-password-notification.test.ts": {
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "tests/unit/csrf-no-token-leak.test.ts": {
+    "no-restricted-syntax": {
+      "count": 8
+    }
+  },
+  "tests/unit/financial-utils.test.ts": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "tests/unit/has-access-to-bowler.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "tests/unit/has-access-to-bowlers.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "tests/unit/league-mutation-resync.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 4
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/list-routes-filter-validation.test.ts": {
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "tests/unit/locked-sweep.test.ts": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "tests/unit/log-level-defaults.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 2
+    }
+  },
+  "tests/unit/password-changed-i18n.test.ts": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 6
+    }
+  },
+  "tests/unit/payment-customer-sync.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 4
+    }
+  },
+  "tests/unit/payments-by-org.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/payments-reports-routes.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/payments-routes.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/preferred-language.test.ts": {
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "tests/unit/retry-payment-sync-routes.test.ts": {
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "tests/unit/retry-payment-sync-throttle.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 4
+    }
+  },
+  "tests/unit/sanitize-org.test.ts": {
+    "no-restricted-syntax": {
+      "count": 3
+    }
+  },
+  "tests/unit/sanitize-user.test.ts": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "tests/unit/security-app-domain.test.ts": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "tests/unit/session-no-token-leak.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 7
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/set-password-notification.test.ts": {
+    "no-restricted-syntax": {
+      "count": 8
+    }
+  },
+  "tests/unit/setup-secret-no-token-leak.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/use-bowler-payment-submit.test.ts": {
+    "no-restricted-syntax": {
+      "count": 4
     }
   }
 }

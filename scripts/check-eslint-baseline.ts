@@ -1,10 +1,14 @@
 /**
- * ESLint suppression baseline guard (task #385).
+ * ESLint suppression baseline guard (task #385, extended in #371).
  *
  * Tasks #329 and #384 drove the count of `@typescript-eslint/no-explicit-any`
- * suppressions in `eslint-suppressions.json` from 161 down to a small
- * single-digit number. Without a forcing function, the next PR can
- * silently grow the count again by adding new `any` annotations and
+ * suppressions in `eslint-suppressions.json` from 161 down to zero.
+ * Task #371 then enabled four more escape-hatch rules
+ * (`no-non-null-assertion`, `consistent-type-assertions`,
+ * `no-unnecessary-type-assertion`, and a `no-restricted-syntax`
+ * matcher for `as unknown as Foo` double casts) and seeded each with
+ * a baseline. Without a forcing function, the next PR can silently
+ * grow any of those counts again by adding new violations and
  * regenerating the baseline.
  *
  * This script reads `eslint-suppressions.json` and compares the live
@@ -37,13 +41,31 @@ import { resolve } from 'node:path';
 // Lower these as the live count drops; never raise them without an
 // explicit, reviewed reason in the same PR.
 const RULE_CEILINGS: Record<string, number> = {
-  '@typescript-eslint/no-explicit-any': 4,
+  // Paid down to zero in task #384. Stays at 0 — any new `any` should
+  // be typed instead of suppressed.
+  '@typescript-eslint/no-explicit-any': 0,
+  // Seeded by task #371 at the live count when the rule was turned
+  // on. Ratchet down as `value!` sites are replaced with explicit
+  // null/undefined handling.
+  '@typescript-eslint/no-non-null-assertion': 232,
+  // Seeded by task #371. Ratchet down as redundant casts are removed.
+  '@typescript-eslint/no-unnecessary-type-assertion': 89,
+  // Seeded by task #371. Currently only the object-literal-as-Foo
+  // form (`{ ... } as Foo`) trips this; ratchet down by removing
+  // those casts.
+  '@typescript-eslint/consistent-type-assertions': 4,
+  // The `as unknown as Foo` double-cast matcher — see eslint.config.js.
+  // Seeded by task #371; ratchet down as those launderings are
+  // replaced with type guards or Zod schemas.
+  'no-restricted-syntax': 125,
 };
 
 // Ceiling for the sum of all suppression counts across every rule.
 // Catches "I added a different lint suppression instead" workarounds.
-// As of task #385 the file contains 26 total suppressions.
-const TOTAL_CEILING = 26;
+// As of task #371 the file contains 472 total suppressions
+// (232 non-null + 125 double-cast + 89 unnecessary + 4 obj-literal +
+// 22 pre-existing `no-undef` in client/public/sw.js).
+const TOTAL_CEILING = 472;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');

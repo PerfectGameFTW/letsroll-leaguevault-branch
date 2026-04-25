@@ -87,49 +87,60 @@ describe('check-eslint-baseline CI guard', () => {
   });
 
   it('exits 1 in --strict mode when a per-rule ceiling is exceeded', () => {
-    // Construct a fixture with 5 no-explicit-any suppressions in one
-    // file — one above the ceiling of 4 baked into the script.
+    // Construct a fixture with 233 no-non-null-assertion suppressions
+    // in one file — one above the ceiling of 232 baked into the script
+    // by task #371. (We pick this rule rather than no-explicit-any
+    // because the latter is ratcheted to 0, leaving no slack to write
+    // a "exceeds the ceiling" fixture without also tripping every
+    // other check at the same time.)
     const dir = makeFixture({
       'src/foo.ts': {
-        '@typescript-eslint/no-explicit-any': { count: 5 },
+        '@typescript-eslint/no-non-null-assertion': { count: 233 },
       },
     });
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/FAIL: @typescript-eslint\/no-explicit-any/);
-    expect(r.stderr).toMatch(/5 suppressions \(ceiling 4\)/);
+    expect(r.stderr).toMatch(/FAIL: @typescript-eslint\/no-non-null-assertion/);
+    expect(r.stderr).toMatch(/233 suppressions \(ceiling 232\)/);
   });
 
   it('exits 1 in --strict mode when the total ceiling is exceeded (catches "swap one any for a different rule" workarounds)', () => {
-    // 4 of the rule we ratchet (at ceiling) + 30 of an unrelated rule
-    // → total = 34, above the total ceiling of 26.
+    // Each ratcheted rule pinned at its ceiling (so no per-rule
+    // breach fires) + an unrelated rule pushing the total past the
+    // 472 cap. The unrelated rule (`no-unused-vars`) is not in
+    // RULE_CEILINGS, so this fixture isolates the total-ceiling
+    // check from the per-rule check.
     const dir = makeFixture({
       'src/foo.ts': {
-        '@typescript-eslint/no-explicit-any': { count: 4 },
-        '@typescript-eslint/no-unused-vars': { count: 30 },
+        '@typescript-eslint/no-explicit-any': { count: 0 },
+        '@typescript-eslint/no-non-null-assertion': { count: 232 },
+        '@typescript-eslint/no-unnecessary-type-assertion': { count: 89 },
+        '@typescript-eslint/consistent-type-assertions': { count: 4 },
+        'no-restricted-syntax': { count: 125 },
+        '@typescript-eslint/no-unused-vars': { count: 100 },
       },
     });
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/FAIL: total suppressions: 34/);
+    expect(r.stderr).toMatch(/FAIL: total suppressions: 550/);
   });
 
   it('exits 0 with a RATCHET hint when a per-rule count drops below the ceiling', () => {
-    // 2 suppressions for the rule whose ceiling is 4 → ratchet
-    // suggestion expected. Total is 2, below the total ceiling of
-    // 26 → another ratchet line.
+    // 100 suppressions for the rule whose ceiling is 232 → ratchet
+    // suggestion expected. Total is 100, below the total ceiling of
+    // 472 → another ratchet line.
     const dir = makeFixture({
       'src/foo.ts': {
-        '@typescript-eslint/no-explicit-any': { count: 2 },
+        '@typescript-eslint/no-non-null-assertion': { count: 100 },
       },
     });
     const r = runIn(dir, ['--strict']);
     expect(r.status, r.stderr || r.stdout).toBe(0);
     expect(r.stdout).toMatch(
-      /RATCHET: @typescript-eslint\/no-explicit-any: 2 suppressions \(ceiling 4\)/,
+      /RATCHET: @typescript-eslint\/no-non-null-assertion: 100 suppressions \(ceiling 232\)/,
     );
     expect(r.stdout).toMatch(/Lower RULE_CEILINGS/);
-    expect(r.stdout).toMatch(/RATCHET: total suppressions: 2/);
+    expect(r.stdout).toMatch(/RATCHET: total suppressions: 100/);
   });
 
   it('exits 0 in advisory mode (no --strict) even when ceilings are exceeded', () => {
@@ -189,12 +200,13 @@ describe('check-eslint-baseline CI guard', () => {
   );
 
   it('does not flag rules that are not in the ceilings map (out of scope)', () => {
-    // 100 suppressions for a rule with no declared ceiling — should
-    // contribute to the total but not produce a per-rule failure.
+    // 5 suppressions for a rule with no declared ceiling alongside a
+    // ratcheted rule pinned at its ceiling — should contribute to
+    // the total (well below 467) but not produce a per-rule failure.
     const dir = makeFixture({
       'src/foo.ts': {
         '@typescript-eslint/some-other-rule': { count: 5 },
-        '@typescript-eslint/no-explicit-any': { count: 4 },
+        '@typescript-eslint/no-non-null-assertion': { count: 228 },
       },
     });
     const r = runIn(dir, ['--strict']);
