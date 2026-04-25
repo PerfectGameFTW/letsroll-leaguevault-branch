@@ -11,6 +11,7 @@ import path from 'path';
 import { setupAuth } from "./auth";
 import { paymentScheduler } from './services/payment-scheduler';
 import { startPaymentSyncRetrySweep } from './services/payment-sync-retry';
+import { startBowlnowSyncRetrySweep } from './services/bowlnow-sync-retry';
 import { bootstrapAllSquareCustomAttributeDefinitions } from './services/square-startup-bootstrap';
 import { applePayWorker } from './services/apple-pay-worker';
 import { ensureAvatarsDirectory, migrateAvatarsFromDBToDisk, migrateApiUrlsToDiskUrls } from './migrations/migrate-avatars';
@@ -262,6 +263,13 @@ async function startServer() {
       // (task #284). Walks bowlers flagged with payment_sync_pending_at
       // and re-runs syncBowlerForUser with exponential backoff.
       startPaymentSyncRetrySweep();
+
+      // Sister sweep for failed BowlNow contact syncs (task #480).
+      // Walks bowlers flagged with bn_sync_pending_at and re-runs
+      // syncBowlerToBN. Independent of the payment sweep above so
+      // Square and BowlNow failure modes don't interfere with each
+      // other (see server/services/bowlnow-sync-retry.ts header).
+      startBowlnowSyncRetrySweep();
 
       // Pre-create the Square customer-custom-attribute definitions
       // (`league_name`, `league_season`) on every Square-connected

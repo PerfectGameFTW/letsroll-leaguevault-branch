@@ -55,6 +55,31 @@ async function flagBowlerForRetry(bowlerId: number): Promise<void> {
   }
 }
 
+/**
+ * Sister to `flagBowlerForRetry` for the BowlNow side (task #480).
+ * Sets `bnSyncPendingAt` so `server/services/bowlnow-sync-retry.ts`
+ * picks the bowler up on its next tick and re-runs `syncBowlerToBN`.
+ * No-op when the flag is already set so a tight burst of failures
+ * (e.g., 200 bowlers in a renamed league all hitting a BN outage)
+ * doesn't keep re-stamping the timestamp and resetting the backoff
+ * window.
+ */
+async function flagBowlerForBnRetry(bowlerId: number): Promise<void> {
+  try {
+    const fresh = await storage.getBowler(bowlerId);
+    if (!fresh || fresh.bnSyncPendingAt != null) return;
+    await storage.updateBowler(bowlerId, {
+      ...fresh,
+      bnSyncPendingAt: new Date().toISOString(),
+    });
+  } catch (markErr) {
+    log.error('External resync: failed to flag bowler for BN retry', {
+      bowlerId,
+      error: markErr instanceof Error ? { name: markErr.name, message: markErr.message } : markErr,
+    });
+  }
+}
+
 async function runBowlerResync(
   bowlerId: number,
   organizationId: number | null | undefined,
@@ -104,7 +129,21 @@ async function runBowlerResync(
       try {
         const orgConfig = await storage.getOrgIntegrations(effectiveOrgId);
         if (isOrgBNConfigured(orgConfig)) {
-          await syncBowlerToBN(bowler.id, orgConfig);
+          // syncBowlerToBN traps its own errors and returns a result
+          // object — failures arrive as `{success: false}`, NOT as
+          // throws. Flag the bowler so the BowlNow retry sweep
+          // (task #480) picks it up on its next tick. The catch
+          // below is only for genuinely unexpected throws (e.g., a
+          // bug in the call path); we flag in both cases.
+          const bnResult = await syncBowlerToBN(bowler.id, orgConfig);
+          if (!bnResult.success) {
+            log.warn('External resync: BowlNow sync returned failure, flagging for retry', {
+              bowlerId,
+              organizationId: effectiveOrgId,
+              error: bnResult.error,
+            });
+            await flagBowlerForBnRetry(bowler.id);
+          }
         }
       } catch (e) {
         log.warn('External resync: BowlNow sync failed', {
@@ -112,6 +151,7 @@ async function runBowlerResync(
           organizationId: effectiveOrgId,
           error: e instanceof Error ? { name: e.name, message: e.message } : e,
         });
+        await flagBowlerForBnRetry(bowler.id);
       }
     }
   } catch (e) {
