@@ -32,10 +32,6 @@ import { UsersTable, type UsersTableUser, type UsersTableLocation } from '@/comp
 import { AddUserDialog } from '@/components/add-user-dialog';
 import { passwordSchema } from '@shared/password-validation';
 
-// Reuses the SAME `passwordSchema` the server enforces, so client-side
-// errors line up exactly with what the backend would reject. The form
-// is field-level only (no confirm) — this is an admin assigning a
-// temporary password, not a user picking one for themselves.
 const resetPasswordFormSchema = z.object({
   newPassword: passwordSchema,
 });
@@ -53,8 +49,6 @@ export default function UsersPage() {
     defaultValues: { newPassword: '' },
   });
 
-  // Clear the password field whenever the dialog closes so the
-  // previous value doesn't linger in memory between resets.
   useEffect(() => {
     if (resetPasswordUserId === null) {
       resetPasswordForm.reset({ newPassword: '' });
@@ -106,12 +100,6 @@ export default function UsersPage() {
 
   const resetPasswordMutation = useMutation({
     mutationFn: async ({ userId, newPassword }: { userId: number; newPassword: string }) => {
-      // The router is mounted at /api/org-admin (see
-      // server/routes/index.ts), so the full path is
-      // /api/org-admin/users/:id/reset-password. The endpoint
-      // takes care of the security email, session invalidation,
-      // and pending email-change cleanup itself — there's
-      // nothing extra for the client to coordinate.
       await apiRequest(`/api/org-admin/users/${userId}/reset-password`, 'POST', { newPassword });
     },
     onSuccess: () => {

@@ -1,27 +1,8 @@
-/**
- * Integration test for the Reset Password dialog flow on the users
- * management page (task #423). Pins three runtime behaviors that
- * the table-level unit test can't see:
- *
- *   1. Submitting an invalid password shows the SHARED password
- *      schema's error in the dialog and never POSTs to the server.
- *   2. Submitting a valid password POSTs to the right endpoint, the
- *      dialog closes, and a success toast fires.
- *   3. A backend error keeps the dialog open and surfaces a
- *      destructive toast — admins shouldn't see a silent failure.
- *
- * The Layout shell is mocked to a passthrough so we don't drag in
- * the entire app navigation chrome (sidebar, search, profile menu,
- * etc.) — those have their own queries and are irrelevant to the
- * dialog. useToast is mocked so the test can assert on the toast
- * payload without rendering the Toaster portal.
- */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-// Mock BEFORE importing the page so the page picks up the stubs.
 vi.mock('@/components/layout', () => ({
   Layout: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
@@ -98,7 +79,6 @@ function installFetchMock() {
       }
       return resetHandler(input, init);
     }
-    // Unknown calls — fail loudly so a missing mock doesn't silently 404.
     return jsonRes({ success: false, error: { message: `unmocked: ${url}` } }, 500);
   }) as unknown as typeof fetch;
 }
@@ -106,9 +86,6 @@ function installFetchMock() {
 function renderPage() {
   const qc = new QueryClient({
     defaultOptions: {
-      // Use the app's real default query fetcher so useQuery hooks
-      // without an explicit queryFn (currentUser, locations) actually
-      // hit the mocked fetch.
       queries: { queryFn: getQueryFn, retry: false },
       mutations: { retry: false },
     },
@@ -136,14 +113,12 @@ afterEach(() => {
 });
 
 async function openResetDialogFor(targetId: number, user: ReturnType<typeof userEvent.setup>) {
-  // The button only appears once /api/org-admin/users resolves and
-  // the table renders, so wait for it.
   const btn = await screen.findByTestId(`button-reset-password-${targetId}`);
   await user.click(btn);
   return await screen.findByTestId('input-reset-password');
 }
 
-describe('UsersPage — Reset Password dialog (task #423)', () => {
+describe('UsersPage — Reset Password dialog', () => {
   it('shows a validation error and never POSTs when the password is too weak', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -151,16 +126,10 @@ describe('UsersPage — Reset Password dialog (task #423)', () => {
     await user.type(input, WEAK_PASSWORD);
     await user.click(screen.getByTestId('button-confirm-reset-password'));
 
-    // Inline FormMessage from the shared password schema renders in
-    // the dialog. The exact text comes from
-    // shared/password-validation.ts; we just need to assert that
-    // SOMETHING under the input announced an error and the request
-    // never went out.
     await waitFor(() => {
       expect(input).toHaveAttribute('aria-invalid', 'true');
     });
     expect(postedBody).toBeNull();
-    // Dialog should still be open.
     expect(screen.getByTestId('input-reset-password')).toBeInTheDocument();
   });
 
@@ -199,7 +168,6 @@ describe('UsersPage — Reset Password dialog (task #423)', () => {
         expect.objectContaining({ variant: 'destructive' }),
       );
     });
-    // Dialog should still be open so the admin can retry or cancel.
     expect(screen.getByTestId('input-reset-password')).toBeInTheDocument();
   });
 });
