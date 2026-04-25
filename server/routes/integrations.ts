@@ -79,6 +79,11 @@ router.get('/', async (req: Request, res: Response) => {
         enabled: integrations?.bowlnow?.enabled ?? false,
         apiKeyConfigured: !!integrations?.bowlnow?.apiKey,
         locationId: integrations?.bowlnow?.locationId ?? '',
+        // Task #479: surface the per-org custom-field IDs so the
+        // settings form can pre-populate. These are opaque IDs from
+        // the BowlNow dashboard (NOT secrets) — safe to return as-is.
+        leagueNameFieldId: integrations?.bowlnow?.leagueNameFieldId ?? '',
+        leagueSeasonFieldId: integrations?.bowlnow?.leagueSeasonFieldId ?? '',
       },
     };
 

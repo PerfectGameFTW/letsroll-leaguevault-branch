@@ -21,6 +21,11 @@ export interface BowlNowConfig {
   enabled: boolean;
   apiKeyConfigured: boolean;
   locationId: string;
+  // Task #479: opaque BowlNow custom-field IDs (not secrets). Empty
+  // string means "fall back to the platform default for league_name,
+  // skip writing for league_season".
+  leagueNameFieldId: string;
+  leagueSeasonFieldId: string;
 }
 
 interface BowlNowCardProps {
@@ -35,16 +40,36 @@ export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
   const [enabled, setEnabled] = useState(config.enabled);
   const [apiKey, setApiKey] = useState("");
   const [locationId, setLocationId] = useState(config.locationId);
+  const [leagueNameFieldId, setLeagueNameFieldId] = useState(config.leagueNameFieldId);
+  const [leagueSeasonFieldId, setLeagueSeasonFieldId] = useState(config.leagueSeasonFieldId);
   const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     setEnabled(config.enabled);
     setLocationId(config.locationId);
+    setLeagueNameFieldId(config.leagueNameFieldId);
+    setLeagueSeasonFieldId(config.leagueSeasonFieldId);
     setApiKey("");
-  }, [config.apiKeyConfigured, config.enabled, config.locationId]);
+  }, [
+    config.apiKeyConfigured,
+    config.enabled,
+    config.locationId,
+    config.leagueNameFieldId,
+    config.leagueSeasonFieldId,
+  ]);
 
   const mutation = useMutation({
-    mutationFn: async (data: { enabled: boolean; apiKey?: string; locationId?: string }) => {
+    mutationFn: async (data: {
+      enabled: boolean;
+      apiKey?: string;
+      locationId?: string;
+      // Sent as the literal string the admin typed (including ""); the
+      // PATCH route treats `undefined` as "preserve" and `""` as
+      // "clear", so the toggle path (which omits these) won't wipe a
+      // previously-saved field ID.
+      leagueNameFieldId?: string;
+      leagueSeasonFieldId?: string;
+    }) => {
       return apiRequest("/api/integrations", "PATCH", { organizationId: orgId, bowlnow: data });
     },
     onSuccess: () => {
@@ -75,6 +100,10 @@ export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
       enabled,
       apiKey: apiKey || undefined,
       locationId: locationId || undefined,
+      // Always send these as strings (including "") so an admin can
+      // explicitly clear a saved field ID by emptying the input.
+      leagueNameFieldId,
+      leagueSeasonFieldId,
     });
   }
 
@@ -174,6 +203,47 @@ export function BowlNowCard({ config, orgId }: BowlNowCardProps) {
               />
               <p className="text-xs text-muted-foreground">
                 Your BowlNow Location ID links this integration to the correct account. Leave blank to use the system default.
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-1">
+              <h4 className="text-sm font-medium">Smart List custom field IDs</h4>
+              <p className="text-xs text-muted-foreground">
+                If you've created custom subscriber fields in BowlNow for League Name and League Season,
+                paste their IDs below to keep them in sync. Leave blank to skip the matching tag.
+                Find each ID in BowlNow under <span className="font-medium">Subscribers &rarr; Custom Fields</span>.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bn-league-name-field-id">
+                League Name field ID <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
+              <Input
+                id="bn-league-name-field-id"
+                placeholder="e.g. cf_league_name_abc123"
+                value={leagueNameFieldId}
+                onChange={(e) => setLeagueNameFieldId(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Overrides the platform default. Leave blank to use the built-in League Name field.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="bn-league-season-field-id">
+                League Season field ID <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
+              <Input
+                id="bn-league-season-field-id"
+                placeholder="e.g. cf_league_season_xyz789"
+                value={leagueSeasonFieldId}
+                onChange={(e) => setLeagueSeasonFieldId(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Required for the League Season tag. Without it, season values are not pushed to BowlNow.
               </p>
             </div>
 
