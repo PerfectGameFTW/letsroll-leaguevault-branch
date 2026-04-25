@@ -6,6 +6,13 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { parseRetryAfterSeconds } from '@/lib/queryClient';
 import {
@@ -13,6 +20,11 @@ import {
   formatCountdown,
   useThrottleCountdown,
 } from '@/hooks/use-throttle-countdown';
+import {
+  LANGUAGE_AUTO,
+  LANGUAGE_OPTIONS,
+  languageSelectionToWire,
+} from '@/lib/preferred-language';
 import { AlertTriangle, Loader2, Check, X, Eye, EyeOff } from 'lucide-react';
 import { PageLoadingState } from "@/components/page-states";
 
@@ -31,6 +43,26 @@ export default function SetPasswordPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  // Task #420: capture the user's preferred language BEFORE the
+  // first onboarding email goes out. Defaults to AUTO so brand-new
+  // invitees who don't touch the picker keep the existing
+  // English-fallback behaviour. The sentinel is mapped back to
+  // `null` at the submit boundary via `languageSelectionToWire`.
+  const [preferredLanguage, setPreferredLanguage] = useState<string>(LANGUAGE_AUTO);
+  // Tracks whether the user actively chose a language — i.e.
+  // interacted with the Select. If they DIDN'T, the form must
+  // omit `preferredLanguage` from the request body entirely.
+  // Otherwise this page (which is reused by the forgot-password
+  // reset flow) would silently wipe a returning user's previously
+  // saved `users.preferred_language` to null on every routine
+  // password reset, undoing the choice they made in account
+  // settings (#417). The server's "field omitted = leave column
+  // untouched" tri-state semantics rely on this.
+  const [languageTouched, setLanguageTouched] = useState(false);
+  const handleLanguageChange = (value: string) => {
+    setPreferredLanguage(value);
+    setLanguageTouched(true);
+  };
   const { isThrottled, remainingSeconds, throttle } = useThrottleCountdown();
 
   const requirements = [
@@ -77,11 +109,26 @@ export default function SetPasswordPage() {
 
     setSubmitting(true);
     try {
+      // Task #420: only carry `preferredLanguage` on the wire when
+      // the user actually picked a value. Submitting the AUTO
+      // default unconditionally would clobber the stored language
+      // of any returning user who's resetting their password
+      // without touching the picker (this same page is also the
+      // forgot-password landing). The server treats "field absent"
+      // as "leave the column alone", so the omission is what
+      // preserves their preference.
+      const body: { token: string; password: string; preferredLanguage?: string | null } = {
+        token,
+        password,
+      };
+      if (languageTouched) {
+        body.preferredLanguage = languageSelectionToWire(preferredLanguage);
+      }
       const response = await fetch('/api/auth/set-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ token, password }),
+        body: JSON.stringify(body),
       });
 
       // Throttle handling (task #418) — mirror the forgot-password
@@ -193,6 +240,42 @@ export default function SetPasswordPage() {
               {confirmPassword && !passwordsMatch && (
                 <p className="text-sm text-destructive">Passwords do not match</p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="preferredLanguage">Preferred language</Label>
+              <Select
+                value={preferredLanguage}
+                onValueChange={handleLanguageChange}
+              >
+                <SelectTrigger
+                  id="preferredLanguage"
+                  data-testid="select-set-password-language"
+                >
+                  <SelectValue placeholder="Auto (follow my browser)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    value={LANGUAGE_AUTO}
+                    data-testid="option-set-password-language-auto"
+                  >
+                    Auto (follow my browser)
+                  </SelectItem>
+                  {LANGUAGE_OPTIONS.map((opt) => (
+                    <SelectItem
+                      key={opt.value}
+                      value={opt.value}
+                      data-testid={`option-set-password-language-${opt.value}`}
+                    >
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Used for security and onboarding emails. You can change this
+                later in your account settings.
+              </p>
             </div>
 
             {password.length > 0 && (

@@ -24,6 +24,13 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import {
+  LANGUAGE_AUTO,
+  LANGUAGE_OPTIONS,
+  languageLabelFor,
+  languageSelectionToWire,
+  normalizeStoredLanguage,
+} from "@/lib/preferred-language";
 import type { User } from "@shared/schema";
 
 // Server augments the /api/user response with a derived
@@ -36,21 +43,6 @@ export type CurrentUserWithSyncStatus = User & {
   paymentSyncStatus?: 'pending_retry' | null;
 };
 
-// Sentinel the Select uses for the "follow my browser" / unset option.
-// shadcn's SelectItem disallows an empty `value`, so we map this
-// constant to `null` at the form-submit boundary instead.
-const LANGUAGE_AUTO = "__auto__";
-
-// Languages the backend understands today (mirrors the bundled
-// translations in server/services/email-i18n/password-changed.ts).
-// Adding a new translation server-side requires extending this list
-// — that intentional duplication keeps the dropdown self-contained
-// and makes adding a language a tiny, reviewable change.
-const LANGUAGE_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "en", label: "English" },
-  { value: "es", label: "Español (Spanish)" },
-];
-
 const profileSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
   email: z.string().email("Please enter a valid email"),
@@ -62,27 +54,6 @@ const profileSchema = z.object({
 });
 
 type ProfileFormData = z.infer<typeof profileSchema>;
-
-// Coerce a stored language code into one the dropdown can render.
-// Defensive: pre-#417 the backend column accepted any string, so a
-// legacy row could hold something we no longer ship a translation
-// for ('fr', a typo, etc.). Treating those as "auto" prevents an
-// otherwise-unrelated profile save (e.g. just a name change) from
-// failing the new 400 validation, and silently self-heals the row
-// on the next save.
-function normalizeStoredLanguage(code: string | null | undefined): string {
-  if (!code) return LANGUAGE_AUTO;
-  return LANGUAGE_OPTIONS.some(o => o.value === code) ? code : LANGUAGE_AUTO;
-}
-
-// Lookup label for the read-only display so the "currently saved"
-// language pill matches the dropdown option's wording.
-function languageLabelFor(code: string | null | undefined): string {
-  const normalized = normalizeStoredLanguage(code);
-  if (normalized === LANGUAGE_AUTO) return "Auto (follow my browser)";
-  const opt = LANGUAGE_OPTIONS.find(o => o.value === normalized);
-  return opt?.label ?? normalized;
-}
 
 type PaymentSyncStatus = "synced" | "skipped" | "pending_retry" | "not_applicable";
 
@@ -140,8 +111,7 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
         phone: trimmedPhone === "" ? null : trimmedPhone,
         // Map the Select sentinel back to null so the backend stores
         // "no preference" rather than a bogus locale code.
-        preferredLanguage:
-          data.preferredLanguage === LANGUAGE_AUTO ? null : data.preferredLanguage,
+        preferredLanguage: languageSelectionToWire(data.preferredLanguage),
       };
       return apiRequest<{ paymentSyncStatus?: PaymentSyncStatus }>(
         `/api/account/profile/${currentUser.id}`,

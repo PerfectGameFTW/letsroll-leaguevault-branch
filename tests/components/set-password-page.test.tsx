@@ -249,3 +249,111 @@ describe('SetPasswordPage throttle UX (task #418)', () => {
     expect(screen.getByTestId('button-set-password-submit')).not.toBeDisabled();
   });
 });
+
+describe('SetPasswordPage preferred-language picker (task #420)', () => {
+  // Capture every body the form posts so we can assert what
+  // landed on the wire after each interaction.
+  let capturedBody: Record<string, unknown> | null;
+
+  beforeEach(() => {
+    capturedBody = null;
+    // Radix Select talks to the pointer-capture API which jsdom
+    // doesn't ship; without these stubs userEvent.click on the
+    // SelectTrigger throws "target.hasPointerCapture is not a
+    // function" before any state change reaches the component.
+    if (!Element.prototype.hasPointerCapture) {
+      Element.prototype.hasPointerCapture = (() => false) as Element['hasPointerCapture'];
+    }
+    if (!Element.prototype.releasePointerCapture) {
+      Element.prototype.releasePointerCapture = (() => undefined) as Element['releasePointerCapture'];
+    }
+    if (!Element.prototype.scrollIntoView) {
+      Element.prototype.scrollIntoView = (() => undefined) as Element['scrollIntoView'];
+    }
+    setPasswordHandler = async (_input, init) => {
+      try {
+        capturedBody = init?.body
+          ? (JSON.parse(init.body as string) as Record<string, unknown>)
+          : null;
+      } catch {
+        capturedBody = null;
+      }
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+  });
+
+  it('OMITS preferredLanguage from the body when the user never touches the picker', async () => {
+    // CRITICAL regression guard: this page is the same landing
+    // page the forgot-password reset flow sends users to. A
+    // returning user with a stored language ('es') who resets
+    // their password without touching the new picker MUST NOT
+    // have their preference silently wiped to null. The server
+    // treats a missing field as "leave the column alone" — but
+    // that contract only holds if the client doesn't send the
+    // field. Pinning this prevents a future refactor from
+    // re-introducing the unconditional submit.
+    const user = userEvent.setup();
+    renderPage();
+
+    await fillAndSubmit(user);
+
+    await waitFor(() => expect(capturedBody).not.toBeNull());
+    expect(capturedBody).toMatchObject({ password: STRONG_PASSWORD });
+    expect(capturedBody && 'preferredLanguage' in capturedBody).toBe(false);
+  });
+
+  it('sends the chosen locale code when the user picks a language', async () => {
+    // Brand-new invitee picks Spanish before clicking "Set
+    // Password" — the wire payload must carry preferredLanguage:
+    // 'es' so the server persists it AND uses it as the locale on
+    // the very first onboarding email.
+    const user = userEvent.setup();
+    renderPage();
+
+    const pwInput = await screen.findByLabelText(/^Password$/i);
+    const confirmInput = await screen.findByLabelText(/confirm password/i);
+    await user.type(pwInput, STRONG_PASSWORD);
+    await user.type(confirmInput, STRONG_PASSWORD);
+
+    // Open the language Select and click the Spanish option.
+    await user.click(screen.getByTestId('select-set-password-language'));
+    await user.click(await screen.findByTestId('option-set-password-language-es'));
+
+    await user.click(screen.getByTestId('button-set-password-submit'));
+
+    await waitFor(() => expect(capturedBody).not.toBeNull());
+    expect(capturedBody).toMatchObject({ preferredLanguage: 'es' });
+  });
+
+  it('sends preferredLanguage: null when the user switches to a language and back to Auto', async () => {
+    // Models a returning user who initially picks Spanish, then
+    // changes their mind and clears it back to Auto before
+    // submitting. The final wire value must be an explicit null —
+    // that's the signal the server distinguishes from "field
+    // omitted" and uses to CLEAR the stored column. (Radix Select
+    // only fires onValueChange when the value actually changes,
+    // so we can't test "click Auto when Auto is already
+    // selected"; that path correctly stays untouched and would
+    // omit the field.)
+    const user = userEvent.setup();
+    renderPage();
+
+    const pwInput = await screen.findByLabelText(/^Password$/i);
+    const confirmInput = await screen.findByLabelText(/confirm password/i);
+    await user.type(pwInput, STRONG_PASSWORD);
+    await user.type(confirmInput, STRONG_PASSWORD);
+
+    await user.click(screen.getByTestId('select-set-password-language'));
+    await user.click(await screen.findByTestId('option-set-password-language-es'));
+    await user.click(screen.getByTestId('select-set-password-language'));
+    await user.click(await screen.findByTestId('option-set-password-language-auto'));
+
+    await user.click(screen.getByTestId('button-set-password-submit'));
+
+    await waitFor(() => expect(capturedBody).not.toBeNull());
+    expect(capturedBody).toHaveProperty('preferredLanguage', null);
+  });
+});

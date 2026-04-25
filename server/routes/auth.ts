@@ -15,6 +15,18 @@ import { hashPassword, safeTokenCompare } from "../lib/password";
 import { destroyOtherSessionsForUser } from "../auth";
 import { sendTemplatedEmail, getBaseUrl, sendPasswordChangedNotification } from "../services/email.js";
 import { createSharedRateLimitStore } from "../utils/rate-limit-store";
+// Same allowlist account.ts uses for /api/account/profile (task #420).
+// We pull it from the password-changed email bundle directly rather
+// than re-importing it from `./account` so the unauthenticated
+// set-password handler doesn't drag the entire account-routes
+// dependency graph (and its env-required modules) into mocked unit
+// tests. Adding a translation in `password-changed.ts` automatically
+// widens BOTH endpoints — same single source of truth.
+import { PASSWORD_CHANGED_I18N } from "../services/email-i18n/password-changed";
+
+const SUPPORTED_PREFERRED_LANGUAGES = Object.keys(
+  PASSWORD_CHANGED_I18N,
+) as ReadonlyArray<string>;
 
 const log = createLogger("AuthRoutes");
 
@@ -316,6 +328,40 @@ export function registerAuthRoutes(app: Express): void {
         return sendError(res, passwordResult.error.errors[0].message, 400, "VALIDATION_ERROR");
       }
 
+      // Task #420: invited bowlers can pick their preferred language
+      // on the set-password page so the very first onboarding email
+      // (the password-changed notice fired below) renders in their
+      // chosen locale instead of always defaulting to English.
+      //
+      // Tri-state body field, mirroring the account-settings PATCH:
+      //   undefined            → field omitted (legacy clients), leave the column untouched
+      //   null                 → caller picked "auto / no preference", clear the column
+      //   known locale code    → write the chosen language
+      //
+      // Anything else gets a 400 instead of being silently persisted
+      // — keeps the column clean of garbage that the email helper
+      // would otherwise English-fallback on, exactly like #417.
+      const preferredLanguageRaw = (req.body as { preferredLanguage?: unknown })
+        ?.preferredLanguage;
+      let preferredLanguage: string | null | undefined;
+      if (preferredLanguageRaw === undefined) {
+        preferredLanguage = undefined;
+      } else if (preferredLanguageRaw === null) {
+        preferredLanguage = null;
+      } else if (
+        typeof preferredLanguageRaw === "string" &&
+        SUPPORTED_PREFERRED_LANGUAGES.includes(preferredLanguageRaw)
+      ) {
+        preferredLanguage = preferredLanguageRaw;
+      } else {
+        return sendError(
+          res,
+          "Unsupported preferred language",
+          400,
+          "VALIDATION_ERROR",
+        );
+      }
+
       const user = await storage.getUserByInviteToken(token);
       if (!user || !user.inviteToken || !safeTokenCompare(token, user.inviteToken)) {
         return sendError(res, "Invalid or expired invitation link", 400, "INVALID_TOKEN");
@@ -326,8 +372,18 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       const hashedPassword = await hashPassword(password);
+      // Persist the language choice in the SAME updateUser call as
+      // the password so we don't burn a second round trip, and so a
+      // crash between the two writes can't leave the user with a
+      // rotated password but a stale (English-only) language column.
+      const userPatch: { password: string; preferredLanguage?: string | null } = {
+        password: hashedPassword,
+      };
+      if (preferredLanguage !== undefined) {
+        userPatch.preferredLanguage = preferredLanguage;
+      }
       await Promise.all([
-        storage.updateUser(user.id, { password: hashedPassword }),
+        storage.updateUser(user.id, userPatch),
         storage.clearUserInviteToken(user.id),
         // A password set/reset must invalidate any in-flight email-change
         // confirmation token — same defense-in-depth as the authenticated
@@ -372,9 +428,19 @@ export function registerAuthRoutes(app: Express): void {
           changedAt: new Date(),
           ipAddress: req.ip ?? null,
           userAgent: rawUa || null,
-          // Render in the recipient's preferred language (task #410);
-          // resolver falls back to English when null/unknown.
-          locale: user.preferredLanguage ?? null,
+          // Render in the recipient's preferred language. Prefer the
+          // value the caller just submitted on this same request
+          // (task #420 — invited bowlers pick their language on the
+          // set-password page) over the row we loaded BEFORE the
+          // update; otherwise a brand-new user who chose Spanish
+          // here would still get the first email in English because
+          // their stored column was null at load time. Falls back
+          // to whatever was already on the row when the body
+          // omits the field, and the resolver itself falls back to
+          // English on null/unknown (task #410).
+          locale: preferredLanguage !== undefined
+            ? preferredLanguage
+            : user.preferredLanguage ?? null,
         }).then(ok => {
           if (!ok) {
             log.warn('Password-changed notification returned false (set-password)', { userId: user.id });

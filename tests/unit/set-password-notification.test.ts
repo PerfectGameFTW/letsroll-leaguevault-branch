@@ -278,3 +278,145 @@ describe('POST /api/auth/set-password — password-changed email dispatch (task 
     expect(mockUpdateUser).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('POST /api/auth/set-password — preferred-language capture (task #420)', () => {
+  it('persists the picker selection and uses it as the email locale on the same request', async () => {
+    // Brand-new invited user: stored preferredLanguage is null
+    // (TEST_USER fixture doesn't set it). The picker on the
+    // set-password page sends "es" in the SAME request that sets
+    // the password, and the route must:
+    //   (a) write preferredLanguage='es' to the user row in the
+    //       same updateUser call as the password (no extra round
+    //       trip — pinned by the single-call assertion below)
+    //   (b) forward 'es' as the locale on the password-changed
+    //       email so the very first onboarding mail renders in
+    //       the chosen language, not the default English
+    const res = await postSetPassword({
+      token: 'valid-token-1234',
+      password: 'BrandNewPw!2026XX',
+      preferredLanguage: 'es',
+    });
+    expect(res.status).toBe(200);
+    await flushFireAndForget();
+
+    // (a) — both fields land in one updateUser call. Two calls
+    // would let a crash between them leave the password rotated
+    // but the language column stale.
+    expect(mockUpdateUser).toHaveBeenCalledTimes(1);
+    const [, patch] = mockUpdateUser.mock.calls[0] as unknown as [
+      number,
+      { password: string; preferredLanguage?: string | null },
+    ];
+    expect(patch.password).toMatch(/^hashed:/);
+    expect(patch.preferredLanguage).toBe('es');
+
+    // (b) — the email helper sees the JUST-submitted locale, not
+    // the (null) value the user row was loaded with before the
+    // update.
+    expect(mockSendPasswordChangedNotification).toHaveBeenCalledTimes(1);
+    const [, , ctx] = mockSendPasswordChangedNotification.mock.calls[0] as unknown as [
+      string,
+      string,
+      { locale?: string | null },
+    ];
+    expect(ctx.locale).toBe('es');
+  });
+
+  it('treats null preferredLanguage as "auto" — clears the column and sends a null locale', async () => {
+    // The default picker selection on the set-password page is
+    // AUTO, which the client maps to null on the wire. The route
+    // must persist that null (so a previously-set language can be
+    // un-set on reset) and forward null to the email helper so it
+    // English-falls-back instead of using the now-cleared value.
+    const res = await postSetPassword({
+      token: 'valid-token-1234',
+      password: 'BrandNewPw!2026XX',
+      preferredLanguage: null,
+    });
+    expect(res.status).toBe(200);
+    await flushFireAndForget();
+
+    const [, patch] = mockUpdateUser.mock.calls[0] as unknown as [
+      number,
+      { password: string; preferredLanguage?: string | null },
+    ];
+    expect(patch.preferredLanguage).toBeNull();
+
+    const [, , ctx] = mockSendPasswordChangedNotification.mock.calls[0] as unknown as [
+      string,
+      string,
+      { locale?: string | null },
+    ];
+    expect(ctx.locale).toBeNull();
+  });
+
+  it('rejects an unsupported locale code with a 400 — no DB write, no email', async () => {
+    // Defense-in-depth: a hand-crafted POST with preferredLanguage='fr'
+    // (or any value outside the bundled translations) must NOT be
+    // silently persisted. Otherwise the email helper would
+    // English-fallback every send for that user with no signal
+    // anything went wrong, and the column would slowly accumulate
+    // garbage codes that #417 was specifically designed to prevent.
+    const res = await postSetPassword({
+      token: 'valid-token-1234',
+      password: 'BrandNewPw!2026XX',
+      preferredLanguage: 'fr',
+    });
+    expect(res.status).toBe(400);
+    await flushFireAndForget();
+
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+    expect(mockSendPasswordChangedNotification).not.toHaveBeenCalled();
+  });
+
+  it('leaves the language column untouched when the body omits preferredLanguage (legacy clients)', async () => {
+    // Older clients that haven't been redeployed will keep posting
+    // just { token, password }. The route must NOT clobber a
+    // previously-set preferredLanguage with null on those calls
+    // — only an explicit null in the body means "clear it". Pin
+    // by asserting updateUser is called WITHOUT a preferredLanguage
+    // key at all (vs. preferredLanguage: undefined, which Drizzle
+    // would also skip but is easy to regress into preferredLanguage:
+    // null on a future refactor).
+    const res = await postSetPassword({
+      token: 'valid-token-1234',
+      password: 'BrandNewPw!2026XX',
+    });
+    expect(res.status).toBe(200);
+    await flushFireAndForget();
+
+    expect(mockUpdateUser).toHaveBeenCalledTimes(1);
+    const [, patch] = mockUpdateUser.mock.calls[0] as unknown as [
+      number,
+      Record<string, unknown>,
+    ];
+    expect('preferredLanguage' in patch).toBe(false);
+  });
+
+  it('falls back to the user row\'s stored language when the body omits preferredLanguage', async () => {
+    // Forgot-password reset path: an existing user with a stored
+    // language ('es') clicks the reset link in their email. The
+    // page may not surface the picker at all on a re-reset, so
+    // the body omits preferredLanguage. The notice email must
+    // still render in their stored language — NOT silently
+    // English-fallback because the body didn't carry the field.
+    mockGetUserByInviteToken.mockResolvedValueOnce({
+      ...TEST_USER,
+      preferredLanguage: 'es',
+    });
+
+    const res = await postSetPassword({
+      token: 'valid-token-1234',
+      password: 'BrandNewPw!2026XX',
+    });
+    expect(res.status).toBe(200);
+    await flushFireAndForget();
+
+    const [, , ctx] = mockSendPasswordChangedNotification.mock.calls[0] as unknown as [
+      string,
+      string,
+      { locale?: string | null },
+    ];
+    expect(ctx.locale).toBe('es');
+  });
+});
