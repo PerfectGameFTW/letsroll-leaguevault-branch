@@ -93,6 +93,13 @@ vi.mock('../../server/storage', () => ({
   },
 }));
 
+const mockRecordAdminPasswordResetAudit = vi.fn(async () => ({ id: 1 }));
+
+vi.mock('../../server/storage/admin-password-reset-audits', () => ({
+  recordAdminPasswordResetAudit: (...a: unknown[]) =>
+    mockRecordAdminPasswordResetAudit.apply(null, a as never),
+}));
+
 const mockHashPassword = vi.fn(async (pw: string) => `hashed:${pw}`);
 const mockDestroyOtherSessionsForUser = vi.fn(async () => 0);
 
@@ -158,6 +165,8 @@ beforeEach(() => {
   mockInvalidatePending.mockClear();
   mockHashPassword.mockClear();
   mockDestroyOtherSessionsForUser.mockClear();
+  mockRecordAdminPasswordResetAudit.mockReset();
+  mockRecordAdminPasswordResetAudit.mockResolvedValue({ id: 1 } as never);
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -347,5 +356,128 @@ describe('POST /api/organization-admin/users/:id/reset-password — admin-driven
     } finally {
       actingUser = ACTING_ORG_ADMIN;
     }
+  });
+});
+
+describe('POST /api/organization-admin/users/:id/reset-password — persistent audit row (task #424)', () => {
+  it('writes one audit row with actor/target/org/ip/UA on success, sandwiched between updateUser and the response', async () => {
+    const res = await postReset(TARGET_USER.id, { newPassword: 'BrandNewPw!2026XX' });
+    expect(res.status).toBe(200);
+
+    expect(mockRecordAdminPasswordResetAudit).toHaveBeenCalledTimes(1);
+    const [auditValues] = mockRecordAdminPasswordResetAudit.mock.calls[0] as unknown as [
+      {
+        actorUserId: number;
+        targetUserId: number;
+        organizationId: number | null;
+        ipAddress: string | null;
+        userAgent: string | null;
+      },
+    ];
+    expect(auditValues.actorUserId).toBe(ACTING_ORG_ADMIN.id);
+    expect(auditValues.targetUserId).toBe(TARGET_USER.id);
+    expect(auditValues.organizationId).toBe(TARGET_USER.organizationId);
+    expect(auditValues.ipAddress).toBe('198.51.100.42');
+    expect(typeof auditValues.userAgent === 'string' || auditValues.userAgent === null).toBe(true);
+
+    // Strict ordering: the audit row MUST be written AFTER the password
+    // row (otherwise we record a reset that hasn't actually happened
+    // yet) and BEFORE the response is sent (so a successful 200 implies
+    // a queryable audit trail). The fire-and-forget password-changed
+    // notification fires synchronously right before sendSuccess, so the
+    // audit-then-notify order proves the audit ran before the response.
+    const updateOrder = mockUpdateUser.mock.invocationCallOrder[0];
+    const auditOrder = mockRecordAdminPasswordResetAudit.mock.invocationCallOrder[0];
+    const notifyOrder = mockSendPasswordChangedNotification.mock.invocationCallOrder[0];
+    expect(updateOrder).toBeLessThan(auditOrder);
+    expect(auditOrder).toBeLessThan(notifyOrder);
+  });
+
+  it('records the acting system_admin and the target user when a system_admin resets a cross-org user', async () => {
+    actingUser = {
+      id: 9000,
+      email: 'sysadmin@vitest.local',
+      name: 'Sys Admin',
+      role: 'system_admin',
+      organizationId: null,
+    } as unknown as typeof ACTING_ORG_ADMIN;
+    mockGetUser.mockResolvedValueOnce({ ...CROSS_ORG_TARGET });
+    try {
+      const res = await postReset(CROSS_ORG_TARGET.id, { newPassword: 'BrandNewPw!2026XX' });
+      expect(res.status).toBe(200);
+      expect(mockRecordAdminPasswordResetAudit).toHaveBeenCalledTimes(1);
+      const [auditValues] = mockRecordAdminPasswordResetAudit.mock.calls[0] as unknown as [
+        { actorUserId: number; targetUserId: number; organizationId: number | null },
+      ];
+      expect(auditValues.actorUserId).toBe(9000);
+      expect(auditValues.targetUserId).toBe(CROSS_ORG_TARGET.id);
+      // organizationId is the TARGET's org, not the actor's — that's
+      // what makes the row queryable per-tenant.
+      expect(auditValues.organizationId).toBe(CROSS_ORG_TARGET.organizationId);
+    } finally {
+      actingUser = ACTING_ORG_ADMIN;
+    }
+  });
+
+  it('does NOT write an audit row when validation fails', async () => {
+    const res = await postReset(TARGET_USER.id, { newPassword: 'short' });
+    expect(res.status).toBe(400);
+    expect(mockRecordAdminPasswordResetAudit).not.toHaveBeenCalled();
+  });
+
+  it('does NOT write an audit row when the target user does not exist', async () => {
+    mockGetUser.mockResolvedValueOnce(undefined);
+    const res = await postReset(999_999, { newPassword: 'BrandNewPw!2026XX' });
+    expect(res.status).toBe(404);
+    expect(mockRecordAdminPasswordResetAudit).not.toHaveBeenCalled();
+  });
+
+  it('does NOT write an audit row when the admin tries to reset their own password', async () => {
+    mockGetUser.mockResolvedValueOnce({ ...TARGET_USER, id: ACTING_ORG_ADMIN.id });
+    const res = await postReset(ACTING_ORG_ADMIN.id, { newPassword: 'BrandNewPw!2026XX' });
+    expect(res.status).toBe(403);
+    expect(mockRecordAdminPasswordResetAudit).not.toHaveBeenCalled();
+  });
+
+  it('does NOT write an audit row when the target is a system_admin', async () => {
+    mockGetUser.mockResolvedValueOnce({ ...SYSTEM_ADMIN_TARGET });
+    const res = await postReset(SYSTEM_ADMIN_TARGET.id, { newPassword: 'BrandNewPw!2026XX' });
+    expect(res.status).toBe(403);
+    expect(mockRecordAdminPasswordResetAudit).not.toHaveBeenCalled();
+  });
+
+  it('does NOT write an audit row when an org_admin reaches across organizations', async () => {
+    mockGetUser.mockResolvedValueOnce({ ...CROSS_ORG_TARGET });
+    const res = await postReset(CROSS_ORG_TARGET.id, { newPassword: 'BrandNewPw!2026XX' });
+    expect(res.status).toBe(403);
+    expect(mockRecordAdminPasswordResetAudit).not.toHaveBeenCalled();
+  });
+
+  it('does NOT write an audit row when the caller is unauthenticated', async () => {
+    actingUser = null;
+    try {
+      const res = await postReset(TARGET_USER.id, { newPassword: 'BrandNewPw!2026XX' });
+      expect(res.status).toBe(401);
+      expect(mockRecordAdminPasswordResetAudit).not.toHaveBeenCalled();
+    } finally {
+      actingUser = ACTING_ORG_ADMIN;
+    }
+  });
+
+  it('returns 500 and does NOT send the response with success when the audit insert fails (fail-closed compliance contract)', async () => {
+    mockRecordAdminPasswordResetAudit.mockRejectedValueOnce(new Error('DB unavailable'));
+    const res = await postReset(TARGET_USER.id, { newPassword: 'BrandNewPw!2026XX' });
+    expect(res.status).toBe(500);
+    // The password row is already persisted at this point — that's the
+    // accepted tradeoff for fail-closed auditing. The admin will
+    // retry, the password is re-hashed (idempotent for the caller),
+    // and the audit row is written on the second attempt.
+    expect(mockUpdateUser).toHaveBeenCalledTimes(1);
+    // Critically, when the audit fails we must NOT have proceeded to
+    // dispatch the password-changed email — otherwise the recipient
+    // gets a "your password just changed" notice for an action with
+    // no audit trail.
+    await flushFireAndForget();
+    expect(mockSendPasswordChangedNotification).not.toHaveBeenCalled();
   });
 });

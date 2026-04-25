@@ -37,6 +37,9 @@ export type { EmailChangeRequest, InsertEmailChangeRequest } from "./email-chang
 export { adminEmailChangeAudits, insertAdminEmailChangeAuditSchema } from "./admin-email-change-audits";
 export type { AdminEmailChangeAudit, InsertAdminEmailChangeAudit } from "./admin-email-change-audits";
 
+export { adminPasswordResetAudits, insertAdminPasswordResetAuditSchema } from "./admin-password-reset-audits";
+export type { AdminPasswordResetAudit, InsertAdminPasswordResetAudit } from "./admin-password-reset-audits";
+
 export {
   orphanCleanupAudits,
   insertOrphanCleanupAuditSchema,

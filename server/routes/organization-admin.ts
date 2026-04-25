@@ -14,6 +14,7 @@ import { passwordSchema } from '@shared/password-validation';
 import { z } from 'zod';
 import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit';
 import { createLogger } from '../logger';
+import { recordAdminPasswordResetAudit } from '../storage/admin-password-reset-audits';
 
 const log = createLogger("OrgAdmin");
 
@@ -522,6 +523,24 @@ router.post('/users/:id/reset-password', requireOrgAdminOrSystemAdmin, adminWrit
 
     const hashedNew = await hashPassword(newPassword);
     await storage.updateUser(targetUser.id, { password: hashedNew });
+
+    // Persistent audit row for compliance/security review (task #424).
+    // Order matters and is asserted by the unit test: this MUST run
+    // AFTER the password row is written but BEFORE the response is
+    // sent so a successful 200 implies a queryable audit trail. We
+    // intentionally do not catch — if the audit insert fails, the
+    // outer 500 handler fires; the admin retries, the password is
+    // re-hashed (idempotent for the caller) and the audit is written
+    // on the second attempt. That is the right tradeoff vs. silently
+    // losing the trail.
+    const rawUaForAudit = (req.get('user-agent') ?? '').slice(0, 512);
+    await recordAdminPasswordResetAudit({
+      actorUserId: req.user!.id,
+      targetUserId: targetUser.id,
+      organizationId: targetUser.organizationId ?? null,
+      ipAddress: req.ip ?? null,
+      userAgent: rawUaForAudit || null,
+    });
 
     // Defense-in-depth: any in-flight email-change tokens belonging
     // to the target user could outlive the rotation if not cleared.
