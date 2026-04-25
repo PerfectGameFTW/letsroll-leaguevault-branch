@@ -26,23 +26,30 @@ permissions:
 
 jobs:
   # Single job that runs the static checks (type checker, lint suite,
-  # and CSRF coverage guard) sequentially. Task #372 wired the type
-  # check and lint steps; task #398 added the CSRF coverage step
+  # CSRF coverage guard, and cross-org isolation coverage guard)
+  # sequentially. Task #372 wired the type check and lint steps;
+  # task #398 added the CSRF coverage step
   # (`scripts/check-csrf-coverage.ts`) so a regression that mounts a
   # state-changing route outside the global `/api` CSRF prefix can no
-  # longer slip through review. The job's `name:` is deliberately
-  # preserved as "Type check & lint" so any GitHub branch-protection
-  # rule keyed on that name keeps working — when adding a fourth
-  # static check, append a step rather than rename the job. Broader
-  # checks (vitest, the eslint-baseline ratchet from #404, etc.) are
-  # owned by their own follow-up tasks and will land in their own
-  # workflow files or as additional steps here over time.
+  # longer slip through review. Task #400 added the org-isolation
+  # coverage step (`scripts/check-org-isolation-coverage.ts --strict`)
+  # so a new id-bearing GET endpoint can no longer be added without
+  # either a cross-org assertion in
+  # `tests/api/organization-isolation.test.ts` or an inline
+  # `EXPLICIT_ALLOWLIST` justification. The job's `name:` is
+  # deliberately preserved as "Type check & lint" so any GitHub
+  # branch-protection rule keyed on that name keeps working — when
+  # adding a fifth static check, append a step rather than rename the
+  # job. Broader checks (vitest, the eslint-baseline ratchet from
+  # #404, etc.) are owned by their own follow-up tasks and will land
+  # in their own workflow files or as additional steps here over time.
   check-and-lint:
     name: Type check & lint
     runs-on: ubuntu-latest
-    # The check+lint+csrf trio takes ~1 minute locally; 10 is a
-    # generous ceiling that still kills a runaway install / hung
-    # dev-server spawn before it eats CI budget for an hour.
+    # The check+lint+csrf+org-isolation quartet takes ~1 minute
+    # locally; 10 is a generous ceiling that still kills a runaway
+    # install / hung dev-server spawn before it eats CI budget for an
+    # hour.
     timeout-minutes: 10
     steps:
       - name: Check out the PR
@@ -88,3 +95,23 @@ jobs:
       # `docs/security/csrf-coverage.md`. Wired into CI in #398.
       - name: CSRF coverage
         run: npm run check:csrf
+
+      # `npm run check:org-isolation` =
+      # `tsx scripts/check-org-isolation-coverage.ts --strict`.
+      # Walks `server/routes/`, finds every id-bearing GET endpoint
+      # (handlers that read `req.query.<entity>Id` or whose path
+      # contains `:id` / `:<entity>Id`), computes the effective full
+      # path through nested `router.use('<sub>', child)` composition,
+      # and fails if any path is missing a cross-org assertion in
+      # `tests/api/organization-isolation.test.ts` and is not on the
+      # script's `EXPLICIT_ALLOWLIST` (each allowlist entry requires an
+      # inline justification). Task #399 closed the existing 14 gaps
+      # before this step was wired in strict mode, so the gate starts
+      # green and any new uncovered endpoint will fail this step at
+      # PR time. The guard's own behavior is pinned by unit fixtures
+      # in `tests/unit/check-org-isolation-coverage.test.ts`. Contract
+      # and limitations are documented in
+      # `docs/security/org-isolation-coverage.md`. Wired into CI in
+      # #400.
+      - name: Cross-org isolation coverage
+        run: npm run check:org-isolation

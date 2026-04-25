@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "seed": "tsx scripts/seed.ts",
     "lint": "eslint .",
-    "check:csrf": "tsx scripts/check-csrf-coverage.ts"
+    "check:csrf": "tsx scripts/check-csrf-coverage.ts",
+    "check:org-isolation": "tsx scripts/check-org-isolation-coverage.ts --strict"
   },
   "dependencies": {
     "@apimatic/axios-client-adapter": "^0.3.21",

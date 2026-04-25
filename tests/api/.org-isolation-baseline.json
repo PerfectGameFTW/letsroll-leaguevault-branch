@@ -1,18 +1,4 @@
 {
-  "_doc": "Baseline of GET endpoints currently flagged by scripts/check-org-isolation-coverage.ts as lacking a cross-org assertion in tests/api/organization-isolation.test.ts. Closing a gap (removing an entry) is fine. Adding a new uncovered endpoint without listing it here will fail tests/unit/check-org-isolation-coverage.test.ts so the gap is caught at PR time. See task #399 for the plan to drive this list to empty.",
-  "uncovered": [
-    "GET /api/admin/email-templates/:id",
-    "GET /api/bn/status",
-    "GET /api/bowlers",
-    "GET /api/bowlers/unlinked",
-    "GET /api/leagues/:id/season-history",
-    "GET /api/locations/:id",
-    "GET /api/locations/:id/cardpointe-config",
-    "GET /api/locations/:id/square-config",
-    "GET /api/organizations/:id/app-icon",
-    "GET /api/organizations/:id/logo",
-    "GET /api/payments",
-    "GET /api/scores/league/:leagueId/week/:weekNumber",
-    "GET /api/user/avatar/:userId"
-  ]
+  "_doc": "Baseline of GET endpoints currently flagged by scripts/check-org-isolation-coverage.ts as lacking a cross-org assertion in tests/api/organization-isolation.test.ts. As of task #399 this list is empty: every id-bearing GET endpoint is either covered by a cross-org assertion in the live test or appears on the script's EXPLICIT_ALLOWLIST with an inline justification. Task #400 wired `npm run check:org-isolation` (which runs the script with `--strict`) into CI as a blocking step, so any newly-uncovered endpoint will fail the workflow at PR time. Adding an entry here is intended only as an emergency escape hatch with security-team sign-off — the preferred fix is always to add the cross-org assertion. tests/unit/check-org-isolation-coverage.test.ts cross-checks this baseline against the live `--strict` run and fails if a new gap appears that is not also baselined.",
+  "uncovered": []
 }

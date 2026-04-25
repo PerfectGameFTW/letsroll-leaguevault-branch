@@ -70,18 +70,22 @@ describe('check-org-isolation-coverage CI guard', () => {
   });
 
   /**
-   * This is the actual CI forcing function. We can't add an
-   * `npm run check:org-isolation` script (package.json is locked),
-   * so we rely on vitest — which already runs in CI — to surface
-   * regressions. Running with `--strict` against the real codebase,
-   * we extract the set of currently-flagged endpoints and assert it
-   * is a SUBSET of `tests/api/.org-isolation-baseline.json`.
+   * Belt-and-suspenders baseline check. The primary CI forcing
+   * function is now `npm run check:org-isolation` (= the same script
+   * with `--strict`), wired into `.github/workflows/ci.yml` as a
+   * blocking step in task #400. This vitest assertion is a second
+   * line of defense: it runs the script with `--strict`, extracts
+   * the set of currently-flagged endpoints, and asserts it is a
+   * SUBSET of `tests/api/.org-isolation-baseline.json`.
    *
-   * Adding a new id-bearing GET endpoint without a cross-org test
-   * adds to the flagged set → not a subset → test fails. Closing
-   * an existing gap (removing a path from the live flagged set)
-   * keeps the subset relation intact and remains green; the
-   * baseline can then be trimmed to keep the lint tight.
+   * As of task #399 the baseline is empty (every id-bearing GET
+   * endpoint is either covered or explicitly allowlisted), so this
+   * test will fail on the first new gap regardless of whether the
+   * dedicated CI step ran. Adding a new uncovered endpoint adds to
+   * the flagged set → not a subset → test fails. Closing an
+   * existing gap (removing a path from the live flagged set) keeps
+   * the subset relation intact and remains green; the baseline can
+   * then be trimmed to keep the lint tight.
    */
   it('does not introduce new uncovered cross-org endpoints (baseline check)', () => {
     const fs = require('node:fs') as typeof import('node:fs');
