@@ -1,4 +1,4 @@
-import { Link2, Unlink2, MapPin, Shield, Send, Trash2 } from "lucide-react";
+import { Link2, Unlink2, MapPin, Shield, Send, Trash2, KeyRound } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,11 +51,12 @@ interface Props {
   currentUser: UsersTableUser | undefined;
   orgLocations: UsersTableLocation[];
   onDeleteUser: (id: number) => void;
+  onResetPassword: (id: number) => void;
 }
 
 const hasPendingInvite = (user: UsersTableUser) => !!user.inviteToken;
 
-export function UsersTable({ users, currentUser, orgLocations, onDeleteUser }: Props) {
+export function UsersTable({ users, currentUser, orgLocations, onDeleteUser, onResetPassword }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -210,6 +211,35 @@ export function UsersTable({ users, currentUser, orgLocations, onDeleteUser }: P
                     title="Resend invite email"
                   >
                     <Send className="h-4 w-4" />
+                  </Button>
+                )}
+                {/*
+                 * Admin Reset Password button (task #423). Visibility
+                 * mirrors the backend's authorization rules in
+                 * server/routes/organization-admin.ts so an admin
+                 * never sees a button that would 403:
+                 *   - Hidden on the admin's OWN row (the endpoint
+                 *     refuses self-resets — change-password is the
+                 *     correct path for that and requires the current
+                 *     password).
+                 *   - Hidden when the target is a system_admin
+                 *     (system-admin password rotation goes through
+                 *     dedicated tooling).
+                 *   - Cross-org filtering is already handled by the
+                 *     parent page, which only fetches users in the
+                 *     caller's own organization, so no extra UI
+                 *     guard is needed for the org_admin case.
+                 */}
+                {user.id !== currentUser?.id && user.role !== "system_admin" && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onResetPassword(user.id)}
+                    title="Reset password"
+                    aria-label={`Reset password for ${user.name || user.email}`}
+                    data-testid={`button-reset-password-${user.id}`}
+                  >
+                    <KeyRound className="h-4 w-4" />
                   </Button>
                 )}
                 {user.id !== currentUser?.id && (
