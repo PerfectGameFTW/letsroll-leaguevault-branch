@@ -169,10 +169,15 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
   });
 
   // Self-serve "Retry now" — calls the per-user endpoint added in
-  // task #323. We deliberately don't invalidate /api/user here: the
-  // user record itself didn't change, only the payment-sync status,
-  // and the status flips lastSyncStatus directly so the UI updates
-  // without a refetch.
+  // task #323. Since #363 added server-derived `paymentSyncStatus`
+  // to /api/user, we MUST invalidate that query on success so the
+  // canonical pending flag (bowler.payment_sync_pending_at) propagates
+  // to every consumer of /api/user across the app — including a fresh
+  // page load, another tab, or any other component reading the
+  // currentUser query. The local `setLastSyncStatus(status)` below
+  // still gives an instant UX response; the invalidation triggers a
+  // refetch that hydrates the rest of the app and re-runs the
+  // mirroring useEffect above on the next render.
   const retryMutation = useMutation({
     mutationFn: async () =>
       apiRequest<{ paymentSyncStatus?: PaymentSyncStatus }>(
@@ -182,6 +187,7 @@ export function ProfileInfoCard({ currentUser }: { currentUser: CurrentUserWithS
     onSuccess: (response) => {
       const status = response?.data?.paymentSyncStatus ?? null;
       setLastSyncStatus(status);
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       if (status === "synced") {
         toast({ title: "Payment record updated", description: "Your payment profile is back in sync." });
       } else if (status === "pending_retry") {
