@@ -9,6 +9,13 @@ A full-stack bowling league management application with multi-tenant support for
 - Keep all related packages on the same major version (e.g., all Capacitor packages on v8).
 - Current runtime: **Node.js 22 LTS** (upgraded to support Capacitor CLI v8).
 
+## Follow-Up Task Policy (Agent Operating Convention)
+- **Only propose follow-up tasks for Critical and High priority work.** The task backlog has been growing too quickly with low-value follow-ups.
+- Skip follow-ups for: nice-to-haves, minor tech debt, doc polish, refactoring opportunities, additional test coverage on already-tested code, "would be nice to extend X to Y" suggestions, or anything a code reviewer flagged as a non-blocking comment unless it is a Critical or High severity issue.
+- A follow-up qualifies as Critical or High when it is one of: a security vulnerability, a data-integrity risk, a production incident waiting to happen, a customer-visible regression, or work that directly unblocks an in-flight feature.
+- When in doubt, do NOT create the follow-up. The user prefers a smaller, higher-signal backlog over an exhaustive one.
+- This applies to every agent (main, task, design, etc.) and every mode (plan, build).
+
 ## Architecture
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui + TanStack Query + wouter
 - **Backend**: Express + Passport.js + Drizzle ORM
