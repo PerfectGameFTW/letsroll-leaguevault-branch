@@ -25,7 +25,10 @@ import { maskEmail } from '../utils/pii';
 import { randomBytes, createHash } from 'crypto';
 import { db } from '../db';
 import { emailChangeRequests, users, type PaymentSyncStatus } from '@shared/schema';
-import { recordAdminEmailChangeAudit } from '../storage/admin-email-change-audits';
+import {
+  recordAdminEmailChangeAudit,
+  markAdminEmailChangeAuditConfirmed,
+} from '../storage/admin-email-change-audits';
 import { recordAdminProfileEditAudit } from '../storage/admin-profile-edit-audits';
 import { cacheInvalidate } from '../utils/cache';
 import { createSharedRateLimitStore } from '../utils/rate-limit-store';
@@ -235,12 +238,19 @@ export async function applyEmailChangeRequestTxn(opts: {
           isNull(emailChangeRequests.consumedAt),
         ),
       );
-    await tx.insert(emailChangeRequests).values({
+    // Capture the inserted request id so the admin audit row can be
+    // bound to the *exact* request it was written for (task #487).
+    // The `/confirm-email-change` handler later updates that audit row
+    // with the post-confirm payment-sync result; keying by request id
+    // (rather than `targetUserId`) keeps superseded audit rows from
+    // being collateral-updated when an admin re-initiates a change
+    // before the previous link is confirmed.
+    const [insertedRequest] = await tx.insert(emailChangeRequests).values({
       userId: opts.userId,
       newEmail: opts.newEmail,
       tokenHash: opts.tokenHash,
       expiresAt: opts.expiresAt,
-    });
+    }).returning({ id: emailChangeRequests.id });
     if (opts.audit) {
       await recordAdminEmailChangeAudit(
         {
@@ -248,6 +258,7 @@ export async function applyEmailChangeRequestTxn(opts: {
           targetUserId: opts.userId,
           oldEmailMasked: opts.audit.oldEmailMasked,
           newEmailMasked: opts.audit.newEmailMasked,
+          emailChangeRequestId: insertedRequest.id,
         },
         tx,
       );
@@ -584,7 +595,7 @@ router.post('/confirm-email-change', confirmEmailChangeLimiter, async (req: Requ
       | { kind: 'user_gone' };
     // (EMAIL_IN_USE is handled via the catch on PG error 23505 below.)
 
-    let outcome: ConfirmResult;
+    let outcome: ConfirmResult & { requestId?: number };
     try {
       outcome = await db.transaction(async (tx) => {
         // Single conditional UPDATE: claims the token only if it is still
@@ -624,7 +635,13 @@ router.post('/confirm-email-change', confirmEmailChangeLimiter, async (req: Requ
           .returning();
 
         if (!updated) return { kind: 'user_gone' as const };
-        return { kind: 'ok' as const, user: updated };
+        // `requestId` is carried out of the transaction so the
+        // post-confirm payment-sync result can be written back to the
+        // *exact* admin audit row that this confirmation belongs to
+        // (task #487). Doing the audit UPDATE outside the transaction
+        // keeps the payment-provider call (which can take seconds and
+        // throw retryable errors) off the DB transaction critical path.
+        return { kind: 'ok' as const, user: updated, requestId: claimed.id };
       });
     } catch (err) {
       // Postgres unique_violation — the new email was claimed by someone
@@ -667,6 +684,30 @@ router.post('/confirm-email-change', confirmEmailChangeLimiter, async (req: Requ
         phoneChanged: false,
       });
       paymentSyncStatus = result;
+    }
+
+    // Re-surface the post-confirm sync result on the originating
+    // admin's email-change history row (task #487). The PATCH that
+    // initiated the change only triggers the payment-sync when the
+    // admin also edited name/phone — for a pure email edit the actual
+    // sync (and any `pending_retry`) happens HERE, after the target
+    // user clicks the link. The admin never sees this confirmation
+    // page, so the audit row is the only surface we have to bubble a
+    // failed sync back to the admin who needs to retry it.
+    //
+    // Best-effort: this column is triage metadata, not part of the
+    // user-visible flow. If the UPDATE throws (column missing on a
+    // not-yet-migrated DB, network blip, etc.) we log and continue —
+    // the email change itself has already succeeded above.
+    if (outcome.requestId !== undefined) {
+      try {
+        await markAdminEmailChangeAuditConfirmed({
+          emailChangeRequestId: outcome.requestId,
+          status: paymentSyncStatus,
+        });
+      } catch (auditErr) {
+        log.error('Failed to record post-confirm payment-sync status on admin audit row (non-fatal):', auditErr);
+      }
     }
 
     log.info('Email-change confirmed', {

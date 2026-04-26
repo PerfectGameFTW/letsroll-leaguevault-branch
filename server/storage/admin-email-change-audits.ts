@@ -6,6 +6,7 @@ import {
   users,
   type AdminEmailChangeAudit,
   type InsertAdminEmailChangeAudit,
+  type PaymentSyncStatus,
 } from "@shared/schema";
 
 // Drizzle's transaction client and the top-level `db` share the same
@@ -33,6 +34,10 @@ export async function recordAdminEmailChangeAudit(
 // source of truth for what the admin should see; the live email may
 // have been re-changed since and would mislead triage. Excluding it
 // from the wire also keeps unnecessary PII out of the response.
+//
+// `postConfirmPaymentSyncStatus` and `postConfirmedAt` (task #487) are
+// inherited from `AdminEmailChangeAudit` — both nullable, populated
+// only after the target user clicks the confirmation link.
 export interface AdminEmailChangeAuditRow extends AdminEmailChangeAudit {
   actorName: string | null;
   targetName: string | null;
@@ -76,6 +81,9 @@ export async function listAdminEmailChangeAudits(
       targetUserId: adminEmailChangeAudits.targetUserId,
       oldEmailMasked: adminEmailChangeAudits.oldEmailMasked,
       newEmailMasked: adminEmailChangeAudits.newEmailMasked,
+      emailChangeRequestId: adminEmailChangeAudits.emailChangeRequestId,
+      postConfirmPaymentSyncStatus: adminEmailChangeAudits.postConfirmPaymentSyncStatus,
+      postConfirmedAt: adminEmailChangeAudits.postConfirmedAt,
       createdAt: adminEmailChangeAudits.createdAt,
       actorName: users.name,
       targetName: targetUsers.name,
@@ -89,6 +97,39 @@ export async function listAdminEmailChangeAudits(
     .offset(offset);
 
   return rows;
+}
+
+// Update the audit row that was written when an admin initiated the
+// email change, recording the result of the deferred payment-provider
+// sync that ran when the target user clicked the confirmation link
+// (task #487). Keyed on `emailChangeRequestId` rather than
+// `targetUserId` so a superseded audit row (admin re-initiated before
+// the first link was clicked) is NOT collateral-updated by the
+// confirm of the second request.
+//
+// Returns the number of rows updated:
+//   0 — self-serve change (no audit row exists), legacy row written
+//       before `emailChangeRequestId` existed, or the audit row was
+//       deleted between request and confirm. All three cases are a
+//       no-op for the caller; this is best-effort triage metadata,
+//       not a contract the email-change flow depends on.
+//   1 — the audit row was found and updated.
+//
+// The caller catches and logs any throw — failure to update this
+// triage column must NEVER fail the user-visible email-change flow.
+export async function markAdminEmailChangeAuditConfirmed(opts: {
+  emailChangeRequestId: number;
+  status: PaymentSyncStatus;
+}): Promise<number> {
+  const updated = await db
+    .update(adminEmailChangeAudits)
+    .set({
+      postConfirmPaymentSyncStatus: opts.status,
+      postConfirmedAt: sql`now()`,
+    })
+    .where(eq(adminEmailChangeAudits.emailChangeRequestId, opts.emailChangeRequestId))
+    .returning({ id: adminEmailChangeAudits.id });
+  return updated.length;
 }
 
 export async function countAdminEmailChangeAudits(

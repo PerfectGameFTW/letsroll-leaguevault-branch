@@ -15,11 +15,82 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import type { ApiResponse, AdminEmailChangeAudit } from '@shared/schema';
+import { Badge } from '@/components/ui/badge';
+import { AlertTriangle } from 'lucide-react';
+import type { ApiResponse, AdminEmailChangeAudit, PaymentSyncStatus } from '@shared/schema';
+import { parsePaymentSyncStatus } from '@shared/schema';
 
 interface AdminEmailChangeAuditRow extends AdminEmailChangeAudit {
   actorName: string | null;
   targetName: string | null;
+}
+
+// Render the post-confirm payment-sync status (task #487):
+//   - null   → target user hasn't clicked the confirmation link yet
+//              (or the row predates this column). Render an unobtrusive
+//              "Awaiting confirmation" stub so admins can tell the
+//              difference between "still pending" and "confirmed clean".
+//   - pending_retry → the actionable case. Bright destructive badge
+//              with an icon so it cannot be missed when scanning the
+//              table; sub-line carries the confirmed-at timestamp so
+//              the admin knows when the failure happened.
+//   - synced / skipped / not_applicable → render quietly so the
+//              "needs retry" rows visually pop. We still show *which*
+//              terminal state it landed in (not just a checkmark) for
+//              triage clarity.
+function PostConfirmCell({
+  rawStatus,
+  confirmedAt,
+}: {
+  rawStatus: string | null;
+  confirmedAt: string | null;
+}) {
+  if (rawStatus === null) {
+    return (
+      <span className="text-xs text-muted-foreground" data-testid="post-confirm-pending">
+        Awaiting confirmation
+      </span>
+    );
+  }
+  // `parsePaymentSyncStatus` collapses an unknown future status to
+  // `not_applicable` so the UI stays silent rather than rendering a
+  // confusing label — same defensive pattern the profile card uses.
+  const status: PaymentSyncStatus = parsePaymentSyncStatus(rawStatus);
+  const when = confirmedAt ? formatTimestamp(confirmedAt) : null;
+
+  if (status === 'pending_retry') {
+    return (
+      <div className="flex flex-col gap-1" data-testid="post-confirm-pending-retry">
+        <Badge variant="destructive" className="gap-1 w-fit">
+          <AlertTriangle className="h-3 w-3" aria-hidden />
+          Needs manual retry
+        </Badge>
+        {when && (
+          <span className="text-xs text-muted-foreground">
+            Confirmed {when}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  const labelByStatus: Record<Exclude<PaymentSyncStatus, 'pending_retry'>, string> = {
+    synced: 'Synced',
+    skipped: 'Skipped (no provider)',
+    not_applicable: 'Not applicable',
+  };
+  return (
+    <div className="flex flex-col gap-0.5" data-testid={`post-confirm-${status}`}>
+      <span className="text-xs">
+        {labelByStatus[status]}
+      </span>
+      {when && (
+        <span className="text-xs text-muted-foreground">
+          {when}
+        </span>
+      )}
+    </div>
+  );
 }
 
 interface AuditListResponse {
@@ -204,6 +275,7 @@ export default function AdminEmailChangeAuditsPage() {
                         <TableHead>Old email (masked)</TableHead>
                         <TableHead>New email (masked)</TableHead>
                         <TableHead>Initiated by</TableHead>
+                        <TableHead>Post-confirm sync</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -233,6 +305,12 @@ export default function AdminEmailChangeAuditsPage() {
                             <div className="text-xs text-muted-foreground">
                               #{row.actorUserId}
                             </div>
+                          </TableCell>
+                          <TableCell>
+                            <PostConfirmCell
+                              rawStatus={row.postConfirmPaymentSyncStatus}
+                              confirmedAt={row.postConfirmedAt}
+                            />
                           </TableCell>
                         </TableRow>
                       ))}
