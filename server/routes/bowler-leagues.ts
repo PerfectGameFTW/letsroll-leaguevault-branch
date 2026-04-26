@@ -203,17 +203,18 @@ router.post("/", async (req, res) => {
     // Non-bootstrap path: caller already has access to this bowler via
     // the normal access-control rules, so additional league memberships
     // are allowed. We still guard against duplicate (bowler, league)
-    // pairs with the same uniqueness check the route has always done.
-    const existing = await storage.getBowlerLeagues({
-      bowlerId: data.bowlerId,
-      leagueId: data.leagueId
-    });
-
-    if (existing.length > 0) {
+    // pairs — but the historic two-step check (getBowlerLeagues then
+    // createBowlerLeague) was a check-then-insert race that double-
+    // clicked submits and React Query retries could slip through,
+    // landing two rows for the same (bowler, league) pair before either
+    // insert committed (task #473). Use the atomic helper that wraps
+    // both in one transaction with `SELECT ... FOR UPDATE` on the
+    // bowler row, so concurrent attempts serialize and only the first
+    // observes the pair as missing.
+    const created = await storage.createBowlerLeagueIfNotInLeague(data);
+    if (!created) {
       return sendError(res, "Bowler is already in this league", 400);
     }
-
-    const created = await storage.createBowlerLeague(data);
     // Push updated league_name/league_season to Square + BowlNow
     // (task #429). Fire-and-forget — never blocks the response.
     fireBowlerExternalResync(created.bowlerId, req.user?.organizationId);

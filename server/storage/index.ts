@@ -54,6 +54,7 @@ export class DatabaseStorage implements IStorage {
   getBowlerLeaguesByBowlerIds!: IStorage["getBowlerLeaguesByBowlerIds"];
   createBowlerLeague!: IStorage["createBowlerLeague"];
   createBowlerLeagueIfBowlerFree!: IStorage["createBowlerLeagueIfBowlerFree"];
+  createBowlerLeagueIfNotInLeague!: IStorage["createBowlerLeagueIfNotInLeague"];
   updateBowlerLeague!: IStorage["updateBowlerLeague"];
   updateBowlerLeagueOrder!: IStorage["updateBowlerLeagueOrder"];
   deleteBowlerLeague!: IStorage["deleteBowlerLeague"];

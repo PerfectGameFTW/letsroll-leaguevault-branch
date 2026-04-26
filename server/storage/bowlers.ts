@@ -152,6 +152,82 @@ export async function createBowlerLeague(bowlerLeague: InsertBowlerLeague): Prom
 }
 
 /**
+ * Atomic non-bootstrap insert (task #473). Inserts a bowler-league row
+ * if and only if no active link for the same (bowlerId, leagueId) pair
+ * already exists. The check + insert runs inside a single transaction
+ * with `SELECT ... FOR UPDATE` on the bowler row, so concurrent
+ * attempts to add the same bowler to the same league serialize and
+ * only the first one observes the pair as missing.
+ *
+ * Returns null when an active (bowlerId, leagueId) row already exists
+ * (caller should map to the same 400 the non-atomic check used to
+ * return). Returns the freshly created link otherwise.
+ *
+ * Why this exists separately from `createBowlerLeague`: the original
+ * non-bootstrap route did `getBowlerLeagues({bowlerId, leagueId})` and
+ * then `createBowlerLeague(data)` as two separate ops. A double-clicked
+ * submit (or a React Query retry) could slip through both checks and
+ * produce two rows for the same (bowler, league) pair before either
+ * insert landed. There is no DB-level unique constraint on
+ * (bowler_id, league_id) — only an index — so the application has to
+ * serialize the check + insert itself. The bootstrap helper
+ * (`createBowlerLeagueIfBowlerFree`) gates on "bowler has zero links";
+ * this helper gates on "no link to THIS league" so the everyday path
+ * can still add additional league memberships to an already-linked
+ * bowler.
+ */
+export async function createBowlerLeagueIfNotInLeague(
+  bowlerLeague: InsertBowlerLeague,
+): Promise<BowlerLeague | null> {
+  return db.transaction(async (tx) => {
+    // Lock the bowler row so concurrent transactions targeting the same
+    // bowler serialize. A racing transaction will block here until this
+    // one commits/rollbacks, and will then observe the link we are
+    // about to insert (and return null). We lock the bowler rather than
+    // the (bowler, league) pair because there's no row to lock for a
+    // pair that doesn't exist yet, and the bowler row is the natural
+    // serialization point shared with `createBowlerLeagueIfBowlerFree`.
+    await tx.execute(
+      sql`SELECT id FROM ${bowlers} WHERE id = ${bowlerLeague.bowlerId} FOR UPDATE`,
+    );
+
+    const existing = await tx
+      .select({ id: bowlerLeagues.id })
+      .from(bowlerLeagues)
+      .where(and(
+        eq(bowlerLeagues.bowlerId, bowlerLeague.bowlerId),
+        eq(bowlerLeagues.leagueId, bowlerLeague.leagueId),
+        eq(bowlerLeagues.active, true),
+      ))
+      .limit(1);
+
+    if (existing.length > 0) {
+      return null;
+    }
+
+    // Order computation mirrors createBowlerLeague (lock team row, take
+    // max + 1) to keep insert behavior consistent across both paths.
+    await tx.execute(
+      sql`SELECT id FROM ${teams} WHERE id = ${bowlerLeague.teamId} FOR UPDATE`,
+    );
+
+    const [maxOrder] = await tx
+      .select({ maxOrder: sql<number>`max(${bowlerLeagues.order})` })
+      .from(bowlerLeagues)
+      .where(eq(bowlerLeagues.teamId, bowlerLeague.teamId));
+
+    const order = (maxOrder?.maxOrder ?? -1) + 1;
+
+    const [result] = await tx
+      .insert(bowlerLeagues)
+      .values({ ...bowlerLeague, order })
+      .returning();
+    cacheInvalidate('bowlers:');
+    return result;
+  });
+}
+
+/**
  * Atomic bootstrap-only insert (task #343). Inserts a bowler-league row
  * if and only if the target bowler currently has zero active league
  * links. The check + insert runs inside a single transaction with
