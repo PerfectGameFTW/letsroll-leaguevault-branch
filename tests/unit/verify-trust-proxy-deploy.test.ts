@@ -264,13 +264,16 @@ describe('runVerifier — green path', () => {
 
 // Pins the inline classifier the script ships against the server's
 // CIDR-aware source of truth. The script's copy is intentionally
-// smaller (no proxy-addr / ipaddr.js dep so it can run from a minimal
-// CI image), but the two MUST agree on the realistic inputs the
-// post-deploy probe will actually see; otherwise the script will
-// silently disagree with the boot guard about what counts as a real
-// client IP. If a future tightening of the server matcher (follow-up
-// #380) widens the rejection set, this table fails loudly so the
-// inline copy gets updated in lock-step instead of drifting.
+// smaller (no proxy-addr / Express dep so it can run from a minimal
+// CI image — it only pulls `ipaddr.js`, which is a regular runtime
+// dep already installed by `npm ci` in the post-deploy workflow),
+// but the two MUST agree on the realistic inputs the post-deploy
+// probe will actually see; otherwise the script will silently
+// disagree with the boot guard about what counts as a real client
+// IP. Task #380 tightened the server matcher to be CIDR-aware and
+// task #502 propagated the same logic into the inline copy — this
+// table catches any future drift between them by asserting both
+// classifiers return the same answer for every input.
 describe('inline isPrivateOrLoopback agrees with server/lib/trust-proxy-check.ts', () => {
   describe('both classify as PRIVATE / LOOPBACK', () => {
     it.each([
@@ -311,6 +314,60 @@ describe('inline isPrivateOrLoopback agrees with server/lib/trust-proxy-check.ts
     ])('%s (%s)', (ip) => {
       expect(inlineIsPrivateOrLoopback(ip)).toBe(false);
       expect(serverIsPrivateOrLoopback(ip)).toBe(false);
+    });
+  });
+
+  // Pins the precise behavior the CIDR-aware rewrite (task #502)
+  // gives us over the old string-prefix matcher. The previous
+  // version used `['127.', '10.', '192.168.', '169.254.', '::1',
+  // 'fe80:', 'fc', 'fd']` and a `172.\d+.` regex — so any string
+  // starting with 'fc' or 'fd' (e.g. a misbehaving upstream emitting
+  // "fcat" / "fdoozle") would have been silently classified as an
+  // IPv6 unique-local address. Worse, an address like
+  // '127garbage' would have flowed through the `startsWith('127.')`
+  // branch as IPv4 loopback. Both would have either paged the
+  // on-call about a non-existent regression OR (worse) classified a
+  // real client IP as private and obscured a real misconfiguration.
+  // The new implementation parses with ipaddr.js and fails closed
+  // on unparseable input, so we get `true` for the right reason
+  // (parse failure) instead of accidentally pattern-matching a
+  // legitimate range.
+  describe('CIDR-aware precision (would have been wrong under the old prefix matcher)', () => {
+    it.each([
+      ['fcat', "starts with 'fc' but isn't an IPv6 ULA"],
+      ['fdoozle', "starts with 'fd' but isn't an IPv6 ULA"],
+      ['fe80x', "starts with 'fe80' but isn't a valid IPv6"],
+      ['127garbage', "starts with '127' but isn't a valid IPv4"],
+      ['10.x.y.z', "starts with '10.' but isn't a valid IPv4"],
+      ['not-an-ip', 'pure garbage'],
+    ])('fail-closed on unparseable %s (%s) → true', (ip) => {
+      expect(inlineIsPrivateOrLoopback(ip)).toBe(true);
+      expect(serverIsPrivateOrLoopback(ip)).toBe(true);
+    });
+
+    it('unwraps IPv4-mapped IPv6 to catch tunneled loopback', () => {
+      expect(inlineIsPrivateOrLoopback('::ffff:127.0.0.1')).toBe(true);
+      expect(serverIsPrivateOrLoopback('::ffff:127.0.0.1')).toBe(true);
+    });
+
+    it('unwraps IPv4-mapped IPv6 to catch tunneled RFC1918', () => {
+      expect(inlineIsPrivateOrLoopback('::ffff:10.0.0.1')).toBe(true);
+      expect(serverIsPrivateOrLoopback('::ffff:10.0.0.1')).toBe(true);
+    });
+
+    it('unwraps IPv4-mapped IPv6 and lets a public address through', () => {
+      expect(inlineIsPrivateOrLoopback('::ffff:8.8.8.8')).toBe(false);
+      expect(serverIsPrivateOrLoopback('::ffff:8.8.8.8')).toBe(false);
+    });
+
+    it('rejects 0.0.0.0 (unspecified) — never a real client', () => {
+      expect(inlineIsPrivateOrLoopback('0.0.0.0')).toBe(true);
+      expect(serverIsPrivateOrLoopback('0.0.0.0')).toBe(true);
+    });
+
+    it('rejects :: (IPv6 unspecified) — never a real client', () => {
+      expect(inlineIsPrivateOrLoopback('::')).toBe(true);
+      expect(serverIsPrivateOrLoopback('::')).toBe(true);
     });
   });
 });

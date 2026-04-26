@@ -100,24 +100,79 @@ interface ProbeResponse {
 // Kept inline so the script has zero compile-time deps on the server
 // bundle — it can run from a minimal CI image with just `tsx` (or
 // even be transpiled and run as plain node) without pulling Express.
-const PRIVATE_OR_LOOPBACK_PREFIXES = [
-  '127.', '10.', '192.168.', '169.254.', '::1', 'fe80:', 'fc', 'fd',
-];
+//
+// We DO depend on `ipaddr.js` (already a runtime dep of the server,
+// so `npm ci` in the CI workflow installs it for free; ~30KB, no
+// transitive deps). That gives us the same CIDR-aware classifier as
+// the server-side helper without re-implementing range arithmetic
+// here. See the rationale in `server/lib/trust-proxy-check.ts` —
+// the previous string-prefix list (`['fc', 'fd', ...]`) would have
+// falsely matched non-IP strings like "fcat" / "fdoozle" emitted by
+// a misbehaving upstream and either paged the on-call about a
+// non-existent regression OR (worse) classified a real client IP as
+// private and obscured a real misconfiguration.
+import ipaddr from 'ipaddr.js';
+
+// IPv4 ranges that, if `live.resolvedIp` ever resolves to one in
+// production, mean the proxy is eating the X-Forwarded-For: loopback
+// (127/8), RFC1918 private (10/8, 172.16/12, 192.168/16), link-local
+// (169.254/16), and `unspecified` (0.0.0.0). Kept identical to the
+// server's `IPV4_BAD_RANGES` so the boot guard and the post-deploy
+// probe agree on what counts as a "real" client address.
+const IPV4_BAD_RANGES = new Set<string>([
+  'loopback',
+  'private',
+  'linkLocal',
+  'unspecified',
+]);
+
+// IPv6 equivalents: loopback (::1), unique-local (fc00::/7), link-local
+// (fe80::/10), and unspecified (::). `ipv4Mapped` is intentionally NOT
+// in this set — we unwrap those addresses below and re-check the
+// embedded IPv4 instead, so a `::ffff:127.0.0.1` is correctly rejected
+// as IPv4 loopback rather than allowed through as a "non-private" IPv6
+// address.
+const IPV6_BAD_RANGES = new Set<string>([
+  'loopback',
+  'uniqueLocal',
+  'linkLocal',
+  'unspecified',
+]);
 
 // Exported for the regression test at
 // `tests/unit/verify-trust-proxy-deploy.test.ts`, which pins this
 // inline copy against `server/lib/trust-proxy-check.ts`'s CIDR-aware
 // classifier on a fixed table of IPs. If the server tightens (see
-// follow-up #380) and the inline copy here drifts, that test fails
+// task #380) and the inline copy here drifts, that test fails
 // loudly instead of letting the post-deploy probe silently disagree
 // with the boot guard about what counts as a real client address.
+//
+// Fail-closed contract: empty / `unknown` / unparseable inputs all
+// return `true`. Better to surface a misconfigured proxy loudly than
+// to silently classify garbage as a real client IP.
 export function isPrivateOrLoopback(ip: string): boolean {
   if (!ip) return true;
   const lower = ip.toLowerCase();
-  if (lower === '::1' || lower === '127.0.0.1' || lower === 'unknown') return true;
-  const m = /^172\.(\d+)\./.exec(lower);
-  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
-  return PRIVATE_OR_LOOPBACK_PREFIXES.some((p) => lower.startsWith(p));
+  // Some proxy-addr code paths emit the literal "unknown" instead of
+  // a parseable address; treat it as private (fail-closed). Mirrors
+  // the server-side helper exactly.
+  if (lower === 'unknown') return true;
+  if (!ipaddr.isValid(ip)) return true;
+  let addr = ipaddr.parse(ip);
+  // Unwrap IPv4-mapped IPv6 (::ffff:1.2.3.4) so a tunneled loopback
+  // or RFC1918 address still gets caught by the IPv4 ruleset rather
+  // than being waved through as "just an IPv6 address".
+  if (addr.kind() === 'ipv6') {
+    const v6 = addr as ipaddr.IPv6;
+    if (v6.isIPv4MappedAddress()) {
+      addr = v6.toIPv4Address();
+    }
+  }
+  const range = addr.range();
+  if (addr.kind() === 'ipv4') {
+    return IPV4_BAD_RANGES.has(range);
+  }
+  return IPV6_BAD_RANGES.has(range);
 }
 
 function fail(msg: string, exitCode = 1): never {
