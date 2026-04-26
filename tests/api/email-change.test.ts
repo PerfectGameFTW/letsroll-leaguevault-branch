@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../server/db';
 import { storage } from '../../server/storage';
-import { users, organizations, emailChangeRequests, bowlers, adminEmailChangeAudits } from '@shared/schema';
+import { users, organizations, emailChangeRequests, bowlers, adminEmailChangeAudits, adminProfileEditAudits } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { createHash } from 'crypto';
 import {
@@ -101,6 +101,15 @@ afterAll(async () => {
     await db
       .delete(adminEmailChangeAudits)
       .where(inArray(adminEmailChangeAudits.actorUserId, createdUserIds));
+    // admin_profile_edit_audits also uses ON DELETE RESTRICT (task #376)
+    // so it has to be cleared by both target and actor before the user
+    // rows can go.
+    await db
+      .delete(adminProfileEditAudits)
+      .where(inArray(adminProfileEditAudits.targetUserId, createdUserIds));
+    await db
+      .delete(adminProfileEditAudits)
+      .where(inArray(adminProfileEditAudits.actorUserId, createdUserIds));
     // email_change_requests rows cascade-delete with the user
     await db.delete(users).where(inArray(users.id, createdUserIds));
     createdUserIds.length = 0;
@@ -680,6 +689,188 @@ describe('PATCH /api/account/profile/:id when invoked by a system_admin', () => 
     expect(audit.oldEmailMasked).toContain('*');
     expect(audit.newEmailMasked).toContain('*');
     expect(new Date(audit.createdAt).getTime()).toBeGreaterThanOrEqual(before - 1000);
+  });
+
+  it("writes an admin_profile_edit_audits row when an admin changes another user's name", async () => {
+    // Task #376: name/phone/preferredLanguage edits by an admin must
+    // also be auditable, not just email. The route writes the audit
+    // row in the SAME transaction as the user update so the two
+    // cannot disagree (this test asserts the post-conditions; the
+    // route comment covers the transactional invariant).
+    const { userId } = await createUserAndLogin();
+    const adminSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+
+    const [before] = await db.select().from(users).where(eq(users.id, userId));
+    const newName = `Admin-Renamed ${Date.now()}`;
+
+    const res = await apiPatch<{ name: string }>(
+      `/api/account/profile/${userId}`,
+      { name: newName },
+      adminSession,
+    );
+    expect(res.status).toBe(200);
+    expect(res.data.data?.name).toBe(newName);
+
+    // The DB user row reflects the new name.
+    const [after] = await db.select().from(users).where(eq(users.id, userId));
+    expect(after.name).toBe(newName);
+
+    // Exactly one audit row, scoped to the renamed field.
+    const auditRows = await db
+      .select()
+      .from(adminProfileEditAudits)
+      .where(eq(adminProfileEditAudits.targetUserId, userId));
+    expect(auditRows.length).toBe(1);
+    const audit = auditRows[0];
+    expect(audit.actorUserId).toBe(adminSession.user.id);
+    expect(audit.targetUserId).toBe(userId);
+    expect(audit.field).toBe('name');
+    expect(audit.oldValue).toBe(before.name);
+    expect(audit.newValue).toBe(newName);
+  });
+
+  it("writes an admin_profile_edit_audits row when an admin changes another user's phone (and another when they clear it)", async () => {
+    // Phone has tri-state semantics on the route (omit / null / value);
+    // both setting AND clearing must be audited so support has the full
+    // trail.
+    const { userId } = await createUserAndLogin();
+    const adminSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+
+    // Set a phone number from null → "+15551234567".
+    const newPhone = `+1555${Date.now().toString().slice(-7)}`;
+    const setRes = await apiPatch<{ phone: string | null }>(
+      `/api/account/profile/${userId}`,
+      { phone: newPhone },
+      adminSession,
+    );
+    expect(setRes.status).toBe(200);
+    expect(setRes.data.data?.phone).toBe(newPhone);
+
+    // Clear the phone with an explicit empty string (the route collapses
+    // "" → null per the schema's tri-state contract).
+    const clearRes = await apiPatch<{ phone: string | null }>(
+      `/api/account/profile/${userId}`,
+      { phone: '' },
+      adminSession,
+    );
+    expect(clearRes.status).toBe(200);
+    expect(clearRes.data.data?.phone).toBeNull();
+
+    const auditRows = await db
+      .select()
+      .from(adminProfileEditAudits)
+      .where(eq(adminProfileEditAudits.targetUserId, userId))
+      .orderBy(adminProfileEditAudits.id);
+    expect(auditRows.length).toBe(2);
+
+    expect(auditRows[0].field).toBe('phone');
+    expect(auditRows[0].oldValue).toBeNull();
+    expect(auditRows[0].newValue).toBe(newPhone);
+    expect(auditRows[0].actorUserId).toBe(adminSession.user.id);
+
+    expect(auditRows[1].field).toBe('phone');
+    expect(auditRows[1].oldValue).toBe(newPhone);
+    expect(auditRows[1].newValue).toBeNull();
+    expect(auditRows[1].actorUserId).toBe(adminSession.user.id);
+  });
+
+  it('writes one row per changed field when an admin updates name and phone in the same request', async () => {
+    // The route emits one audit row per changed field (rather than one
+    // packed row per request) so the trail is queryable by field. This
+    // pins that contract.
+    const { userId } = await createUserAndLogin();
+    const adminSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+
+    const newName = `Combo Rename ${Date.now()}`;
+    const newPhone = `+1444${Date.now().toString().slice(-7)}`;
+
+    const res = await apiPatch<{ name: string; phone: string | null }>(
+      `/api/account/profile/${userId}`,
+      { name: newName, phone: newPhone },
+      adminSession,
+    );
+    expect(res.status).toBe(200);
+    expect(res.data.data?.name).toBe(newName);
+    expect(res.data.data?.phone).toBe(newPhone);
+
+    const auditRows = await db
+      .select()
+      .from(adminProfileEditAudits)
+      .where(eq(adminProfileEditAudits.targetUserId, userId));
+    const fields = auditRows.map(r => r.field).sort();
+    expect(fields).toEqual(['name', 'phone']);
+  });
+
+  it('does NOT write a profile-edit audit row when the user edits their OWN name or phone', async () => {
+    // Self-serve edits are intentionally NOT audited — they're already
+    // logged at INFO via storage.updateUser and aren't a triage
+    // concern. Mirrors the asymmetry on admin_email_change_audits.
+    const { userId, session } = await createUserAndLogin();
+
+    const res = await apiPatch<{ name: string }>(
+      `/api/account/profile/${userId}`,
+      { name: `Self Rename ${Date.now()}`, phone: '+15559999999' },
+      session,
+    );
+    expect(res.status).toBe(200);
+
+    const auditRows = await db
+      .select()
+      .from(adminProfileEditAudits)
+      .where(eq(adminProfileEditAudits.targetUserId, userId));
+    expect(auditRows.length).toBe(0);
+  });
+
+  it('does NOT write a profile-edit audit row when an admin submits a name/phone identical to the current value (no-op)', async () => {
+    // Only actual changes get an audit row. A PATCH that submits the
+    // same value the column already holds is a no-op and must not
+    // pollute the audit table.
+    const { userId } = await createUserAndLogin();
+    const adminSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+    const [current] = await db.select().from(users).where(eq(users.id, userId));
+
+    const res = await apiPatch(
+      `/api/account/profile/${userId}`,
+      { name: current.name, phone: current.phone },
+      adminSession,
+    );
+    expect(res.status).toBe(200);
+
+    const auditRows = await db
+      .select()
+      .from(adminProfileEditAudits)
+      .where(eq(adminProfileEditAudits.targetUserId, userId));
+    expect(auditRows.length).toBe(0);
+  });
+
+  it('does NOT write a profile-edit row for the email field — those go to admin_email_change_audits', async () => {
+    // Email changes still flow through the dedicated email-change
+    // audit table (task #325) because they go through a confirmation
+    // step and need different post-write semantics. The profile-edit
+    // table must stay scoped to the synchronous fields only.
+    const { userId } = await createUserAndLogin();
+    const adminSession = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+    const newEmail = uniqEmail('admin-email-only');
+
+    const res = await apiPatch<{ emailChangeRequested: boolean }>(
+      `/api/account/profile/${userId}`,
+      { email: newEmail },
+      adminSession,
+    );
+    expect(res.status).toBe(200);
+    expect(res.data.data?.emailChangeRequested).toBe(true);
+
+    const profileAudit = await db
+      .select()
+      .from(adminProfileEditAudits)
+      .where(eq(adminProfileEditAudits.targetUserId, userId));
+    expect(profileAudit.length).toBe(0);
+
+    const emailAudit = await db
+      .select()
+      .from(adminEmailChangeAudits)
+      .where(eq(adminEmailChangeAudits.targetUserId, userId));
+    expect(emailAudit.length).toBe(1);
   });
 
   it('does NOT write an admin audit row when the user changes their OWN email', async () => {

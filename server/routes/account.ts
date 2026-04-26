@@ -26,6 +26,8 @@ import { randomBytes, createHash } from 'crypto';
 import { db } from '../db';
 import { emailChangeRequests, users, type PaymentSyncStatus } from '@shared/schema';
 import { recordAdminEmailChangeAudit } from '../storage/admin-email-change-audits';
+import { recordAdminProfileEditAudit } from '../storage/admin-profile-edit-audits';
+import { cacheInvalidate } from '../utils/cache';
 import { createSharedRateLimitStore } from '../utils/rate-limit-store';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 
@@ -383,10 +385,94 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       storagePatch.preferredLanguage = updateData.preferredLanguage;
     }
 
-    const updatedUser =
-      Object.keys(storagePatch).length > 0
-        ? await storage.updateUser(userId, storagePatch)
-        : existingUser;
+    // Task #376: when a system_admin edits another user's name, phone,
+    // or preferredLanguage, write one audit row per changed field in
+    // the SAME transaction as the user update so the audit and the
+    // change cannot disagree (mirrors the email-change contract from
+    // task #325). Self-serve edits skip the audit table entirely;
+    // the existing INFO log on `storage.updateUser` already covers
+    // those, and they aren't a triage concern.
+    const adminInitiatedProfileEdit = user.id !== userId;
+    type ProfileFieldChange = {
+      field: 'name' | 'phone' | 'preferred_language';
+      oldValue: string | null;
+      newValue: string | null;
+    };
+    const profileFieldChanges: ProfileFieldChange[] = [];
+    if (adminInitiatedProfileEdit) {
+      if (
+        updateData.name !== undefined &&
+        updateData.name !== existingUser.name
+      ) {
+        profileFieldChanges.push({
+          field: 'name',
+          oldValue: existingUser.name,
+          newValue: updateData.name,
+        });
+      }
+      if (
+        updateData.phone !== undefined &&
+        updateData.phone !== existingUser.phone
+      ) {
+        profileFieldChanges.push({
+          field: 'phone',
+          oldValue: existingUser.phone,
+          newValue: updateData.phone,
+        });
+      }
+      if (
+        updateData.preferredLanguage !== undefined &&
+        updateData.preferredLanguage !== existingUser.preferredLanguage
+      ) {
+        profileFieldChanges.push({
+          field: 'preferred_language',
+          oldValue: existingUser.preferredLanguage,
+          newValue: updateData.preferredLanguage,
+        });
+      }
+    }
+
+    let updatedUser = existingUser;
+    if (Object.keys(storagePatch).length > 0) {
+      if (profileFieldChanges.length > 0) {
+        // Atomic admin-initiated edit: user update + per-field audit
+        // rows in one transaction. The route does the write directly
+        // (rather than via storage.updateUser) so both statements
+        // share the same `tx`. We replicate the cache invalidation
+        // that storage.updateUser would have done.
+        updatedUser = await db.transaction(async (tx) => {
+          const [updated] = await tx
+            .update(users)
+            .set(storagePatch)
+            .where(eq(users.id, userId))
+            .returning();
+          if (!updated) {
+            throw new Error(`Failed to update user with ID ${userId}`);
+          }
+          for (const change of profileFieldChanges) {
+            await recordAdminProfileEditAudit(
+              {
+                actorUserId: user.id,
+                targetUserId: userId,
+                field: change.field,
+                oldValue: change.oldValue,
+                newValue: change.newValue,
+              },
+              tx,
+            );
+          }
+          return updated;
+        });
+        cacheInvalidate(`user:${userId}`);
+        log.info('Admin-initiated profile edit recorded', {
+          actorUserId: user.id,
+          targetUserId: userId,
+          fields: profileFieldChanges.map((c) => c.field),
+        });
+      } else {
+        updatedUser = await storage.updateUser(userId, storagePatch);
+      }
+    }
 
     let paymentSyncStatus: PaymentSyncStatus = 'not_applicable';
 
