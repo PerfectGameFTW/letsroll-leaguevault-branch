@@ -136,6 +136,34 @@ router.post("/", async (req: Request, res) => {
       );
     }
 
+    // Task #454: existence pre-check for the admin-supplied
+    // organizationId. A system_admin may pass any number; a caller's
+    // session orgId is also re-verified here defensively (cheap and
+    // catches the rare case of a stale session pointing at an org that
+    // was archived/deleted between login and this request). Without
+    // this, a typoed/stale id falls through to the
+    // `leagues.organization_id -> organizations.id` foreign key and
+    // surfaces as a generic 500. Mirrors the #422 reference fix in
+    // server/routes/bowlers.ts.
+    const orgRow = await storage.getOrganization(effectiveOrgId);
+    if (!orgRow) {
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
+    }
+
+    // Task #454: same existence guard for the optional admin-supplied
+    // locationId. The schema accepts a number-or-null, so a typoed id
+    // is the only failure mode that bypasses the column nullability.
+    const bodyLocationId = req.body?.locationId;
+    if (typeof bodyLocationId === 'number') {
+      const locationRow = await storage.getLocation(bodyLocationId);
+      if (!locationRow || locationRow.organizationId !== effectiveOrgId) {
+        // Conflate "missing" and "wrong-org" into the same 404 — the
+        // caller has no business stamping a league with a location
+        // belonging to a different tenant either way.
+        return sendError(res, 'Location not found for this organization', 404, 'NOT_FOUND');
+      }
+    }
+
     const league = insertLeagueSchema.parse({
       ...req.body,
       organizationId: effectiveOrgId,
@@ -171,6 +199,40 @@ router.patch("/:id", async (req: Request, res) => {
     // Non-admin users cannot change the organization of a league
     if (req.user?.role !== 'system_admin' && req.body.organizationId !== undefined) {
       return sendError(res, "You don't have permission to change the organization of this league", 403, 'FORBIDDEN');
+    }
+
+    // Task #454: when a system_admin re-stamps the league's owning org,
+    // verify the new org actually exists. Without this, a typoed id
+    // falls through to the `leagues.organization_id -> organizations.id`
+    // FK and surfaces as a generic 500. The non-sysadmin branch above
+    // has already 403'd if the org id is changed at all.
+    const newOrgId =
+      req.user?.role === 'system_admin' && typeof req.body.organizationId === 'number'
+        ? req.body.organizationId
+        : null;
+    if (newOrgId !== null) {
+      const orgRow = await storage.getOrganization(newOrgId);
+      if (!orgRow) {
+        return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
+      }
+    }
+    const effectiveOrgIdForLocation = newOrgId ?? league.organizationId;
+
+    // Task #454: existence + same-tenant guard for an updated locationId.
+    // We treat "missing" and "belongs to another org" the same way as
+    // the POST handler — locations are tenant-scoped, so a stamp
+    // crossing the boundary is meaningless and should not 500.
+    if (req.body.locationId !== undefined && req.body.locationId !== null) {
+      const newLocationId = req.body.locationId;
+      if (typeof newLocationId === 'number') {
+        const locationRow = await storage.getLocation(newLocationId);
+        if (
+          !locationRow ||
+          (effectiveOrgIdForLocation !== null && locationRow.organizationId !== effectiveOrgIdForLocation)
+        ) {
+          return sendError(res, 'Location not found for this organization', 404, 'NOT_FOUND');
+        }
+      }
     }
     
     // Merge incoming fields with existing league data for derivation

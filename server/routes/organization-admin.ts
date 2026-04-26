@@ -235,7 +235,18 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
     if (!organizationId) {
       return sendError(res, 'Organization ID is required', 400, 'bad_request');
     }
-    
+
+    // Task #454: existence pre-check for the admin-supplied
+    // organizationId (system_admin override branch). Without this, a
+    // typoed/stale id falls through to the
+    // `users.organization_id -> organizations.id` foreign key and
+    // surfaces as a generic 500. Mirrors the #422 reference fix in
+    // server/routes/bowlers.ts.
+    const orgRow = await storage.getOrganization(organizationId);
+    if (!orgRow) {
+      return sendError(res, 'Organization not found', 404, 'not_found');
+    }
+
     const user = await storage.getUser(userId);
     if (!user) {
       return sendError(res, 'User not found', 404, 'not_found');
@@ -383,7 +394,25 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
       }
     }
 
-    const updatedUser = await storage.setUserLocation(userId, parseResult.data.locationId);
+    // Task #454: existence + same-tenant guard for the admin-supplied
+    // locationId. A null clears the assignment (no FK to validate). A
+    // numeric id must match an existing location row whose org matches
+    // the target user's org — without this, a typoed/stale id falls
+    // through to the `users.location_id -> locations.id` foreign key
+    // and 500s, and a wrong-tenant id would silently cross the org
+    // boundary.
+    const newLocationId = parseResult.data.locationId;
+    if (newLocationId !== null) {
+      const locationRow = await storage.getLocation(newLocationId);
+      if (
+        !locationRow ||
+        (user.organizationId !== null && locationRow.organizationId !== user.organizationId)
+      ) {
+        return sendError(res, 'Location not found for this user\'s organization', 404, 'not_found');
+      }
+    }
+
+    const updatedUser = await storage.setUserLocation(userId, newLocationId);
     return sendSuccess(res, sanitizeUser(updatedUser));
   } catch (error) {
     log.error('Error updating user location:', error);
@@ -421,6 +450,26 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
 
     if (!organizationId) {
       return sendError(res, 'Organization ID is required', 400, 'bad_request');
+    }
+
+    // Task #454: existence pre-check for the admin-supplied
+    // organizationId. The new user is inserted with this id stamped on
+    // `users.organization_id`; without this guard a typoed id from the
+    // sysadmin override branch falls through to the FK constraint and
+    // 500s. Mirrors server/routes/bowlers.ts (#422).
+    const orgRow = await storage.getOrganization(organizationId);
+    if (!orgRow) {
+      return sendError(res, 'Organization not found', 404, 'not_found');
+    }
+
+    // Task #454: same existence + same-tenant guard for the optional
+    // admin-supplied locationId. Locations are tenant-scoped, so a
+    // cross-tenant stamp is meaningless either way.
+    if (locationId !== null && locationId !== undefined) {
+      const locationRow = await storage.getLocation(locationId);
+      if (!locationRow || locationRow.organizationId !== organizationId) {
+        return sendError(res, 'Location not found for this organization', 404, 'not_found');
+      }
     }
 
     const existingUser = await storage.getUserByEmail(email);

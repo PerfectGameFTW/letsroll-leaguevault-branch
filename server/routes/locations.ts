@@ -72,6 +72,18 @@ router.post('/', async (req: Request, res) => {
       return sendError(res, 'Cannot create location for another organization', 403, 'Forbidden');
     }
 
+    // Task #454: existence pre-check for the admin-supplied
+    // organizationId (system_admin can target any org via body;
+    // org_admin is pinned to their own session org by the guard above).
+    // Without this, a typoed/stale id falls through to the
+    // `locations.organization_id -> organizations.id` foreign key and
+    // surfaces as a generic 500. Mirrors the #422 reference fix in
+    // server/routes/bowlers.ts.
+    const orgRow = await storage.getOrganization(validatedData.organizationId);
+    if (!orgRow) {
+      return sendError(res, 'Organization not found', 404, 'NotFound');
+    }
+
     const location = await storage.createLocation(validatedData);
     sendSuccess(res, sanitizeLocation(location), 201);
   } catch (error) {

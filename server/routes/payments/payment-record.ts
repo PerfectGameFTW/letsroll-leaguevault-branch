@@ -41,6 +41,20 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
       return sendError(res, "You don't have access to create payments for this league", 403, 'FORBIDDEN');
     }
 
+    // Task #454: existence pre-check for the admin-supplied bowlerId.
+    // Without this, a typoed or stale bowler id falls through to the
+    // `payments.bowler_id -> bowlers.id` foreign-key constraint and
+    // surfaces as a generic 500. The cross-org dimension is implicitly
+    // covered: a bowler outside the league's org would still pass the
+    // existence check here, but `requireOrganizationAccess` above has
+    // already gated the *league*; the route only inserts payments for
+    // a league the caller owns. The new check is purely the typo /
+    // stale-id net mirroring the bowlers.ts (#422) reference fix.
+    const targetBowler = await storage.getBowler(payment.bowlerId);
+    if (!targetBowler) {
+      return sendError(res, "Bowler not found", 404, 'NOT_FOUND');
+    }
+
     if (payment.idempotencyKey) {
       const existing = await storage.getPaymentByIdempotencyKey(payment.idempotencyKey);
       if (existing && existing.leagueId === payment.leagueId) {
