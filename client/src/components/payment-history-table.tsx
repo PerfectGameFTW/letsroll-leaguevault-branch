@@ -100,9 +100,12 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
                   </TableCell>
                   <TableCell>
                     <ViewReceiptButton payment={payment} />
+                    {/* Task #503 (7th-pass review): match ViewReceiptButton provenance —
+                        Square rows always qualify; legacy credit_card rows only when
+                        receiptUrl is already cached. */}
                     {isAdmin
                       && payment.status === 'paid'
-                      && (payment.type === 'square' || payment.type === 'credit_card') && (
+                      && (payment.type === 'square' || (payment.type === 'credit_card' && !!payment.receiptUrl)) && (
                       <Button
                         size="icon"
                         variant="ghost"

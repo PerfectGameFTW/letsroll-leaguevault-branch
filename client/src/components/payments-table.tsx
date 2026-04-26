@@ -77,9 +77,14 @@ export function PaymentsTable({
               // Square hosted-receipt actions only make sense for paid
               // Square charges. CardPointe never emits hosted receipts;
               // refunded rows would just resend the original charge.
+              // Task #503 (7th-pass review): match ViewReceiptButton
+              // provenance — Square rows always qualify; legacy
+              // credit_card rows only qualify when receiptUrl is
+              // already cached (proof Square emitted it). Hides the
+              // resend action for legacy CardPointe credit_card rows.
               const canResend = isAdmin
                 && payment.status === 'paid'
-                && (payment.type === 'square' || payment.type === 'credit_card');
+                && (payment.type === 'square' || (payment.type === 'credit_card' && !!payment.receiptUrl));
               return (
                 <TableRow key={payment.id}>
                   <TableCell>{bowler?.name || "Unknown Bowler"}</TableCell>
