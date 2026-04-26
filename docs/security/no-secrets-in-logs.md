@@ -52,6 +52,86 @@ deliberately small and easy to review.
 | Forgot password | `server/routes/auth.ts` (`POST /api/auth/forgot-password`) | success path (issued token must not be logged), background email failure (catch path), missing email | [`tests/unit/auth-no-token-leak.test.ts`](../../tests/unit/auth-no-token-leak.test.ts) |
 | Confirm email change | `server/routes/account.ts` (`POST /api/account/confirm-email-change`) | empty body, `kind=invalid`, `kind=consumed`, `kind=expired`, `kind=user_gone`, transaction throw (catch path) | [`tests/unit/confirm-email-change-no-token-leak.test.ts`](../../tests/unit/confirm-email-change-no-token-leak.test.ts) |
 
+## Project-wide CI guard
+
+The per-surface tests above are precise but only cover the auth
+surfaces listed in the audit table. A new route added next quarter
+that logs `req.body.password`, `req.body.token`, or
+`req.headers['x-csrf-token']` would slip past until someone wrote a
+new per-surface test for it.
+
+`scripts/check-no-secrets-in-logs.ts` (added in task #432) is the
+project-wide forcing function for that gap. It parses every `.ts`
+file under `server/` (excluding `*.test.ts` and `__tests__/`) with
+the TypeScript compiler API and walks each call to a known log
+method:
+
+  log.<level>(...)         logger.<level>(...)         console.<level>(...)
+  log?.<level>(...)        logger?.<level>(...)        console?.<level>(...)
+  log['<level>'](...)      logger['<level>'](...)      console['<level>'](...)
+
+where `<level>` ∈ {`debug`, `info`, `warn`, `error`, `trace`,
+`fatal`, `log`}.
+
+Inside each argument subtree it flags as a leak any of:
+
+- PropertyAccessExpression whose property name (case-insensitive) is
+  `password`, `token`, `inviteToken`, `setupSecret`, `csrfToken`, or
+  `resetToken` — catches `req.body.password`, `result.token`,
+  `user.inviteToken`, etc.
+- ElementAccessExpression with a string literal of `'x-csrf-token'`
+  or `'x-setup-secret'` (case-insensitive) — catches
+  `req.headers['x-csrf-token']` and `req.headers['x-setup-secret']`,
+  plus the computed-string equivalent of property access
+  (`req.body['password']`).
+- Bare Identifier with text `inviteToken`, `setupSecret`,
+  `csrfToken`, or `resetToken` — every variable named `csrfToken`
+  in this codebase IS the secret. Flagged in any value-reference
+  position, including as a property-access receiver
+  (`csrfToken.length`).
+- Bare Identifier `token` — flagged ONLY in value-reference
+  positions where it stands alone (a direct argument, a template
+  interpolation `${token}`, or a shorthand property `{ token }` —
+  the realistic blind-spot shape from `const { token } = req.body;
+  log.info({ token })`). It is NOT flagged when it is the
+  receiver of a further property access (`token.id`, `token.kind`)
+  because those commonly reference benign metadata on
+  payment-token / api-token objects where the secret bytes live in
+  a different field. The property-access check above still catches
+  `req.body.token` and `result.token` directly, so the dangerous
+  shapes are not blind spots.
+
+The scanner deliberately does NOT scan string-literal text or
+template head/middle/tail text, so a structural label like
+`log.warn('csrfToken missing')` is not a false positive. Only value
+references (expression nodes) count.
+
+The CI forcing function is `tests/unit/check-no-secrets-in-logs.test.ts`,
+which spawns the script in `--strict` mode against the real
+`server/` tree and asserts exit 0 — the same wiring as the sibling
+`check-log-debug-pii` guard. The locked `package.json` means we
+cannot add a dedicated `npm run check:no-secrets-in-logs` shortcut;
+running `npm test` is the gate.
+
+### Allowed exceptions
+
+A call site can opt out with an inline comment
+
+  // secret-log-ok: <reason>
+
+or the block-form `/* secret-log-ok: <reason> */`. The reason must
+contain at least one alphanumeric character — auditability over
+silence. Typical legitimate uses are structural-label edge cases
+the scanner can't statically distinguish, e.g. an interior comment
+inside a multi-line call that documents why one of the printed
+keys is safe.
+
+The current allowed-exception list is **empty**. If you add a
+suppression, append a row here:
+
+| File | Line | Reason | Reviewer |
+| --- | --- | --- | --- |
+
 ## Adding a new auth surface
 
 1. Mock the logger at the top of the test file via a `vi.mock`
