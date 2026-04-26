@@ -118,6 +118,26 @@ jobs:
       - name: Cross-org isolation coverage
         run: npm run check:org-isolation
 
+      # `tsx scripts/check-wire-sanitization.ts` (task #382). Loads the
+      # same TypeScript program `npm run check` uses, walks every
+      # `sendSuccess` / `sendPaginatedSuccess` / `res.json` /
+      # `res.status(...).json` call site under `server/`, and fails if
+      # any data argument is structurally assignable to `User` or
+      # `Organization` (or `User[]` / `Organization[]`). The
+      # `sanitizeUser` / `sanitizeOrg` allowlist projections from
+      # `server/utils/api.ts` produce `SanitizedUser` /
+      # `SanitizedOrganization` (`Pick<User, …>` / `Pick<Organization, …>`
+      # with sensitive columns dropped), which are NOT assignable to
+      # the full row types — so the canonical wrap stays green and any
+      # new route that hands a raw row to a response helper fails
+      # this step. Contract and limitations are documented in
+      # `docs/lint.md` alongside the existing escape-hatch gates.
+      # The guard's own behavior is pinned by
+      # `tests/unit/check-wire-sanitization.test.ts`, which runs in
+      # the sibling Tests job below.
+      - name: Wire sanitization (raw User/Organization)
+        run: tsx scripts/check-wire-sanitization.ts
+
   # Sibling job that runs the full vitest suite (`npm test`) on every PR
   # and push to `main`. Task #442 wired this in: before this job
   # existed, the test suite was the safety net the project was leaning
