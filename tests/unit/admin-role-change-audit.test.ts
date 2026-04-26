@@ -310,6 +310,101 @@ describe('PATCH /api/organization-admin/users/:id/admin-status — persistent au
     expect(mockUpdateUserRole).not.toHaveBeenCalled();
   });
 
+  // Task #462: an admin cannot change their OWN admin status through
+  // this endpoint. The route blocks self-modification with a 403 (the
+  // same shape as the self-reset block on the admin-driven
+  // password-reset endpoint), so a self-demotion can never silently
+  // (a) flip the caller's role, (b) write an audit row, or (c) lock
+  // the caller out of the user-management screen on the next page
+  // load. Product decision captured here so it cannot regress: any
+  // future "yes I really want to lose my admin powers" flow has to be
+  // a NEW endpoint with its own explicit confirmation step, not a
+  // silent loosening of this guard.
+  describe('self-modification guard (task #462)', () => {
+    it('returns 403 and writes nothing when an org_admin tries to demote themselves', async () => {
+      // The acting user IS the target — same id. The route fetches
+      // the target via getUser(id), so we hand back a row whose id
+      // matches the caller's id.
+      mockGetUser.mockResolvedValueOnce({
+        ...TARGET_USER_ORGADMIN,
+        id: ACTING_ORG_ADMIN.id,
+        organizationId: ACTING_ORG_ADMIN.organizationId,
+      });
+      const res = await patchAdminStatus(ACTING_ORG_ADMIN.id, { makeOrgAdmin: false });
+      expect(res.status).toBe(403);
+
+      // Nothing got written — no role flip, no audit row, no
+      // transaction even opened. If any of these tripped, the caller
+      // would either lose admin access mid-request or leave a
+      // misleading audit row behind.
+      expect(mockUpdateUserRole).not.toHaveBeenCalled();
+      expect(mockRecordAdminRoleChangeAudit).not.toHaveBeenCalled();
+      expect(mockTransaction).not.toHaveBeenCalled();
+
+      // The error message must steer the caller toward the supported
+      // path (another admin / ownership transfer) so they don't think
+      // the feature is broken. sendError() shape is
+      // `{ success: false, error: { code, message } }`.
+      const body = (await res.json()) as { error?: { code?: string; message?: string } };
+      expect(body.error?.message ?? '').toMatch(/own admin status/i);
+
+      // The self-guard must run BEFORE the last-admin guard — even
+      // when there are plenty of remaining admins (so the
+      // last-admin guard would NOT have fired anyway), self-demotion
+      // is still rejected. This proves the block is a self-action
+      // policy, not an accidental side effect of the count check.
+      expect(mockCountOrgAdmins).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 and writes nothing when an org_admin tries to "promote" themselves', async () => {
+      // No-op in practice (the caller is already an org_admin), but
+      // the guard must still fire so the policy is direction-agnostic
+      // and consistent with the password-reset self-action block.
+      mockGetUser.mockResolvedValueOnce({
+        ...TARGET_USER_ORGADMIN,
+        id: ACTING_ORG_ADMIN.id,
+        organizationId: ACTING_ORG_ADMIN.organizationId,
+      });
+      const res = await patchAdminStatus(ACTING_ORG_ADMIN.id, { makeOrgAdmin: true });
+      expect(res.status).toBe(403);
+
+      expect(mockUpdateUserRole).not.toHaveBeenCalled();
+      expect(mockRecordAdminRoleChangeAudit).not.toHaveBeenCalled();
+      expect(mockTransaction).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 and writes nothing when a system_admin tries to demote themselves', async () => {
+      // A system_admin acting on their own row goes through the same
+      // guard. They are not subject to the org_admin cross-org check,
+      // so without the self-guard a system_admin could quietly
+      // self-demote and write a misleading audit row. The guard
+      // catches it before any of that happens.
+      const sysadminCaller = {
+        id: 9000,
+        email: 'sysadmin@vitest.local',
+        name: 'Sys Admin',
+        role: 'system_admin',
+        organizationId: null,
+      } as unknown as typeof ACTING_ORG_ADMIN;
+      actingUser = sysadminCaller;
+      try {
+        mockGetUser.mockResolvedValueOnce({
+          ...TARGET_USER_REGULAR,
+          id: sysadminCaller.id,
+          role: 'system_admin',
+          organizationId: null,
+        });
+        const res = await patchAdminStatus(sysadminCaller.id, { makeOrgAdmin: false });
+        expect(res.status).toBe(403);
+        expect(mockUpdateUserRole).not.toHaveBeenCalled();
+        expect(mockRecordAdminRoleChangeAudit).not.toHaveBeenCalled();
+        expect(mockTransaction).not.toHaveBeenCalled();
+      } finally {
+        actingUser = ACTING_ORG_ADMIN;
+      }
+    });
+  });
+
   it('does NOT write an audit row when the last-org-admin guard fires', async () => {
     mockGetUser.mockResolvedValueOnce({ ...TARGET_USER_ORGADMIN });
     // Only one org admin remaining — demotion must be blocked.

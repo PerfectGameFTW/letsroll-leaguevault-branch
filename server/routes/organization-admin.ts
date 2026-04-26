@@ -148,7 +148,31 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
     if (!user) {
       return sendError(res, 'User not found', 404, 'not_found');
     }
-    
+
+    // Task #462: an admin cannot change their OWN admin status through
+    // this endpoint. Without this guard a self-demotion silently flips
+    // the role, writes an audit row, and locks the caller out of the
+    // user-management screen on their next page load — leaving the org
+    // potentially without an admin for a window even when the
+    // last-admin guard further down would otherwise have caught it.
+    // Mirrors the same self-action block on the admin-driven password
+    // reset endpoint a few hundred lines down (search for "Use
+    // change-password to rotate your own password"), so the policy is
+    // consistent across all admin-on-self mutations: ask another
+    // admin to do it, or transfer ownership first. The client also
+    // disables the role toggle for the current user
+    // (client/src/components/users-table.tsx), but this server-side
+    // check is the source of truth — a future client refactor or a
+    // direct API call cannot bypass it.
+    if (user.id === req.user!.id) {
+      return sendError(
+        res,
+        'You cannot change your own admin status. Ask another administrator to do it, or transfer ownership first.',
+        403,
+        'forbidden',
+      );
+    }
+
     if (req.user!.role === 'org_admin') {
       if (user.role === 'system_admin') {
         return sendError(res, 'Organization admins cannot modify system admin accounts', 403, 'forbidden');
