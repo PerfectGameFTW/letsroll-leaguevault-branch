@@ -8,6 +8,7 @@ import {
   providerNotConfiguredToast,
   makeApiError,
 } from "@/lib/provider-not-configured";
+import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 import type { InsertPayment } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
 import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
@@ -156,7 +157,11 @@ export function usePaymentFormSubmit({
         toast(props);
         return;
       }
-      const errorMessage = error instanceof Error ? error.message : "Failed to process payment";
+      // task #514: route every payment-failure message through a
+      // single sanitizer so JSON-shaped or multi-line strings never
+      // leak into the toast even if a new code path forgets to map
+      // them to a friendly sentence.
+      const errorMessage = sanitizePaymentErrorMessage(error, "Failed to process payment");
       setPaymentError(errorMessage);
       toast({
         title: "Error",

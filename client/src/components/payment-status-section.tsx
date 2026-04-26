@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import { csrfFetch, queryClient } from '@/lib/queryClient';
 import { calculateFinancials } from "@/lib/financial-utils";
+import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 import type { League, Bowler, Payment, SavedCard } from "@shared/schema";
 import { PaymentOverviewCard } from "@/components/payment-overview-card";
 import { PaymentSetupForm } from "@/components/payment-setup-form";
@@ -180,7 +181,11 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
       queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`, league.id] });
       setShowPaymentSetup(false);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Payment could not be processed';
+      // task #514: route the wallet-payment failure path through the
+      // same sanitizer so a JSON-shaped or multi-line message never
+      // makes it into the toast, even if a future backend change
+      // forgets the typed PaymentProviderError contract.
+      const message = sanitizePaymentErrorMessage(err, 'Payment could not be processed');
       toast({ title: "Payment Failed", description: message, variant: "destructive" });
     } finally {
       setIsSubmitting(false);

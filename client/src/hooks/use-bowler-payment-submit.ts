@@ -9,6 +9,7 @@ import {
   providerNotConfiguredToast,
   makeApiError,
 } from "@/lib/provider-not-configured";
+import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 import type { League, Bowler } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
 import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
@@ -264,17 +265,15 @@ export function useBowlerPaymentSubmit({
         }));
         return;
       }
-      let errorMessage = "Unable to process payment. Please try again.";
-      if (typeof error === 'string') {
-        errorMessage = error;
-      } else if (error instanceof Error) {
-        try {
-          const parsed = JSON.parse(error.message);
-          errorMessage = parsed.error?.message || error.message;
-        } catch {
-          errorMessage = error.message;
-        }
-      }
+      // task #514: the backend (and `client/src/lib/square.ts`) no
+      // longer return JSON-shaped `error.message` strings, so the
+      // previous `JSON.parse(error.message)` branch is gone. The
+      // shared sanitizer is the single source of truth for what a
+      // payment-failure toast actually shows the user.
+      const errorMessage = sanitizePaymentErrorMessage(
+        error,
+        "Unable to process payment. Please try again.",
+      );
       toast({ title: "Payment Failed", description: errorMessage, variant: "destructive" });
     } finally {
       setIsSubmitting(false);

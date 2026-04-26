@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { storage } from '../storage';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
-import { ProviderNotConfiguredError } from './payment-provider-factory';
+import { ProviderNotConfiguredError, PaymentProviderError } from './payment-provider-factory';
 import {
   ensureDefinitions,
   upsertCustomerStringAttribute,
@@ -90,21 +90,17 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
 
     try {
       if (!sourceId || !amount) {
-        throw new Error(JSON.stringify({
-          error: {
-            message: 'Missing required payment information',
-            code: "INVALID_REQUEST"
-          }
-        }));
+        throw new PaymentProviderError(
+          'Missing required payment information',
+          'INVALID_REQUEST',
+        );
       }
 
       if (amount <= 0 || !Number.isInteger(amount)) {
-        throw new Error(JSON.stringify({
-          error: {
-            message: 'Invalid payment amount',
-            code: "INVALID_AMOUNT"
-          }
-        }));
+        throw new PaymentProviderError(
+          'Invalid payment amount',
+          'INVALID_AMOUNT',
+        );
       }
 
       const paymentRequest: CreatePaymentRequest = {
@@ -128,12 +124,10 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       const response = await client.paymentsApi.createPayment(paymentRequest);
 
       if (!response?.result?.payment) {
-        throw new Error(JSON.stringify({
-          error: {
-            message: 'Unable to process payment',
-            code: "INVALID_RESPONSE"
-          }
-        }));
+        throw new PaymentProviderError(
+          'Unable to process payment',
+          'INVALID_RESPONSE',
+        );
       }
 
       const payment = response.result.payment;
@@ -153,39 +147,52 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         receiptNumber: payment.receiptNumber,
       };
     } catch (error) {
-      if ((error as ApiError)?.statusCode === 400) {
-        throw new Error(JSON.stringify({
-          error: {
-            message: 'Invalid payment information. Please check your card details.',
-            code: "INVALID_REQUEST"
-          }
-        }));
+      // PaymentProviderError throws above (or ProviderNotConfiguredError
+      // from getSquareClient) are already user-safe — re-throw them
+      // verbatim so the route's catch sees the original code/message
+      // rather than the generic PAYMENT_FAILED below.
+      if (
+        error instanceof PaymentProviderError ||
+        error instanceof ProviderNotConfiguredError
+      ) {
+        throw error;
       }
-
-      if ((error as ApiError)?.statusCode === 401) {
-        throw new Error(JSON.stringify({
-          error: {
-            message: 'Payment system is temporarily unavailable. Please try again later.',
-            code: "SYSTEM_ERROR"
-          }
-        }));
+      const apiErr = error as ApiError;
+      // Square sometimes attaches a parsed body with structured errors
+      // on the ApiError instance — capture the first `detail` for our
+      // server-side logs only. Never forwarded to the user.
+      const detail = (() => {
+        const result = (apiErr as ApiError & {
+          result?: { errors?: Array<{ detail?: string }> };
+        })?.result;
+        return result?.errors?.[0]?.detail;
+      })();
+      if (apiErr?.statusCode === 400) {
+        throw new PaymentProviderError(
+          'Invalid payment information. Please check your card details.',
+          'INVALID_REQUEST',
+          detail,
+        );
       }
-
-      if ((error as ApiError)?.statusCode === 402) {
-        throw new Error(JSON.stringify({
-          error: {
-            message: 'Your payment was declined. Please try a different card.',
-            code: "PAYMENT_DECLINED"
-          }
-        }));
+      if (apiErr?.statusCode === 401) {
+        throw new PaymentProviderError(
+          'Payment system is temporarily unavailable. Please try again later.',
+          'SYSTEM_ERROR',
+          detail,
+        );
       }
-
-      throw new Error(JSON.stringify({
-        error: {
-          message: 'Unable to process your payment. Please try again later.',
-          code: "PAYMENT_FAILED"
-        }
-      }));
+      if (apiErr?.statusCode === 402) {
+        throw new PaymentProviderError(
+          'Your payment was declined. Please try a different card.',
+          'PAYMENT_DECLINED',
+          detail,
+        );
+      }
+      throw new PaymentProviderError(
+        'Unable to process your payment. Please try again later.',
+        'PAYMENT_FAILED',
+        detail,
+      );
     }
   }
 
@@ -212,9 +219,10 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
     }
 
     if (!squareLocationId) {
-      throw new Error(JSON.stringify({
-        error: { message: "Square location not configured for this location", code: "CONFIGURATION_ERROR" }
-      }));
+      throw new PaymentProviderError(
+        'Square location not configured for this location',
+        'CONFIGURATION_ERROR',
+      );
     }
 
     try {
@@ -257,9 +265,10 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       const paymentResponse = await client.paymentsApi.createPayment(paymentRequest);
 
       if (!paymentResponse?.result?.payment) {
-        throw new Error(JSON.stringify({
-          error: { message: 'Unable to process payment', code: "INVALID_RESPONSE" }
-        }));
+        throw new PaymentProviderError(
+          'Unable to process payment',
+          'INVALID_RESPONSE',
+        );
       }
 
       const payment = paymentResponse.result.payment;
@@ -279,25 +288,43 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
       };
     } catch (error) {
       log.error('Order+Payment error:', error);
-      if (error instanceof Error && error.message.startsWith('{')) {
+      // Re-throw already-typed errors verbatim so the route's catch
+      // sees the original `userMessage`/`code` we set above (or the
+      // PNCE from getSquareClient/getSquareLocationId).
+      if (
+        error instanceof PaymentProviderError ||
+        error instanceof ProviderNotConfiguredError
+      ) {
         throw error;
       }
       const apiErr = error as ApiError;
+      const detail = (() => {
+        const result = (apiErr as ApiError & {
+          result?: { errors?: Array<{ detail?: string }> };
+        })?.result;
+        return result?.errors?.[0]?.detail;
+      })();
       if (apiErr?.statusCode === 402) {
-        throw new Error(JSON.stringify({
-          error: { message: 'Your payment was declined. Please try a different card.', code: 'PAYMENT_DECLINED' }
-        }));
+        throw new PaymentProviderError(
+          'Your payment was declined. Please try a different card.',
+          'PAYMENT_DECLINED',
+          detail,
+        );
       }
       if (apiErr?.statusCode === 400) {
-        const result = apiErr?.result as { errors?: { detail?: string }[] } | undefined;
-        const detail = result?.errors?.[0]?.detail;
-        throw new Error(JSON.stringify({
-          error: { message: 'Payment could not be processed. Please check your details and try again.', code: 'INVALID_REQUEST', detail }
-        }));
+        // Raw `detail` is captured for logs only — the user gets the
+        // hand-authored sentence regardless of what Square returned.
+        throw new PaymentProviderError(
+          'Payment could not be processed. Please check your details and try again.',
+          'INVALID_REQUEST',
+          detail,
+        );
       }
-      throw new Error(JSON.stringify({
-        error: { message: 'Payment processing failed. Please try again.', code: 'PAYMENT_FAILED' }
-      }));
+      throw new PaymentProviderError(
+        'Payment processing failed. Please try again.',
+        'PAYMENT_FAILED',
+        detail,
+      );
     }
   }
 

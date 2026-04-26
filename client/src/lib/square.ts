@@ -283,11 +283,19 @@ export async function initializeSquare(locationId?: number | null): Promise<Squa
   }
 }
 
+// task #514: tokenizeCard now throws plain Errors with `.code`
+// attached. The previous JSON-stringified message round-trip leaked
+// `{"error":{"message":...}}` into the user-visible toast whenever
+// the consumer's parse-back step missed.
+function makePaymentError(message: string, code: string): Error & { code: string } {
+  const err = new Error(message) as Error & { code: string };
+  err.code = code;
+  return err;
+}
+
 export async function tokenizeCard(cardInstance: SquareCard | CardPointeCard): Promise<string> {
   if (!cardInstance) {
-    throw new Error(JSON.stringify({
-      error: { message: 'Card element not initialized', code: 'INITIALIZATION_ERROR' }
-    }));
+    throw makePaymentError('Card element not initialized', 'INITIALIZATION_ERROR');
   }
   const result = await cardInstance.tokenize();
   if ('status' in result) {
@@ -297,29 +305,34 @@ export async function tokenizeCard(cardInstance: SquareCard | CardPointeCard): P
   } else if (result.token) {
     return result.token;
   }
-  throw new Error(JSON.stringify({
-    error: { message: 'Please check your card details and try again.', code: 'TOKENIZATION_ERROR' }
-  }));
+  throw makePaymentError('Please check your card details and try again.', 'TOKENIZATION_ERROR');
+}
+
+// task #514: text-cleanup applied to upstream messages so any
+// developer-only Square jargon (e.g. "Square API Error:" prefix or a
+// raw location ID) never reaches the user. Returns the cleaned
+// sentence ready for direct display.
+function cleanPaymentMessage(message: string): string {
+  return message
+    .replace(/Square API Error:/i, 'Payment Error:')
+    .replace(/location_id=/i, 'location ')
+    .replace(/\bLY5C3TE48WEXX\b/, 'configuration');
 }
 
 export async function createPayment(amount: number, cardInstance: SquareCardHook | CardPointeCard, bowlerId: number, leagueId: number, storeCard: boolean = false, buyerEmail?: string): Promise<PaymentResult> {
   try {
     if (!cardInstance) {
-      throw new Error(JSON.stringify({
-        error: {
-          message: "Please complete the card details before proceeding",
-          code: "INITIALIZATION_ERROR"
-        }
-      }));
+      throw makePaymentError(
+        'Please complete the card details before proceeding',
+        'INITIALIZATION_ERROR',
+      );
     }
 
     if (amount <= 0 || !Number.isInteger(amount)) {
-      throw new Error(JSON.stringify({
-        error: {
-          message: "Invalid payment amount. Please enter a valid amount.",
-          code: "INVALID_AMOUNT"
-        }
-      }));
+      throw makePaymentError(
+        'Invalid payment amount. Please enter a valid amount.',
+        'INVALID_AMOUNT',
+      );
     }
 
     let result;
@@ -351,9 +364,10 @@ export async function createPayment(amount: number, cardInstance: SquareCardHook
           try {
             result = await cardInstance.tokenize({ cardOnFile: true });
           } catch {
-            throw new Error(JSON.stringify({
-              error: { message: 'Please check your card details and try again.', code: 'TOKENIZATION_ERROR' }
-            }));
+            throw makePaymentError(
+              'Please check your card details and try again.',
+              'TOKENIZATION_ERROR',
+            );
           }
         } else {
           throw secondTokenError;
@@ -383,75 +397,53 @@ export async function createPayment(amount: number, cardInstance: SquareCardHook
 
       if (!response.ok) {
         const errorMessage = responseData.error?.message || 'Payment processing failed';
-        const code = responseData.error?.code || "PAYMENT_FAILED";
-        // Keep the JSON-encoded message for legacy callers that
-        // re-parse it, but ALSO attach `.code` directly so
-        // `isProviderNotConfiguredError` detects PROVIDER_NOT_CONFIGURED
-        // without needing the wrapper layer.
-        const err = new Error(JSON.stringify({
-          error: {
-            message: errorMessage.replace(/Square API Error:/i, 'Payment Error:'),
-            code,
-          }
-        })) as Error & { code?: string; status?: number };
+        const code = responseData.error?.code || 'PAYMENT_FAILED';
+        // task #514: throw a plain Error with the already-friendly
+        // backend message attached as `.message`, plus structured
+        // `.code` and `.status` so consumers can branch on the code
+        // (notably PROVIDER_NOT_CONFIGURED) without parsing JSON.
+        const err = new Error(cleanPaymentMessage(errorMessage)) as Error & {
+          code?: string;
+          status?: number;
+        };
         err.code = code;
         err.status = response.status;
         throw err;
       }
 
       if (!responseData.status || responseData.status !== 'COMPLETED') {
-        throw new Error(JSON.stringify({
-          error: {
-            message: "We couldn't complete your payment. Please try again.",
-            code: "PAYMENT_INCOMPLETE"
-          }
-        }));
+        throw makePaymentError(
+          "We couldn't complete your payment. Please try again.",
+          'PAYMENT_INCOMPLETE',
+        );
       }
 
       return responseData;
     } else {
-      const errors = ('errors' in result && result.errors) ? result.errors : [];
-      const errorMessage = errors.map((e: { message: string }) => e.message).join(', ') || 'Card validation failed';
-      throw new Error(JSON.stringify({
-        error: {
-          message: "Please check your card details and try again.",
-          code: "TOKENIZATION_ERROR"
-        }
-      }));
+      throw makePaymentError(
+        'Please check your card details and try again.',
+        'TOKENIZATION_ERROR',
+      );
     }
   } catch (error) {
-    if (error instanceof Error && error.message.startsWith('{')) {
-      let parsedError: { error?: { message?: string; code?: string } } | null = null;
-      try {
-        parsedError = JSON.parse(error.message);
-      } catch {
-        parsedError = null;
-      }
-      if (parsedError) {
-        if (parsedError.error?.message) {
-          parsedError.error.message = parsedError.error.message
-            .replace(/Square API Error:/i, 'Payment Error:')
-            .replace(/location_id=/i, 'location ')
-            .replace(/\bLY5C3TE48WEXX\b/, 'configuration');
-        }
-        const wrapped = new Error(JSON.stringify(parsedError)) as Error & { code?: string; status?: number };
-        // Preserve the structured `.code` (notably PROVIDER_NOT_CONFIGURED)
-        // so consumers can branch on it without re-parsing the message.
-        const originalCode = (error as Error & { code?: string }).code ?? parsedError.error?.code;
-        if (originalCode) wrapped.code = originalCode;
-        const originalStatus = (error as Error & { status?: number }).status;
-        if (originalStatus) wrapped.status = originalStatus;
-        throw wrapped;
-      }
+    // task #514: re-throw any already-typed payment error verbatim so
+    // its `.code` (esp. PROVIDER_NOT_CONFIGURED) and friendly message
+    // survive. Anything else gets the generic "try again" sentence so
+    // raw network/SDK errors don't leak to the toast.
+    if (error instanceof Error && (error as Error & { code?: string }).code) {
       throw error;
     }
-
-    throw new Error(JSON.stringify({
-      error: {
-        message: 'Unable to process payment. Please try again later.',
-        code: "PAYMENT_FAILED"
-      }
-    }));
+    if (error instanceof Error && error.message) {
+      const wrapped = new Error(cleanPaymentMessage(error.message)) as Error & {
+        code?: string;
+      };
+      wrapped.code = 'PAYMENT_FAILED';
+      throw wrapped;
+    }
+    throw makePaymentError(
+      'Unable to process payment. Please try again later.',
+      'PAYMENT_FAILED',
+    );
   }
 }
 

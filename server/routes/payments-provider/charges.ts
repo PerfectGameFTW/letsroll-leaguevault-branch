@@ -13,7 +13,13 @@ import { sendError } from '../../utils/api.js';
 import { hasAccessToLeague, hasAccessToBowler } from '../../utils/access-control.js';
 import { paymentLimiter } from '../../middleware/rate-limit.js';
 import { createLogger } from '../../logger';
-import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
+import {
+  getPaymentProvider,
+  ProviderNotConfiguredError,
+  PaymentProviderError,
+  sanitizePaymentUserMessage,
+  GENERIC_PAYMENT_USER_MESSAGE,
+} from '../../services/payment-provider-factory';
 import { computePaymentSplit, buildLineItems } from '../../services/payment-execution';
 import { getProviderCustomerId, persistCardpointeProfile } from '../../services/payment-utils';
 import { providerNameToPaymentType } from '@shared/schema/constants';
@@ -334,6 +340,11 @@ router.post('/payments', paymentLimiter, async (req, res) => {
     if (error instanceof ProviderNotConfiguredError) {
       return sendError(res, 'Payment system is not configured for this location', 422, 'PROVIDER_NOT_CONFIGURED');
     }
+    // Always log the full technical detail server-side, regardless of
+    // which user-facing branch we take below. Includes the typed
+    // `detail` (Square's raw `errors[0].detail`) when present, plus
+    // any structured `errors[]` fields we can pull off a raw ApiError
+    // that escaped the provider's own catch.
     const errDetail = error instanceof Error ? {
       name: error.name,
       message: error.message,
@@ -346,17 +357,32 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       const found = e.errors ?? e.body?.errors;
       return Array.isArray(found) ? (found as ProviderErrorDetail[]) : undefined;
     })();
-    log.error('Payment processing error:', { error: errDetail, providerErrors });
-    let userMessage = 'Payment processing failed. Please try again.';
-    if (providerErrors?.[0]?.detail) {
-      userMessage = providerErrors[0].detail;
-    } else if (error instanceof Error && error.message.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(error.message);
-        userMessage = parsed.error?.message || userMessage;
-      } catch {}
+    log.error('Payment processing error:', {
+      error: errDetail,
+      providerErrors,
+      typedDetail: error instanceof PaymentProviderError ? error.detail : undefined,
+    });
+
+    // task #514: only the typed `userMessage` is allowed through to
+    // the client — Square's raw `providerErrors[0].detail` is NOT
+    // forwarded as a user message anymore (it can contain provider
+    // jargon like "Card was declined by the issuing bank for reason
+    // CARD_DECLINED_VERIFICATION_REQUIRED"). The unrecognized fallback
+    // is a single, friendly sentence.
+    let userMessage = GENERIC_PAYMENT_USER_MESSAGE;
+    let userCode = 'PAYMENT_ERROR';
+    if (error instanceof PaymentProviderError) {
+      userMessage = error.userMessage;
+      userCode = error.code;
     }
-    return sendError(res, userMessage, 500, 'PAYMENT_ERROR');
+
+    // Final safety net: if a future code path forgets to wrap its
+    // failure in PaymentProviderError and somehow lands a JSON-shaped
+    // or multi-line/long string here, swap in the generic fallback so
+    // no JSON ever escapes to the user-visible toast.
+    userMessage = sanitizePaymentUserMessage(userMessage);
+
+    return sendError(res, userMessage, 500, userCode);
   }
 });
 

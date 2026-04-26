@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { initializeSquare, resetSquarePayments, getPreWarmedCard, cardStyle } from "@/lib/square";
+import { sanitizePaymentErrorMessage } from "@/lib/payment-user-error";
 
 export interface SquareCardTokenizeResult {
   status: string;
@@ -120,9 +121,13 @@ export function useSquarePayment({ onError, locationId }: UseSquarePaymentOption
     } catch (err) {
       console.error('[useSquarePayment] Card initialization error:', err);
       initializingRef.current = false;
-      const errorMessage = err instanceof Error
-        ? err.message
-        : 'Failed to initialize payment form';
+      // task #514: sanitize the SDK init error before surfacing it,
+      // so a stack-trace fragment or JSON-shaped string from the
+      // Square SDK can't leak into the user-visible toast.
+      const errorMessage = sanitizePaymentErrorMessage(
+        err,
+        'Failed to initialize payment form',
+      );
 
       if (mountedRef.current) {
         setError(errorMessage);
