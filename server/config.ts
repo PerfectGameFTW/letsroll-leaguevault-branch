@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createLogger } from './logger';
+import { isReplitDeploymentValue } from './utils/replit-env';
 
 const log = createLogger("Config");
 
@@ -159,22 +160,31 @@ export const env = validateEnv();
   }
 }
 
+export const isDev = env.NODE_ENV !== "production";
+
+// Canonical "are we running on a Replit deploy?" boolean. Use this
+// instead of `!!env.REPLIT_DEPLOYMENT` so the empty-string edge case
+// is handled in exactly one place — see `utils/replit-env.ts`.
+export const isDeployment = isReplitDeploymentValue(env.REPLIT_DEPLOYMENT);
+
+// Canonical "are we in a production-like runtime?" boolean. NODE_ENV
+// is the explicit signal; REPLIT_DEPLOYMENT is the implicit one for
+// Replit Reserved-VM / Autoscale deploys that may not set NODE_ENV.
+export const isProdLike = env.NODE_ENV === "production" || isDeployment;
+
 // Production-like deploys MUST NOT silently run at `debug` — that would
 // dump `userId × resourceId` correlations from the org-less drift signal
 // in `server/utils/access-control.ts` (task #296) into the prod log sink.
 // Operators who explicitly opt back into debug get a loud warning so the
 // choice is auditable. The logger itself defaults to `info` in production
 // when `LOG_LEVEL` is unset, so this branch only fires on an explicit opt-in.
-{
-  const isProdLike = env.NODE_ENV === "production" || !!env.REPLIT_DEPLOYMENT;
-  if (isProdLike && env.LOG_LEVEL === "debug") {
-    log.warn(
-      "LOG_LEVEL=debug is set on a production-like deploy. " +
-        "Debug-level logs include developer-only diagnostics (e.g. userId×resourceId " +
-        "correlations from the org-less drift signal in access-control.ts). " +
-        "Unset LOG_LEVEL or set LOG_LEVEL=info on production deploys.",
-    );
-  }
+if (isProdLike && env.LOG_LEVEL === "debug") {
+  log.warn(
+    "LOG_LEVEL=debug is set on a production-like deploy. " +
+      "Debug-level logs include developer-only diagnostics (e.g. userId×resourceId " +
+      "correlations from the org-less drift signal in access-control.ts). " +
+      "Unset LOG_LEVEL or set LOG_LEVEL=info on production deploys.",
+  );
 }
 
 const missing = optionalWarnings.filter((w) => !env[w.key]);
@@ -184,5 +194,3 @@ if (missing.length > 0) {
     log.warn(`  - ${m.key}: ${m.feature} will be disabled`);
   }
 }
-
-export const isDev = env.NODE_ENV !== "production";

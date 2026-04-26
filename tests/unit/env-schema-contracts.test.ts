@@ -20,6 +20,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { envSchema } from '../../server/config';
+import { isReplitDeploymentValue } from '../../server/utils/replit-env';
 
 describe('FIELD_ENCRYPTION_KEY env-schema entry', () => {
   const field = envSchema.shape.FIELD_ENCRYPTION_KEY;
@@ -319,4 +320,27 @@ describe('Replit platform env-schema entries (optional, free-form)', () => {
   it.each(replitFields)('%s accepts a normal value', (_, field) => {
     expect(field.safeParse('something').success).toBe(true);
   });
+});
+
+// `REPLIT_DEPLOYMENT` is intentionally accepted as a free-form string at
+// the schema level (the platform owns the value), so the "are we in a
+// deploy?" decision is made by `isReplitDeploymentValue` instead. Pin
+// the contract here so a future caller can't reintroduce the
+// `!!env.REPLIT_DEPLOYMENT` shortcut and silently disagree about what
+// an empty string means.
+describe('isReplitDeploymentValue derived boolean', () => {
+  it('treats undefined as not deployed', () => {
+    expect(isReplitDeploymentValue(undefined)).toBe(false);
+  });
+
+  it('treats an empty string as not deployed', () => {
+    expect(isReplitDeploymentValue('')).toBe(false);
+  });
+
+  it.each(['1', 'true', 'autoscale', 'reserved-vm'])(
+    'treats %s as deployed',
+    (value) => {
+      expect(isReplitDeploymentValue(value)).toBe(true);
+    },
+  );
 });

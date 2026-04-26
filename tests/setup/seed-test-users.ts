@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../server/db';
 import { organizations, users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
+import { isReplitDeploymentValue } from '../../server/utils/replit-env';
 
 /**
  * Hard guard: this seeder forcibly resets passwords / roles / org for any
@@ -22,7 +23,7 @@ import { hashPassword } from '../../server/lib/password';
 function assertSafeEnvironment(): void {
   const nodeEnv = process.env.NODE_ENV;
   const allowOverride = process.env.ALLOW_TEST_SEED === '1';
-  const isReplitDeployment = !!process.env.REPLIT_DEPLOYMENT;
+  const isReplitDeployment = isReplitDeploymentValue(process.env.REPLIT_DEPLOYMENT);
   if (allowOverride) return;
   if (nodeEnv === 'production' || isReplitDeployment) {
     throw new Error(

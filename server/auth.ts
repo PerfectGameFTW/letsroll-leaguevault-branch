@@ -7,7 +7,7 @@ import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 import { User as SelectUser } from "@shared/schema";
 import { cacheFetch } from "./utils/cache";
-import { env, isDev } from "./config";
+import { env, isDev, isDeployment } from "./config";
 import { createLogger } from "./logger";
 import { pool } from "./db";
 import { hashPassword, comparePasswords, safeTokenCompare } from "./lib/password";
@@ -96,7 +96,7 @@ export async function setupAuth(app: Express) {
       tableName: 'session',
     }),
     cookie: {
-      secure: !isDev || !!env.REPLIT_DEPLOYMENT || !!env.REPLIT_DOMAINS,
+      secure: !isDev || isDeployment || !!env.REPLIT_DOMAINS,
       sameSite: (isDev && !!env.REPLIT_DOMAINS) ? "none" as const : "lax" as const,
       maxAge: 24 * 60 * 60 * 1000,
       httpOnly: true,

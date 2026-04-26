@@ -1,5 +1,6 @@
 
 import { Writable } from 'stream';
+import { isReplitDeploymentValue } from './utils/replit-env';
 
 class ConsoleBuffer extends Writable {
   private buffer: string[] = [];
@@ -45,7 +46,7 @@ function isProductionLikeRuntime(): boolean {
   // that forgot to set `LOG_LEVEL` still defaults to `info`, not `debug`,
   // so the org-less drift `userId × resourceId` correlations in
   // `server/utils/access-control.ts` (task #296) are dropped at the sink.
-  return process.env.NODE_ENV === 'production' || !!process.env.REPLIT_DEPLOYMENT;
+  return process.env.NODE_ENV === 'production' || isReplitDeploymentValue(process.env.REPLIT_DEPLOYMENT);
 }
 
 /**
