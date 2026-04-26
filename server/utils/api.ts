@@ -15,7 +15,13 @@ import { type User, type Organization, type Location, type Bowler, type Paginati
 // Don't list it. The regression test in
 // `tests/unit/sanitize-user.test.ts` walks the live Drizzle schema
 // and pins both halves of the contract.
-const SAFE_USER_FIELDS = [
+//
+// Exported so the deny-by-default contract test in
+// `tests/api/safe-fields-contract.test.ts` can assert that the keys
+// returned by real endpoints are a strict subset of this list — any
+// new route that forgets to call `sanitizeUser` would surface a key
+// that isn't on the allowlist and fail the integration test.
+export const SAFE_USER_FIELDS = [
   'id',
   'email',
   'bowlerId',
@@ -50,7 +56,11 @@ export function sanitizeUser(user: User): SanitizedUser {
 // concrete motivating case — but more importantly, anything new that
 // lands on the table will be dropped by default until it's
 // deliberately added here.
-const SAFE_ORG_FIELDS = [
+//
+// Exported alongside `SAFE_USER_FIELDS` so the integration test in
+// `tests/api/safe-fields-contract.test.ts` can pin the wire contract
+// against real organization endpoints.
+export const SAFE_ORG_FIELDS = [
   'id',
   'name',
   'slug',
