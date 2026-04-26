@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { storage } from '../storage';
 import { insertTeamSchema, updateTeamSchema, reorderTeamsSchema, type Team } from "@shared/schema";
 import { z } from "zod";
-import { sendSuccess, sendError, handleZodError, parseOptionalIntParam } from '../utils/api.js';
+import { sendSuccess, sendError, handleZodError, parseOptionalIntParam, sanitizeBowler } from '../utils/api.js';
 
 const router = Router();
 
@@ -165,7 +165,10 @@ router.get("/:id/details", async (req, res) => {
     const linkedStatuses = await Promise.all(
       rawBowlers.map(b => storage.isBowlerLinked(b.id))
     );
-    const bowlers = rawBowlers.map((b, i) => ({ ...b, hasAccount: linkedStatuses[i] }));
+    // task #381: project before spreading so cardpointeProfileId /
+    // paymentProviderLocationId (and any future sensitive column on
+    // `bowlers`) cannot ride along on the team-details payload.
+    const bowlers = rawBowlers.map((b, i) => ({ ...sanitizeBowler(b), hasAccount: linkedStatuses[i] }));
 
     sendSuccess(res, { team, league, bowlerLeagues, bowlers });
   } catch (error) {

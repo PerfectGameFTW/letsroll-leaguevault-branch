@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { ZodError } from 'zod';
-import { type User, type Organization, type PaginationMeta } from '@shared/schema';
+import { type User, type Organization, type Location, type Bowler, type PaginationMeta } from '@shared/schema';
 
 // Allowlist projection (deny-by-default) — the safer of the two
 // strategies in task #327. Switching from a strip-list (`omit`) to an
@@ -81,6 +81,97 @@ export function sanitizeOrg(org: Organization): SanitizedOrganization {
 
 export function sanitizeOrgs(orgs: Organization[]): SanitizedOrganization[] {
   return orgs.map(sanitizeOrg);
+}
+
+// Same allowlist strategy for locations (task #381). The
+// `squareCredentials` and `cardpointeCredentials` JSONB columns hold
+// the raw `accessToken` / `apiPassword` for the location's payment
+// processor — they MUST never appear on the wire. The dedicated
+// `/api/locations/:id/square-config` and `/cardpointe-config`
+// endpoints already publish the safe boolean-flag projection
+// (`accessTokenConfigured: true`); the base CRUD routes had been
+// returning the raw blob alongside it for years. Anything new that
+// lands on the table will be dropped by default until it's
+// deliberately added here.
+const SAFE_LOCATION_FIELDS = [
+  'id',
+  'name',
+  'address',
+  'city',
+  'state',
+  'zipCode',
+  'phone',
+  'active',
+  'organizationId',
+  'paymentProvider',
+] as const;
+
+export type SanitizedLocation = Pick<Location, typeof SAFE_LOCATION_FIELDS[number]>;
+
+export function sanitizeLocation(location: Location): SanitizedLocation {
+  const input = location as Record<string, unknown>;
+  const safeLocation: Record<string, unknown> = {};
+  for (const field of SAFE_LOCATION_FIELDS) {
+    if (field in input) safeLocation[field] = input[field];
+  }
+  return safeLocation as SanitizedLocation;
+}
+
+export function sanitizeLocations(locations: Location[]): SanitizedLocation[] {
+  return locations.map(sanitizeLocation);
+}
+
+// Same allowlist strategy for bowlers (task #381). Two flavors of
+// risk live on this table:
+//
+//   1. Saved-card vault references that are not safe to publish
+//      (`cardpointeProfileId` is the handle the CardPointe API uses
+//      to charge the bowler's saved card; `paymentProviderLocationId`
+//      is internal routing data for the deletion service). Neither
+//      has any UI consumer today — they're dropped.
+//
+//   2. External-system identifiers and retry-bookkeeping that the
+//      bowlers/admin UI legitimately needs to render
+//      (`paymentCustomerId` powers the Square dashboard link;
+//      `bnContactId` powers the BowlNow sync badge; the
+//      `paymentSync*` / `bnSync*` triples power
+//      `payment-sync-retry-status.tsx`). These stay on the
+//      allowlist because dropping them would silently break the UI;
+//      they are not credentials.
+//
+// Anything new that lands on the table will be dropped by default
+// until it's deliberately added here.
+const SAFE_BOWLER_FIELDS = [
+  'id',
+  'name',
+  'email',
+  'phone',
+  'active',
+  'order',
+  'organizationId',
+  'paymentCustomerId',
+  'bnContactId',
+  'paymentSyncPendingAt',
+  'paymentSyncAttempts',
+  'paymentSyncLastAttemptAt',
+  'bnSyncPendingAt',
+  'bnSyncAttempts',
+  'bnSyncLastAttemptAt',
+] as const;
+
+export type SanitizedBowler = Pick<Bowler, typeof SAFE_BOWLER_FIELDS[number]>;
+
+export function sanitizeBowler(bowler: Bowler): SanitizedBowler {
+  const input = bowler as Record<string, unknown>;
+  const safeBowler: Record<string, unknown> = {};
+  for (const field of SAFE_BOWLER_FIELDS) {
+    if (field in input) safeBowler[field] = input[field];
+  }
+  return safeBowler as SanitizedBowler;
+}
+
+export function sanitizeBowlers(bowlers: Bowler[]): SanitizedBowler[] {
+  return bowlers.map(sanitizeBowler);
 }
 
 export interface ApiResponse<T> {

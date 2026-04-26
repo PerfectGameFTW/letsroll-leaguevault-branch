@@ -8,6 +8,7 @@ import {
   handleZodError,
   parseOptionalIntParam,
   parseOptionalIntListParam,
+  sanitizeBowler,
 } from '../utils/api.js';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import type { PaymentProvider } from '../services/payment-provider';
@@ -188,8 +189,12 @@ router.get("/", async (req, res) => {
 
     const linkedBowlerIds = new Set(await storage.getLinkedBowlerIds());
 
+    // task #381: project each bowler through the deny-by-default
+    // allowlist before composing the response so a future column
+    // (cardpointeProfileId today, anything new tomorrow) cannot
+    // silently leak via the spread below.
     const bowlersWithAccountStatus = filteredBowlers.map(b => ({
-      ...b,
+      ...sanitizeBowler(b),
       hasAccount: linkedBowlerIds.has(b.id),
     }));
 
@@ -231,7 +236,10 @@ router.get("/:id/details", async (req, res) => {
     ]);
 
     const response: Record<string, unknown> = {
-      bowler: { ...bowler, hasAccount },
+      // task #381: project before spreading so cardpointeProfileId /
+      // paymentProviderLocationId (and any future sensitive column)
+      // cannot ride along on the details payload.
+      bowler: { ...sanitizeBowler(bowler), hasAccount },
       bowlerLeagues,
       leagues,
       teams,
@@ -270,8 +278,10 @@ router.get("/:id", async (req, res) => {
     }
 
     const hasAccount = await storage.isBowlerLinked(id);
-    
-    sendSuccess(res, { ...bowler, hasAccount });
+
+    // task #381: project before spreading (see GET / and
+    // GET /:id/details for the deny-by-default rationale).
+    sendSuccess(res, { ...sanitizeBowler(bowler), hasAccount });
   } catch (error) {
     log.error('Error fetching bowler:', error);
     sendError(res, 'Failed to fetch bowler');
@@ -388,7 +398,7 @@ router.post("/", async (req, res) => {
     // hijack of the bowler row in the brief window before its first link.
     // See server/utils/bowler-claim-tokens.ts for full rationale.
     registerBowlerClaim(synced.id, req);
-    sendSuccess(res, synced, 201);
+    sendSuccess(res, sanitizeBowler(synced), 201);
   } catch (error) {
     log.error('Error creating bowler:', error);
     if (error instanceof z.ZodError) {
@@ -531,7 +541,7 @@ router.patch("/:id", async (req, res) => {
           });
       }
     }
-    sendSuccess(res, updated);
+    sendSuccess(res, sanitizeBowler(updated));
   } catch (error) {
     log.error('Error updating bowler:', error);
     if (error instanceof z.ZodError) {

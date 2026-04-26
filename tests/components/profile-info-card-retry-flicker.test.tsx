@@ -98,6 +98,8 @@ function makeUser(
     inviteTokenExpiry: null,
     preferredLanguage: null,
     createdAt: '2025-01-01T00:00:00.000Z',
+    failedPasswordChangeAttempts: 0,
+    passwordChangeLockedUntil: null,
     paymentSyncStatus: null,
     ...overrides,
   };

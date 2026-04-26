@@ -1,6 +1,6 @@
 import { Router, Request } from 'express';
 import { z } from 'zod';
-import { sendSuccess, sendError, handleZodError } from '../utils/api.js';
+import { sendSuccess, sendError, handleZodError, sanitizeLocation, sanitizeLocations } from '../utils/api.js';
 import { storage } from '../storage';
 import { insertLocationSchema, updateLocationSchema, locationSquareCredentialsSchema, locationCardPointeCredentialsSchema, PAYMENT_PROVIDERS } from '@shared/schema';
 import { filterByOrganization } from '../middleware/organization.js';
@@ -23,7 +23,12 @@ router.get('/', filterByOrganization, async (req: Request, res) => {
     } else {
       return sendSuccess(res, []);
     }
-    sendSuccess(res, locations);
+    // task #381: deny-by-default projection (sanitizeLocations) drops
+    // `squareCredentials` / `cardpointeCredentials` blobs that used
+    // to ride along on the base CRUD payload. The dedicated
+    // `/square-config` / `/cardpointe-config` endpoints already
+    // publish the safe boolean-flag projection.
+    sendSuccess(res, sanitizeLocations(locations));
   } catch (error) {
     log.error('Error fetching locations:', error);
     sendError(res, 'Failed to fetch locations', 500, 'ServerError');
@@ -46,7 +51,7 @@ router.get('/:id', async (req: Request, res) => {
       return sendError(res, 'You do not have access to this location', 403, 'Forbidden');
     }
 
-    sendSuccess(res, location);
+    sendSuccess(res, sanitizeLocation(location));
   } catch (error) {
     log.error(`Error fetching location with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to fetch location', 500, 'ServerError');
@@ -68,7 +73,7 @@ router.post('/', async (req: Request, res) => {
     }
 
     const location = await storage.createLocation(validatedData);
-    sendSuccess(res, location, 201);
+    sendSuccess(res, sanitizeLocation(location), 201);
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
@@ -134,7 +139,7 @@ router.patch('/:id', async (req: Request, res) => {
         });
 
         clearProviderCache(id);
-        return sendSuccess(res, updatedLocation);
+        return sendSuccess(res, sanitizeLocation(updatedLocation));
       } else {
         log.info(`Payment provider switch: location ${id} changed from "${location.paymentProvider}" to "${cleanedData.paymentProvider}". No active schedules affected.`, {
           locationId: id,
@@ -150,7 +155,7 @@ router.patch('/:id', async (req: Request, res) => {
     if ('paymentProvider' in cleanedData || 'squareCredentials' in cleanedData || 'cardpointeCredentials' in cleanedData) {
       clearProviderCache(id);
     }
-    sendSuccess(res, updatedLocation);
+    sendSuccess(res, sanitizeLocation(updatedLocation));
   } catch (error) {
     if (error instanceof z.ZodError) {
       return handleZodError(res, error);
@@ -177,7 +182,7 @@ router.patch('/:id/archive', async (req: Request, res) => {
     }
 
     const archived = await storage.archiveLocation(id);
-    sendSuccess(res, archived);
+    sendSuccess(res, sanitizeLocation(archived));
   } catch (error) {
     log.error(`Error archiving location with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to archive location', 500, 'ServerError');
@@ -201,7 +206,7 @@ router.patch('/:id/restore', async (req: Request, res) => {
     }
 
     const restored = await storage.restoreLocation(id);
-    sendSuccess(res, restored);
+    sendSuccess(res, sanitizeLocation(restored));
   } catch (error) {
     log.error(`Error restoring location with ID ${req.params.id}:`, error);
     sendError(res, 'Failed to restore location', 500, 'ServerError');

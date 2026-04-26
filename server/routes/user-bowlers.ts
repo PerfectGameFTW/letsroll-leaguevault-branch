@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { storage } from '../storage';
-import { sendSuccess, sendError, handleZodError, sanitizeUser } from '../utils/api';
+import { sendSuccess, sendError, handleZodError, sanitizeUser, sanitizeBowler } from '../utils/api';
 import { z } from 'zod';
 import { User as SelectUser } from '@shared/schema';
 import { hasAccessToBowler } from '../utils/access-control.js';
@@ -68,7 +68,10 @@ router.get('/bowler', requireAuth, async (req, res) => {
       return sendError(res, "You no longer have access to this bowler", 403, 'FORBIDDEN');
     }
     
-    sendSuccess(res, bowler);
+    // task #381: deny-by-default projection — same rationale as the
+    // bowlers/locations CRUD endpoints. Returns the bowler if the
+    // pre-condition above didn't already short-circuit with null.
+    sendSuccess(res, bowler ? sanitizeBowler(bowler) : null);
   } catch (error) {
     sendError(res, 'Failed to fetch bowler');
   }
