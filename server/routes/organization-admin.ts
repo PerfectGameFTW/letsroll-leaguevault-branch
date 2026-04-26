@@ -544,7 +544,19 @@ router.post('/users/:id/reset-password', requireOrgAdminOrSystemAdmin, adminWrit
     }
 
     const hashedNew = await hashPassword(newPassword);
-    await storage.updateUser(targetUser.id, { password: hashedNew });
+    // Task #455: also set the "must change password on next sign-in"
+    // flag in the SAME update so the new hash and the forced-rotation
+    // gate are written atomically. Without the flag, an admin who
+    // resets a user's password necessarily knows the working password
+    // until the user happens to rotate it themselves — a real
+    // impersonation window. The self-service /api/account/change-
+    // password endpoint clears the flag back to false on a successful
+    // rotation; the App.tsx route guards intercept the user and route
+    // them to /change-password-required as long as it remains true.
+    await storage.updateUser(targetUser.id, {
+      password: hashedNew,
+      mustChangePassword: true,
+    });
 
     // Persistent audit row for compliance/security review (task #424).
     // Order matters and is asserted by the unit test: this MUST run

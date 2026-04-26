@@ -36,6 +36,14 @@ export const SAFE_USER_FIELDS = [
   // currently saved value. The column is nullable — null means
   // "no preference, follow the default" (English today).
   'preferredLanguage',
+  // Task #455: surface the "admin reset, please rotate" flag to the
+  // client so the App.tsx route guards can intercept the user and
+  // route them to /change-password-required before they can use any
+  // of the rest of the app. Safe to expose: a non-tampered client
+  // already sees their post-reset password (the admin gave it to
+  // them) and the server-side guard cannot be bypassed by spoofing
+  // this flag — it's authoritative on the DB row.
+  'mustChangePassword',
   'createdAt',
 ] as const;
 

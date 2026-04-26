@@ -24,7 +24,7 @@ import accountRouter from './account.js';
 import { registerAuthRoutes } from './auth.js';
 import bulkImportRouter from './bulk-import.js';
 import searchRouter from './search.js';
-import { requireAuth, requireOrgAdmin, requireSystemAdmin } from '../middleware/auth.js';
+import { requireAuth, requireOrgAdmin, requireSystemAdmin, requirePasswordRotated } from '../middleware/auth.js';
 import { createLogger } from '../logger';
 
 const log = createLogger("Routes");
@@ -47,6 +47,16 @@ export function registerRoutes(app: Express): void {
   });
 
   app.use('/api/organizations', organizationsPublicRouter);
+
+  // Task #455: server-side enforcement of the must-change-password
+  // gate. Mounted here so the auth routes registered above (and the
+  // /api/user / /api/logout aliases) remain reachable for a flagged
+  // user — they need to sign out, refetch their flag, and POST
+  // /api/account/change-password — but every other protected
+  // /api/* endpoint returns 403 PASSWORD_CHANGE_REQUIRED until the
+  // flag is cleared. See the middleware doc for the full allowlist
+  // and the security rationale.
+  app.use('/api', requirePasswordRotated);
 
   app.use('/api/leagues', requireAuth, leaguesRouter);
   app.use('/api/teams', requireAuth, teamsRouter);

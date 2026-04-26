@@ -1103,7 +1103,19 @@ router.post('/change-password', changePasswordLimiter, requireAuth, async (req: 
     }
 
     const hashedNew = await hashPassword(newPassword);
-    await storage.updateUser(user.id, { password: hashedNew });
+    // Task #455: clear the "must change password on next sign-in"
+    // flag in the SAME update as the new hash. The flag is set by
+    // the admin-driven reset endpoint at server/routes/organization-
+    // admin.ts; clearing it here is what lets the App.tsx route
+    // guards stop redirecting the user to /change-password-required
+    // on their next refetch of /api/user. We always write the flag
+    // (even when it was already false) so the reset path is
+    // idempotent and a stale-flag DB row from a missed migration
+    // would self-heal on the user's first self-service rotation.
+    await storage.updateUser(user.id, {
+      password: hashedNew,
+      mustChangePassword: false,
+    });
 
     // Task #357: clean slate after a successful rotation. Wipe any
     // accumulated failure counter and clear a stale lock (the route

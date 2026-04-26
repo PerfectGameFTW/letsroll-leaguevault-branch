@@ -54,8 +54,15 @@ function userMeetsRequirement(user: User | undefined | null, requirement: RouteR
   }
 }
 
+// Task #455: the dedicated forced-rotation landing page. Has to be
+// authenticated (the user is already signed in via the admin-set
+// password — the whole point is to make them rotate it) but must
+// NOT itself be subject to the forced-rotation redirect, otherwise
+// the guard would loop.
+const FORCE_PASSWORD_CHANGE_PATH = '/change-password-required';
+
 export const ProtectedRoute: FC<ProtectedRouteProps> = ({ requirement, children }) => {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const { toast } = useToast();
   const redirectingRef = useRef(false);
 
@@ -66,6 +73,17 @@ export const ProtectedRoute: FC<ProtectedRouteProps> = ({ requirement, children 
 
   const user = currentUserResponse?.data;
   const allowed = userMeetsRequirement(user, requirement);
+  // Task #455: when an admin reset this user's password, the server
+  // sets `mustChangePassword=true` on the row and the next
+  // /api/user response surfaces it via the SAFE_USER_FIELDS allowlist.
+  // Until the user clears it via the self-service change-password
+  // endpoint, every protected route bounces them to the forced-
+  // rotation page. The bypass for the forced-rotation page itself
+  // prevents an infinite redirect loop. The error/!allowed branches
+  // above already short-circuit unauthenticated traffic, so this only
+  // fires for authenticated callers.
+  const mustChangePassword = user?.mustChangePassword === true;
+  const onForcePage = location === FORCE_PASSWORD_CHANGE_PATH;
 
   useEffect(() => {
     if (!isLoading && !error && !allowed) {
@@ -74,6 +92,12 @@ export const ProtectedRoute: FC<ProtectedRouteProps> = ({ requirement, children 
       navigate(redirectTo);
     }
   }, [allowed, isLoading, error, requirement, navigate, toast]);
+
+  useEffect(() => {
+    if (!isLoading && !error && allowed && mustChangePassword && !onForcePage) {
+      navigate(FORCE_PASSWORD_CHANGE_PATH);
+    }
+  }, [allowed, isLoading, error, mustChangePassword, onForcePage, navigate]);
 
   useEffect(() => {
     if (error && !redirectingRef.current) {
@@ -91,6 +115,12 @@ export const ProtectedRoute: FC<ProtectedRouteProps> = ({ requirement, children 
       </div>
     );
   }
+
+  // Task #455: while the redirect-effect above is in flight, render
+  // null instead of the children so the user can never momentarily
+  // see (or interact with) the gated app surface in the gap between
+  // the /api/user response landing and the navigate() taking effect.
+  if (allowed && mustChangePassword && !onForcePage) return null;
 
   return allowed ? <>{children}</> : null;
 };

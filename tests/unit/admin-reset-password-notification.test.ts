@@ -321,6 +321,27 @@ describe('POST /api/organization-admin/users/:id/reset-password — admin-driven
     }
   });
 
+  // Task #455: pin that the reset endpoint writes the
+  // `mustChangePassword` flag in the SAME update as the new password
+  // hash. Without this, an admin who resets a user's password
+  // necessarily knows the working password until the user happens to
+  // rotate it — a real impersonation window.
+  it('writes mustChangePassword=true in the same updateUser call as the new password hash (task #455)', async () => {
+    const res = await postReset(TARGET_USER.id, { newPassword: 'BrandNewPw!2026XX' });
+    expect(res.status).toBe(200);
+    expect(mockUpdateUser).toHaveBeenCalledTimes(1);
+    const [updateId, updatePatch] = mockUpdateUser.mock.calls[0] as unknown as [
+      number,
+      { password?: string; mustChangePassword?: boolean },
+    ];
+    expect(updateId).toBe(TARGET_USER.id);
+    // The password is hashed via the mocked hashPassword (`hashed:${pw}`).
+    expect(updatePatch.password).toBe('hashed:BrandNewPw!2026XX');
+    // The flag MUST be true. A regression that drops it would
+    // silently leave the admin with a working credential.
+    expect(updatePatch.mustChangePassword).toBe(true);
+  });
+
   it('still returns 200 when the email helper rejects (best-effort contract — password rotation is not rolled back)', async () => {
     mockSendPasswordChangedNotification.mockRejectedValueOnce(
       new Error('SendGrid 503'),

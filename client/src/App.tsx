@@ -36,6 +36,7 @@ const UsersPage = lazy(() => import("@/pages/users-page"));
 const SetPasswordPage = lazy(() => import("@/pages/set-password-page"));
 const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password-page"));
 const ConfirmEmailChangePage = lazy(() => import("@/pages/confirm-email-change-page"));
+const ChangePasswordRequiredPage = lazy(() => import("@/pages/change-password-required-page"));
 const ProfileSettingsPage = lazy(() => import("@/pages/profile-settings-page"));
 const ClaimBowlerPage = lazy(() => import("@/pages/claim-bowler-page"));
 const EmailTemplatesPage = lazy(() => import("@/pages/email-templates-page"));
@@ -70,6 +71,17 @@ const RootRedirectHandler: FC = () => {
         navigate('/login');
       } else {
         const user = currentUserResponse.data;
+        // Task #455: forced-rotation gate. If an admin reset this
+        // user's password, the server flags `mustChangePassword=true`
+        // on the row and the SAFE_USER_FIELDS allowlist surfaces it
+        // here. Pinning the user to /change-password-required from
+        // the root redirect keeps the forced-rotation behaviour
+        // consistent with the per-route ProtectedRoute guard — the
+        // user can't slip through by hitting `/` directly.
+        if (user.mustChangePassword === true) {
+          navigate('/change-password-required');
+          return;
+        }
         const isAdmin = user.role === 'system_admin' || user.role === 'org_admin';
 
         if (isAdmin && user.organizationId) {
@@ -132,6 +144,11 @@ function Router() {
         <Route path="/bowler-dashboard">{guard('auth', <BowlerDashboardPage />)}</Route>
         <Route path="/payment-history">{guard('auth', <PaymentHistoryPage />)}</Route>
         <Route path="/profile">{guard('auth', <ProfileSettingsPage />)}</Route>
+        {/* Task #455: forced-rotation landing after an admin reset.
+            Guarded by `auth` (anonymous traffic gets bounced to login),
+            but the ProtectedRoute exempts THIS path from its own
+            mustChangePassword redirect to avoid an infinite loop. */}
+        <Route path="/change-password-required">{guard('auth', <ChangePasswordRequiredPage />)}</Route>
 
         {/* Organization-member routes */}
         <Route path="/home">{guard('org', <HomePage />)}</Route>

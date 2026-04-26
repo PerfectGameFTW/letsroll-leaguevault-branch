@@ -18,7 +18,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   DEFAULT_THROTTLE_FALLBACK_SECONDS,
   formatCountdown,
@@ -48,9 +48,16 @@ const passwordSchema = z.object({
 
 type PasswordFormData = z.infer<typeof passwordSchema>;
 
-export function ChangePasswordCard() {
+// Task #455: when `forced` is true the card mounts in the always-
+// open state with no toggle and no Cancel button — it is rendered
+// by the /change-password-required page after an admin reset, and
+// the user has to complete the form before the route guard will
+// stop bouncing them. The success path doesn't collapse back into
+// the toggle either; the next /api/user refetch flips the flag and
+// the guard releases the user automatically.
+export function ChangePasswordCard({ forced = false }: { forced?: boolean } = {}) {
   const { toast } = useToast();
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] = useState(forced);
   const { isThrottled, remainingSeconds, throttle, clear: clearThrottle } =
     useThrottleCountdown();
 
@@ -68,8 +75,19 @@ export function ChangePasswordCard() {
     },
     onSuccess: () => {
       form.reset();
-      setShowForm(false);
+      // Task #455: in the forced-rotation flow we keep the form
+      // mounted so the success toast is visible without an empty
+      // collapsed card flashing in. The /api/user refetch
+      // invalidation below releases the route guard and the user
+      // navigates away naturally.
+      if (!forced) {
+        setShowForm(false);
+      }
       clearThrottle();
+      // Task #455: invalidate /api/user so the guard sees
+      // mustChangePassword=false on the next render and the user is
+      // no longer pinned to /change-password-required.
+      queryClient.invalidateQueries({ queryKey: ['/api/user'] });
       toast({ title: "Password Changed", description: "Your password has been updated successfully." });
     },
     onError: (error: Error) => {
@@ -96,7 +114,7 @@ export function ChangePasswordCard() {
       </CardHeader>
       <CardContent>
         {!showForm ? (
-          <Button variant="outline" onClick={() => setShowForm(true)} className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setShowForm(true)} className="flex items-center gap-2" data-testid="button-change-password-toggle">
             <Lock className="h-4 w-4" />
             Change Password
           </Button>
@@ -174,13 +192,15 @@ export function ChangePasswordCard() {
                     `Try again in ${formatCountdown(remainingSeconds)}`
                   ) : "Update Password"}
                 </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => { form.reset(); setShowForm(false); }}
-                >
-                  Cancel
-                </Button>
+                {!forced && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => { form.reset(); setShowForm(false); }}
+                  >
+                    Cancel
+                  </Button>
+                )}
               </div>
             </form>
           </Form>

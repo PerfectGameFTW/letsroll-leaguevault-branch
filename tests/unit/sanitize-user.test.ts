@@ -13,7 +13,14 @@ const SENSITIVE_NAME_PATTERN = /token|secret|password|key|credential|auth/i;
 // Benign columns whose names happen to match the broadened pattern
 // but are safe to return (e.g. an `authProvider` enum). Add here
 // only with explicit justification.
-const SENSITIVE_NAME_ALLOWLIST = new Set<string>([]);
+const SENSITIVE_NAME_ALLOWLIST = new Set<string>([
+  // Task #455: this is a server-authoritative boolean flag (true
+  // when an admin reset the user's password, false otherwise).
+  // Surfacing it to the client is the whole point — the
+  // ProtectedRoute guard reads it to bounce the user to
+  // /change-password-required. The flag itself is not a credential.
+  'mustChangePassword',
+]);
 
 // Build a fully-populated `User` so the test exercises every column the
 // schema currently defines. This way, adding a new sensitive-looking column
@@ -34,6 +41,7 @@ function makeFullyPopulatedUser(): User {
     inviteTokenExpiry: '2099-01-01T00:00:00.000Z',
     preferredLanguage: 'en',
     createdAt: '2024-01-01T00:00:00.000Z',
+    mustChangePassword: false,
     failedPasswordChangeAttempts: 0,
     passwordChangeLockedUntil: null,
   };
@@ -60,7 +68,9 @@ describe('sanitizeUser', () => {
 
   it('never returns any field whose name looks sensitive', () => {
     const sanitized = sanitizeUser(makeFullyPopulatedUser());
-    const leaked = Object.keys(sanitized).filter(k => SENSITIVE_NAME_PATTERN.test(k));
+    const leaked = Object.keys(sanitized).filter(
+      k => SENSITIVE_NAME_PATTERN.test(k) && !SENSITIVE_NAME_ALLOWLIST.has(k),
+    );
     expect(leaked, `sanitizeUser leaked sensitive-looking fields: ${leaked.join(', ')}`).toEqual([]);
   });
 

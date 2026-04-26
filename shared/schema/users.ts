@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -47,6 +47,18 @@ export const users = pgTable("users", {
   // forgot-password flow. Naturally clears on success and on the
   // next failed attempt past expiry.
   passwordChangeLockedUntil: timestamp("password_change_locked_until", { mode: "string" }),
+  // Task #455: when true, the user is forced through the change-password
+  // flow on their next protected request before they can use the rest
+  // of the app. Set to TRUE by the admin-driven reset endpoint at
+  // server/routes/organization-admin.ts (the admin necessarily knows
+  // the password they just picked, so we make the user rotate it on
+  // first sign-in to remove the impersonation window). Cleared back to
+  // FALSE by the self-service change-password endpoint in
+  // server/routes/account.ts after a successful rotation. The flag is
+  // surfaced to the client via the SAFE_USER_FIELDS allowlist so the
+  // ProtectedRoute / RootRedirectHandler guards in client/src/App.tsx
+  // can route the user to /change-password-required.
+  mustChangePassword: boolean("must_change_password").notNull().default(false),
   createdAt: timestamp("created_at", { mode: "string" }).notNull().defaultNow(),
 }, (table) => ({
   organizationIdx: index("users_organization_idx").on(table.organizationId),
@@ -106,6 +118,12 @@ export const updateUserSchemaBase = z.object({
   bowlerId: z.number().nullable(),
   password: passwordSchema,
   preferredLanguage: z.string().nullable(),
+  // Task #455: server-only flag. Listed here so the storage helper
+  // signature (`UpdateUser`) accepts it from the admin-reset and
+  // self-service change-password code paths. Not derived into any
+  // request-body schema — every PATCH route in the codebase picks
+  // its own subset of fields, so this stays inaccessible to clients.
+  mustChangePassword: z.boolean(),
 }).partial();
 
 // Strict update schema: refuses payloads that would set a non-admin
