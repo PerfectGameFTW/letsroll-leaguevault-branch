@@ -193,6 +193,66 @@ function hashEmailChangeToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+/**
+ * Atomic write of a new email-change request, optionally accompanied
+ * by the admin audit row when a system_admin is acting on behalf of
+ * *another* user (task #325). Both writes share one `db.transaction`
+ * so the request and its audit can never disagree — if either insert
+ * throws, the other is rolled back.
+ *
+ * Steps:
+ *   1. Supersede any open request for this user (consumedAt = NOW).
+ *   2. Insert the new request row.
+ *   3. If `audit` is non-null, insert the admin audit row through
+ *      `recordAdminEmailChangeAudit(..., tx)` so it joins the same
+ *      transaction.
+ *
+ * Exported so the atomicity contract can be pinned by the unit test
+ * in `tests/unit/admin-email-change-audit-atomicity.test.ts` against
+ * the SAME function the PATCH /api/account/profile/:id route calls,
+ * not a handcrafted replica.
+ */
+export async function applyEmailChangeRequestTxn(opts: {
+  userId: number;
+  newEmail: string;
+  tokenHash: string;
+  expiresAt: string;
+  audit: {
+    actorUserId: number;
+    oldEmailMasked: string;
+    newEmailMasked: string;
+  } | null;
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .update(emailChangeRequests)
+      .set({ consumedAt: sql`now()` })
+      .where(
+        and(
+          eq(emailChangeRequests.userId, opts.userId),
+          isNull(emailChangeRequests.consumedAt),
+        ),
+      );
+    await tx.insert(emailChangeRequests).values({
+      userId: opts.userId,
+      newEmail: opts.newEmail,
+      tokenHash: opts.tokenHash,
+      expiresAt: opts.expiresAt,
+    });
+    if (opts.audit) {
+      await recordAdminEmailChangeAudit(
+        {
+          actorUserId: opts.audit.actorUserId,
+          targetUserId: opts.userId,
+          oldEmailMasked: opts.audit.oldEmailMasked,
+          newEmailMasked: opts.audit.newEmailMasked,
+        },
+        tx,
+      );
+    }
+  });
+}
+
 // Update user profile (name/phone synchronously; email gated by confirmation).
 //
 // Response contract (200): { ...sanitizedUser, paymentSyncStatus, emailChangeRequested }
@@ -256,40 +316,23 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
       const tokenHash = hashEmailChangeToken(rawToken);
       const expiresAt = new Date(Date.now() + EMAIL_CHANGE_TOKEN_TTL_MS).toISOString();
 
-      // Supersede any older pending request and create the new one in a
-      // single transaction — guarantees only one active token per user
-      // even under concurrent profile updates. When a system_admin is
-      // acting on behalf of someone else (task #325), we ALSO write an
-      // audit row inside the same transaction so the request and its
-      // audit can never disagree.
+      // Supersede any older pending request and create the new one
+      // (and, when adminInitiated, the audit row) in a single
+      // transaction — see `applyEmailChangeRequestTxn` for the
+      // atomicity contract.
       const adminInitiated = user.id !== userId;
-      await db.transaction(async (tx) => {
-        await tx
-          .update(emailChangeRequests)
-          .set({ consumedAt: sql`now()` })
-          .where(
-            and(
-              eq(emailChangeRequests.userId, userId),
-              isNull(emailChangeRequests.consumedAt),
-            ),
-          );
-        await tx.insert(emailChangeRequests).values({
-          userId,
-          newEmail,
-          tokenHash,
-          expiresAt,
-        });
-        if (adminInitiated) {
-          await recordAdminEmailChangeAudit(
-            {
+      await applyEmailChangeRequestTxn({
+        userId,
+        newEmail,
+        tokenHash,
+        expiresAt,
+        audit: adminInitiated
+          ? {
               actorUserId: user.id,
-              targetUserId: userId,
               oldEmailMasked: maskEmail(existingUser.email),
               newEmailMasked: maskEmail(newEmail),
-            },
-            tx,
-          );
-        }
+            }
+          : null,
       });
 
       // Build confirmation URL using the org's subdomain when known so the
