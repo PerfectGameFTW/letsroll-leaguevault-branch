@@ -360,6 +360,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
     log.error('Payment processing error:', {
       error: errDetail,
       providerErrors,
+      typedCode: error instanceof PaymentProviderError ? error.code : undefined,
       typedDetail: error instanceof PaymentProviderError ? error.detail : undefined,
     });
 

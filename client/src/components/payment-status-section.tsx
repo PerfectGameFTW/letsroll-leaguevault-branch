@@ -208,7 +208,16 @@ export const PaymentStatusSection: FC<PaymentStatusSectionProps> = ({
     amountCents: calculateTotalAmount(),
     enabled: showPaymentSetup && supportsWallets && (selectedSchedule === 'custom' || league.paymentMode === 'upfront'),
     onTokenReceived: handleWalletPayment,
-    onError: (error) => toast({ title: "Wallet Payment Error", description: error, variant: "destructive" }),
+    // task #514: route the wallet hook's `onError` string through the
+    // shared sanitizer for parity with the other payment-failure
+    // toast paths — defends against any future provider/SDK string
+    // (JSON-shaped, multi-line, or oversized) leaking into the toast.
+    onError: (error) =>
+      toast({
+        title: "Wallet Payment Error",
+        description: sanitizePaymentErrorMessage(error, "Wallet payment could not be processed."),
+        variant: "destructive",
+      }),
   });
 
   useEffect(() => {
