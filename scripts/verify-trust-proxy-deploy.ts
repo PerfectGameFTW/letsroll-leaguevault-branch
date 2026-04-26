@@ -104,7 +104,14 @@ const PRIVATE_OR_LOOPBACK_PREFIXES = [
   '127.', '10.', '192.168.', '169.254.', '::1', 'fe80:', 'fc', 'fd',
 ];
 
-function isPrivateOrLoopback(ip: string): boolean {
+// Exported for the regression test at
+// `tests/unit/verify-trust-proxy-deploy.test.ts`, which pins this
+// inline copy against `server/lib/trust-proxy-check.ts`'s CIDR-aware
+// classifier on a fixed table of IPs. If the server tightens (see
+// follow-up #380) and the inline copy here drifts, that test fails
+// loudly instead of letting the post-deploy probe silently disagree
+// with the boot guard about what counts as a real client address.
+export function isPrivateOrLoopback(ip: string): boolean {
   if (!ip) return true;
   const lower = ip.toLowerCase();
   if (lower === '::1' || lower === '127.0.0.1' || lower === 'unknown') return true;
