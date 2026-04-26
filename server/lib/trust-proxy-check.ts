@@ -114,6 +114,19 @@ export function verifyTrustProxy(app: Express): TrustProxyCheckResult {
 // Boot-time guard. In production we hard-fail (the security cost of
 // running with a broken rate-limit ceiling outweighs the boot risk).
 // In dev we log a high-severity warning so the dev loop isn't broken.
+//
+// Entrypoint registry (task #378):
+//   - server/index.ts ........ main HTTP server
+//
+// Every entrypoint that constructs an `express()` instance MUST
+// call this assertion after `app.set('trust proxy', N)` and before
+// the app starts handling requests. The CI guard at
+// `scripts/check-trust-proxy-coverage.ts` (exercised by
+// `tests/unit/check-trust-proxy-coverage.test.ts` on every CI run)
+// walks `server/**/*.ts` and fails if it finds a new `express()`
+// instance in a file that doesn't also call this function — when
+// adding a new entrypoint, register it in the list above and call
+// the assertion in that file.
 export function assertTrustProxyAtBoot(
   app: Express,
   opts: {
