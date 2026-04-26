@@ -147,10 +147,14 @@ jobs:
       #   * `vite build` does the production bundle of the React
       #     client. This catches things the dev server happily papers
       #     over — a broken `@/`-aliased import, a missing static
-      #     asset, a route component that only resolves through Vite's
-      #     dev-mode resolver, or a chunk that blows past the size
-      #     budget. Without this step a PR can land green and only
-      #     break at deploy time.
+      #     asset, or a route component that only resolves through
+      #     Vite's dev-mode resolver. Without this step a PR can land
+      #     green and only break at deploy time. (Vite's "chunk > 500
+      #     kB" message is a non-fatal warning — it does not change
+      #     the exit code, so it does not gate this step. If a chunk
+      #     budget ever needs to be enforced as a hard gate, that
+      #     would be a separate `rollupOptions` / post-build assertion,
+      #     not a side-effect of `vite build`.)
       #
       #   * `esbuild server/index.ts --platform=node --packages=external
       #     --bundle --format=esm --outdir=dist` produces the

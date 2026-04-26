@@ -61,8 +61,11 @@ through:
 
 - **Broken Vite production builds** — a missing static asset, a
   broken `@/`-aliased import that only resolves through Vite's
-  dev-mode resolver, an oversized chunk, or any other Vite
-  build-time failure. The dev server happily papers over these.
+  dev-mode resolver, or any other Vite build-time failure. The dev
+  server happily papers over these. Vite's "chunk > 500 kB" message
+  is only a warning and does not fail this step; if hard chunk-size
+  enforcement is ever wanted, it needs its own assertion on top of
+  the build.
 - **Broken server bundle** — `npm run dev` runs `tsx server/index.ts`
   via tsx's loader, which resolves TS-only imports and path aliases
   the production `node dist/index.js` cannot. A regression that
