@@ -266,6 +266,70 @@ export async function applyEmailChangeRequestTxn(opts: {
   });
 }
 
+/**
+ * One audit row's worth of "who changed what" for a single column on
+ * the `users` table. The PATCH /api/account/profile/:id handler builds
+ * one entry per modified field BEFORE entering the transaction so the
+ * transaction body itself is data-driven.
+ */
+export type AdminProfileEditFieldChange = {
+  field: 'name' | 'phone' | 'preferred_language';
+  oldValue: string | null;
+  newValue: string | null;
+};
+
+/**
+ * Atomic admin-initiated profile edit (task #376): the `users` row
+ * UPDATE and the per-field `admin_profile_edit_audits` INSERTs share
+ * a single `db.transaction(...)` so the audit and the change can
+ * never disagree.
+ *
+ * Steps inside the transaction:
+ *   1. UPDATE users SET <storagePatch> WHERE id = userId, RETURNING.
+ *      A missing row (deleted between read and write) throws so the
+ *      audit step never runs for a no-op.
+ *   2. For every entry in `fieldChanges`, INSERT one row into
+ *      `admin_profile_edit_audits` via `recordAdminProfileEditAudit`
+ *      bound to the SAME `tx`.
+ *
+ * Both writes commit together or roll back together. A future refactor
+ * that hoisted either side outside the transaction would leave the
+ * audit and the user row out of sync; the atomicity tests in
+ * `tests/unit/admin-profile-edit-audit-atomicity.test.ts` pin both
+ * directions of that contract against this exported helper, not a
+ * handcrafted replica of the route's body.
+ */
+export async function applyAdminProfileEditTxn(opts: {
+  userId: number;
+  storagePatch: Parameters<typeof storage.updateUser>[1];
+  actorUserId: number;
+  fieldChanges: AdminProfileEditFieldChange[];
+}): Promise<User> {
+  return await db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(users)
+      .set(opts.storagePatch)
+      .where(eq(users.id, opts.userId))
+      .returning();
+    if (!updated) {
+      throw new Error(`Failed to update user with ID ${opts.userId}`);
+    }
+    for (const change of opts.fieldChanges) {
+      await recordAdminProfileEditAudit(
+        {
+          actorUserId: opts.actorUserId,
+          targetUserId: opts.userId,
+          field: change.field,
+          oldValue: change.oldValue,
+          newValue: change.newValue,
+        },
+        tx,
+      );
+    }
+    return updated;
+  });
+}
+
 // Update user profile (name/phone synchronously; email gated by confirmation).
 //
 // Response contract (200): { ...sanitizedUser, paymentSyncStatus, emailChangeRequested }
@@ -404,12 +468,7 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
     // the existing INFO log on `storage.updateUser` already covers
     // those, and they aren't a triage concern.
     const adminInitiatedProfileEdit = user.id !== userId;
-    type ProfileFieldChange = {
-      field: 'name' | 'phone' | 'preferred_language';
-      oldValue: string | null;
-      newValue: string | null;
-    };
-    const profileFieldChanges: ProfileFieldChange[] = [];
+    const profileFieldChanges: AdminProfileEditFieldChange[] = [];
     if (adminInitiatedProfileEdit) {
       if (
         updateData.name !== undefined &&
@@ -447,32 +506,18 @@ router.patch('/profile/:id', requireAuth, async (req: Request, res: Response) =>
     if (Object.keys(storagePatch).length > 0) {
       if (profileFieldChanges.length > 0) {
         // Atomic admin-initiated edit: user update + per-field audit
-        // rows in one transaction. The route does the write directly
-        // (rather than via storage.updateUser) so both statements
-        // share the same `tx`. We replicate the cache invalidation
-        // that storage.updateUser would have done.
-        updatedUser = await db.transaction(async (tx) => {
-          const [updated] = await tx
-            .update(users)
-            .set(storagePatch)
-            .where(eq(users.id, userId))
-            .returning();
-          if (!updated) {
-            throw new Error(`Failed to update user with ID ${userId}`);
-          }
-          for (const change of profileFieldChanges) {
-            await recordAdminProfileEditAudit(
-              {
-                actorUserId: user.id,
-                targetUserId: userId,
-                field: change.field,
-                oldValue: change.oldValue,
-                newValue: change.newValue,
-              },
-              tx,
-            );
-          }
-          return updated;
+        // rows in one transaction. Delegated to `applyAdminProfileEditTxn`
+        // so the unit test in
+        // `tests/unit/admin-profile-edit-audit-atomicity.test.ts` can pin
+        // the SAME function the route runs in production. We still
+        // replicate the cache invalidation that `storage.updateUser`
+        // would have done (the helper is the bare transaction; cache
+        // invalidation is a route concern).
+        updatedUser = await applyAdminProfileEditTxn({
+          userId,
+          storagePatch,
+          actorUserId: user.id,
+          fieldChanges: profileFieldChanges,
         });
         cacheInvalidate(`user:${userId}`);
         log.info('Admin-initiated profile edit recorded', {
