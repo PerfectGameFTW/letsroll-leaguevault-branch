@@ -1,5 +1,7 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { Router } from "express";
+import { timingSafeEqual } from "node:crypto";
+import { sendError } from "../utils/api.js";
 import leaguesRouter from './leagues.js';
 import teamsRouter from './teams.js';
 import bowlersRouter from './bowlers.js';
@@ -28,6 +30,54 @@ import { requireAuth, requireOrgAdmin, requireSystemAdmin, requirePasswordRotate
 import { createLogger } from '../logger';
 
 const log = createLogger("Routes");
+
+// Mount-layer auth wrapper for `/api/system-admin/*`. Behaves
+// identically to `requireSystemAdmin` for every path EXCEPT the
+// post-deploy probe endpoint `/trust-proxy-status`, which also
+// accepts an `X-Probe-Token` bearer header that matches the
+// `TRUST_PROXY_PROBE_TOKEN` env var on the server.
+//
+// We intercept at the mount layer (rather than as a per-route
+// middleware in `system-admin.ts`) because per-route middleware on
+// a router is unreachable when the mount-level auth check rejects
+// first — `requireSystemAdmin` would 401 the token-only caller
+// before the router was ever entered.
+//
+// Why a token at all (task #379 follow-up): the original probe
+// authenticated by pasting a system_admin session cookie into a
+// repo secret, which broke every ~24h when the session expired
+// (`cookie.maxAge` in `server/auth.ts`). A long-lived shared secret
+// avoids the rotation pain. The token is treated as a system_admin
+// credential — it must be deployed only into trusted secret stores.
+//
+// Constraints enforced here, mirrored by
+// `scripts/verify-trust-proxy-deploy.ts`:
+//   - server-side token must be >=32 chars (a short / empty / typo
+//     value cannot accidentally make the endpoint trivially callable)
+//   - constant-time compare via `timingSafeEqual` (length-checked
+//     first because the function throws on length mismatch)
+//   - if a token IS presented but does not match, we reject with
+//     `INVALID_PROBE_TOKEN` instead of falling through to session
+//     auth — falling through would let an attacker probe for valid
+//     tokens with a stolen admin cookie and never see a failure
+//     signal
+function trustProxyProbeAuth(req: Request, res: Response, next: NextFunction): void {
+  if (req.path === '/trust-proxy-status') {
+    const expected = process.env.TRUST_PROXY_PROBE_TOKEN?.trim();
+    const presentedRaw = req.headers['x-probe-token'];
+    const presented = typeof presentedRaw === 'string' ? presentedRaw : null;
+    if (expected && expected.length >= 32 && presented) {
+      const a = Buffer.from(expected, 'utf8');
+      const b = Buffer.from(presented, 'utf8');
+      if (a.length === b.length && timingSafeEqual(a, b)) {
+        return next();
+      }
+      sendError(res, 'Invalid probe token', 401, 'INVALID_PROBE_TOKEN');
+      return;
+    }
+  }
+  return requireSystemAdmin(req, res, next);
+}
 
 export function registerRoutes(app: Express): void {
   log.info('Registering API routes...');
@@ -72,7 +122,7 @@ export function registerRoutes(app: Express): void {
   app.use('/api/org-admin', requireOrgAdmin, orgAdminRouter);
   app.use('/api/user-bowlers', requireAuth, userBowlersRouter);
   app.use('/api/setup', setupAdminRouter); // setup routes have their own secret-based auth
-  app.use('/api/system-admin', requireSystemAdmin, systemAdminRouter);
+  app.use('/api/system-admin', trustProxyProbeAuth, systemAdminRouter);
   app.use('/api/user', requireAuth, userAvatarRouter);
   app.use('/api/locations', requireAuth, locationsRouter);
   app.use('/api/payment-schedules', requireAuth, paymentSchedulesRouter);

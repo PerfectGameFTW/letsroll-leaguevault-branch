@@ -31,12 +31,27 @@ name: Post-deploy trust-proxy probe
 #
 # Repository secrets required:
 #   DEPLOY_BASE_URL    — e.g. https://app.example.com (no trailing /)
-#   DEPLOY_ADMIN_COOKIE — full Cookie header value for a system_admin
-#                         session (e.g. "connect.sid=s%3A…"). Refresh
-#                         when the session expires (default 24h —
-#                         see `cookie.maxAge` in `server/auth.ts`).
-#                         A long-lived service-account session is the
-#                         intended source; do NOT paste a real human
+#
+#   AND exactly ONE of the following auth secrets:
+#     DEPLOY_PROBE_TOKEN  — PREFERRED. Long-lived shared secret (>=32
+#                         chars) matching the server's
+#                         `TRUST_PROXY_PROBE_TOKEN` env var. Sent as
+#                         the `X-Probe-Token` header. No rotation
+#                         needed; rotate only if compromised.
+#                         Generate with `openssl rand -hex 32` and
+#                         paste the SAME value into both:
+#                           - the deployed app's environment
+#                             (TRUST_PROXY_PROBE_TOKEN), and
+#                           - this repo's secrets (DEPLOY_PROBE_TOKEN).
+#     DEPLOY_ADMIN_COOKIE — LEGACY. Full Cookie header value for a
+#                         system_admin session (e.g. "connect.sid=s%3A
+#                         …"). Expires when the session expires
+#                         (~24h — see `cookie.maxAge` in
+#                         `server/auth.ts`), so this path requires
+#                         manual refresh. Only used when
+#                         DEPLOY_PROBE_TOKEN is unset. A long-lived
+#                         service-account session is the intended
+#                         source; do NOT paste a real human
 #                         operator's cookie.
 #
 # Optional repository secret:
@@ -107,6 +122,11 @@ jobs:
       - name: Run the trust-proxy verifier
         env:
           BASE_URL: ${{ github.event.inputs.base_url_override || secrets.DEPLOY_BASE_URL }}
+          # Token-based auth (preferred). When set, the script sends
+          # `X-Probe-Token` and the cookie is ignored.
+          PROBE_TOKEN: ${{ secrets.DEPLOY_PROBE_TOKEN }}
+          # Cookie-based auth (legacy). Only used when PROBE_TOKEN is
+          # unset. Refresh manually when the session expires.
           ADMIN_COOKIE: ${{ secrets.DEPLOY_ADMIN_COOKIE }}
           EXPECTED_RESOLVED_IP: ${{ secrets.DEPLOY_EXPECTED_RESOLVED_IP }}
         # Invoke `tsx` directly (mirrors the pattern in

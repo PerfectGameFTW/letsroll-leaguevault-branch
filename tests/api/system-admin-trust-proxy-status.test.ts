@@ -37,6 +37,14 @@ import {
   TEST_ORG_PASSWORD,
 } from '../helpers';
 
+// `tests/helpers.ts` derives the server base URL the same way it does
+// for fetch-based requests; we need it here too for the raw fetch
+// calls that exercise the `X-Probe-Token` auth path.
+const REPLIT_HOST =
+  process.env.REPLIT_DEV_DOMAIN || process.env.REPLIT_DOMAINS?.split(',')[0];
+const TEST_BASE_URL =
+  process.env.TEST_BASE_URL || (REPLIT_HOST ? `https://${REPLIT_HOST}` : 'http://localhost:5000');
+
 interface StatusBody {
   live: {
     resolvedIp: string | null;
@@ -117,5 +125,97 @@ describe('GET /api/system-admin/trust-proxy-status', () => {
       body!.live.xForwardedFor === null
         || typeof body!.live.xForwardedFor === 'string',
     ).toBe(true);
+  });
+
+  // ----------------------------------------------------------------
+  // X-Probe-Token auth path. The post-deploy CI probe authenticates
+  // with this header instead of a session cookie so it never needs
+  // to be rotated on the ~24h session expiry cadence. The server-side
+  // contract (`requireProbeTokenOrAdmin` in
+  // `server/routes/system-admin.ts`) is:
+  //
+  //   - matching token AND >=32-char server config → 200, no session
+  //     required
+  //   - non-matching token → 401 with code `INVALID_PROBE_TOKEN`,
+  //     even if a valid admin session is also presented (we MUST NOT
+  //     fall through to session auth, otherwise an attacker probing
+  //     for valid tokens with a stolen cookie would be silently let in)
+  //   - no token presented → standard requireAdmin contract applies
+  //     (already covered by the unauth/non-admin/admin tests above)
+  //
+  // These tests rely on the dev environment having
+  // TRUST_PROXY_PROBE_TOKEN set (see `.local/.commit_message`); they
+  // skip themselves with a loud message if it's missing so a fresh
+  // checkout doesn't register a false positive.
+  // ----------------------------------------------------------------
+  describe('X-Probe-Token auth path', () => {
+    const probeToken = process.env.TRUST_PROXY_PROBE_TOKEN?.trim();
+    const probeConfigured = !!probeToken && probeToken.length >= 32;
+
+    if (!probeConfigured) {
+      it.skip('skipped: TRUST_PROXY_PROBE_TOKEN not set in this env (>=32 chars)', () => {
+        // Intentional skip — see comment above.
+      });
+      return;
+    }
+
+    it('accepts a matching X-Probe-Token with no session and returns the status body', async () => {
+      const res = await fetch(`${TEST_BASE_URL}/api/system-admin/trust-proxy-status`, {
+        headers: {
+          Accept: 'application/json',
+          'X-Probe-Token': probeToken!,
+        },
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { success: boolean; data?: StatusBody };
+      expect(body.success).toBe(true);
+      expect(body.data?.synthetic.ok).toBe(true);
+    });
+
+    it('rejects a wrong X-Probe-Token with 401 INVALID_PROBE_TOKEN', async () => {
+      // Same length as the real token so we also exercise the
+      // timingSafeEqual path (it throws on length mismatch); a wrong
+      // token of the right length must still come back as 401.
+      const wrong = 'X'.repeat(probeToken!.length);
+      const res = await fetch(`${TEST_BASE_URL}/api/system-admin/trust-proxy-status`, {
+        headers: {
+          Accept: 'application/json',
+          'X-Probe-Token': wrong,
+        },
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { success: boolean; error?: { code?: string } };
+      expect(body.success).toBe(false);
+      expect(body.error?.code).toBe('INVALID_PROBE_TOKEN');
+    });
+
+    it('rejects a wrong X-Probe-Token even when a valid admin session cookie is also presented', async () => {
+      // Defense-in-depth: a presented-but-wrong token must NOT fall
+      // through to session auth. Otherwise an attacker probing for a
+      // valid token while holding a stolen cookie would never see a
+      // failure signal.
+      const res = await fetch(`${TEST_BASE_URL}/api/system-admin/trust-proxy-status`, {
+        headers: {
+          Accept: 'application/json',
+          'X-Probe-Token': 'definitely-not-the-right-token-but-long-enough-12345',
+          Cookie: admin.cookies,
+        },
+      });
+      expect(res.status).toBe(401);
+      const body = (await res.json()) as { success: boolean; error?: { code?: string } };
+      expect(body.error?.code).toBe('INVALID_PROBE_TOKEN');
+    });
+
+    it('rejects a length-mismatched X-Probe-Token with 401 (timingSafeEqual cannot compare)', async () => {
+      const res = await fetch(`${TEST_BASE_URL}/api/system-admin/trust-proxy-status`, {
+        headers: {
+          Accept: 'application/json',
+          // One char shorter than the real token, so the length-check
+          // guard rejects before timingSafeEqual is ever called.
+          'X-Probe-Token': 'a'.repeat(probeToken!.length - 1),
+        },
+      });
+      expect(res.status).toBe(401);
+    });
   });
 });

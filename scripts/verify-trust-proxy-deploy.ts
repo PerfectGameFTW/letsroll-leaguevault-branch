@@ -13,8 +13,10 @@
  *
  * What this script does
  * ---------------------
- *   1. Calls the debug endpoint on the deployed app, presenting an
- *      admin Cookie header so it can authenticate as a system_admin.
+ *   1. Calls the debug endpoint on the deployed app, authenticating
+ *      either via an `X-Probe-Token` header (preferred — long-lived
+ *      shared secret, no rotation) or a `Cookie` header carrying a
+ *      system_admin session (legacy — sessions expire after ~24h).
  *   2. Asserts HTTP 200 and the response shape is valid JSON.
  *   3. Asserts `synthetic.ok === true` — the boot probe still passes
  *      (i.e. nothing about the deployed Express config has drifted
@@ -30,8 +32,17 @@
  * Required env vars
  * -----------------
  *   BASE_URL         e.g. https://app.example.com
- *   ADMIN_COOKIE     full Cookie header value, e.g.
- *                    "connect.sid=s%3A..."
+ *
+ *   AND exactly ONE of:
+ *     PROBE_TOKEN    long-lived shared secret matching the server's
+ *                    `TRUST_PROXY_PROBE_TOKEN` env var. Sent as the
+ *                    `X-Probe-Token` header. Must be at least 32
+ *                    chars (the server enforces the same minimum).
+ *                    PREFERRED — never expires, no rotation needed.
+ *     ADMIN_COOKIE   full Cookie header value for a system_admin
+ *                    session, e.g. "connect.sid=s%3A...". LEGACY —
+ *                    expires with the session (~24h by default).
+ *                    Only used when PROBE_TOKEN is unset.
  *
  * Optional env vars
  * -----------------
@@ -54,7 +65,8 @@
  *   - `.github/workflows/post-deploy-trust-proxy.yml` — runs every
  *     30 minutes against the live deploy and on-demand via
  *     `workflow_dispatch` after a release. Reads its env from the
- *     `DEPLOY_BASE_URL`, `DEPLOY_ADMIN_COOKIE`, and (optional)
+ *     `DEPLOY_BASE_URL`, `DEPLOY_PROBE_TOKEN` (preferred) or
+ *     `DEPLOY_ADMIN_COOKIE` (legacy), and (optional)
  *     `DEPLOY_EXPECTED_RESOLVED_IP` repo secrets.
  *
  * When adding a new caller (e.g. a Replit-side post-deploy hook),
@@ -112,6 +124,7 @@ function info(msg: string): void {
 
 export async function runVerifier(env: NodeJS.ProcessEnv = process.env): Promise<void> {
   const baseUrl = env.BASE_URL?.trim();
+  const probeToken = env.PROBE_TOKEN?.trim();
   const adminCookie = env.ADMIN_COOKIE?.trim();
   const expectedResolvedIp = env.EXPECTED_RESOLVED_IP?.trim() || null;
   const timeoutMs = (() => {
@@ -121,7 +134,18 @@ export async function runVerifier(env: NodeJS.ProcessEnv = process.env): Promise
   })();
 
   if (!baseUrl) fail('BASE_URL is required (e.g. https://app.example.com)', 2);
-  if (!adminCookie) fail('ADMIN_COOKIE is required (full Cookie header value)', 2);
+  if (!probeToken && !adminCookie) {
+    fail(
+      'either PROBE_TOKEN (preferred, no rotation) or ADMIN_COOKIE (legacy, ~24h) is required',
+      2,
+    );
+  }
+  // The server requires >=32 chars for the probe token. Catch a short
+  // value here so the operator gets a clear configuration error
+  // instead of an "Invalid probe token" 401 from the server.
+  if (probeToken && probeToken.length < 32) {
+    fail('PROBE_TOKEN must be at least 32 characters (matches server-side minimum)', 2);
+  }
 
   let url: URL;
   try {
@@ -130,7 +154,21 @@ export async function runVerifier(env: NodeJS.ProcessEnv = process.env): Promise
     fail(`BASE_URL is not a valid URL: ${baseUrl}`, 2);
   }
 
-  info(`Probing ${url.toString()}`);
+  // Auth header selection — token wins when both are present so an
+  // operator who set up the token can leave a stale cookie around
+  // without it being silently used. Logged so a failing run makes
+  // the auth mode obvious in CI output.
+  const authHeaders: Record<string, string> = {};
+  let authMode: 'token' | 'cookie';
+  if (probeToken) {
+    authHeaders['X-Probe-Token'] = probeToken;
+    authMode = 'token';
+  } else {
+    authHeaders.Cookie = adminCookie!;
+    authMode = 'cookie';
+  }
+
+  info(`Probing ${url.toString()} (auth=${authMode})`);
 
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
@@ -140,7 +178,7 @@ export async function runVerifier(env: NodeJS.ProcessEnv = process.env): Promise
       method: 'GET',
       headers: {
         Accept: 'application/json',
-        Cookie: adminCookie!,
+        ...authHeaders,
       },
       signal: ac.signal,
       redirect: 'manual',

@@ -480,11 +480,31 @@ router.get('/admin-email-change-audits', requireAdmin, async (req: Request, res:
 //     so the endpoint is also useful as an at-rest invariant check
 //     without needing a known caller IP.
 //
+// Auth: two paths are accepted by the mount-layer wrapper
+// `trustProxyProbeAuth` in `server/routes/index.ts`, NOT by a per-
+// route middleware here. Per-route middleware would be unreachable
+// because the mount-level `requireSystemAdmin` runs first and would
+// reject a token-only caller before this router was ever entered.
+//
+//   1. A valid system_admin session (the original contract — humans
+//      hitting the endpoint from a logged-in browser).
+//   2. A constant-time match on the `X-Probe-Token` header against
+//      the `TRUST_PROXY_PROBE_TOKEN` env var. This is how the
+//      post-deploy CI probe authenticates so it does not need a
+//      rotating session cookie (sessions expire after ~24h — see
+//      `cookie.maxAge` in `server/auth.ts`). The token is a long-
+//      lived shared secret deployed alongside the app and pasted
+//      into the probe runner's secret store.
+//
 // system_admin only because `req.ip` and the raw XFF header can be
 // considered PII / network metadata that we don't want exposed to a
-// regular user. The probe script signs in as a system_admin and
-// presents the resulting session cookie.
-router.get('/trust-proxy-status', requireAdmin, async (req: Request, res: Response) => {
+// regular user. The token path inherits the same trust level — the
+// token MUST be treated as a system_admin credential.
+//
+// The handler itself is registered without a per-route auth guard
+// because the mount-layer wrapper has already enforced one of the
+// two paths above by the time we get here.
+router.get('/trust-proxy-status', async (req: Request, res: Response) => {
   try {
     const trustSetting = req.app.get('trust proxy');
     const xff = typeof req.headers['x-forwarded-for'] === 'string'
