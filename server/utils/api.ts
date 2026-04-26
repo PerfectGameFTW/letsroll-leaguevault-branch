@@ -1,6 +1,6 @@
 import { Response } from 'express';
 import { ZodError } from 'zod';
-import { type User, type Organization, type Location, type Bowler, type PaginationMeta } from '@shared/schema';
+import { type User, type Organization, type Location, type Bowler, type Payment, type PaginationMeta } from '@shared/schema';
 
 // Allowlist projection (deny-by-default) — the safer of the two
 // strategies in task #327. Switching from a strip-list (`omit`) to an
@@ -292,6 +292,80 @@ export function sanitizeBowler(bowler: Bowler): SanitizedBowler {
 
 export function sanitizeBowlers(bowlers: Bowler[]): SanitizedBowler[] {
   return bowlers.map(sanitizeBowler);
+}
+
+// Same allowlist strategy for payments (task #504). Task #381 covered
+// locations + bowlers; payments was deferred as lower-risk because
+// the only sensitive-looking columns are operational:
+//
+//   - `cardpointeAuthcode` is already printed on receipts.
+//   - `idempotencyKey` is a client-supplied dedupe key.
+//
+// Both stay on the allowlist because their UI consumers depend on
+// them. The point of wiring an allowlist projection in anyway is
+// deny-by-default for the *next* column: a future addition to the
+// `payments` table (e.g. `processorWebhookSecret`, `merchantApiKey`,
+// `customerCardToken`) will be dropped at the response boundary
+// instead of silently riding along on every list / detail / refund
+// response. Anything new that lands on the table will be dropped
+// until it's deliberately added here.
+const SAFE_PAYMENT_FIELDS = [
+  'id',
+  'bowlerId',
+  'leagueId',
+  'amount',
+  'lineageAmount',
+  'prizeFundAmount',
+  'weekOf',
+  'status',
+  'type',
+  'checkNumber',
+  // Provider payment id powers the Square dashboard deep-link in
+  // bowler-payment-history-table.tsx and the lazy receipt backfill
+  // in view-receipt-button.tsx. Not a credential — Square treats it
+  // as a public-ish reference (the dashboard URL contains it).
+  'providerPaymentId',
+  // CardPointe transaction references printed on the physical
+  // receipt; the refund flow needs `cardpointeRetref` to charge a
+  // refund through CardPointe. Operational, not a credential.
+  'cardpointeRetref',
+  'cardpointeAuthcode',
+  // Client-supplied dedupe key. Surfacing it back to the same client
+  // that submitted it doesn't disclose anything new.
+  'idempotencyKey',
+  // Refund bookkeeping. `squareRefundId` is the provider-side
+  // reference for the refund (parallel to `providerPaymentId` for
+  // the original charge); the others are admin-visible refund
+  // metadata rendered in the payment history.
+  'squareRefundId',
+  'refundReason',
+  'refundedAt',
+  // Square hosted-receipt cache (task #503). receiptUrl /
+  // receiptNumber are the public hosted-receipt link Square emails
+  // to the buyer; receiptEmailMissing drives the "no receipt sent"
+  // badge on payments-table.tsx + payment-history-table.tsx and the
+  // refund-dialog notice.
+  'receiptUrl',
+  'receiptNumber',
+  'receiptEmailMissing',
+  // Free-text admin notes attached to the payment row.
+  'notes',
+  'createdAt',
+] as const;
+
+export type SanitizedPayment = Pick<Payment, typeof SAFE_PAYMENT_FIELDS[number]>;
+
+export function sanitizePayment(payment: Payment): SanitizedPayment {
+  const input = payment as Record<string, unknown>;
+  const safePayment: Record<string, unknown> = {};
+  for (const field of SAFE_PAYMENT_FIELDS) {
+    if (field in input) safePayment[field] = input[field];
+  }
+  return safePayment as SanitizedPayment;
+}
+
+export function sanitizePayments(payments: Payment[]): SanitizedPayment[] {
+  return payments.map(sanitizePayment);
 }
 
 export interface ApiResponse<T> {

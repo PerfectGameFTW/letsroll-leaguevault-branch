@@ -7,7 +7,7 @@
 import { Router } from 'express';
 import { storage } from '../../storage';
 import { isCardPaymentType } from "@shared/schema/constants";
-import { sendSuccess, sendError } from '../../utils/api.js';
+import { sendSuccess, sendError, sanitizePayment } from '../../utils/api.js';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../../services/payment-provider-factory';
 import { hasAccessToPayment } from '../../utils/access-control.js';
 import { paymentWriteLimiter } from '../../middleware/rate-limit.js';
@@ -65,7 +65,7 @@ router.post("/:id/refund", paymentWriteLimiter, async (req, res) => {
     }
 
     const refunded = await storage.refundPayment(id, providerRefundId, reason);
-    sendSuccess(res, refunded);
+    sendSuccess(res, sanitizePayment(refunded));
   } catch (error) {
     if (error instanceof ProviderNotConfiguredError) {
       return sendError(res, 'Payment provider not available for refund processing', 422, 'PROVIDER_NOT_CONFIGURED');

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage';
-import { sendSuccess, sendError, handleZodError, sanitizeUser, handleUserOrgError } from '../utils/api';
+import { sendSuccess, sendError, handleZodError, sanitizeUser, sanitizePayments, handleUserOrgError } from '../utils/api';
 import { z } from 'zod';
 import type { User as SelectUser } from '@shared/schema';
 import { updateEmailTemplateSchema } from '@shared/schema/email-templates';
@@ -70,10 +70,15 @@ router.get('/dashboard', requireAdmin, async (req, res) => {
       storage.getAllPaymentsSystemAdmin()
     ]);
     
-    // Get recent payments (last 5)
-    const recentPayments = payments
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, 5);
+    // Get recent payments (last 5). Sanitize at the response boundary
+    // (task #504) — the dashboard payload embeds the raw `Payment[]`
+    // returned by the storage layer and would otherwise leak any
+    // future column added to the table.
+    const recentPayments = sanitizePayments(
+      payments
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 5)
+    );
     
     // Calculate count of active entities
     const activeBowlers = bowlers.filter(b => b.active).length;

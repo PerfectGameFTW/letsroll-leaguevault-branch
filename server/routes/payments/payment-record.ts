@@ -9,7 +9,7 @@ import { storage } from '../../storage';
 import { insertPaymentSchema, updatePaymentSchema } from "@shared/schema";
 import { isCardPaymentType } from "@shared/schema/constants";
 import { z } from "zod";
-import { sendSuccess, sendError, handleZodError } from '../../utils/api.js';
+import { sendSuccess, sendError, handleZodError, sanitizePayment } from '../../utils/api.js';
 import { hasAccessToPayment, requireOrganizationAccess } from '../../utils/access-control.js';
 import { paymentWriteLimiter } from '../../middleware/rate-limit.js';
 import { differenceInWeeks } from 'date-fns';
@@ -59,7 +59,7 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
       const existing = await storage.getPaymentByIdempotencyKey(payment.idempotencyKey);
       if (existing && existing.leagueId === payment.leagueId) {
         log.info('Payment deduplicated by idempotency key:', { id: existing.id, idempotencyKey: payment.idempotencyKey });
-        return sendSuccess(res, existing, 200);
+        return sendSuccess(res, sanitizePayment(existing), 200);
       }
       if (existing) {
         return sendError(res, 'Duplicate idempotency key', 409, 'CONFLICT');
@@ -90,7 +90,7 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
         const existing = await storage.getPaymentByIdempotencyKey(payment.idempotencyKey);
         if (existing && existing.leagueId === payment.leagueId) {
           log.info('Payment deduplicated after race condition:', { id: existing.id, idempotencyKey: payment.idempotencyKey });
-          return sendSuccess(res, existing, 200);
+          return sendSuccess(res, sanitizePayment(existing), 200);
         }
         if (existing) {
           return sendError(res, 'Duplicate idempotency key', 409, 'CONFLICT');
@@ -133,7 +133,7 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
       }
     }
 
-    sendSuccess(res, created, 201);
+    sendSuccess(res, sanitizePayment(created), 201);
   } catch (error) {
     log.error('Create error:', error);
     if (error instanceof z.ZodError) {
@@ -171,7 +171,7 @@ router.patch("/:id", paymentWriteLimiter, async (req, res) => {
       return sendError(res, "Payment not found", 404, "NOT_FOUND");
     }
 
-    sendSuccess(res, updated);
+    sendSuccess(res, sanitizePayment(updated));
   } catch (error) {
     log.error('Update error:', error);
     if (error instanceof z.ZodError) {

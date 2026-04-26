@@ -9,6 +9,7 @@ import {
   parseOptionalIntParam,
   parseOptionalIntListParam,
   sanitizeBowler,
+  sanitizePayments,
 } from '../utils/api.js';
 import { getPaymentProvider, ProviderNotConfiguredError } from '../services/payment-provider-factory';
 import type { PaymentProvider } from '../services/payment-provider';
@@ -248,7 +249,7 @@ router.get("/:id/details", async (req, res) => {
       const orgId = req.user?.organizationId;
       if (orgId) {
         const payments = await storage.getPayments({ bowlerId: id, organizationId: orgId });
-        response.payments = payments;
+        response.payments = sanitizePayments(payments);
       }
     }
 

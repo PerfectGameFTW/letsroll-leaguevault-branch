@@ -13,6 +13,7 @@ import {
   parsePaginationParams,
   parseOptionalIntParam,
   parseOptionalDateParam,
+  sanitizePayments,
 } from '../../utils/api.js';
 import { requireOrganizationAccess } from '../../utils/access-control.js';
 import { createLogger } from '../../logger';
@@ -89,22 +90,22 @@ router.get("/", async (req, res) => {
     if (isSystemAdmin && effectiveOrgId === null) {
       if (paginationParams) {
         const result = await storage.getAllPaymentsPaginatedSystemAdmin(baseFilters, paginationParams.page, paginationParams.limit);
-        return sendPaginatedSuccess(res, result.items, result.pagination);
+        return sendPaginatedSuccess(res, sanitizePayments(result.items), result.pagination);
       }
       const payments = await storage.getAllPaymentsSystemAdmin(baseFilters);
-      return sendSuccess(res, payments);
+      return sendSuccess(res, sanitizePayments(payments));
     }
 
     const filters = { ...baseFilters, organizationId: effectiveOrgId! };
 
     if (paginationParams) {
       const result = await storage.getPaymentsPaginated(filters, paginationParams.page, paginationParams.limit);
-      return sendPaginatedSuccess(res, result.items, result.pagination);
+      return sendPaginatedSuccess(res, sanitizePayments(result.items), result.pagination);
     }
 
     const payments = await storage.getPayments(filters);
 
-    sendSuccess(res, payments);
+    sendSuccess(res, sanitizePayments(payments));
   } catch (error) {
     log.error('Get error:', error);
     sendError(res, 'Failed to fetch payments');
