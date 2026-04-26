@@ -14,6 +14,7 @@ import express from 'express';
 import {
   verifyTrustProxy,
   assertTrustProxyAtBoot,
+  isPrivateOrLoopback,
 } from '../../server/lib/trust-proxy-check';
 
 function makeLog() {
@@ -80,5 +81,102 @@ describe('assertTrustProxyAtBoot', () => {
     expect(result.ok).toBe(true);
     expect(log.error).not.toHaveBeenCalled();
     expect(log.warn).not.toHaveBeenCalled();
+  });
+});
+
+// Direct coverage of the CIDR-aware private/loopback classifier
+// (task #380). Before this rewrite the helper used a string-prefix
+// list — `["fc", "fd", ...]` — that would have falsely classified
+// any string starting with those letters as an IPv6 unique-local
+// address. The cases below pin both the legitimate matches AND the
+// bait inputs the prefix version would have gotten wrong.
+describe('isPrivateOrLoopback', () => {
+  describe('IPv4 private / loopback / link-local ranges → true', () => {
+    it.each([
+      ['127.0.0.1', 'loopback'],
+      ['127.255.255.254', 'loopback (full /8)'],
+      ['10.0.0.1', 'RFC1918 10/8'],
+      ['172.16.0.1', 'RFC1918 172.16/12 lower bound'],
+      ['172.31.255.255', 'RFC1918 172.16/12 upper bound'],
+      ['192.168.1.1', 'RFC1918 192.168/16'],
+      ['169.254.1.1', 'link-local 169.254/16'],
+      ['0.0.0.0', 'unspecified'],
+    ])('%s (%s)', (ip) => {
+      expect(isPrivateOrLoopback(ip)).toBe(true);
+    });
+  });
+
+  describe('IPv4 public ranges → false', () => {
+    it.each([
+      ['203.0.113.7', 'TEST-NET-3 (the synthetic client we use throughout the boot guard)'],
+      ['8.8.8.8', 'arbitrary public IPv4'],
+      ['172.32.0.1', 'just outside the 172.16/12 RFC1918 block'],
+      ['172.15.255.255', 'just below the 172.16/12 RFC1918 block'],
+      ['11.0.0.1', 'one-off above 10/8'],
+      ['192.169.0.1', 'just outside 192.168/16'],
+    ])('%s (%s)', (ip) => {
+      expect(isPrivateOrLoopback(ip)).toBe(false);
+    });
+  });
+
+  describe('IPv6 loopback / unique-local / link-local → true', () => {
+    it.each([
+      ['::1', 'IPv6 loopback'],
+      ['::', 'IPv6 unspecified'],
+      ['fc00::1', 'IPv6 unique-local (fc00::/7) lower'],
+      ['fcff::ff', 'IPv6 unique-local (fc00::/7) middle'],
+      ['fd00::1', 'IPv6 unique-local (fd00::/7)'],
+      ['fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff', 'IPv6 unique-local upper bound'],
+      ['fe80::1', 'IPv6 link-local (fe80::/10)'],
+      ['febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff', 'IPv6 link-local upper bound'],
+    ])('%s (%s)', (ip) => {
+      expect(isPrivateOrLoopback(ip)).toBe(true);
+    });
+  });
+
+  describe('IPv6 public ranges → false', () => {
+    it.each([
+      ['2001:db8::1', 'documentation prefix (still classed as global by ipaddr.js)'],
+      ['2606:4700:4700::1111', 'Cloudflare public DNS over IPv6'],
+      ['fb00::1', "just below fc00::/7 (was previously caught by bare 'f' isn't a thing, but we want it through)"],
+      ['fec0::1', 'site-local — deprecated by RFC3879 but should not match link-local'],
+    ])('%s (%s)', (ip) => {
+      expect(isPrivateOrLoopback(ip)).toBe(false);
+    });
+  });
+
+  describe('IPv4-mapped IPv6 unwraps to its embedded IPv4', () => {
+    it('::ffff:127.0.0.1 → true (loopback under the wrapper)', () => {
+      expect(isPrivateOrLoopback('::ffff:127.0.0.1')).toBe(true);
+    });
+    it('::ffff:10.0.0.1 → true (RFC1918 under the wrapper)', () => {
+      expect(isPrivateOrLoopback('::ffff:10.0.0.1')).toBe(true);
+    });
+    it('::ffff:8.8.8.8 → false (public IPv4 under the wrapper)', () => {
+      expect(isPrivateOrLoopback('::ffff:8.8.8.8')).toBe(false);
+    });
+  });
+
+  describe('Unparseable / sentinel inputs → true (fail-closed)', () => {
+    // The whole point of task #380: the prefix-based predecessor
+    // would have flipped these to `true` for a completely wrong
+    // reason ("starts with fc/fd"), and worse — the rest of the
+    // module would have flowed `verifyTrustProxy` through the
+    // "looks like a private address" branch and surfaced a
+    // misleading error message. The CIDR-aware version still
+    // returns `true` (fail-closed), but does so explicitly because
+    // the input failed `ipaddr.isValid`, not because it accidentally
+    // pattern-matched a real range.
+    it.each([
+      ['fcat', "starts with 'fc' but isn't an IPv6 ULA"],
+      ['fdoozle', "starts with 'fd' but isn't an IPv6 ULA"],
+      ['fe80x', "starts with 'fe80' but isn't a valid IPv6"],
+      ['127garbage', "starts with '127' but isn't a valid IPv4"],
+      ['not-an-ip', 'pure garbage'],
+      ['', 'empty string'],
+      ['unknown', 'proxy-addr sentinel'],
+    ])('%s (%s) → true', (ip) => {
+      expect(isPrivateOrLoopback(ip)).toBe(true);
+    });
   });
 });

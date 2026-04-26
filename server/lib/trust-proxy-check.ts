@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import proxyAddr from "proxy-addr";
+import ipaddr from "ipaddr.js";
 
 // Why this exists (task #326):
 //
@@ -18,28 +19,68 @@ import proxyAddr from "proxy-addr";
 // would resolve to. If the answer is the loopback or otherwise
 // non-routable, trust-proxy is misconfigured for the deployed topology.
 
-// Loopback / private CIDRs that should never be the resolved client
-// IP under a sane deploy. We treat any of these as "the proxy is
-// eating the X-Forwarded-For".
-const PRIVATE_OR_LOOPBACK_PREFIXES = [
-  "127.",
-  "10.",
-  "192.168.",
-  "169.254.",
-  "::1",
-  "fe80:",
-  "fc",
-  "fd",
-];
+// IPv4 ranges that, if `req.ip` ever resolves to one in production,
+// mean the proxy is eating the X-Forwarded-For: loopback (127/8),
+// RFC1918 private (10/8, 172.16/12, 192.168/16), and link-local
+// (169.254/16). `unspecified` (0.0.0.0) is also worth blocking — it
+// is never a real client.
+const IPV4_BAD_RANGES = new Set<string>([
+  "loopback",
+  "private",
+  "linkLocal",
+  "unspecified",
+]);
 
-function isPrivateOrLoopback(ip: string): boolean {
+// IPv6 equivalents: loopback (::1), unique-local (fc00::/7, the IPv6
+// "private" equivalent), link-local (fe80::/10), and unspecified (::).
+// `ipv4Mapped` is intentionally NOT in this set — we unwrap those
+// addresses below and re-check the embedded IPv4 instead, so a
+// `::ffff:127.0.0.1` is correctly rejected as IPv4 loopback rather
+// than allowed through as a "non-private" IPv6 address.
+const IPV6_BAD_RANGES = new Set<string>([
+  "loopback",
+  "uniqueLocal",
+  "linkLocal",
+  "unspecified",
+]);
+
+// Exported for direct unit testing — see tests/api/trust-proxy-check.test.ts.
+//
+// CIDR-precise replacement for the string-prefix list this used to
+// carry (task #380). With prefix matching, a non-IP string like
+// "fcat" or "fdoozle" — produced by a misbehaving upstream or a
+// future change to proxy-addr's normalization — would have falsely
+// matched the IPv6 unique-local check (`startsWith("fc")` /
+// `startsWith("fd")`) and silently flipped a real client through to
+// the "ok" branch as a private address. Worse, an unparseable
+// string would have flowed through the .startsWith chain and could
+// have ended up in either branch depending on its first chars. The
+// CIDR-aware path uses ipaddr.js to parse the address and dispatch
+// on the canonical range — and treats anything unparseable as
+// private (fail-closed: better to surface a misconfigured proxy
+// loudly than to silently classify garbage as a real client IP).
+export function isPrivateOrLoopback(ip: string): boolean {
   if (!ip) return true;
   const lower = ip.toLowerCase();
-  if (lower === "::1" || lower === "127.0.0.1" || lower === "unknown") return true;
-  // 172.16.0.0 – 172.31.255.255
-  const m = /^172\.(\d+)\./.exec(lower);
-  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
-  return PRIVATE_OR_LOOPBACK_PREFIXES.some((p) => lower.startsWith(p));
+  // Some proxy-addr code paths emit the literal "unknown" instead
+  // of a parseable address; treat it as private (fail-closed).
+  if (lower === "unknown") return true;
+  if (!ipaddr.isValid(ip)) return true;
+  let addr = ipaddr.parse(ip);
+  // Unwrap IPv4-mapped IPv6 (::ffff:1.2.3.4) so a tunneled loopback
+  // or RFC1918 address still gets caught by the IPv4 ruleset rather
+  // than being waved through as "just an IPv6 address".
+  if (addr.kind() === "ipv6") {
+    const v6 = addr as ipaddr.IPv6;
+    if (v6.isIPv4MappedAddress()) {
+      addr = v6.toIPv4Address();
+    }
+  }
+  const range = addr.range();
+  if (addr.kind() === "ipv4") {
+    return IPV4_BAD_RANGES.has(range);
+  }
+  return IPV6_BAD_RANGES.has(range);
 }
 
 export interface TrustProxyCheckResult {
