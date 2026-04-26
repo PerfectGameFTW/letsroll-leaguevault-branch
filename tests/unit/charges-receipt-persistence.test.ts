@@ -184,34 +184,13 @@ describe('POST /api/payments-provider/payments — receipt persistence (Task #50
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it('flags receiptEmailMissing and warns when bowler has no email and no override', async () => {
-    mockStorage.getBowler.mockResolvedValue({
-      id: 42, name: 'Pat', email: null, squareCustomerId: 'cust_123',
-    });
-    mockProvider.processPayment.mockResolvedValue({
-      id: 'sq_pay_2', status: 'COMPLETED',
-      receiptUrl: 'https://squareup.com/receipt/preview/sq_pay_2',
-      receiptNumber: 'XYZ-002',
-      providerRef: {},
-    });
-
-    const res = await postCharge({
-      sourceId: 'cnon:tok_def', amount: 2000, bowlerId: 42, leagueId: 11, storeCard: false,
-    });
-
-    expect(res.status).toBe(200);
-    const insert = mockStorage.createPayment.mock.calls[0][0];
-    expect(insert.receiptEmailMissing).toBe(true);
-    expect(insert.receiptUrl).toBe('https://squareup.com/receipt/preview/sq_pay_2');
-    expect(warnSpy).toHaveBeenCalled();
-    const warnMsg = String(warnSpy.mock.calls[0][0] ?? '');
-    expect(warnMsg).toMatch(/without buyer email/i);
-
-    // The provider call itself must have received `undefined` so Square
-    // doesn't try to email a blank string.
-    const callArgs = mockProvider.processPayment.mock.calls[0];
-    expect(callArgs[4]).toBeUndefined();
-  });
+  // Task #503 (2nd-pass review): the interactive route now HARD-ENFORCES
+  // a buyer email for Square via BUYER_EMAIL_REQUIRED, so the
+  // "no email + no override" path never reaches the persistence layer
+  // here. The unattended autopay variant (warn+flag) is covered in
+  // tests/unit/payment-execution-receipt-warn.test.ts, and the
+  // enforcement itself is covered in
+  // tests/unit/charges-buyer-email-enforcement.test.ts.
 
   it('clears receiptEmailMissing when request body provides a buyerEmail override', async () => {
     mockStorage.getBowler.mockResolvedValue({

@@ -1,8 +1,9 @@
 import { FC } from "react";
-import { CreditCard, Banknote, FileText, ChevronRight, Receipt } from "lucide-react";
+import { CreditCard, Banknote, FileText, Receipt } from "lucide-react";
 import { differenceInWeeks, format } from "date-fns";
 import { formatCurrency } from "@/lib/utils";
 import { isCardPaymentType } from "@shared/schema/constants";
+import { ViewReceiptButton } from "@/components/view-receipt-button";
 import type { Payment, League } from "@shared/schema";
 
 interface BowlerPaymentTableProps {
@@ -87,6 +88,8 @@ export const BowlerPaymentTable: FC<BowlerPaymentTableProps> = ({ payments, leag
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
+                    {/* Task #503: View receipt entry-point for paid Square/credit_card rows. */}
+                    <ViewReceiptButton payment={payment} variant="link" />
                     <span className={`px-2.5 py-1 rounded-md text-xs font-medium ${getStatusStyle(payment.status)}`}>
                       {getStatusLabel(payment.status)}
                     </span>

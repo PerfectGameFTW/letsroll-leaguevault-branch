@@ -199,6 +199,22 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       : '';
     const buyerEmail = bowler.email || requestBuyerEmail || undefined;
 
+    // Task #503: HARD-ENFORCE buyer email for interactive Square charges.
+    // This route only handles user-driven checkouts (a sourceId from a card
+    // form / Apple Pay / Google Pay), so we have a human who can supply an
+    // email. Autopay (server/services/payment-execution.ts) is the only
+    // unattended Square path and is allowed to warn+flag without an email.
+    // The matching frontend forms make the inline "Email for receipt" field
+    // required when bowler.email is missing; this is the server-side guard.
+    if (provider.providerName === 'square' && !buyerEmail) {
+      return sendError(
+        res,
+        "A buyer email is required for Square card payments so the receipt can be sent. Add an email to the bowler's profile or enter one at checkout.",
+        400,
+        'BUYER_EMAIL_REQUIRED',
+      );
+    }
+
     // Task #503: when a bowler self-checks-out (their own user account
     // is linked to this bowler row) and supplies a brand-new email at
     // checkout, persist it to their profile. This means the very next

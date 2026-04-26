@@ -383,7 +383,9 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
             {paymentType === "credit_card" && selectedBowlerId && !bowlerHasEmail && (
               <FormItem>
-                <FormLabel>Email for receipt (optional)</FormLabel>
+                <FormLabel>
+                  Email for receipt <span className="text-destructive">*</span>
+                </FormLabel>
                 <FormControl>
                   <Input
                     type="email"

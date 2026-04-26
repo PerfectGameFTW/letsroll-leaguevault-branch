@@ -4,6 +4,25 @@
  * Refunds delegate the provider call to the configured payment provider but
  * the database row in `payments` remains the source of truth for the
  * user-visible payment list.
+ *
+ * Task #503 — Square refund-receipt behavior:
+ *
+ * Square's hosted "refund receipt" email is automatically sent ONLY when the
+ * ORIGINAL payment carried a `buyerEmailAddress`. The Refunds API itself does
+ * NOT take a buyer email parameter, and we do not attempt to send a separate
+ * refund-receipt email from our side. As a consequence, when the original
+ * payment row was persisted with `receiptEmailMissing: true` (i.e. the
+ * checkout ran without a buyer email — typically pre-#503 rows or autopay
+ * runs that hit the warn+flag path), the refund will succeed at Square but
+ * NO refund receipt will be emailed by Square.
+ *
+ * The UI (refund-payment-dialog.tsx) surfaces this fact with an inline
+ * notice when the original payment has `receiptEmailMissing: true` so the
+ * admin can resend manually via the admin Resend Receipt action.
+ *
+ * Going forward, the interactive Square charge route hard-enforces a buyer
+ * email (charges.ts -> BUYER_EMAIL_REQUIRED), so all NEW Square charges from
+ * the UI will have an email on file and refunds will get auto-receipts.
  */
 import { Router } from 'express';
 import { storage } from '../../storage';

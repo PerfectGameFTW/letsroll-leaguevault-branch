@@ -278,7 +278,7 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
           {!bowlerHasEmail && onReceiptEmailChange && (
             <div className="space-y-2 rounded-md border bg-muted/30 p-3">
               <Label htmlFor="receipt-email" className="text-sm font-medium">
-                Email for receipt (optional)
+                Email for receipt <span className="text-destructive">*</span>
               </Label>
               <Input
                 id="receipt-email"

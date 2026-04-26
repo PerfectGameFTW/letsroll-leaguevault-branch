@@ -175,7 +175,11 @@ export default function WeeklyPaymentsPage() {
     staleTime: 1000 * 60,
   });
 
-  const payments = (paymentsResponse?.data || []).filter(p => p.type === "cash" || p.type === "check");
+  // Task #503: include ALL payment types (was filtered to cash/check only).
+  // Card/Square rows need to appear here so admins can View Receipt and
+  // Resend Receipt for paid card charges from the weekly view. The shared
+  // PaymentHistoryTable below already gates resend/edit actions per row.
+  const payments = paymentsResponse?.data || [];
 
   if ((loadingLeague || loadingBowlerLeagues) && !league) {
     return <Layout><PageLoadingState /></Layout>;
