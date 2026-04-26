@@ -29,13 +29,20 @@ export function ViewReceiptButton({ payment, variant = "icon" }: Props) {
   const { toast } = useToast();
   const [isFetching, setIsFetching] = useState(false);
 
-  const isCardPaid =
-    payment.status === "paid" &&
-    (payment.type === "square" || payment.type === "credit_card");
+  // Task #503 (6th-pass review): tighten provenance. Square is the
+  // only provider that emits hosted receipts; CardPointe never sets
+  // `receiptUrl`. For type==="square" rows we always offer the
+  // button (cached or lazy-backfill via getPayment). For legacy
+  // type==="credit_card" rows we only offer it when `receiptUrl` is
+  // already cached — that's the strongest available proof the row
+  // was charged through Square. Without that proof the button could
+  // 404 for CardPointe rows, so we hide it instead.
+  const isPaid = payment.status === "paid";
   const hasReceipt = !!payment.receiptUrl;
-  const canBackfill = !!payment.providerPaymentId;
+  const isSquare = payment.type === "square";
+  const canBackfill = isSquare && !!payment.providerPaymentId;
 
-  if (!isCardPaid || (!hasReceipt && !canBackfill)) {
+  if (!isPaid || (!hasReceipt && !canBackfill)) {
     return variant === "link" ? <span className="text-muted-foreground">—</span> : null;
   }
 
