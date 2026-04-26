@@ -906,6 +906,23 @@ router.post(
 // from one IP, and a single legit user behind CG-NAT isn't blocked
 // by an unrelated stranger. Returns the standard 429 error shape via
 // `sendError` so the existing client-side error handling keeps working.
+//
+// Exported for unit testing — see
+// `tests/unit/change-password-rate-limit-key.test.ts`, which pins the
+// IPv6 /64 collapsing so a future refactor can't reintroduce the
+// `req.ip` bypass that gives every IPv6 address its own bucket.
+export function changePasswordKeyGenerator(req: Request): string {
+  const userId = (req.user as { id?: number } | undefined)?.id;
+  if (userId) return `u:${userId}`;
+  // Fall through to IP if not yet authenticated — requireAuth runs
+  // AFTER this limiter, so an unauth caller still gets per-IP
+  // throttling instead of bypassing the limit by omitting cookies.
+  // `ipKeyGenerator` collapses IPv6 addresses down to a /64 prefix,
+  // which is what blocks the "rotate addresses inside one /64 to dodge
+  // the bucket" bypass that `req.ip` alone permits.
+  return `ip:${ipKeyGenerator(req.ip ?? 'unknown')}`;
+}
+
 const changePasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -914,13 +931,7 @@ const changePasswordLimiter = rateLimit({
   // Task #356: shared Postgres store so the per-user budget can't be
   // bypassed by spreading attempts across multiple replicas.
   store: createSharedRateLimitStore('change-password'),
-  keyGenerator: (req: Request) => {
-    const userId = (req.user as { id?: number } | undefined)?.id;
-    // Fall through to IP if not yet authenticated — requireAuth runs
-    // AFTER this limiter, so an unauth caller still gets per-IP
-    // throttling instead of bypassing the limit by omitting cookies.
-    return userId ? `u:${userId}` : `ip:${req.ip ?? 'unknown'}`;
-  },
+  keyGenerator: changePasswordKeyGenerator,
   handler: (req, res) => {
     log.warn('Password-change attempts throttled', {
       userId: (req.user as { id?: number } | undefined)?.id,
