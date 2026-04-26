@@ -17,7 +17,6 @@ import { syncBowlerToBN, isOrgBNConfigured } from '../services/bowlnow.js';
 import { flagBowlerForBnRetry, clearBowlerBnRetry } from '../services/bowlnow-retry-flag.js';
 import { runBowlerPostCreateSync } from '../services/bowler-sync.js';
 import { syncBowlerLeagueAttributesToProvider } from '../services/bowler-attributes';
-import { registerBowlerClaim } from '../utils/bowler-claim-tokens.js';
 import { createLogger } from '../logger';
 import { isDev } from '../config';
 
@@ -399,12 +398,16 @@ router.post("/", async (req, res) => {
     const created = await storage.createBowler(stampedBowler);
     const orgId: number | undefined = stampOrgId;
     const synced = await runBowlerPostCreateSync(created, orgId);
-    // Register an ephemeral creation-time claim so this caller (and only
-    // this caller, in the same org) may bootstrap-link the new bowler to
-    // its first league via POST /api/bowler-leagues. Prevents cross-org
-    // hijack of the bowler row in the brief window before its first link.
-    // See server/utils/bowler-claim-tokens.ts for full rationale.
-    registerBowlerClaim(synced.id, req);
+    // Note: there used to be a `registerBowlerClaim` call here that
+    // backed an ephemeral cross-org-hijack defense for the
+    // /api/bowler-leagues bootstrap branch. Task #474 removed that
+    // module: post-#342/#407 the bowler row carries an authoritative
+    // `organizationId` stamp, and the bootstrap branch's
+    // `bowler.organizationId === league.organizationId` gate denies
+    // cross-org admins before any claim consume could fire. Same-org
+    // admins are short-circuited by `hasAccessToBowler` and never
+    // enter the bootstrap branch at all. See
+    // docs/security/fresh-bowler-claim-removal.md for the full trace.
     sendSuccess(res, sanitizeBowler(synced), 201);
   } catch (error) {
     log.error('Error creating bowler:', error);

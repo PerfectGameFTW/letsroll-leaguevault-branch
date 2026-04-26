@@ -106,15 +106,6 @@ vi.mock('../../server/middleware/organization', () => ({
     req.user?.organizationId ?? null,
 }));
 
-// Bowler-claim-tokens — the bootstrap branch for fresh bowlers needs
-// `consumeBowlerClaim` to return true. We never exercise the bootstrap
-// branch in the scenarios below (all our test bowlers already have
-// league entries, so `hasAccessToBowler` short-circuits true above),
-// but the import has to resolve.
-vi.mock('../../server/utils/bowler-claim-tokens.js', () => ({
-  consumeBowlerClaim: () => true,
-}));
-
 // ---------------------------------------------------------------------------
 // Payment-scheduler / db / email / auth — only touched by route paths we
 // don't exercise (timezone changes, fee changes, send-invites). Mock just

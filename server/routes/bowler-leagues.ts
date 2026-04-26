@@ -3,8 +3,7 @@ import { storage } from '../storage';
 import { insertBowlerLeagueSchema, updateBowlerLeagueSchema } from "@shared/schema";
 import { z } from "zod";
 import { sendSuccess, sendError, handleZodError } from '../utils/api';
-import { hasAccessToLeague, hasAccessToTeam, hasAccessToBowler, isOrgOrHigher } from '../utils/access-control.js';
-import { consumeBowlerClaim } from '../utils/bowler-claim-tokens.js';
+import { hasAccessToLeague, hasAccessToTeam, hasAccessToBowler, isOrgOrHigher, isSystemAdmin } from '../utils/access-control.js';
 import { createLogger } from '../logger';
 import { fireBowlerExternalResync } from '../services/bowler-resync';
 
@@ -111,42 +110,56 @@ router.post("/", async (req, res) => {
 
     let bootstrapPath = false;
     if (!(await hasAccessToBowler(req, data.bowlerId))) {
-      // Bootstrap exception (creation-time claim token + org-stamp gate).
+      // Bootstrap exception (org-stamp gate).
       //
       // A freshly created bowler that has zero league entries fails the
-      // regular access check via the legacy fallback path (no shared
-      // league with the caller), so the public API would otherwise have
-      // no way to attach a brand-new bowler to its first league.
-      // Production bootstrap paths (bulk import, season clone) call
-      // `storage.createBowlerLeague` directly to dodge the same
+      // regular access check via the legacy league-scan fallback path
+      // (no shared league with the caller), so the public API would
+      // otherwise have no way to attach a brand-new bowler to its first
+      // league. Production bootstrap paths (bulk import, season clone)
+      // call `storage.createBowlerLeague` directly to dodge the same
       // chicken-egg problem.
       //
-      // After task #342, every newly-created bowler carries an
-      // `organizationId` stamp, so `hasAccessToBowler` will positively
-      // short-circuit for the legitimate same-org admin case before we
-      // ever reach this branch. The branch therefore now matters only
-      // for the cross-org admin trying to bootstrap-link a fresh bowler
-      // stamped to a different org. (Task #407 made the stamp NOT
-      // NULL, so the legacy-NULL case can no longer occur.)
+      // History: pre-#342 this branch was gated by an in-memory
+      // creation-time claim token registered at POST /api/bowlers.
+      // Tasks #342 / #407 added an authoritative `organizationId`
+      // stamp on every bowler row (NOT NULL at the DB layer). Once
+      // that stamp existed, `hasAccessToBowler` short-circuits true
+      // for any same-org caller before this branch is even entered,
+      // and the cross-org caller is now denied below by the strict
+      // bowler-stamp / target-league-stamp equality check. Task #474
+      // therefore removed the claim-token module entirely (it was
+      // unreachable in every legitimate or attack scenario, and its
+      // in-memory map could not survive a multi-process deploy).
+      // See docs/security/fresh-bowler-claim-removal.md for the full
+      // reachability trace.
       //
       // Gates (all must pass):
-      //   1. Caller is org_admin or system_admin. Bowler-role users that
-      //      passed `hasAccessToTeam` via the league self-membership
-      //      shortcut must not be able to claim other bowlers here.
+      //   1. Caller is org_admin or system_admin. Bowler-role users
+      //      that passed `hasAccessToTeam` via the league
+      //      self-membership shortcut must not be able to claim other
+      //      bowlers here.
       //   2. The bowler row exists and its stamped `organizationId`
       //      strictly matches the target league's `organizationId`.
       //      Org-less leagues still deny (per the org-less policy).
-      //      This is the task #342 tightening: the bootstrap branch is
-      //      no longer authoritative on the claim token alone — it
-      //      requires the bowler's own stamp to agree with the link
-      //      target.
-      //   3. The caller holds a non-expired creation-time claim token
-      //      for this bowler id (defense in depth on top of the org
-      //      stamp; see server/utils/bowler-claim-tokens.ts).
+      //   3. Caller-org alignment: a non-system-admin caller's own
+      //      `organizationId` must equal the bowler's stamp. This
+      //      replaces the pre-#474 claim-token check that required
+      //      `token.orgId === u.organizationId`. Without it, an org_admin
+      //      with a personal `bowlerId` in another org's league could
+      //      pass `hasAccessToLeague` / `hasAccessToTeam` via the league
+      //      self-membership shortcut (access-control.ts:74-79) into
+      //      that other org, then ride gate 2 (bowler.org === league.org
+      //      both equal to the OTHER org) to bootstrap-hijack a fresh
+      //      bowler in an org they are not an admin of. System admins
+      //      are exempt because `hasAccessToBowler` short-circuits TRUE
+      //      for them at access-control.ts:150 and they never reach
+      //      this branch; the exemption is purely defensive. See
+      //      docs/security/fresh-bowler-claim-removal.md.
       //
       // Every failure mode collapses to the same 403 to avoid leaking
-      // which gate denied (existence-oracle, claim-presence oracle,
-      // org-mismatch oracle, etc.).
+      // which gate denied (existence oracle, org-mismatch oracle,
+      // etc.).
       if (!isOrgOrHigher(req.user)) {
         return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
       }
@@ -156,14 +169,13 @@ router.post("/", async (req, res) => {
         !bowlerRow ||
         !targetLeague ||
         targetLeague.organizationId === null ||
-        bowlerRow.organizationId !== targetLeague.organizationId
+        bowlerRow.organizationId !== targetLeague.organizationId ||
+        (!isSystemAdmin(req.user) && req.user?.organizationId !== bowlerRow.organizationId)
       ) {
         return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
       }
-      if (!consumeBowlerClaim(data.bowlerId, req)) {
-        return sendError(res, "You don't have access to this bowler", 403, 'FORBIDDEN');
-      }
-      // OK: org/system admin, bowler stamp matches league org, valid claim.
+      // OK: org/system admin, bowler stamp matches league org, caller
+      // org aligned with bowler stamp (or caller is sysadmin).
       bootstrapPath = true;
     }
 

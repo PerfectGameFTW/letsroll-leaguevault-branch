@@ -107,10 +107,6 @@ vi.mock('../../server/services/bowlnow.js', () => ({
 vi.mock('../../server/services/bowler-sync.js', () => ({
   runBowlerPostCreateSync: vi.fn(async (b: unknown) => b),
 }));
-vi.mock('../../server/utils/bowler-claim-tokens.js', () => ({
-  registerBowlerClaim: vi.fn(),
-}));
-
 // catalog.ts / cards.ts dependencies — same story.
 vi.mock('../../server/services/payment-provider', () => ({
   hasCatalogSupport: () => false,
