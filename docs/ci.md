@@ -12,6 +12,7 @@ suite never gates the fast static checks (and vice versa).
 | `ci.yml` | `Type check & lint` | Every PR to `main`, every push to `main` | `tsc`, `eslint .`, `check:csrf`, `check:org-isolation` |
 | `ci.yml` | `Tests` | Every PR to `main`, every push to `main` | `npm test` (vitest: parallel + serial-fk-bypass + client-components projects) |
 | `race-suite.yml` | `Race suite` | PRs that touch the sweep / bootstrap files (and every push to `main`) | `npm run test:race` — alias for `bash scripts/test-race.sh` (the two `RUN_BOOTSTRAP_RACE_TESTS=1` race files, serially) |
+| `post-deploy-trust-proxy.yml` | `Probe trust-proxy on live deploy` | Every 30 minutes (cron) and on `workflow_dispatch` | `scripts/verify-trust-proxy-deploy.ts` against the live deploy (task #379) — see [Post-deploy trust-proxy probe](#post-deploy-trust-proxy-probe) below |
 
 The two jobs in `ci.yml` (`Type check & lint` and `Tests`) run in
 parallel, so total wall-clock for a PR is roughly the slower of the
@@ -106,6 +107,63 @@ fixture seeding the `Tests` job needs — there is no separate
 Other env vars (`DATABASE_URL`, `SESSION_SECRET`,
 `FIELD_ENCRYPTION_KEY`, `NODE_ENV`, `PORT`) are wired inline in the
 workflow files and don't need to be configured as repository secrets.
+
+The `Post-deploy trust-proxy probe` workflow uses its own dedicated
+secrets (`DEPLOY_BASE_URL`, `DEPLOY_ADMIN_COOKIE`, optional
+`DEPLOY_EXPECTED_RESOLVED_IP`) — see the section below.
+
+## Post-deploy trust-proxy probe
+
+`.github/workflows/post-deploy-trust-proxy.yml` runs
+`scripts/verify-trust-proxy-deploy.ts` against the live deployed
+app. Together with the boot guard in
+`server/lib/trust-proxy-check.ts` (#326) and the CI lint in
+`scripts/check-trust-proxy-coverage.ts` (#378), this is the third
+leg of the trust-proxy verification story (#379) — the only one
+that catches a config change at the proxy layer (Replit edge,
+custom domain, future CDN) that silently re-introduces the bug
+**without any code change**. When that happens, every per-IP rate
+limiter — most importantly the 5 req / 15 min `setupAdminLimiter` —
+collapses into a global ceiling for the entire internet, because
+the proxy's loopback / private address becomes the keying address
+for every request.
+
+The script calls `GET /api/system-admin/trust-proxy-status` (a
+system_admin-only debug endpoint) and asserts:
+
+1. The synthetic boot probe still reports OK (no Express config
+   drift since last boot).
+2. The live `req.ip` is NOT a loopback / private address.
+3. (Optional) The live `req.ip` exactly matches
+   `DEPLOY_EXPECTED_RESOLVED_IP` if the runner has a known egress.
+
+### Triggers
+
+- **Schedule (`*/30 * * * *`)** — every 30 minutes, so a regression
+  is caught within one rate-limit window of when it lands.
+- **`workflow_dispatch`** — release operators trigger this manually
+  immediately after a deploy.
+
+### Required repository secrets
+
+| Secret | What | How to refresh |
+|---|---|---|
+| `DEPLOY_BASE_URL` | Public origin of the deployed app, e.g. `https://app.example.com` (no trailing slash). | Update only when the production hostname changes. |
+| `DEPLOY_ADMIN_COOKIE` | Full Cookie header value for a system_admin session, e.g. `connect.sid=s%3A…`. | Sessions expire after `cookie.maxAge` in `server/auth.ts` (default 24h). Use a long-lived service-account session, **not** a real human's cookie. Re-log in and update the secret when the workflow starts failing with HTTP 401. |
+| `DEPLOY_EXPECTED_RESOLVED_IP` (optional) | Pin the exact public IP the runner is expected to appear as. | Skip on GitHub-hosted runners (rotating IP pool). Set when running on a self-hosted runner with a static egress IP. |
+
+### What a failure means
+
+- **`synthetic.ok=false`** — the deployed Express config has drifted
+  from what the boot guard would accept. Something replaced the
+  running process without rebooting through the entrypoint, or the
+  trust-proxy setting was changed at runtime. Investigate the
+  deploy timeline.
+- **`live.resolvedIp` is loopback / private** — the proxy in front
+  of the app is not honoring `X-Forwarded-For`. Per-IP rate limits
+  are collapsing into a global cap. Check the proxy/CDN config.
+- **`HTTP 401`** — the `DEPLOY_ADMIN_COOKIE` secret has expired.
+  Refresh per the table above.
 
 ## Adding a new check
 

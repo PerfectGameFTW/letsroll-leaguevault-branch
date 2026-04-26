@@ -1,0 +1,116 @@
+name: Post-deploy trust-proxy probe
+
+# Why this exists (task #379):
+#
+# `server/lib/trust-proxy-check.ts` (boot guard, task #326) catches
+# trust-proxy misconfiguration on the code side at startup, and
+# `scripts/check-trust-proxy-coverage.ts` (CI lint, task #378) catches
+# new express() instances added without the boot guard. Neither catches
+# a config change at the proxy layer (Replit edge, custom domain,
+# future CDN) that silently re-introduces the bug WITHOUT any code
+# change. When that happens, every per-IP rate limiter — most
+# importantly the 5 req / 15 min setupAdminLimiter — collapses into a
+# global ceiling for the entire internet (the proxy's loopback /
+# private address becomes the keying address for everyone).
+#
+# This workflow runs `scripts/verify-trust-proxy-deploy.ts` against
+# the live deployed app on a recurring schedule. The script:
+#   - calls the system_admin-only debug endpoint
+#     `GET /api/system-admin/trust-proxy-status`
+#   - asserts the synthetic boot probe still reports OK (no Express
+#     config drift since last boot),
+#   - asserts the live `req.ip` is NOT a loopback / private address
+#     (so per-IP limiters are still keying on real client addresses),
+#   - optionally asserts an exact match against `EXPECTED_RESOLVED_IP`
+#     when the runner has a known egress IP.
+#
+# A failed run fails the workflow, which surfaces in the standard
+# GitHub Actions UI + email/Slack notifications configured at the
+# repo / org level. Triggering on `workflow_dispatch` lets a release
+# operator run it on demand immediately after pushing a deploy.
+#
+# Repository secrets required:
+#   DEPLOY_BASE_URL    — e.g. https://app.example.com (no trailing /)
+#   DEPLOY_ADMIN_COOKIE — full Cookie header value for a system_admin
+#                         session (e.g. "connect.sid=s%3A…"). Refresh
+#                         when the session expires (default 24h —
+#                         see `cookie.maxAge` in `server/auth.ts`).
+#                         A long-lived service-account session is the
+#                         intended source; do NOT paste a real human
+#                         operator's cookie.
+#
+# Optional repository secret:
+#   DEPLOY_EXPECTED_RESOLVED_IP — pin the exact IP the runner is
+#                         expected to appear as. Skip if you don't
+#                         control egress (GitHub-hosted runners use a
+#                         rotating pool); the loopback/private check
+#                         alone is still meaningful.
+#
+# This workflow is intentionally NOT gated on `pull_request` — it
+# probes the live deployed environment, which a PR has not yet
+# touched. CI-side coverage of the script's own logic is tracked
+# separately as a follow-up.
+
+on:
+  # Recurring probe — every 30 minutes. Cheap (one HTTP request) and
+  # tight enough to catch a bad proxy config within one rate-limit
+  # window of when it lands.
+  schedule:
+    - cron: '*/30 * * * *'
+  # On-demand trigger so a release operator can run it immediately
+  # after a deploy without waiting for the next cron tick.
+  workflow_dispatch:
+    inputs:
+      base_url_override:
+        description: 'Override DEPLOY_BASE_URL for this run (optional)'
+        required: false
+        type: string
+
+# Minimum-privilege token: the job only reads the repo to check it
+# out and reads the configured secrets. It does not write back, does
+# not touch issues/PRs, does not publish anything.
+permissions:
+  contents: read
+
+# Don't pile up overlapping cron runs if a previous one is slow.
+concurrency:
+  group: post-deploy-trust-proxy
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Probe trust-proxy on live deploy
+    runs-on: ubuntu-latest
+    # The probe is a single HTTP round-trip; 5 minutes is generous
+    # ceiling that still kills a hung run before it eats CI budget.
+    timeout-minutes: 5
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Pinned to the runtime declared in `replit.md` so the
+          # script runs under the same node major as the live app.
+          # Bump in lockstep when the Node version moves.
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        # `npm ci` is overkill for a script with no project deps,
+        # but it gives us `tsx` from devDependencies without any
+        # extra setup and matches the install posture of the other
+        # workflows in this repo.
+        run: npm ci
+
+      - name: Run the trust-proxy verifier
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url_override || secrets.DEPLOY_BASE_URL }}
+          ADMIN_COOKIE: ${{ secrets.DEPLOY_ADMIN_COOKIE }}
+          EXPECTED_RESOLVED_IP: ${{ secrets.DEPLOY_EXPECTED_RESOLVED_IP }}
+        # Invoke `tsx` directly (mirrors the pattern in
+        # `tests/unit/check-trust-proxy-coverage.test.ts` — the
+        # `package.json` scripts section is intentionally locked in
+        # this environment so we cannot add an `npm run` shortcut).
+        run: node node_modules/tsx/dist/cli.mjs scripts/verify-trust-proxy-deploy.ts

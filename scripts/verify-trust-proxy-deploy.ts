@@ -49,6 +49,17 @@
  * Wire it into your deploy pipeline as the last step after the new
  * version is healthy, so a misconfigured proxy fails the deploy
  * loudly instead of silently degrading the rate-limit ceiling.
+ *
+ * Today this script is invoked by:
+ *   - `.github/workflows/post-deploy-trust-proxy.yml` — runs every
+ *     30 minutes against the live deploy and on-demand via
+ *     `workflow_dispatch` after a release. Reads its env from the
+ *     `DEPLOY_BASE_URL`, `DEPLOY_ADMIN_COOKIE`, and (optional)
+ *     `DEPLOY_EXPECTED_RESOLVED_IP` repo secrets.
+ *
+ * When adding a new caller (e.g. a Replit-side post-deploy hook),
+ * add it to the list above so future maintainers can find every
+ * place this contract is enforced.
  */
 
 interface ProbeResponse {
