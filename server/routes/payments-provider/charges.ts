@@ -296,17 +296,11 @@ router.post('/payments', paymentLimiter, async (req, res) => {
 
     const { lineageAmount, prizeFundAmount } = computePaymentSplit(amount, league);
 
-    // capture Square's hosted-receipt fields and flag rows
-    // that were charged without a buyer email (Square only auto-emails
-    // a receipt when CreatePayment includes `buyerEmailAddress`, so a
-    // missing email means no receipt was sent — admins want that
-    // visibility on the payments table + refund dialog).
-    if (provider.providerName === 'square' && !buyerEmail) {
-      log.warn('Square payment recorded without buyer email — no auto-receipt was sent', {
-        bowlerId, leagueId, providerPaymentId: payment.id,
-      });
-    }
-
+    // Capture Square's hosted-receipt fields. Interactive Square
+    // charges are gated by BUYER_EMAIL_REQUIRED above, so by the
+    // time we reach this insert `buyerEmail` is always present for
+    // Square — receiptEmailMissing therefore stays false here and
+    // is only set true on the unattended/autopay path.
     const dbPayment = await storage.createPayment({
       bowlerId,
       leagueId,
@@ -321,7 +315,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       cardpointeAuthcode: payment.providerRef?.cardpointeAuthcode,
       receiptUrl: payment.receiptUrl,
       receiptNumber: payment.receiptNumber,
-      receiptEmailMissing: provider.providerName === 'square' && !buyerEmail,
+      receiptEmailMissing: false,
       idempotencyKey,
     });
 
