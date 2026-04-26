@@ -79,10 +79,62 @@ const locationIdFlag: number = parsedLocationIdFlag;
 
 const isProductionToken = accessToken.startsWith('EAAAEv') || accessToken.startsWith('EAAAl7');
 
-const squareClient = new Client({
-  accessToken,
-  environment: isProductionToken ? Environment.Production : Environment.Sandbox,
-});
+// Minimal structural type the script actually consumes from the Square
+// SDK. Pulled out so the cross-org guard test (task #465) can swap in a
+// stub via SQUARE_CLIENT_IMPL_PATH and exercise the DB-touching path
+// end-to-end without burning a real Square sandbox round-trip.
+interface SquareCustomerCreateInput {
+  idempotencyKey: string;
+  givenName: string;
+  familyName: string;
+  emailAddress: string;
+  referenceId: string;
+}
+interface SquareCustomerCreateResponse {
+  result: { customer?: { id?: string } };
+}
+interface SquareClientLike {
+  customersApi: {
+    createCustomer(input: SquareCustomerCreateInput): Promise<SquareCustomerCreateResponse>;
+  };
+}
+
+async function buildSquareClient(): Promise<SquareClientLike> {
+  // Test seam (task #465): when SQUARE_CLIENT_IMPL_PATH points at a
+  // module exporting `createSquareClient()`, the script uses that
+  // factory instead of constructing a real Square SDK client. This
+  // exists so a DB-seeded integration test can drive the script
+  // through the cross-org guard and the bowler UPDATE branch without
+  // touching Square. Two independent gates keep the seam from being
+  // tripped outside the test suite:
+  //   1. NODE_ENV !== 'production' — a Replit/CI deploy can't bypass
+  //      the real Square API by setting the var.
+  //   2. VITEST === 'true' — even in dev/staging, the seam is only
+  //      honoured when the process was spawned by vitest. Vitest sets
+  //      VITEST=true automatically and `spawnSync` test runners
+  //      inherit the parent env, so the new
+  //      `tests/api/create-square-customers-cross-org.test.ts` keeps
+  //      working unchanged. Operators running the script by hand never
+  //      have VITEST set, so an accidentally-leaked
+  //      SQUARE_CLIENT_IMPL_PATH on a dev shell is a no-op.
+  const fakeImplPath = process.env.SQUARE_CLIENT_IMPL_PATH;
+  const testSeamAllowed = process.env.NODE_ENV !== 'production' && process.env.VITEST === 'true';
+  if (fakeImplPath && testSeamAllowed) {
+    const mod = await import(fakeImplPath);
+    const factory = (mod as { createSquareClient?: unknown; default?: unknown }).createSquareClient
+      ?? (mod as { default?: unknown }).default;
+    if (typeof factory !== 'function') {
+      throw new Error(
+        `SQUARE_CLIENT_IMPL_PATH module ${fakeImplPath} must export createSquareClient()`,
+      );
+    }
+    return (factory as () => SquareClientLike)();
+  }
+  return new Client({
+    accessToken,
+    environment: isProductionToken ? Environment.Production : Environment.Sandbox,
+  });
+}
 
 log.info(`Running in ${isProductionToken ? 'PRODUCTION' : 'SANDBOX'} mode against organization ${organizationIdFlag} / location ${locationIdFlag}.`);
 
@@ -124,6 +176,8 @@ async function assertLocationBelongsToOrg(locationId: number, orgId: number): Pr
 async function createSquareCustomers() {
   await assertOrganizationExists(organizationIdFlag);
   await assertLocationBelongsToOrg(locationIdFlag, organizationIdFlag);
+
+  const squareClient = await buildSquareClient();
 
   try {
     // Count globally-eligible bowlers first so we can show the operator
