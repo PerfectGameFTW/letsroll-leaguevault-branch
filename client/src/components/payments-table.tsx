@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Trash2, RotateCcw, Receipt, Send } from "lucide-react";
+import { Loader2, Trash2, RotateCcw, Send } from "lucide-react";
 import { format } from "date-fns";
 import {
   Table,
@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { isCardPaymentType } from "@shared/schema/constants";
 import { ResendReceiptDialog } from "@/components/resend-receipt-dialog";
+import { ViewReceiptButton } from "@/components/view-receipt-button";
 import type { Payment, Bowler } from "@shared/schema";
 
 function paymentTypeLabel(payment: Payment): string {
@@ -102,13 +103,7 @@ export function PaymentsTable({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      {payment.receiptUrl && (
-                        <Button asChild size="icon" variant="ghost" title="View receipt">
-                          <a href={payment.receiptUrl} target="_blank" rel="noopener noreferrer">
-                            <Receipt className="h-4 w-4 text-primary" />
-                          </a>
-                        </Button>
-                      )}
+                      <ViewReceiptButton payment={payment} />
                       {canResend && (
                         <Button
                           size="icon"

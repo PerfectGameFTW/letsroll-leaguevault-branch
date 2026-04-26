@@ -26,6 +26,7 @@ const mockStorage = {
   getPaymentByIdempotencyKey: vi.fn(),
   createPayment: vi.fn(),
   updatePaymentScheduleCard: vi.fn(),
+  updateBowler: vi.fn(),
 };
 vi.mock('../../server/storage', () => ({ storage: mockStorage }));
 
@@ -138,13 +139,17 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 const ADMIN = { id: 1, role: 'org_admin', organizationId: 1, bowlerId: null };
+const SELF_BOWLER_USER = { id: 7, role: 'bowler', organizationId: 1, bowlerId: 42 };
 
-async function postCharge(body: Record<string, unknown>) {
+async function postCharge(
+  body: Record<string, unknown>,
+  user: typeof ADMIN | typeof SELF_BOWLER_USER = ADMIN,
+) {
   return fetch(`${baseUrl}/api/payments-provider/payments`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
-      'x-test-user': JSON.stringify(ADMIN),
+      'x-test-user': JSON.stringify(user),
     },
     body: JSON.stringify(body),
   });
@@ -232,5 +237,71 @@ describe('POST /api/payments-provider/payments — receipt persistence (Task #50
     // The trimmed override email must be threaded into the provider call.
     const callArgs = mockProvider.processPayment.mock.calls[0];
     expect(callArgs[4]).toBe('override@example.com');
+  });
+
+  it('backfills bowler.email on self-checkout when no email was on file', async () => {
+    mockStorage.getBowler.mockResolvedValue({
+      id: 42, name: 'Pat', email: null, squareCustomerId: 'cust_123',
+    });
+    mockProvider.processPayment.mockResolvedValue({
+      id: 'sq_pay_4', status: 'COMPLETED',
+      receiptUrl: 'https://squareup.com/receipt/preview/sq_pay_4',
+      receiptNumber: 'XYZ-004',
+      providerRef: {},
+    });
+
+    const res = await postCharge(
+      {
+        sourceId: 'cnon:tok_jkl', amount: 2000, bowlerId: 42, leagueId: 11, storeCard: false,
+        buyerEmail: 'me@example.com',
+      },
+      SELF_BOWLER_USER,
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockStorage.updateBowler).toHaveBeenCalledWith(42, { email: 'me@example.com' });
+  });
+
+  it('does NOT backfill bowler.email when an admin supplies a buyerEmail (not self-checkout)', async () => {
+    mockStorage.getBowler.mockResolvedValue({
+      id: 42, name: 'Pat', email: null, squareCustomerId: 'cust_123',
+    });
+    mockProvider.processPayment.mockResolvedValue({
+      id: 'sq_pay_5', status: 'COMPLETED',
+      receiptUrl: 'https://squareup.com/receipt/preview/sq_pay_5',
+      receiptNumber: 'XYZ-005',
+      providerRef: {},
+    });
+
+    const res = await postCharge({
+      sourceId: 'cnon:tok_mno', amount: 2000, bowlerId: 42, leagueId: 11, storeCard: false,
+      buyerEmail: 'admin-typed@example.com',
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockStorage.updateBowler).not.toHaveBeenCalled();
+  });
+
+  it('does NOT backfill bowler.email when bowler already has an email on file', async () => {
+    mockStorage.getBowler.mockResolvedValue({
+      id: 42, name: 'Pat', email: 'existing@example.com', squareCustomerId: 'cust_123',
+    });
+    mockProvider.processPayment.mockResolvedValue({
+      id: 'sq_pay_6', status: 'COMPLETED',
+      receiptUrl: 'https://squareup.com/receipt/preview/sq_pay_6',
+      receiptNumber: 'XYZ-006',
+      providerRef: {},
+    });
+
+    const res = await postCharge(
+      {
+        sourceId: 'cnon:tok_pqr', amount: 2000, bowlerId: 42, leagueId: 11, storeCard: false,
+        buyerEmail: 'different@example.com',
+      },
+      SELF_BOWLER_USER,
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockStorage.updateBowler).not.toHaveBeenCalled();
   });
 });

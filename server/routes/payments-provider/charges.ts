@@ -199,6 +199,24 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       : '';
     const buyerEmail = bowler.email || requestBuyerEmail || undefined;
 
+    // Task #503: when a bowler self-checks-out (their own user account
+    // is linked to this bowler row) and supplies a brand-new email at
+    // checkout, persist it to their profile. This means the very next
+    // charge will already have an email on file — no inline prompt and
+    // no need to use the admin Resend flow.
+    const isSelfCheckout = !!req.user?.bowlerId && req.user.bowlerId === bowlerId;
+    if (isSelfCheckout && !bowler.email && requestBuyerEmail) {
+      try {
+        await storage.updateBowler(bowlerId, { email: requestBuyerEmail });
+      } catch (err) {
+        // Non-fatal: payment must still proceed even if profile save
+        // fails (validation, race, etc.). Log for ops visibility.
+        log.warn('Failed to backfill bowler email at self-checkout', {
+          bowlerId, error: err instanceof Error ? err.message : err,
+        });
+      }
+    }
+
     if (isDev) log.info('Processing payment:', {
       bowlerId, leagueId, amount,
       locationId: league.locationId,

@@ -1,7 +1,7 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Trash2, Receipt } from "lucide-react";
+import { Loader2, Trash2, Send } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -12,11 +12,14 @@ import {
 } from "@/components/ui/table";
 import { Link } from "wouter";
 import { isCardPaymentType } from "@shared/schema/constants";
+import { ResendReceiptDialog } from "@/components/resend-receipt-dialog";
+import { ViewReceiptButton } from "@/components/view-receipt-button";
 import type { Payment } from "@shared/schema";
 
 interface BowlerInfo {
   id: number;
   name: string;
+  email?: string | null;
 }
 
 interface PaymentHistoryTableProps {
@@ -39,6 +42,12 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
   isAdmin = false,
 }: PaymentHistoryTableProps) {
   const showTeamColumn = !!bowlerTeamMap;
+  // Task #503: admin "Resend receipt" entry-point on the weekly
+  // payments admin table. Gated to paid Square/credit_card rows.
+  const [resendTarget, setResendTarget] = useState<Payment | null>(null);
+  const resendBowler = resendTarget
+    ? bowlers.find((b) => b.id === resendTarget.bowlerId)
+    : null;
 
   return (
     <div className="rounded-md border">
@@ -90,11 +99,18 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
                     ${(payment.amount / 100).toFixed(2)}
                   </TableCell>
                   <TableCell>
-                    {payment.receiptUrl && (
-                      <Button asChild size="icon" variant="ghost" title="View receipt">
-                        <a href={payment.receiptUrl} target="_blank" rel="noopener noreferrer">
-                          <Receipt className="h-4 w-4 text-primary" />
-                        </a>
+                    <ViewReceiptButton payment={payment} />
+                    {isAdmin
+                      && payment.status === 'paid'
+                      && (payment.type === 'square' || payment.type === 'credit_card') && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title={payment.receiptEmailMissing ? "No receipt sent — resend now" : "Resend receipt"}
+                        onClick={() => setResendTarget(payment)}
+                        className={payment.receiptEmailMissing ? "text-amber-600" : ""}
+                      >
+                        <Send className="h-4 w-4" />
                       </Button>
                     )}
                     <Button
@@ -127,6 +143,11 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
           )}
         </TableBody>
       </Table>
+      <ResendReceiptDialog
+        payment={resendTarget}
+        defaultEmail={resendBowler?.email ?? ""}
+        onClose={() => setResendTarget(null)}
+      />
     </div>
   );
 });

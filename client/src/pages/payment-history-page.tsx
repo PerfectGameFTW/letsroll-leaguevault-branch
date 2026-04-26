@@ -191,6 +191,11 @@ export default function PaymentHistoryPage() {
 
   const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
     if (!bowlerId || !leagueId || !dialogAmountCents) return;
+    // Task #503: same inline email override as the card-form path so
+    // Apple Pay / Google Pay charges also trigger Square's hosted
+    // receipt when no email is on file for the bowler.
+    const trimmedReceiptEmail = receiptEmail.trim();
+    const overrideEmail = !bowlerEmail && trimmedReceiptEmail ? trimmedReceiptEmail : undefined;
     try {
       setIsWalletProcessing(true);
       const response = await csrfFetch('/api/payments-provider/payments', {
@@ -202,6 +207,7 @@ export default function PaymentHistoryPage() {
           bowlerId,
           leagueId,
           storeCard: true,
+          ...(overrideEmail ? { buyerEmail: overrideEmail } : {}),
         }),
       });
       const data = await response.json();
@@ -225,7 +231,7 @@ export default function PaymentHistoryPage() {
     } finally {
       setIsWalletProcessing(false);
     }
-  }, [bowlerId, leagueId, dialogAmountCents, payDialogType, toast]);
+  }, [bowlerId, leagueId, dialogAmountCents, payDialogType, toast, bowlerEmail, receiptEmail]);
 
   const {
     applePayAvailable,

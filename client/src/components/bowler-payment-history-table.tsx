@@ -1,7 +1,8 @@
 import { format } from "date-fns";
-import { ExternalLink, Receipt } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ViewReceiptButton } from "@/components/view-receipt-button";
 import type { Payment } from "@shared/schema";
 
 interface Props {
@@ -59,20 +60,7 @@ export function BowlerPaymentHistoryTable({ payments }: Props) {
                   </div>
                 </TableCell>
                 <TableCell>
-                  {payment.receiptUrl ? (
-                    <a
-                      href={payment.receiptUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                      title="View receipt"
-                    >
-                      <Receipt className="h-4 w-4" />
-                      View
-                    </a>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
+                  <ViewReceiptButton payment={payment} variant="link" />
                 </TableCell>
               </TableRow>
             ))

@@ -242,6 +242,13 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       return;
     }
 
+    // Task #503: thread the inline-captured email through wallet
+    // (Apple Pay / Google Pay) charges too, so Square's hosted
+    // receipt fires for bowlers with no email on file.
+    const selected = bowlers.find((b) => b.id === bowlerId);
+    const trimmedReceiptEmail = receiptEmail.trim();
+    const overrideEmail = !selected?.email && trimmedReceiptEmail ? trimmedReceiptEmail : undefined;
+
     try {
       const response = await csrfFetch('/api/payments-provider/payments', {
         method: 'POST',
@@ -252,6 +259,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
           bowlerId,
           leagueId: currentLeagueId,
           storeCard: false,
+          ...(overrideEmail ? { buyerEmail: overrideEmail } : {}),
         }),
       });
 
@@ -273,7 +281,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       setPaymentError(errorMessage);
       toast({ title: "Error", description: errorMessage, variant: "destructive" });
     }
-  }, [form, toast, queryClient, onClose]);
+  }, [form, toast, queryClient, onClose, bowlers, receiptEmail]);
 
   const {
     applePayAvailable,
