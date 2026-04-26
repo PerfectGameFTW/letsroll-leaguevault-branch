@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { Loader2, Send } from "lucide-react";
 import {
   Dialog,
@@ -13,6 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { csrfFetch } from "@/lib/queryClient";
+import {
+  isProviderNotConfiguredError,
+  providerNotConfiguredToast,
+  makeApiError,
+} from "@/lib/provider-not-configured";
 import type { Payment } from "@shared/schema";
 
 interface Props {
@@ -23,6 +29,7 @@ interface Props {
 
 export function ResendReceiptDialog({ payment, defaultEmail, onClose }: Props) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [email, setEmail] = useState(defaultEmail ?? "");
   const [isPending, setIsPending] = useState(false);
 
@@ -56,7 +63,7 @@ export function ResendReceiptDialog({ payment, defaultEmail, onClose }: Props) {
       );
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error?.message || "Failed to resend receipt");
+        throw makeApiError(data, response.status, "Failed to resend receipt");
       }
       toast({
         title: "Receipt sent",
@@ -66,11 +73,15 @@ export function ResendReceiptDialog({ payment, defaultEmail, onClose }: Props) {
       });
       onClose();
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to resend receipt",
-        variant: "destructive",
-      });
+      if (isProviderNotConfiguredError(error)) {
+        toast(providerNotConfiguredToast({ navigate }));
+      } else {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to resend receipt",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsPending(false);
     }

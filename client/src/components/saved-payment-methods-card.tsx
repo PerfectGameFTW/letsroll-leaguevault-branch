@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Loader2, CreditCard, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,10 +16,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, csrfFetch } from "@/lib/queryClient";
+import {
+  isProviderNotConfiguredError,
+  providerNotConfiguredToast,
+  makeApiError,
+} from "@/lib/provider-not-configured";
 import type { SavedCard } from "@shared/schema";
 
 export function SavedPaymentMethodsCard({ bowlerId }: { bowlerId: number }) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [cardToDelete, setCardToDelete] = useState<SavedCard | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -38,14 +45,18 @@ export function SavedPaymentMethodsCard({ bowlerId }: { bowlerId: number }) {
     try {
       const res = await csrfFetch(`/api/payments-provider/cards/${bowlerId}/${card.id}`, { method: "DELETE" });
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error?.message || "Failed to remove card");
+        const data = await res.json().catch(() => null);
+        throw makeApiError(data, res.status, "Failed to remove card");
       }
       toast({ title: "Card Removed", description: `Your ${card.brand} card ending in ${card.last4} has been removed.` });
       queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to remove card";
-      toast({ title: "Error", description: message, variant: "destructive" });
+      if (isProviderNotConfiguredError(err)) {
+        toast(providerNotConfiguredToast({ navigate }));
+      } else {
+        const message = err instanceof Error ? err.message : "Failed to remove card";
+        toast({ title: "Error", description: message, variant: "destructive" });
+      }
     } finally {
       setIsDeleting(false);
       setCardToDelete(null);

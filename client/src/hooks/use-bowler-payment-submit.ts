@@ -1,8 +1,14 @@
 import { useCallback } from "react";
+import { useLocation } from "wouter";
 import { createPayment, tokenizeCard } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, csrfFetch } from '@/lib/queryClient';
 import { formatCurrency } from "@/lib/utils";
+import {
+  isProviderNotConfiguredError,
+  providerNotConfiguredToast,
+  makeApiError,
+} from "@/lib/provider-not-configured";
 import type { League, Bowler } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
 import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
@@ -62,6 +68,20 @@ export function useBowlerPaymentSubmit({
   setShowPaymentSetup,
 }: UseBowlerPaymentSubmitOptions) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  // Local helper that lets the inline csrfFetch calls below propagate
+  // the structured `error.code` (specifically PROVIDER_NOT_CONFIGURED)
+  // up to the catch block — the previous code threw a bare-message
+  // Error which dropped that signal.
+  const throwApiErrorIfNotOk = async (
+    response: Response,
+    body: unknown,
+    fallback: string,
+  ) => {
+    if (response.ok) return;
+    throw makeApiError(body, response.status, fallback);
+  };
 
   return useCallback(async () => {
     if (cardMode === 'new' && !card) {
@@ -100,7 +120,8 @@ export function useBowlerPaymentSubmit({
             body: JSON.stringify({ sourceId: token }),
           });
           const saveData = await saveResponse.json();
-          if (!saveResponse.ok || !saveData.data?.savedCardId) {
+          await throwApiErrorIfNotOk(saveResponse, saveData, 'Your card could not be saved. Please try again.');
+          if (!saveData.data?.savedCardId) {
             throw new Error(saveData.error?.message || 'Your card could not be saved. Please try again.');
           }
           paymentCardId = saveData.data.savedCardId;
@@ -150,9 +171,7 @@ export function useBowlerPaymentSubmit({
             body: JSON.stringify({ sourceId: token }),
           });
           const saveData = await saveResponse.json();
-          if (!saveResponse.ok) {
-            throw new Error(saveData.error?.message || 'Failed to save card');
-          }
+          await throwApiErrorIfNotOk(saveResponse, saveData, 'Failed to save card');
           paymentCardId = saveData.data?.savedCardId || null;
           if (!paymentCardId) {
             throw new Error('Your card could not be saved for auto-pay. Please try again.');
@@ -174,9 +193,7 @@ export function useBowlerPaymentSubmit({
           }),
         });
         const responseData = await response.json();
-        if (!response.ok) {
-          throw new Error(responseData.error?.message || 'Payment failed');
-        }
+        await throwApiErrorIfNotOk(response, responseData, 'Payment failed');
         paymentCardId = selectedSavedCardId;
         paymentWasCharged = true;
       } else {
@@ -240,6 +257,13 @@ export function useBowlerPaymentSubmit({
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
     } catch (error) {
       console.error('[Payment Error]:', error);
+      if (isProviderNotConfiguredError(error)) {
+        toast(providerNotConfiguredToast({
+          navigate,
+          locationId: league.locationId ?? null,
+        }));
+        return;
+      }
       let errorMessage = "Unable to process payment. Please try again.";
       if (typeof error === 'string') {
         errorMessage = error;
@@ -258,7 +282,7 @@ export function useBowlerPaymentSubmit({
   }, [
     card, cardMode, selectedSavedCardId, league, bowler, weeklyFee,
     selectedSchedule, storeCard, includeFinalTwoWeeks, showFinalTwoWeeksWarning,
-    buyerEmail, financials, calculateTotalAmount, toast,
+    buyerEmail, financials, calculateTotalAmount, toast, navigate,
     setIsSubmitting, setShowFinalTwoWeeksWarning, setIncludeFinalTwoWeeks, setShowPaymentSetup,
   ]);
 }

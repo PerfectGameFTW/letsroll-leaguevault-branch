@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useSearch } from 'wouter';
+import { useSearch, useLocation } from 'wouter';
 import { Layout } from '@/components/layout';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,6 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import {
+  isProviderNotConfiguredError,
+  providerNotConfiguredToast,
+} from '@/lib/provider-not-configured';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -97,6 +101,8 @@ interface JobDetailResponse {
 
 function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => void }) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
+
   const { data, isLoading, isError, error, refetch, isFetching } = useQuery<ApiResponse<JobDetailResponse>>({
     queryKey: ['/api/payments-provider/apple-pay/jobs', jobId],
     queryFn: async () => {
@@ -119,53 +125,79 @@ function JobDetailDialog({ jobId, onClose }: { jobId: number; onClose: () => voi
   const items = detail?.items ?? [];
   const recoveredItemCount = detail?.recoveredItemCount ?? 0;
 
+  // Centralised PROVIDER_NOT_CONFIGURED handling for the three
+  // Apple-Pay job mutations (#391). The job itself spans multiple
+  // locations, but if every item in the job is bound to the same
+  // location we can deep-link the actionable toast to that one
+  // location's settings entry. Otherwise we fall back to the
+  // generic /integrations route.
+  const jobLocationId = (() => {
+    if (items.length === 0) return null;
+    const first = items[0]?.locationId ?? null;
+    if (first == null) return null;
+    return items.every((it) => it.locationId === first) ? first : null;
+  })();
+
+  const handleMutationError = (titleFallback: string) => (err: unknown) => {
+    if (isProviderNotConfiguredError(err)) {
+      toast(providerNotConfiguredToast({ navigate, locationId: jobLocationId }));
+      return;
+    }
+    toast({
+      title: titleFallback,
+      description: err instanceof Error ? err.message : 'Unknown error',
+      variant: 'destructive',
+    });
+  };
+
+  const handleMutationResp = (
+    resp: { success: boolean; error?: { message?: string; code?: string } },
+    titleFallback: string,
+  ): boolean => {
+    if (resp.success) return true;
+    if (resp.error?.code === 'PROVIDER_NOT_CONFIGURED') {
+      toast(providerNotConfiguredToast({ navigate, locationId: jobLocationId }));
+    } else {
+      toast({ title: titleFallback, description: resp.error?.message ?? 'Unknown error', variant: 'destructive' });
+    }
+    return false;
+  };
+
   const cancelMutation = useMutation({
     mutationFn: async () => apiRequest(`/api/payments-provider/apple-pay/jobs/${jobId}/cancel`, 'POST'),
     onSuccess: (resp) => {
-      if (resp.success) {
+      if (handleMutationResp(resp, 'Could not cancel')) {
         toast({ title: 'Job canceled', description: `Job #${jobId} has been canceled.` });
         invalidateJobQueries(jobId);
-      } else {
-        toast({ title: 'Could not cancel', description: resp.error?.message ?? 'Unknown error', variant: 'destructive' });
       }
     },
-    onError: (err: unknown) => {
-      toast({ title: 'Could not cancel', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
-    },
+    onError: handleMutationError('Could not cancel'),
   });
 
   const retryMutation = useMutation({
     mutationFn: async () => apiRequest<{ resetCount: number }>(`/api/payments-provider/apple-pay/jobs/${jobId}/retry`, 'POST'),
     onSuccess: (resp) => {
-      if (resp.success) {
+      if (handleMutationResp(resp, 'Could not retry')) {
         toast({
           title: 'Job retry queued',
           description: `Re-queued ${resp.data?.resetCount ?? 0} failed item(s).`,
         });
         invalidateJobQueries(jobId);
-      } else {
-        toast({ title: 'Could not retry', description: resp.error?.message ?? 'Unknown error', variant: 'destructive' });
       }
     },
-    onError: (err: unknown) => {
-      toast({ title: 'Could not retry', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
-    },
+    onError: handleMutationError('Could not retry'),
   });
 
   const itemRetryMutation = useMutation({
     mutationFn: async (itemId: number) =>
       apiRequest(`/api/payments-provider/apple-pay/jobs/${jobId}/items/${itemId}/retry`, 'POST'),
     onSuccess: (resp) => {
-      if (resp.success) {
+      if (handleMutationResp(resp, 'Could not retry item')) {
         toast({ title: 'Item retry queued' });
         invalidateJobQueries(jobId);
-      } else {
-        toast({ title: 'Could not retry item', description: resp.error?.message ?? 'Unknown error', variant: 'destructive' });
       }
     },
-    onError: (err: unknown) => {
-      toast({ title: 'Could not retry item', description: err instanceof Error ? err.message : 'Unknown error', variant: 'destructive' });
-    },
+    onError: handleMutationError('Could not retry item'),
   });
 
   const canCancel = job ? isActive(job.status) : false;

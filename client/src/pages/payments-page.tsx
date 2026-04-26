@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Layout } from "@/components/layout";
 import { PaymentForm } from "@/components/payment-form";
@@ -9,6 +10,10 @@ import { Loader2, Plus, Search } from "lucide-react";
 import { PageLoadingState } from "@/components/page-states";
 import type { Payment, Bowler, League, PaginationMeta, ApiResponse, User } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import {
+  isProviderNotConfiguredError,
+  providerNotConfiguredToast,
+} from "@/lib/provider-not-configured";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -39,6 +44,7 @@ export default function PaymentsPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const { toast } = useToast();
+  const [, navigate] = useLocation();
 
   const { data: userResponse } = useQuery<ApiResponse<User>>({
     queryKey: ["/api/user"],
@@ -102,6 +108,16 @@ export default function PaymentsPage() {
       setPaymentToRefund(null);
     },
     onError: (error: Error) => {
+      if (isProviderNotConfiguredError(error)) {
+        // Surface the actionable "Square isn't connected" message
+        // (#391) so admins can jump straight to /integrations
+        // instead of seeing a generic "Refund Failed" toast.
+        const locationId = paymentToRefund
+          ? leagues.find((l) => l.id === paymentToRefund.leagueId)?.locationId ?? null
+          : null;
+        toast(providerNotConfiguredToast({ navigate, locationId }));
+        return;
+      }
       toast({ title: "Refund Failed", description: error.message, variant: "destructive" });
     },
   });

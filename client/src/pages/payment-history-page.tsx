@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { League, Payment, User, SavedCard, ApiResponse, BowlerDetailsResponse } from "@shared/schema";
 import { BowlerLayout } from "@/components/bowler-layout";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useLocation as useWouterLocation } from "wouter";
 import { ChevronDown } from "lucide-react";
 import { calculateFinalTwoWeeksPaidOnWeek } from "@/lib/financial-utils";
 import { useSquarePayment } from "@/hooks/use-square-payment";
@@ -14,6 +14,11 @@ import { useWalletPayments } from "@/hooks/use-wallet-payments";
 import { createPayment } from "@/lib/square";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, csrfFetch } from '@/lib/queryClient';
+import {
+  isProviderNotConfiguredError,
+  providerNotConfiguredToast,
+  makeApiError,
+} from "@/lib/provider-not-configured";
 import { calculateFinancials } from "@/lib/financial-utils";
 import { formatCurrency } from "@/lib/utils";
 import { PaymentSummaryCards } from "@/components/payment-summary-cards";
@@ -25,6 +30,7 @@ import { useSelectedLeague } from "@/hooks/use-selected-league";
 
 export default function PaymentHistoryPage() {
   const { toast } = useToast();
+  const [, navigate] = useWouterLocation();
   const search = useSearch();
   const urlLeagueId = new URLSearchParams(search).get('leagueId');
   const [selectedLeagueId, setSelectedLeagueId] = useSelectedLeague(
@@ -229,7 +235,7 @@ export default function PaymentHistoryPage() {
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error?.message || data.message || `Payment failed (HTTP ${response.status})`);
+        throw makeApiError(data, response.status, `Payment failed (HTTP ${response.status})`);
       }
       const walletLabel = walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay';
       const dialogLabel = payDialogType === 'pastdue' ? 'past due amount' : 'remaining balance';
@@ -244,11 +250,18 @@ export default function PaymentHistoryPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
     } catch (error) {
       console.error('[Wallet Payment Error]:', error);
-      toast({ title: "Payment Failed", description: error instanceof Error ? error.message : "Unable to process payment.", variant: "destructive" });
+      if (isProviderNotConfiguredError(error)) {
+        toast(providerNotConfiguredToast({
+          navigate,
+          locationId: league?.locationId ?? null,
+        }));
+      } else {
+        toast({ title: "Payment Failed", description: error instanceof Error ? error.message : "Unable to process payment.", variant: "destructive" });
+      }
     } finally {
       setIsWalletProcessing(false);
     }
-  }, [bowlerId, leagueId, dialogAmountCents, payDialogType, toast, bowlerEmail, receiptEmail]);
+  }, [bowlerId, leagueId, dialogAmountCents, payDialogType, toast, bowlerEmail, receiptEmail, navigate, league?.locationId]);
 
   const {
     applePayAvailable,
@@ -317,7 +330,7 @@ export default function PaymentHistoryPage() {
         });
         const responseData = await response.json();
         if (!response.ok) {
-          throw new Error(responseData.error?.message || 'Payment failed');
+          throw makeApiError(responseData, response.status, 'Payment failed');
         }
       } else {
         await createPayment(dialogAmount, card!, bowlerId, leagueId, storeCard, overrideEmail);
@@ -332,7 +345,14 @@ export default function PaymentHistoryPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/bowlers/${bowlerId}/details`] });
     } catch (error) {
       console.error('[Payment Error]:', error);
-      toast({ title: "Payment Failed", description: error instanceof Error ? error.message : "Unable to process payment. Please try again.", variant: "destructive" });
+      if (isProviderNotConfiguredError(error)) {
+        toast(providerNotConfiguredToast({
+          navigate,
+          locationId: league?.locationId ?? null,
+        }));
+      } else {
+        toast({ title: "Payment Failed", description: error instanceof Error ? error.message : "Unable to process payment. Please try again.", variant: "destructive" });
+      }
     } finally {
       setIsSubmitting(false);
     }

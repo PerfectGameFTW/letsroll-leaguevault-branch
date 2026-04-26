@@ -29,6 +29,12 @@ import { Loader2, AlertCircle, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { PaymentCreditCardSection } from "@/components/payment-credit-card-section";
 import { csrfFetch } from '@/lib/queryClient';
+import {
+  isProviderNotConfiguredError,
+  providerNotConfiguredToast,
+  makeApiError,
+} from "@/lib/provider-not-configured";
+import { useLocation } from "wouter";
 import { PaymentFormFields } from "@/components/payment-form-fields";
 import { PaymentMethodTabs } from "@/components/payment-method-tabs";
 import { usePaymentFormSubmit } from "@/hooks/use-payment-form-submit";
@@ -51,6 +57,7 @@ interface PaymentFormProps {
 export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const cardContainerRef = useRef<HTMLDivElement>(null);
   const [isSquareReady, setIsSquareReady] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -284,7 +291,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
       const responseData = await response.json();
       if (!response.ok) {
-        throw new Error(responseData.error?.message || 'Payment failed');
+        throw makeApiError(responseData, response.status, 'Payment failed');
       }
 
       const label = walletType === 'apple_pay' ? 'Apple Pay' : 'Google Pay';
@@ -296,11 +303,20 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       onClose();
     } catch (error) {
+      if (isProviderNotConfiguredError(error)) {
+        const props = providerNotConfiguredToast({
+          navigate,
+          locationId: leagueInfo?.locationId ?? null,
+        });
+        setPaymentError(props.title);
+        toast(props);
+        return;
+      }
       const errorMessage = error instanceof Error ? error.message : 'Payment failed';
       setPaymentError(errorMessage);
       toast({ title: "Error", description: errorMessage, variant: "destructive" });
     }
-  }, [form, toast, queryClient, onClose, bowlers, receiptEmail]);
+  }, [form, toast, queryClient, onClose, bowlers, receiptEmail, navigate, leagueInfo?.locationId]);
 
   const {
     applePayAvailable,

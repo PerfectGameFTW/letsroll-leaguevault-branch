@@ -383,12 +383,20 @@ export async function createPayment(amount: number, cardInstance: SquareCardHook
 
       if (!response.ok) {
         const errorMessage = responseData.error?.message || 'Payment processing failed';
-        throw new Error(JSON.stringify({
+        const code = responseData.error?.code || "PAYMENT_FAILED";
+        // Keep the JSON-encoded message for legacy callers that
+        // re-parse it, but ALSO attach `.code` directly so
+        // `isProviderNotConfiguredError` detects PROVIDER_NOT_CONFIGURED
+        // without needing the wrapper layer.
+        const err = new Error(JSON.stringify({
           error: {
             message: errorMessage.replace(/Square API Error:/i, 'Payment Error:'),
-            code: responseData.error?.code || "PAYMENT_FAILED"
+            code,
           }
-        }));
+        })) as Error & { code?: string; status?: number };
+        err.code = code;
+        err.status = response.status;
+        throw err;
       }
 
       if (!responseData.status || responseData.status !== 'COMPLETED') {
@@ -413,18 +421,29 @@ export async function createPayment(amount: number, cardInstance: SquareCardHook
     }
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('{')) {
+      let parsedError: { error?: { message?: string; code?: string } } | null = null;
       try {
-        const parsedError = JSON.parse(error.message);
+        parsedError = JSON.parse(error.message);
+      } catch {
+        parsedError = null;
+      }
+      if (parsedError) {
         if (parsedError.error?.message) {
           parsedError.error.message = parsedError.error.message
             .replace(/Square API Error:/i, 'Payment Error:')
             .replace(/location_id=/i, 'location ')
             .replace(/\bLY5C3TE48WEXX\b/, 'configuration');
         }
-        throw new Error(JSON.stringify(parsedError));
-      } catch {
-        throw error;
+        const wrapped = new Error(JSON.stringify(parsedError)) as Error & { code?: string; status?: number };
+        // Preserve the structured `.code` (notably PROVIDER_NOT_CONFIGURED)
+        // so consumers can branch on it without re-parsing the message.
+        const originalCode = (error as Error & { code?: string }).code ?? parsedError.error?.code;
+        if (originalCode) wrapped.code = originalCode;
+        const originalStatus = (error as Error & { status?: number }).status;
+        if (originalStatus) wrapped.status = originalStatus;
+        throw wrapped;
       }
+      throw error;
     }
 
     throw new Error(JSON.stringify({
@@ -447,13 +466,33 @@ export async function createSquareCustomer(name: string, email: string, teamId: 
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText || 'Failed to create Square customer');
+      // Try to surface the structured `error.code` (specifically
+      // PROVIDER_NOT_CONFIGURED) — fall back to plain text if the
+      // body isn't JSON.
+      let errorBody: unknown = null;
+      try {
+        errorBody = await response.clone().json();
+      } catch {
+        errorBody = null;
+      }
+      const code = (errorBody as { error?: { code?: string } })?.error?.code;
+      const message = (errorBody as { error?: { message?: string } })?.error?.message
+        ?? (errorBody ? undefined : await response.text())
+        ?? 'Failed to create Square customer';
+      const err = new Error(message) as Error & { code?: string; status?: number };
+      if (code) err.code = code;
+      err.status = response.status;
+      throw err;
     }
 
     const customer = await response.json();
     return customer;
   } catch (error) {
+    // Preserve structured `.code` (e.g. PROVIDER_NOT_CONFIGURED) when
+    // re-wrapping so admin pages can branch on it.
+    if (error instanceof Error && (error as Error & { code?: string }).code) {
+      throw error;
+    }
     throw new Error('Failed to create Square customer: ' + (error instanceof Error ? error.message : String(error)));
   }
 }

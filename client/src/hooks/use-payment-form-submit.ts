@@ -1,7 +1,13 @@
 import { UseFormReturn } from "react-hook-form";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { csrfFetch } from "@/lib/queryClient";
+import {
+  isProviderNotConfiguredError,
+  providerNotConfiguredToast,
+  makeApiError,
+} from "@/lib/provider-not-configured";
 import type { InsertPayment } from "@shared/schema";
 import type { SquareCard } from "@/hooks/use-square-payment";
 import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
@@ -34,6 +40,7 @@ export function usePaymentFormSubmit({
 }: UsePaymentFormSubmitOptions) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
 
   const onSubmit = async (data: InsertPayment) => {
     try {
@@ -59,7 +66,7 @@ export function usePaymentFormSubmit({
 
           const responseData = await response.json();
           if (!response.ok) {
-            throw new Error(responseData.error?.message || 'Failed to process payment');
+            throw makeApiError(responseData, response.status, 'Failed to process payment');
           }
 
           toast({ title: "Success", description: "Payment processed with saved card" });
@@ -115,7 +122,7 @@ export function usePaymentFormSubmit({
 
         const responseData = await response.json();
         if (!response.ok) {
-          throw new Error(responseData.error?.message || 'Failed to process payment');
+          throw makeApiError(responseData, response.status, 'Failed to process payment');
         }
 
         toast({ title: "Success", description: "Payment processed successfully" });
@@ -143,6 +150,12 @@ export function usePaymentFormSubmit({
       queryClient.invalidateQueries({ queryKey: ["/api/payments"] });
       onClose();
     } catch (error) {
+      if (isProviderNotConfiguredError(error)) {
+        const props = providerNotConfiguredToast({ navigate });
+        setPaymentError(props.title);
+        toast(props);
+        return;
+      }
       const errorMessage = error instanceof Error ? error.message : "Failed to process payment";
       setPaymentError(errorMessage);
       toast({

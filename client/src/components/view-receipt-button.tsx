@@ -1,8 +1,13 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Loader2, Receipt } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { csrfFetch, queryClient } from "@/lib/queryClient";
+import {
+  PROVIDER_NOT_CONFIGURED,
+  providerNotConfiguredToast,
+} from "@/lib/provider-not-configured";
 import type { Payment } from "@shared/schema";
 
 interface Props {
@@ -19,6 +24,7 @@ interface Props {
  */
 export function ViewReceiptButton({ payment, variant = "icon" }: Props) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [isFetching, setIsFetching] = useState(false);
 
   // Show the button for any paid card row that either has a cached
@@ -50,6 +56,10 @@ export function ViewReceiptButton({ payment, variant = "icon" }: Props) {
       const data = await response.json();
       if (!response.ok) {
         const code = data?.error?.code;
+        if (code === PROVIDER_NOT_CONFIGURED) {
+          toast(providerNotConfiguredToast({ navigate }));
+          return;
+        }
         const msg =
           code === "RECEIPT_UNAVAILABLE"
             ? "No receipt is available for this payment yet. The provider may not have generated one."
