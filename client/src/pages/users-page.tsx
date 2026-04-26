@@ -309,6 +309,7 @@ export default function UsersPage() {
               </DialogHeader>
               <Form {...changeEmailForm}>
                 <form
+                  noValidate
                   onSubmit={changeEmailForm.handleSubmit((values) => {
                     if (changeEmailUserId === null) return;
                     changeEmailMutation.mutate({

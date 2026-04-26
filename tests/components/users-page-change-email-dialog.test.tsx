@@ -183,6 +183,32 @@ describe('UsersPage — Change Email dialog', () => {
     }
   });
 
+  it('shows an inline validation error and does NOT fire a PATCH for an invalid email', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const input = await openChangeEmailDialogFor(TARGET.id, user);
+    await user.type(input, 'not-an-email');
+    await user.click(screen.getByTestId('button-confirm-change-email'));
+
+    expect(await screen.findByText(/please enter a valid email/i)).toBeInTheDocument();
+
+    // Give any (incorrectly fired) mutation a tick to settle, then assert no PATCH happened.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(postedBody).toBeNull();
+    const fetchMock = global.fetch as unknown as ReturnType<typeof vi.fn>;
+    const profileCalls = fetchMock.mock.calls.filter(([url]) => {
+      const u = typeof url === 'string' ? url : url.toString();
+      return u.includes(`/api/account/profile/${TARGET.id}`);
+    });
+    expect(profileCalls).toHaveLength(0);
+
+    // Dialog stays open and no success toast was shown.
+    expect(screen.getByTestId('input-change-email')).toBeInTheDocument();
+    expect(toastFn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: expect.stringMatching(/confirmation email sent/i) }),
+    );
+  });
+
   it('keeps the dialog open and shows a destructive toast when the backend rejects', async () => {
     profileHandler = () =>
       jsonRes(
