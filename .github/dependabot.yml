@@ -1,0 +1,57 @@
+# Dependabot config — task #444.
+#
+# Why this file exists:
+#   The third-party GitHub Actions used by `.github/workflows/ci.yml`
+#   are pinned to full commit SHAs (rather than floating `@v4` tags)
+#   so a malicious or compromised release in the v4 line cannot be
+#   silently picked up by every subsequent CI run. SHA-pinning by
+#   itself, however, would calcify CI on whatever version was current
+#   the day it was pinned — leaving us behind on real bug and security
+#   fixes from the actions' maintainers. Dependabot bridges that gap:
+#   it watches the upstream repos and opens a PR that bumps the SHA
+#   (and the trailing `# v4.x.y` comment) whenever a new release ships.
+#
+# Why only `github-actions` is registered here:
+#   The npm dependency graph is intentionally NOT under Dependabot
+#   control in this project — `package.json` is locked in the Replit
+#   environment (see `docs/lint.md`'s scripts-section note), so
+#   automated bumps would either be no-ops or open PRs that the
+#   environment can't apply. If/when that changes, add a second entry
+#   below with `package-ecosystem: "npm"`.
+#
+# Convention for any future workflow file:
+#   See `docs/ci.md` → "Pinning third-party actions" — every
+#   third-party `uses:` reference must be a 40-char SHA with a
+#   trailing `# vX.Y.Z` comment, and Dependabot must already cover
+#   the path that workflow file lives under (`/.github/workflows`
+#   is covered by the entry below, so a new workflow there is
+#   covered automatically).
+
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    # `directory: "/"` tells Dependabot to scan
+    # `.github/workflows/*.yml` from the repo root. This covers the
+    # current `ci.yml` plus any future workflow files added under
+    # `.github/workflows/` without needing a config change.
+    directory: "/"
+    schedule:
+      # Weekly is enough for actions: their release cadence is slow
+      # (months between minor versions) and a 7-day lag on a security
+      # bump is acceptable given the SHA pin already blocks the
+      # silent-supply-chain attack vector.
+      interval: "weekly"
+    # Group all action bumps into a single PR each week so reviewing
+    # them is one PR, not N. The grouping pattern matches everything
+    # under the github-actions ecosystem (i.e. every `uses:`
+    # reference in any workflow file).
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    # Conventional commit prefix so the PR title is unambiguous in
+    # the review queue.
+    commit-message:
+      prefix: "ci"
+      include: "scope"

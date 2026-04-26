@@ -55,10 +55,18 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out the PR
-        uses: actions/checkout@v4
+        # Pinned to a full commit SHA per the supply-chain hygiene
+        # convention documented in `docs/ci.md` → "Pinning third-party
+        # actions". Dependabot (`.github/dependabot.yml`) bumps this
+        # automatically when a new release ships.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        # Pinned to a full commit SHA per the supply-chain hygiene
+        # convention documented in `docs/ci.md` → "Pinning third-party
+        # actions". Dependabot (`.github/dependabot.yml`) bumps this
+        # automatically when a new release ships.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           # Pinned to the runtime declared in `replit.md` so CI matches
           # the dev/prod environment. Bump in lockstep when that file
@@ -208,10 +216,18 @@ jobs:
 
     steps:
       - name: Check out the PR
-        uses: actions/checkout@v4
+        # Pinned to a full commit SHA per the supply-chain hygiene
+        # convention documented in `docs/ci.md` → "Pinning third-party
+        # actions". Dependabot (`.github/dependabot.yml`) bumps this
+        # automatically when a new release ships.
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        # Pinned to a full commit SHA per the supply-chain hygiene
+        # convention documented in `docs/ci.md` → "Pinning third-party
+        # actions". Dependabot (`.github/dependabot.yml`) bumps this
+        # automatically when a new release ships.
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           # Pinned to the runtime declared in `replit.md` so CI matches
           # the dev/prod environment. Bump in lockstep when that file

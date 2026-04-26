@@ -182,6 +182,53 @@ system_admin-only debug endpoint) and asserts:
   than expanding the existing service block, so failures stay
   localized and unrelated PRs don't pay the bring-up cost.
 
+## Pinning third-party actions
+
+Every third-party `uses:` reference in any workflow file under
+`.github/workflows/` must be pinned to a full 40-character commit
+SHA, with a trailing `# vX.Y.Z` comment for human readability:
+
+```yaml
+# Good:
+- uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+# Bad (floating tag — a compromised release in the v4 line is picked
+# up automatically with no in-repo audit trail):
+- uses: actions/checkout@v4
+```
+
+This is the well-known GitHub-published guidance for hardening
+GitHub Actions against supply-chain attacks. A floating `@v4` tag
+means whoever owns the upstream repo (or compromises a maintainer
+account) can ship a new `v4.x.y` and have it silently execute
+inside our build environment on the next CI run. A SHA pin makes
+that impossible without a visible diff in our repo.
+
+`.github/dependabot.yml` watches every workflow file under
+`.github/workflows/` and opens a weekly grouped PR that bumps the
+SHAs (and the trailing `# vX.Y.Z` comments) as new releases ship.
+Reviewing that PR is the supply-chain audit step — read the upstream
+release notes, then merge.
+
+When adding a new workflow file:
+
+1. Find the latest stable release SHA for each action you want to
+   use. The simplest source is `git ls-remote --tags --refs
+   https://github.com/<owner>/<repo>.git`, which prints `<sha>
+   refs/tags/<tag>` lines you can grep.
+2. Pin it as `uses: <owner>/<repo>@<sha> # <tag>`.
+3. Confirm the new workflow's directory is already covered by the
+   `github-actions` block in `.github/dependabot.yml` (the existing
+   `directory: "/"` entry covers everything under
+   `.github/workflows/`, so a new file there is covered
+   automatically).
+
+This convention currently applies to `ci.yml`. The sibling
+workflows (`race-suite.yml`, `post-deploy-trust-proxy.yml`) still
+reference `actions/checkout@v4` and `actions/setup-node@v4` by
+floating tag — they were not in the scope of task #444 and will be
+brought into line when next touched.
+
 ## See also
 
 - `docs/lint.md` — the lint contract enforced by `check-and-lint`.
