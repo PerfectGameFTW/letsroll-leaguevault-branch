@@ -521,9 +521,11 @@ export async function sendApplePayRecoveryAlert(
  * Resend a Square hosted-receipt link to a bowler (task #503).
  *
  * The receipt content lives at Square's hosted URL — we just hand the
- * recipient a button to open it. Hardcoded HTML (no DB-template
- * dependency) so admins can resend even on a fresh install where no
- * email_templates row has been seeded.
+ * recipient a button to open it. Follows the same pattern as
+ * sendInviteEmail: try the DB-driven 'payment_receipt_resend' template
+ * first (so admins can customize copy via the email-templates surface),
+ * and fall back to the hardcoded HTML below when no template is seeded
+ * (fresh installs).
  */
 export async function sendReceiptResendEmail(
   toEmail: string,
@@ -535,6 +537,22 @@ export async function sendReceiptResendEmail(
     organizationName?: string | null;
   },
 ): Promise<boolean> {
+  const dollars = (context.amountCents / 100).toFixed(2);
+
+  const templateVars: Record<string, string> = {
+    receipt_url: context.receiptUrl,
+    receipt_number: context.receiptNumber || '',
+    amount: `$${dollars}`,
+    league_name: context.leagueName || 'your league',
+    organization_name: context.organizationName || 'LeagueVault',
+  };
+  const sentViaTemplate = await sendTemplatedEmail(
+    'payment_receipt_resend',
+    toEmail,
+    templateVars,
+  );
+  if (sentViaTemplate) return true;
+
   if (!SENDGRID_API_KEY) {
     log.error('Cannot send receipt resend — SENDGRID_API_KEY not configured');
     return false;
@@ -544,7 +562,6 @@ export async function sendReceiptResendEmail(
   const safeNumber = escapeHtml(context.receiptNumber || '');
   const safeLeague = escapeHtml(context.leagueName || 'your league');
   const safeOrg = escapeHtml(context.organizationName || 'LeagueVault');
-  const dollars = (context.amountCents / 100).toFixed(2);
 
   const msg = {
     to: toEmail,
