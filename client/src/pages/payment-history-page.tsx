@@ -201,7 +201,10 @@ export default function PaymentHistoryPage() {
     // server's BUYER_EMAIL_REQUIRED so the wallet sheet doesn't
     // launch into an avoidable 400.
     const trimmedReceiptEmail = receiptEmail.trim();
-    if (!bowlerEmail && !trimmedReceiptEmail) {
+    // Task #503 (8th-pass review): only Square enforces
+    // BUYER_EMAIL_REQUIRED server-side; CardPointe doesn't emit
+    // hosted receipts so don't block its wallet flow either.
+    if (!isCardPointe && !bowlerEmail && !trimmedReceiptEmail) {
       toast({
         title: 'Email required',
         description: 'Enter an email for the receipt before paying with Apple Pay / Google Pay.',
@@ -479,7 +482,7 @@ export default function PaymentHistoryPage() {
             onApplePayClick={handleApplePayClick}
             onGooglePayClick={handleGooglePayClick}
             isWalletProcessing={isWalletBusy || isWalletProcessing}
-            bowlerHasEmail={!!bowlerEmail}
+            bowlerHasEmail={!!bowlerEmail || isCardPointe}
             receiptEmail={receiptEmail}
             onReceiptEmailChange={setReceiptEmail}
           />

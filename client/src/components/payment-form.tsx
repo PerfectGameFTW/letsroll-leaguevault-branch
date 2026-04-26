@@ -257,7 +257,10 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     // round-trip mid-wallet-flow.
     const selected = bowlers.find((b) => b.id === bowlerId);
     const trimmedReceiptEmail = receiptEmail.trim();
-    if (!selected?.email && !trimmedReceiptEmail) {
+    // Task #503 (8th-pass review): only Square enforces
+    // BUYER_EMAIL_REQUIRED server-side; CardPointe doesn't emit
+    // hosted receipts so it must NOT be blocked here.
+    if (!isCardPointe && !selected?.email && !trimmedReceiptEmail) {
       setPaymentError(
         'This bowler has no email on file. Enter an email for the receipt before paying with Apple Pay / Google Pay.',
       );
@@ -397,7 +400,11 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               />
             )}
 
-            {paymentType === "credit_card" && selectedBowlerId && !bowlerHasEmail && (
+            {/* Task #503 (8th-pass review): only Square enforces
+                BUYER_EMAIL_REQUIRED. Don't render the inline gate
+                for CardPointe — it has no hosted-receipt support
+                and the server doesn't require buyerEmail. */}
+            {paymentType === "credit_card" && selectedBowlerId && !bowlerHasEmail && !isCardPointe && (
               <FormItem>
                 <FormLabel>
                   Email for receipt <span className="text-destructive">*</span>
@@ -463,7 +470,9 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                   // none on file. Server enforces this with
                   // BUYER_EMAIL_REQUIRED; mirrored here so the user
                   // never sees an avoidable round-trip.
-                  (paymentType === "credit_card" && !!selectedBowlerId && !bowlerHasEmail && !receiptEmail.trim())
+                  // Task #503 (8th-pass review): CardPointe doesn't
+                  // enforce BUYER_EMAIL_REQUIRED so excluded here.
+                  (paymentType === "credit_card" && !!selectedBowlerId && !bowlerHasEmail && !receiptEmail.trim() && !isCardPointe)
                 }
               >
                 {form.formState.isSubmitting ? (
