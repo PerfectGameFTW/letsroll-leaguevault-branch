@@ -13,18 +13,10 @@ export interface ChargeResult {
   cardId?: string;
   providerRef?: Record<string, string>;
   providerName?: string;
-  /**
-   * Hosted-receipt fields surfaced from the provider response so the
-   * payment-record-write path can persist them (task #503). Always
-   * undefined for CardPointe.
-   */
+  // Square hosted-receipt fields; undefined for CardPointe.
   receiptUrl?: string;
   receiptNumber?: string;
-  /**
-   * True when this charge was issued without a buyer email — i.e.
-   * Square skipped its auto-receipt step. Drives the
-   * `payments.receipt_email_missing` flag on the persisted row.
-   */
+  // True when a Square charge ran without buyer email (no auto-receipt).
   buyerEmailMissing?: boolean;
 }
 
@@ -60,10 +52,7 @@ export async function executeCharge(
   paymentCustomerId: string | undefined,
   buyerEmail: string | undefined
 ): Promise<ChargeResult> {
-  // Square only auto-emails a hosted receipt when the
-  // CreatePayment call includes buyerEmailAddress. A missing email on
-  // a Square charge means the bowler will silently NOT get a receipt,
-  // which we want surfaced both in production logs and on the row.
+  // Square auto-emails its receipt only when buyerEmailAddress is set.
   const buyerEmailMissing = provider.providerName === 'square' && !buyerEmail;
   if (buyerEmailMissing) {
     logger.warn('[PaymentExecution] Square charge issued without buyer email — no auto-receipt will be sent', {
@@ -204,12 +193,7 @@ export async function createPaymentRecord(
   tx?: typeof db,
   providerRef?: Record<string, string>,
   providerName?: string,
-  /**
-   * Receipt context for the autopay row (task #503). The scheduler
-   * threads these from the ChargeResult returned by `executeCharge`.
-   * `buyerEmailMissing` is meaningful for Square only — CardPointe
-   * never auto-emails a hosted receipt, so the flag stays false.
-   */
+  // Receipt context threaded from executeCharge; Square-only.
   receipt?: {
     receiptUrl?: string;
     receiptNumber?: string;

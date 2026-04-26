@@ -7,13 +7,7 @@ export interface PaymentResult {
     brand: string;
   };
   providerRef?: Record<string, string>;
-  /**
-   * Hosted-receipt fields (task #503). Square populates these on every
-   * successful CreatePayment response — `receiptUrl` is the public URL of
-   * the receipt page Square hosts, `receiptNumber` is the short
-   * human-readable reference (e.g. "K3X7"). Left undefined for providers
-   * that don't emit hosted receipts (CardPointe).
-   */
+  // Square hosted-receipt fields; undefined for CardPointe.
   receiptUrl?: string;
   receiptNumber?: string;
 }
@@ -47,13 +41,7 @@ export interface PaymentVerification {
   cardBrand?: string;
   last4?: string;
   orderId?: string;
-  /**
-   * Hosted-receipt fields (task #503). Same semantics as on
-   * `PaymentResult` — populated by Square's GetPayment response so the
-   * "View receipt" UI can lazily backfill an old row that was written
-   * before we started persisting these fields. Always undefined for
-   * CardPointe.
-   */
+  // Square hosted-receipt fields; populated by GetPayment for backfill.
   receiptUrl?: string;
   receiptNumber?: string;
 }

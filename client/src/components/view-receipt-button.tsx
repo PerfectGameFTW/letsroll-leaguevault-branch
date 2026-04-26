@@ -11,19 +11,11 @@ interface Props {
 }
 
 /**
- * Opens the Square hosted receipt for a paid card payment.
- *
- * Two paths:
- * 1. Cached: `payment.receiptUrl` is already on the row -> open in a
- * new tab immediately (no network).
- * 2. Lazy backfill: legacy rows pre-#503 (and any row where Square's
- * receipt URL wasn't returned at charge time) hit
- * gET /api/payments-provider/payments/:id/receipt, which calls
- *     `provider.getPayment()` and caches the URL back to the row, then
- * we open the returned URL.
- *
- * renders nothing for non-card / unpaid / providerless rows since
- * those have no hosted receipt to show.
+ * Opens the Square hosted receipt for a paid card payment. If
+ * `payment.receiptUrl` is cached we open it directly; otherwise
+ * we GET /payments/:id/receipt which lazy-backfills via the
+ * provider and caches the URL on the row. Renders nothing for
+ * rows without a receipt or backfill source.
  */
 export function ViewReceiptButton({ payment, variant = "icon" }: Props) {
   const { toast } = useToast();

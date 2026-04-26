@@ -1,19 +1,7 @@
 /**
- * Square hosted-receipt endpoints (task #503).
- *
- * Routes:
- *  - GET  /payments/:id/receipt          — bowler/admin: lazy-fetch + cache
- *                                          the receipt URL for a paid card row
- *  - POST /payments/:id/resend-receipt   — admin only: re-email the receipt
- *                                          link to a (possibly new) address
- *
- * Square auto-emails a hosted receipt the first time CreatePayment runs
- * with a `buyerEmailAddress`. These endpoints exist for two recovery
- * cases:
- *   1. Older payment rows persisted before we started capturing
- *      `receiptUrl` need a backfill from the provider's GetPayment.
- *   2. Bowlers who were charged without an email on file (or whose
- *      email bounced) need an admin-initiated resend.
+ * Square hosted-receipt endpoints.
+ *  - GET  /payments/:id/receipt         bowler/admin: lazy-fetch + cache
+ *  - POST /payments/:id/resend-receipt  admin only: re-email receipt link
  */
 import { Router } from 'express';
 import { z } from 'zod';
@@ -62,7 +50,7 @@ async function resolveReceiptUrl(paymentId: number): Promise<{
     return null;
   }
 
-  // Cached path — every Square row written after task #503 has these
+  // Cached path — every Square row written has these
   // populated at charge time, so this is the common case.
   if (payment.receiptUrl) {
     return {

@@ -518,14 +518,9 @@ export async function sendApplePayRecoveryAlert(
 }
 
 /**
- * Resend a Square hosted-receipt link to a bowler (task #503).
- *
- * The receipt content lives at Square's hosted URL — we just hand the
- * recipient a button to open it. Follows the same pattern as
- * sendInviteEmail: try the DB-driven 'payment_receipt_resend' template
- * first (so admins can customize copy via the email-templates surface),
- * and fall back to the hardcoded HTML below when no template is seeded
- * (fresh installs).
+ * Resend a Square hosted-receipt link. Tries the DB-driven
+ * 'payment_receipt_resend' template first, falling back to the
+ * inline HTML below on fresh installs.
  */
 export async function sendReceiptResendEmail(
   toEmail: string,
