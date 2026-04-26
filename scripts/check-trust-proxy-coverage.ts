@@ -46,13 +46,24 @@
  *     becomes a real need, prefer making the factory call the
  *     assertion itself, or extend this script with an explicit
  *     allowlist of (constructor file, asserter file) pairs.
- *   - Ordering is NOT enforced: presence of the call is necessary
- *     but not sufficient. A future entrypoint that calls the
- *     assertion AFTER `app.listen(...)` would satisfy this lint
- *     while violating the boot-time invariant. The contributor is
- *     responsible for placing the call right after
- *     `app.set('trust proxy', N)`. Modelling order would require an
- *     AST pass and is out of scope for this guard.
+ *   - Ordering IS enforced (task #497): once a file passes the
+ *     "calls the assertion" check above, the script also verifies
+ *     that the first `assertTrustProxyAtBoot(` call site appears at
+ *     a source position EARLIER than the first `<id>.listen(` call
+ *     in the same file. The footgun this closes is a future
+ *     entrypoint that legally satisfies the presence check but
+ *     calls the assertion after `app.listen(...)` — at that point a
+ *     real request can already arrive and key off a misconfigured
+ *     `req.ip` before the boot guard ever runs. The check is a
+ *     lexical position compare on the comment-stripped source: it
+ *     deliberately does NOT chase control flow into function
+ *     bodies, so a `startServer()` factory that contains both calls
+ *     in textual order (assertion above `listen`) is correctly
+ *     accepted regardless of where the factory is invoked. The
+ *     mirror false-negative — a factory containing only `.listen(`
+ *     called before a top-level assertion — is acknowledged and
+ *     left to the same-file-ordering convention this guard
+ *     enforces; a full call-graph pass is out of scope.
  *   - Files under `**\/__tests__/**` and any `*.test.ts` are
  *     excluded — synthetic test apps don't need the production
  *     guard.
@@ -76,6 +87,14 @@ const SERVER_DIR = resolve(process.cwd(), 'server');
 interface Violation {
   file: string;
   line: number;
+  // 'missing' = file constructs an express() instance but never calls
+  // assertTrustProxyAtBoot in the same file.
+  // 'late' = file does call the assertion, but the call site is at a
+  // later source position than the first `<id>.listen(` in the same
+  // file (task #497). `listenLine` is set only for 'late' so the
+  // violation report can point the dev at both call sites at once.
+  kind: 'missing' | 'late';
+  listenLine?: number;
 }
 
 // Strip line and block comments so a doc-comment example doesn't
@@ -189,6 +208,31 @@ function callsAssertion(src: string): boolean {
   return /\bassertTrustProxyAtBoot\s*\(/.test(src);
 }
 
+// Position-check helpers (task #497). The lint additionally rejects
+// files where the first `assertTrustProxyAtBoot(` call site appears
+// at a later source offset than the first `<id>.listen(` call. The
+// pattern is intentionally pinned to `<identifier>.listen(` (e.g.
+// `app.listen(`, `server.listen(`, `httpServer.listen(`) rather than
+// a bare `\.listen\(`: that boundary keeps the regex from matching
+// unrelated `.listen` references in property strings or method-chain
+// fragments while still covering every realistic Express/Node
+// listen-call shape. Source offsets are compared on the
+// comment-stripped string the rest of the script already uses, so
+// `// app.listen(...)` examples in doc-comments don't trip the
+// position check either.
+const ASSERTION_RE = /\bassertTrustProxyAtBoot\s*\(/;
+const LISTEN_RE = /\b[A-Za-z_$][\w$]*\.listen\s*\(/;
+
+function firstIndex(src: string, re: RegExp): number {
+  const m = re.exec(src);
+  return m ? m.index : -1;
+}
+
+function lineFromIndex(src: string, idx: number): number {
+  // 1-indexed line number for the violation report.
+  return src.slice(0, idx).split('\n').length;
+}
+
 function main(): void {
   if (!existsSync(SERVER_DIR)) {
     // Synthetic fixtures may omit `server/` entirely — that means
@@ -208,10 +252,32 @@ function main(): void {
     const stripped = stripComments(raw);
     const expressLines = findExpressCallLines(stripped);
     if (expressLines.length === 0) continue;
-    if (callsAssertion(stripped)) continue;
     const rel = relative(process.cwd(), file);
-    for (const line of expressLines) {
-      violations.push({ file: rel, line });
+    if (!callsAssertion(stripped)) {
+      for (const line of expressLines) {
+        violations.push({ file: rel, line, kind: 'missing' });
+      }
+      continue;
+    }
+    // Presence check passed — now enforce ordering (task #497). The
+    // assertion has to fire before the app starts handling requests,
+    // so its first call site must appear at a source position
+    // earlier than the first `<id>.listen(` in the same file.
+    // Files with no `.listen(` at all (e.g. an entrypoint that
+    // hands `app` off to a different file to bind the port) are
+    // accepted: there's no in-file ordering to compare against.
+    const listenIdx = firstIndex(stripped, LISTEN_RE);
+    if (listenIdx < 0) continue;
+    const assertionIdx = firstIndex(stripped, ASSERTION_RE);
+    // assertionIdx >= 0 here because callsAssertion(stripped) already
+    // matched the same regex shape.
+    if (assertionIdx > listenIdx) {
+      violations.push({
+        file: rel,
+        line: lineFromIndex(stripped, assertionIdx),
+        kind: 'late',
+        listenLine: lineFromIndex(stripped, listenIdx),
+      });
     }
   }
 
@@ -223,15 +289,22 @@ function main(): void {
 
   // eslint-disable-next-line no-console
   console.error(
-    '[check-trust-proxy-coverage] FAIL — the following express() instances under server/ do not call assertTrustProxyAtBoot in the same file:',
+    '[check-trust-proxy-coverage] FAIL — the following express() entrypoints under server/ have a misconfigured trust-proxy guard:',
   );
   for (const v of violations) {
-    // eslint-disable-next-line no-console
-    console.error(`  ${v.file}:${v.line}  express() without assertTrustProxyAtBoot in same file`);
+    if (v.kind === 'missing') {
+      // eslint-disable-next-line no-console
+      console.error(`  ${v.file}:${v.line}  express() without assertTrustProxyAtBoot in same file`);
+    } else {
+      // eslint-disable-next-line no-console
+      console.error(
+        `  ${v.file}:${v.line}  assertTrustProxyAtBoot called after listen() at line ${v.listenLine} — assertion must fire before any request can be handled`,
+      );
+    }
   }
   // eslint-disable-next-line no-console
   console.error(
-    '\nFix by importing assertTrustProxyAtBoot from server/lib/trust-proxy-check and calling it on the new app right after `app.set("trust proxy", N)`. See the entrypoint registry in that file.',
+    '\nFix by importing assertTrustProxyAtBoot from server/lib/trust-proxy-check and calling it on the new app right after `app.set("trust proxy", N)`, before any `<app|server>.listen(...)` call in the same file. See the entrypoint registry in that file.',
   );
   process.exit(1);
 }

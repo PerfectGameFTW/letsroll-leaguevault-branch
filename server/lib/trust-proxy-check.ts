@@ -168,6 +168,14 @@ export function verifyTrustProxy(app: Express): TrustProxyCheckResult {
 // instance in a file that doesn't also call this function — when
 // adding a new entrypoint, register it in the list above and call
 // the assertion in that file.
+//
+// The same lint also enforces ordering (task #497): the first
+// `assertTrustProxyAtBoot(` call site in the file must appear at a
+// source position EARLIER than the first `<id>.listen(` in the same
+// file. Place the call right after `app.set('trust proxy', N)` and
+// well above the `app.listen` / `server.listen` invocation; a
+// `startServer()` factory that contains both calls in textual order
+// (assertion above `listen`) is also accepted.
 export function assertTrustProxyAtBoot(
   app: Express,
   opts: {
