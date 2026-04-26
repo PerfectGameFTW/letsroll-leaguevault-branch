@@ -419,3 +419,50 @@ describe('POST /api/account/bowlers/:id/retry-payment-sync rate limit (#440)', (
     expect(mockSyncBowlerForUser).toHaveBeenCalledTimes(10);
   });
 });
+
+describe('POST /api/account/bowlers/:id/retry-payment-sync strict id parsing (#472)', () => {
+  // The handler now requires a digit-only :id. Before #472, JavaScript's
+  // lenient parseInt mapped '9301abc' -> 9301 and the handler silently
+  // acted on bowler 9301 instead of returning a clean 400. These tests
+  // pin the new contract.
+  //
+  // We use bowler ids in the 9301..9302 range here, deliberately disjoint
+  // from the limiter tests above (9001 / 9101..9111 / 9201) so the
+  // 10/min admin budget cannot 429 us before the strict guard fires.
+
+  beforeEach(() => {
+    nextAuthState = { isAuthenticated: true, user: ADMIN_USER };
+    mockGetUserByBowlerId.mockResolvedValue(PLAIN_USER_LINKED);
+  });
+
+  it('rejects a typo\'d non-digit id with 400 INVALID_ID without invoking the bowler lookup or sync worker', async () => {
+    const { status, body } = await postAdminRetry('9301abc');
+
+    expect(status).toBe(400);
+    expect(body.success).toBe(false);
+    expect(body.error?.code).toBe('INVALID_ID');
+
+    // Critical: the strict guard ran BEFORE any storage / sync call.
+    // If the guard were ever skipped or moved below `getBowler`, then
+    // `getBowler(9301)` would have been invoked as if '9301abc' were
+    // bowler 9301 — that is the exact silent-misroute regression #472
+    // exists to prevent.
+    expect(mockGetBowler).not.toHaveBeenCalled();
+    expect(mockGetUserByBowlerId).not.toHaveBeenCalled();
+    expect(mockSyncBowlerForUser).not.toHaveBeenCalled();
+  });
+
+  it('still accepts canonical and leading-zero digit-only ids (regression guard against over-rejecting)', async () => {
+    // Both forms parse to bowler 9302 and both pass /^\d+$/, so both
+    // must reach the sync worker. If a future tightening of the
+    // regex (say, banning leading zeros) lands without an intentional
+    // contract change, this test will catch it.
+    const { status: statusPlain } = await postAdminRetry('9302');
+    expect(statusPlain).toBe(200);
+
+    const { status: statusZero } = await postAdminRetry('09302');
+    expect(statusZero).toBe(200);
+
+    expect(mockSyncBowlerForUser).toHaveBeenCalledTimes(2);
+  });
+});

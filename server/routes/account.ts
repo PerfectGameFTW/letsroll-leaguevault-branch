@@ -753,10 +753,34 @@ router.post(
   adminRetryPaymentSyncLimiter,
   async (req: Request, res: Response) => {
     try {
-      const bowlerId = parseInt(req.params.id, 10);
-      if (isNaN(bowlerId)) {
+      // Task #472: strict digit-only check on the URL id. JavaScript's
+      // built-in `parseInt` is lenient — `parseInt('9001abc', 10)`
+      // returns 9001, and the previous `if (isNaN(bowlerId))` guard
+      // therefore did NOT reject typo'd admin URLs. An admin pasting
+      // a corrupted id from a chat or log line (e.g. an extra
+      // character on the end) would silently retry sync for the
+      // PREFIX-numeric bowler — i.e. act on the wrong person. We
+      // require [0-9]+ so the only inputs that reach `getBowler`
+      // are unambiguous integer ids. Leading-zero forms ('09001')
+      // are intentionally still accepted because they are still
+      // digit-only and parse to the same canonical id; rejecting
+      // them would surprise no-one but would needlessly diverge
+      // from the limiter's keying contract above.
+      //
+      // Note: the limiter's `keyGenerator` at line ~729 still uses
+      // `Number.parseInt` and intentionally collapses equivalent
+      // variants ('9201', '09201', '9201abc') into one bucket.
+      // That is the right behavior for the limiter — it's a
+      // bypass-prevention canonicalization (the per-bowler budget
+      // must not be defeatable by URL-variant tricks). The handler's
+      // strict check below is a separate concern (correctness of
+      // which row we act on) and runs after the limiter, so the
+      // two contracts compose without conflict.
+      const rawId = req.params.id ?? '';
+      if (!/^\d+$/.test(rawId)) {
         return sendError(res, 'Invalid bowler ID', 400, 'INVALID_ID');
       }
+      const bowlerId = Number.parseInt(rawId, 10);
 
       const bowler = await storage.getBowler(bowlerId);
       if (!bowler) {
