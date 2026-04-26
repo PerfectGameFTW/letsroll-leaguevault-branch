@@ -56,7 +56,26 @@ function makeRes(): { res: Response; status: () => number | null; code: () => st
 }
 
 describe('checkSetupSecret unit — header normalization', () => {
-  if (!SETUP_SECRET) { it.skip('SETUP_SECRET not set', () => {}); return; }
+  // Task #431: this suite runs as part of the default `npm test` job
+  // (no opt-in flag), so a CI environment that forgets to wire
+  // SETUP_SECRET would historically silently `it.skip` the entire
+  // header-normalisation matrix and report a green build — exactly
+  // the regression net this file is supposed to be. Hard-fail with a
+  // remediation pointer instead, matching the pattern landed for the
+  // bootstrap-race suite in task #360.
+  if (!SETUP_SECRET) {
+    it('FAILS LOUDLY: SETUP_SECRET must be set for the setup-admin header suite', () => {
+      throw new Error(
+        'SETUP_SECRET is required for tests/api/setup-admin-header.test.ts. ' +
+          'It is wired into the default `npm test` run, so a CI job that ' +
+          'forgets to export it will silently lose all setup-admin header ' +
+          'coverage. Set it in your CI secrets (and locally export it) ' +
+          'before running `npm test`. ' +
+          'See tests/README.md → "CI wiring" for the full list of required CI secrets.',
+      );
+    });
+    return;
+  }
 
   it('rejects a string[] header with bogus first element (no crash)', () => {
     const r = makeRes();
@@ -133,7 +152,23 @@ async function primeCsrf(): Promise<{ cookies: string; csrf: string }> {
 }
 
 describe('setup-admin endpoints — per-endpoint secret-gate coverage', () => {
-  if (!SETUP_SECRET) { it.skip('SETUP_SECRET not set', () => {}); return; }
+  // Task #431: see the matching block above — same reason, same
+  // hard-fail pattern (task #360). This suite runs in the default
+  // `npm test` job, so a missing SETUP_SECRET must surface as a CI
+  // failure rather than a silent skip.
+  if (!SETUP_SECRET) {
+    it('FAILS LOUDLY: SETUP_SECRET must be set for the setup-admin endpoint suite', () => {
+      throw new Error(
+        'SETUP_SECRET is required for tests/api/setup-admin-header.test.ts. ' +
+          'It is wired into the default `npm test` run, so a CI job that ' +
+          'forgets to export it will silently lose all per-endpoint ' +
+          'secret-gate coverage. Set it in your CI secrets (and locally ' +
+          'export it) before running `npm test`. ' +
+          'See tests/README.md → "CI wiring" for the full list of required CI secrets.',
+      );
+    });
+    return;
+  }
 
   let cookies = '';
   let csrf = '';

@@ -177,6 +177,12 @@ during the `npm test` step. The minimal job ordering looks like:
 |------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `SETUP_SECRET`   | The `/api/setup/*` endpoints check this header on every request. Without it, every POST in the race suite returns `401` and no race coverage runs. Both `scripts/test-race.sh` AND the test file hard-fail when it's missing — a CI job that forgets to wire it through will exit non-zero with a clear remediation message instead of silently reporting `6 skipped`. |
 
+**Required CI secrets for the default `npm test` run (task #431):**
+
+| Secret           | Why it's required                                                                                                                                                                                                       |
+|------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `SETUP_SECRET`   | `tests/api/setup-admin-header.test.ts` runs in the default `npm test` job and exercises both the `checkSetupSecret` header-normalisation matrix and the per-endpoint secret-gate coverage. Without `SETUP_SECRET` exported, the suite hard-fails with a remediation pointer rather than silently skipping — a CI job that forgets to wire it through will exit non-zero instead of reporting a misleading green build. |
+
 ## Layout
 
 - `tests/api/*.test.ts` — black-box API/integration tests that go over
