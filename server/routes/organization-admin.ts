@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { randomBytes } from 'crypto';
+import { db } from '../db';
 import { storage } from '../storage';
 import { sendSuccess, sendError, sanitizeUser, handleZodError, handleUserOrgError } from '../utils/api';
 import { hashPassword, destroyOtherSessionsForUser } from '../auth';
@@ -593,36 +594,50 @@ router.post('/users/:id/reset-password', requireOrgAdminOrSystemAdmin, adminWrit
     }
 
     const hashedNew = await hashPassword(newPassword);
-    // Task #455: also set the "must change password on next sign-in"
-    // flag in the SAME update so the new hash and the forced-rotation
-    // gate are written atomically. Without the flag, an admin who
-    // resets a user's password necessarily knows the working password
-    // until the user happens to rotate it themselves — a real
-    // impersonation window. The self-service /api/account/change-
-    // password endpoint clears the flag back to false on a successful
-    // rotation; the App.tsx route guards intercept the user and route
-    // them to /change-password-required as long as it remains true.
-    await storage.updateUser(targetUser.id, {
-      password: hashedNew,
-      mustChangePassword: true,
-    });
-
-    // Persistent audit row for compliance/security review (task #424).
-    // Order matters and is asserted by the unit test: this MUST run
-    // AFTER the password row is written but BEFORE the response is
-    // sent so a successful 200 implies a queryable audit trail. We
-    // intentionally do not catch — if the audit insert fails, the
-    // outer 500 handler fires; the admin retries, the password is
-    // re-hashed (idempotent for the caller) and the audit is written
-    // on the second attempt. That is the right tradeoff vs. silently
-    // losing the trail.
     const rawUaForAudit = (req.get('user-agent') ?? '').slice(0, 512);
-    await recordAdminPasswordResetAudit({
-      actorUserId: req.user!.id,
-      targetUserId: targetUser.id,
-      organizationId: targetUser.organizationId ?? null,
-      ipAddress: req.ip ?? null,
-      userAgent: rawUaForAudit || null,
+
+    // Task #458: the password update and the audit insert run inside
+    // ONE database transaction so they succeed or fail together. If
+    // the audit insert throws, drizzle rolls the password update back
+    // and the outer catch returns 500 — the admin can safely retry
+    // because no row was committed and `updateUser` is idempotent for
+    // the caller.
+    //
+    // Task #455 (still in force): the "must change password on next
+    // sign-in" flag is written in the SAME update as the new hash so
+    // the new credential and the forced-rotation gate land atomically.
+    // Without the flag, an admin who resets a user's password
+    // necessarily knows the working password until the user happens
+    // to rotate it themselves — a real impersonation window. The
+    // self-service /api/account/change-password endpoint clears the
+    // flag back to false on a successful rotation; the App.tsx route
+    // guards intercept the user and route them to
+    // /change-password-required as long as it remains true.
+    //
+    // Task #424 (still in force): order inside the transaction is
+    // password-update first, audit second, so a future maintainer
+    // reading top-to-bottom sees the same write order as the
+    // unit-test invocation-order assertions.
+    await db.transaction(async (tx) => {
+      await storage.updateUser(
+        targetUser.id,
+        {
+          password: hashedNew,
+          mustChangePassword: true,
+        },
+        tx,
+      );
+
+      await recordAdminPasswordResetAudit(
+        {
+          actorUserId: req.user!.id,
+          targetUserId: targetUser.id,
+          organizationId: targetUser.organizationId ?? null,
+          ipAddress: req.ip ?? null,
+          userAgent: rawUaForAudit || null,
+        },
+        tx,
+      );
     });
 
     // Defense-in-depth: any in-flight email-change tokens belonging

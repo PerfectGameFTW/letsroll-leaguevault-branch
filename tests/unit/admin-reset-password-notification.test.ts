@@ -100,6 +100,25 @@ vi.mock('../../server/storage/admin-password-reset-audits', () => ({
     mockRecordAdminPasswordResetAudit.apply(null, a as never),
 }));
 
+// Task #458: the route now wraps the password update + audit insert
+// in `db.transaction(...)` so they succeed or fail together. We mock
+// `db.transaction` to (a) hand the inner callback a sentinel `tx`
+// object so we can assert both writes received the SAME executor and
+// (b) re-throw any rejection out of the callback the way drizzle
+// would on rollback. This keeps the unit test from needing a real
+// Postgres connection while still pinning the atomic contract.
+const TX_SENTINEL = { __isMockTx: true } as const;
+const mockTransaction = vi.fn(
+  async (fn: (tx: typeof TX_SENTINEL) => Promise<unknown>) => fn(TX_SENTINEL),
+);
+
+vi.mock('../../server/db', () => ({
+  db: {
+    transaction: (...a: unknown[]) => mockTransaction.apply(null, a as never),
+  },
+  pool: {},
+}));
+
 const mockHashPassword = vi.fn(async (pw: string) => `hashed:${pw}`);
 const mockDestroyOtherSessionsForUser = vi.fn(async () => 0);
 
@@ -167,6 +186,10 @@ beforeEach(() => {
   mockDestroyOtherSessionsForUser.mockClear();
   mockRecordAdminPasswordResetAudit.mockReset();
   mockRecordAdminPasswordResetAudit.mockResolvedValue({ id: 1 } as never);
+  mockTransaction.mockClear();
+  mockTransaction.mockImplementation(
+    async (fn: (tx: typeof TX_SENTINEL) => Promise<unknown>) => fn(TX_SENTINEL),
+  );
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -489,10 +512,10 @@ describe('POST /api/organization-admin/users/:id/reset-password — persistent a
     mockRecordAdminPasswordResetAudit.mockRejectedValueOnce(new Error('DB unavailable'));
     const res = await postReset(TARGET_USER.id, { newPassword: 'BrandNewPw!2026XX' });
     expect(res.status).toBe(500);
-    // The password row is already persisted at this point — that's the
-    // accepted tradeoff for fail-closed auditing. The admin will
-    // retry, the password is re-hashed (idempotent for the caller),
-    // and the audit row is written on the second attempt.
+    // The password update was attempted inside the transaction (so a
+    // future maintainer can see we tried), but task #458 now wraps
+    // both writes in `db.transaction(...)` — see the dedicated test
+    // below for the rollback guarantee.
     expect(mockUpdateUser).toHaveBeenCalledTimes(1);
     // Critically, when the audit fails we must NOT have proceeded to
     // dispatch the password-changed email — otherwise the recipient
@@ -500,5 +523,95 @@ describe('POST /api/organization-admin/users/:id/reset-password — persistent a
     // no audit trail.
     await flushFireAndForget();
     expect(mockSendPasswordChangedNotification).not.toHaveBeenCalled();
+  });
+
+  // Task #458: the password update and the audit insert run inside a
+  // single `db.transaction(...)`. These tests pin the contract at the
+  // route level — both writes share the same `tx` executor, and when
+  // the audit insert rejects the rollback semantics are preserved
+  // (the rejection escapes the transaction callback so drizzle would
+  // ROLLBACK the password write in production). Without the
+  // transaction wrapper, a maintainer could re-introduce the
+  // partial-write window the task fixed.
+  describe('atomicity with the password update (task #458)', () => {
+    it('runs the password update and the audit insert inside the same db.transaction', async () => {
+      const res = await postReset(TARGET_USER.id, { newPassword: 'BrandNewPw!2026XX' });
+      expect(res.status).toBe(200);
+
+      // The route must open exactly one transaction for the rotation
+      // — not two separate ones, and not zero (which would mean the
+      // writes can diverge again).
+      expect(mockTransaction).toHaveBeenCalledTimes(1);
+
+      // Both writes must have received the SAME executor handed to
+      // them by `db.transaction(...)`. If a future refactor passed
+      // `db` (the top-level connection) instead of `tx` to either
+      // call, that write would commit OUTSIDE the transaction and
+      // the rollback contract would silently break.
+      expect(mockUpdateUser).toHaveBeenCalledTimes(1);
+      const updateCall = mockUpdateUser.mock.calls[0] as unknown as [
+        number,
+        Record<string, unknown>,
+        unknown,
+      ];
+      expect(updateCall[2]).toBe(TX_SENTINEL);
+
+      expect(mockRecordAdminPasswordResetAudit).toHaveBeenCalledTimes(1);
+      const auditCall = mockRecordAdminPasswordResetAudit.mock.calls[0] as unknown as [
+        Record<string, unknown>,
+        unknown,
+      ];
+      expect(auditCall[1]).toBe(TX_SENTINEL);
+    });
+
+    it('rolls back (transaction rejects) and surfaces 500 when the audit insert throws — no observable password write outside the rolled-back transaction', async () => {
+      mockRecordAdminPasswordResetAudit.mockRejectedValueOnce(
+        new Error('audit insert boom'),
+      );
+
+      // Track whether the transaction callback rejected — that is
+      // what makes drizzle ROLLBACK the password update at the DB
+      // level. Without this propagation the write would commit even
+      // though the audit failed.
+      let txRejected = false;
+      mockTransaction.mockImplementationOnce(
+        async (fn: (tx: typeof TX_SENTINEL) => Promise<unknown>) => {
+          try {
+            return await fn(TX_SENTINEL);
+          } catch (err) {
+            txRejected = true;
+            throw err;
+          }
+        },
+      );
+
+      const res = await postReset(TARGET_USER.id, { newPassword: 'BrandNewPw!2026XX' });
+      expect(res.status).toBe(500);
+
+      // The transaction MUST have rejected so drizzle would issue
+      // ROLLBACK in production. If a future refactor swallowed the
+      // audit error inside the callback, this assertion fails and
+      // the rollback contract is gone.
+      expect(txRejected).toBe(true);
+
+      // `storage.updateUser` was invoked (so a maintainer can see we
+      // tried to write the password), but it ran inside the failed
+      // transaction so the row is not observable outside it. We
+      // assert the executor was the SAME `tx` that the audit threw
+      // under — proving both writes share one rollback fate.
+      expect(mockUpdateUser).toHaveBeenCalledTimes(1);
+      const updateCall = mockUpdateUser.mock.calls[0] as unknown as [
+        number,
+        Record<string, unknown>,
+        unknown,
+      ];
+      expect(updateCall[2]).toBe(TX_SENTINEL);
+
+      // No password-changed email may fire when the audit fails —
+      // the email helper is dispatched AFTER the transaction
+      // commits, so a rejected transaction must short-circuit it.
+      await flushFireAndForget();
+      expect(mockSendPasswordChangedNotification).not.toHaveBeenCalled();
+    });
   });
 });

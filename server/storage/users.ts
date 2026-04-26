@@ -13,6 +13,15 @@ import {
 import { createLogger } from '../logger';
 import { cacheInvalidate } from '../utils/cache';
 
+// Drizzle's transaction client and the top-level `db` share the same
+// callable update API, so a thin DbExecutor union lets callers pass
+// `tx` to perform the user mutation inside an existing transaction
+// (e.g. the admin password-reset route, task #458, which writes the
+// password row and the audit row as one atomic unit).
+export type UserDbExecutor =
+  | typeof db
+  | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 const log = createLogger("StorageUsers");
 
 /**
@@ -243,10 +252,14 @@ export async function createUser(user: InsertUser): Promise<User> {
   return result;
 }
 
-export async function updateUser(id: number, userData: UpdateUser): Promise<User> {
+export async function updateUser(
+  id: number,
+  userData: UpdateUser,
+  executor: UserDbExecutor = db,
+): Promise<User> {
   log.info('Updating user:', { id, userData });
 
-  const [updatedUser] = await db
+  const [updatedUser] = await executor
     .update(users)
     .set(userData)
     .where(eq(users.id, id))
