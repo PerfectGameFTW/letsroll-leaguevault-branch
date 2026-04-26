@@ -300,7 +300,12 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
               (cardMode === 'new' && !isInitialized) ||
               (cardMode === 'saved' && !selectedSavedCardId) ||
               isSubmitting ||
-              isWalletProcessing
+              isWalletProcessing ||
+              // Task #503 (3rd-pass review): block submit when the
+              // bowler has no email on file AND the inline "Email for
+              // receipt" input is empty. Square will hard-reject the
+              // request server-side; gating here gives instant UX.
+              (!bowlerHasEmail && !receiptEmail.trim())
             }
             className="w-full"
           >

@@ -29,8 +29,19 @@ const log = createLogger('PaymentReceipts');
 
 const router = Router();
 
+// Task #503 (3rd-pass review): `email` is OPTIONAL. When omitted (or
+// blank), the resend endpoint falls back to the bowler's email on
+// file. Admins only need to type an explicit address when sending to
+// a different email than the one stored on the bowler row. An empty
+// or whitespace-only string is treated as "no override".
 const resendBodySchema = z.object({
-  email: z.string().trim().email(),
+  email: z
+    .string()
+    .trim()
+    .optional()
+    .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), {
+      message: 'Must be a valid email address',
+    }),
 });
 
 /**
@@ -130,6 +141,7 @@ router.post('/payments/:id/resend-receipt', paymentWriteLimiter, async (req, res
     if (!parsed.success) {
       return sendError(res, 'A valid email address is required', 400, 'VALIDATION_ERROR');
     }
+    const overrideEmail = parsed.data.email?.trim() || '';
 
     if (req.user.role !== 'system_admin') {
       const hasAccess = await hasAccessToPayment(req, id);
@@ -143,9 +155,6 @@ router.post('/payments/:id/resend-receipt', paymentWriteLimiter, async (req, res
       return sendError(res, 'No receipt available for this payment', 404, 'RECEIPT_UNAVAILABLE');
     }
 
-    // Pull just enough metadata to make the email feel personal.
-    // We deliberately don't re-fetch the bowler — admins might be
-    // sending to a different address than the one on file.
     const payment = await storage.getPaymentById(id);
     if (!payment) {
       return sendError(res, 'Payment not found', 404, 'NOT_FOUND');
@@ -155,7 +164,21 @@ router.post('/payments/:id/resend-receipt', paymentWriteLimiter, async (req, res
       ? await storage.getOrganization(league.organizationId)
       : null;
 
-    const sent = await sendReceiptResendEmail(parsed.data.email, {
+    // Task #503 (3rd-pass review): default to the bowler's on-file
+    // email when the admin didn't supply an override. Only fall
+    // through to NO_TARGET_EMAIL when neither side has an address.
+    const bowler = await storage.getBowler(payment.bowlerId);
+    const targetEmail = overrideEmail || bowler?.email || '';
+    if (!targetEmail) {
+      return sendError(
+        res,
+        'No email address available for this bowler. Add one to their profile or supply one in the request body.',
+        400,
+        'NO_TARGET_EMAIL',
+      );
+    }
+
+    const sent = await sendReceiptResendEmail(targetEmail, {
       receiptUrl: resolved.receiptUrl,
       receiptNumber: resolved.receiptNumber,
       amountCents: payment.amount,

@@ -27,6 +27,7 @@ const mockStorage = {
   getPaymentById: vi.fn(),
   getLeague: vi.fn(),
   getOrganization: vi.fn(),
+  getBowler: vi.fn(),
   updatePayment: vi.fn(),
 };
 vi.mock('../../server/storage', () => ({ storage: mockStorage }));
@@ -96,6 +97,7 @@ beforeEach(() => {
   mockSendReceiptResend.mockResolvedValue(true);
   mockStorage.getLeague.mockResolvedValue({ id: 11, organizationId: 1, name: 'Wed Night', locationId: 99 });
   mockStorage.getOrganization.mockResolvedValue({ id: 1, name: 'Cosmic Lanes' });
+  mockStorage.getBowler.mockResolvedValue({ id: 42, name: 'Pat', email: 'on-file@example.com' });
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -194,7 +196,7 @@ describe('POST /payments/:id/resend-receipt (Task #503)', () => {
 
   it('sends the templated email with resolved receipt + payment metadata on the happy path', async () => {
     mockStorage.getPaymentById.mockResolvedValue({
-      id: 5, leagueId: 11, amount: 2500, providerPaymentId: 'sq_1',
+      id: 5, leagueId: 11, bowlerId: 42, amount: 2500, providerPaymentId: 'sq_1',
       receiptUrl: 'https://cached/receipt', receiptNumber: 'N-1',
     });
 
@@ -213,5 +215,43 @@ describe('POST /payments/:id/resend-receipt (Task #503)', () => {
       leagueName: 'Wed Night',
       organizationName: 'Cosmic Lanes',
     });
+  });
+
+  // Task #503 (3rd-pass review): admin can omit `email` and the route
+  // defaults to the bowler's on-file email.
+  it('defaults to the bowler.email when no email is supplied in the body', async () => {
+    mockStorage.getPaymentById.mockResolvedValue({
+      id: 5, leagueId: 11, bowlerId: 42, amount: 2500, providerPaymentId: 'sq_1',
+      receiptUrl: 'https://cached/receipt', receiptNumber: 'N-1',
+    });
+    mockStorage.getBowler.mockResolvedValue({
+      id: 42, name: 'Pat', email: 'on-file@example.com',
+    });
+
+    const res = await post(
+      '/api/payments-provider/payments/5/resend-receipt',
+      {},
+      ADMIN,
+    );
+    expect(res.status).toBe(200);
+    expect(mockSendReceiptResend).toHaveBeenCalledWith('on-file@example.com', expect.any(Object));
+  });
+
+  it('returns 400 NO_TARGET_EMAIL when neither override nor bowler email is available', async () => {
+    mockStorage.getPaymentById.mockResolvedValue({
+      id: 5, leagueId: 11, bowlerId: 42, amount: 2500, providerPaymentId: 'sq_1',
+      receiptUrl: 'https://cached/receipt', receiptNumber: 'N-1',
+    });
+    mockStorage.getBowler.mockResolvedValue({ id: 42, name: 'Pat', email: null });
+
+    const res = await post(
+      '/api/payments-provider/payments/5/resend-receipt',
+      {},
+      ADMIN,
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error?.code).toBe('NO_TARGET_EMAIL');
+    expect(mockSendReceiptResend).not.toHaveBeenCalled();
   });
 });

@@ -441,7 +441,13 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                   form.formState.isSubmitting || 
                   isWalletProcessing ||
                   (paymentType === "credit_card" && cardMode === 'new' && !isSquareReady) ||
-                  (paymentType === "credit_card" && cardMode === 'saved' && !selectedSavedCardId)
+                  (paymentType === "credit_card" && cardMode === 'saved' && !selectedSavedCardId) ||
+                  // Task #503 (3rd-pass review): inline email is
+                  // required for Square card charges when bowler has
+                  // none on file. Server enforces this with
+                  // BUYER_EMAIL_REQUIRED; mirrored here so the user
+                  // never sees an avoidable round-trip.
+                  (paymentType === "credit_card" && !!selectedBowlerId && !bowlerHasEmail && !receiptEmail.trim())
                 }
               >
                 {form.formState.isSubmitting ? (
