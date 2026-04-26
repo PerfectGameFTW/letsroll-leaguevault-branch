@@ -57,13 +57,6 @@
       "when": 1776978619390,
       "tag": "0007_add_bowler_payment_provider_location",
       "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1777210887349,
-      "tag": "0008_add_admin_email_change_audit_post_confirm",
-      "breakpoints": true
     }
   ]
 }
