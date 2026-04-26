@@ -47,6 +47,67 @@ export const SAFE_USER_FIELDS = [
   'createdAt',
 ] as const;
 
+// Deny-list (task #501) — the inverse of `SAFE_USER_FIELDS`. Every
+// column on `users.$inferSelect` is on EXACTLY ONE of these two
+// lists; the compile-time exhaustiveness check below guarantees a
+// new column on the table can't land without being classified.
+//
+// The structural wire-sanitization guard from task #382 catches raw
+// `User` rows or shapes assignable to the full `User` type, but a
+// hand-rolled projection like
+//   sendSuccess(res, { id: u.id, password: u.password })
+// is NOT structurally assignable to `User` (it's missing required
+// columns) and so silently passes that gate. The complementary
+// deny-by-default check in `scripts/check-wire-sanitization.ts`
+// reads THIS list and fails on any inline-object property at a
+// `sendSuccess` / `sendPaginatedSuccess` / `res.json` call site
+// whose name OR initializer source matches a member here.
+//
+// Adding a new sensitive column? List it here. Adding a safe
+// column? List it in `SAFE_USER_FIELDS`. The exhaustiveness check
+// below fails type-check if a new column on `users.$inferSelect`
+// is missing from BOTH lists, so the deny half can't go stale.
+export const SENSITIVE_USER_FIELDS = [
+  'password',
+  'inviteToken',
+  'inviteTokenExpiry',
+  'failedPasswordChangeAttempts',
+  'passwordChangeLockedUntil',
+] as const;
+
+// Compile-time exhaustiveness check: SAFE ∪ SENSITIVE = keyof User.
+// If a new column lands on the `users` table without being added to
+// one of the two lists, `_UnclassifiedUserField` resolves to that
+// column name and the assignment below fails to compile with a
+// pointer to the missing field. Keeps the deny-list co-located with
+// the safe-list so adding a new sensitive column can't be silently
+// forgotten by the deny-list scanner.
+type _UnclassifiedUserField = Exclude<
+  keyof User,
+  (typeof SAFE_USER_FIELDS)[number] | (typeof SENSITIVE_USER_FIELDS)[number]
+>;
+const _userFieldsExhaustive: [_UnclassifiedUserField] extends [never]
+  ? true
+  : ['ERROR: classify these User columns as SAFE or SENSITIVE', _UnclassifiedUserField] = true;
+void _userFieldsExhaustive;
+
+// Compile-time disjointness check: SAFE ∩ SENSITIVE = ∅. The
+// exhaustiveness check above guarantees every column lands in AT
+// LEAST one list; this one guarantees it lands in AT MOST one. A
+// column appearing on both lists would mean the deny-list scanner
+// flags a name the allowlist treats as safe — a contradiction that
+// would silently break either sanitize round-trips or the wire
+// guard. If a column is mistakenly added to both, this assignment
+// fails to compile with a pointer to the duplicate name.
+type _OverlappingUserField = Extract<
+  (typeof SAFE_USER_FIELDS)[number],
+  (typeof SENSITIVE_USER_FIELDS)[number]
+>;
+const _userFieldsDisjoint: [_OverlappingUserField] extends [never]
+  ? true
+  : ['ERROR: User columns appear on BOTH SAFE and SENSITIVE lists', _OverlappingUserField] = true;
+void _userFieldsDisjoint;
+
 export type SanitizedUser = Pick<User, typeof SAFE_USER_FIELDS[number]>;
 
 export function sanitizeUser(user: User): SanitizedUser {
@@ -85,6 +146,47 @@ export const SAFE_ORG_FIELDS = [
   'active',
   'createdAt',
 ] as const;
+
+// Deny-list (task #501) — the inverse of `SAFE_ORG_FIELDS`. The
+// `integrations` JSONB column holds OAuth tokens and provider API
+// keys (see `OrgIntegrations` in shared/schema/organizations.ts) and
+// is the only sensitive column on the table today; the
+// exhaustiveness check below pins that any future column has to be
+// classified into one of the two halves before the project will
+// type-check. The deny-list scanner in
+// `scripts/check-wire-sanitization.ts` reads this list and fails
+// any inline-object property at a `sendSuccess` /
+// `sendPaginatedSuccess` / `res.json` call site whose name OR
+// initializer source matches a member here — closing the gap that
+// the structural check leaves open against hand-rolled projections
+// like `sendSuccess(res, { slug: org.slug, integrations: org.integrations })`.
+export const SENSITIVE_ORG_FIELDS = [
+  'integrations',
+] as const;
+
+// Same compile-time exhaustiveness check as for `User`: SAFE ∪
+// SENSITIVE = keyof Organization. A new column on the table without
+// classification fails type-check at this assignment.
+type _UnclassifiedOrgField = Exclude<
+  keyof Organization,
+  (typeof SAFE_ORG_FIELDS)[number] | (typeof SENSITIVE_ORG_FIELDS)[number]
+>;
+const _orgFieldsExhaustive: [_UnclassifiedOrgField] extends [never]
+  ? true
+  : ['ERROR: classify these Organization columns as SAFE or SENSITIVE', _UnclassifiedOrgField] = true;
+void _orgFieldsExhaustive;
+
+// Disjointness counterpart of the User check above: SAFE ∩
+// SENSITIVE = ∅. Catches an Organization column accidentally added
+// to both lists.
+type _OverlappingOrgField = Extract<
+  (typeof SAFE_ORG_FIELDS)[number],
+  (typeof SENSITIVE_ORG_FIELDS)[number]
+>;
+const _orgFieldsDisjoint: [_OverlappingOrgField] extends [never]
+  ? true
+  : ['ERROR: Organization columns appear on BOTH SAFE and SENSITIVE lists', _OverlappingOrgField] = true;
+void _orgFieldsDisjoint;
 
 export type SanitizedOrganization = Pick<Organization, typeof SAFE_ORG_FIELDS[number]>;
 

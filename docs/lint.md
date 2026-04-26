@@ -124,7 +124,7 @@ sendSuccess(res, { user: sanitizeUser(u), emailSent })        // OK
 sendSuccess(res, { id: user.id, email: user.email })          // OK (manual projection)
 ```
 
-Coverage:
+Coverage (structural pass — task #382):
 
 - Detects raw row leaks at the value (`sendSuccess(res, user)`),
   inside an inline object literal as a property (`{ user }` /
@@ -151,6 +151,61 @@ Coverage:
   `sendPaginatedSuccess`) by identifier name and `res.json` /
   `res.status(...).json` chains by detecting that the receiver
   bottoms out at an identifier named `res`.
+
+Coverage (deny-list pass — task #501):
+
+The structural pass above only fires when the value is structurally
+assignable to the FULL `User` / `Organization` row. A hand-rolled
+projection that picks a subset of columns — including a sensitive
+one — is NOT assignable to the full row (it's missing the other
+required fields) and so silently passes. The deny-list pass closes
+that gap by name-matching against a co-located deny-list:
+
+```ts
+sendSuccess(res, { id: u.id, password: u.password })          // FAIL — sensitive:password
+sendSuccess(res, { slug: org.slug, integrations: org.integrations })  // FAIL — sensitive:integrations
+sendSuccess(res, { id: u.id, token: u.password })             // FAIL — sensitive:password (initializer)
+sendSuccess(res, { password })                                // FAIL — shorthand name match
+res.json({ data: { id: u.id, password: u.password } })        // FAIL — nested literal walked
+```
+
+Deny-list contract:
+
+- The sensitive column names live in `SENSITIVE_USER_FIELDS` and
+  `SENSITIVE_ORG_FIELDS` in `server/utils/api.ts`, side-by-side
+  with the matching `SAFE_USER_FIELDS` / `SAFE_ORG_FIELDS`
+  allowlists. Two compile-time assertions in the same file pin
+  the invariant that the two lists are a partition of the row's
+  columns — `SAFE ∪ SENSITIVE = keyof User` (exhaustiveness, every
+  column lands somewhere) AND `SAFE ∩ SENSITIVE = ∅` (disjointness,
+  no column lands in both). The same pair holds for
+  `Organization`. Adding a new column without classifying it, or
+  accidentally classifying an existing column as both safe and
+  sensitive, fails `npm run check` with a pointer to the offending
+  field. The deny half cannot go stale and cannot contradict the
+  allowlist.
+- The script reads the two `as const` arrays directly out of
+  `server/utils/api.ts` via the AST (no module import — see the
+  comment in `scripts/check-wire-sanitization.ts`) so the wire
+  guard tracks edits to the constants without a separate update.
+- A property is flagged when EITHER its NAME is on the deny-list
+  (handles `{ password: someValue }` and the shorthand
+  `{ password }` form) OR its INITIALIZER reads a sensitive
+  column off another value (handles `{ token: u.password }` and
+  the element-access form `{ x: u['password'] }`). Value-preserving
+  wrappers — parentheses, `as Foo`, `value!`, `value satisfies Foo`
+  — are unwrapped before matching so a noop cast can't defeat the
+  scan.
+- Recursion: descends through nested object/array/conditional
+  literals so `{ data: { password: u.password } }` is pinpointed
+  at the inner `password` property, not the wrapper. Stops at
+  call expressions, identifiers, and other opaque shapes — the
+  structural pass handles those.
+- The canonical wraps (`sanitizeUser(u)`, `users.map(sanitizeUser)`,
+  `{ id: u.id, email: u.email }`) stay green: `sanitize*` returns
+  values whose property names are all on the safe list, and a
+  manual safe-fields-only projection has no deny-list names to
+  match.
 
 Not covered (deliberate parser limits):
 
@@ -181,7 +236,7 @@ tsx scripts/check-wire-sanitization.ts             # strict (CI mode)
 tsx scripts/check-wire-sanitization.ts --report    # print the table without exiting non-zero
 ```
 
-The guard's own behavior is pinned by 18 fixtures in
+The guard's own behavior is pinned by 27 fixtures in
 `tests/unit/check-wire-sanitization.test.ts` (run as part of the
 vitest suite). Wired into CI as the `Wire sanitization (raw
 User/Organization)` step in `.github/workflows/ci.yml`'s

@@ -1,5 +1,6 @@
 /**
- * Raw-User/Organization wire-sanitization guard (task #382).
+ * Raw-User/Organization wire-sanitization guard (task #382, deny-list
+ * extended in task #501).
  *
  * `server/utils/api.ts` exposes two allowlist-projection helpers —
  * `sanitizeUser` and `sanitizeOrg` — that are the ONLY supported
@@ -27,6 +28,24 @@
  *     same shape. The receiver is detected structurally (the chain
  *     bottoms out at an identifier named `res`) so both forms are
  *     covered without per-call type plumbing.
+ *
+ *   - (#501) An inline object literal at any of those call sites
+ *     contains a property whose NAME matches a known-sensitive
+ *     User / Organization column (`password`, `inviteToken`,
+ *     `inviteTokenExpiry`, `failedPasswordChangeAttempts`,
+ *     `passwordChangeLockedUntil`, `integrations`) OR whose
+ *     INITIALIZER reads such a column off another value (e.g.
+ *     `{ id: u.id, password: u.password }` or
+ *     `{ slug: org.slug, integrations: org.integrations }`). These
+ *     hand-rolled projections are NOT structurally assignable to
+ *     the full `User` / `Organization` row (they're missing required
+ *     columns), so the structural check above is silent on them.
+ *     The deny-list is sourced from the canonical
+ *     `SENSITIVE_USER_FIELDS` / `SENSITIVE_ORG_FIELDS` constants in
+ *     `server/utils/api.ts` (the inverse of the SAFE_*_FIELDS
+ *     allowlists, with a co-located compile-time exhaustiveness
+ *     check) so adding a new sensitive column updates the deny-list
+ *     scanner here automatically.
  *
  * Why structural assignability and not name-matching: `User` is
  * `typeof users.$inferSelect`, which TypeScript resolves to an
@@ -128,6 +147,17 @@ interface CanonicalTypes {
   organization: ts.Type;
 }
 
+interface SensitiveFieldLists {
+  /** Sensitive User columns — every property/initializer name on
+   * this list at a response-helper call site is a leak (#501). */
+  user: Set<string>;
+  /** Sensitive Organization columns — same contract. */
+  organization: Set<string>;
+  /** Union of both, used as the actual matching set since name
+   * collisions across the two tables would still be a leak. */
+  combined: Set<string>;
+}
+
 /**
  * Locate the `User` and `Organization` type aliases at their
  * declaration site (`shared/schema/users.ts` and
@@ -165,6 +195,66 @@ function resolveCanonicalTypes(
 
   if (!user || !organization) return null;
   return { user, organization };
+}
+
+/**
+ * Locate `SENSITIVE_USER_FIELDS` and `SENSITIVE_ORG_FIELDS` in
+ * `server/utils/api.ts` and extract their array-of-string-literal
+ * initializers. The deny-list lives next to the SAFE_*_FIELDS
+ * allowlists in the same file (with a co-located compile-time
+ * exhaustiveness check) so adding a new sensitive column updates
+ * both halves at once.
+ *
+ * We parse the AST rather than `import()`-ing the module so the
+ * script stays a static analysis pass — `server/utils/api.ts`
+ * pulls in `express` and the shared schema, and importing it would
+ * load half the runtime just to read two constants. The synthetic
+ * fixtures in `tests/unit/check-wire-sanitization.test.ts` write
+ * the same two `as const` arrays into their stub api.ts, so the
+ * test paths and the real code path walk the same shape.
+ */
+function resolveSensitiveFieldLists(
+  program: ts.Program,
+): SensitiveFieldLists | null {
+  let user: Set<string> | undefined;
+  let organization: Set<string> | undefined;
+
+  for (const sf of program.getSourceFiles()) {
+    const fn = sf.fileName.replace(/\\/g, '/');
+    if (!fn.endsWith('/server/utils/api.ts')) continue;
+
+    sf.forEachChild((n) => {
+      if (!ts.isVariableStatement(n)) return;
+      for (const decl of n.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name)) continue;
+        const name = decl.name.text;
+        const wantUser = name === 'SENSITIVE_USER_FIELDS';
+        const wantOrg = name === 'SENSITIVE_ORG_FIELDS';
+        if (!wantUser && !wantOrg) continue;
+
+        // The canonical shape is `[...] as const`. Strip the outer
+        // `as const` (if present) to get at the array literal.
+        let init = decl.initializer;
+        if (init && ts.isAsExpression(init)) {
+          init = init.expression;
+        }
+        if (!init || !ts.isArrayLiteralExpression(init)) continue;
+
+        const fields = new Set<string>();
+        for (const el of init.elements) {
+          if (ts.isStringLiteral(el) || ts.isNoSubstitutionTemplateLiteral(el)) {
+            fields.add(el.text);
+          }
+        }
+        if (wantUser) user = fields;
+        else organization = fields;
+      }
+    });
+  }
+
+  if (!user || !organization) return null;
+  const combined = new Set<string>([...user, ...organization]);
+  return { user, organization, combined };
 }
 
 /**
@@ -264,6 +354,150 @@ function findLeakInType(
 
 interface Reporter {
   (node: ts.Node, typeName: string): void;
+}
+
+/**
+ * Strip transparent value-preserving wrappers from an expression
+ * before pattern-matching its shape. `(u.password)`,
+ * `u.password as string`, `u.password!`, and
+ * `u.password satisfies string` all read the same column at the
+ * same source location, so the deny-list scanner has to see through
+ * them — otherwise an author can defeat the check by adding a cast.
+ *
+ * Does NOT descend through call expressions, conditionals, or
+ * binary operators — those are deliberately left to the caller's
+ * own recursion contract (e.g. conditional branches are walked
+ * separately by `checkSensitiveLiteralProps`).
+ */
+function unwrap(expr: ts.Expression): ts.Expression {
+  let cur = expr;
+  while (true) {
+    if (ts.isParenthesizedExpression(cur)) { cur = cur.expression; continue; }
+    if (ts.isAsExpression(cur)) { cur = cur.expression; continue; }
+    if (ts.isTypeAssertionExpression(cur)) { cur = cur.expression; continue; }
+    if (ts.isSatisfiesExpression(cur)) { cur = cur.expression; continue; }
+    if (ts.isNonNullExpression(cur)) { cur = cur.expression; continue; }
+    return cur;
+  }
+}
+
+/**
+ * Read the property name of a literal-key property assignment as a
+ * plain string. Numeric and dynamic-computed keys (other than a
+ * computed string literal) return null — those can't shadow a
+ * column name in a way the deny-list cares about.
+ */
+function propertyNameText(name: ts.PropertyName): string | null {
+  if (ts.isIdentifier(name)) return name.text;
+  if (ts.isStringLiteral(name) || ts.isNoSubstitutionTemplateLiteral(name)) return name.text;
+  if (ts.isComputedPropertyName(name)) {
+    const inner = unwrap(name.expression);
+    if (ts.isStringLiteral(inner) || ts.isNoSubstitutionTemplateLiteral(inner)) return inner.text;
+  }
+  return null;
+}
+
+/**
+ * If `expr` reads a known-sensitive column off some other value
+ * (e.g. `u.password`, `org.integrations`, `u['password']`), return
+ * the column name. Otherwise null. The check is purely name-based —
+ * we don't try to prove the receiver is actually a User/Organization,
+ * because the deny-list is short and intentional and the sensitive
+ * names ('password', 'inviteToken', …) don't have legitimate
+ * non-column uses inside response payloads.
+ */
+function readSensitiveAccess(
+  expr: ts.Expression,
+  sensitive: Set<string>,
+): string | null {
+  const inner = unwrap(expr);
+  if (ts.isPropertyAccessExpression(inner) && sensitive.has(inner.name.text)) {
+    return inner.name.text;
+  }
+  if (ts.isElementAccessExpression(inner)) {
+    const arg = unwrap(inner.argumentExpression);
+    if ((ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) && sensitive.has(arg.text)) {
+      return arg.text;
+    }
+  }
+  return null;
+}
+
+/**
+ * The deny-list pass (#501): walk an inline value expression and
+ * report any property whose NAME matches a sensitive column or
+ * whose INITIALIZER directly reads a sensitive column off another
+ * value. Recurses through inline literals (object, array,
+ * conditional, parens / casts) so a nested wrapper like
+ * `{ data: { id: u.id, password: u.password } }` is still pinpointed
+ * at the inner `password` property — but stops at calls, identifiers,
+ * binary expressions, and other opaque shapes (those are the
+ * structural-assignability pass's job).
+ *
+ * Independent of the assignability walk so the two reporters can
+ * fire on the same call site without confusing each other's
+ * provenance. Both walks are bounded by the AST itself (no cycles
+ * possible at the value level).
+ */
+function checkSensitiveLiteralProps(
+  expr: ts.Expression,
+  sensitive: Set<string>,
+  report: Reporter,
+): void {
+  const inner = unwrap(expr);
+
+  if (ts.isObjectLiteralExpression(inner)) {
+    for (const prop of inner.properties) {
+      if (ts.isPropertyAssignment(prop)) {
+        const nm = propertyNameText(prop.name);
+        if (nm && sensitive.has(nm)) {
+          report(prop, `sensitive:${nm}`);
+        }
+        const initRead = readSensitiveAccess(prop.initializer, sensitive);
+        if (initRead && initRead !== nm) {
+          // Avoid double-reporting the canonical
+          // `password: u.password` shape (the property NAME match
+          // already fired above) — only flag when the initializer
+          // smuggles a sensitive read past a safe-looking property
+          // name (e.g. `token: u.password`).
+          report(prop, `sensitive:${initRead}`);
+        }
+        // Recurse so nested literals are also walked.
+        checkSensitiveLiteralProps(prop.initializer, sensitive, report);
+      } else if (ts.isShorthandPropertyAssignment(prop)) {
+        if (sensitive.has(prop.name.text)) {
+          report(prop, `sensitive:${prop.name.text}`);
+        }
+      } else if (ts.isSpreadAssignment(prop)) {
+        // `{ ...someObj }` — name-matching doesn't apply directly,
+        // but the spread source might itself be an inline literal
+        // we want to descend into.
+        checkSensitiveLiteralProps(prop.expression, sensitive, report);
+      }
+      // Method/get/set declarations on an object literal can't
+      // express a sensitive value as data — skip.
+    }
+    return;
+  }
+
+  if (ts.isArrayLiteralExpression(inner)) {
+    for (const el of inner.elements) {
+      if (ts.isSpreadElement(el)) {
+        checkSensitiveLiteralProps(el.expression, sensitive, report);
+      } else {
+        checkSensitiveLiteralProps(el, sensitive, report);
+      }
+    }
+    return;
+  }
+
+  if (ts.isConditionalExpression(inner)) {
+    checkSensitiveLiteralProps(inner.whenTrue, sensitive, report);
+    checkSensitiveLiteralProps(inner.whenFalse, sensitive, report);
+    return;
+  }
+  // Anything else is opaque to the deny-list pass — the structural
+  // assignability walk handles those.
 }
 
 /**
@@ -406,6 +640,18 @@ function main(): void {
     process.exit(2);
   }
 
+  const sensitive = resolveSensitiveFieldLists(program);
+  if (!sensitive) {
+    // Same loud-fail as for the canonical types: missing the deny-
+    // list constants would silently disable the #501 half of the
+    // guard.
+    console.error(
+      '[check-wire-sanitization] FAIL — could not resolve SENSITIVE_USER_FIELDS / SENSITIVE_ORG_FIELDS from server/utils/api.ts. ' +
+        'Both must be `as const` arrays of string literals. Refusing to run rather than silently passing.',
+    );
+    process.exit(2);
+  }
+
   const violations: Violation[] = [];
 
   for (const sf of program.getSourceFiles()) {
@@ -416,7 +662,7 @@ function main(): void {
       if (ts.isCallExpression(node)) {
         const m = isResponseHelperCall(node);
         if (m) {
-          walkExpression(m.dataArg, checker, canon, (badNode, typeName) => {
+          const record = (badNode: ts.Node, typeName: string) => {
             const { line, character } = sf.getLineAndCharacterOfPosition(
               badNode.getStart(sf),
             );
@@ -428,7 +674,17 @@ function main(): void {
               typeName,
               snippet: snippetAt(sf, badNode),
             });
-          });
+          };
+          // Pass 1 (#382): structural assignability — catches raw
+          // rows, spreads, shorthands, and helpers whose return type
+          // embeds a User/Organization.
+          walkExpression(m.dataArg, checker, canon, record);
+          // Pass 2 (#501): name-based deny-list — catches hand-rolled
+          // projections that pick a SUBSET including a sensitive
+          // column (e.g. `{ id: u.id, password: u.password }`).
+          // Independent from the structural pass; both can fire on
+          // the same call site without collision.
+          checkSensitiveLiteralProps(m.dataArg, sensitive.combined, record);
         }
       }
       ts.forEachChild(node, visit);
@@ -438,13 +694,13 @@ function main(): void {
 
   if (violations.length === 0) {
     console.log(
-      '[check-wire-sanitization] OK — no raw User/Organization values reach a response helper.',
+      '[check-wire-sanitization] OK — no raw User/Organization values or sensitive field leaks reach a response helper.',
     );
     return;
   }
 
   console.error(
-    `\n[check-wire-sanitization] ${REPORT_ONLY ? 'REPORT' : 'FAIL'} — ${violations.length} call site(s) ship raw User/Organization values to the wire:\n`,
+    `\n[check-wire-sanitization] ${REPORT_ONLY ? 'REPORT' : 'FAIL'} — ${violations.length} call site(s) leak User/Organization data to the wire (raw rows or deny-listed sensitive fields):\n`,
   );
   for (const v of violations) {
     console.error(
@@ -453,8 +709,11 @@ function main(): void {
     console.error(`      · ${v.snippet}`);
   }
   console.error(
-    '\nWrap the value in sanitizeUser / sanitizeOrg from server/utils/api.ts\n' +
-      'before handing it to the response helper. See docs/lint.md for the contract.',
+    '\nFor `<- <TypeName>` violations: wrap the value in sanitizeUser / sanitizeOrg\n' +
+      'from server/utils/api.ts before handing it to the response helper.\n' +
+      'For `<- sensitive:<field>` violations: drop the sensitive field from the\n' +
+      'projection or rebuild the payload via sanitizeUser / sanitizeOrg.\n' +
+      'See docs/lint.md for the contract.',
   );
 
   if (!REPORT_ONLY) process.exit(1);

@@ -140,6 +140,13 @@ import type { Organization } from '../../shared/schema/organizations';
 export type SanitizedUser = Pick<User, 'id' | 'email' | 'name' | 'createdAt'>;
 export type SanitizedOrganization = Pick<Organization, 'id' | 'name' | 'slug' | 'createdAt'>;
 
+// Deny-list (#501): the inverse of the safe lists above. The script
+// reads these constants out of this file via the AST. Mirrors the
+// shape used in the real server/utils/api.ts so the fixture path
+// and the production path exercise the same parser.
+export const SENSITIVE_USER_FIELDS = ['password', 'secret'] as const;
+export const SENSITIVE_ORG_FIELDS = ['integrations'] as const;
+
 // Stubbed bodies — the guard never executes, only type-checks.
 export function sanitizeUser(u: User): SanitizedUser {
   return u as unknown as SanitizedUser;
@@ -456,6 +463,176 @@ export function bad() { sendSuccess(res, wrap(user)); }
     const r = runIn(dir);
     expect(r.status, r.stdout || r.stderr).toBe(1);
     expect(r.stderr).toMatch(/<- User/);
+  }, 30_000);
+
+  // ---------------------------------------------------------------
+  // Deny-list pass (task #501) — catches hand-rolled projections
+  // that pick a SUBSET of a User/Organization row and include a
+  // sensitive column. These shapes are NOT structurally assignable
+  // to the full row (they're missing required columns), so they
+  // pass the structural assignability pass above and have to be
+  // caught by the name-based deny-list pass instead.
+  // ---------------------------------------------------------------
+
+  it('flags a manual { id, password: u.password } projection (initializer leak)', () => {
+    // The canonical motivating case: a route that hand-builds an
+    // object containing the user's id alongside their hashed
+    // password. The shape is `{ id: number, password: string }` —
+    // assignable to neither `User` (missing required columns) nor
+    // `SanitizedUser` (extra `password` key would be a TS error in
+    // strict mode, but most call sites are not annotated). The
+    // deny-list scanner catches it via the property NAME `password`.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const u: User;
+export function bad() { sendSuccess(res, { id: u.id, password: u.password }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- sensitive:password/);
+    expect(r.stderr).toMatch(/leak\.ts/);
+  }, 30_000);
+
+  it('flags a manual { slug, integrations: org.integrations } projection on Organization', () => {
+    // Same shape but on the Organization side — a route that ships
+    // a bespoke org subset and includes the OAuth-tokens JSONB
+    // column. Caught by name-match on `integrations`.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Organization } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const org: Organization;
+export function bad() { sendSuccess(res, { slug: org.slug, integrations: org.integrations }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- sensitive:integrations/);
+  }, 30_000);
+
+  it('flags a renamed-key initializer leak (e.g. { token: u.password })', () => {
+    // The property NAME is innocuous, but the INITIALIZER reads the
+    // sensitive column off another value. The deny-list scanner has
+    // to walk the initializer expression to catch this.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const u: User;
+export function bad() { sendSuccess(res, { id: u.id, token: u.password }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- sensitive:password/);
+  }, 30_000);
+
+  it('flags a shorthand { password } property even when source is unrelated', () => {
+    // A shorthand whose name happens to be on the deny-list. The
+    // value behind it doesn't have to be a User column for the
+    // scanner to fire — shipping a property literally named
+    // "password" to the wire is the leak we want to prevent.
+    const dir = makeFixture({
+      'server/leak.ts': `import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const password: string;
+export function bad() { sendSuccess(res, { password }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- sensitive:password/);
+  }, 30_000);
+
+  it('flags an element-access initializer leak (e.g. { x: u["password"] })', () => {
+    // `u['password']` is the same read as `u.password`, just spelled
+    // through index access — a trivial bypass of property-access
+    // matching. The scanner unwraps element access with a string-
+    // literal argument and treats it the same way.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const u: User;
+export function bad() { sendSuccess(res, { id: u.id, p: u['password'] }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- sensitive:password/);
+  }, 30_000);
+
+  it('flags a sensitive property nested inside a wrapper literal', () => {
+    // Recursion contract for the deny-list pass: nested object
+    // literals inside the data argument are walked too, so the
+    // wrapper key (`data`) doesn't smuggle the leak past the scan.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const u: User;
+export function bad() {
+  sendSuccess(res, { data: { id: u.id, password: u.password } });
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- sensitive:password/);
+  }, 30_000);
+
+  it('flags a sensitive read past a value-preserving cast (e.g. (u.password as string))', () => {
+    // The unwrap helper has to see through `as`, `!`, and `satisfies`
+    // so an author can't defeat the deny-list with a noop cast. This
+    // pins the unwrap contract.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const u: User;
+export function bad() { sendSuccess(res, { id: u.id, t: (u.password as string) }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- sensitive:password/);
+  }, 30_000);
+
+  it('does NOT flag a manual projection of only safe fields', () => {
+    // The negative half of the contract: a hand-rolled subset that
+    // only picks columns on the safe list (id, email, name) is the
+    // intended escape hatch and must stay green.
+    const dir = makeFixture({
+      'server/safe.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const u: User;
+export function ok() {
+  sendSuccess(res, { id: u.id, email: u.email, name: u.name });
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  }, 30_000);
+
+  it('does NOT flag the canonical sanitizeUser wrap', () => {
+    // sanitizeUser returns a SanitizedUser — neither structurally
+    // assignable to User (passes pass 1) nor exposes a sensitive
+    // property name to the inline literal walker (passes pass 2).
+    const dir = makeFixture({
+      'server/safe.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, sanitizeUser, type Response } from './utils/api';
+declare const res: Response;
+declare const u: User;
+export function ok() { sendSuccess(res, { user: sanitizeUser(u), emailSent: true }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
   }, 30_000);
 
   it('--report mode prints the violation table without exiting non-zero', () => {
