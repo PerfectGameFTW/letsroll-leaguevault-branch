@@ -89,21 +89,34 @@ appears in `EXEMPT_PATHS`.
 ## Routes mounted outside `/api`
 
 Verified by the CI guard `scripts/check-csrf-coverage.ts` (task #308,
-extended in #338 and #397, wired into CI in #398). The guard walks
-`server/`, finds every state-changing route — direct
-`app.<method>(...)` calls, single-level `app.use('<prefix>', router)`
-mounts, and nested `parentRouter.use('<sub>', childRouter)`
-composition followed transitively — and exits non-zero if any
-effective path falls outside `/api/` without an entry in
+extended in #338, #397, #445, #446, and #471, wired into CI in #398).
+The guard walks `server/`, finds every state-changing route — direct
+`app.<method>(...)` calls (including `.all()`), single-level
+`app.use('<prefix>', router)` mounts, nested
+`parentRouter.use('<sub>', childRouter)` composition followed
+transitively, AND any `app.use('<prefix>', <inlineHandler>)` /
+`router.use('<prefix>', <inlineHandler>)` mount where
+`<inlineHandler>` is an arrow/function literal or an identifier that
+does NOT resolve to a Router (i.e. a plain handler/middleware import
+rather than a sub-router) — and exits non-zero if any effective path
+falls outside `/api/` without an entry in
 `EXPLICIT_NON_API_ALLOWLIST`. Add to that allowlist only with an
 inline justification (e.g. an out-of-band auth factor like
-`x-setup-secret`).
+`x-setup-secret`, or a handler that doesn't actually mutate state for
+the methods CSRF protects).
+
+The current allowlist entries are:
+
+| Effective path | Why it's safe |
+|----------------|---------------|
+| `/uploads/avatars` | `app.use('/uploads/avatars', express.static(...))` in `server/index.ts`. `express.static` is read-only — it only responds to GET/HEAD and falls through for POST/PUT/PATCH/DELETE, so no CSRF-protectable mutation is possible. |
+| `*` | `app.use("*", ...)` SPA catchalls in `server/vite.ts` (dev-mode Vite middleware and prod static fallback). Both handlers respond with HTML for unknown paths and don't mutate any server state. `server/vite.ts` is part of the platform-managed Vite setup that may not be modified. |
 
 The guard runs as a standalone step in
 [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) on every
 pull request to `main` and every push to `main`. A failing run fails
 the workflow alongside the existing type-check and lint steps. The
-guard's own behavior is additionally pinned by 23 unit fixtures in
+guard's own behavior is additionally pinned by 36 unit fixtures in
 `tests/unit/check-csrf-coverage.test.ts` (part of the `npm test`
 vitest suite). Locally, run `npm run check:csrf` to invoke the guard
 directly — it returns in well under a second on the current tree.
@@ -124,7 +137,7 @@ this guard:
 - **`Type check & lint`** — runs `npm run check:csrf` against the
   live `server/` tree, so a state-changing route mounted outside
   `/api` without an allowlist entry fails the build at PR time.
-- **`Tests`** — runs `npm test` (vitest), which executes the 23
+- **`Tests`** — runs `npm test` (vitest), which executes the 36
   fixtures in `tests/unit/check-csrf-coverage.test.ts` that pin the
   guard's own parser / propagation logic. Without this check
   required, a contributor could change `scripts/check-csrf-coverage.ts`

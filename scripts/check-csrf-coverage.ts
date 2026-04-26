@@ -67,23 +67,38 @@
  *     so it's a state-changing mount and is flagged the same way.
  *     Plain `.get()` is intentionally not covered (GETs aren't
  *     state-changing for CSRF purposes).
+ *   - `.use('<path>', <inlineHandler>)` is also covered (#471). The
+ *     `app.use(string, handler)` / `router.use(string, handler)` form
+ *     installs a handler for EVERY HTTP method on the path prefix —
+ *     structurally identical to `.all()` — so an inline arrow/function
+ *     literal or an identifier that doesn't resolve to a Router (i.e.
+ *     a handler import or middleware function rather than a sub-router)
+ *     is treated as a state-changing mount and flagged when its
+ *     effective path falls outside `/api/`. Cross-file mounts where
+ *     the imported identifier IS a Router still flow through the
+ *     existing router-mount handling unchanged.
  *   - `app.use(router)` and `parent.use(child)` (no string prefix)
- *     are not modelled — the regexes require a string-literal prefix
+ *     are not modelled — the parser requires a string-literal prefix
  *     as the first argument. Mount-at-root composition is rare in
  *     practice and would require a separate parsing pass.
  *   - Cross-file composition (`parent.use('<sub>', importedChild)`)
  *     resolves the child via its source file's `export default <name>`
  *     declaration. The captured `<name>` is admitted as a Router var
- *     for the purposes of route/mount attribution even if it isn't a
- *     literal `Router()` declaration in that file (catches factory-
- *     style routers like `const r = createRouter(); export default r;`,
- *     which the per-var model would otherwise silently lose track of).
- *     Files that default-export an inline expression
+ *     for the purposes of route/mount attribution only when there is
+ *     evidence it's a Router (either a literal `Router()` declaration
+ *     in that file, or any `<name>.<routeMethod|use>(...)` call on it).
+ *     This catches factory-style routers
+ *     (`const r = createRouter(); r.post(...); export default r;`) but
+ *     deliberately rejects plain handler exports
+ *     (`function h(req,res){...}; export default h;`) so that an
+ *     `app.use('<prefix>', h)` mount falls into the new handler-mount
+ *     branch instead of being silently treated as a router with no
+ *     routes (#471). Files that default-export an inline expression
  *     (`export default Router()` or `export default createRouter()`)
- *     instead of a named var are still not resolved — the regex needs
+ *     instead of a named var are still not resolved — the parser needs
  *     an identifier to bind the mount to.
  *   - Computed mount paths (`app.use(`/foo/${var}`, ...)`) are not
- *     modelled — the regexes only match plain string literals.
+ *     modelled — the parser only matches plain string literals.
  *
  * Exits 0 if clean, 1 if any unallowlisted bypass is found.
  *
@@ -96,12 +111,28 @@ const SERVER_DIR = resolve(process.cwd(), 'server');
 
 /**
  * Exhaustive list of non-`/api` state-changing effective paths that
- * have been security-audited and judged safe. Empty by default. Add
- * an entry only with a code comment justifying why CSRF is not
- * required (e.g. an out-of-band auth factor like `x-setup-secret`,
- * or a single-use signed token in the body).
+ * have been security-audited and judged safe. Add an entry only with
+ * a code comment justifying why CSRF is not required (e.g. an out-of-
+ * band auth factor like `x-setup-secret`, a single-use signed token
+ * in the body, or a handler that doesn't actually mutate state for
+ * the methods CSRF protects).
  */
-const EXPLICIT_NON_API_ALLOWLIST: readonly string[] = [];
+const EXPLICIT_NON_API_ALLOWLIST: readonly string[] = [
+  // `app.use('/uploads/avatars', express.static(...))` in `server/index.ts`.
+  // `express.static` is a read-only file server: it only responds to
+  // GET/HEAD requests and falls through to the next handler for
+  // POST/PUT/PATCH/DELETE, so it cannot be tricked into mutating
+  // server state via a CSRF-able method. The new `.use(string, handler)`
+  // coverage added in #471 surfaces this mount as a state-changing
+  // handler shape, so it has to be allowlisted here.
+  '/uploads/avatars',
+  // `app.use("*", ...)` in `server/vite.ts` — the dev SPA catchall and
+  // the prod static-fallback. Both handlers respond with HTML for
+  // unknown paths and don't mutate any server state. `server/vite.ts`
+  // is part of the platform-managed Vite setup that may not be
+  // modified, so the path is allowlisted here rather than rewritten.
+  '*',
+];
 
 // `app.<method>('<path>', ...)` — direct routes on the Express app.
 // `all` is included in the alternation because `app.all(path, handler)`
@@ -112,19 +143,29 @@ const EXPLICIT_NON_API_ALLOWLIST: readonly string[] = [];
 const APP_ROUTE_RE =
   /\bapp\s*\.\s*(all|post|put|patch|delete)\s*\(\s*(['"`])([^'"`]+)\2/g;
 
-// Capture `app.use('<prefix>', <restArgs>)`. `restArgs` may include
-// middlewares and ends with the router. We pick the LAST identifier
-// in `restArgs` that's a recognised import as the router.
-// Groups: 1=quote, 2=prefix, 3=restArgs.
-const APP_USE_RE = /\bapp\s*\.\s*use\s*\(\s*(['"`])([^'"`]+)\1\s*,\s*([^)]+)\)/g;
+// Match the OPEN of any `<callerId>.use(` call (both `app.use(` and
+// `<routerVar>.use(` are unified through one scanner). The actual
+// argument list — prefix string + rest-args — is then extracted via
+// balanced-paren walking (`findBalancedClose`) rather than a flat
+// `[^)]+` regex, because rest-args legitimately include nested
+// expressions and inline arrow/function literals like
+// `(req, res) => res.sendStatus(200)` whose inner `)` would
+// otherwise truncate the capture mid-arg. The earlier regex-only
+// version of this scan missed `app.use('<path>', (req,res) => ...)`
+// for exactly that reason — that's the bypass hole #471 closes.
+// Group 1 = callerId.
+const USE_CALL_OPEN_RE = /\b([A-Za-z_$][\w$]*)\s*\.\s*use\s*\(/g;
 
-// Capture `<parentId>.use('<sub>', <restArgs>)` for nested router
-// composition (task #397). Same shape as APP_USE_RE; we'll filter
-// out `parentId === 'app'` at use-site so this regex doesn't fight
-// APP_USE_RE for the same matches.
-// Groups: 1=parentId, 2=quote, 3=sub, 4=restArgs.
-const ROUTER_USE_RE =
-  /\b([A-Za-z_$][\w$]*)\s*\.\s*use\s*\(\s*(['"`])([^'"`]+)\2\s*,\s*([^)]+)\)/g;
+// Inside the rest-args of a `.use(prefix, ...)` call, the leading
+// shape of an inline arrow/function literal. We strip string literals
+// before applying this so that a `=>` or `function` token inside a
+// quoted string can't false-positive as a handler. The detection is
+// "anywhere in rest-args" rather than "as the last argument" because
+// a handler is a handler whether it's the only argument
+// (`use('/x', () => ...)`) or follows middlewares
+// (`use('/x', requireAuth, () => ...)`).
+const INLINE_ARROW_RE = /=>/;
+const INLINE_FUNCTION_RE = /\bfunction\s*\*?\s*[A-Za-z_$\w]*\s*\(/;
 
 // `<id>.<method>('<subpath>', ...)` — any router method call. We skip
 // `id === 'app'` because direct app routes are handled separately.
@@ -219,6 +260,67 @@ function joinPaths(prefix: string, subpath: string): string {
   return prefix + cleanSub;
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Walk forward from `openIdx` (which must point at '(') until the
+// matching ')' at depth 0. Tracks string literals so a paren inside a
+// quoted string doesn't perturb the depth counter. Returns -1 if no
+// match is found before EOF (truncated/malformed source).
+function findBalancedClose(src: string, openIdx: number): number {
+  if (src[openIdx] !== '(') return -1;
+  let depth = 0;
+  let inStr: string | null = null;
+  for (let i = openIdx; i < src.length; i++) {
+    const c = src[i];
+    if (inStr !== null) {
+      if (c === '\\') {
+        // Skip the next character (escape sequence). Template strings
+        // can have `${...}` interpolations whose inner parens we'd
+        // miss this way, but the prefix arg of a `.use(...)` call is a
+        // string literal we already handle separately, and rest-args
+        // realistically don't embed paren-bearing template literals.
+        i++;
+        continue;
+      }
+      if (c === inStr) inStr = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      inStr = c;
+      continue;
+    }
+    if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+// Strip single, double, and template string literals from a source
+// fragment (best-effort). We use this before the inline-handler check
+// and the identifier extraction so that string contents don't
+// accidentally look like JS identifiers (`'uploads'` → `uploads`) or
+// arrow functions (`'=>...'` → `=>`).
+function stripStrings(s: string): string {
+  return s
+    .replace(/'(?:\\.|[^'\\])*'/g, "''")
+    .replace(/"(?:\\.|[^"\\])*"/g, '""')
+    .replace(/`(?:\\.|[^`\\])*`/g, '``');
+}
+
+// Does `restArgs` contain an inline arrow or function literal? This is
+// the "inline handler" half of the new `.use(string, handler)`
+// coverage (#471). Strings are stripped first so a `=>` or `function`
+// token inside a string can't false-positive.
+function hasInlineHandler(restArgs: string): boolean {
+  const stripped = stripStrings(restArgs);
+  return INLINE_ARROW_RE.test(stripped) || INLINE_FUNCTION_RE.test(stripped);
+}
+
 function main(): void {
   const files = walkTs(SERVER_DIR);
 
@@ -251,25 +353,38 @@ function main(): void {
     for (const m of src.matchAll(LOCAL_ROUTER_RE)) vars.add(m[1]);
     // Last `export default <name>` wins (a file shouldn't have more
     // than one, but matchAll gives a deterministic outcome either
-    // way). The captured name is admitted as a Router var even if
-    // it isn't a literal `Router()` declaration — that catches
-    // factory patterns (`const r = createRouter(); export default r;`)
-    // where `r` isn't matched by LOCAL_ROUTER_RE but is still the
-    // file's effective Router. Without this, a default-import of
-    // such a file mounted at non-/api would have no resolvable target
-    // for either the prefix attribution or the route attribution,
-    // and the bypass would silently slip past the guard. False-
-    // positive risk is negligible: `export default someUnrelatedFn`
-    // would only matter if some other file did `app.use('/x',
-    // importedFn)` AND that file had a `someUnrelatedFn.<method>(...)`
-    // call somewhere, which is a non-pattern.
+    // way). The captured name is admitted as a Router var only when
+    // there's evidence it's a Router — either the name was already
+    // matched by `LOCAL_ROUTER_RE` (a literal `Router()` declaration)
+    // OR it appears in the source as the receiver of a router-shaped
+    // method call (`<name>.<get|post|...|use>(...)`). The second clause
+    // catches factory patterns
+    // (`const r = createRouter(); r.post(...); export default r;`)
+    // where `r` isn't matched by `LOCAL_ROUTER_RE` but is still the
+    // file's effective Router.
+    //
+    // The "evidence" guard exists because `.use(string, handler)`
+    // coverage (#471) added a new branch that treats an `app.use(
+    // '<prefix>', importedThing)` mount as a state-changing handler
+    // mount when `importedThing` does NOT resolve to a Router.
+    // Without the guard, ANY default-exported identifier (including a
+    // plain handler function — `function h(req,res){...} export
+    // default h;`) would silently be admitted as a Router var, the
+    // resolver would treat the mount as a router mount with no routes
+    // (silent), and the new handler-mount branch would never fire —
+    // re-introducing exactly the bypass shape this task closes.
     let lastDefault: string | undefined;
     for (const m of src.matchAll(EXPORT_DEFAULT_RE)) {
       lastDefault = m[1];
     }
     if (lastDefault !== undefined) {
-      vars.add(lastDefault);
-      fileToDefaultExportVar.set(file, lastDefault);
+      const usageRe = new RegExp(
+        `\\b${escapeRegExp(lastDefault)}\\s*\\.\\s*(?:get|post|put|patch|delete|all|use)\\s*\\(`,
+      );
+      if (vars.has(lastDefault) || usageRe.test(src)) {
+        vars.add(lastDefault);
+        fileToDefaultExportVar.set(file, lastDefault);
+      }
     }
     fileToLocalRouterVars.set(file, vars);
   }
@@ -350,65 +465,135 @@ function main(): void {
       if (resolved) importMap.set(localName, resolved);
     }
 
-    // app.use('<prefix>', ..., <router>) — record mount prefix on
-    // either the imported router's per-file default-export Router var
-    // (cross-file mount) OR a same-file local Router var. We pick
-    // the LAST identifier in the rest-args that resolves to one of
-    // those, so middlewares between the prefix and the router don't
-    // fool the resolver.
-    for (const m of src.matchAll(APP_USE_RE)) {
-      const prefix = m[2];
-      const restArgs = m[3];
-      const idents = [...restArgs.matchAll(IDENT_RE)].map((x) => x[1]);
-      for (let i = idents.length - 1; i >= 0; i--) {
-        const id = idents[i];
-        const importedFile = importMap.get(id);
-        if (importedFile) {
-          for (const targetKey of resolveDefaultImportTargets(importedFile)) {
+    // Unified scan over every `<callerId>.use(...)` call. For each
+    // call we extract `(prefix, restArgs)` via balanced-paren walking
+    // and classify the call into one of:
+    //
+    //   - ROUTER MOUNT (cross-file): rest-args resolve to a default-
+    //     imported file with a recognised default Router export.
+    //     Records a mount prefix on that Router var.
+    //   - ROUTER MOUNT (same-file): rest-args resolve to a local
+    //     Router var in this file. Records a mount prefix on that var
+    //     (when the caller is `app`) or a composition edge from the
+    //     caller's Router var to it (when the caller is itself a
+    //     local Router var).
+    //   - HANDLER MOUNT: rest-args contain an inline arrow/function
+    //     literal, OR the last identifier in rest-args is something
+    //     other than a Router (an imported handler/middleware, or
+    //     unresolved). This is the new branch added in #471 — Express
+    //     installs the handler for EVERY HTTP method on the path
+    //     prefix, structurally identical to `.all()`, so it has to be
+    //     flagged as state-changing. The mount is recorded as a
+    //     synthetic `USE` route on either `directAppRoutes` (when
+    //     `callerId === 'app'`) or the parent Router var's route
+    //     list (when the caller is a local Router var). The standard
+    //     effective-path computation then picks it up exactly like
+    //     a `.post()`/`.all()` mount.
+    //
+    // Calls where the caller is neither `app` nor a known local
+    // Router var are skipped — same as before, we have no resolvable
+    // mount chain for them.
+    type Resolution =
+      | { kind: 'router-import'; importedFile: string }
+      | { kind: 'router-local'; varName: string }
+      | { kind: 'handler' }
+      | { kind: 'none' };
+
+    for (const callMatch of src.matchAll(USE_CALL_OPEN_RE)) {
+      const callerId = callMatch[1];
+      const openIdx = callMatch.index! + callMatch[0].length - 1;
+      const closeIdx = findBalancedClose(src, openIdx);
+      if (closeIdx < 0) continue;
+      const argsText = src.slice(openIdx + 1, closeIdx);
+
+      // Parser contract: first arg must be a string-literal prefix.
+      // Calls without one (`app.use(middleware)`, `app.use(express
+      // .static(...))`) are out of scope, same as before #471.
+      const prefixMatch = /^\s*(['"`])([^'"`]+)\1\s*,\s*/.exec(argsText);
+      if (!prefixMatch) continue;
+      const prefix = prefixMatch[2];
+      const restArgs = argsText.slice(prefixMatch[0].length);
+
+      let resolution: Resolution;
+      if (hasInlineHandler(restArgs)) {
+        resolution = { kind: 'handler' };
+      } else {
+        const restNoStrings = stripStrings(restArgs);
+        const idents = [...restNoStrings.matchAll(IDENT_RE)].map((x) => x[1]);
+        let found = false;
+        let temp: Resolution | null = null;
+        for (let i = idents.length - 1; i >= 0; i--) {
+          const id = idents[i];
+          // Skip the caller itself in case it shows up in rest-args.
+          if (id === callerId) continue;
+          const importedFile = importMap.get(id);
+          if (importedFile) {
+            const targets = resolveDefaultImportTargets(importedFile);
+            // If the import resolves to a recognised Router file
+            // (per the Pass-1 evidence guard), it's a router mount.
+            // Otherwise it's a handler/middleware import — handler
+            // mount.
+            temp =
+              targets.length > 0
+                ? { kind: 'router-import', importedFile }
+                : { kind: 'handler' };
+            found = true;
+            break;
+          }
+          if (localRouterVars.has(id)) {
+            temp = { kind: 'router-local', varName: id };
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          // Walked every identifier and matched neither an imported
+          // Router nor a local Router var. If there were any idents
+          // at all, treat the call as a handler mount (some
+          // unresolved expression that nonetheless registers a
+          // request handler — e.g. `app.use('/x', someUnknownThing)`).
+          // If rest-args was effectively empty, leave the call
+          // untracked.
+          temp = idents.length > 0 ? { kind: 'handler' } : { kind: 'none' };
+        }
+        resolution = temp!;
+      }
+
+      if (callerId === 'app') {
+        if (resolution.kind === 'router-import') {
+          for (const targetKey of resolveDefaultImportTargets(resolution.importedFile)) {
             addPrefix(targetKey, prefix);
           }
-          break;
+        } else if (resolution.kind === 'router-local') {
+          addPrefix(makeKey(file, resolution.varName), prefix);
+        } else if (resolution.kind === 'handler') {
+          directAppRoutes.push({
+            method: 'USE',
+            path: prefix,
+            source: file,
+            detail: 'inline handler / non-router mount',
+          });
         }
-        if (localRouterVars.has(id)) {
-          addPrefix(makeKey(file, id), prefix);
-          break;
-        }
-      }
-    }
-
-    // <parent>.use('<sub>', ..., <child>) — nested router composition
-    // (#397, refined in #446 to handle same-file parent+child).
-    //
-    // Parent must be a LOCAL Router var in this file (so we can
-    // attribute its effective prefixes to a known key). Child can be
-    // either an IMPORTED router (cross-file edge) OR another local
-    // Router var (same-file edge) — both are now first-class.
-    for (const m of src.matchAll(ROUTER_USE_RE)) {
-      const parentId = m[1];
-      // `app` is handled by APP_USE_RE — skip to avoid double-counting.
-      if (parentId === 'app') continue;
-      if (!localRouterVars.has(parentId)) continue;
-      const parentKey = makeKey(file, parentId);
-      const sub = m[3];
-      const restArgs = m[4];
-      const idents = [...restArgs.matchAll(IDENT_RE)].map((x) => x[1]);
-      for (let i = idents.length - 1; i >= 0; i--) {
-        const id = idents[i];
-        // Skip the parent itself in case it shows up in restArgs.
-        if (id === parentId) continue;
-        const importedFile = importMap.get(id);
-        if (importedFile) {
-          for (const childKey of resolveDefaultImportTargets(importedFile)) {
-            compositionEdges.push({ parentKey, sub, childKey, sourceFile: file });
+      } else if (localRouterVars.has(callerId)) {
+        const parentKey = makeKey(file, callerId);
+        if (resolution.kind === 'router-import') {
+          for (const childKey of resolveDefaultImportTargets(resolution.importedFile)) {
+            compositionEdges.push({ parentKey, sub: prefix, childKey, sourceFile: file });
           }
-          break;
-        }
-        if (localRouterVars.has(id)) {
-          const childKey = makeKey(file, id);
-          compositionEdges.push({ parentKey, sub, childKey, sourceFile: file });
-          break;
+        } else if (resolution.kind === 'router-local') {
+          const childKey = makeKey(file, resolution.varName);
+          compositionEdges.push({ parentKey, sub: prefix, childKey, sourceFile: file });
+        } else if (resolution.kind === 'handler') {
+          let routes = routerRoutesByVar.get(parentKey);
+          if (!routes) {
+            routes = [];
+            routerRoutesByVar.set(parentKey, routes);
+          }
+          routes.push({ method: 'USE', subpath: prefix });
         }
       }
+      // else: caller is neither `app` nor a known local Router var —
+      // unmodelled, skip.
     }
 
     // Direct app.<method>('<path>', ...) routes anywhere in server/.

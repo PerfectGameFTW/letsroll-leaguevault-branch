@@ -594,4 +594,220 @@ app.post('/in-a-test', (req, res) => res.sendStatus(200));
     const r = runIn(dir);
     expect(r.status, r.stderr).toBe(0);
   });
+
+  // ----------------------------------------------------------------
+  // `app.use('<path>', <inlineHandler>)` and
+  // `router.use('<path>', <inlineHandler>)` coverage (task #471).
+  //
+  // Express's `.use(string, handler)` form installs the handler for
+  // EVERY HTTP method on the path prefix — structurally identical to
+  // `.all()` — so an inline arrow/function literal or an identifier
+  // that doesn't resolve to a Router (i.e. a handler/middleware
+  // import rather than a sub-router) outside `/api/` silently
+  // bypasses the global CSRF mount. The earlier guard only
+  // recognised `.use(...)` as a router mount and dropped the call
+  // when the rest-args didn't resolve to one, leaving this hole
+  // open. These tests pin down the new branch.
+  // ----------------------------------------------------------------
+
+  it('flags app.use with an inline arrow handler at a non-/api path (#471)', () => {
+    const dir = makeIndexFixture(
+      `import express from 'express';
+const app = express();
+app.use('/foo', (req, res) => res.sendStatus(200));
+app.use('/api', csrfProtection);
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/USE \/foo/);
+  });
+
+  it('flags app.use with an inline `function` literal at a non-/api path (#471)', () => {
+    // Same hole, just a `function` expression instead of an arrow.
+    // The inline-handler detection has to recognise both forms.
+    const dir = makeIndexFixture(
+      `import express from 'express';
+const app = express();
+app.use('/foo', function (req, res) { return res.sendStatus(200); });
+app.use('/api', csrfProtection);
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/USE \/foo/);
+  });
+
+  it('flags router.use(<handlerImport>) mounted at a non-/api prefix (#471)', () => {
+    // Sub-router shape: parent router declares `router.use('/bar',
+    // someHandlerImport)` where `someHandlerImport` is a default-
+    // imported handler function (not a sub-router). Parent router is
+    // mounted at /pub, so the effective path /pub/bar is a
+    // state-changing handler outside /api and must be flagged.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import sneakyRouter from './routes/sneaky.js';
+const app = express();
+app.use('/pub', sneakyRouter);
+app.use('/api', csrfProtection);
+`,
+      'server/routes/sneaky.ts': `import { Router } from 'express';
+import someHandlerImport from './handler.js';
+const router = Router();
+router.use('/bar', someHandlerImport);
+export default router;
+`,
+      'server/routes/handler.ts': `function handler(req, res, next) { return res.sendStatus(200); }
+export default handler;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/USE \/pub\/bar/);
+    expect(r.stderr).toMatch(/sneaky\.ts/);
+  });
+
+  it('flags app.use(<handlerImport>) at a non-/api prefix (#471)', () => {
+    // Direct shape on `app`: `app.use('/foo', someHandlerImport)`
+    // where the import is a plain handler, not a Router. The handler
+    // is registered for EVERY HTTP method so the bypass is real.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import someHandlerImport from './handler.js';
+const app = express();
+app.use('/foo', someHandlerImport);
+app.use('/api', csrfProtection);
+`,
+      'server/handler.ts': `function handler(req, res, next) { return res.sendStatus(200); }
+export default handler;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/USE \/foo/);
+  });
+
+  it('does not flag app.use(<router>) at a non-/api prefix when the router has no state-changing routes (#471 negative twin)', () => {
+    // The new handler-mount branch must NOT fire when the imported
+    // identifier IS a recognised Router. The router is a real Router
+    // file (literal `Router()` declaration); since it has no
+    // state-changing routes, the existing router-mount handling
+    // produces no violations and the call passes.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import someRouter from './routes/some.js';
+const app = express();
+app.use('/foo', someRouter);
+app.use('/api', csrfProtection);
+`,
+      'server/routes/some.ts': `import { Router } from 'express';
+const router = Router();
+router.get('/bar', (req, res) => res.sendStatus(200));
+export default router;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it('does not flag app.use(<middleware>) when mounted under /api (#471 negative twin)', () => {
+    // `app.use('/api', csrfProtection)` is the global CSRF mount
+    // itself — `csrfProtection` is a named-imported middleware, not
+    // a Router. The new handler-mount branch would classify this
+    // call as a handler mount, but the prefix is /api so the
+    // violation check skips it (existing behaviour preserved).
+    const dir = makeIndexFixture(
+      `import express from 'express';
+const app = express();
+app.use('/api', csrfProtection);
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it('does not flag app.use with an inline arrow handler under /api (#471 negative twin)', () => {
+    // `.use(string, inline-arrow)` mounted at /api is fine because
+    // the global CSRF mount applies. Pins the negative direction so
+    // a future tightening of the inline-handler detection doesn't
+    // start false-positiving on /api mounts.
+    const dir = makeIndexFixture(
+      `import express from 'express';
+const app = express();
+app.use('/api/inline', (req, res) => res.sendStatus(200));
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  });
+
+  it('flags inline arrow handler when middlewares are listed before it (#471)', () => {
+    // `app.use('/foo', requireAuth, (req, res) => ...)` — the inline
+    // arrow is the LAST argument, not the first. Detection has to be
+    // "anywhere in rest-args" rather than "as the first arg" so this
+    // shape doesn't slip through.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import requireAuth from './middleware/auth.js';
+const app = express();
+app.use('/foo', requireAuth, (req, res) => res.sendStatus(200));
+app.use('/api', csrfProtection);
+`,
+      'server/middleware/auth.ts': `export default function requireAuth(req, res, next) { next(); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/USE \/foo/);
+  });
+
+  it('does not classify a default-exported handler file as a Router (#471)', () => {
+    // Pins the Pass-1 evidence guard: a file that default-exports a
+    // plain function (no `Router()` declaration AND no
+    // `<name>.<routerMethod>(...)` calls) must NOT be admitted as a
+    // Router var. If it were, the resolver would silently treat
+    // `app.use('/foo', importedHandler)` as a router mount with no
+    // routes (no flags fire). With the guard, the call falls into
+    // the new handler-mount branch instead and gets flagged.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import handler from './handler.js';
+const app = express();
+app.use('/foo', handler);
+app.use('/api', csrfProtection);
+`,
+      'server/handler.ts': `function handler(req, res, next) { return res.sendStatus(200); }
+export default handler;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/USE \/foo/);
+  });
+
+  it('handles `app.use(express.static(...))`-style nested-paren rest-args without truncating mid-arg (#471)', () => {
+    // Real codebase pattern: `app.use('/uploads/avatars',
+    // express.static(path.join(...), { ... }))`. The earlier
+    // `[^)]+` regex would have truncated the rest-args at the first
+    // inner `)`, dropping the call entirely. The balanced-paren
+    // walker has to span the whole call so the handler-mount branch
+    // can correctly classify it. The synthetic fixture lives at
+    // /pub-static (non-/api) to assert the call is flagged; in the
+    // real `server/index.ts` the same shape lives at /uploads/
+    // avatars, which is allowlisted with an inline justification.
+    const dir = makeIndexFixture(
+      `import express from 'express';
+import path from 'path';
+const app = express();
+app.use('/pub-static', express.static(path.join(process.cwd(), 'pub'), {
+  maxAge: '1h',
+  fallthrough: true,
+}));
+app.use('/api', csrfProtection);
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/USE \/pub-static/);
+  });
 });
