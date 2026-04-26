@@ -229,8 +229,16 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       form.reset();
       setCardMode('new');
       setSelectedSavedCardId('');
+      setReceiptEmail('');
     }
   }, [open]);
+
+  // Task #503: clear inline receipt-email when the operator switches
+  // to a different bowler so we never accidentally reuse the prior
+  // bowler's typed-in address.
+  useEffect(() => {
+    setReceiptEmail('');
+  }, [selectedBowlerId]);
 
   const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
     const bowlerId = form.getValues('bowlerId');

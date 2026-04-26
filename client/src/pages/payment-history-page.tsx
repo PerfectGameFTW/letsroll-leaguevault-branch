@@ -159,6 +159,10 @@ export default function PaymentHistoryPage() {
   useEffect(() => {
     if (!payDialogType) {
       cleanupCard();
+      // Task #503: clear inline receipt-email on dialog close so a
+      // stale typed-in address never silently rides on the next
+      // checkout attempt.
+      setReceiptEmail('');
     }
   }, [payDialogType]);
 
