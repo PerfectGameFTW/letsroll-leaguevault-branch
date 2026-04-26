@@ -111,19 +111,38 @@ directly — it returns in well under a second on the current tree.
 ### CI / branch protection (operational requirement)
 
 The workflow above only **blocks merges** if GitHub's branch
-protection on `main` requires the `Type check & lint` status check
-to pass before a pull request can be merged. That setting lives in
-GitHub repo settings → Branches → branch protection rules, not in
-this repo. If branch protection isn't configured (or isn't
-configured to require this status), the workflow will still run and
-report red on a failing PR, but the merge button will not be gated.
+protection on `main` requires the relevant status check to pass
+before a pull request can be merged. That setting lives in GitHub
+repo settings → Branches → branch protection rules, not in this
+repo. If branch protection isn't configured (or isn't configured to
+require these statuses), the workflow will still run and report red
+on a failing PR, but the merge button will not be gated.
+
+Two `ci.yml` jobs need to be wired as required checks to fully pin
+this guard:
+
+- **`Type check & lint`** — runs `npm run check:csrf` against the
+  live `server/` tree, so a state-changing route mounted outside
+  `/api` without an allowlist entry fails the build at PR time.
+- **`Tests`** — runs `npm test` (vitest), which executes the 23
+  fixtures in `tests/unit/check-csrf-coverage.test.ts` that pin the
+  guard's own parser / propagation logic. Without this check
+  required, a contributor could change `scripts/check-csrf-coverage.ts`
+  in a way that breaks the regex parsing or the propagation logic
+  but happens not to flag anything in the current tree, and the
+  regression would not be caught — `Type check & lint` would still
+  report green because the guard runs against the (unflagged) live
+  codebase. The `Tests` job (added in #442, kept required by #447)
+  is what gives those self-tests teeth on PRs.
 
 When extending CI with additional static checks, **append a step to
 the existing `check-and-lint` job** rather than renaming the job or
 splitting into a new job. The job's GitHub-Actions display name
 (`Type check & lint`) is what branch protection keys on; renaming it
 silently de-protects `main` until an operator updates the rule. The
-in-file comment in `ci.yml` repeats this for future contributors.
+same applies to `Tests` — append a vitest file rather than renaming
+the job. The in-file comment in `ci.yml` repeats this for future
+contributors.
 
 The non-`/api` mounts are:
 

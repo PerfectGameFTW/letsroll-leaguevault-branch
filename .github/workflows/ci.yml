@@ -93,9 +93,10 @@ jobs:
       # nested `parentRouter.use('<sub>', childRouter)` composition
       # transitively (#397). The guard's own behavior is pinned by
       # 23 unit fixtures in `tests/unit/check-csrf-coverage.test.ts`,
-      # which run as part of the vitest suite (separate workflow when
-      # that lands). Contract and limitations are documented in
-      # `docs/security/csrf-coverage.md`. Wired into CI in #398.
+      # which run as part of the vitest suite in the sibling `Tests`
+      # job below (wired in by #442). Contract and limitations are
+      # documented in `docs/security/csrf-coverage.md`. Wired into CI
+      # in #398.
       - name: CSRF coverage
         run: npm run check:csrf
 
