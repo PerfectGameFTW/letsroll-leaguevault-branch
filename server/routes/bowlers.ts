@@ -363,16 +363,23 @@ router.post("/", async (req, res) => {
     // Session-derived ids (every non-system-admin role) cannot point
     // at a missing org because the user row itself FKs to it, so we
     // only pay for the lookup on the override path.
+    //
+    // Task #421 / #453: parse the override with `parseOptionalIntParam`
+    // (the strict shared parser) instead of the loose `parseInt + isNaN`
+    // pattern. The loose pattern silently coerced partially-numeric
+    // input like `?organizationId=1abc` to `1`, which — combined with
+    // the #422 existence check — would still pass through as a quiet
+    // cross-org stamp whenever the coerced id happened to point at a
+    // real org. The strict parser returns `null` for any non-digit
+    // characters, mapping cleanly to the existing 400 branch.
     // Pinned by tests/api/bowler-creation-org-required.test.ts.
     const callerOrgId: number | undefined = req.user?.organizationId ?? undefined;
     const isSystemAdmin = req.user?.role === 'system_admin';
     let stampOrgId: number | undefined = callerOrgId;
     let adminSuppliedOrgId: number | undefined;
     if (isSystemAdmin) {
-      const rawQueryOrgId = req.query.organizationId
-        ? parseInt(req.query.organizationId as string)
-        : undefined;
-      if (rawQueryOrgId !== undefined && isNaN(rawQueryOrgId)) {
+      const rawQueryOrgId = parseOptionalIntParam(req.query.organizationId);
+      if (rawQueryOrgId === null) {
         return sendError(res, "Invalid organization ID format", 400);
       }
       adminSuppliedOrgId = rawQueryOrgId;

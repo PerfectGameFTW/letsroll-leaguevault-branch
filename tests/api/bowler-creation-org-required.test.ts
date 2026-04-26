@@ -118,7 +118,9 @@ describe('Bowler creation routes — organization context guards (task #415)', (
     });
 
     it('returns 400 when a system_admin supplies a non-numeric ?organizationId query param', async () => {
-      // Pins the explicit NaN guard at server/routes/bowlers.ts:337
+      // Pins the strict-parser guard in the system-admin override
+      // block of server/routes/bowlers.ts (task #453 swapped the
+      // older `parseInt + isNaN` pattern for `parseOptionalIntParam`)
       // so a malformed override returns a clean 400 instead of
       // silently falling through to `callerOrgId` (which would be
       // a no-op cross-org stamp surprise) or to the DB constraint.
@@ -144,6 +146,53 @@ describe('Bowler creation routes — organization context guards (task #415)', (
       expect(res.status).toBe(400);
       expect(data.success).toBe(false);
       expect(data.error?.message).toMatch(/invalid organization id format/i);
+    });
+
+    it('returns 400 when a system_admin supplies a partially-numeric ?organizationId like "1abc" (task #453)', async () => {
+      // Sister pin to the `not-a-number` test above. The OLD parser
+      // — `parseInt(req.query.organizationId as string)` — silently
+      // accepted partially-numeric input like `?organizationId=1abc`
+      // as `1`, because `parseInt` reads as many leading digits as
+      // it can find and discards the rest. Combined with the #422
+      // existence check, an admin who fat-fingered an org id that
+      // *coincidentally* started with a real org id (e.g. typing
+      // `1abc` while meaning org `42`) would have stamped the new
+      // bowler onto org `1` instead of failing — a silent cross-org
+      // surprise. After #453 the route uses `parseOptionalIntParam`,
+      // which only accepts strings matching `/^-?\d+$/` and returns
+      // `null` (-> 400) for anything else.
+      const session = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+
+      const res = await fetch(`${BASE_URL}/api/bowlers?organizationId=1abc`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: session.cookies,
+          'x-csrf-token': session.csrfToken,
+        },
+        body: JSON.stringify({
+          name: 'Vitest Partial-Num Org #453',
+          email: null,
+          phone: null,
+          active: true,
+          order: 0,
+        }),
+      });
+      const data = await res.json();
+
+      expect(res.status).toBe(400);
+      expect(data.success).toBe(false);
+      expect(data.error?.message).toMatch(/invalid organization id format/i);
+
+      // Belt-and-suspenders: confirm no row was inserted under the
+      // silently-coerced id `1`. If the parser ever regresses to the
+      // loose `parseInt` pattern, this would catch any accidental
+      // stamp by the test name.
+      const accidentalRows = await db
+        .select()
+        .from(bowlers)
+        .where(eq(bowlers.name, 'Vitest Partial-Num Org #453'));
+      expect(accidentalRows).toHaveLength(0);
     });
 
     it('happy path: stamps the bowler with the caller\'s session org', async () => {
