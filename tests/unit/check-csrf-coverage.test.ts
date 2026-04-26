@@ -436,15 +436,77 @@ export default router;
     expect(r.stderr).toMatch(/POST \/foo\/sub\/x/);
   });
 
-  it('does not blow up on same-file nested composition (parent and child Router vars in one file)', () => {
-    // The "file-as-router" model used by this script can't accurately
-    // distinguish parent-router routes from child-router routes when
-    // both live in the same file, so same-file composition is
-    // intentionally NOT propagated (see ROUTER_USE_RE handling in the
-    // script). What matters here is that the script doesn't crash or
-    // hang on the pattern: a parent and a child Router var co-located
-    // in one file, mounted under /api so the file's own routes are
-    // safe. The script should exit 0 cleanly.
+  it('flags only the child effective path on same-file nested composition at a non-/api root (task #446)', () => {
+    // Parent and child Router vars in the SAME file. Parent has no
+    // direct routes of its own — its only role is to compose the
+    // child via `parent.use('/sub', child)`. Root mount is /foo
+    // (non-/api). The per-(file, var) tracking in #446 lets the
+    // guard model this precisely: prefixes on the parent var
+    // propagate to the child var via the composition edge, the
+    // child's POST /x lands at /foo/sub/x, and the parent var has no
+    // routes of its own to spuriously flag at /foo/x.
+    const dir = makeIndexFixture(
+      `import express, { Router } from 'express';
+const app = express();
+const parentRouter = Router();
+const childRouter = Router();
+childRouter.post('/x', (req, res) => res.sendStatus(200));
+parentRouter.use('/sub', childRouter);
+app.use('/foo', parentRouter);
+app.use('/api', csrfProtection);
+`,
+    );
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    // The child's effective path must be flagged.
+    expect(r.stderr).toMatch(/POST \/foo\/sub\/x/);
+    // And the file-as-router conflation that the prior model would
+    // have produced (attributing the child's `POST /x` to the
+    // parent's mount as well) must NOT appear. Asserting on the
+    // literal output line ensures we catch a regression that
+    // re-introduces the false-positive even if the legitimate
+    // flag still fires.
+    expect(r.stderr).not.toMatch(/POST \/foo\/x  /);
+  });
+
+  it("flags a default-exported factory router (e.g. `const r = createRouter()`) mounted at non-/api", () => {
+    // The per-(file, var) refactor (#446) tracks routes only on
+    // identifiers it recognises as Router vars. The recognition
+    // primarily comes from `LOCAL_ROUTER_RE` (literal `Router()`/
+    // `express.Router()` calls), but a contributor could create a
+    // router via a factory wrapper (`createRouter()`) and just
+    // export it as default. The guard must still treat the default-
+    // exported identifier as the file's effective Router so that
+    // routes registered on it are attributed and a non-/api mount
+    // gets flagged. Without this admit-rule, the prior file-as-
+    // router model would catch it but the per-var model wouldn't —
+    // a strict regression of guard coverage.
+    const dir = makeFixture({
+      'server/index.ts': `import express from 'express';
+import factoryRouter from './routes/factory.js';
+const app = express();
+app.use('/foo', factoryRouter);
+app.use('/api', csrfProtection);
+`,
+      'server/routes/factory.ts': `import { Router } from 'express';
+function createRouter() { return Router(); }
+const r = createRouter();
+r.post('/x', (req, res) => res.sendStatus(200));
+export default r;
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/POST \/foo\/x/);
+    expect(r.stderr).toMatch(/factory\.ts/);
+  });
+
+  it('does not flag same-file nested composition rooted at /api (negative twin)', () => {
+    // Same shape as the test above, just with the root mount under
+    // /api. Effective path is /api/parent/sub/x — covered by the
+    // global mount, no flags expected. Pins the negative direction
+    // so a future tightening of the guard can't silently start
+    // false-positiving on this real codebase pattern.
     const dir = makeIndexFixture(
       `import express, { Router } from 'express';
 const app = express();
