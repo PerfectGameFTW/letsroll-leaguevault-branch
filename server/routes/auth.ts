@@ -376,8 +376,25 @@ export function registerAuthRoutes(app: Express): void {
       // the password so we don't burn a second round trip, and so a
       // crash between the two writes can't leave the user with a
       // rotated password but a stale (English-only) language column.
-      const userPatch: { password: string; preferredLanguage?: string | null } = {
+      //
+      // Task #455: clear `mustChangePassword` here too. If an admin
+      // had reset this user's password and the user instead used
+      // the forgot-password / invite-token flow to recover (a
+      // perfectly legitimate path — they may not have remembered
+      // the temporary password the admin emailed them), they HAVE
+      // chosen a fresh password and the impersonation window is
+      // closed. Without this clear, requirePasswordRotated would
+      // keep them trapped on /change-password-required even though
+      // the credential the admin knew is now dead. Bundled into the
+      // same updateUser write as the hash so a crash between writes
+      // can't leave the row "rotated but still flagged."
+      const userPatch: {
+        password: string;
+        preferredLanguage?: string | null;
+        mustChangePassword: boolean;
+      } = {
         password: hashedPassword,
+        mustChangePassword: false,
       };
       if (preferredLanguage !== undefined) {
         userPatch.preferredLanguage = preferredLanguage;

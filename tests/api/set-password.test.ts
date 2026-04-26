@@ -128,6 +128,40 @@ describe('POST /api/auth/set-password · force-log-out (task #352)', () => {
     expect(newSession.user.email).toBe(email);
   });
 
+  it('clears mustChangePassword when a flagged user recovers via the set-password / forgot-password flow (task #455)', async () => {
+    // After an admin reset, requirePasswordRotated traps the user
+    // on /change-password-required until the flag clears. The user
+    // is allowed to use either /api/account/change-password OR the
+    // unauthenticated forgot-password / set-password flow (the
+    // admin-emailed temp password is exactly the kind of thing
+    // people lose, so forcing them to remember it before recovery
+    // would be hostile). This test pins that set-password also
+    // clears the flag — without that clear, a user who recovered
+    // via the email link would still be locked out by the gate even
+    // though the credential the admin knew is now dead, defeating
+    // the recovery path entirely.
+    const { userId, email } = await createUserWithPassword();
+    // Simulate the admin reset having flagged the row.
+    await storage.updateUser(userId, { mustChangePassword: true });
+    const flagged = await storage.getUser(userId);
+    expect(flagged?.mustChangePassword).toBe(true);
+
+    const token = await issueResetToken(userId);
+    const reset = await callSetPassword(token, NEW_PASSWORD);
+    expect(reset.status).toBe(200);
+    expect(reset.body.success).toBe(true);
+
+    // Load-bearing assertion: the row must be unflagged after the
+    // user has chosen a new password through the recovery flow.
+    const after = await storage.getUser(userId);
+    expect(after?.mustChangePassword).toBe(false);
+
+    // And the new credentials let them in clean — proving the gate
+    // would no longer 403 their next protected API call.
+    const newSession = await login(email, NEW_PASSWORD);
+    expect(newSession.user.email).toBe(email);
+  });
+
   it('still completes the reset (and returns 200) when the user has no existing sessions', async () => {
     // Pure-happy-path regression guard — destroying zero sessions
     // must not cause the destroy step (or the surrounding handler)
