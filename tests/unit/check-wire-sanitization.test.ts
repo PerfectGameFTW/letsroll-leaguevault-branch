@@ -373,6 +373,91 @@ export function bad() { sendSuccess(res, user); }
     expect(r.status, r.stderr).toBe(0);
   }, 30_000);
 
+  it('flags a helper whose return type embeds a User in a property', () => {
+    // The guard must descend into properties of named (non-anonymous)
+    // object types so a future helper like `buildAccountResponse(user)`
+    // returning `{ user: User; emailSent: boolean }` can't smuggle a
+    // raw row past the wire-sanitization check just by hiding it
+    // behind a wrapper at the call site.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const user: User;
+function buildAccountResponse(u: User) {
+  return { user: u, emailSent: true };
+}
+export function bad() { sendSuccess(res, buildAccountResponse(user)); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- User/);
+    expect(r.stderr).toMatch(/leak\.ts/);
+  }, 30_000);
+
+  it('flags a helper return type that embeds Organization[] in a property', () => {
+    // Same shape, but for the array-of-Organization wrapper that a
+    // listing helper might return.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Organization } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const orgs: Organization[];
+function buildOrgList(list: Organization[]) {
+  return { organizations: list, total: list.length };
+}
+export function bad() { sendSuccess(res, buildOrgList(orgs)); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- Organization/);
+  }, 30_000);
+
+  it('terminates on cyclic User <-> Organization schema references', () => {
+    // Regression for the depth/visited bound: when User has
+    // `organization: Organization` and Organization has
+    // `users: User[]`, the property descent must not loop forever.
+    // The guard should still flag the embedded User on the helper's
+    // return type without hanging or stack-overflowing.
+    const dir = makeFixture({
+      'shared/schema/users.ts': `import type { Organization } from './organizations';
+export type User = {
+  id: number;
+  email: string;
+  password: string;
+  name: string;
+  secret: string;
+  organization: Organization;
+  createdAt: string;
+};
+`,
+      'shared/schema/organizations.ts': `import type { User } from './users';
+export type Organization = {
+  id: number;
+  name: string;
+  slug: string;
+  integrations: Record<string, unknown>;
+  users: User[];
+  createdAt: string;
+};
+`,
+      'server/leak.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const user: User;
+function wrap(u: User) {
+  return { user: u, ts: Date.now() };
+}
+export function bad() { sendSuccess(res, wrap(user)); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- User/);
+  }, 30_000);
+
   it('--report mode prints the violation table without exiting non-zero', () => {
     const dir = makeFixture({
       'server/leak.ts': `import type { User } from '@shared/schema';

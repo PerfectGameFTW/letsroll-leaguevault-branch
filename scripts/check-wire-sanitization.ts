@@ -64,14 +64,17 @@
  *     (identifier, call, property access, etc.) the value's static
  *     type is checked directly.
  *   - The type walk descends through unions (so `User | undefined`
- *     from `storage.getUser(...)` is caught) and numeric-index types
- *     (so `User[]` is caught). It does NOT descend into named object
- *     types: a value typed as `{ user: User }` would be flagged via
- *     the AST walk on its literal members, not via type-walking — so
- *     reading a value whose declared type happens to embed a User
- *     does not trigger the guard. In practice every leak shape we've
- *     seen is built up at the call site from an inline object
- *     literal, so this is the right line.
+ *     from `storage.getUser(...)` is caught), numeric-index types
+ *     (so `User[]` is caught), AND properties of object/intersection
+ *     types — so a helper whose return type embeds a row, like
+ *     `function buildAccountResponse(u: User): { user: User }`, is
+ *     flagged when its result is handed to a response helper. The
+ *     descent is bounded by a per-walk visited set keyed on type
+ *     identity and a depth cap so cyclic schema references like
+ *     `Organization.users: User[]` / `User.organization: Organization`
+ *     terminate. Function/constructor types (whose properties are
+ *     `Function.prototype` methods, not data) are skipped to avoid
+ *     walking into the standard library.
  *   - `User` / `Organization` are identified by their declaration
  *     site: a type alias named `User` declared in
  *     `shared/schema/users.ts`, or `Organization` declared in
@@ -166,17 +169,36 @@ function resolveCanonicalTypes(
 
 /**
  * Walk a value type and return the name of the first leak it
- * contains, or null. Only union members and array element types are
- * descended; the structural assignability check at the top of the
- * walk handles the common cases (raw `User`, intersection like
- * `User & { extra: string }`, etc.) directly.
+ * contains, or null. Descends through:
+ *   - union members (so `User | undefined` is caught),
+ *   - numeric-index types (so `User[]` is caught), and
+ *   - properties of object / intersection types (so a helper whose
+ *     return type embeds a row, e.g. `function f(): { user: User }`,
+ *     is caught when its result is handed to a response helper).
+ *
+ * The structural assignability check at the top of the walk handles
+ * the direct cases (raw `User`, intersection `User & { extra }`,
+ * etc.). Recursion is bounded by a per-walk `visited` set keyed on
+ * type identity AND a hard depth cap, so cyclic schema references
+ * — e.g. `Organization.users: User[]` referring back to `User` which
+ * has `organization: Organization` — terminate.
+ *
+ * Function / constructor types are skipped during the property
+ * descent because their `getProperties()` returns
+ * `Function.prototype` methods (`call`, `apply`, …) rather than
+ * data fields, and recursing into those would balloon the search
+ * with no signal.
  */
+const MAX_TYPE_WALK_DEPTH = 8;
+
 function findLeakInType(
   type: ts.Type,
   canon: CanonicalTypes,
   checker: ts.TypeChecker,
-  visited = new Set<ts.Type>(),
+  visited: Set<ts.Type> = new Set<ts.Type>(),
+  depth = 0,
 ): string | null {
+  if (depth > MAX_TYPE_WALK_DEPTH) return null;
   if (visited.has(type)) return null;
   visited.add(type);
 
@@ -200,7 +222,7 @@ function findLeakInType(
 
   if (type.isUnion()) {
     for (const sub of type.types) {
-      const v = findLeakInType(sub, canon, checker, visited);
+      const v = findLeakInType(sub, canon, checker, visited, depth + 1);
       if (v) return v;
     }
     return null;
@@ -210,8 +232,31 @@ function findLeakInType(
   // type so `User[]` (the most common batch-list shape) is caught.
   const numIdx = checker.getIndexTypeOfType(type, ts.IndexKind.Number);
   if (numIdx) {
-    const v = findLeakInType(numIdx, canon, checker, visited);
+    const v = findLeakInType(numIdx, canon, checker, visited, depth + 1);
     if (v) return `${v}[]`;
+  }
+
+  // Walk properties of object / intersection types so a value typed
+  // as `{ user: User }` returned from a helper doesn't slip past by
+  // hiding the User behind a wrapper. Skip callable/constructable
+  // types (their "properties" are Function.prototype methods, not
+  // data); the visited-set + depth cap above keep cyclic schemas
+  // from blowing up.
+  const isObjectLike =
+    Boolean(flags & ts.TypeFlags.Object) || type.isIntersection();
+  if (isObjectLike) {
+    if (
+      type.getCallSignatures().length === 0 &&
+      type.getConstructSignatures().length === 0
+    ) {
+      for (const prop of type.getProperties()) {
+        const decl = prop.valueDeclaration ?? prop.declarations?.[0];
+        if (!decl) continue;
+        const propType = checker.getTypeOfSymbolAtLocation(prop, decl);
+        const v = findLeakInType(propType, canon, checker, visited, depth + 1);
+        if (v) return v;
+      }
+    }
   }
 
   return null;

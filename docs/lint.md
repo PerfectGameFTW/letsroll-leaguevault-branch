@@ -136,6 +136,17 @@ Coverage:
   though the array itself isn't assignable to `User`.
 - Walks `User | undefined` (the typical `storage.getUser(...)`
   return shape) by descending union members.
+- Walks properties of object / intersection types, so a helper
+  whose return type embeds a row — e.g.
+  `function buildAccountResponse(u: User): { user: User; emailSent: boolean }`
+  — is flagged when its result is handed to `sendSuccess` /
+  `res.json` straight, even though the wrapper itself isn't
+  assignable to `User`. Recursion is bounded by a per-walk
+  visited-set on type identity and a depth cap, so cyclic schema
+  references like `Organization.users: User[]` referring back to
+  `User.organization: Organization` terminate. Function /
+  constructor types are skipped during property descent (their
+  properties are `Function.prototype` methods, not data).
 - Recognises the canonical helper signatures (`sendSuccess`,
   `sendPaginatedSuccess`) by identifier name and `res.json` /
   `res.status(...).json` chains by detecting that the receiver
@@ -143,11 +154,6 @@ Coverage:
 
 Not covered (deliberate parser limits):
 
-- Reading a value whose declared type happens to embed a `User` /
-  `Organization` (e.g. `function f(): { user: User } { ... }`,
-  then `sendSuccess(res, f())`). The guard only descends into
-  inline object literals at the call site — every leak shape we've
-  seen in this codebase is built up at the call site.
 - `.test.ts` / `.spec.ts` files and `server/utils/api.ts` itself
   (where the helpers live) are skipped.
 
@@ -175,7 +181,7 @@ tsx scripts/check-wire-sanitization.ts             # strict (CI mode)
 tsx scripts/check-wire-sanitization.ts --report    # print the table without exiting non-zero
 ```
 
-The guard's own behavior is pinned by 15 fixtures in
+The guard's own behavior is pinned by 18 fixtures in
 `tests/unit/check-wire-sanitization.test.ts` (run as part of the
 vitest suite). Wired into CI as the `Wire sanitization (raw
 User/Organization)` step in `.github/workflows/ci.yml`'s
