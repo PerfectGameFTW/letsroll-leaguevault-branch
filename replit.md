@@ -16,6 +16,13 @@ A full-stack bowling league management application with multi-tenant support for
 - When in doubt, do NOT create the follow-up. The user prefers a smaller, higher-signal backlog over an exhaustive one.
 - This applies to every agent (main, task, design, etc.) and every mode (plan, build).
 
+## Pre-Existing Errors Policy (Agent Operating Convention)
+- **Always fix pre-existing errors before completing a task.** A task is not "done" if `npx tsc --noEmit`, the test suite, or any other repo-wide check is reporting errors — even if those errors existed before the task started and are unrelated to the change.
+- Run the full repo-wide checks (typecheck + the relevant test suites) at the end of every task. If anything is failing, fix it as part of the same task before calling `mark_task_complete`. Do not file the failure as a follow-up and ship.
+- This applies even when the failing file is in a totally unrelated area of the codebase. The cost of carrying broken checks is that real regressions get masked by the noise; the fix is to keep the baseline clean at all times.
+- The only acceptable exceptions are: (a) a failure that genuinely cannot be reproduced locally and clearly belongs to infrastructure rather than code, or (b) a failure that requires user input the agent does not have (a missing secret, an external service that's down). Both must be called out explicitly in the task completion notes.
+- This applies to every agent (main, task, design, etc.) and every mode (plan, build).
+
 ## Architecture
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui + TanStack Query + wouter
 - **Backend**: Express + Passport.js + Drizzle ORM
