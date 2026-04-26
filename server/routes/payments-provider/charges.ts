@@ -190,7 +190,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       : '1';
     const lineItems = buildLineItems(league, quantity);
 
-    // Task #503: bowler.email is the default; the checkout UI may
+    // bowler.email is the default; the checkout UI may
     // also pass an explicit `buyerEmail` in the body so a bowler with
     // no email on file can still capture one inline at payment time
     // and trigger Square's hosted receipt.
@@ -199,7 +199,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       : '';
     const buyerEmail = bowler.email || requestBuyerEmail || undefined;
 
-    // Task #503: HARD-ENFORCE buyer email for interactive Square charges.
+    // HARD-ENFORCE buyer email for interactive Square charges.
     // This route only handles user-driven checkouts (a sourceId from a card
     // form / Apple Pay / Google Pay), so we have a human who can supply an
     // email. Autopay (server/services/payment-execution.ts) is the only
@@ -215,7 +215,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       );
     }
 
-    // Task #503: when a bowler self-checks-out (their own user account
+    // when a bowler self-checks-out (their own user account
     // is linked to this bowler row) and supplies a brand-new email at
     // checkout, persist it to their profile. This means the very next
     // charge will already have an email on file — no inline prompt and
@@ -296,7 +296,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
 
     const { lineageAmount, prizeFundAmount } = computePaymentSplit(amount, league);
 
-    // Task #503: capture Square's hosted-receipt fields and flag rows
+    // capture Square's hosted-receipt fields and flag rows
     // that were charged without a buyer email (Square only auto-emails
     // a receipt when CreatePayment includes `buyerEmailAddress`, so a
     // missing email means no receipt was sent — admins want that

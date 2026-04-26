@@ -171,7 +171,7 @@ async function handleSuccessfulPayment(
       providerPaymentId: paymentResult.paymentId,
       cardpointeRetref: paymentResult.providerRef?.cardpointeRetref,
       cardpointeAuthcode: paymentResult.providerRef?.cardpointeAuthcode,
-      // Task #503: same receipt fields the one-off charge path
+      // same receipt fields the one-off charge path
       // persists. `buyerEmailMissing` is meaningful for Square only —
       // CardPointe never emits a hosted receipt regardless.
       receiptUrl: paymentResult.receiptUrl,

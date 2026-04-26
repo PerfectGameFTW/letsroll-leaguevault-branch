@@ -16,7 +16,7 @@ interface UsePaymentFormSubmitOptions {
   setPaymentError: (error: string | null) => void;
   onClose: () => void;
   isCardPointe?: boolean;
-  // Task #503: optional inline email captured when the selected
+  // optional inline email captured when the selected
   // bowler has none on file — threaded to /payments-provider/payments
   // as `buyerEmail` so Square's hosted receipt still fires.
   buyerEmail?: string;

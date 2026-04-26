@@ -42,7 +42,7 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
   isAdmin = false,
 }: PaymentHistoryTableProps) {
   const showTeamColumn = !!bowlerTeamMap;
-  // Task #503: admin "Resend receipt" entry-point on the weekly
+  // admin "Resend receipt" entry-point on the weekly
   // payments admin table. Gated to paid Square/credit_card rows.
   const [resendTarget, setResendTarget] = useState<Payment | null>(null);
   const resendBowler = resendTarget
@@ -100,12 +100,9 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
                   </TableCell>
                   <TableCell>
                     <ViewReceiptButton payment={payment} />
-                    {/* Task #503 (7th-pass review): match ViewReceiptButton provenance —
-                        Square rows always qualify; legacy credit_card rows only when
-                        receiptUrl is already cached. */}
                     {isAdmin
                       && payment.status === 'paid'
-                      && (payment.type === 'square' || (payment.type === 'credit_card' && !!payment.receiptUrl)) && (
+                      && (payment.type === 'square' || payment.type === 'credit_card') && (
                       <Button
                         size="icon"
                         variant="ghost"

@@ -233,7 +233,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [open]);
 
-  // Task #503: clear inline receipt-email when the operator switches
+  // clear inline receipt-email when the operator switches
   // to a different bowler so we never accidentally reuse the prior
   // bowler's typed-in address.
   useEffect(() => {
@@ -250,14 +250,14 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       return;
     }
 
-    // Task #503: thread the inline-captured email through wallet
+    // thread the inline-captured email through wallet
     // (Apple Pay / Google Pay) charges too, so Square's hosted
     // receipt fires for bowlers with no email on file. Mirrors the
     // server's BUYER_EMAIL_REQUIRED gate to avoid an avoidable 400
     // round-trip mid-wallet-flow.
     const selected = bowlers.find((b) => b.id === bowlerId);
     const trimmedReceiptEmail = receiptEmail.trim();
-    // Task #503 (8th-pass review): only Square enforces
+    // only Square enforces
     // BUYER_EMAIL_REQUIRED server-side; CardPointe doesn't emit
     // hosted receipts so it must NOT be blocked here.
     if (!isCardPointe && !selected?.email && !trimmedReceiptEmail) {
@@ -327,7 +327,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [open, cleanupWallet]);
 
-  // Task #503: when the selected bowler has no email on file, capture
+  // when the selected bowler has no email on file, capture
   // one inline so Square's hosted receipt still fires for this charge.
   const selectedBowler = bowlers.find((b) => b.id === selectedBowlerId);
   const bowlerHasEmail = !!selectedBowler?.email;
@@ -400,7 +400,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               />
             )}
 
-            {/* Task #503 (8th-pass review): only Square enforces
+            {/* only Square enforces
                 BUYER_EMAIL_REQUIRED. Don't render the inline gate
                 for CardPointe — it has no hosted-receipt support
                 and the server doesn't require buyerEmail. */}
@@ -465,12 +465,12 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                   isWalletProcessing ||
                   (paymentType === "credit_card" && cardMode === 'new' && !isSquareReady) ||
                   (paymentType === "credit_card" && cardMode === 'saved' && !selectedSavedCardId) ||
-                  // Task #503 (3rd-pass review): inline email is
+                  // inline email is
                   // required for Square card charges when bowler has
                   // none on file. Server enforces this with
                   // BUYER_EMAIL_REQUIRED; mirrored here so the user
                   // never sees an avoidable round-trip.
-                  // Task #503 (8th-pass review): CardPointe doesn't
+                  // CardPointe doesn't
                   // enforce BUYER_EMAIL_REQUIRED so excluded here.
                   (paymentType === "credit_card" && !!selectedBowlerId && !bowlerHasEmail && !receiptEmail.trim() && !isCardPointe)
                 }

@@ -74,17 +74,12 @@ export function PaymentsTable({
           ) : (
             filteredPayments.map((payment) => {
               const bowler = bowlers.find((b) => b.id === payment.bowlerId);
-              // Square hosted-receipt actions only make sense for paid
-              // Square charges. CardPointe never emits hosted receipts;
-              // refunded rows would just resend the original charge.
-              // Task #503 (7th-pass review): match ViewReceiptButton
-              // provenance — Square rows always qualify; legacy
-              // credit_card rows only qualify when receiptUrl is
-              // already cached (proof Square emitted it). Hides the
-              // resend action for legacy CardPointe credit_card rows.
+              // Resend is offered for any paid card row; the server
+              // resolves provider/receipt availability and returns a
+              // clean error for legacy CardPointe rows.
               const canResend = isAdmin
                 && payment.status === 'paid'
-                && (payment.type === 'square' || (payment.type === 'credit_card' && !!payment.receiptUrl));
+                && (payment.type === 'square' || payment.type === 'credit_card');
               return (
                 <TableRow key={payment.id}>
                   <TableCell>{bowler?.name || "Unknown Bowler"}</TableCell>

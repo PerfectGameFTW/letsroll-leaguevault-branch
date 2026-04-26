@@ -5,7 +5,7 @@
  * the database row in `payments` remains the source of truth for the
  * user-visible payment list.
  *
- * Task #503 — Square refund-receipt behavior:
+ * Square refund-receipt behavior:
  *
  * Square's hosted "refund receipt" email is automatically sent ONLY when the
  * ORIGINAL payment carried a `buyerEmailAddress`. The Refunds API itself does

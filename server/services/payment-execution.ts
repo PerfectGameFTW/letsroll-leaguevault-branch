@@ -60,7 +60,7 @@ export async function executeCharge(
   paymentCustomerId: string | undefined,
   buyerEmail: string | undefined
 ): Promise<ChargeResult> {
-  // Task #503: Square only auto-emails a hosted receipt when the
+  // Square only auto-emails a hosted receipt when the
   // CreatePayment call includes buyerEmailAddress. A missing email on
   // a Square charge means the bowler will silently NOT get a receipt,
   // which we want surfaced both in production logs and on the row.

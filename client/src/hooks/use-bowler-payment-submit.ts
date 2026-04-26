@@ -26,7 +26,7 @@ interface UseBowlerPaymentSubmitOptions {
   storeCard: boolean;
   includeFinalTwoWeeks: boolean;
   showFinalTwoWeeksWarning: boolean;
-  // Task #503: optional inline email captured at checkout when the
+  // optional inline email captured at checkout when the
   // bowler has none on file. Threaded to the server so Square's
   // hosted receipt fires for this charge.
   buyerEmail?: string;

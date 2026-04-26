@@ -41,7 +41,7 @@ interface BowlerPaymentDialogProps {
   onApplePayClick?: () => Promise<void>;
   onGooglePayClick?: () => Promise<void>;
   isWalletProcessing?: boolean;
-  // Task #503: when the bowler has no email on file, surface an inline
+  // when the bowler has no email on file, surface an inline
   // capture so we can pass `buyerEmail` into the charge and trigger
   // Square's hosted receipt. Parent owns the controlled state.
   bowlerHasEmail?: boolean;
@@ -301,7 +301,7 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
               (cardMode === 'saved' && !selectedSavedCardId) ||
               isSubmitting ||
               isWalletProcessing ||
-              // Task #503 (3rd-pass review): block submit when the
+              // block submit when the
               // bowler has no email on file AND the inline "Email for
               // receipt" input is empty. Square will hard-reject the
               // request server-side; gating here gives instant UX.

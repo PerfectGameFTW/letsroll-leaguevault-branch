@@ -29,7 +29,7 @@ const log = createLogger('PaymentReceipts');
 
 const router = Router();
 
-// Task #503 (3rd-pass review): `email` is OPTIONAL. When omitted (or
+// `email` is OPTIONAL. When omitted (or
 // blank), the resend endpoint falls back to the bowler's email on
 // file. Admins only need to type an explicit address when sending to
 // a different email than the one stored on the bowler row. An empty
@@ -164,7 +164,7 @@ router.post('/payments/:id/resend-receipt', paymentWriteLimiter, async (req, res
       ? await storage.getOrganization(league.organizationId)
       : null;
 
-    // Task #503 (3rd-pass review): default to the bowler's on-file
+    // default to the bowler's on-file
     // email when the admin didn't supply an override. Only fall
     // through to NO_TARGET_EMAIL when neither side has an address.
     const bowler = await storage.getBowler(payment.bowlerId);

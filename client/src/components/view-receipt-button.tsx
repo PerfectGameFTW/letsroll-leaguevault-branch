@@ -11,38 +11,35 @@ interface Props {
 }
 
 /**
- * Task #503 — opens the Square hosted receipt for a paid card payment.
+ * Opens the Square hosted receipt for a paid card payment.
  *
  * Two paths:
- *  1. Cached: `payment.receiptUrl` is already on the row -> open in a
- *     new tab immediately (no network).
- *  2. Lazy backfill: legacy rows pre-#503 (and any row where Square's
- *     receipt URL wasn't returned at charge time) hit
- *     GET /api/payments-provider/payments/:id/receipt, which calls
+ * 1. Cached: `payment.receiptUrl` is already on the row -> open in a
+ * new tab immediately (no network).
+ * 2. Lazy backfill: legacy rows pre-#503 (and any row where Square's
+ * receipt URL wasn't returned at charge time) hit
+ * gET /api/payments-provider/payments/:id/receipt, which calls
  *     `provider.getPayment()` and caches the URL back to the row, then
- *     we open the returned URL.
+ * we open the returned URL.
  *
- * Renders nothing for non-card / unpaid / providerless rows since
+ * renders nothing for non-card / unpaid / providerless rows since
  * those have no hosted receipt to show.
  */
 export function ViewReceiptButton({ payment, variant = "icon" }: Props) {
   const { toast } = useToast();
   const [isFetching, setIsFetching] = useState(false);
 
-  // Task #503 (6th-pass review): tighten provenance. Square is the
-  // only provider that emits hosted receipts; CardPointe never sets
-  // `receiptUrl`. For type==="square" rows we always offer the
-  // button (cached or lazy-backfill via getPayment). For legacy
-  // type==="credit_card" rows we only offer it when `receiptUrl` is
-  // already cached — that's the strongest available proof the row
-  // was charged through Square. Without that proof the button could
-  // 404 for CardPointe rows, so we hide it instead.
-  const isPaid = payment.status === "paid";
+  // Show the button for any paid card row that either has a cached
+  // receipt URL or a provider payment id we can fetch by. Provider
+  // resolution happens server-side in the lazy-backfill endpoint;
+  // legacy CardPointe rows simply 404 cleanly and surface a toast.
+  const isCardPaid =
+    payment.status === "paid" &&
+    (payment.type === "square" || payment.type === "credit_card");
   const hasReceipt = !!payment.receiptUrl;
-  const isSquare = payment.type === "square";
-  const canBackfill = isSquare && !!payment.providerPaymentId;
+  const canBackfill = !!payment.providerPaymentId;
 
-  if (!isPaid || (!hasReceipt && !canBackfill)) {
+  if (!isCardPaid || (!hasReceipt && !canBackfill)) {
     return variant === "link" ? <span className="text-muted-foreground">—</span> : null;
   }
 

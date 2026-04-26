@@ -159,7 +159,7 @@ export default function PaymentHistoryPage() {
   useEffect(() => {
     if (!payDialogType) {
       cleanupCard();
-      // Task #503: clear inline receipt-email on dialog close so a
+      // clear inline receipt-email on dialog close so a
       // stale typed-in address never silently rides on the next
       // checkout attempt.
       setReceiptEmail('');
@@ -195,13 +195,13 @@ export default function PaymentHistoryPage() {
 
   const handleWalletPayment = useCallback(async (token: string, walletType: 'apple_pay' | 'google_pay') => {
     if (!bowlerId || !leagueId || !dialogAmountCents) return;
-    // Task #503: same inline email override as the card-form path so
+    // same inline email override as the card-form path so
     // Apple Pay / Google Pay charges also trigger Square's hosted
     // receipt when no email is on file for the bowler. Mirrors the
     // server's BUYER_EMAIL_REQUIRED so the wallet sheet doesn't
     // launch into an avoidable 400.
     const trimmedReceiptEmail = receiptEmail.trim();
-    // Task #503 (8th-pass review): only Square enforces
+    // only Square enforces
     // BUYER_EMAIL_REQUIRED server-side; CardPointe doesn't emit
     // hosted receipts so don't block its wallet flow either.
     if (!isCardPointe && !bowlerEmail && !trimmedReceiptEmail) {
@@ -297,7 +297,7 @@ export default function PaymentHistoryPage() {
     try {
       setIsSubmitting(true);
 
-      // Task #503: when no email is on file, the bowler can supply
+      // when no email is on file, the bowler can supply
       // one inline so Square's hosted receipt fires for this charge.
       const trimmedReceiptEmail = receiptEmail.trim();
       const overrideEmail = !bowlerEmail && trimmedReceiptEmail ? trimmedReceiptEmail : undefined;

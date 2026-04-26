@@ -146,7 +146,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           last4: cardDetails?.last4 ?? '****',
           brand: cardDetails?.cardBrand ?? 'UNKNOWN'
         },
-        // Task #503: capture Square's hosted-receipt URL + short
+        // capture Square's hosted-receipt URL + short
         // receipt number off the CreatePayment response so the
         // route can persist them on the payments row.
         receiptUrl: payment.receiptUrl,
@@ -273,7 +273,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
           last4: cardDetails?.last4 ?? '****',
           brand: cardDetails?.cardBrand ?? 'UNKNOWN',
         },
-        // Task #503: same hosted-receipt capture as processPayment.
+        // same hosted-receipt capture as processPayment.
         receiptUrl: payment.receiptUrl,
         receiptNumber: payment.receiptNumber,
       };
@@ -775,7 +775,7 @@ export class SquarePaymentProvider implements PaymentProvider, CatalogProvider, 
         cardBrand: payment.cardDetails?.card?.cardBrand,
         last4: payment.cardDetails?.card?.last4,
         orderId: payment.orderId,
-        // Task #503: surface receipt fields off GetPayment so the
+        // surface receipt fields off GetPayment so the
         // "View receipt" route can lazily backfill an older row.
         receiptUrl: payment.receiptUrl,
         receiptNumber: payment.receiptNumber,

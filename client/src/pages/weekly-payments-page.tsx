@@ -175,7 +175,7 @@ export default function WeeklyPaymentsPage() {
     staleTime: 1000 * 60,
   });
 
-  // Task #503: include ALL payment types (was filtered to cash/check only).
+  // include ALL payment types (was filtered to cash/check only).
   // Card/Square rows need to appear here so admins can View Receipt and
   // Resend Receipt for paid card charges from the weekly view. The shared
   // PaymentHistoryTable below already gates resend/edit actions per row.
