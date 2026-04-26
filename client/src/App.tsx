@@ -45,6 +45,7 @@ const DeleteAccountPage = lazy(() => import("@/pages/delete-account-page"));
 const DeletionRequestsPage = lazy(() => import("@/pages/deletion-requests-page"));
 const ApplePayJobsPage = lazy(() => import("@/pages/apple-pay-jobs-page"));
 const DataIntegrityPage = lazy(() => import("@/pages/data-integrity-page"));
+const AdminEmailChangeAuditsPage = lazy(() => import("@/pages/admin-email-change-audits-page"));
 const MessagingPage = lazy(() => import("@/pages/messaging-page"));
 
 function PageLoader() {
@@ -161,6 +162,7 @@ function Router() {
         <Route path="/admin/deletion-requests">{guard('systemAdmin', <DeletionRequestsPage />)}</Route>
         <Route path="/admin/apple-pay-jobs">{guard('systemAdmin', <ApplePayJobsPage />)}</Route>
         <Route path="/admin/data-integrity">{guard('systemAdmin', <DataIntegrityPage />)}</Route>
+        <Route path="/admin/email-change-audits">{guard('systemAdmin', <AdminEmailChangeAuditsPage />)}</Route>
 
         {/* Fallback route */}
         <Route component={NotFound} />

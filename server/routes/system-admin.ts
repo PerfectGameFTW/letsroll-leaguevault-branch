@@ -37,6 +37,11 @@ import {
   type DeletionRequestStatus,
 } from '@shared/schema';
 import { executeAccountDeletion } from '../services/account-deletion.js';
+import {
+  listAdminEmailChangeAudits,
+  countAdminEmailChangeAudits,
+  clampListLimit as clampAdminEmailChangeAuditListLimit,
+} from '../storage/admin-email-change-audits';
 
 const log = createLogger("SystemAdmin");
 
@@ -420,6 +425,39 @@ router.post('/orphaned-data-audits/:id/undo', requireAdmin, async (req: Request,
     sendSuccess(res, { id: auditId, undone: true });
   } catch (error) {
     handleRepairError(res, error, 'undo', 'audit');
+  }
+});
+
+// Read-only history of admin-initiated email-change requests (task #325
+// writes a row each time a system admin reroutes another user's login
+// email; task #375 surfaces those rows here for support triage). The
+// emails are stored already-masked, so this endpoint just returns the
+// joined display names alongside the row — the live `users.email`
+// values are intentionally NOT exposed because they may have changed
+// since the audit was written and would mislead the reader.
+router.get('/admin-email-change-audits', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rawTarget = typeof req.query.targetUserId === 'string'
+      ? parseInt(req.query.targetUserId, 10)
+      : NaN;
+    const targetUserId = Number.isFinite(rawTarget) && rawTarget > 0 ? rawTarget : undefined;
+
+    const rawLimit = typeof req.query.limit === 'string' ? parseInt(req.query.limit, 10) : NaN;
+    const requestedLimit = Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : undefined;
+    // Echo the *effective* (clamped) limit so the client's pagination
+    // math stays honest when a caller asks for more than the cap.
+    const limit = clampAdminEmailChangeAuditListLimit(requestedLimit);
+    const rawOffset = typeof req.query.offset === 'string' ? parseInt(req.query.offset, 10) : NaN;
+    const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
+
+    const [rows, total] = await Promise.all([
+      listAdminEmailChangeAudits({ targetUserId, limit, offset }),
+      countAdminEmailChangeAudits({ targetUserId }),
+    ]);
+    sendSuccess(res, { rows, total, limit, offset });
+  } catch (error) {
+    log.error('Error listing admin email change audits:', error);
+    sendError(res, 'Failed to list admin email change audits', 500, 'SERVER_ERROR');
   }
 });
 
