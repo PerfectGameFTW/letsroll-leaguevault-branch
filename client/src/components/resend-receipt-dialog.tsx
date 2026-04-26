@@ -35,10 +35,10 @@ export function ResendReceiptDialog({ payment, defaultEmail, onClose }: Props) {
   const handleSubmit = async () => {
     if (!payment) return;
     const trimmed = email.trim();
-    if (!trimmed || !trimmed.includes("@")) {
+    if (trimmed && !trimmed.includes("@")) {
       toast({
         title: "Invalid email",
-        description: "Enter a valid email address.",
+        description: "Enter a valid email address or leave blank to use the bowler's email on file.",
         variant: "destructive",
       });
       return;
@@ -51,7 +51,7 @@ export function ResendReceiptDialog({ payment, defaultEmail, onClose }: Props) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: trimmed }),
+          body: JSON.stringify(trimmed ? { email: trimmed } : {}),
         },
       );
       const data = await response.json();
@@ -60,7 +60,9 @@ export function ResendReceiptDialog({ payment, defaultEmail, onClose }: Props) {
       }
       toast({
         title: "Receipt sent",
-        description: `Receipt emailed to ${trimmed}.`,
+        description: trimmed
+          ? `Receipt emailed to ${trimmed}.`
+          : "Receipt emailed to the bowler's address on file.",
       });
       onClose();
     } catch (error) {
@@ -86,15 +88,18 @@ export function ResendReceiptDialog({ payment, defaultEmail, onClose }: Props) {
           </DialogDescription>
         </DialogHeader>
         <div className="py-2 space-y-2">
-          <Label htmlFor="resend-receipt-email">Email address</Label>
+          <Label htmlFor="resend-receipt-email">Email address (optional)</Label>
           <Input
             id="resend-receipt-email"
             type="email"
-            placeholder="bowler@example.com"
+            placeholder="Leave blank to use the bowler's email on file"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             autoFocus
           />
+          <p className="text-xs text-muted-foreground">
+            Leave blank to send to the bowler's email on file, or enter a different address.
+          </p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isPending}>Cancel</Button>
