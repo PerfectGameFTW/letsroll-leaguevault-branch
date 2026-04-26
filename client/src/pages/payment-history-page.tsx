@@ -193,8 +193,18 @@ export default function PaymentHistoryPage() {
     if (!bowlerId || !leagueId || !dialogAmountCents) return;
     // Task #503: same inline email override as the card-form path so
     // Apple Pay / Google Pay charges also trigger Square's hosted
-    // receipt when no email is on file for the bowler.
+    // receipt when no email is on file for the bowler. Mirrors the
+    // server's BUYER_EMAIL_REQUIRED so the wallet sheet doesn't
+    // launch into an avoidable 400.
     const trimmedReceiptEmail = receiptEmail.trim();
+    if (!bowlerEmail && !trimmedReceiptEmail) {
+      toast({
+        title: 'Email required',
+        description: 'Enter an email for the receipt before paying with Apple Pay / Google Pay.',
+        variant: 'destructive',
+      });
+      return;
+    }
     const overrideEmail = !bowlerEmail && trimmedReceiptEmail ? trimmedReceiptEmail : undefined;
     try {
       setIsWalletProcessing(true);
