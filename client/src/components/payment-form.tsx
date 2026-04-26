@@ -58,6 +58,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const [squareLoadFailed, setSquareLoadFailed] = useState(false);
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
+  const [receiptEmail, setReceiptEmail] = useState<string>('');
   const initializationAttempted = useRef(false);
 
   const { data: leagueData } = useQuery<{ success: boolean; data: League }>({
@@ -299,6 +300,11 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
   }, [open, cleanupWallet]);
 
+  // Task #503: when the selected bowler has no email on file, capture
+  // one inline so Square's hosted receipt still fires for this charge.
+  const selectedBowler = bowlers.find((b) => b.id === selectedBowlerId);
+  const bowlerHasEmail = !!selectedBowler?.email;
+
   const onSubmit = usePaymentFormSubmit({
     form,
     card,
@@ -307,6 +313,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     setPaymentError,
     onClose,
     isCardPointe,
+    buyerEmail: !bowlerHasEmail ? receiptEmail : undefined,
   });
 
   return (
@@ -364,6 +371,23 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                   </FormItem>
                 )}
               />
+            )}
+
+            {paymentType === "credit_card" && selectedBowlerId && !bowlerHasEmail && (
+              <FormItem>
+                <FormLabel>Email for receipt (optional)</FormLabel>
+                <FormControl>
+                  <Input
+                    type="email"
+                    placeholder="bowler@example.com"
+                    value={receiptEmail}
+                    onChange={(e) => setReceiptEmail(e.target.value)}
+                  />
+                </FormControl>
+                <p className="text-xs text-muted-foreground">
+                  This bowler has no email on file. Add one to send a Square receipt.
+                </p>
+              </FormItem>
             )}
 
             {paymentType === "credit_card" && (

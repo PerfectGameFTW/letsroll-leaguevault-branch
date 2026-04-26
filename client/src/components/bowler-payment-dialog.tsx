@@ -2,6 +2,7 @@ import { FC, useRef, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -40,6 +41,12 @@ interface BowlerPaymentDialogProps {
   onApplePayClick?: () => Promise<void>;
   onGooglePayClick?: () => Promise<void>;
   isWalletProcessing?: boolean;
+  // Task #503: when the bowler has no email on file, surface an inline
+  // capture so we can pass `buyerEmail` into the charge and trigger
+  // Square's hosted receipt. Parent owns the controlled state.
+  bowlerHasEmail?: boolean;
+  receiptEmail?: string;
+  onReceiptEmailChange?: (value: string) => void;
 }
 
 export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
@@ -68,6 +75,9 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
   onApplePayClick,
   onGooglePayClick,
   isWalletProcessing = false,
+  bowlerHasEmail = true,
+  receiptEmail = "",
+  onReceiptEmailChange,
 }) => {
   const showWallet = applePayAvailable || googlePayAvailable;
   const cardCallbackRef = useRef<(el: HTMLDivElement | null) => void>(() => {});
@@ -262,6 +272,25 @@ export const BowlerPaymentDialog: FC<BowlerPaymentDialogProps> = ({
                   Save this card for future payments
                 </Label>
               </div>
+            </div>
+          )}
+
+          {!bowlerHasEmail && onReceiptEmailChange && (
+            <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+              <Label htmlFor="receipt-email" className="text-sm font-medium">
+                Email for receipt (optional)
+              </Label>
+              <Input
+                id="receipt-email"
+                type="email"
+                placeholder="you@example.com"
+                value={receiptEmail}
+                onChange={(e) => onReceiptEmailChange(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                We don't have an email on file for you. Add one to get a
+                Square receipt for this payment.
+              </p>
             </div>
           )}
 

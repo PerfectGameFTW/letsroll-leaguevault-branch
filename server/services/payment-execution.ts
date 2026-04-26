@@ -13,6 +13,19 @@ export interface ChargeResult {
   cardId?: string;
   providerRef?: Record<string, string>;
   providerName?: string;
+  /**
+   * Hosted-receipt fields surfaced from the provider response so the
+   * payment-record-write path can persist them (task #503). Always
+   * undefined for CardPointe.
+   */
+  receiptUrl?: string;
+  receiptNumber?: string;
+  /**
+   * True when this charge was issued without a buyer email — i.e.
+   * Square skipped its auto-receipt step. Drives the
+   * `payments.receipt_email_missing` flag on the persisted row.
+   */
+  buyerEmailMissing?: boolean;
 }
 
 export type PaymentResult = ChargeResult;
@@ -47,6 +60,18 @@ export async function executeCharge(
   paymentCustomerId: string | undefined,
   buyerEmail: string | undefined
 ): Promise<ChargeResult> {
+  // Task #503: Square only auto-emails a hosted receipt when the
+  // CreatePayment call includes buyerEmailAddress. A missing email on
+  // a Square charge means the bowler will silently NOT get a receipt,
+  // which we want surfaced both in production logs and on the row.
+  const buyerEmailMissing = provider.providerName === 'square' && !buyerEmail;
+  if (buyerEmailMissing) {
+    logger.warn('[PaymentExecution] Square charge issued without buyer email — no auto-receipt will be sent', {
+      providerName: provider.providerName,
+      amount,
+    });
+  }
+
   if (lineItems.length > 0) {
     try {
       const orderResult = await provider.createOrderWithPayment(
@@ -60,7 +85,15 @@ export async function executeCharge(
       if (!orderResult.id) {
         return { status: 'error', error: 'Order payment succeeded but no payment ID returned', providerName: provider.providerName };
       }
-      return { status: 'success', paymentId: orderResult.id, providerRef: orderResult.providerRef, providerName: provider.providerName };
+      return {
+        status: 'success',
+        paymentId: orderResult.id,
+        providerRef: orderResult.providerRef,
+        providerName: provider.providerName,
+        receiptUrl: orderResult.receiptUrl,
+        receiptNumber: orderResult.receiptNumber,
+        buyerEmailMissing,
+      };
     } catch (error) {
       return { status: 'error', error: error instanceof Error ? error.message : 'Unknown error', providerName: provider.providerName };
     }
@@ -74,7 +107,15 @@ export async function executeCharge(
       undefined,
     );
     if (processResult?.id) {
-      return { status: 'success', paymentId: processResult.id, providerRef: processResult.providerRef, providerName: provider.providerName };
+      return {
+        status: 'success',
+        paymentId: processResult.id,
+        providerRef: processResult.providerRef,
+        providerName: provider.providerName,
+        receiptUrl: processResult.receiptUrl,
+        receiptNumber: processResult.receiptNumber,
+        buyerEmailMissing,
+      };
     }
     return { status: 'error', error: 'Payment processing failed', providerName: provider.providerName };
   }
@@ -163,6 +204,17 @@ export async function createPaymentRecord(
   tx?: typeof db,
   providerRef?: Record<string, string>,
   providerName?: string,
+  /**
+   * Receipt context for the autopay row (task #503). The scheduler
+   * threads these from the ChargeResult returned by `executeCharge`.
+   * `buyerEmailMissing` is meaningful for Square only — CardPointe
+   * never auto-emails a hosted receipt, so the flag stays false.
+   */
+  receipt?: {
+    receiptUrl?: string;
+    receiptNumber?: string;
+    buyerEmailMissing?: boolean;
+  },
 ): Promise<void> {
   const target = tx ?? db;
   const { lineageAmount, prizeFundAmount } = computePaymentSplit(amount, league);
@@ -179,6 +231,12 @@ export async function createPaymentRecord(
     providerPaymentId: paymentId,
     cardpointeRetref: providerRef?.cardpointeRetref,
     cardpointeAuthcode: providerRef?.cardpointeAuthcode,
+    receiptUrl: receipt?.receiptUrl,
+    receiptNumber: receipt?.receiptNumber,
+    receiptEmailMissing:
+      status === 'paid' && providerName === 'square'
+        ? receipt?.buyerEmailMissing ?? false
+        : false,
     notes,
   });
 }

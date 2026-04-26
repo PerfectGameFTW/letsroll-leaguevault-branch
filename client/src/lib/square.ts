@@ -302,7 +302,7 @@ export async function tokenizeCard(cardInstance: SquareCard | CardPointeCard): P
   }));
 }
 
-export async function createPayment(amount: number, cardInstance: SquareCardHook | CardPointeCard, bowlerId: number, leagueId: number, storeCard: boolean = false): Promise<PaymentResult> {
+export async function createPayment(amount: number, cardInstance: SquareCardHook | CardPointeCard, bowlerId: number, leagueId: number, storeCard: boolean = false, buyerEmail?: string): Promise<PaymentResult> {
   try {
     if (!cardInstance) {
       throw new Error(JSON.stringify({
@@ -367,7 +367,8 @@ export async function createPayment(amount: number, cardInstance: SquareCardHook
         amount,
         bowlerId,
         leagueId,
-        storeCard
+        storeCard,
+        ...(buyerEmail ? { buyerEmail } : {}),
       };
 
       const response = await csrfFetch('/api/payments-provider/payments', {

@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Trash2 } from "lucide-react";
+import { Loader2, Trash2, Receipt } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -90,6 +90,13 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
                     ${(payment.amount / 100).toFixed(2)}
                   </TableCell>
                   <TableCell>
+                    {payment.receiptUrl && (
+                      <Button asChild size="icon" variant="ghost" title="View receipt">
+                        <a href={payment.receiptUrl} target="_blank" rel="noopener noreferrer">
+                          <Receipt className="h-4 w-4 text-primary" />
+                        </a>
+                      </Button>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"

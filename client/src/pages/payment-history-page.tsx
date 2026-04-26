@@ -36,6 +36,7 @@ export default function PaymentHistoryPage() {
   const [cardMode, setCardMode] = useState<'new' | 'saved'>('new');
   const [selectedSavedCardId, setSelectedSavedCardId] = useState<string>('');
   const [storeCard, setStoreCard] = useState(false);
+  const [receiptEmail, setReceiptEmail] = useState('');
 
   const [isWalletProcessing, setIsWalletProcessing] = useState(false);
 
@@ -163,6 +164,7 @@ export default function PaymentHistoryPage() {
 
   const payments = hasPaymentsFromDetails ? allPaymentsFromDetails : (paymentsResponse?.data || []);
   const bowlerName = bowlerDetailsResponse?.data?.bowler?.name || '';
+  const bowlerEmail = bowlerDetailsResponse?.data?.bowler?.email || '';
 
   const bowlerPayments = payments.filter(p => p.bowlerId === bowlerId && p.leagueId === leagueId);
 
@@ -272,6 +274,11 @@ export default function PaymentHistoryPage() {
     try {
       setIsSubmitting(true);
 
+      // Task #503: when no email is on file, the bowler can supply
+      // one inline so Square's hosted receipt fires for this charge.
+      const trimmedReceiptEmail = receiptEmail.trim();
+      const overrideEmail = !bowlerEmail && trimmedReceiptEmail ? trimmedReceiptEmail : undefined;
+
       if (cardMode === 'saved' && selectedSavedCardId) {
         const response = await csrfFetch('/api/payments-provider/payments', {
           method: 'POST',
@@ -282,6 +289,7 @@ export default function PaymentHistoryPage() {
             bowlerId,
             leagueId,
             storeCard: false,
+            ...(overrideEmail ? { buyerEmail: overrideEmail } : {}),
           }),
         });
         const responseData = await response.json();
@@ -289,7 +297,7 @@ export default function PaymentHistoryPage() {
           throw new Error(responseData.error?.message || 'Payment failed');
         }
       } else {
-        await createPayment(dialogAmount, card!, bowlerId, leagueId, storeCard);
+        await createPayment(dialogAmount, card!, bowlerId, leagueId, storeCard, overrideEmail);
         if (storeCard) {
           queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowlerId}`] });
         }
@@ -451,6 +459,9 @@ export default function PaymentHistoryPage() {
             onApplePayClick={handleApplePayClick}
             onGooglePayClick={handleGooglePayClick}
             isWalletProcessing={isWalletBusy || isWalletProcessing}
+            bowlerHasEmail={!!bowlerEmail}
+            receiptEmail={receiptEmail}
+            onReceiptEmailChange={setReceiptEmail}
           />
         </ErrorBoundary>
 

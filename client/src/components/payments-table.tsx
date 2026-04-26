@@ -1,4 +1,5 @@
-import { Loader2, Trash2, RotateCcw } from "lucide-react";
+import { useState } from "react";
+import { Loader2, Trash2, RotateCcw, Receipt, Send } from "lucide-react";
 import { format } from "date-fns";
 import {
   Table,
@@ -11,6 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { isCardPaymentType } from "@shared/schema/constants";
+import { ResendReceiptDialog } from "@/components/resend-receipt-dialog";
 import type { Payment, Bowler } from "@shared/schema";
 
 function paymentTypeLabel(payment: Payment): string {
@@ -45,6 +47,7 @@ export function PaymentsTable({
   isRefundPending,
   isDeletePending,
 }: Props) {
+  const [resendTarget, setResendTarget] = useState<Payment | null>(null);
   return (
     <div className="rounded-md border">
       <Table>
@@ -55,7 +58,7 @@ export function PaymentsTable({
             <TableHead>Amount</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="hidden md:table-cell">Payment Type</TableHead>
-            <TableHead className="w-[100px]">Actions</TableHead>
+            <TableHead className="w-[140px]">Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -70,6 +73,12 @@ export function PaymentsTable({
           ) : (
             filteredPayments.map((payment) => {
               const bowler = bowlers.find((b) => b.id === payment.bowlerId);
+              // Square hosted-receipt actions only make sense for paid
+              // Square charges. CardPointe never emits hosted receipts;
+              // refunded rows would just resend the original charge.
+              const canResend = isAdmin
+                && payment.status === 'paid'
+                && (payment.type === 'square' || payment.type === 'credit_card');
               return (
                 <TableRow key={payment.id}>
                   <TableCell>{bowler?.name || "Unknown Bowler"}</TableCell>
@@ -93,6 +102,24 @@ export function PaymentsTable({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
+                      {payment.receiptUrl && (
+                        <Button asChild size="icon" variant="ghost" title="View receipt">
+                          <a href={payment.receiptUrl} target="_blank" rel="noopener noreferrer">
+                            <Receipt className="h-4 w-4 text-primary" />
+                          </a>
+                        </Button>
+                      )}
+                      {canResend && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title={payment.receiptEmailMissing ? "No receipt sent — resend now" : "Resend receipt"}
+                          onClick={() => setResendTarget(payment)}
+                          className={payment.receiptEmailMissing ? "text-amber-600" : ""}
+                        >
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      )}
                       {payment.status === "paid" && isCardPaymentType(payment.type) && isAdmin && (
                         <Button
                           size="icon"
@@ -127,6 +154,15 @@ export function PaymentsTable({
           )}
         </TableBody>
       </Table>
+      <ResendReceiptDialog
+        payment={resendTarget}
+        defaultEmail={
+          resendTarget
+            ? bowlers.find((b) => b.id === resendTarget.bowlerId)?.email ?? ""
+            : ""
+        }
+        onClose={() => setResendTarget(null)}
+      />
     </div>
   );
 }

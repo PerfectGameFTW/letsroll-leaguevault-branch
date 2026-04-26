@@ -26,6 +26,10 @@ interface UseBowlerPaymentSubmitOptions {
   storeCard: boolean;
   includeFinalTwoWeeks: boolean;
   showFinalTwoWeeksWarning: boolean;
+  // Task #503: optional inline email captured at checkout when the
+  // bowler has none on file. Threaded to the server so Square's
+  // hosted receipt fires for this charge.
+  buyerEmail?: string;
   financials: {
     fullSeasonAmount: number;
     finalTwoWeeks: { amount: number; dueByWeek: number; isPaid: boolean };
@@ -49,6 +53,7 @@ export function useBowlerPaymentSubmit({
   storeCard,
   includeFinalTwoWeeks,
   showFinalTwoWeeksWarning,
+  buyerEmail,
   financials,
   calculateTotalAmount,
   setIsSubmitting,
@@ -155,6 +160,7 @@ export function useBowlerPaymentSubmit({
           queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
         }
       } else if (cardMode === 'saved' && selectedSavedCardId) {
+        const trimmedBuyerEmail = (buyerEmail ?? '').trim();
         const response = await csrfFetch('/api/payments-provider/payments', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -164,6 +170,7 @@ export function useBowlerPaymentSubmit({
             bowlerId: bowler.id,
             leagueId: league.id,
             storeCard: false,
+            ...(trimmedBuyerEmail && !bowler.email ? { buyerEmail: trimmedBuyerEmail } : {}),
           }),
         });
         const responseData = await response.json();
@@ -174,7 +181,9 @@ export function useBowlerPaymentSubmit({
         paymentWasCharged = true;
       } else {
         const shouldStore = isAutoPay || storeCard;
-        const paymentResult = await createPayment(amount, card!, bowler.id, league.id, shouldStore);
+        const trimmedBuyerEmail = (buyerEmail ?? '').trim();
+        const overrideEmail = trimmedBuyerEmail && !bowler.email ? trimmedBuyerEmail : undefined;
+        const paymentResult = await createPayment(amount, card!, bowler.id, league.id, shouldStore, overrideEmail);
         if (shouldStore) {
           queryClient.invalidateQueries({ queryKey: [`/api/payments-provider/cards/${bowler.id}`] });
         }
@@ -249,7 +258,7 @@ export function useBowlerPaymentSubmit({
   }, [
     card, cardMode, selectedSavedCardId, league, bowler, weeklyFee,
     selectedSchedule, storeCard, includeFinalTwoWeeks, showFinalTwoWeeksWarning,
-    financials, calculateTotalAmount, toast,
+    buyerEmail, financials, calculateTotalAmount, toast,
     setIsSubmitting, setShowFinalTwoWeeksWarning, setIncludeFinalTwoWeeks, setShowPaymentSetup,
   ]);
 }

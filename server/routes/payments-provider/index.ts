@@ -20,6 +20,7 @@ import catalogRouter from './catalog.js';
 import cardsRouter from './cards.js';
 import applePayRouter from './apple-pay.js';
 import configRouter from './config.js';
+import receiptsRouter from './receipts.js';
 
 const router = Router();
 
@@ -31,5 +32,6 @@ router.use(catalogRouter);
 router.use(cardsRouter);
 router.use(applePayRouter);
 router.use(configRouter);
+router.use(receiptsRouter);
 
 export default router;

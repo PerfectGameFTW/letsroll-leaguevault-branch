@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Receipt } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Payment } from "@shared/schema";
@@ -19,12 +19,13 @@ export function BowlerPaymentHistoryTable({ payments }: Props) {
             <TableHead>Amount</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Transaction ID</TableHead>
+            <TableHead>Receipt</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {payments.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={5} className="text-center">No payment history</TableCell>
+              <TableCell colSpan={6} className="text-center">No payment history</TableCell>
             </TableRow>
           ) : (
             payments.map((payment) => (
@@ -56,6 +57,22 @@ export function BowlerPaymentHistoryTable({ payments }: Props) {
                       <span className="text-muted-foreground">N/A</span>
                     )}
                   </div>
+                </TableCell>
+                <TableCell>
+                  {payment.receiptUrl ? (
+                    <a
+                      href={payment.receiptUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                      title="View receipt"
+                    >
+                      <Receipt className="h-4 w-4" />
+                      View
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
               </TableRow>
             ))

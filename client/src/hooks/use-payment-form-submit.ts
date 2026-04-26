@@ -16,6 +16,10 @@ interface UsePaymentFormSubmitOptions {
   setPaymentError: (error: string | null) => void;
   onClose: () => void;
   isCardPointe?: boolean;
+  // Task #503: optional inline email captured when the selected
+  // bowler has none on file — threaded to /payments-provider/payments
+  // as `buyerEmail` so Square's hosted receipt still fires.
+  buyerEmail?: string;
 }
 
 export function usePaymentFormSubmit({
@@ -26,6 +30,7 @@ export function usePaymentFormSubmit({
   setPaymentError,
   onClose,
   isCardPointe = false,
+  buyerEmail,
 }: UsePaymentFormSubmitOptions) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -33,6 +38,9 @@ export function usePaymentFormSubmit({
   const onSubmit = async (data: InsertPayment) => {
     try {
       setPaymentError(null);
+
+      const trimmedBuyerEmail = (buyerEmail ?? '').trim();
+      const buyerEmailField = trimmedBuyerEmail ? { buyerEmail: trimmedBuyerEmail } : {};
 
       if (data.type === 'credit_card') {
         if (cardMode === 'saved' && selectedSavedCardId) {
@@ -45,6 +53,7 @@ export function usePaymentFormSubmit({
               bowlerId: data.bowlerId,
               leagueId: data.leagueId,
               storeCard: false,
+              ...buyerEmailField,
             }),
           });
 
@@ -100,6 +109,7 @@ export function usePaymentFormSubmit({
             bowlerId: data.bowlerId,
             leagueId: data.leagueId,
             storeCard: data.storeCard || false,
+            ...buyerEmailField,
           }),
         });
 

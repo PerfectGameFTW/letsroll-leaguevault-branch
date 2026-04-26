@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Loader2, RotateCcw } from "lucide-react";
+import { Loader2, RotateCcw, AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { isCardPaymentType } from "@shared/schema/constants";
 import type { Payment } from "@shared/schema";
 
@@ -59,6 +60,17 @@ export function RefundPaymentDialog({ payment, onClose, onConfirm, isPending }: 
             )}
           </DialogDescription>
         </DialogHeader>
+        {payment?.receiptEmailMissing && (
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              The original charge was processed without a buyer email, so
+              Square will not auto-email a refund receipt either. Use
+              <strong> Resend Receipt </strong>
+              after the refund to send confirmation manually.
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="py-2">
           <label className="text-sm font-medium">Reason (optional)</label>
           <Input
