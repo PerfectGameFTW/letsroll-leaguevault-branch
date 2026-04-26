@@ -140,6 +140,39 @@ jobs:
       - name: Wire sanitization (raw User/Organization)
         run: tsx scripts/check-wire-sanitization.ts
 
+      # `npm run build` = `vite build && esbuild server/index.ts ...`
+      # (task #468). Runs the full production build of both halves of
+      # the app:
+      #
+      #   * `vite build` does the production bundle of the React
+      #     client. This catches things the dev server happily papers
+      #     over — a broken `@/`-aliased import, a missing static
+      #     asset, a route component that only resolves through Vite's
+      #     dev-mode resolver, or a chunk that blows past the size
+      #     budget. Without this step a PR can land green and only
+      #     break at deploy time.
+      #
+      #   * `esbuild server/index.ts --platform=node --packages=external
+      #     --bundle --format=esm --outdir=dist` produces the
+      #     `dist/index.js` that `npm start` actually executes in
+      #     production. `npm run dev` runs `tsx server/index.ts`, which
+      #     uses tsx's loader to resolve TS-only imports and path
+      #     aliases — those would crash `node dist/index.js` at boot.
+      #     This step catches that mismatch at PR time instead of at
+      #     deploy time.
+      #
+      # Placed last in the static-check sequence on purpose: it's the
+      # most expensive of the five steps (~20-40s wall clock for the
+      # Vite half on a GitHub-hosted runner), so the cheaper checks
+      # (tsc, lint, csrf, org-isolation, wire-sanitization) get to
+      # fail fast first if any of them is going to fail. No DB / no
+      # services / no secrets needed — the build is purely static.
+      # The `dist/` output is intentionally not uploaded as an artifact;
+      # the goal here is to gate the PR on a clean exit code, not to
+      # ship a build to anything downstream.
+      - name: Production build
+        run: npm run build
+
   # Sibling job that runs the full vitest suite (`npm test`) on every PR
   # and push to `main`. Task #442 wired this in: before this job
   # existed, the test suite was the safety net the project was leaning

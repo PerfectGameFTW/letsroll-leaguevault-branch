@@ -9,7 +9,7 @@ suite never gates the fast static checks (and vice versa).
 
 | Workflow file | Job name | Triggers | What it runs |
 |---|---|---|---|
-| `ci.yml` | `Type check & lint` | Every PR to `main`, every push to `main` | `tsc`, `eslint .`, `check:csrf`, `check:org-isolation` |
+| `ci.yml` | `Type check & lint` | Every PR to `main`, every push to `main` | `tsc`, `eslint .`, `check:csrf`, `check:org-isolation`, `check-wire-sanitization`, `npm run build` |
 | `ci.yml` | `Tests` | Every PR to `main`, every push to `main` | `npm test` (vitest: parallel + serial-fk-bypass + client-components projects) |
 | `race-suite.yml` | `Race suite` | PRs that touch the sweep / bootstrap files (and every push to `main`) | `npm run test:race` — alias for `bash scripts/test-race.sh` (the two `RUN_BOOTSTRAP_RACE_TESTS=1` race files, serially) |
 | `post-deploy-trust-proxy.yml` | `Probe trust-proxy on live deploy` | Every 30 minutes (cron) and on `workflow_dispatch` | `scripts/verify-trust-proxy-deploy.ts` against the live deploy (task #379) — see [Post-deploy trust-proxy probe](#post-deploy-trust-proxy-probe) below |
@@ -49,6 +49,29 @@ The two opt-in race files
 `RUN_BOOTSTRAP_RACE_TESTS=1`. They are NOT run by `npm test` and
 therefore not by the `Tests` job — they are owned by the `Race suite`
 workflow.
+
+### Production build pinned by the `Type check & lint` job
+
+The last step in `check-and-lint` is `npm run build` (task #468),
+which runs the full Vite production bundle of the client and the
+esbuild bundle of `server/index.ts` — i.e. exactly what `npm start`
+will execute in production. Wiring this into CI catches two classes
+of regression that the type checker, lint, and dev server all let
+through:
+
+- **Broken Vite production builds** — a missing static asset, a
+  broken `@/`-aliased import that only resolves through Vite's
+  dev-mode resolver, an oversized chunk, or any other Vite
+  build-time failure. The dev server happily papers over these.
+- **Broken server bundle** — `npm run dev` runs `tsx server/index.ts`
+  via tsx's loader, which resolves TS-only imports and path aliases
+  the production `node dist/index.js` cannot. A regression that
+  works in dev but crashes at production boot fails this step
+  instead of slipping through to deploy time.
+
+The `dist/` output is intentionally not uploaded as an artifact —
+the goal is a clean exit code as a gate, not to publish a build
+downstream.
 
 ### Self-tests pinned by the `Tests` job
 
