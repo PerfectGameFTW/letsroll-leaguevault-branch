@@ -1,0 +1,223 @@
+/**
+ * Post-deploy verification probe for the trust-proxy contract (task #379).
+ *
+ * Pairs with the boot-time guard at `server/lib/trust-proxy-check.ts`
+ * and the system-admin debug endpoint
+ * `GET /api/system-admin/trust-proxy-status`. The boot guard catches
+ * code-side misconfiguration on startup; this probe catches the case
+ * where a config change at the proxy layer (Replit edge, custom
+ * domain, future CDN) silently re-introduces the bug without any code
+ * change. If `req.ip` collapses to the proxy's loopback / private
+ * address, every per-IP rate limiter (notably the 5 req / 15 min
+ * setupAdminLimiter) becomes a global ceiling for the entire internet.
+ *
+ * What this script does
+ * ---------------------
+ *   1. Calls the debug endpoint on the deployed app, presenting an
+ *      admin Cookie header so it can authenticate as a system_admin.
+ *   2. Asserts HTTP 200 and the response shape is valid JSON.
+ *   3. Asserts `synthetic.ok === true` — the boot probe still passes
+ *      (i.e. nothing about the deployed Express config has drifted
+ *      since last boot).
+ *   4. Asserts `live.resolvedIp` is NOT a loopback / private address.
+ *      That's the post-deploy reality check: a real external request
+ *      from this script's caller IP must come back as a routable
+ *      public address.
+ *   5. If `EXPECTED_RESOLVED_IP` is set, asserts an exact match. Use
+ *      this from a CI job that knows its egress IP (e.g. a self-hosted
+ *      runner with a static IP).
+ *
+ * Required env vars
+ * -----------------
+ *   BASE_URL         e.g. https://app.example.com
+ *   ADMIN_COOKIE     full Cookie header value, e.g.
+ *                    "connect.sid=s%3A..."
+ *
+ * Optional env vars
+ * -----------------
+ *   EXPECTED_RESOLVED_IP   the public egress IP of this caller; if
+ *                          set, the script asserts an exact match
+ *                          against `live.resolvedIp`.
+ *   PROBE_TIMEOUT_MS       default 10000.
+ *
+ * Exit codes
+ * ----------
+ *   0  all assertions passed
+ *   1  any assertion failed (loud message printed to stderr)
+ *   2  configuration error (missing required env var, bad URL, etc.)
+ *
+ * Wire it into your deploy pipeline as the last step after the new
+ * version is healthy, so a misconfigured proxy fails the deploy
+ * loudly instead of silently degrading the rate-limit ceiling.
+ */
+
+interface ProbeResponse {
+  success: boolean;
+  data?: {
+    live: {
+      resolvedIp: string | null;
+      socketRemoteAddress: string | null;
+      xForwardedFor: string | null;
+      protocol: string;
+      hostname: string;
+    };
+    config: {
+      trustProxySetting: unknown;
+    };
+    synthetic: {
+      ok: boolean;
+      resolvedIp: string;
+      reason: string | null;
+    };
+  };
+  error?: { message?: string; code?: string };
+}
+
+// Mirrors `isPrivateOrLoopback` in `server/lib/trust-proxy-check.ts`.
+// Kept inline so the script has zero compile-time deps on the server
+// bundle — it can run from a minimal CI image with just `tsx` (or
+// even be transpiled and run as plain node) without pulling Express.
+const PRIVATE_OR_LOOPBACK_PREFIXES = [
+  '127.', '10.', '192.168.', '169.254.', '::1', 'fe80:', 'fc', 'fd',
+];
+
+function isPrivateOrLoopback(ip: string): boolean {
+  if (!ip) return true;
+  const lower = ip.toLowerCase();
+  if (lower === '::1' || lower === '127.0.0.1' || lower === 'unknown') return true;
+  const m = /^172\.(\d+)\./.exec(lower);
+  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return true;
+  return PRIVATE_OR_LOOPBACK_PREFIXES.some((p) => lower.startsWith(p));
+}
+
+function fail(msg: string, exitCode = 1): never {
+  console.error(`[verify-trust-proxy-deploy] FAIL — ${msg}`);
+  process.exit(exitCode);
+}
+
+function info(msg: string): void {
+  console.log(`[verify-trust-proxy-deploy] ${msg}`);
+}
+
+export async function runVerifier(env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const baseUrl = env.BASE_URL?.trim();
+  const adminCookie = env.ADMIN_COOKIE?.trim();
+  const expectedResolvedIp = env.EXPECTED_RESOLVED_IP?.trim() || null;
+  const timeoutMs = (() => {
+    const raw = env.PROBE_TIMEOUT_MS?.trim();
+    const n = raw ? Number(raw) : NaN;
+    return Number.isFinite(n) && n > 0 ? n : 10_000;
+  })();
+
+  if (!baseUrl) fail('BASE_URL is required (e.g. https://app.example.com)', 2);
+  if (!adminCookie) fail('ADMIN_COOKIE is required (full Cookie header value)', 2);
+
+  let url: URL;
+  try {
+    url = new URL('/api/system-admin/trust-proxy-status', baseUrl);
+  } catch {
+    fail(`BASE_URL is not a valid URL: ${baseUrl}`, 2);
+  }
+
+  info(`Probing ${url.toString()}`);
+
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Cookie: adminCookie!,
+      },
+      signal: ac.signal,
+      redirect: 'manual',
+    });
+  } catch (err) {
+    fail(`request failed: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (res!.status !== 200) {
+    const body = await res!.text().catch(() => '<unreadable body>');
+    fail(`HTTP ${res!.status} from probe endpoint. Body: ${body.slice(0, 500)}`);
+  }
+
+  let body: ProbeResponse;
+  try {
+    body = (await res!.json()) as ProbeResponse;
+  } catch (err) {
+    fail(`response was not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (!body!.success || !body!.data) {
+    fail(`response not successful: ${JSON.stringify(body!).slice(0, 500)}`);
+  }
+  const data = body!.data!;
+
+  // Assertion 1: the synthetic probe (same one the boot guard uses)
+  // still reports green. If this regresses, the deployed Express
+  // config has drifted in a way the boot guard would have caught — a
+  // strong signal something replaced the running process without
+  // rebooting through our entrypoint.
+  if (!data.synthetic.ok) {
+    fail(
+      `synthetic probe failed: resolvedIp=${data.synthetic.resolvedIp} ` +
+        `reason=${data.synthetic.reason ?? '<none>'} ` +
+        `trustProxySetting=${JSON.stringify(data.config.trustProxySetting)}`,
+    );
+  }
+
+  // Assertion 2: the live request resolved to a routable address. This
+  // is the post-deploy reality check the boot guard cannot make on
+  // its own (it only synthesizes a request).
+  const liveIp = data.live.resolvedIp ?? '';
+  if (isPrivateOrLoopback(liveIp)) {
+    fail(
+      `live req.ip resolved to a loopback/private address (${liveIp}). ` +
+        `The proxy is not honoring X-Forwarded-For for real external requests; ` +
+        `per-IP rate limiters will key on the proxy's address and brute-force ` +
+        `protection collapses into a global cap. ` +
+        `socketRemoteAddress=${data.live.socketRemoteAddress ?? '<null>'} ` +
+        `xForwardedFor=${data.live.xForwardedFor ?? '<null>'} ` +
+        `trustProxySetting=${JSON.stringify(data.config.trustProxySetting)}`,
+    );
+  }
+
+  // Assertion 3 (optional): exact-match against a known caller IP.
+  if (expectedResolvedIp && liveIp !== expectedResolvedIp) {
+    fail(
+      `live req.ip (${liveIp}) does not match EXPECTED_RESOLVED_IP (${expectedResolvedIp}). ` +
+        `Either the proxy is rewriting XFF, the trust-proxy hop count is off, ` +
+        `or the egress IP changed. xForwardedFor=${data.live.xForwardedFor ?? '<null>'}`,
+    );
+  }
+
+  info(
+    `OK — live.resolvedIp=${liveIp} synthetic.ok=true ` +
+      `trustProxySetting=${JSON.stringify(data.config.trustProxySetting)}`,
+  );
+}
+
+// Only run when invoked directly (so the test can import `runVerifier`
+// without triggering the side effect).
+const isMain = (() => {
+  try {
+    const argv1 = process.argv[1];
+    if (!argv1) return false;
+    // import.meta.url is the file URL of this module under tsx/ESM.
+    const here = new URL(import.meta.url).pathname;
+    return argv1 === here || argv1.endsWith('/verify-trust-proxy-deploy.ts');
+  } catch {
+    return false;
+  }
+})();
+
+if (isMain) {
+  runVerifier().catch((err) => {
+    console.error(`[verify-trust-proxy-deploy] unexpected error: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+    process.exit(1);
+  });
+}

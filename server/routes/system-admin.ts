@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, type Express } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser, handleZodError, handleUserOrgError } from '../utils/api.js';
 import { storage } from '../storage';
@@ -29,6 +29,7 @@ import {
   type OrphanedResourceType,
 } from '../storage/orphaned-data';
 import { requireAdmin } from '../middleware/admin.js';
+import { verifyTrustProxy } from '../lib/trust-proxy-check.js';
 import { createLogger } from '../logger';
 import {
   updateDeletionRequestStatusSchema,
@@ -458,6 +459,69 @@ router.get('/admin-email-change-audits', requireAdmin, async (req: Request, res:
   } catch (error) {
     log.error('Error listing admin email change audits:', error);
     sendError(res, 'Failed to list admin email change audits', 500, 'SERVER_ERROR');
+  }
+});
+
+// Debug endpoint for the post-deploy trust-proxy smoke test (task
+// #379). The boot guard at `assertTrustProxyAtBoot` catches code-side
+// misconfiguration on startup, but a config change at the proxy layer
+// (Replit edge, custom domain, future CDN) can re-introduce the bug
+// without any code change. This endpoint exposes:
+//
+//   - `live`: what THIS request actually resolved to — the real
+//     `req.ip` Express chose given the configured trust-proxy hop
+//     count and the X-Forwarded-For header on the wire. A post-deploy
+//     probe calling from a known external IP can compare and assert
+//     they match (and definitely aren't loopback/private — which
+//     would mean per-IP rate limiters are keying on the proxy).
+//   - `config`: the configured `app.get('trust proxy')` value (raw
+//     setting OR the compiled function's hop count if numeric).
+//   - `synthetic`: the same `verifyTrustProxy` probe used at boot,
+//     so the endpoint is also useful as an at-rest invariant check
+//     without needing a known caller IP.
+//
+// system_admin only because `req.ip` and the raw XFF header can be
+// considered PII / network metadata that we don't want exposed to a
+// regular user. The probe script signs in as a system_admin and
+// presents the resulting session cookie.
+router.get('/trust-proxy-status', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const trustSetting = req.app.get('trust proxy');
+    const xff = typeof req.headers['x-forwarded-for'] === 'string'
+      ? req.headers['x-forwarded-for']
+      : Array.isArray(req.headers['x-forwarded-for'])
+        ? req.headers['x-forwarded-for'].join(', ')
+        : null;
+    // Bound the echoed XFF in case an upstream client crafts a huge
+    // header. 256 chars is plenty to debug a real proxy chain.
+    const xffTruncated = xff && xff.length > 256 ? `${xff.slice(0, 256)}…` : xff;
+
+    // `req.app` is typed as `Application`; `verifyTrustProxy` accepts
+    // the slightly richer `Express` type, but only reads `app.get(...)`
+    // which both types share. Cast is safe.
+    const synthetic = verifyTrustProxy(req.app as unknown as Express);
+    sendSuccess(res, {
+      live: {
+        resolvedIp: req.ip ?? null,
+        socketRemoteAddress: req.socket?.remoteAddress ?? null,
+        xForwardedFor: xffTruncated,
+        protocol: req.protocol,
+        hostname: req.hostname,
+      },
+      config: {
+        trustProxySetting: typeof trustSetting === 'function'
+          ? '[function]'
+          : trustSetting ?? null,
+      },
+      synthetic: {
+        ok: synthetic.ok,
+        resolvedIp: synthetic.resolvedIp,
+        reason: synthetic.reason ?? null,
+      },
+    });
+  } catch (error) {
+    log.error('Error reporting trust-proxy status:', error);
+    sendError(res, 'Failed to report trust-proxy status', 500, 'SERVER_ERROR');
   }
 });
 
