@@ -10,10 +10,11 @@ A full-stack bowling league management application with multi-tenant support for
 - Current runtime: **Node.js 22 LTS** (upgraded to support Capacitor CLI v8).
 
 ## Follow-Up Task Policy (Agent Operating Convention)
-- **Only propose follow-up tasks for Critical and High priority work.** The task backlog has been growing too quickly with low-value follow-ups.
-- Skip follow-ups for: nice-to-haves, minor tech debt, doc polish, refactoring opportunities, additional test coverage on already-tested code, "would be nice to extend X to Y" suggestions, or anything a code reviewer flagged as a non-blocking comment unless it is a Critical or High severity issue.
-- A follow-up qualifies as Critical or High when it is one of: a security vulnerability, a data-integrity risk, a production incident waiting to happen, a customer-visible regression, or work that directly unblocks an in-flight feature.
-- When in doubt, do NOT create the follow-up. The user prefers a smaller, higher-signal backlog over an exhaustive one.
+- **The default is: do NOT propose any follow-up task.** The user is drowning in low-signal backlog items and that is actively blocking the work of building the product. A smaller, higher-signal backlog is the goal — not an exhaustive one.
+- Only propose a follow-up when there is a real, actionable problem that genuinely needs its own task. Concretely that means: a security vulnerability that is actually exploitable in production (not a theoretical anti-pattern, not a startup-log warning, not a defense-in-depth nicety), a data-integrity risk that can corrupt or leak real data, a production incident waiting to happen, a customer-visible regression, or work that directly unblocks an in-flight feature the user is asking for.
+- Do NOT propose follow-ups for: nice-to-haves, minor tech debt, doc polish, refactoring opportunities, additional test coverage on already-tested code, "would be nice to extend X to Y" suggestions, identical-pattern fixes in sibling code paths, code-reviewer non-blocking comments, lint/log warnings, or anything you noticed in passing while doing the real task.
+- **Do not relabel a non-critical observation as "critical" to slip it past this rule.** If you find yourself reaching for the "critical" or "high" label to justify a follow-up, that is the signal that the follow-up should not exist. Be honest about severity. The user will catch dishonest labeling and it erodes trust.
+- When in doubt, skip the propose step entirely. Mention the observation in the commit message or completion notes if it's worth recording at all, but do not create a task for it.
 - This applies to every agent (main, task, design, etc.) and every mode (plan, build).
 
 ## Pre-Existing Errors Policy (Agent Operating Convention)
