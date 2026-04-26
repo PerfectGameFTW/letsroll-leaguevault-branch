@@ -167,26 +167,38 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
       }
     }
 
-    const updatedUser = await storage.updateUserRole(userId, newRole);
-
-    // Persistent audit row for compliance/security review (task #459).
-    // Mirrors the same fail-closed pattern as the admin-driven password
-    // reset audit (task #424): the insert is awaited and not locally
-    // caught — a failure bubbles to the route's outer 500 handler. The
-    // role row is already persisted at that point, so the admin's
-    // retry will set the same target role (idempotent) and the audit
-    // row is written on the second attempt. Strict ordering matters
-    // and is asserted by the unit test: this MUST run AFTER
-    // updateUserRole and BEFORE sendSuccess.
+    // Task #461: the role update and the audit insert run inside ONE
+    // database transaction so they succeed or fail together. If the
+    // audit insert throws, drizzle rolls the role update back and the
+    // outer catch returns 500 — the admin can safely retry because no
+    // row was committed. Mirrors the same atomic contract task #458
+    // pinned for the admin-driven password reset, and #325 for the
+    // admin-driven email change.
+    //
+    // Strict ordering inside the transaction (asserted by the unit
+    // test): updateUserRole first, audit insert second. Reordering
+    // would still be atomic at the DB level, but the invocation-order
+    // assertion keeps the source-of-truth narrative obvious to a
+    // future maintainer ("we never log a role change that didn't
+    // happen").
     const rawUaForAudit = (req.get('user-agent') ?? '').slice(0, 512);
-    await recordAdminRoleChangeAudit({
-      actorUserId: req.user!.id,
-      targetUserId: user.id,
-      organizationId: user.organizationId ?? null,
-      oldRole: user.role,
-      newRole,
-      ipAddress: req.ip ?? null,
-      userAgent: rawUaForAudit || null,
+    const updatedUser = await db.transaction(async (tx) => {
+      const updated = await storage.updateUserRole(userId, newRole, tx);
+
+      await recordAdminRoleChangeAudit(
+        {
+          actorUserId: req.user!.id,
+          targetUserId: user.id,
+          organizationId: user.organizationId ?? null,
+          oldRole: user.role,
+          newRole,
+          ipAddress: req.ip ?? null,
+          userAgent: rawUaForAudit || null,
+        },
+        tx,
+      );
+
+      return updated;
     });
 
     return sendSuccess(res, sanitizeUser(updatedUser));

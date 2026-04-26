@@ -333,10 +333,14 @@ export async function getUsers(): Promise<User[]> {
   return db.select().from(users).orderBy(users.id);
 }
 
-export async function updateUserRole(userId: number, role: UserRole): Promise<User> {
+export async function updateUserRole(
+  userId: number,
+  role: UserRole,
+  executor: UserDbExecutor = db,
+): Promise<User> {
   log.info('Updating role for user:', { userId, role });
 
-  const [existingUser] = await db.select().from(users).where(eq(users.id, userId));
+  const [existingUser] = await executor.select().from(users).where(eq(users.id, userId));
   if (!existingUser) {
     log.error('User not found for role update:', userId);
     throw new Error(`User with ID ${userId} not found`);
@@ -346,7 +350,7 @@ export async function updateUserRole(userId: number, role: UserRole): Promise<Us
     throw new NonAdminMissingOrgError();
   }
 
-  const [updatedUser] = await db
+  const [updatedUser] = await executor
     .update(users)
     .set({ role })
     .where(eq(users.id, userId))

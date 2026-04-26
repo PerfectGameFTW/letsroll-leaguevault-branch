@@ -89,6 +89,25 @@ vi.mock('../../server/storage/admin-role-change-audits', () => ({
     mockRecordAdminRoleChangeAudit.apply(null, a as never),
 }));
 
+// Task #461: the route now wraps the role update + audit insert in
+// `db.transaction(...)` so they succeed or fail together. We mock
+// `db.transaction` to (a) hand the inner callback a sentinel `tx`
+// object so we can assert both writes received the SAME executor and
+// (b) re-throw any rejection out of the callback the way drizzle
+// would on rollback. Mirrors the harness shape pinned for the
+// admin-driven password reset (task #458).
+const TX_SENTINEL = { __isMockTx: true } as const;
+const mockTransaction = vi.fn(
+  async (fn: (tx: typeof TX_SENTINEL) => Promise<unknown>) => fn(TX_SENTINEL),
+);
+
+vi.mock('../../server/db', () => ({
+  db: {
+    transaction: (...a: unknown[]) => mockTransaction.apply(null, a as never),
+  },
+  pool: {},
+}));
+
 // The route file imports recordAdminPasswordResetAudit too; mock it
 // so the import doesn't drag the real db client in.
 vi.mock('../../server/storage/admin-password-reset-audits', () => ({
@@ -167,6 +186,10 @@ beforeEach(() => {
   mockCountOrgAdmins.mockResolvedValue(5);
   mockRecordAdminRoleChangeAudit.mockReset();
   mockRecordAdminRoleChangeAudit.mockResolvedValue({ id: 1 } as never);
+  mockTransaction.mockClear();
+  mockTransaction.mockImplementation(
+    async (fn: (tx: typeof TX_SENTINEL) => Promise<unknown>) => fn(TX_SENTINEL),
+  );
 });
 
 async function patchAdminStatus(targetId: number, body: unknown) {
@@ -327,16 +350,91 @@ describe('PATCH /api/organization-admin/users/:id/admin-status — persistent au
     }
   });
 
-  it('returns 500 when the audit insert fails (fail-closed compliance contract)', async () => {
-    mockGetUser.mockResolvedValueOnce({ ...TARGET_USER_REGULAR });
-    mockRecordAdminRoleChangeAudit.mockRejectedValueOnce(new Error('DB unavailable'));
-    const res = await patchAdminStatus(TARGET_USER_REGULAR.id, { makeOrgAdmin: true });
-    expect(res.status).toBe(500);
-    // The role row is already persisted at this point — that's the
-    // accepted tradeoff for fail-closed auditing. The admin will
-    // retry; the role update is idempotent (setting the same role
-    // again is a no-op for the caller) and the audit row gets
-    // written on the second attempt.
-    expect(mockUpdateUserRole).toHaveBeenCalledTimes(1);
+  // Task #461: the role update and the audit insert run inside a
+  // single `db.transaction(...)`. These tests pin the contract at
+  // the route level — both writes share the same `tx` executor, and
+  // when the audit insert rejects the rollback semantics are
+  // preserved (the rejection escapes the transaction callback so
+  // drizzle would ROLLBACK the role update in production). Without
+  // the transaction wrapper, a maintainer could re-introduce the
+  // partial-write window the task fixed.
+  describe('atomicity with the role update (task #461)', () => {
+    it('runs the role update and the audit insert inside the same db.transaction', async () => {
+      mockGetUser.mockResolvedValueOnce({ ...TARGET_USER_REGULAR });
+      const res = await patchAdminStatus(TARGET_USER_REGULAR.id, { makeOrgAdmin: true });
+      expect(res.status).toBe(200);
+
+      // The route must open exactly one transaction for the change
+      // — not two separate ones, and not zero (which would mean the
+      // writes can diverge again).
+      expect(mockTransaction).toHaveBeenCalledTimes(1);
+
+      // Both writes must have received the SAME executor handed to
+      // them by `db.transaction(...)`. If a future refactor passed
+      // `db` (the top-level connection) instead of `tx` to either
+      // call, that write would commit OUTSIDE the transaction and
+      // the rollback contract would silently break.
+      expect(mockUpdateUserRole).toHaveBeenCalledTimes(1);
+      const updateCall = mockUpdateUserRole.mock.calls[0] as unknown as [
+        number,
+        string,
+        unknown,
+      ];
+      expect(updateCall[2]).toBe(TX_SENTINEL);
+
+      expect(mockRecordAdminRoleChangeAudit).toHaveBeenCalledTimes(1);
+      const auditCall = mockRecordAdminRoleChangeAudit.mock.calls[0] as unknown as [
+        Record<string, unknown>,
+        unknown,
+      ];
+      expect(auditCall[1]).toBe(TX_SENTINEL);
+    });
+
+    it('rolls back (transaction rejects) and surfaces 500 when the audit insert throws — the role update ran inside the rolled-back transaction so no row is observable outside it', async () => {
+      mockGetUser.mockResolvedValueOnce({ ...TARGET_USER_REGULAR });
+      mockRecordAdminRoleChangeAudit.mockRejectedValueOnce(
+        new Error('DB unavailable'),
+      );
+
+      // Track whether the transaction callback rejected — that is
+      // what makes drizzle ROLLBACK the role update at the DB
+      // level. Without this propagation the write would commit even
+      // though the audit failed.
+      let txRejected = false;
+      mockTransaction.mockImplementationOnce(
+        async (fn: (tx: typeof TX_SENTINEL) => Promise<unknown>) => {
+          try {
+            return await fn(TX_SENTINEL);
+          } catch (err) {
+            txRejected = true;
+            throw err;
+          }
+        },
+      );
+
+      const res = await patchAdminStatus(TARGET_USER_REGULAR.id, {
+        makeOrgAdmin: true,
+      });
+      expect(res.status).toBe(500);
+
+      // The transaction MUST have rejected so drizzle would issue
+      // ROLLBACK in production. If a future refactor swallowed the
+      // audit error inside the callback, this assertion fails and
+      // the rollback contract is gone.
+      expect(txRejected).toBe(true);
+
+      // `storage.updateUserRole` was invoked (so a maintainer can
+      // see we tried to write the role), but it ran inside the
+      // failed transaction so the row is not observable outside it.
+      // We assert the executor was the SAME `tx` that the audit
+      // threw under — proving both writes share one rollback fate.
+      expect(mockUpdateUserRole).toHaveBeenCalledTimes(1);
+      const updateCall = mockUpdateUserRole.mock.calls[0] as unknown as [
+        number,
+        string,
+        unknown,
+      ];
+      expect(updateCall[2]).toBe(TX_SENTINEL);
+    });
   });
 });

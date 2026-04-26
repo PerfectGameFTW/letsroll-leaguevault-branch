@@ -125,7 +125,7 @@ export interface IUserStorage {
   getUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, userData: UpdateUser, executor?: import('./users').UserDbExecutor): Promise<User>;
-  updateUserRole(userId: number, role: UserRole): Promise<User>;
+  updateUserRole(userId: number, role: UserRole, executor?: import('./users').UserDbExecutor): Promise<User>;
   deleteUser(userId: number): Promise<User>;
   linkUserToBowler(userId: number, bowlerId: number | undefined): Promise<User>;
   getLinkedBowlerIds(): Promise<number[]>;
