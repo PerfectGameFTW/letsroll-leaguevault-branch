@@ -244,9 +244,17 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
 
     // Task #503: thread the inline-captured email through wallet
     // (Apple Pay / Google Pay) charges too, so Square's hosted
-    // receipt fires for bowlers with no email on file.
+    // receipt fires for bowlers with no email on file. Mirrors the
+    // server's BUYER_EMAIL_REQUIRED gate to avoid an avoidable 400
+    // round-trip mid-wallet-flow.
     const selected = bowlers.find((b) => b.id === bowlerId);
     const trimmedReceiptEmail = receiptEmail.trim();
+    if (!selected?.email && !trimmedReceiptEmail) {
+      setPaymentError(
+        'This bowler has no email on file. Enter an email for the receipt before paying with Apple Pay / Google Pay.',
+      );
+      return;
+    }
     const overrideEmail = !selected?.email && trimmedReceiptEmail ? trimmedReceiptEmail : undefined;
 
     try {
