@@ -10,7 +10,12 @@ import {
 import { AlertTriangle, Clock, Loader2, RefreshCw } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { PAYMENT_SYNC_MAX_ATTEMPTS, type Bowler } from "@shared/schema";
+import {
+  PAYMENT_SYNC_MAX_ATTEMPTS,
+  parsePaymentSyncStatus,
+  type Bowler,
+  type PaymentSyncStatus,
+} from "@shared/schema";
 
 type Props = {
   bowler: Pick<
@@ -49,15 +54,27 @@ export function PaymentSyncRetryStatus({
   const { toast } = useToast();
 
   const retryMutation = useMutation({
-    mutationFn: async (): Promise<{ data?: { paymentSyncStatus?: string } }> => {
+    // The response's `paymentSyncStatus` is treated as `unknown` on
+    // purpose: the parser below is the single trust boundary for
+    // collapsing it to the canonical `PaymentSyncStatus` union, so
+    // an older client + newer server (or a malformed response) can't
+    // sneak a string compare past us and fire a misleading toast.
+    mutationFn: async (): Promise<{ data?: { paymentSyncStatus?: unknown } }> => {
       const resp = await apiRequest(
         `/api/account/bowlers/${bowler.id}/retry-payment-sync`,
         "POST",
       );
-      return resp as { data?: { paymentSyncStatus?: string } };
+      return resp as { data?: { paymentSyncStatus?: unknown } };
     },
     onSuccess: (resp) => {
-      const status = resp?.data?.paymentSyncStatus ?? "synced";
+      // Route through the shared parser (see shared/schema/bowlers.ts):
+      // an unknown / missing value collapses to `not_applicable`, so
+      // the success toast only fires on a real `'synced'` confirmation
+      // — never on absent data, never on a future status the client
+      // doesn't know about yet.
+      const status: PaymentSyncStatus = parsePaymentSyncStatus(
+        resp?.data?.paymentSyncStatus,
+      );
       const ok = status === "synced";
       toast({
         title: ok ? "Payment sync succeeded" : "Payment sync still pending",
