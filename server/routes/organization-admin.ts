@@ -23,6 +23,56 @@ const log = createLogger("OrgAdmin");
 // Define error code type for type safety
 type ErrorCode = string;
 
+/**
+ * Atomic write of an admin-driven password reset (task #458). The
+ * password update on `users` and the audit row on
+ * `admin_password_reset_audits` share one `db.transaction(...)` so
+ * they succeed or fail together — if either insert throws, drizzle
+ * issues ROLLBACK and neither write is observable. The route below
+ * delegates to this helper so the contract is exercised by the SAME
+ * code path tests run, not a handcrafted replica.
+ *
+ * Order inside the transaction matches task #424 (password-update
+ * first, audit second) so a maintainer reading top-to-bottom sees the
+ * same write order as the unit-test invocation-order assertions.
+ *
+ * Exported so the rollback contract can be pinned end-to-end against
+ * a real Postgres connection by
+ * `tests/unit/admin-password-reset-atomicity.test.ts` (task #519).
+ */
+export async function resetUserPasswordTxn(opts: {
+  targetUserId: number;
+  hashedPassword: string;
+  audit: {
+    actorUserId: number;
+    organizationId: number | null;
+    ipAddress: string | null;
+    userAgent: string | null;
+  };
+}): Promise<void> {
+  await db.transaction(async (tx) => {
+    await storage.updateUser(
+      opts.targetUserId,
+      {
+        password: opts.hashedPassword,
+        mustChangePassword: true,
+      },
+      tx,
+    );
+
+    await recordAdminPasswordResetAudit(
+      {
+        actorUserId: opts.audit.actorUserId,
+        targetUserId: opts.targetUserId,
+        organizationId: opts.audit.organizationId,
+        ipAddress: opts.audit.ipAddress,
+        userAgent: opts.audit.userAgent,
+      },
+      tx,
+    );
+  });
+}
+
 const router = Router();
 
 // Middleware to check if the user is an organization admin or a system admin
@@ -641,7 +691,11 @@ router.post('/users/:id/reset-password', requireOrgAdminOrSystemAdmin, adminWrit
     // the audit insert throws, drizzle rolls the password update back
     // and the outer catch returns 500 — the admin can safely retry
     // because no row was committed and `updateUser` is idempotent for
-    // the caller.
+    // the caller. Task #519 extracted the body into
+    // `resetUserPasswordTxn` (above) so the rollback contract is
+    // exercised by the SAME code path the route runs through, against
+    // a real Postgres connection in
+    // `tests/unit/admin-password-reset-atomicity.test.ts`.
     //
     // Task #455 (still in force): the "must change password on next
     // sign-in" flag is written in the SAME update as the new hash so
@@ -658,26 +712,15 @@ router.post('/users/:id/reset-password', requireOrgAdminOrSystemAdmin, adminWrit
     // password-update first, audit second, so a future maintainer
     // reading top-to-bottom sees the same write order as the
     // unit-test invocation-order assertions.
-    await db.transaction(async (tx) => {
-      await storage.updateUser(
-        targetUser.id,
-        {
-          password: hashedNew,
-          mustChangePassword: true,
-        },
-        tx,
-      );
-
-      await recordAdminPasswordResetAudit(
-        {
-          actorUserId: req.user!.id,
-          targetUserId: targetUser.id,
-          organizationId: targetUser.organizationId ?? null,
-          ipAddress: req.ip ?? null,
-          userAgent: rawUaForAudit || null,
-        },
-        tx,
-      );
+    await resetUserPasswordTxn({
+      targetUserId: targetUser.id,
+      hashedPassword: hashedNew,
+      audit: {
+        actorUserId: req.user!.id,
+        organizationId: targetUser.organizationId ?? null,
+        ipAddress: req.ip ?? null,
+        userAgent: rawUaForAudit || null,
+      },
     });
 
     // Defense-in-depth: any in-flight email-change tokens belonging
