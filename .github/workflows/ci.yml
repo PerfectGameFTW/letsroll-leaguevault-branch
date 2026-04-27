@@ -120,9 +120,9 @@ jobs:
       - name: Cross-org isolation coverage
         run: npm run check:org-isolation
 
-      # `tsx scripts/check-wire-sanitization.ts` (task #382). Loads the
-      # same TypeScript program `npm run check` uses, walks every
-      # `sendSuccess` / `sendPaginatedSuccess` / `res.json` /
+      # `npx tsx scripts/check-wire-sanitization.ts` (task #382).
+      # Loads the same TypeScript program `npm run check` uses, walks
+      # every `sendSuccess` / `sendPaginatedSuccess` / `res.json` /
       # `res.status(...).json` call site under `server/`, and fails if
       # any data argument is structurally assignable to `User` or
       # `Organization` (or `User[]` / `Organization[]`). The
@@ -137,8 +137,16 @@ jobs:
       # The guard's own behavior is pinned by
       # `tests/unit/check-wire-sanitization.test.ts`, which runs in
       # the sibling Tests job below.
+      #
+      # `npx tsx …` (rather than bare `tsx …`) is mandatory: the CI
+      # runner doesn't have `tsx` on `PATH`, and the sibling check
+      # steps (`check:csrf`, `check:org-isolation`) only work because
+      # they go through `npm run …`, which prepends
+      # `node_modules/.bin` for the script's lifetime. `npx` does the
+      # same resolution, so this step now matches the others without
+      # needing a new `package.json` script entry.
       - name: Wire sanitization (raw User/Organization)
-        run: tsx scripts/check-wire-sanitization.ts
+        run: npx tsx scripts/check-wire-sanitization.ts
 
       # `npm run build` = `vite build && esbuild server/index.ts ...`
       # (task #468). Runs the full production build of both halves of
