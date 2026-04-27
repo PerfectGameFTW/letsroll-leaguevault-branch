@@ -1806,6 +1806,238 @@ describe('check-no-secrets-in-logs CI guard', () => {
   });
 
   // ---------------------------------------------------------------
+  // Default-exported method hosts (task #559). Task #553 covered
+  // NAMED-export object literals and class declarations; the
+  // default-export variants were intentionally deferred:
+  //
+  //   // helpers.ts
+  //   export default class H { pick(req) { return req.body.password; } }
+  //   export default { pick: (req) => req.body.password };
+  //   // routes.ts
+  //   import H from './helpers';
+  //   import obj from './helpers';
+  //   log.info(new H().pick(req));
+  //   log.info(obj.pick(req));
+  //
+  // `getExportedHelpers` already records helper functions under
+  // DEFAULT_EXPORT_KEY for the default-import path (task #549);
+  // this task extends the same sentinel to method-host bindings
+  // (object literals + class declarations + class expressions) so
+  // a default-import in the consumer gets the methodHost binding
+  // under the LOCAL name. Pass 5's default-import branch already
+  // wires `ic.name` to whatever binding the exporter put under
+  // DEFAULT_EXPORT_KEY without filtering on kind, so methodHost
+  // round-trips through the same path that helpers do.
+  // ---------------------------------------------------------------
+
+  it('flags a DEFAULT-export class via `import H from … ; new H().pick(req)` (the brief)', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-host-class-new-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import H from './helpers';\n` + `log.info(new H().pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'new H\(\)\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a DEFAULT-export class via `import H from …; const h = new H(); h.pick(req)`', () => {
+    // Mirrors the named-export instance-binding test in #553 — the
+    // default-import + instance-binding combo must compose.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-host-class-instance-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import H from './helpers';\n` +
+        `const h = new H();\n` +
+        `log.warn(h.pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'h\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags an ANONYMOUS DEFAULT-export class `export default class { … }` consumed via `new H().pick(req)`', () => {
+    // Anonymous default-class declarations parse as a
+    // ClassDeclaration with the default modifier and no `name`.
+    // The consumer picks the local name (`H`) at the import site.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-host-class-anon-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default class {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import H from './helpers';\n` + `log.info(new H().pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'new H\(\)\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a paren-wrapped DEFAULT-export class EXPRESSION `export default (class { … })` consumed via `new H().pick(req)`', () => {
+    // `export default class { … }` parses as a ClassDeclaration
+    // (covered by the anonymous-class test above); `export default
+    // (class { … })` parses as an ExportAssignment whose
+    // expression is a parenthesized ClassExpression. Pins the
+    // ts.isClassExpression branch added to the ExportAssignment
+    // handler.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-host-class-expr-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default (class {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `});\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import H from './helpers';\n` + `log.info(new H().pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'new H\(\)\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a DEFAULT-export object literal via `import obj from … ; obj.pick(req)` (the brief)', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-host-obj-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default {\n` +
+        `  pick: (req: any) => req.body.password,\n` +
+        `};\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import obj from './helpers';\n` + `log.info(obj.pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'obj\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a DEFAULT-export class or object whose methods are benign', () => {
+    // Negative: confirms `export default` on a method host doesn't
+    // cause blanket false positives — only forbidden-return methods
+    // populate the methodHost's `methods` map, so benign exports
+    // pass through silently.
+    const classDir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-host-class-benign-'),
+    );
+    const objDir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-host-obj-benign-'),
+    );
+    const classHelpers = join(classDir, 'server/helpers.ts');
+    const classRoutes = join(classDir, 'server/routes.ts');
+    const objHelpers = join(objDir, 'server/helpers.ts');
+    const objRoutes = join(objDir, 'server/routes.ts');
+    mkdirSync(dirname(classHelpers), { recursive: true });
+    mkdirSync(dirname(objHelpers), { recursive: true });
+    writeFileSync(
+      classHelpers,
+      `export default class K {\n` +
+        `  label(req: any) { return req.path; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      classRoutes,
+      `import K from './helpers';\n` + `log.info(new K().label(req));\n`,
+    );
+    writeFileSync(
+      objHelpers,
+      `export default {\n` +
+        `  summarize: (req: any) => req.params.id,\n` +
+        `};\n`,
+    );
+    writeFileSync(
+      objRoutes,
+      `import obj from './helpers';\n` + `log.info(obj.summarize(req));\n`,
+    );
+    expect(
+      scanSource(
+        classRoutes,
+        readFileSync(classRoutes, 'utf8'),
+        SERVER_SURFACE,
+      ),
+    ).toEqual([]);
+    expect(
+      scanSource(objRoutes, readFileSync(objRoutes, 'utf8'), SERVER_SURFACE),
+    ).toEqual([]);
+  });
+
+  // ---------------------------------------------------------------
   // Re-export resolution (task #556). Tasks #541 and #549 wired up
   // cross-file resolution for direct named/default exports but
   // skipped re-export forwarding shapes:

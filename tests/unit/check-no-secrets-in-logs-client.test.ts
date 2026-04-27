@@ -619,6 +619,75 @@ describe('check-no-secrets-in-logs CI guard (client surface)', () => {
   });
 
   // ---------------------------------------------------------------
+  // Default-exported method hosts on the client (task #559) — parity
+  // with the server-surface tests of the same task. The exporter
+  // helper map handling is surface-agnostic, but the client surface
+  // intentionally exercises a different forbidden source field
+  // (`data.newPassword`) so a regression on either surface fails
+  // independently of the other.
+  // ---------------------------------------------------------------
+
+  it('flags a DEFAULT-export class via `import H from … ; new H().pick(data)` on the client surface (task #559)', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-client-default-host-class-'),
+    );
+    const helpersFile = join(dir, 'client/src/helpers.ts');
+    const componentFile = join(dir, 'client/src/component.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default class H {\n` +
+        `  pick(data: any) { return data.newPassword; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      componentFile,
+      `import H from './helpers';\n` +
+        `function f(data: any) { console.log(new H().pick(data)); }\n`,
+    );
+    const reasons = scanSource(
+      componentFile,
+      readFileSync(componentFile, 'utf8'),
+      CLIENT_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'new H\(\)\.pick\(\)' returning .*\.newPassword/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a DEFAULT-export object literal via `import obj from … ; obj.pick(data)` on the client surface (task #559)', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-client-default-host-obj-'),
+    );
+    const helpersFile = join(dir, 'client/src/helpers.ts');
+    const componentFile = join(dir, 'client/src/component.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default {\n` +
+        `  pick: (data: any) => data.newPassword,\n` +
+        `};\n`,
+    );
+    writeFileSync(
+      componentFile,
+      `import obj from './helpers';\n` +
+        `function f(data: any) { console.log(obj.pick(data)); }\n`,
+    );
+    const reasons = scanSource(
+      componentFile,
+      readFileSync(componentFile, 'utf8'),
+      CLIENT_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'obj\.pick\(\)' returning .*\.newPassword/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  // ---------------------------------------------------------------
   // Suppression annotation works on the client surface too.
   // ---------------------------------------------------------------
 

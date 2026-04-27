@@ -749,27 +749,30 @@ function getExportedHelpers(
           }
         }
       }
-    } else if (
-      ts.isClassDeclaration(stmt) &&
-      hasExportModifier(stmt) &&
-      stmt.name &&
-      !hasDefaultModifier(stmt)
-    ) {
+    } else if (ts.isClassDeclaration(stmt) && hasExportModifier(stmt)) {
       // task #553: `export class H { pick(req) { return req.body.password; } }`.
-      // Named-export class — recorded under the class name so an
+      // Named-export class recorded under the class name so an
       // importing `import { H } from './helpers'` (and a subsequent
       // `new H().pick(req)` or `const h = new H(); h.pick(req)`)
-      // can resolve through the same methodHost the in-file pass 4
-      // would have produced. Default-exported classes
-      // (`export default class { … }`) are intentionally out of
-      // scope — the brief calls out NAMED exports, and the helper
-      // path's DEFAULT_EXPORT_KEY semantics for default imports
-      // would need additional plumbing to round-trip a class via
-      // `import H from './helpers'` (no consumer in this codebase
-      // does so today, so deferring keeps the change minimal).
+      // resolves through the same methodHost the in-file pass 4
+      // would have produced.
+      //
+      // task #559: `export default class H { … }` and `export
+      // default class { … }` (anonymous) record under
+      // DEFAULT_EXPORT_KEY so a consumer's `import H from './h'`
+      // gets the methodHost binding under the LOCAL default-import
+      // name. Pass 5 already wires `ic.name` to whatever binding
+      // the exporter put under DEFAULT_EXPORT_KEY without filtering
+      // on kind, so methodHost rounds-trips through the same path
+      // that helpers do.
       const host = buildClassMethodHost(stmt, surface, importedScopes);
       if (host) {
-        map.set(stmt.name.text, { kind: 'methodHost', host });
+        const key = hasDefaultModifier(stmt)
+          ? DEFAULT_EXPORT_KEY
+          : stmt.name?.text;
+        if (key) {
+          map.set(key, { kind: 'methodHost', host });
+        }
       }
     } else if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) {
       // `export default <expr>` — covers the ExportAssignment shapes
@@ -781,6 +784,28 @@ function getExportedHelpers(
         const cls = classifyFunctionReturn(init, surface, importedScopes);
         if (cls) {
           map.set(DEFAULT_EXPORT_KEY, { kind: 'helper', reason: cls.reason });
+        }
+      } else if (ts.isObjectLiteralExpression(init)) {
+        // task #559: `export default { pick: (req) => req.body.password }`.
+        // Mirrors the named-export object-literal branch above
+        // (task #553) but recorded under DEFAULT_EXPORT_KEY so a
+        // consumer's `import obj from './h'; obj.pick(req)`
+        // resolves through the existing method-call rule.
+        const host = buildObjectLiteralMethodHost(init, surface, importedScopes);
+        if (host) {
+          map.set(DEFAULT_EXPORT_KEY, { kind: 'methodHost', host });
+        }
+      } else if (ts.isClassExpression(init)) {
+        // task #559: `export default (class { pick(req) { … } })`.
+        // Anonymous class declarations (`export default class { … }`)
+        // parse as `ClassDeclaration` (with the default modifier)
+        // and are handled in the ClassDeclaration branch above —
+        // this branch only fires for an explicit ClassExpression
+        // wrapped in parens or otherwise not in a declaration
+        // position.
+        const host = buildClassMethodHost(init, surface, importedScopes);
+        if (host) {
+          map.set(DEFAULT_EXPORT_KEY, { kind: 'methodHost', host });
         }
       } else if (ts.isIdentifier(init)) {
         // task #555: `export default <Identifier>` — the natural
@@ -913,7 +938,10 @@ function classifyInitializer(
   init: ts.Expression,
   surface: Surface,
   scopes?: Map<ts.Node, Map<string, Binding>>,
-): { kind: 'forbidden' | 'helper'; reason: string } | null {
+):
+  | { kind: 'forbidden'; reason: string }
+  | { kind: 'helper'; reason: string }
+  | null {
   // task #547: unwrap parentheses so `(req.body.password ?? '')`
   // resolves the same as the unparenthesized form. Parens are a
   // structurally invisible wrapper for the purposes of leak
