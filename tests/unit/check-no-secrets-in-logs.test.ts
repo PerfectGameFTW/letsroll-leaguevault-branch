@@ -757,6 +757,254 @@ describe('check-no-secrets-in-logs CI guard', () => {
     expect(reasons).toHaveLength(0);
   });
 
+  // ---------------------------------------------------------------
+  // Helper-alias propagation (task #550). Task #541 records helper
+  // functions as `{ kind: 'helper', ... }` bindings. Multi-hop alias
+  // propagation (#540) only forwarded `{ kind: 'forbidden', ... }`
+  // before, so the natural bypass:
+  //
+  //   function pickPassword(req) { return req.body.password; }
+  //   const alias = pickPassword;
+  //   log.info(`pw=${alias(req)}`);
+  //
+  // slipped past — `alias` was recorded as 'other' even though
+  // calling it is exactly the same leak as calling `pickPassword`
+  // directly. The classifier now also propagates the 'helper' kind
+  // through declaration AND assignment alias chains, mirroring the
+  // multi-hop forbidden propagation from #540.
+  // ---------------------------------------------------------------
+
+  it('flags a single-hop helper alias `const alias = pickPassword; log.info(alias(req))` (the brief)', () => {
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `const alias = pickPassword;\n` +
+        `log.info(\`pw=\${alias(req)}\`);`,
+    );
+    // Reason should name the alias as the called helper AND carry
+    // the original property-access reason through the alias chain
+    // so the report points at the real secret source.
+    expect(
+      reasons.some((r) =>
+        /helper call 'alias\(\)' returning local 'pickPassword' aliasing .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a multi-hop helper alias chain `pickPassword -> a -> b -> log`', () => {
+    // Pin that the helper-alias propagation is fully recursive —
+    // each plain-identifier initializer pulls forward the prior
+    // helper binding's reason, not just the first hop. Mirrors the
+    // task #540 multi-hop forbidden chain shape.
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `const a = pickPassword;\n` +
+        `const b = a;\n` +
+        `log.info(b(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'b\(\)' returning local 'a' aliasing local 'pickPassword' aliasing .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a helper alias routed through an assignment `let alias; alias = pickPassword;`', () => {
+    // Assignment-aliasing pass should propagate helper just like
+    // declaration aliasing. Without this, a `let alias;` followed by
+    // `alias = pickPassword;` would leave `alias` as 'other' and the
+    // subsequent `alias(req)` call would slip past.
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `let alias: ((req: any) => string) | null = null;\n` +
+        `alias = pickPassword;\n` +
+        `log.info(\`pw=\${alias!(req)}\`);`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'alias\(\)' returning local 'pickPassword' aliasing .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a helper alias to an arrow-function helper `const pw = (req) => req.body.password; const alias = pw;`', () => {
+    // Same propagation works regardless of whether the source
+    // helper is a function declaration or an arrow function bound
+    // to a variable name. The pass-3 helper detection records both
+    // shapes uniformly, so the alias picks them up identically.
+    const reasons = reasonsFor(
+      `const pw = (req: any) => req.body.password;\n` +
+        `const alias = pw;\n` +
+        `log.info(alias(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'alias\(\)' returning local 'pw' aliasing .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a helper alias hidden behind a transparent wrapper `const alias = pickPassword as any`', () => {
+    // task #562 unwraps transparent wrappers (`as`, `<T>`, `!`,
+    // `satisfies`) inside `classifyInitializer`. The helper-alias
+    // propagation rides on the same recursion, so wrapping the
+    // source identifier cannot bypass the classification.
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `const alias = pickPassword as any;\n` +
+        `log.info(alias(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'alias\(\)' returning local 'pickPassword' aliasing .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a helper alias shadowed by an inner declaration', () => {
+    // Same shadowing rules as the multi-hop forbidden chain — an
+    // inner `const alias = noop;` (benign) must mask the outer
+    // helper alias for log calls inside the inner block.
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `function noop(_req: any) { return ''; }\n` +
+        `const alias = pickPassword;\n` +
+        `function caller(req: any) {\n` +
+        `  const alias = noop;\n` +
+        `  log.info(alias(req));\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag an alias of a benign function (helper propagation only fires for forbidden-returning helpers)', () => {
+    // The propagation only fires when the prior binding is itself
+    // a helper. `const a = getUserId; const b = a;` stays clean
+    // even though structurally it is a helper alias chain.
+    const reasons = reasonsFor(
+      `function getUserId(req: any) { return req.body.id; }\n` +
+        `const a = getUserId;\n` +
+        `const b = a;\n` +
+        `log.info(b(req));`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('flags a helper alias through a CROSS-FILE imported helper `import { pickPassword }; const alias = pickPassword;`', () => {
+    // Cross-file imports are recorded as 'helper' bindings on the
+    // importing file's source-file scope by pass 5. The new pass-7
+    // helper-alias propagation runs after that, so an in-file alias
+    // of an imported helper picks up the same classification.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-helper-alias-cross-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export function pickPassword(req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { pickPassword } from './helpers';\n` +
+        `const alias = pickPassword;\n` +
+        `log.info(\`pw=\${alias(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'alias\(\)' returning local 'pickPassword' aliasing .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE helper imported via a renamed alias and then locally re-aliased', () => {
+    // The full chain `export pickPassword -> import as pp -> const
+    // alias = pp -> log.info(alias(req))` must all classify as a
+    // helper end-to-end. Pin the renamed-import + in-file alias
+    // composition so a future refactor of either link doesn't
+    // silently regress.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-helper-alias-cross-renamed-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const pickPassword = (req: any) => req.body.password;\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { pickPassword as pp } from './helpers';\n` +
+        `const alias = pp;\n` +
+        `log.info(alias(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'alias\(\)' returning local 'pp' aliasing .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE default-imported helper aliased locally `import pp from "./helpers"; const alias = pp;`', () => {
+    // Composes pass 5's default-import handling (task #549) with
+    // pass 7's helper-alias propagation. The default sentinel is
+    // walked into a local helper binding, and the in-file alias
+    // chain picks it up the same way as any other helper source.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-helper-alias-default-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default function pickPassword(req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import pp from './helpers';\n` +
+        `const alias = pp;\n` +
+        `log.info(\`pw=\${alias(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'alias\(\)' returning local 'pp' aliasing .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it('flags a CROSS-FILE helper imported via a relative spec', () => {
     // Cross-file detection: parse the imported file, identify the
     // exported helper that returns a forbidden expression, seed

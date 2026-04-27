@@ -448,8 +448,14 @@ function classifyFunctionReturn(
   scopes?: Map<ts.Node, Map<string, Binding>>,
 ): { kind: 'forbidden'; reason: string } | null {
   // Arrow function with expression body (`(req) => req.body.password`).
+  // `classifyInitializer` may now also return a 'helper' alias
+  // classification (task #550 — `const alias = pickPassword`); a
+  // function that RETURNS a helper alias is NOT itself a forbidden
+  // helper (the returned function is a value, not the secret), so
+  // narrow to forbidden here.
   if (ts.isArrowFunction(fn) && fn.body && !ts.isBlock(fn.body)) {
-    return classifyInitializer(fn.body, surface, scopes);
+    const cls = classifyInitializer(fn.body, surface, scopes);
+    return cls && cls.kind === 'forbidden' ? cls : null;
   }
   const body = fn.body;
   if (!body || !ts.isBlock(body)) return null;
@@ -469,7 +475,7 @@ function classifyFunctionReturn(
     }
     if (ts.isReturnStatement(n) && n.expression) {
       const cls = classifyInitializer(n.expression, surface, scopes);
-      if (cls && !result) result = cls;
+      if (cls && cls.kind === 'forbidden' && !result) result = cls;
     }
     n.forEachChild(visit);
   };
@@ -907,7 +913,7 @@ function classifyInitializer(
   init: ts.Expression,
   surface: Surface,
   scopes?: Map<ts.Node, Map<string, Binding>>,
-): { kind: 'forbidden'; reason: string } | null {
+): { kind: 'forbidden' | 'helper'; reason: string } | null {
   // task #547: unwrap parentheses so `(req.body.password ?? '')`
   // resolves the same as the unparenthesized form. Parens are a
   // structurally invisible wrapper for the purposes of leak
@@ -927,24 +933,36 @@ function classifyInitializer(
   // conservatively forbidden, and the original property-access
   // reason is preserved by recursion so the report still points at
   // the real source.
+  // task #550: extended to also propagate the 'helper' alias kind
+  // through these branches — `const fn = a || pickPassword` could
+  // resolve to the helper at runtime, and a subsequent `log.info(fn(req))`
+  // would leak. Forbidden still wins over helper when both sides
+  // classify, so a `req.body.password ?? pickPasswordAlias` stays
+  // reported as the more-specific forbidden source.
   if (
     ts.isBinaryExpression(init) &&
     (init.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
       init.operatorToken.kind === ts.SyntaxKind.BarBarToken)
   ) {
     const left = classifyInitializer(init.left, surface, scopes);
-    if (left) return left;
     const right = classifyInitializer(init.right, surface, scopes);
+    if (left?.kind === 'forbidden') return left;
+    if (right?.kind === 'forbidden') return right;
+    if (left) return left;
     if (right) return right;
   }
   // task #547: same idea for ternaries — `cond ? req.body.token :
   // null` could yield the secret on the truthy branch and must be
   // treated as forbidden. Walking both branches keeps the rule
   // symmetric (the secret can sit on either side).
+  // task #550: also propagate 'helper' through both branches, with
+  // the same forbidden-wins precedence as the binary-operator case.
   if (ts.isConditionalExpression(init)) {
     const t = classifyInitializer(init.whenTrue, surface, scopes);
-    if (t) return t;
     const f = classifyInitializer(init.whenFalse, surface, scopes);
+    if (t?.kind === 'forbidden') return t;
+    if (f?.kind === 'forbidden') return f;
+    if (t) return t;
     if (f) return f;
   }
   if (ts.isPropertyAccessExpression(init)) {
@@ -987,13 +1005,34 @@ function classifyInitializer(
     // classify this initializer as forbidden too. Wraps the prior
     // reason so the chain stays auditable in the report (e.g.
     // `local 'pw' aliasing property access ending in .password`).
+    //
+    // task #550: extended to also propagate the 'helper' kind. Task
+    // #541 records helper functions as `{ kind: 'helper', ... }`
+    // bindings; without this branch, `const alias = pickPassword`
+    // recorded `alias` as 'other' and `log.info(alias(req))` slipped
+    // past — the bare-identifier helper-call rule from #541 only
+    // matched when the call expression's callee resolved directly
+    // to a helper. Mirroring the forbidden propagation here closes
+    // the gap in the same way #540 closed the multi-hop forbidden
+    // chain. The new pass-7 in `collectScopedBindings` re-walks
+    // declarations + assignments after passes 3 & 5 so this
+    // branch can actually see helper bindings (pass 1 runs before
+    // helpers are recorded).
     if (scopes) {
       const prior = resolveIdentifierBinding(init, scopes);
-      if (prior && prior.kind === 'forbidden') {
-        return {
-          kind: 'forbidden',
-          reason: `local '${init.text}' aliasing ${prior.reason}`,
-        };
+      if (prior) {
+        if (prior.kind === 'forbidden') {
+          return {
+            kind: 'forbidden',
+            reason: `local '${init.text}' aliasing ${prior.reason}`,
+          };
+        }
+        if (prior.kind === 'helper') {
+          return {
+            kind: 'helper',
+            reason: `local '${init.text}' aliasing ${prior.reason}`,
+          };
+        }
       }
     }
   }
@@ -1452,6 +1491,82 @@ function collectScopedBindings(
     ts.forEachChild(node, visitInstances);
   };
   visitInstances(sourceFile);
+
+  // Pass 7: helper-alias propagation (task #550). Mirrors pass 2's
+  // forbidden assignment-alias walk, but for the 'helper' kind that
+  // pass 3 (in-file helpers) and pass 5 (cross-file imported helpers)
+  // record on the source binding. Without this pass:
+  //
+  //   function pickPassword(req) { return req.body.password; }
+  //   const alias = pickPassword;
+  //   log.info(`pw=${alias(req)}`);
+  //
+  // slips past — pass 1 records `alias` as 'other' (because at that
+  // point `pickPassword` is still the placeholder 'other' binding
+  // from pass 1 itself; the helper promotion only happens in pass 3),
+  // and the helper-call rule in `scanArgForSecrets` only fires when
+  // the callee identifier resolves to a 'helper' binding. Re-running
+  // `classifyInitializer` here, AFTER passes 3 & 5, lets the
+  // identifier branch see the now-known helper source and re-record
+  // the alias under the same forwarded reason text used for
+  // forbidden chains (`local 'pickPassword' aliasing …`).
+  //
+  // Source-order traversal is what makes multi-hop chains
+  //   const a = pickPassword;
+  //   const b = a;
+  //   const c = b;
+  // work the same way the multi-hop forbidden chain from task #540
+  // works: each declaration only consults bindings recorded for
+  // earlier statements, so each hop picks up the helper that the
+  // previous hop just promoted.
+  //
+  // Both shapes are handled in the same pass:
+  //   - declaration alias  (`const alias = pickPassword;`)
+  //   - assignment alias   (`alias = pickPassword;`)
+  // The assignment branch resolves the LHS to its declaration scope
+  // (mirroring pass 2) so an assignment inside a nested block still
+  // marks the outer-declared name as a helper for sibling calls.
+  const visitHelperAliases = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      const cls = classifyInitializer(node.initializer, surface, scopes);
+      if (cls && cls.kind === 'helper') {
+        const scope = isVarDeclaration(node)
+          ? nearestFunctionScope(node)
+          : nearestScope(node);
+        recordIn(scope, node.name.text, cls);
+      }
+    }
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(node.left)
+    ) {
+      const cls = classifyInitializer(node.right, surface, scopes);
+      if (cls && cls.kind === 'helper') {
+        const name = node.left.text;
+        let bindingScope: ts.Node = sourceFile;
+        let s: ts.Node | undefined = nearestScope(node);
+        while (s) {
+          if (scopes.get(s)?.has(name)) {
+            bindingScope = s;
+            break;
+          }
+          if (ts.isSourceFile(s)) {
+            bindingScope = s;
+            break;
+          }
+          s = nearestScope(s);
+        }
+        recordIn(bindingScope, name, cls);
+      }
+    }
+    ts.forEachChild(node, visitHelperAliases);
+  };
+  visitHelperAliases(sourceFile);
 
   return scopes;
 }
