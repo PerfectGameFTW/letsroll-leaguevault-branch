@@ -180,11 +180,22 @@ jobs:
       #     the Postgres container is fresh each run.
       #   * SETUP_SECRET — must be >= 32 chars (`MIN_SETUP_SECRET_LENGTH`
       #     in `server/config.ts`). Pulled from the `SETUP_SECRET`
-      #     repository secret. The wrapper script and the test file
-      #     BOTH hard-fail if it's missing, so a misconfigured CI step
-      #     exits non-zero with a clear message instead of silently
-      #     skipping coverage (see comment block in
-      #     `scripts/test-race.sh`).
+      #     repository secret when available, with a deterministic
+      #     CI-only fallback for run contexts where repo secrets aren't
+      #     visible (notably Dependabot-triggered runs and PRs from
+      #     forks — GitHub deliberately strips repo `secrets.*` from
+      #     those contexts and exposes a separate `dependabot`
+      #     namespace instead). The fallback is safe because (a) the
+      #     Postgres container is ephemeral per run so no real data is
+      #     gated by it, (b) it satisfies `validateSetupSecret`
+      #     (>= 32 chars, not a single repeated character) so the
+      #     server still boots, and (c) it is visibly labelled so a
+      #     leaked log makes its dummy nature obvious. Same pattern as
+      #     `SESSION_SECRET` / `FIELD_ENCRYPTION_KEY` above. The
+      #     wrapper script and the test file both still hard-fail when
+      #     the env var resolves to empty, which can no longer happen
+      #     here but is preserved as a defence-in-depth signal (see
+      #     comment block in `scripts/test-race.sh`).
       #   * NODE_ENV=development — keeps the auth rate limiter in dev
       #     mode (see `server/routes/auth.ts`) so repeated requests
       #     during the race loop don't trip the per-IP cap.
@@ -194,7 +205,7 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/leaguevault_race
           SESSION_SECRET: ci-race-suite-session-secret
           FIELD_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET || 'ci-tests-fallback-setup-secret-deterministic-not-a-real-secret' }}
           NODE_ENV: development
           PORT: '5000'
         run: |
@@ -241,7 +252,7 @@ jobs:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/leaguevault_race
           SESSION_SECRET: ci-race-suite-session-secret
           FIELD_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-          SETUP_SECRET: ${{ secrets.SETUP_SECRET }}
+          SETUP_SECRET: ${{ secrets.SETUP_SECRET || 'ci-tests-fallback-setup-secret-deterministic-not-a-real-secret' }}
           NODE_ENV: development
         run: npm run test:race
 
