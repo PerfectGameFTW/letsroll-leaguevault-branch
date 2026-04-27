@@ -128,7 +128,7 @@ afterAll(async () => {
         or(
           inArray(adminPasswordResetAudits.actorUserId, ids),
           inArray(adminPasswordResetAudits.targetUserId, ids),
-        )!,
+        ),
       );
   }
   if (targetUserId) {
@@ -225,9 +225,12 @@ describe('resetUserPasswordTxn atomicity (task #519)', () => {
         throw new Error('boom — simulated password update failure');
       })
       .mockName('mockUpdateUser');
-    (storageMod.storage as unknown as {
-      updateUser: typeof storageMod.storage.updateUser;
-    }).updateUser = updateSpy as unknown as typeof storageMod.storage.updateUser;
+    // `storage.updateUser` is a regular instance property assigned via
+    // `Object.assign(this, { ...userStorage })` in DatabaseStorage's
+    // constructor — it's freely mutable, and `vi.fn(async () => never)`
+    // is structurally assignable to the `updateUser` signature, so no
+    // cast is needed on either side.
+    storageMod.storage.updateUser = updateSpy;
 
     // Also spy on the standalone export so a future refactor of the
     // helper that imports `updateUser` from `'../storage/users'`
@@ -256,9 +259,7 @@ describe('resetUserPasswordTxn atomicity (task #519)', () => {
     // Restore both interception points before asserting so a failed
     // expect doesn't leave the storage singleton in a broken state
     // for other tests in the file.
-    (storageMod.storage as unknown as {
-      updateUser: typeof storageMod.storage.updateUser;
-    }).updateUser = originalUpdateUser;
+    storageMod.storage.updateUser = originalUpdateUser;
     moduleSpy.mockRestore();
 
     expect(caught).toBeInstanceOf(Error);
