@@ -348,7 +348,8 @@ function main(): void {
   const fileToLocalRouterVars = new Map<string, Set<string>>();
   const fileToDefaultExportVar = new Map<string, string>();
   for (const file of files) {
-    const src = srcByFile.get(file)!;
+    const src = srcByFile.get(file);
+    if (src === undefined) continue; // populated in lockstep with `files`; defensive
     const vars = new Set<string>();
     for (const m of src.matchAll(LOCAL_ROUTER_RE)) vars.add(m[1]);
     // Last `export default <name>` wins (a file shouldn't have more
@@ -453,8 +454,9 @@ function main(): void {
   }
 
   for (const file of files) {
-    const src = srcByFile.get(file)!;
-    const localRouterVars = fileToLocalRouterVars.get(file)!;
+    const src = srcByFile.get(file);
+    const localRouterVars = fileToLocalRouterVars.get(file);
+    if (src === undefined || localRouterVars === undefined) continue; // populated above; defensive
 
     // Build local default-import map: localName -> resolved file path.
     const importMap = new Map<string, string>();
@@ -501,7 +503,7 @@ function main(): void {
 
     for (const callMatch of src.matchAll(USE_CALL_OPEN_RE)) {
       const callerId = callMatch[1];
-      const openIdx = callMatch.index! + callMatch[0].length - 1;
+      const openIdx = callMatch.index + callMatch[0].length - 1;
       const closeIdx = findBalancedClose(src, openIdx);
       if (closeIdx < 0) continue;
       const argsText = src.slice(openIdx + 1, closeIdx);
@@ -520,8 +522,7 @@ function main(): void {
       } else {
         const restNoStrings = stripStrings(restArgs);
         const idents = [...restNoStrings.matchAll(IDENT_RE)].map((x) => x[1]);
-        let found = false;
-        let temp: Resolution | null = null;
+        let resolved: Resolution | null = null;
         for (let i = idents.length - 1; i >= 0; i--) {
           const id = idents[i];
           // Skip the caller itself in case it shows up in rest-args.
@@ -533,30 +534,24 @@ function main(): void {
             // (per the Pass-1 evidence guard), it's a router mount.
             // Otherwise it's a handler/middleware import — handler
             // mount.
-            temp =
+            resolved =
               targets.length > 0
                 ? { kind: 'router-import', importedFile }
                 : { kind: 'handler' };
-            found = true;
             break;
           }
           if (localRouterVars.has(id)) {
-            temp = { kind: 'router-local', varName: id };
-            found = true;
+            resolved = { kind: 'router-local', varName: id };
             break;
           }
         }
-        if (!found) {
-          // Walked every identifier and matched neither an imported
-          // Router nor a local Router var. If there were any idents
-          // at all, treat the call as a handler mount (some
-          // unresolved expression that nonetheless registers a
-          // request handler — e.g. `app.use('/x', someUnknownThing)`).
-          // If rest-args was effectively empty, leave the call
-          // untracked.
-          temp = idents.length > 0 ? { kind: 'handler' } : { kind: 'none' };
-        }
-        resolution = temp!;
+        // If the loop walked every identifier without matching, fall
+        // back: any idents at all → treat as a handler mount (some
+        // unresolved expression that nonetheless registers a request
+        // handler — e.g. `app.use('/x', someUnknownThing)`); empty
+        // rest-args → leave the call untracked.
+        resolution =
+          resolved ?? (idents.length > 0 ? { kind: 'handler' } : { kind: 'none' });
       }
 
       if (callerId === 'app') {

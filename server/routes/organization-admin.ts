@@ -31,12 +31,16 @@ async function requireOrgAdminOrSystemAdmin(req: Request, res: Response, next: N
     return sendError(res, 'You must be logged in to access this resource', 401, 'UNAUTHORIZED');
   }
 
+  // Capture in a local so subsequent property reads don't need a `!`
+  // assertion to defeat TS's getter-aware narrowing of `req.user`.
+  const user = req.user;
+
   // Allow system admins
-  if (req.user!.role === 'system_admin') {
+  if (user.role === 'system_admin') {
     return next();
   }
 
-  if (req.user!.role === 'org_admin' && req.user!.organizationId) {
+  if (user.role === 'org_admin' && user.organizationId) {
     return next();
   }
 

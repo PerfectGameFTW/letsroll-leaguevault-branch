@@ -8,9 +8,16 @@ type ToasterProps = React.ComponentProps<typeof Sonner>
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
 
+  // Narrow next-themes' loose `string` to sonner's `'light' | 'dark' |
+  // 'system'` union via a runtime check, so we don't need an `as` cast
+  // (which the type-aware lint flags as unnecessary in some build
+  // configurations).
+  const sonnerTheme: ToasterProps["theme"] =
+    theme === "dark" || theme === "light" ? theme : "system"
+
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme={sonnerTheme}
       className="toaster group"
       toastOptions={{
         classNames: {
