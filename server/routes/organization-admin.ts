@@ -17,6 +17,7 @@ import { adminWriteLimiter, inviteLimiter } from '../middleware/rate-limit';
 import { createLogger } from '../logger';
 import { recordAdminPasswordResetAudit } from '../storage/admin-password-reset-audits';
 import { recordAdminRoleChangeAudit } from '../storage/admin-role-change-audits';
+import type { User, UserRole } from '@shared/schema';
 
 const log = createLogger("OrgAdmin");
 
@@ -70,6 +71,63 @@ export async function resetUserPasswordTxn(opts: {
       },
       tx,
     );
+  });
+}
+
+/**
+ * Atomic write of an admin-driven role change (task #461). The role
+ * update on `users` and the audit row on `admin_role_change_audits`
+ * share one `db.transaction(...)` so they succeed or fail together —
+ * if either insert throws, drizzle issues ROLLBACK and neither write
+ * is observable. The route below delegates to this helper so the
+ * contract is exercised by the SAME code path tests run, not a
+ * handcrafted replica.
+ *
+ * Order inside the transaction matches task #459 (role-update first,
+ * audit second) so a maintainer reading top-to-bottom sees the same
+ * write order as the unit-test invocation-order assertions ("we never
+ * log a role change that didn't happen").
+ *
+ * Exported so the rollback contract can be pinned end-to-end against
+ * a real Postgres connection by
+ * `tests/unit/admin-role-change-audit-atomicity.test.ts` (task #544),
+ * mirroring the pattern landed for `resetUserPasswordTxn` (#519) and
+ * `applyEmailChangeRequestTxn` (#377).
+ */
+export async function applyRoleChangeWithAuditTxn(opts: {
+  targetUserId: number;
+  newRole: UserRole;
+  audit: {
+    actorUserId: number;
+    targetUserId: number;
+    organizationId: number | null;
+    oldRole: UserRole;
+    newRole: UserRole;
+    ipAddress: string | null;
+    userAgent: string | null;
+  };
+}): Promise<User> {
+  return db.transaction(async (tx) => {
+    const updated = await storage.updateUserRole(
+      opts.targetUserId,
+      opts.newRole,
+      tx,
+    );
+
+    await recordAdminRoleChangeAudit(
+      {
+        actorUserId: opts.audit.actorUserId,
+        targetUserId: opts.audit.targetUserId,
+        organizationId: opts.audit.organizationId,
+        oldRole: opts.audit.oldRole,
+        newRole: opts.audit.newRole,
+        ipAddress: opts.audit.ipAddress,
+        userAgent: opts.audit.userAgent,
+      },
+      tx,
+    );
+
+    return updated;
   });
 }
 
@@ -260,23 +318,18 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
     // future maintainer ("we never log a role change that didn't
     // happen").
     const rawUaForAudit = (req.get('user-agent') ?? '').slice(0, 512);
-    const updatedUser = await db.transaction(async (tx) => {
-      const updated = await storage.updateUserRole(userId, newRole, tx);
-
-      await recordAdminRoleChangeAudit(
-        {
-          actorUserId: req.user!.id,
-          targetUserId: user.id,
-          organizationId: user.organizationId ?? null,
-          oldRole: user.role,
-          newRole,
-          ipAddress: req.ip ?? null,
-          userAgent: rawUaForAudit || null,
-        },
-        tx,
-      );
-
-      return updated;
+    const updatedUser = await applyRoleChangeWithAuditTxn({
+      targetUserId: userId,
+      newRole,
+      audit: {
+        actorUserId: req.user!.id,
+        targetUserId: user.id,
+        organizationId: user.organizationId ?? null,
+        oldRole: user.role,
+        newRole,
+        ipAddress: req.ip ?? null,
+        userAgent: rawUaForAudit || null,
+      },
     });
 
     return sendSuccess(res, sanitizeUser(updatedUser));
