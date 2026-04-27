@@ -21,6 +21,30 @@ interface ApiResponse<T = unknown> {
   error?: { message: string; code?: string };
 }
 
+/**
+ * On Replit the dev server is reached through the HTTPS edge, which
+ * appends multiple proxy hops to `X-Forwarded-For`. With the server's
+ * `app.set('trust proxy', 1)` setting that means every test request
+ * resolves to `req.ip = '127.0.0.1'`, so test files that intentionally
+ * burst a per-IP rate limiter (e.g. `payments-provider-guards`) will
+ * starve every later test in the same vitest invocation that touches
+ * the same limiter.
+ *
+ * The server-side limiters in `server/middleware/rate-limit.ts` skip
+ * enforcement when this header is present and matches the
+ * `TRUST_PROXY_PROBE_TOKEN` secret AND `NODE_ENV !== 'production'`.
+ * Production deployments are immune (the skip short-circuits on
+ * NODE_ENV first).
+ */
+const TEST_RATE_LIMIT_BYPASS_TOKEN = process.env.TRUST_PROXY_PROBE_TOKEN ?? '';
+
+function withTestBypassHeader(headers: Record<string, string>): Record<string, string> {
+  if (TEST_RATE_LIMIT_BYPASS_TOKEN) {
+    headers['x-test-rate-limit-bypass'] = TEST_RATE_LIMIT_BYPASS_TOKEN;
+  }
+  return headers;
+}
+
 export interface AuthSession {
   cookies: string;
   user: {
@@ -40,7 +64,7 @@ async function extractCookies(response: Response): Promise<string> {
 
 async function getCsrfToken(cookies: string): Promise<string> {
   const res = await fetch(`${BASE_URL}/api/csrf-token`, {
-    headers: { Cookie: cookies },
+    headers: withTestBypassHeader({ Cookie: cookies }),
   });
   const data: ApiResponse<{ token: string }> = await res.json();
   return data.data?.token ?? '';
@@ -49,7 +73,7 @@ async function getCsrfToken(cookies: string): Promise<string> {
 export async function login(email: string, password: string): Promise<AuthSession> {
   const res = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: withTestBypassHeader({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ email, password }),
   });
 
@@ -76,7 +100,9 @@ export async function apiGet<T = unknown>(
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (session) headers['Cookie'] = session.cookies;
 
-  const res = await fetch(`${BASE_URL}${path}`, { headers });
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: withTestBypassHeader(headers),
+  });
   const data: ApiResponse<T> = await res.json();
   return { status: res.status, data };
 }
@@ -94,7 +120,7 @@ export async function apiPost<T = unknown>(
 
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
-    headers,
+    headers: withTestBypassHeader(headers),
     body: JSON.stringify(body),
   });
   const data: ApiResponse<T> = await res.json();
@@ -114,7 +140,7 @@ export async function apiPatch<T = unknown>(
 
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'PATCH',
-    headers,
+    headers: withTestBypassHeader(headers),
     body: JSON.stringify(body),
   });
   const data: ApiResponse<T> = await res.json();
@@ -133,7 +159,7 @@ export async function apiDelete<T = unknown>(
 
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'DELETE',
-    headers,
+    headers: withTestBypassHeader(headers),
   });
   const data: ApiResponse<T> = await res.json();
   return { status: res.status, data };

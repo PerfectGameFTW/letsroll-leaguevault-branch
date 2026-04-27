@@ -18,7 +18,6 @@ import { hashPassword } from '../../server/lib/password';
 import {
   login,
   apiGet,
-  apiPost,
   BASE_URL,
   TEST_ADMIN_EMAIL,
   TEST_ADMIN_PASSWORD,
@@ -143,18 +142,33 @@ describe('payments-provider router guards', () => {
       // 429 response. We deliberately send an empty body so any request
       // that *does* get past the limiter fails fast at validation (400)
       // without touching the payment provider.
+      //
+      // This test must use raw fetch rather than the `apiPost` helper:
+      // the helper auto-injects the `X-Test-Rate-Limit-Bypass` header
+      // (matched against TRUST_PROXY_PROBE_TOKEN by the server-side
+      // `testBypassSkip` in `server/middleware/rate-limit.ts`) so that
+      // unrelated test files which incidentally hit a limiter aren't
+      // starved by other tests in the same vitest invocation. This
+      // particular test is the one place where we DO want the limiter
+      // to fire, so it deliberately omits the bypass header.
       const sysAdmin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
 
       const burst = 30;
       const statuses: number[] = [];
       for (let i = 0; i < burst; i++) {
-        const { status } = await apiPost(
-          '/api/payments-provider/payments',
-          {},
-          sysAdmin,
-        );
-        statuses.push(status);
-        if (status === 429) break;
+        const res = await fetch(`${BASE_URL}/api/payments-provider/payments`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Cookie: sysAdmin.cookies,
+            'x-csrf-token': sysAdmin.csrfToken,
+          },
+          body: JSON.stringify({}),
+        });
+        // Drain the body so the connection is freed before the next iteration.
+        await res.text();
+        statuses.push(res.status);
+        if (res.status === 429) break;
       }
 
       expect(statuses).toContain(429);

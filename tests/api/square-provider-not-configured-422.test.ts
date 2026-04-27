@@ -22,8 +22,8 @@
  * `throw new ProviderNotConfiguredError(...)` to `return null` would
  * silently regress the contract again.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { inArray, sql } from 'drizzle-orm';
+import { afterAll, describe, expect, it } from 'vitest';
+import { inArray } from 'drizzle-orm';
 import { db } from '../../server/db';
 import { leagues, locations, teams } from '@shared/schema';
 import {
@@ -36,30 +36,6 @@ import {
 const createdLocationIds: number[] = [];
 const createdLeagueIds: number[] = [];
 const createdTeamIds: number[] = [];
-
-beforeAll(async () => {
-  // The Postgres-backed rate-limit store (see
-  // `server/utils/rate-limit-store.ts`) persists buckets across test
-  // runs. Because POST /api/payments-provider/customers is gated by
-  // `paymentLimiter` (max=20 / 15 minutes per IP), a previous CI run
-  // — or another test file in the same `[serial-fk-bypass]` slot —
-  // can leave the bucket exhausted and turn this test's single
-  // request into a 429 instead of the 422 PROVIDER_NOT_CONFIGURED
-  // contract we're pinning. Wipe the limiter state so this test only
-  // ever observes the route's own response. Use IF EXISTS so the
-  // cleanup is a no-op on environments where migration #0028
-  // hasn't been applied (e.g. local dev DB without rate-limit table)
-  // — those environments fall back to the in-process MemoryStore
-  // anyway, which starts empty for each app boot.
-  await db.execute(
-    sql`DELETE FROM rate_limit_buckets WHERE key LIKE 'payment:%'`,
-  ).catch((err: unknown) => {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (!/relation\s+"?rate_limit_buckets"?\s+does not exist/i.test(msg)) {
-      throw err;
-    }
-  });
-});
 
 afterAll(async () => {
   if (createdTeamIds.length > 0) {
