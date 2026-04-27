@@ -89,9 +89,9 @@ beforeEach(() => {
   // control flow (no fall-through into the success branches).
   exitSpy = vi
     .spyOn(process, 'exit')
-    .mockImplementation(((code?: number | string | null) => {
+    .mockImplementation((code?: number | string | null) => {
       throw new Error(`__EXIT__:${code ?? 0}`);
-    }) as never);
+    });
   fetchSpy = vi.spyOn(globalThis, 'fetch');
   // Silence the script's stderr/stdout chatter so test output stays
   // legible. We still assert against console.error contents below.

@@ -1,4 +1,4 @@
-import { Router, Request, Response, type Express } from 'express';
+import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { sendSuccess, sendError, sanitizeUser, handleZodError, handleUserOrgError } from '../utils/api.js';
 import { storage } from '../storage';
@@ -516,10 +516,10 @@ router.get('/trust-proxy-status', async (req: Request, res: Response) => {
     // header. 256 chars is plenty to debug a real proxy chain.
     const xffTruncated = xff && xff.length > 256 ? `${xff.slice(0, 256)}…` : xff;
 
-    // `req.app` is typed as `Application`; `verifyTrustProxy` accepts
-    // the slightly richer `Express` type, but only reads `app.get(...)`
-    // which both types share. Cast is safe.
-    const synthetic = verifyTrustProxy(req.app as unknown as Express);
+    // `verifyTrustProxy` now accepts the bare `Application` shape it
+    // actually uses (just `.get(...)`), so `req.app` flows through
+    // without a cast.
+    const synthetic = verifyTrustProxy(req.app);
     sendSuccess(res, {
       live: {
         resolvedIp: req.ip ?? null,

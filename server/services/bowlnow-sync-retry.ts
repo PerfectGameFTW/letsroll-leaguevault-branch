@@ -87,11 +87,21 @@ export async function runBowlnowSyncRetrySweep(now: Date = new Date()): Promise<
     OR ${bowlers.bnSyncLastAttemptAt} + (interval '60 seconds' * power(2, LEAST(${bowlers.bnSyncAttempts}, 16))) <= NOW()
   )`;
 
-  const conditions = and(
+  // `and(...)` returns `SQL | undefined` because zero non-undefined
+  // args would mean "no filter". All three args here are concrete
+  // expressions, so the result is always defined — assign through an
+  // explicit narrowing to keep that contract typed without a `!`.
+  const conditionsMaybe = and(
     isNotNull(bowlers.bnSyncPendingAt),
     lt(bowlers.bnSyncAttempts, BN_SYNC_MAX_ATTEMPTS),
     backoffEligible,
   );
+  if (!conditionsMaybe) {
+    throw new Error(
+      "bowlnow-sync-retry: drizzle and(...) returned undefined despite all-defined args (unreachable)",
+    );
+  }
+  const conditions = conditionsMaybe;
 
   const { candidates, skippedByLock } = await db.transaction(async (tx) => {
     // Same lockedSweep + lease-stamp pattern as the payment retry.
@@ -103,7 +113,7 @@ export async function runBowlnowSyncRetrySweep(now: Date = new Date()): Promise<
     const { rows: locked, skippedByLock: skipped } = await lockedSweep(
       tx,
       bowlers,
-      conditions!,
+      conditions,
     );
 
     if (locked.length > 0) {

@@ -466,7 +466,7 @@ app.use('/api', csrfProtection);
     // literal output line ensures we catch a regression that
     // re-introduces the false-positive even if the legitimate
     // flag still fires.
-    expect(r.stderr).not.toMatch(/POST \/foo\/x  /);
+    expect(r.stderr).not.toMatch(/POST \/foo\/x {2}/);
   });
 
   it("flags a default-exported factory router (e.g. `const r = createRouter()`) mounted at non-/api", () => {

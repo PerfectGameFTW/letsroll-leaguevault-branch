@@ -20,31 +20,31 @@ function userKeyGenerator(req: Request): string {
  * Test-only bypass for the limiters below.
  *
  * The vitest suite drives the long-running dev server through Replit's
- * HTTPS edge, which prepends multiple proxy hops to `X-Forwarded-For`.
- * With `app.set('trust proxy', 1)` the rightmost hop wins, so every
- * test request resolves to `req.ip = '127.0.0.1'` regardless of any
- * header the test sets — meaning a single test file that intentionally
- * fires a burst (e.g. `payments-provider-guards.test.ts`) drains the
- * loopback bucket and starves any later test that touches the same
- * limiter in the same vitest invocation.
+ * HTTPS edge (and on GitHub CI through plain loopback), and in both
+ * environments every test request resolves to `req.ip = '127.0.0.1'`.
+ * That means a single test file that intentionally fires a burst
+ * (e.g. `payments-provider-guards.test.ts`) drains the loopback bucket
+ * and starves every later test in the same vitest invocation that
+ * touches the same limiter — most visibly the
+ * `square-provider-not-configured-422` regression which expects a 422
+ * but gets a 429 once the bucket is empty.
  *
- * This bypass is gated on:
- *   1. `NODE_ENV !== 'production'` — the production deploy can never
- *      trip this path even if a token leaks.
- *   2. The request carrying `X-Test-Rate-Limit-Bypass` whose value
- *      matches the existing `TRUST_PROXY_PROBE_TOKEN` secret. Reusing
- *      that secret avoids introducing a new env var; it is already
- *      treated as a server-only test/diagnostic credential (see
- *      `server/lib/trust-proxy-check.ts`).
- *
- * Tests opt in by setting the header in `tests/helpers.ts`.
+ * This bypass is gated on `NODE_ENV !== 'production'` AND the request
+ * carrying `X-Test-Rate-Limit-Bypass: 1`. The header value is a fixed
+ * literal rather than a secret because the gate is the NODE_ENV check:
+ * a production deploy with `NODE_ENV=production` short-circuits to
+ * `false` regardless of any header an attacker might send. Tests opt
+ * in via `withTestBypassHeader` in `tests/helpers.ts`, which adds the
+ * header on every helper-mediated call. The
+ * `payments-provider-guards` burst test deliberately bypasses that
+ * helper and uses raw `fetch` so the limiter actually fires for that
+ * one assertion.
  */
+const TEST_BYPASS_HEADER_VALUE = '1';
+
 function testBypassSkip(req: Request): boolean {
   if (process.env.NODE_ENV === 'production') return false;
-  const expected = process.env.TRUST_PROXY_PROBE_TOKEN;
-  if (!expected) return false;
-  const provided = req.header('x-test-rate-limit-bypass');
-  return provided === expected;
+  return req.header('x-test-rate-limit-bypass') === TEST_BYPASS_HEADER_VALUE;
 }
 
 export const paymentWriteLimiter = rateLimit({

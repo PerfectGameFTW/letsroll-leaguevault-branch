@@ -398,7 +398,9 @@ export async function createPayment(amount: number, cardInstance: SquareCardHook
       // response (e.g. an upstream proxy returning HTML) can't bubble
       // up as a SyntaxError whose technical `.message` would land in
       // the user-facing toast.
-      let responseData: { status?: string; savedCardId?: string | null; [key: string]: unknown } | null = null;
+      let responseData:
+        | (Partial<PaymentResult> & { [key: string]: unknown })
+        | null = null;
       let responseTextFallback: string | null = null;
       try {
         responseData = await response.clone().json();
@@ -433,7 +435,7 @@ export async function createPayment(amount: number, cardInstance: SquareCardHook
         );
       }
 
-      return responseData as unknown as PaymentResult;
+      return responseData as PaymentResult;
     } else {
       throw makePaymentError(
         'Please check your card details and try again.',

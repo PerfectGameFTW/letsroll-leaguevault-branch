@@ -83,15 +83,17 @@ export default tseslint.config(
         // rules in this block don't need it but pay no extra cost
         // once the program is loaded.
         //
-        // `allowDefaultProject` covers TS files outside the main
-        // `tsconfig.json` include set (currently just `scripts/*.ts`,
-        // which are tsx-run helpers, not part of the app build). The
-        // service falls back to a default inferred program for those
-        // so they still parse — they just don't get full project-wide
-        // type info, which is fine for escape-hatch detection.
-        projectService: {
-          allowDefaultProject: ['scripts/*.ts'],
-        },
+        // `scripts/**/*` is now part of `tsconfig.json`'s `include`
+        // set so the project service can resolve them — without that,
+        // tasks #432 and #499 (which started importing
+        // `scripts/check-no-secrets-in-logs.ts` and
+        // `scripts/verify-trust-proxy-deploy.ts` from test files
+        // under `tests/`) caused typescript-eslint to refuse to lint
+        // those scripts ("was included by allowDefaultProject but
+        // also was found in the project service"). The default
+        // project service is now sufficient for every TS file in the
+        // repo.
+        projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
       globals: {

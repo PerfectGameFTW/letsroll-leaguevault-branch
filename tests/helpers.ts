@@ -22,26 +22,24 @@ interface ApiResponse<T = unknown> {
 }
 
 /**
- * On Replit the dev server is reached through the HTTPS edge, which
- * appends multiple proxy hops to `X-Forwarded-For`. With the server's
- * `app.set('trust proxy', 1)` setting that means every test request
- * resolves to `req.ip = '127.0.0.1'`, so test files that intentionally
- * burst a per-IP rate limiter (e.g. `payments-provider-guards`) will
- * starve every later test in the same vitest invocation that touches
- * the same limiter.
+ * Both on Replit (HTTPS edge → loopback) and on GitHub CI (direct
+ * loopback) every test request resolves to `req.ip = '127.0.0.1'`, so
+ * test files that intentionally burst a per-IP rate limiter
+ * (e.g. `payments-provider-guards`) will starve every later test in
+ * the same vitest invocation that touches the same limiter.
  *
  * The server-side limiters in `server/middleware/rate-limit.ts` skip
- * enforcement when this header is present and matches the
- * `TRUST_PROXY_PROBE_TOKEN` secret AND `NODE_ENV !== 'production'`.
- * Production deployments are immune (the skip short-circuits on
- * NODE_ENV first).
+ * enforcement when this header is present with the literal value `1`
+ * AND `NODE_ENV !== 'production'`. The header value is intentionally a
+ * fixed literal — the security gate is the NODE_ENV check, which
+ * production deploys short-circuit on regardless of any header an
+ * attacker might send. Using a literal (rather than the
+ * `TRUST_PROXY_PROBE_TOKEN` secret used by `verify-trust-proxy-deploy`)
+ * means the bypass works in every environment that runs the vitest
+ * suite — including GitHub CI, which doesn't see Replit-only secrets.
  */
-const TEST_RATE_LIMIT_BYPASS_TOKEN = process.env.TRUST_PROXY_PROBE_TOKEN ?? '';
-
 function withTestBypassHeader(headers: Record<string, string>): Record<string, string> {
-  if (TEST_RATE_LIMIT_BYPASS_TOKEN) {
-    headers['x-test-rate-limit-bypass'] = TEST_RATE_LIMIT_BYPASS_TOKEN;
-  }
+  headers['x-test-rate-limit-bypass'] = '1';
   return headers;
 }
 

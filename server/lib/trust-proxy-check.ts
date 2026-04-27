@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Application, Express } from "express";
 import proxyAddr from "proxy-addr";
 import ipaddr from "ipaddr.js";
 
@@ -107,14 +107,20 @@ function makeFakeReq(forwardedFor: string, socketAddr = "127.0.0.1") {
 // Falling back to a "trust nothing" function is the safest default
 // for a probe — if Express never compiled one, the limiter would key
 // on the socket address anyway.
-function getTrustFn(app: Express): Parameters<typeof proxyAddr>[1] {
+// Accept the broader `Application` type — `Express` extends it, but
+// `req.app` is typed as the bare `Application`, and we only ever read
+// `app.get(...)` here, which is shared by both. Avoids a `as unknown
+// as Express` cast at the call site (`server/routes/system-admin.ts`).
+type TrustProxyApp = Pick<Application, "get">;
+
+function getTrustFn(app: TrustProxyApp): Parameters<typeof proxyAddr>[1] {
   const fn = app.get("trust proxy fn") as
     | Parameters<typeof proxyAddr>[1]
     | undefined;
   return fn ?? (() => false);
 }
 
-export function verifyTrustProxy(app: Express): TrustProxyCheckResult {
+export function verifyTrustProxy(app: TrustProxyApp): TrustProxyCheckResult {
   const trust = getTrustFn(app);
   // Synthesize the simplest realistic shape: a single proxy hop
   // (Replit's edge in our deploy) puts the client's IP in XFF, and

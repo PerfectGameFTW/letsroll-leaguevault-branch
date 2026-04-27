@@ -158,11 +158,6 @@
       "count": 6
     }
   },
-  "scripts/check-csrf-coverage.ts": {
-    "@typescript-eslint/no-non-null-assertion": {
-      "count": 1
-    }
-  },
   "scripts/check-org-isolation-coverage.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 1
@@ -211,10 +206,7 @@
   },
   "server/routes/organization-admin.ts": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 33
-    },
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
+      "count": 31
     }
   },
   "server/routes/payments-provider/charges.ts": {
@@ -287,7 +279,7 @@
       "count": 4
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
+      "count": 2
     }
   },
   "server/storage/orphaned-data.ts": {
@@ -309,6 +301,21 @@
     },
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 2
+    }
+  },
+  "tests/api/admin-email-change-audit-post-confirm.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 6
+    }
+  },
+  "tests/api/admin-email-change-audits.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 3
+    }
+  },
+  "tests/api/admin-fk-id-existence.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 1
     }
   },
   "tests/api/apple-pay-job-cancel-retry.test.ts": {
@@ -392,6 +399,11 @@
       "count": 6
     }
   },
+  "tests/api/safe-fields-contract.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 2
+    }
+  },
   "tests/api/search.test.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 13
@@ -418,9 +430,30 @@
       "count": 1
     }
   },
+  "tests/api/system-admin-trust-proxy-status.test.ts": {
+    "@typescript-eslint/no-non-null-assertion": {
+      "count": 17
+    },
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 3
+    }
+  },
   "tests/api/users-delete.test.ts": {
     "@typescript-eslint/no-non-null-assertion": {
       "count": 4
+    }
+  },
+  "tests/components/admin-email-change-audits-post-confirm-cell.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    }
+  },
+  "tests/components/bowlnow-toggle-preserves-field-ids.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
     }
   },
   "tests/components/deletion-requests-page-confirmation-email.test.tsx": {
@@ -466,6 +499,14 @@
       "count": 1
     }
   },
+  "tests/components/provider-not-configured-toast.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
   "tests/components/set-password-page.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 4
@@ -474,10 +515,23 @@
       "count": 1
     }
   },
+  "tests/components/users-page-change-email-dialog.test.tsx": {
+    "@typescript-eslint/no-unnecessary-type-assertion": {
+      "count": 1
+    },
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
   "tests/components/users-page-reset-password-dialog.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
     },
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/setup/component-test-setup.ts": {
     "no-restricted-syntax": {
       "count": 1
     }
@@ -498,7 +552,7 @@
       "count": 1
     },
     "no-restricted-syntax": {
-      "count": 9
+      "count": 13
     }
   },
   "tests/unit/admin-role-change-audit.test.ts": {
@@ -506,7 +560,7 @@
       "count": 1
     },
     "no-restricted-syntax": {
-      "count": 7
+      "count": 11
     }
   },
   "tests/unit/app-domain-mixed-case-pins.test.ts": {
@@ -534,6 +588,21 @@
       "count": 4
     }
   },
+  "tests/unit/change-password-rate-limit-key.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/charges-buyer-email-enforcement.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/charges-receipt-persistence.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
   "tests/unit/csrf-no-token-leak.test.ts": {
     "no-restricted-syntax": {
       "count": 8
@@ -558,6 +627,11 @@
     },
     "no-restricted-syntax": {
       "count": 2
+    }
+  },
+  "tests/unit/integrations-bowlnow-fields-roundtrip.test.ts": {
+    "no-restricted-syntax": {
+      "count": 3
     }
   },
   "tests/unit/league-mutation-resync.test.ts": {
@@ -596,7 +670,27 @@
       "count": 4
     }
   },
+  "tests/unit/payment-execution-receipt-warn.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/payment-lifecycle-receipt-persistence.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/payment-refunds-receipt-dependency.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
   "tests/unit/payments-by-org.test.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
+  "tests/unit/payments-receipt-endpoints.test.ts": {
     "no-restricted-syntax": {
       "count": 1
     }
@@ -616,6 +710,11 @@
       "count": 4
     }
   },
+  "tests/unit/require-password-rotated.test.ts": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
   "tests/unit/retry-payment-sync-routes.test.ts": {
     "no-restricted-syntax": {
       "count": 4
@@ -632,9 +731,24 @@
       "count": 4
     }
   },
+  "tests/unit/sanitize-bowler.test.ts": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
+  "tests/unit/sanitize-location.test.ts": {
+    "no-restricted-syntax": {
+      "count": 2
+    }
+  },
   "tests/unit/sanitize-org.test.ts": {
     "no-restricted-syntax": {
       "count": 3
+    }
+  },
+  "tests/unit/sanitize-payment.test.ts": {
+    "no-restricted-syntax": {
+      "count": 5
     }
   },
   "tests/unit/sanitize-user.test.ts": {

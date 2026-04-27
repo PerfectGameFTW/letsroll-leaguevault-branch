@@ -220,53 +220,69 @@ export async function runVerifier(env: NodeJS.ProcessEnv = process.env): Promise
   // operator who set up the token can leave a stale cookie around
   // without it being silently used. Logged so a failing run makes
   // the auth mode obvious in CI output.
+  //
+  // The earlier branch already exits via `fail()` (which is `never`) if
+  // neither credential is set, so by here at least one is present;
+  // pick the one we actually have without leaning on `!`.
   const authHeaders: Record<string, string> = {};
   let authMode: 'token' | 'cookie';
   if (probeToken) {
     authHeaders['X-Probe-Token'] = probeToken;
     authMode = 'token';
-  } else {
-    authHeaders.Cookie = adminCookie!;
+  } else if (adminCookie) {
+    authHeaders.Cookie = adminCookie;
     authMode = 'cookie';
+  } else {
+    // Defensive — the earlier check should have already fail()ed.
+    fail('no credentials available (unreachable)', 2);
   }
 
   info(`Probing ${url.toString()} (auth=${authMode})`);
 
+  // Wrapping the fetch + status/JSON parse in helpers lets each step
+  // narrow `Response` and `ProbeResponse` through the function's
+  // return type, instead of leaving us with `let res: Response` whose
+  // first assignment is inside a try/catch (which TS cannot narrow,
+  // forcing `res!` everywhere downstream).
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
-  let res: Response;
-  try {
-    res = await fetch(url.toString(), {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        ...authHeaders,
-      },
-      signal: ac.signal,
-      redirect: 'manual',
-    });
-  } catch (err) {
-    fail(`request failed: ${err instanceof Error ? err.message : String(err)}`);
-  } finally {
-    clearTimeout(timer);
+  const fetchOrFail = async (): Promise<Response> => {
+    try {
+      return await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          ...authHeaders,
+        },
+        signal: ac.signal,
+        redirect: 'manual',
+      });
+    } catch (err) {
+      fail(`request failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  const res = await fetchOrFail();
+
+  if (res.status !== 200) {
+    const body = await res.text().catch(() => '<unreadable body>');
+    fail(`HTTP ${res.status} from probe endpoint. Body: ${body.slice(0, 500)}`);
   }
 
-  if (res!.status !== 200) {
-    const body = await res!.text().catch(() => '<unreadable body>');
-    fail(`HTTP ${res!.status} from probe endpoint. Body: ${body.slice(0, 500)}`);
-  }
+  const parseJsonOrFail = async (): Promise<ProbeResponse> => {
+    try {
+      return (await res.json()) as ProbeResponse;
+    } catch (err) {
+      fail(`response was not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+  const body = await parseJsonOrFail();
 
-  let body: ProbeResponse;
-  try {
-    body = (await res!.json()) as ProbeResponse;
-  } catch (err) {
-    fail(`response was not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
+  if (!body.success || !body.data) {
+    fail(`response not successful: ${JSON.stringify(body).slice(0, 500)}`);
   }
-
-  if (!body!.success || !body!.data) {
-    fail(`response not successful: ${JSON.stringify(body!).slice(0, 500)}`);
-  }
-  const data = body!.data!;
+  const data = body.data;
 
   // Assertion 1: the synthetic probe (same one the boot guard uses)
   // still reports green. If this regresses, the deployed Express
