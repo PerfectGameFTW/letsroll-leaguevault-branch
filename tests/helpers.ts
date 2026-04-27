@@ -40,6 +40,16 @@ interface ApiResponse<T = unknown> {
  */
 function withTestBypassHeader(headers: Record<string, string>): Record<string, string> {
   headers['x-test-rate-limit-bypass'] = '1';
+  // Stop the dev server's live `applePayWorker` from racing apple-pay
+  // job tests that share the same DB. Without this, any test that POSTs
+  // to a route which calls `applePayWorker.kick()` (e.g. /retry,
+  // /register-all-domains) wakes the worker, which then claims `pending`
+  // rows another test file just inserted and flips them to `running`,
+  // breaking that file's claim/recovery assertions (#569). The header
+  // is only honoured when NODE_ENV !== 'production' (see
+  // server/routes/payments-provider/apple-pay.ts), so it can never
+  // disable the production worker.
+  headers['x-test-suppress-apple-pay-kick'] = '1';
   return headers;
 }
 

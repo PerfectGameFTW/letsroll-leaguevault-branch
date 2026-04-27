@@ -56,34 +56,40 @@ afterEach(async () => {
 describe("apple pay job storage — concurrency invariants", () => {
   it("claimNextApplePayJob gives the same pending job to exactly one of two concurrent workers", async () => {
     const jobId = await makeJob();
+    // Scope every claim to this test's own job id. The shared test DB
+    // means another test file may have inserted a `pending` row in
+    // between, which would otherwise be picked by the second/third
+    // claim and confuse the SKIP-LOCKED assertions below.
+    const scope = { onlyJobIds: [jobId] };
 
     const [a, b] = await Promise.all([
-      claimNextApplePayJob(),
-      claimNextApplePayJob(),
+      claimNextApplePayJob(scope),
+      claimNextApplePayJob(scope),
     ]);
 
     const winners = [a, b].filter((j) => j?.id === jobId);
     expect(winners).toHaveLength(1);
     expect(winners[0]!.status).toBe("running");
 
-    // The losing call either claimed something else (none exists in this
-    // test) or returned undefined. In our isolated test we expect undefined.
+    // The losing call must have returned undefined — the only `pending`
+    // row in scope is the one the winner just flipped to `running`.
     const loser = [a, b].find((j) => j?.id !== jobId);
     expect(loser).toBeUndefined();
 
     // A subsequent claim should not re-pick the now-running job.
-    const followUp = await claimNextApplePayJob();
-    expect(followUp?.id).not.toBe(jobId);
+    const followUp = await claimNextApplePayJob(scope);
+    expect(followUp).toBeUndefined();
   });
 
   it("claimNextApplePayJob ignores rows already in 'running'", async () => {
     const jobId = await makeJob();
-    const first = await claimNextApplePayJob();
+    const scope = { onlyJobIds: [jobId] };
+    const first = await claimNextApplePayJob(scope);
     expect(first?.id).toBe(jobId);
 
-    // No other pending job exists, so the second claim must be undefined —
-    // the running row must NOT be re-claimed.
-    const second = await claimNextApplePayJob();
+    // No other pending job exists in scope, so the second claim must be
+    // undefined — the running row must NOT be re-claimed.
+    const second = await claimNextApplePayJob(scope);
     expect(second).toBeUndefined();
   });
 
@@ -175,6 +181,7 @@ describe("apple pay job storage — concurrency invariants", () => {
 
   it("recoverInterruptedApplePayJobs revives 'running' jobs and resume only re-processes pending items", async () => {
     const jobId = await makeJob();
+    const scope = { onlyJobIds: [jobId] };
 
     // Simulate an interrupted run: enumerate items, claim the job
     // (status -> running), finish a few items, then "crash" leaving the
@@ -185,7 +192,7 @@ describe("apple pay job storage — concurrency invariants", () => {
       { organizationId: null, locationId: null, domain: "todo-1.test" },
       { organizationId: null, locationId: null, domain: "todo-2.test" },
     ]);
-    const claimed = await claimNextApplePayJob();
+    const claimed = await claimNextApplePayJob(scope);
     expect(claimed?.id).toBe(jobId);
     expect(claimed?.status).toBe("running");
 
@@ -196,7 +203,7 @@ describe("apple pay job storage — concurrency invariants", () => {
     // -- crash boundary: job row is still 'running', items 2 & 3 still pending.
 
     // After-restart bookkeeping.
-    const revived = await recoverInterruptedApplePayJobs();
+    const revived = await recoverInterruptedApplePayJobs(scope);
     expect(revived.revivedJobIds).toContain(jobId);
     const reloaded = await getApplePayJob(jobId);
     expect(reloaded?.status).toBe("pending");
@@ -212,7 +219,7 @@ describe("apple pay job storage — concurrency invariants", () => {
     expect(await countApplePayJobItems(jobId)).toBe(4);
 
     // Worker resumes — must be able to re-claim the job…
-    const reclaimed = await claimNextApplePayJob();
+    const reclaimed = await claimNextApplePayJob(scope);
     expect(reclaimed?.id).toBe(jobId);
 
     // …and only the previously-pending items show up for processing.
@@ -290,7 +297,7 @@ describe("apple pay job storage — concurrency invariants", () => {
       .set({ claimedAt: expiredAt })
       .where(inArray(applePayJobItems.id, [expired1.id, expired2.id]));
 
-    const result = await recoverInterruptedApplePayJobs();
+    const result = await recoverInterruptedApplePayJobs({ onlyJobIds: [jobId] });
 
     // #270: result must surface what was revived so the worker can log it
     // and the admin UI can flag the affected job as anomalous.
@@ -355,7 +362,7 @@ describe("apple pay job storage — concurrency invariants", () => {
       .set({ claimedAt: expiredAt })
       .where(eq(applePayJobItems.id, expired.id));
 
-    await recoverInterruptedApplePayJobs();
+    await recoverInterruptedApplePayJobs({ onlyJobIds: [jobId] });
 
     const reloaded = await getApplePayJobItems(jobId);
     const liveAfter = reloaded.find((it) => it.id === live.id)!;
@@ -461,11 +468,12 @@ describe("apple pay job storage — reopenApplePayJobForRetry (#568)", () => {
     // then re-claim — the new claim must see the same items table and
     // pick up where we left off.
     const jobId = await makeJob();
+    const scope = { onlyJobIds: [jobId] };
     await insertApplePayJobItems(jobId, [
       { organizationId: null, locationId: null, domain: "resume-1.test" },
       { organizationId: null, locationId: null, domain: "resume-2.test" },
     ]);
-    const claimed = await claimNextApplePayJob();
+    const claimed = await claimNextApplePayJob(scope);
     expect(claimed?.id).toBe(jobId);
     expect(claimed?.status).toBe("running");
 
@@ -474,7 +482,7 @@ describe("apple pay job storage — reopenApplePayJobForRetry (#568)", () => {
 
     // Next worker tick can re-claim the job, and the items table is
     // intact (still 2 pending) so processing resumes cleanly.
-    const reclaimed = await claimNextApplePayJob();
+    const reclaimed = await claimNextApplePayJob(scope);
     expect(reclaimed?.id).toBe(jobId);
     const stillPending = await getPendingApplePayJobItems(jobId);
     expect(stillPending.map((i) => i.domain).sort()).toEqual(["resume-1.test", "resume-2.test"]);
@@ -511,7 +519,7 @@ describe("apple pay job storage — reopenApplePayJobForRetry (#568)", () => {
       .where(eq(applePayJobItems.id, stranded.id));
 
     // Server boot recovery sweep.
-    await recoverInterruptedApplePayJobs();
+    await recoverInterruptedApplePayJobs({ onlyJobIds: [jobId] });
     const reloadedJob = await getApplePayJob(jobId);
     expect(reloadedJob?.status).toBe("pending");
     const strandedAfterRecovery = (await getApplePayJobItems(jobId)).find((i) => i.id === stranded.id)!;
@@ -519,7 +527,7 @@ describe("apple pay job storage — reopenApplePayJobForRetry (#568)", () => {
     expect(strandedAfterRecovery.recoveredCount).toBe(1);
 
     // Worker re-claims the job and processes the revived item.
-    const reclaimed = await claimNextApplePayJob();
+    const reclaimed = await claimNextApplePayJob({ onlyJobIds: [jobId] });
     expect(reclaimed?.id).toBe(jobId);
     const pendingAfterReclaim = await getPendingApplePayJobItems(jobId);
     expect(pendingAfterReclaim.map((i) => i.id)).toEqual([stranded.id]);

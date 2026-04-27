@@ -87,12 +87,28 @@ export async function getApplePayJobsRecoveredItemTotals(
  *
  * Row is locked `FOR UPDATE SKIP LOCKED` so two workers cannot claim the same
  * job concurrently.
+ *
+ * Test-only: pass `onlyJobIds` to scope the candidate set to the IDs created
+ * by the calling test. The shared test database means another test file can
+ * have inserted a `pending` row in between this test's insert and claim;
+ * scoping the SELECT keeps the claim-ordering / SKIP-LOCKED assertions
+ * deterministic without serialising the whole apple-pay test group. The
+ * `FOR UPDATE SKIP LOCKED` semantics still apply within the scoped set.
+ * Production callers do not pass this option and behaviour is unchanged.
  */
-export async function claimNextApplePayJob(): Promise<ApplePayJob | undefined> {
+export async function claimNextApplePayJob(
+  opts?: { onlyJobIds?: number[] },
+): Promise<ApplePayJob | undefined> {
+  const onlyJobIds = opts?.onlyJobIds;
+  if (onlyJobIds && onlyJobIds.length === 0) return undefined;
   return db.transaction(async (tx) => {
+    const scope = onlyJobIds
+      ? sql`AND id IN (${sql.join(onlyJobIds.map((id) => sql`${id}`), sql`, `)})`
+      : sql``;
     const candidates = await tx.execute(sql`
       SELECT id FROM apple_pay_jobs
       WHERE status = 'pending'
+      ${scope}
       ORDER BY created_at ASC
       LIMIT 1
       FOR UPDATE SKIP LOCKED
@@ -141,11 +157,22 @@ export interface ApplePayRecoveryResult {
   revivedItems: Array<{ jobId: number; itemId: number }>;
 }
 
-export async function recoverInterruptedApplePayJobs(): Promise<ApplePayRecoveryResult> {
+export async function recoverInterruptedApplePayJobs(
+  opts?: { onlyJobIds?: number[] },
+): Promise<ApplePayRecoveryResult> {
+  const onlyJobIds = opts?.onlyJobIds;
+  if (onlyJobIds && onlyJobIds.length === 0) {
+    return { revivedJobIds: [], revivedItems: [] };
+  }
+
+  const jobScope = onlyJobIds
+    ? and(eq(applePayJobs.status, "running"), inArray(applePayJobs.id, onlyJobIds))!
+    : eq(applePayJobs.status, "running");
+
   const updatedJobs = await db
     .update(applePayJobs)
     .set({ status: "pending" })
-    .where(eq(applePayJobs.status, "running"))
+    .where(jobScope)
     .returning({ id: applePayJobs.id });
 
   // Lease cutoff is computed entirely in DB time (NOW() - interval) to
@@ -154,6 +181,13 @@ export async function recoverInterruptedApplePayJobs(): Promise<ApplePayRecovery
   // by a crashed worker. We bump `recovered_count` so the admin UI can
   // flag jobs that had any items stall mid-call.
   const leaseSeconds = Math.ceil(APPLE_PAY_ITEM_LEASE_MS / 1000);
+  const itemScope = and(
+    eq(applePayJobItems.status, "processing"),
+    // `claimed_at IS NULL` covers rows written before the lease
+    // column existed; `claimed_at < NOW() - lease` is the normal case.
+    sql`(${applePayJobItems.claimedAt} IS NULL OR ${applePayJobItems.claimedAt} < NOW() - (${leaseSeconds} || ' seconds')::interval)`,
+    ...(onlyJobIds ? [inArray(applePayJobItems.jobId, onlyJobIds)] : []),
+  );
   const updatedItems = await db
     .update(applePayJobItems)
     .set({
@@ -161,14 +195,7 @@ export async function recoverInterruptedApplePayJobs(): Promise<ApplePayRecovery
       claimedAt: null,
       recoveredCount: sql`${applePayJobItems.recoveredCount} + 1`,
     })
-    .where(
-      and(
-        eq(applePayJobItems.status, "processing"),
-        // `claimed_at IS NULL` covers rows written before the lease
-        // column existed; `claimed_at < NOW() - lease` is the normal case.
-        sql`(${applePayJobItems.claimedAt} IS NULL OR ${applePayJobItems.claimedAt} < NOW() - (${leaseSeconds} || ' seconds')::interval)`,
-      ),
-    )
+    .where(itemScope)
     .returning({ id: applePayJobItems.id, jobId: applePayJobItems.jobId });
 
   return {

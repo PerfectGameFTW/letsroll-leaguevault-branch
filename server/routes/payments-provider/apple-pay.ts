@@ -27,13 +27,29 @@ const log = createLogger('Payments');
 
 const router = Router();
 
+/**
+ * Test-only: when the request carries `x-test-suppress-apple-pay-kick: 1`
+ * AND we are not in production, the route hands the worker a no-op kick.
+ * Without this, the dev server's live `applePayWorker` (which shares a
+ * DB with the vitest suite) races the apple-pay job tests by claiming
+ * `pending` rows out from under them — see task #569 for the failure
+ * mode. The header is wired in tests/helpers.ts via `withTestBypassHeader`
+ * so every test request short-circuits the kick by default.
+ */
+function isWorkerKickSuppressed(req: { headers: Record<string, unknown> }): boolean {
+  if (process.env.NODE_ENV === 'production') return false;
+  return req.headers['x-test-suppress-apple-pay-kick'] === '1';
+}
+
 router.post('/apple-pay/register-all-domains', async (req, res) => {
   try {
     if (req.user?.role !== 'system_admin') {
       return sendError(res, 'System admin access required', 403, 'FORBIDDEN');
     }
 
-    const job = await applePayWorker.enqueue(req.user?.id ?? null);
+    const job = await applePayWorker.enqueue(req.user?.id ?? null, {
+      suppressKick: isWorkerKickSuppressed(req),
+    });
 
     res.status(202).json({
       success: true,
@@ -181,7 +197,7 @@ router.post('/apple-pay/jobs/:id/retry', async (req, res) => {
         'NOT_RETRYABLE',
       );
     }
-    applePayWorker.kick();
+    if (!isWorkerKickSuppressed(req)) applePayWorker.kick();
     log.info('Apple Pay job retried by admin', { jobId: id, by: req.user?.id, resetCount: result.resetCount });
     sendSuccess(res, { job: result.job, resetCount: result.resetCount });
   } catch (error) {
@@ -211,7 +227,7 @@ router.post('/apple-pay/jobs/:id/items/:itemId/retry', async (req, res) => {
         'NOT_RETRYABLE',
       );
     }
-    applePayWorker.kick();
+    if (!isWorkerKickSuppressed(req)) applePayWorker.kick();
     log.info('Apple Pay job item retried by admin', { jobId: id, itemId, by: req.user?.id });
     sendSuccess(res, { item: result.item, job: result.job });
   } catch (error) {

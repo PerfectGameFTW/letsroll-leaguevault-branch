@@ -19,16 +19,23 @@ class ApplePayWorker {
   private running = false;
 
   /** Enqueue a new bulk-register job. Returns the freshly-created job row. */
-  async enqueue(createdBy: number | null): Promise<ApplePayJob> {
+  async enqueue(createdBy: number | null, opts?: { suppressKick?: boolean }): Promise<ApplePayJob> {
     const job = await storage.createApplePayJob(createdBy);
     log("Job enqueued", { jobId: job.id, createdBy });
-    this.kick();
+    if (!opts?.suppressKick) this.kick();
     return job;
   }
 
   /**
    * Kick the worker loop. Idempotent — concurrent calls coalesce into a
    * single in-flight loop.
+   *
+   * Test-only: callers in non-production environments can short-circuit
+   * the kick by sending the `x-test-suppress-apple-pay-kick: 1` header
+   * and routing the suppression decision through here. The worker
+   * sharing a DB with the test suite would otherwise race apple-pay job
+   * tests by claiming `pending` rows out from under them whenever a
+   * route handler kicks (#569).
    */
   kick(): void {
     if (this.running) return;
