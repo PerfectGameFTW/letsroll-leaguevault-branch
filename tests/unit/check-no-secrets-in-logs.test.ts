@@ -33,7 +33,7 @@
  *      a temp fixture to pin the exit-0-with-warnings behavior.
  */
 import { spawnSync } from 'node:child_process';
-import { writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
@@ -464,6 +464,289 @@ describe('check-no-secrets-in-logs CI guard', () => {
         `  const b = a;\n` +
         `  log.info(b);\n` +
         `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  // ---------------------------------------------------------------
+  // Helper-function call detection (task #541). Multi-hop alias
+  // detection (#540) closed the obvious bypass of routing the
+  // secret through extra locals; the next natural shape is to
+  // route it through a function whose body returns the forbidden
+  // expression, so the property access never appears inside the
+  // log call's argument subtree at all.
+  //
+  //   function pickPassword(req) { return req.body.password; }
+  //   log.info(`pw=${pickPassword(req)}`);
+  //
+  // The scanner builds a per-file map of every function /
+  // arrow-function / function-expression bound to a name and
+  // classifies its return value the same way it classifies a
+  // variable initializer. A call to a helper whose return value is
+  // forbidden is treated as a leak inside log args.
+  // ---------------------------------------------------------------
+
+  it('flags `function pickPassword(req) { return req.body.password; } log.info(`pw=${pickPassword(req)}`)` (the brief)', () => {
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);`,
+    );
+    // The reason text should name the helper AND carry the
+    // underlying property-access reason so the report points at
+    // the real secret source.
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning property access ending in \.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags an arrow-function helper with expression body `const pw = (req) => req.body.password`', () => {
+    const reasons = reasonsFor(
+      `const pw = (req: any) => req.body.password;\n` +
+        `log.info('attempt', pw(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'pw\(\)' returning property access ending in \.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags an arrow-function helper with block body and a return statement', () => {
+    const reasons = reasonsFor(
+      `const grab = (req: any) => {\n` +
+        `  return req.body.password;\n` +
+        `};\n` +
+        `log.warn(grab(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'grab\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a function-expression helper bound to a variable', () => {
+    const reasons = reasonsFor(
+      `const grab = function (req: any) { return req.body.password; };\n` +
+        `log.error(\`pw=\${grab(req)}\`);`,
+    );
+    expect(
+      reasons.some((r) => /helper call 'grab\(\)' returning .*\.password/.test(r)),
+    ).toBe(true);
+  });
+
+  it('flags a helper whose body returns a forbidden bare identifier', () => {
+    // Same machinery — `return csrfToken;` returns a bare
+    // identifier in `forbiddenIdentifiersStrict`, classifying the
+    // helper as forbidden.
+    const reasons = reasonsFor(
+      `function getCsrf(csrfToken: string) { return csrfToken; }\n` +
+        `log.info(getCsrf(t));`,
+    );
+    expect(
+      reasons.some((r) => /helper call 'getCsrf\(\)' returning bare identifier 'csrfToken'/.test(r)),
+    ).toBe(true);
+  });
+
+  it('flags a helper whose body returns a forbidden element-access (computed header)', () => {
+    const reasons = reasonsFor(
+      `function getCsrfHeader(req: any) { return req.headers['x-csrf-token']; }\n` +
+        `log.warn(getCsrfHeader(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'getCsrfHeader\(\)' returning element access \["x-csrf-token"\]/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a helper that routes the secret through an intra-helper alias before returning', () => {
+    // `pw` inside the helper body is itself a forbidden alias
+    // (single-hop). The helper-classifier passes the file's scope
+    // map to `classifyInitializer` so `return pw` is classified
+    // forbidden via the same mechanism.
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) {\n` +
+        `  const pw = req.body.password;\n` +
+        `  return pw;\n` +
+        `}\n` +
+        `log.info(pickPassword(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning local 'pw' aliasing .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a helper with multiple return paths when ANY of them is forbidden', () => {
+    // The scanner is conservative: a single forbidden return is
+    // enough to classify the helper, even if other paths return
+    // benign values. This mirrors the runtime reality — the secret
+    // path WILL execute under some inputs.
+    const reasons = reasonsFor(
+      `function maybe(req: any, fallback: boolean) {\n` +
+        `  if (fallback) return 'placeholder';\n` +
+        `  return req.body.password;\n` +
+        `}\n` +
+        `log.info(maybe(req, false));`,
+    );
+    expect(
+      reasons.some((r) => /helper call 'maybe\(\)' returning .*\.password/.test(r)),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a helper whose body returns nothing forbidden', () => {
+    // A function that returns benign metadata (or a literal)
+    // must not trip the helper detection. `req.body.id` does not
+    // match any forbidden property name.
+    const reasons = reasonsFor(
+      `function getUserId(req: any) { return req.body.id; }\n` +
+        `log.info(getUserId(req));`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a helper whose forbidden return is inside a NESTED function (the inner return is not the outer return)', () => {
+    // The visitor that walks `outer`'s body must NOT descend into
+    // `inner` — `inner`'s `return req.body.password` is `inner`'s
+    // return value, not `outer`'s. `outer` returns `null`, so it
+    // is benign.
+    const reasons = reasonsFor(
+      `function outer(req: any) {\n` +
+        `  function inner() { return req.body.password; }\n` +
+        `  return null;\n` +
+        `}\n` +
+        `log.info(outer(req));`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a same-named helper after it is shadowed by an inner declaration', () => {
+    // Same shadowing rules as the alias machinery: an inner
+    // `function pickPassword() { return 'placeholder'; }` must
+    // mask the outer forbidden helper for log calls inside the
+    // inner block.
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `function caller(req: any) {\n` +
+        `  function pickPassword() { return 'placeholder'; }\n` +
+        `  log.info(pickPassword());\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a non-call reference to a forbidden helper (only invocation matters)', () => {
+    // Passing the helper as a value (`registerHandler(pickPassword)`)
+    // does not surface the secret — only invoking it does. The
+    // 'helper' binding kind is distinct from 'forbidden' so the
+    // bare-identifier alias rule does not double-fire on the
+    // helper name itself.
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `log.info('handler is', pickPassword);`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('flags a CROSS-FILE helper imported via a relative spec', () => {
+    // Cross-file detection: parse the imported file, identify the
+    // exported helper that returns a forbidden expression, seed
+    // the importing file's source-file scope so the helper-call
+    // rule fires.
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-cross-'));
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export function pickPassword(req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { pickPassword } from './helpers';\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE helper imported under a renamed alias `import { x as y }`', () => {
+    // The local name (`pp`) must be the one recorded in the scope —
+    // a call to `pp(req)` in the importing file should trip even
+    // though the helper was originally exported as `pickPassword`.
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-cross-alias-'));
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const pickPassword = (req: any) => req.body.password;\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { pickPassword as pp } from './helpers';\n` +
+        `log.info(pp(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) => /helper call 'pp\(\)' returning .*\.password/.test(r)),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a CROSS-FILE import whose exported helper is benign', () => {
+    // Pin that the import-resolution pass does not over-match —
+    // a benign exported helper must not poison every call site.
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-cross-benign-'));
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export function getUserId(req: any) { return req.body.id; }\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { getUserId } from './helpers';\n` +
+        `log.info('user', getUserId(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a CROSS-FILE import that resolves to a missing file (resolution failure must be silent)', () => {
+    // Imports that cannot be resolved on disk (e.g. `import {
+    // log } from './logger.js'` in an isolated fixture) must not
+    // throw or false-positive — they just do not contribute any
+    // helper bindings.
+    const reasons = reasonsFor(
+      `import { something } from './does-not-exist';\n` +
+        `log.info('safe', { id: 1 });`,
     );
     expect(reasons).toHaveLength(0);
   });

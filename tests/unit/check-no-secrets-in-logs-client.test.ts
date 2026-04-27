@@ -33,7 +33,7 @@
  *      to pin the exit-0-with-warnings behavior on the client surface.
  */
 import { spawnSync } from 'node:child_process';
-import { writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
@@ -301,6 +301,82 @@ describe('check-no-secrets-in-logs CI guard (client surface)', () => {
     expect(
       reasonsFor(`console.log('safe', { newPassword: 'X' });`),
     ).toHaveLength(0);
+  });
+
+  // ---------------------------------------------------------------
+  // Helper-function call detection (task #541) on the client
+  // surface. Same machinery as the server surface but the
+  // forbidden-shape sets are wider — a helper that returns
+  // `data.newPassword` or `form.getValues('password')` must be
+  // recognized too, since those are the canonical client-only
+  // forbidden shapes.
+  // ---------------------------------------------------------------
+
+  it('flags a helper that returns .currentPassword (client-only forbidden property)', () => {
+    const reasons = reasonsFor(
+      `function pickPw(d: any) { return d.currentPassword; }\n` +
+        `console.log(\`pw=\${pickPw(data)}\`);`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPw\(\)' returning .*\.currentPassword/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags a helper that returns form.getValues('password') (client-only form-reader)", () => {
+    // The helper-classifier reuses the form-reader detection on
+    // its return-statement expression — `return form.getValues(...)`
+    // with a forbidden field key classifies the helper as forbidden.
+    const reasons = reasonsFor(
+      `const pickPw = (form: any) => form.getValues('password');\n` +
+        `console.warn(\`v=\${pickPw(form)}\`);`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPw\(\)' returning form-reader call \.getValues\("password"\)/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a helper that returns a benign field', () => {
+    expect(
+      reasonsFor(
+        `function pickAmount(d: any) { return d.amount; }\n` +
+          `console.log(pickAmount(data));`,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('flags a CROSS-FILE helper imported from a sibling .ts file (client surface)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-client-cross-'));
+    const helpersFile = join(dir, 'client/src/helpers.ts');
+    const componentFile = join(dir, 'client/src/Component.tsx');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const pickPw = (d: any) => d.newPassword;\n`,
+    );
+    writeFileSync(
+      componentFile,
+      `import { pickPw } from './helpers';\n` +
+        `function F({ data }: any) {\n` +
+        `  console.log('attempt', pickPw(data));\n` +
+        `  return null;\n` +
+        `}\n`,
+    );
+    const reasons = scanSource(
+      componentFile,
+      readFileSync(componentFile, 'utf8'),
+      CLIENT_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPw\(\)' returning .*\.newPassword/.test(r),
+      ),
+    ).toBe(true);
   });
 
   // ---------------------------------------------------------------

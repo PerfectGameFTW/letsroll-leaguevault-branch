@@ -93,8 +93,8 @@
  *   tsx scripts/check-no-secrets-in-logs.ts --strict              # server, CI gate
  *   tsx scripts/check-no-secrets-in-logs.ts --surface=client --strict
  */
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
@@ -293,17 +293,254 @@ function isVarDeclaration(decl: ts.VariableDeclaration): boolean {
 }
 
 /**
- * A binding either resolves to a forbidden value (the local was
- * initialized from a forbidden property access / element access /
- * identifier / form-reader call) or to "other" — meaning the name
- * is bound here but to something benign. The "other" entries are
- * load-bearing for shadowing: a `const pw = 'fixture'` in an inner
- * scope must mask any same-named outer alias so the inner `pw` is
- * NOT treated as a secret.
+ * A binding resolves to one of three classifications:
+ *
+ *   - 'forbidden' — the local holds a secret string (initialized
+ *     from a forbidden property access / element access / identifier
+ *     / form-reader call, possibly via single-hop or multi-hop alias).
+ *     A use of the local in a value-reference position inside a log
+ *     call is a leak.
+ *
+ *   - 'helper' — the local IS a function (function declaration,
+ *     arrow function expression, or function expression) whose body
+ *     returns a forbidden expression. A CALL to the local inside a
+ *     log call is a leak — the return value carries the secret out.
+ *     Task #541's headline case (`log.info(pickPassword(req))`).
+ *
+ *   - 'other' — the name is bound here but to something benign.
+ *     Load-bearing for shadowing: a `const pw = 'fixture'` in an
+ *     inner scope must mask any same-named outer alias so the inner
+ *     `pw` is NOT treated as a secret.
  */
 type Binding =
   | { kind: 'forbidden'; reason: string }
+  | { kind: 'helper'; reason: string }
   | { kind: 'other' };
+
+/**
+ * tsconfig.json path aliases. Mirrors the `paths` map in
+ * `tsconfig.json` so cross-file import resolution can resolve
+ * `@shared/foo` / `@/components/Bar` / etc. to the on-disk file.
+ *
+ * Order matters: the longer prefix (`@shared/`, `@components/`)
+ * must be tried before the shorter `@/` so we don't mis-match
+ * `@shared/x` as `@/shared/x`.
+ */
+const TSCONFIG_PATH_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  ['@shared/', 'shared/'],
+  ['@server/', 'server/'],
+  ['@components/', 'client/src/components/'],
+  ['@lib/', 'client/src/lib/'],
+  ['@hooks/', 'client/src/hooks/'],
+  ['@ui/', 'client/src/components/ui/'],
+  ['@/', 'client/src/'],
+];
+
+/**
+ * Resolve an `import ... from '<spec>'` module specifier to an
+ * on-disk source file path within the project. Returns null for
+ * bare-package imports (those go to `node_modules` and are out of
+ * scope for the same-package helper heuristic) and for any spec
+ * the resolver cannot find on disk.
+ *
+ * Handles relative specs (`./foo`, `../bar/baz`), `tsconfig.json`
+ * path aliases (`@shared/foo`, `@/components/Bar`), and the common
+ * pattern of importing a `.ts` file via its emitted `.js`
+ * extension (`./foo.js` -> `./foo.ts`).
+ */
+function resolveImportPath(
+  fromFile: string,
+  spec: string,
+  surface: Surface,
+): string | null {
+  let base: string | null = null;
+  for (const [alias, target] of TSCONFIG_PATH_ALIASES) {
+    if (spec === alias.slice(0, -1)) {
+      base = resolve(process.cwd(), target.slice(0, -1));
+      break;
+    }
+    if (spec.startsWith(alias)) {
+      base = resolve(process.cwd(), target + spec.slice(alias.length));
+      break;
+    }
+  }
+  if (base === null) {
+    if (spec.startsWith('.')) {
+      base = resolve(dirname(fromFile), spec);
+    } else {
+      // Bare package — out of scope for the same-package heuristic.
+      return null;
+    }
+  }
+  // Strip JS-style extensions; TS source often imports the emitted
+  // `.js` form (`./helpers.js`) under `moduleResolution: bundler`.
+  let stripped = base;
+  for (const ext of ['.js', '.jsx', '.mjs', '.cjs']) {
+    if (stripped.endsWith(ext)) {
+      stripped = stripped.slice(0, -ext.length);
+      break;
+    }
+  }
+  // Try direct file with each surface-known extension; also fall
+  // back to `.ts` so a `.tsx` file that imports a `.ts` helper
+  // (server surface declares `.ts` only, but a re-import from a
+  // shared location is still scannable) still resolves.
+  const exts = Array.from(new Set([...surface.fileExtensions, '.ts']));
+  for (const ext of exts) {
+    if (existsSync(stripped + ext)) return stripped + ext;
+  }
+  for (const ext of exts) {
+    const idx = join(stripped, 'index' + ext);
+    if (existsSync(idx)) return idx;
+  }
+  return null;
+}
+
+/**
+ * Classify a function's return value. Returns a forbidden
+ * classification when ANY return statement (or, for an
+ * expression-bodied arrow function, the body expression itself)
+ * matches a forbidden shape — meaning calling this function
+ * inside a log call would surface the secret.
+ *
+ * The walk explicitly does NOT descend into nested function
+ * declarations / expressions / arrow functions / methods — those
+ * have their own return-value semantics and a `return` statement
+ * inside an inner function does NOT count as a return of the
+ * outer function.
+ *
+ * `scopes` is optional; when provided, the underlying
+ * `classifyInitializer` can resolve plain-identifier returns
+ * (`return pw;` where `pw` is a same-file alias for
+ * `req.body.password`) — the same mechanism that closes the
+ * multi-hop alias gap from task #540, applied here to the
+ * intra-helper case.
+ */
+function classifyFunctionReturn(
+  fn:
+    | ts.FunctionDeclaration
+    | ts.FunctionExpression
+    | ts.ArrowFunction
+    | ts.MethodDeclaration,
+  surface: Surface,
+  scopes?: Map<ts.Node, Map<string, Binding>>,
+): { kind: 'forbidden'; reason: string } | null {
+  // Arrow function with expression body (`(req) => req.body.password`).
+  if (ts.isArrowFunction(fn) && fn.body && !ts.isBlock(fn.body)) {
+    return classifyInitializer(fn.body, surface, scopes);
+  }
+  const body = fn.body;
+  if (!body || !ts.isBlock(body)) return null;
+  let result: { kind: 'forbidden'; reason: string } | null = null;
+  const visit = (n: ts.Node): void => {
+    if (
+      ts.isFunctionDeclaration(n) ||
+      ts.isFunctionExpression(n) ||
+      ts.isArrowFunction(n) ||
+      ts.isMethodDeclaration(n) ||
+      ts.isGetAccessorDeclaration(n) ||
+      ts.isSetAccessorDeclaration(n)
+    ) {
+      // Do not descend into nested functions — their `return`s
+      // belong to themselves, not to the enclosing function.
+      return;
+    }
+    if (ts.isReturnStatement(n) && n.expression) {
+      const cls = classifyInitializer(n.expression, surface, scopes);
+      if (cls && !result) result = cls;
+    }
+    n.forEachChild(visit);
+  };
+  visit(body);
+  return result;
+}
+
+/**
+ * Per-surface cache of `<exported helper name> -> Binding` for files
+ * that have been parsed for cross-file helper detection. Keyed by
+ * `<absolute path>:<surface name>` so a file that exports the same
+ * function name under both surfaces (the shared/ tree) still gets
+ * surface-specific classification.
+ *
+ * The map is set BEFORE populating to break import cycles —
+ * `getExportedHelpers(A)` invoked while resolving B's imports while
+ * resolving A's imports finds the in-progress empty map and
+ * returns it instead of recursing forever.
+ */
+const EXPORT_HELPER_CACHE = new Map<string, Map<string, Binding>>();
+
+function hasExportModifier(node: ts.Node): boolean {
+  if (!ts.canHaveModifiers(node)) return false;
+  const mods = ts.getModifiers(node);
+  return mods?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+}
+
+/**
+ * Parse `file` and extract the names of any top-level exported
+ * functions whose body returns a forbidden expression. Used by
+ * `collectScopedBindings` to seed the importing file's source-file
+ * scope with `helper` bindings for each `import { … } from './path'`
+ * specifier.
+ *
+ * Recognized export shapes:
+ *
+ *   export function pickPassword(req) { return req.body.password; }
+ *   export const pickPassword = (req) => req.body.password;
+ *   export const pickPassword = function (req) { return req.body.password; };
+ *
+ * Default exports and re-exports (`export { x } from './y'`) are
+ * intentionally out of scope — the brief asks for "imported
+ * function declarations", and named exports cover the canonical
+ * helper shape.
+ */
+function getExportedHelpers(
+  file: string,
+  surface: Surface,
+): Map<string, Binding> {
+  const cacheKey = `${file}:${surface.name}`;
+  const cached = EXPORT_HELPER_CACHE.get(cacheKey);
+  if (cached) return cached;
+  const map = new Map<string, Binding>();
+  // Set early so cyclic imports don't re-enter and recurse.
+  EXPORT_HELPER_CACHE.set(cacheKey, map);
+  let src: string;
+  try {
+    src = readFileSync(file, 'utf8');
+  } catch {
+    return map;
+  }
+  const sf = ts.createSourceFile(
+    file,
+    src,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ true,
+    scriptKindForFile(file),
+  );
+  // Build scopes for the imported file too — covers helpers that
+  // route through a same-file alias before returning
+  // (`function f(req) { const pw = req.body.password; return pw; }`).
+  const importedScopes = collectScopedBindings(sf, surface);
+  for (const stmt of sf.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
+      const cls = classifyFunctionReturn(stmt, surface, importedScopes);
+      if (cls) {
+        map.set(stmt.name.text, { kind: 'helper', reason: cls.reason });
+      }
+    } else if (ts.isVariableStatement(stmt) && hasExportModifier(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
+        const init = decl.initializer;
+        if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+          const cls = classifyFunctionReturn(init, surface, importedScopes);
+          if (cls) {
+            map.set(decl.name.text, { kind: 'helper', reason: cls.reason });
+          }
+        }
+      }
+    }
+  }
+  return map;
+}
 
 /**
  * Classify a variable initializer / assignment RHS. Returns a
@@ -435,11 +672,18 @@ function collectScopedBindings(
       m = new Map();
       scopes.set(scope, m);
     }
-    // 'forbidden' wins over 'other' in case both happen on the
-    // same name in the same scope (rare; stay conservative on
-    // the side of catching leaks).
+    // Priority when the same name is recorded twice in the same
+    // scope: forbidden > helper > other. 'forbidden' must always
+    // win (stay conservative on the side of catching leaks). A
+    // 'helper' upgrade over a placeholder 'other' (recorded by the
+    // first pass for `function pickPassword(...) {}` before its
+    // body has been classified) is what lets pass 3 promote the
+    // function to a known helper.
     const prev = m.get(name);
-    if (prev && prev.kind === 'forbidden') return;
+    if (prev) {
+      if (prev.kind === 'forbidden') return;
+      if (prev.kind === 'helper' && binding.kind === 'other') return;
+    }
     m.set(name, binding);
   };
   const recordParameters = (
@@ -608,6 +852,81 @@ function collectScopedBindings(
     ts.forEachChild(node, visitAssignments);
   };
   visitAssignments(sourceFile);
+
+  // Pass 3: helper-function detection (task #541). For every
+  // function declaration / arrow / function expression that gets
+  // bound to a name (function declarations bind their own name,
+  // `const x = (...) => ...` binds `x`), check whether the body
+  // returns a forbidden expression. If so, upgrade the binding to
+  // 'helper' so a CALL to the function inside a log argument can
+  // be flagged. Runs AFTER passes 1 & 2 so the inner-body scopes
+  // are fully populated — `function f(req) { const pw =
+  // req.body.password; return pw; }` requires `pw` to be a known
+  // forbidden binding before classifying the return.
+  const visitHelpers = (node: ts.Node): void => {
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      const cls = classifyFunctionReturn(node, surface, scopes);
+      if (cls) {
+        recordIn(nearestScope(node), node.name.text, {
+          kind: 'helper',
+          reason: cls.reason,
+        });
+      }
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      const init = node.initializer;
+      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+        const scope = isVarDeclaration(node)
+          ? nearestFunctionScope(node)
+          : nearestScope(node);
+        const cls = classifyFunctionReturn(init, surface, scopes);
+        if (cls) {
+          recordIn(scope, node.name.text, {
+            kind: 'helper',
+            reason: cls.reason,
+          });
+        }
+      }
+    }
+    ts.forEachChild(node, visitHelpers);
+  };
+  visitHelpers(sourceFile);
+
+  // Pass 4: cross-file helper detection (task #541). For each
+  // top-level `import { foo, bar as baz } from '<spec>'`, resolve
+  // the spec to an on-disk file, ask `getExportedHelpers` for the
+  // set of named exports it considers forbidden helpers, and seed
+  // the importing file's source-file scope with a 'helper' binding
+  // under the LOCAL name (so `import { x as y }` records `y`).
+  // The import-resolution cache breaks cycles so this stays linear
+  // even on a tightly-coupled package.
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isImportDeclaration(stmt) || !stmt.importClause) continue;
+    if (!ts.isStringLiteralLike(stmt.moduleSpecifier)) continue;
+    const resolved = resolveImportPath(
+      sourceFile.fileName,
+      stmt.moduleSpecifier.text,
+      surface,
+    );
+    if (!resolved) continue;
+    if (resolved === sourceFile.fileName) continue;
+    const exported = getExportedHelpers(resolved, surface);
+    if (exported.size === 0) continue;
+    const nb = stmt.importClause.namedBindings;
+    if (nb && ts.isNamedImports(nb)) {
+      for (const el of nb.elements) {
+        const importedName = el.propertyName ? el.propertyName.text : el.name.text;
+        const helper = exported.get(importedName);
+        if (helper) {
+          recordIn(sourceFile, el.name.text, helper);
+        }
+      }
+    }
+  }
 
   return scopes;
 }
@@ -814,6 +1133,22 @@ function scanArgForSecrets(
               );
             }
           }
+        }
+      }
+      // Helper-function call detection (task #541). A bare-identifier
+      // callee (`pickPassword(req)`, including the optional-chain
+      // form `pickPassword?.(req)`) is flagged when the identifier
+      // resolves to a 'helper' binding — meaning a same-file or
+      // imported function whose body returns a forbidden expression.
+      // Catches `log.info(\`pw=\${pickPassword(req)}\`)` even though
+      // the forbidden property access never appears inside the log
+      // call's argument subtree.
+      if (ts.isIdentifier(n.expression)) {
+        const binding = resolveIdentifierBinding(n.expression, scopes);
+        if (binding && binding.kind === 'helper') {
+          found.add(
+            `helper call '${n.expression.text}()' returning ${binding.reason}`,
+          );
         }
       }
     } else if (ts.isIdentifier(n)) {
