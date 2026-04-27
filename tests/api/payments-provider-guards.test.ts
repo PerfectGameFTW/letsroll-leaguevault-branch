@@ -10,7 +10,11 @@
  * `/payments/:id/verify` and nothing would notice. These tests pin down
  * that contract from the outside.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { inArray } from 'drizzle-orm';
+import { db } from '../../server/db';
+import { users } from '@shared/schema';
+import { hashPassword } from '../../server/lib/password';
 import {
   login,
   apiGet,
@@ -73,14 +77,50 @@ describe('payments-provider router guards', () => {
   });
 
   describe('admin-only verify endpoint', () => {
-    let orgAdmin: AuthSession;
+    let nonAdmin: AuthSession;
+    const createdNonAdminUserIds: number[] = [];
 
     beforeAll(async () => {
-      orgAdmin = await login(TEST_ORG_A_EMAIL, TEST_ORG_PASSWORD);
-      // Sanity check: this account is intentionally NOT a system_admin/admin
-      // so it must be rejected by the verify endpoint's role check.
-      expect(orgAdmin.user.role).not.toBe('system_admin');
-      expect(orgAdmin.user.role).not.toBe('admin');
+      // The verify route allows BOTH `system_admin` and `org_admin`
+      // (see `payments-provider/charges.ts`), so the existing
+      // TEST_ORG_A account — which is `org_admin` — would pass the
+      // gate and fall through to a 404 NOT_FOUND for the placeholder
+      // payment id. To exercise the actual 403 branch we need a
+      // role that is neither admin variant. Seed a throwaway
+      // `role: 'user'` account scoped to org A and log in as them.
+      const orgAdminSession = await login(TEST_ORG_A_EMAIL, TEST_ORG_PASSWORD);
+      const orgId = orgAdminSession.user.organizationId;
+      expect(orgId).toBeTruthy();
+
+      const password = 'vitest-payments-provider-guards-pw';
+      const passwordHash = await hashPassword(password);
+      const email = `vitest-pp-nonadmin-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}@vitest.local`;
+      const [row] = await db
+        .insert(users)
+        .values({
+          email,
+          password: passwordHash,
+          name: 'Vitest Non-Admin (payments-provider guards)',
+          role: 'user',
+          organizationId: orgId,
+        })
+        .returning({ id: users.id });
+      createdNonAdminUserIds.push(row.id);
+
+      nonAdmin = await login(email, password);
+      // Sanity check: this account is intentionally neither
+      // system_admin nor org_admin so the verify gate must reject it.
+      expect(nonAdmin.user.role).not.toBe('system_admin');
+      expect(nonAdmin.user.role).not.toBe('org_admin');
+    });
+
+    afterAll(async () => {
+      if (createdNonAdminUserIds.length > 0) {
+        await db.delete(users).where(inArray(users.id, createdNonAdminUserIds));
+        createdNonAdminUserIds.length = 0;
+      }
     });
 
     it('returns 403 for a non-admin authenticated caller', async () => {
@@ -88,7 +128,7 @@ describe('payments-provider router guards', () => {
       // irrelevant — we just need to prove the gate is in place.
       const { status, data } = await apiGet(
         '/api/payments-provider/payments/1/verify',
-        orgAdmin,
+        nonAdmin,
       );
       expect(status).toBe(403);
       expect(data.success).toBe(false);

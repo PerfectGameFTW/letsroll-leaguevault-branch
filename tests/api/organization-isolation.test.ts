@@ -1047,6 +1047,25 @@ describe('Organization Isolation', () => {
         const payload = JSON.stringify(data);
         expect(payload).not.toContain(`Vitest #341 Payment ${stamp}`);
       });
+
+      it('org A GET /api/system-admin/admin-email-change-audits?targetUserId=<orgB user> → 403 (system_admin only)', async () => {
+        // Task #487 added this audit-list endpoint for system admins
+        // to inspect a target user's admin-initiated email-change
+        // history. The route is gated by `requireAdmin` (system_admin
+        // only), so an org_admin caller — even pointing the
+        // `targetUserId` query param at a user that lives in another
+        // org — must be rejected before any audit row is read or
+        // returned. Without this gate an org A admin could enumerate
+        // org B users' email-change history just by guessing user
+        // ids; pin the gate so a future refactor can't relax it.
+        const orgBTargetUserId = sessionB.user.id;
+        const { status, data } = await apiGet(
+          `/api/system-admin/admin-email-change-audits?targetUserId=${orgBTargetUserId}`,
+          sessionA,
+        );
+        expect(status).toBe(403);
+        expect(data.success).toBe(false);
+      });
     });
   });
 });

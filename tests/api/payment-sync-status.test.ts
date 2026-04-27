@@ -9,9 +9,10 @@
  *   - Retry endpoint returns 422 when the bowler has no linked user
  */
 import { afterAll, describe, expect, it } from 'vitest';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, or } from 'drizzle-orm';
 import { db } from '../../server/db';
 import { users, bowlers, organizations, locations } from '@shared/schema';
+import { adminProfileEditAudits } from '@shared/schema/admin-profile-edit-audits';
 import { hashPassword } from '../../server/lib/password';
 import {
   apiPatch,
@@ -30,6 +31,19 @@ const createdLocationIds: number[] = [];
 
 afterAll(async () => {
   if (createdUserIds.length > 0) {
+    // Task #496 added admin_profile_edit_audits with FK references to
+    // users.id (both targetUserId and actorUserId). Without ON DELETE
+    // CASCADE we have to clear those rows ourselves before deleting
+    // the users they point at, otherwise the FK violation aborts the
+    // whole test file's afterAll mid-cleanup.
+    await db
+      .delete(adminProfileEditAudits)
+      .where(
+        or(
+          inArray(adminProfileEditAudits.targetUserId, createdUserIds),
+          inArray(adminProfileEditAudits.actorUserId, createdUserIds),
+        ),
+      );
     await db.delete(users).where(inArray(users.id, createdUserIds));
     createdUserIds.length = 0;
   }

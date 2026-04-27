@@ -56,6 +56,7 @@ import type { Server } from 'node:http';
 
 const mockStorage = {
   getLeague: vi.fn(),
+  getBowler: vi.fn(),
   getPaymentByIdempotencyKey: vi.fn(),
   createPayment: vi.fn(),
   getPaymentSchedule: vi.fn(),
@@ -156,6 +157,12 @@ beforeEach(() => {
   mockRequireOrgAccess.mockReturnValue(true);
   mockHasAccessToPayment.mockResolvedValue(true);
   mockSumQuery.mockResolvedValue([{ total: 0 }]);
+  // Task #454 added an existence pre-check on `payment.bowlerId` in
+  // `payment-record.ts`. Default to a valid bowler so tests focused on
+  // other concerns (idempotency, schedule deactivation, etc.) still
+  // reach the create path. Tests asserting the 404 NOT_FOUND branch can
+  // override this with `mockResolvedValue(undefined)`.
+  mockStorage.getBowler.mockResolvedValue({ id: 1 });
 });
 
 afterEach(() => vi.clearAllMocks());

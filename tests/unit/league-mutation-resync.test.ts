@@ -79,6 +79,12 @@ const mockStorage = {
   getBowlerLeague: vi.fn(),
   getBowlerLeagues: vi.fn(),
   createBowlerLeague: vi.fn(),
+  // Task #473: the non-bootstrap POST /api/bowler-leagues path now goes
+  // through the atomic `createBowlerLeagueIfNotInLeague` helper instead
+  // of `createBowlerLeague`. Tests that previously stubbed the latter
+  // also stub this so the route reaches a 201 instead of crashing with
+  // "is not a function" → 500.
+  createBowlerLeagueIfNotInLeague: vi.fn(),
   updateBowlerLeague: vi.fn(),
   deleteBowlerLeague: vi.fn(),
   createBowlerLeagueIfBowlerFree: vi.fn(),
@@ -720,6 +726,7 @@ describe('POST /api/leagues/:id/new-season → fires resync for every bowler clo
       },
     );
     mockStorage.createBowlerLeague.mockResolvedValue({});
+    mockStorage.createBowlerLeagueIfNotInLeague.mockResolvedValue({});
     mockStorage.updateLeague.mockResolvedValue({ ...sourceLeague, active: false });
     const bowlerById = new Map(bowlers.map((b) => [b.id, b]));
     mockStorage.getBowler.mockImplementation(async (id: number) => bowlerById.get(id) ?? null);
@@ -771,6 +778,7 @@ describe('POST /api/bowler-leagues → fires resync for the bowler that just joi
       },
     );
     mockStorage.createBowlerLeague.mockResolvedValue(newBlRow);
+    mockStorage.createBowlerLeagueIfNotInLeague.mockResolvedValue(newBlRow);
 
     const res = await post('/api/bowler-leagues', {
       bowlerId: bowler.id,
@@ -946,6 +954,7 @@ describe('bowler-resync helper guarantees (exercised via a bowler-leagues mutati
     mockStorage.getBowler.mockResolvedValue(bowler);
     mockStorage.getBowlerLeagues.mockResolvedValue([]);
     mockStorage.createBowlerLeague.mockResolvedValue(newBlRow);
+    mockStorage.createBowlerLeagueIfNotInLeague.mockResolvedValue(newBlRow);
 
     const res = await post('/api/bowler-leagues', {
       bowlerId: bowler.id,
