@@ -251,9 +251,13 @@ describe('createSquareCustomer error contract (tasks #511 / #514)', () => {
     expect(err.status).toBe(409);
     expect(err.message).not.toMatch(/[{}]/);
     expect(err.message).not.toMatch(/"error"/);
+    // task #545: parity with `createPayment` — the structured-body
+    // path must not prefix the message with "Failed to create Square
+    // customer:" either.
+    expect(err.message).not.toMatch(/^Failed to create Square customer:/);
   });
 
-  it('(c) falls back to plain-text body for non-JSON responses without leaking JSON', async () => {
+  it('(c) falls back to plain-text body for non-JSON responses with the same shape as createPayment', async () => {
     csrfFetchMock.mockResolvedValueOnce(
       fakeResponse({
         ok: false,
@@ -267,17 +271,22 @@ describe('createSquareCustomer error contract (tasks #511 / #514)', () => {
         () => {
           throw new Error('helper unexpectedly resolved instead of rejecting');
         },
-        (e: unknown) => e as Error,
+        (e: unknown) => e as Error & { code?: string; status?: number },
       );
 
     expect(err).toBeInstanceOf(Error);
-    // The plain-text path goes through the outer catch's "no .code"
-    // branch, which prefixes the human-friendly summary. The point of
-    // the assertion is that the upstream text survives in `.message`
-    // and that no JSON soup leaks through.
-    expect(err.message).toContain('Internal Server Error');
+    // task #545: `createSquareCustomer` now mirrors `createPayment`'s
+    // contract for plain-text upstream errors — `.message` is the
+    // upstream text verbatim (no "Failed to create Square customer: "
+    // prefix), `.status` matches the HTTP status, and `.code` defaults
+    // to `CUSTOMER_CREATION_FAILED` (parallel to `PAYMENT_FAILED`) so
+    // callers can branch on it.
+    expect(err.message).toBe('Internal Server Error');
+    expect(err.code).toBe('CUSTOMER_CREATION_FAILED');
+    expect(err.status).toBe(500);
     expect(err.message).not.toMatch(/[{}]/);
     expect(err.message).not.toMatch(/"error"/);
+    expect(err.message).not.toMatch(/^Failed to create Square customer:/);
   });
 
   it('(d) preserves PROVIDER_NOT_CONFIGURED end-to-end through the outer catch', async () => {

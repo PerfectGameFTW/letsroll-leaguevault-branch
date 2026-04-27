@@ -474,34 +474,56 @@ export async function createSquareCustomer(name: string, email: string, teamId: 
     });
 
     if (!response.ok) {
-      // task #511: standardise on the shared `makeApiError` helper so
-      // `.message`, `.code`, and `.status` are populated the same way
-      // as every other API call. Falls back to the response body text
-      // for non-JSON payloads so we still produce a clean `.message`.
+      // task #545: mirror `createPayment`'s `if (!response.ok)` shape
+      // so `.message`, `.code`, and `.status` are populated identically
+      // for both helpers. Parse JSON defensively, fall back to the raw
+      // text body for non-JSON responses (so we surface upstream
+      // proxy/HTML error pages cleanly), and always attach a
+      // `CUSTOMER_CREATION_FAILED` fallback `.code` when the body
+      // didn't carry a structured one. The raw text body is the
+      // user-visible message — no "Failed to create Square customer:"
+      // prefix is added, matching `createPayment`.
       let errorBody: unknown = null;
+      let responseTextFallback: string | null = null;
       try {
         errorBody = await response.clone().json();
       } catch {
         errorBody = null;
+        try {
+          responseTextFallback = await response.text();
+        } catch {
+          responseTextFallback = null;
+        }
       }
-      const fallback = errorBody
-        ? 'Failed to create Square customer'
-        : (await response.text()) || 'Failed to create Square customer';
-      throw makeApiError(errorBody, response.status, fallback);
+      const fallbackMessage =
+        (responseTextFallback ?? '').trim() || 'Customer creation failed';
+      const err = makeApiError(errorBody, response.status, fallbackMessage);
+      if (!err.code) err.code = 'CUSTOMER_CREATION_FAILED';
+      throw err;
     }
 
     const customer = await response.json();
     return customer;
   } catch (error) {
-    // task #511: re-throw any already-typed API error verbatim so its
+    // task #545: re-throw any already-typed API error verbatim so its
     // `.code` (e.g. PROVIDER_NOT_CONFIGURED) and `.status` survive.
-    // For unexpected (network/SDK) failures, surface a plain Error
-    // with a clean human message — never a JSON-encoded blob.
+    // For unexpected (network/SDK) failures, wrap as
+    // `CUSTOMER_CREATION_FAILED` with a clean `.message` — same shape
+    // as `createPayment`'s `PAYMENT_FAILED` outer catch — so callers
+    // branching on `.code` keep working through this layer.
     if (error instanceof Error && (error as ApiErrorLike).code) {
       throw error;
     }
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error('Failed to create Square customer: ' + detail);
+    if (error instanceof Error && error.message) {
+      const wrapped = new Error(error.message) as ApiErrorLike;
+      wrapped.code = 'CUSTOMER_CREATION_FAILED';
+      throw wrapped;
+    }
+    const generic = new Error(
+      'Unable to create customer. Please try again later.',
+    ) as ApiErrorLike;
+    generic.code = 'CUSTOMER_CREATION_FAILED';
+    throw generic;
   }
 }
 
