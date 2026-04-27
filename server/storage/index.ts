@@ -188,6 +188,7 @@ export class DatabaseStorage implements IStorage {
   getRegisteredApplePayDomainsForOrg!: IStorage["getRegisteredApplePayDomainsForOrg"];
   updateApplePayJobItem!: IStorage["updateApplePayJobItem"];
   finalizeApplePayJob!: IStorage["finalizeApplePayJob"];
+  reopenApplePayJobForRetry!: IStorage["reopenApplePayJobForRetry"];
   getApplePayJobStatus!: IStorage["getApplePayJobStatus"];
   cancelApplePayJob!: IStorage["cancelApplePayJob"];
   retryApplePayJob!: IStorage["retryApplePayJob"];

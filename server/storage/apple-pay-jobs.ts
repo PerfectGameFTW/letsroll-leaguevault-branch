@@ -466,6 +466,28 @@ export async function retryApplePayJobItem(
   });
 }
 
+/**
+ * Flip a job that is currently `running` back to `pending` so the next
+ * `claimNextApplePayJob` cycle owns it. Used by the worker when it
+ * cannot finalize because items are still non-terminal after a bounded
+ * re-drain — e.g. a sibling instance is genuinely mid-call on an item
+ * whose pre-call lease is still fresh, so we must not write a terminal
+ * status that would silently strand that item (#568).
+ *
+ * Idempotent: only acts on `running` rows. If the job has already been
+ * canceled or finalized by another path we leave it alone. Clears any
+ * stale `completedAt`/`errorMessage` so the re-claimed run starts from
+ * a clean slate.
+ */
+export async function reopenApplePayJobForRetry(jobId: number): Promise<boolean> {
+  const updated = await db
+    .update(applePayJobs)
+    .set({ status: "pending", completedAt: null, errorMessage: null })
+    .where(and(eq(applePayJobs.id, jobId), eq(applePayJobs.status, "running")))
+    .returning({ id: applePayJobs.id });
+  return updated.length > 0;
+}
+
 export async function finalizeApplePayJob(
   jobId: number,
   patch: {

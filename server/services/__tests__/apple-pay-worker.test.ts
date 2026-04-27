@@ -33,6 +33,7 @@ const storageMock = vi.hoisted(() => ({
     getPendingApplePayJobItems: vi.fn(),
     getApplePayJobItemCounts: vi.fn(),
     finalizeApplePayJob: vi.fn(),
+    reopenApplePayJobForRetry: vi.fn(),
     claimAndCompleteApplePayJobItem: vi.fn(),
     claimApplePayJobItemForProcessing: vi.fn(),
     getOrganizations: vi.fn(),
@@ -281,11 +282,15 @@ describe("ApplePayWorker — cancellation race conditions", () => {
     expect(finalizeCall[1].errorMessage).toBeNull();
   });
 
-  it("DOES finalize as `failed` when the loop throws and the job was not canceled", async () => {
-    // Mirror image of the previous test: when there's no cancellation,
-    // the catch-block must surface the underlying error as a normal
-    // `failed` finalize. This proves the previous test isn't passing
-    // because the catch-block always writes `canceled`.
+  it("DOES finalize as `failed` when the loop throws and the job was not canceled (and items are all terminal)", async () => {
+    // Mirror image of the previous test: when there's no cancellation
+    // AND every item already reached a terminal state (so nothing is
+    // stranded), the catch-block must surface the underlying error as
+    // a normal `failed` finalize. This proves the previous test isn't
+    // passing because the catch-block always writes `canceled`, AND
+    // proves the #568 finalize-guard isn't a blanket "never finalize
+    // from the catch-block" — it only refuses when there's still a
+    // non-terminal item to strand.
     const job = makeJob();
 
     storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
@@ -293,10 +298,12 @@ describe("ApplePayWorker — cancellation race conditions", () => {
       new Error("network exploded"),
     );
     storageMock.storage.getApplePayJobItemCounts.mockResolvedValue({
-      succeeded: 0,
-      failed: 0,
+      succeeded: 1,
+      failed: 1,
       skipped: 0,
-      pending: 2,
+      // pending=0 so the #568 guard doesn't reopen — finalize-as-failed
+      // is the correct behavior here because no item is being stranded.
+      pending: 0,
     });
     storageMock.storage.finalizeApplePayJob.mockResolvedValue(undefined);
     // Both checks return "running" — no cancellation involved.
@@ -306,6 +313,238 @@ describe("ApplePayWorker — cancellation race conditions", () => {
       processJob: (job: ApplePayJob) => Promise<void>;
     }).processJob(job);
 
+    const finalizeCall = storageMock.storage.finalizeApplePayJob.mock.calls[0];
+    expect(finalizeCall[1].status).toBe("failed");
+    expect(finalizeCall[1].errorMessage).toBe("network exploded");
+  });
+
+  it("REOPENS instead of finalizing when the catch-block counts query also fails (#568 transient-DB hardening)", async () => {
+    // Hardening for #568: if the loop throws AND the catch-block's
+    // own counts query also fails (e.g. transient DB blip), we
+    // previously defaulted counts to all-zeroes and wrote a junk
+    // `failed` row with succeeded=0/failed=0/skipped=0. That junk
+    // row would still strand items because we never actually knew
+    // their state. Correct behavior is to defer (reopen) and let
+    // the next worker tick re-evaluate when the DB is healthy.
+    const job = makeJob();
+
+    storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
+    storageMock.storage.getPendingApplePayJobItems.mockRejectedValue(
+      new Error("network exploded"),
+    );
+    // Both the in-loop counts read AND the catch-block counts read fail.
+    storageMock.storage.getApplePayJobItemCounts.mockRejectedValue(
+      new Error("DB connection lost"),
+    );
+    storageMock.storage.finalizeApplePayJob.mockResolvedValue(undefined);
+    storageMock.storage.reopenApplePayJobForRetry.mockResolvedValue(true);
+    storageMock.storage.getApplePayJobStatus.mockResolvedValue("running");
+
+    await (applePayWorker as unknown as {
+      processJob: (job: ApplePayJob) => Promise<void>;
+    }).processJob(job);
+
+    // Critical: NO terminal write happened. The job stays alive
+    // for the next worker tick.
+    expect(storageMock.storage.finalizeApplePayJob).not.toHaveBeenCalled();
+    expect(storageMock.storage.reopenApplePayJobForRetry).toHaveBeenCalledWith(job.id);
+  });
+});
+
+/**
+ * Finalize-side guard tests for the resume-after-crash path (#568).
+ *
+ * Pins the rule that a job MUST NOT be terminalized while any of its
+ * items are still in a non-terminal state. The bug originally surfaced
+ * on job #523 where a crash + recover sequence left one item at
+ * `pending` with `recovered_count = 1` while the parent job was already
+ * `failed` with `completed_at` stamped — a stranded item the worker
+ * would never pick up again. The fix re-drains any leftover pending
+ * items in the same processJob call; if items are STILL non-terminal
+ * after that bounded retry (e.g. a sibling instance is mid-call on a
+ * row whose pre-call lease is still fresh), the job is reopened to
+ * `pending` so the next worker tick re-claims it instead of writing
+ * a terminal status.
+ */
+describe("ApplePayWorker — finalize guard for non-terminal items", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("re-drains items revived between the initial pending snapshot and finalize, then finalizes correctly", async () => {
+    // Reproduces the job #523 sequence: after a crash + startup recovery,
+    // the job is re-claimed and processed — but one item didn't make it
+    // through the first pass (it was revived AFTER getPendingApplePayJobItems
+    // was called). The worker must re-fetch and process the leftover before
+    // finalizing, otherwise the item is silently stranded.
+    const job = makeJob();
+    const firstPassItems = makeItems(job.id, 2);
+    const lateRevivedItem = {
+      ...firstPassItems[0],
+      id: 9999,
+      domain: "late-revived.example.test",
+      // The late-revived item has no location, so processItem will
+      // mark it `skipped` — exercising the (real) item resolution path.
+      locationId: null,
+    } as ApplePayJobItem;
+
+    // First pending() call returns the initial snapshot. Second call
+    // (the bounded re-drain) returns the late-revived item.
+    storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
+    storageMock.storage.getApplePayJobStatus.mockResolvedValue("running");
+    storageMock.storage.getPendingApplePayJobItems
+      .mockResolvedValueOnce(firstPassItems)
+      .mockResolvedValueOnce([lateRevivedItem]);
+
+    storageMock.storage.claimApplePayJobItemForProcessing.mockResolvedValue(true);
+    storageMock.storage.claimAndCompleteApplePayJobItem.mockResolvedValue(true);
+    const provider = {
+      registerApplePayDomain: vi.fn(async () => ({ success: true, message: "ok" })),
+    };
+    providerFactoryMock.getPaymentProvider.mockResolvedValue(provider);
+
+    // Counts call #1 (after re-drain) reports the late-revived item as
+    // already terminal — drain succeeded, no leftover. The roll-up rules
+    // (today: 2 succeeded + 1 skipped → `partial`) are unchanged.
+    storageMock.storage.getApplePayJobItemCounts.mockResolvedValue({
+      succeeded: 2,
+      failed: 0,
+      skipped: 1,
+      pending: 0,
+    });
+    storageMock.storage.finalizeApplePayJob.mockResolvedValue(undefined);
+
+    await (applePayWorker as unknown as {
+      processJob: (job: ApplePayJob) => Promise<void>;
+    }).processJob(job);
+
+    // Two calls to getPendingApplePayJobItems prove the re-drain ran.
+    expect(storageMock.storage.getPendingApplePayJobItems).toHaveBeenCalledTimes(2);
+    // The late-revived item went through processItem (no-location path).
+    expect(storageMock.storage.claimAndCompleteApplePayJobItem).toHaveBeenCalledWith(
+      lateRevivedItem.id,
+      expect.objectContaining({ status: "skipped" }),
+    );
+    // No reopen — the drain succeeded.
+    expect(storageMock.storage.reopenApplePayJobForRetry).not.toHaveBeenCalled();
+    // Final write reflects the items table exactly.
+    expect(storageMock.storage.finalizeApplePayJob).toHaveBeenCalledTimes(1);
+    expect(storageMock.storage.finalizeApplePayJob).toHaveBeenCalledWith(job.id, {
+      status: "partial",
+      succeededCount: 2,
+      failedCount: 0,
+      skippedCount: 1,
+      errorMessage: null,
+    });
+  });
+
+  it("refuses to finalize when items are still non-terminal after the bounded re-drain, reopens job to pending instead", async () => {
+    // Reproduces the rolling-restart scenario: a sibling instance is
+    // mid-call on an item whose pre-call lease is still fresh. The
+    // local `processing` row is invisible to getPendingApplePayJobItems
+    // (which only matches status='pending'), so the re-drain does
+    // nothing — but the counts call still reports it under `pending`.
+    // Writing a terminal status here would silently strand the row,
+    // so the worker MUST hand the job back to the pending queue.
+    const job = makeJob();
+    const firstPassItems = makeItems(job.id, 1);
+
+    storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
+    storageMock.storage.getApplePayJobStatus.mockResolvedValue("running");
+    // Initial snapshot returns one pending item; re-drain finds none
+    // (the still-`processing` sibling row doesn't match status='pending').
+    storageMock.storage.getPendingApplePayJobItems
+      .mockResolvedValueOnce(firstPassItems)
+      .mockResolvedValueOnce([]);
+
+    storageMock.storage.claimApplePayJobItemForProcessing.mockResolvedValue(true);
+    storageMock.storage.claimAndCompleteApplePayJobItem.mockResolvedValue(true);
+    const provider = {
+      registerApplePayDomain: vi.fn(async () => ({ success: true, message: "ok" })),
+    };
+    providerFactoryMock.getPaymentProvider.mockResolvedValue(provider);
+
+    // Counts after re-drain: 1 succeeded (this worker's item) + 1 still
+    // pending/processing (the sibling's). pending > 0 must trigger reopen,
+    // not finalize.
+    storageMock.storage.getApplePayJobItemCounts.mockResolvedValue({
+      succeeded: 1,
+      failed: 0,
+      skipped: 0,
+      pending: 1,
+    });
+    storageMock.storage.reopenApplePayJobForRetry.mockResolvedValue(true);
+
+    await (applePayWorker as unknown as {
+      processJob: (job: ApplePayJob) => Promise<void>;
+    }).processJob(job);
+
+    // No terminal write — that's the whole point of the guard.
+    expect(storageMock.storage.finalizeApplePayJob).not.toHaveBeenCalled();
+    // Job was reopened so the next worker tick can resume.
+    expect(storageMock.storage.reopenApplePayJobForRetry).toHaveBeenCalledTimes(1);
+    expect(storageMock.storage.reopenApplePayJobForRetry).toHaveBeenCalledWith(job.id);
+  });
+
+  it("catch-block also refuses to write `failed` while items are non-terminal — reopens job to pending instead", async () => {
+    // Mirror image of the happy-path guard: a thrown error mid-loop
+    // must not strand items either. The catch-block previously called
+    // finalizeApplePayJob with status='failed' unconditionally, which
+    // is exactly how a transient blip during enumeration could
+    // terminalize a job that had pending items left over.
+    const job = makeJob();
+
+    storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
+    storageMock.storage.getPendingApplePayJobItems
+      // First call (inside the try) throws to enter the catch-block.
+      .mockRejectedValueOnce(new Error("transient db blip"))
+      // Catch-block re-drain: finds one item that's now pending.
+      .mockResolvedValueOnce([]);
+    storageMock.storage.getApplePayJobStatus.mockResolvedValue("running");
+    storageMock.storage.getApplePayJobItemCounts.mockResolvedValue({
+      succeeded: 0,
+      failed: 0,
+      skipped: 0,
+      pending: 2,
+    });
+    storageMock.storage.reopenApplePayJobForRetry.mockResolvedValue(true);
+
+    await (applePayWorker as unknown as {
+      processJob: (job: ApplePayJob) => Promise<void>;
+    }).processJob(job);
+
+    // Critically: no `failed` finalize. The previous behavior would
+    // have terminalized the job here, stranding both items.
+    expect(storageMock.storage.finalizeApplePayJob).not.toHaveBeenCalled();
+    expect(storageMock.storage.reopenApplePayJobForRetry).toHaveBeenCalledWith(job.id);
+  });
+
+  it("catch-block STILL writes `failed` when no items are left non-terminal (counts.pending === 0)", async () => {
+    // Proves the catch-block guard isn't a blanket "never write failed".
+    // When the items table is fully terminal, finalizing as `failed`
+    // with the underlying error is the correct behavior — and matches
+    // the pre-#568 contract for genuine errors.
+    const job = makeJob();
+
+    storageMock.storage.countApplePayJobItems.mockResolvedValue(2);
+    storageMock.storage.getPendingApplePayJobItems.mockRejectedValue(
+      new Error("network exploded"),
+    );
+    storageMock.storage.getApplePayJobStatus.mockResolvedValue("running");
+    storageMock.storage.getApplePayJobItemCounts.mockResolvedValue({
+      succeeded: 1,
+      failed: 1,
+      skipped: 0,
+      pending: 0,
+    });
+    storageMock.storage.finalizeApplePayJob.mockResolvedValue(undefined);
+
+    await (applePayWorker as unknown as {
+      processJob: (job: ApplePayJob) => Promise<void>;
+    }).processJob(job);
+
+    expect(storageMock.storage.reopenApplePayJobForRetry).not.toHaveBeenCalled();
+    expect(storageMock.storage.finalizeApplePayJob).toHaveBeenCalledTimes(1);
     const finalizeCall = storageMock.storage.finalizeApplePayJob.mock.calls[0];
     expect(finalizeCall[1].status).toBe("failed");
     expect(finalizeCall[1].errorMessage).toBe("network exploded");

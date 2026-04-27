@@ -128,8 +128,39 @@ class ApplePayWorker {
         return;
       }
 
+      // Bounded re-drain (#568): the initial pending snapshot was taken
+      // BEFORE we started processing. Any item revived between then and
+      // now (e.g. the parent job was just resumed after a crash and one
+      // item didn't get picked up by the first pass) would otherwise be
+      // stranded by a terminal finalize. Pull the current pending set
+      // and run them through the same per-item path. Bounded to a single
+      // extra pass so a genuinely stuck `processing` row cannot spin the
+      // worker forever.
+      const drained = await this.drainRemainingItems(job.id);
+      if (drained.canceled) {
+        await this.recordCanceled(job.id);
+        return;
+      }
+
       // Tally final counts from the source of truth (items table).
       const counts = await storage.getApplePayJobItemCounts(job.id);
+      // If items are STILL non-terminal after the bounded re-drain,
+      // refuse to finalize. The most likely cause is a sibling instance
+      // mid-call on an item whose pre-call lease is fresh — writing a
+      // terminal status here would silently strand that item (the
+      // canonical bug from job #523). Instead, hand the job back to the
+      // pending queue so the next worker tick re-claims and resumes.
+      if (counts.pending > 0) {
+        const reopened = await storage.reopenApplePayJobForRetry(job.id);
+        warn("Leaving job pending — items still non-terminal after bounded drain", {
+          jobId: job.id,
+          remainingNonTerminal: counts.pending,
+          reopened,
+          counts,
+        });
+        return;
+      }
+
       const succeeded = counts.succeeded;
       const failed = counts.failed;
       const skipped = counts.skipped;
@@ -157,9 +188,43 @@ class ApplePayWorker {
         await this.recordCanceled(job.id);
         return;
       }
+      // Same guard as the happy path (#568): a thrown error mid-loop
+      // must not finalize a job that still has non-terminal items, or
+      // those items become orphans the worker will never revisit.
+      // Best-effort drain (errors here are logged and we fall through
+      // to the reopen branch rather than the terminal write).
+      const drained = await this.drainRemainingItems(job.id).catch((e) => {
+        warn("Re-drain in catch-block failed", {
+          jobId: job.id,
+          err: e instanceof Error ? e.message : String(e),
+        });
+        return { canceled: false };
+      });
+      if (drained.canceled) {
+        await this.recordCanceled(job.id);
+        return;
+      }
+      // If even the counts query fails, we cannot safely write a
+      // terminal row — defaulting counts to zero would silently
+      // succeed-finalize a job whose items might still be pending
+      // (the same stranding hazard #568 exists to prevent). Prefer
+      // reopening (defer to next worker tick) over writing a junk
+      // terminal row under transient DB failure.
       const counts = await storage
         .getApplePayJobItemCounts(job.id)
-        .catch(() => ({ succeeded: 0, failed: 0, skipped: 0, pending: 0 }));
+        .catch(() => null);
+      if (counts === null || counts.pending > 0) {
+        const reopened = await storage
+          .reopenApplePayJobForRetry(job.id)
+          .catch(() => false);
+        warn("Catch-block leaving job pending — items still non-terminal", {
+          jobId: job.id,
+          remainingNonTerminal: counts?.pending ?? "unknown (counts query failed)",
+          reopened,
+          counts,
+        });
+        return;
+      }
       await storage.finalizeApplePayJob(job.id, {
         status: "failed",
         succeededCount: counts.succeeded,
@@ -168,6 +233,31 @@ class ApplePayWorker {
         errorMessage: err instanceof Error ? err.message : String(err),
       });
     }
+  }
+
+  /**
+   * Single bounded "second pass" over any items still `pending` for this
+   * job. Returns `{ canceled }` so callers can preserve the same
+   * "cancellation wins over finalize" semantics as the main loop.
+   *
+   * Items still in `processing` (lease fresh, presumably owned by a
+   * sibling instance) are intentionally NOT touched here — that's the
+   * scenario the caller's `counts.pending > 0` check handles by
+   * reopening the job instead of finalizing.
+   */
+  private async drainRemainingItems(jobId: number): Promise<{ canceled: boolean }> {
+    const leftover = await storage.getPendingApplePayJobItems(jobId);
+    if (leftover.length === 0) return { canceled: false };
+    log("Re-draining pending items before finalize", {
+      jobId,
+      remaining: leftover.length,
+    });
+    const canceled = await this.processItemsWithConcurrency(
+      leftover,
+      CONCURRENCY_LIMIT,
+      () => this.isCanceled(jobId),
+    );
+    return { canceled };
   }
 
   private async isCanceled(jobId: number): Promise<boolean> {

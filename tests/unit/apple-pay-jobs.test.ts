@@ -34,6 +34,8 @@ import {
   cancelApplePayJob,
   retryApplePayJob,
   retryApplePayJobItem,
+  reopenApplePayJobForRetry,
+  finalizeApplePayJob,
 } from "../../server/storage/apple-pay-jobs";
 
 const createdJobIds: number[] = [];
@@ -404,6 +406,156 @@ async function setJobStatus(jobId: number, status: ApplePayJobStatus): Promise<v
     })
     .where(eq(applePayJobs.id, jobId));
 }
+
+describe("apple pay job storage — reopenApplePayJobForRetry (#568)", () => {
+  it("flips a running job back to pending and clears completedAt/errorMessage", async () => {
+    // Worker uses this when it cannot finalize because items are still
+    // non-terminal after a bounded re-drain — the job must go back into
+    // the pending queue so the next worker tick re-claims it.
+    const jobId = await makeJob();
+    await db
+      .update(applePayJobs)
+      .set({
+        status: "running",
+        startedAt: new Date().toISOString(),
+        // Set both to prove the reopen clears them — the next run starts
+        // from a clean slate.
+        completedAt: new Date().toISOString(),
+        errorMessage: "stale error from a prior pass",
+      })
+      .where(eq(applePayJobs.id, jobId));
+
+    const result = await reopenApplePayJobForRetry(jobId);
+    expect(result).toBe(true);
+
+    const reloaded = await getApplePayJob(jobId);
+    expect(reloaded?.status).toBe("pending");
+    expect(reloaded?.completedAt).toBeNull();
+    expect(reloaded?.errorMessage).toBeNull();
+  });
+
+  it("is a no-op for jobs not currently in `running` status", async () => {
+    // Idempotent guard: if the job has already been canceled or
+    // finalized via another path, reopen must NOT clobber that state.
+    for (const status of ["pending", "succeeded", "failed", "partial", "canceled"] as const) {
+      const jobId = await makeJob();
+      await db
+        .update(applePayJobs)
+        .set({
+          status,
+          completedAt: status === "pending" ? null : new Date().toISOString(),
+        })
+        .where(eq(applePayJobs.id, jobId));
+
+      const result = await reopenApplePayJobForRetry(jobId);
+      expect(result, `reopen of ${status} job should be a no-op`).toBe(false);
+
+      const reloaded = await getApplePayJob(jobId);
+      expect(reloaded?.status).toBe(status);
+    }
+  });
+
+  it("after reopen, the job can be re-claimed by the worker (resumes from items table)", async () => {
+    // End-to-end shape of the resume sequence: enumerate items, claim
+    // the job (running), simulate the bounded-drain bail-out by reopen,
+    // then re-claim — the new claim must see the same items table and
+    // pick up where we left off.
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "resume-1.test" },
+      { organizationId: null, locationId: null, domain: "resume-2.test" },
+    ]);
+    const claimed = await claimNextApplePayJob();
+    expect(claimed?.id).toBe(jobId);
+    expect(claimed?.status).toBe("running");
+
+    // Worker bails out without finalizing.
+    expect(await reopenApplePayJobForRetry(jobId)).toBe(true);
+
+    // Next worker tick can re-claim the job, and the items table is
+    // intact (still 2 pending) so processing resumes cleanly.
+    const reclaimed = await claimNextApplePayJob();
+    expect(reclaimed?.id).toBe(jobId);
+    const stillPending = await getPendingApplePayJobItems(jobId);
+    expect(stillPending.map((i) => i.domain).sort()).toEqual(["resume-1.test", "resume-2.test"]);
+  });
+
+  it("after the bounded recovery sequence, finalize counts match the items table exactly", async () => {
+    // Reproduces the job #523 invariant: a crash leaves one item
+    // `processing` past its lease; recovery revives it; the resume run
+    // processes it; the job's final counts equal the items table.
+    const jobId = await makeJob();
+    await insertApplePayJobItems(jobId, [
+      { organizationId: null, locationId: null, domain: "crash-done.test" },
+      { organizationId: null, locationId: null, domain: "crash-stranded.test" },
+    ]);
+    const items = await getApplePayJobItems(jobId);
+    const done = items.find((i) => i.domain === "crash-done.test")!;
+    const stranded = items.find((i) => i.domain === "crash-stranded.test")!;
+
+    // Pretend the worker claimed both items mid-call before crashing.
+    expect(await claimApplePayJobItemForProcessing(done.id)).toBe(true);
+    expect(await claimApplePayJobItemForProcessing(stranded.id)).toBe(true);
+    // The first item finished cleanly before the crash.
+    await claimAndCompleteApplePayJobItem(done.id, { status: "succeeded", message: "ok" });
+    // The second item never got its terminal write — and the job row
+    // is still in `running` from the original claim.
+    await db
+      .update(applePayJobs)
+      .set({ status: "running" })
+      .where(eq(applePayJobs.id, jobId));
+    const expiredAt = new Date(Date.now() - APPLE_PAY_ITEM_LEASE_MS - 60_000).toISOString();
+    await db
+      .update(applePayJobItems)
+      .set({ claimedAt: expiredAt })
+      .where(eq(applePayJobItems.id, stranded.id));
+
+    // Server boot recovery sweep.
+    await recoverInterruptedApplePayJobs();
+    const reloadedJob = await getApplePayJob(jobId);
+    expect(reloadedJob?.status).toBe("pending");
+    const strandedAfterRecovery = (await getApplePayJobItems(jobId)).find((i) => i.id === stranded.id)!;
+    expect(strandedAfterRecovery.status).toBe("pending");
+    expect(strandedAfterRecovery.recoveredCount).toBe(1);
+
+    // Worker re-claims the job and processes the revived item.
+    const reclaimed = await claimNextApplePayJob();
+    expect(reclaimed?.id).toBe(jobId);
+    const pendingAfterReclaim = await getPendingApplePayJobItems(jobId);
+    expect(pendingAfterReclaim.map((i) => i.id)).toEqual([stranded.id]);
+    await claimAndCompleteApplePayJobItem(stranded.id, {
+      status: "skipped",
+      message: "no location",
+    });
+
+    // Now finalize from the items-table source of truth — exactly
+    // what the worker does after the bounded re-drain succeeds.
+    const counts = await getApplePayJobItemCounts(jobId);
+    // (a) Every item is terminal.
+    expect(counts.pending).toBe(0);
+    // (b) Counts reflect the items table exactly.
+    expect(counts).toEqual({ succeeded: 1, failed: 0, skipped: 1, pending: 0 });
+
+    let finalStatus: ApplePayJobStatus;
+    if (counts.failed === 0 && counts.skipped === 0) finalStatus = "succeeded";
+    else if (counts.succeeded === 0) finalStatus = "failed";
+    else finalStatus = "partial";
+    await finalizeApplePayJob(jobId, {
+      status: finalStatus,
+      succeededCount: counts.succeeded,
+      failedCount: counts.failed,
+      skippedCount: counts.skipped,
+      errorMessage: null,
+    });
+
+    const finalRow = await getApplePayJob(jobId);
+    expect(finalRow?.status).toBe("partial");
+    expect(finalRow?.succeededCount).toBe(1);
+    expect(finalRow?.failedCount).toBe(0);
+    expect(finalRow?.skippedCount).toBe(1);
+    expect(finalRow?.completedAt).not.toBeNull();
+  });
+});
 
 describe("apple pay job storage — cancel guards", () => {
   it("cancels a pending job and stamps completedAt", async () => {
