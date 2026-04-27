@@ -1,17 +1,20 @@
 /**
  * Raw-row wire-sanitization guard (task #382, deny-list extended in
- * task #501, Location/Bowler coverage added in task #505).
+ * task #501, Location/Bowler coverage added in task #505, Payment
+ * coverage added in task #536).
  *
- * `server/utils/api.ts` exposes four allowlist-projection helpers —
- * `sanitizeUser`, `sanitizeOrg`, `sanitizeLocation`, and
- * `sanitizeBowler` (plus their `…s` array variants) — that are the
- * ONLY supported way to ship a `User`, `Organization`, `Location`, or
- * `Bowler` row to the wire. Anything not on the allowlist is dropped
- * at the boundary so a future column (`apiKey`, `clientSecret`,
- * `webhookKey`, OAuth tokens in `integrations`, the
- * `squareCredentials` / `cardpointeCredentials` blobs on locations,
- * `cardpointeProfileId` on bowlers, etc.) cannot leak just because
- * nobody noticed.
+ * `server/utils/api.ts` exposes five allowlist-projection helpers —
+ * `sanitizeUser`, `sanitizeOrg`, `sanitizeLocation`,
+ * `sanitizeBowler`, and `sanitizePayment` (plus their `…s` array
+ * variants) — that are the ONLY supported way to ship a `User`,
+ * `Organization`, `Location`, `Bowler`, or `Payment` row to the
+ * wire. Anything not on the allowlist is dropped at the boundary so
+ * a future column (`apiKey`, `clientSecret`, `webhookKey`, OAuth
+ * tokens in `integrations`, the `squareCredentials` /
+ * `cardpointeCredentials` blobs on locations, `cardpointeProfileId`
+ * on bowlers, a future `processorWebhookSecret` /
+ * `merchantApiKey` / `customerCardToken` on payments, etc.) cannot
+ * leak just because nobody noticed.
  *
  * The protection is only as strong as the discipline at every call
  * site. A new route that does `sendSuccess(res, user)` (instead of
@@ -25,9 +28,9 @@
  *
  *   - A `sendSuccess(res, X)` or `sendPaginatedSuccess(res, X, ...)`
  *     call receives a value structurally assignable to the canonical
- *     `User`, `Organization`, `Location`, or `Bowler` row type —
- *     directly OR as a property, spread, or array element of an
- *     inline object/array literal.
+ *     `User`, `Organization`, `Location`, `Bowler`, or `Payment` row
+ *     type — directly OR as a property, spread, or array element of
+ *     an inline object/array literal.
  *
  *   - A `res.json(X)` or `res.status(...).json(X)` call receives the
  *     same shape. The receiver is detected structurally (the chain
@@ -56,17 +59,20 @@
  * `typeof users.$inferSelect`, which TypeScript resolves to an
  * anonymous object type at use sites — the `User` type-alias name is
  * erased and `type.aliasSymbol` is `undefined` at the call site. So
- * we resolve the canonical `User`/`Organization`/`Location`/`Bowler`
- * types ONCE at the top of the program (via
- * `getDeclaredTypeOfSymbol`) and use `checker.isTypeAssignableTo`
- * to ask "does this value satisfy the full row shape?". A
- * `SanitizedUser` (`Pick<User, …>` with no `password`, `inviteToken`,
- * `failedPasswordChangeAttempts`, etc.) is NOT assignable to `User`
- * and so does NOT trigger the guard. The same is true for
- * `SanitizedLocation` and `SanitizedBowler` — they drop the
+ * we resolve the canonical
+ * `User`/`Organization`/`Location`/`Bowler`/`Payment` types ONCE
+ * at the top of the program (via `getDeclaredTypeOfSymbol`) and use
+ * `checker.isTypeAssignableTo` to ask "does this value satisfy the
+ * full row shape?". A `SanitizedUser` (`Pick<User, …>` with no
+ * `password`, `inviteToken`, `failedPasswordChangeAttempts`, etc.)
+ * is NOT assignable to `User` and so does NOT trigger the guard.
+ * The same is true for `SanitizedLocation`, `SanitizedBowler`, and
+ * `SanitizedPayment` — they drop the
  * `squareCredentials` / `cardpointeCredentials` and
  * `cardpointeProfileId` / `paymentProviderLocationId` columns
- * respectively, so the canonical
+ * respectively (and, for `SanitizedPayment`, whatever future
+ * sensitive payment column gets added without being added to the
+ * payment safe-list), so the canonical
  * `{ ...sanitizeBowler(b), hasAccount: … }` spread used in
  * `server/routes/bowlers.ts` and `server/routes/teams.ts` produces
  * a `SanitizedBowler & { hasAccount: boolean }` type that is NOT
@@ -111,12 +117,13 @@
  *     terminate. Function/constructor types (whose properties are
  *     `Function.prototype` methods, not data) are skipped to avoid
  *     walking into the standard library.
- *   - `User` / `Organization` / `Location` / `Bowler` are identified
- *     by their declaration site: a type alias named `User` declared
- *     in `shared/schema/users.ts`, `Organization` in
+ *   - `User` / `Organization` / `Location` / `Bowler` / `Payment`
+ *     are identified by their declaration site: a type alias named
+ *     `User` declared in `shared/schema/users.ts`, `Organization` in
  *     `shared/schema/organizations.ts`, `Location` in
- *     `shared/schema/locations.ts`, and `Bowler` in
- *     `shared/schema/bowlers.ts`. Re-exports through
+ *     `shared/schema/locations.ts`, `Bowler` in
+ *     `shared/schema/bowlers.ts`, and `Payment` in
+ *     `shared/schema/payments.ts`. Re-exports through
  *     `shared/schema/index.ts` resolve to the same canonical
  *     declarations, so import path doesn't matter.
  *
@@ -166,6 +173,7 @@ interface CanonicalTypes {
   organization: ts.Type;
   location: ts.Type;
   bowler: ts.Type;
+  payment: ts.Type;
 }
 
 /**
@@ -185,7 +193,99 @@ const CANONICAL_TYPE_SOURCES: ReadonlyArray<{
   { key: 'organization', fileSuffix: '/shared/schema/organizations.ts', aliasName: 'Organization' },
   { key: 'location', fileSuffix: '/shared/schema/locations.ts', aliasName: 'Location' },
   { key: 'bowler', fileSuffix: '/shared/schema/bowlers.ts', aliasName: 'Bowler' },
+  { key: 'payment', fileSuffix: '/shared/schema/payments.ts', aliasName: 'Payment' },
 ];
+
+/**
+ * Symbols of the canonical `Sanitized*` type aliases declared in
+ * `server/utils/api.ts`. Used by `findLeakInType` to exempt values
+ * whose type aliases back to one of these projections — needed for
+ * the `Payment` row specifically.
+ *
+ * Background: every other row type (`User`, `Organization`,
+ * `Location`, `Bowler`) has at least one column that is intentionally
+ * NOT on the SAFE_*_FIELDS allowlist (`password`, `integrations`,
+ * `squareCredentials` / `cardpointeCredentials`,
+ * `cardpointeProfileId` / `paymentProviderLocationId`). That makes
+ * the corresponding `Sanitized*` `Pick<…>` type a STRICT subset of
+ * the row, so `isTypeAssignableTo(SanitizedUser, User)` returns
+ * `false` (missing required columns) and the canonical wraps stay
+ * green via pure structure.
+ *
+ * `Payment` is the exception today: SAFE_PAYMENT_FIELDS lists every
+ * current `payments` column (the only sensitive-looking ones —
+ * `cardpointeAuthcode`, `idempotencyKey` — are operational and
+ * intentionally on the allowlist; see the comment in
+ * `server/utils/api.ts`). So `SanitizedPayment ≡ Payment`
+ * structurally, and the assignability check below would falsely
+ * flag every `sanitizePayment(...)` / `sanitizePayments(...)`
+ * call site. The deny-by-default value is still real — the moment
+ * a future column (`processorWebhookSecret`, `merchantApiKey`,
+ * `customerCardToken`, …) lands without being added to
+ * SAFE_PAYMENT_FIELDS, `SanitizedPayment` will diverge from
+ * `Payment` and the structural check will start working unaided.
+ *
+ * Until then, this exemption table closes the gap: any value whose
+ * type's `aliasSymbol` is one of the resolved `Sanitized*` aliases
+ * is treated as already-sanitized and skipped. Recursion preserves
+ * the property — `SanitizedPayment[]` descends to its element type,
+ * which still carries the `aliasSymbol`. Inline shapes that
+ * intersect a sanitized type with extra fields (e.g.
+ * `{ ...sanitizePayment(p), foo }`) lose the alias; those would
+ * still flag, but no real call site uses that pattern for Payment
+ * today and the test fixtures use a strict-subset `SanitizedPayment`
+ * so the structural pass exercises the same code path as the other
+ * row types.
+ */
+interface CanonicalSanitizedSymbols {
+  user: ts.Symbol | null;
+  organization: ts.Symbol | null;
+  location: ts.Symbol | null;
+  bowler: ts.Symbol | null;
+  payment: ts.Symbol | null;
+}
+
+const CANONICAL_SANITIZED_ALIAS_NAMES = new Set<string>([
+  'SanitizedUser',
+  'SanitizedOrganization',
+  'SanitizedOrg',
+  'SanitizedLocation',
+  'SanitizedBowler',
+  'SanitizedPayment',
+]);
+
+function resolveSanitizedSymbols(
+  program: ts.Program,
+  checker: ts.TypeChecker,
+): CanonicalSanitizedSymbols {
+  const out: CanonicalSanitizedSymbols = {
+    user: null,
+    organization: null,
+    location: null,
+    bowler: null,
+    payment: null,
+  };
+  for (const sf of program.getSourceFiles()) {
+    const fn = sf.fileName.replace(/\\/g, '/');
+    if (!fn.endsWith('/server/utils/api.ts')) continue;
+
+    sf.forEachChild((n) => {
+      if (!ts.isTypeAliasDeclaration(n)) return;
+      if (!CANONICAL_SANITIZED_ALIAS_NAMES.has(n.name.text)) return;
+      const sym = checker.getSymbolAtLocation(n.name);
+      if (!sym) return;
+      switch (n.name.text) {
+        case 'SanitizedUser': out.user = sym; break;
+        case 'SanitizedOrganization':
+        case 'SanitizedOrg': out.organization = sym; break;
+        case 'SanitizedLocation': out.location = sym; break;
+        case 'SanitizedBowler': out.bowler = sym; break;
+        case 'SanitizedPayment': out.payment = sym; break;
+      }
+    });
+  }
+  return out;
+}
 
 interface SensitiveFieldLists {
   /** Sensitive User columns — every property/initializer name on
@@ -199,9 +299,9 @@ interface SensitiveFieldLists {
 }
 
 /**
- * Locate the `User`, `Organization`, `Location`, and `Bowler` type
- * aliases at their declaration sites under `shared/schema/` and
- * resolve each to its declared type. The declared type is what
+ * Locate the `User`, `Organization`, `Location`, `Bowler`, and
+ * `Payment` type aliases at their declaration sites under
+ * `shared/schema/` and resolve each to its declared type. The declared type is what
  * `isTypeAssignableTo` compares against — and because Drizzle's
  * `$inferSelect` produces an anonymous object type, asking the
  * checker for the alias's `getDeclaredTypeOfSymbol` is what gives us
@@ -333,6 +433,7 @@ const MAX_TYPE_WALK_DEPTH = 8;
 function findLeakInType(
   type: ts.Type,
   canon: CanonicalTypes,
+  sanitized: CanonicalSanitizedSymbols,
   checker: ts.TypeChecker,
   visited: Set<ts.Type> = new Set<ts.Type>(),
   depth = 0,
@@ -356,14 +457,38 @@ function findLeakInType(
     return null;
   }
 
+  // Exempt values whose type aliases back to one of the canonical
+  // `Sanitized*` projections in `server/utils/api.ts`. See the
+  // doc-comment on `CanonicalSanitizedSymbols` above — this is the
+  // mechanism that lets the structural pass tell raw `Payment`
+  // apart from `SanitizedPayment` even when SAFE_PAYMENT_FIELDS
+  // covers every current Payment column (the
+  // `sanitizePayment(...)` / `sanitizePayments(...)` returns then
+  // carry an `aliasSymbol` of `SanitizedPayment` which the row
+  // assignability check would otherwise flag as a Payment leak).
+  // Cheap no-op for the other rows (their structural subset
+  // relation already keeps them clear) so we apply it uniformly.
+  if (type.aliasSymbol) {
+    if (
+      type.aliasSymbol === sanitized.user ||
+      type.aliasSymbol === sanitized.organization ||
+      type.aliasSymbol === sanitized.location ||
+      type.aliasSymbol === sanitized.bowler ||
+      type.aliasSymbol === sanitized.payment
+    ) {
+      return null;
+    }
+  }
+
   if (checker.isTypeAssignableTo(type, canon.user)) return 'User';
   if (checker.isTypeAssignableTo(type, canon.organization)) return 'Organization';
   if (checker.isTypeAssignableTo(type, canon.location)) return 'Location';
   if (checker.isTypeAssignableTo(type, canon.bowler)) return 'Bowler';
+  if (checker.isTypeAssignableTo(type, canon.payment)) return 'Payment';
 
   if (type.isUnion()) {
     for (const sub of type.types) {
-      const v = findLeakInType(sub, canon, checker, visited, depth + 1);
+      const v = findLeakInType(sub, canon, sanitized, checker, visited, depth + 1);
       if (v) return v;
     }
     return null;
@@ -373,7 +498,7 @@ function findLeakInType(
   // type so `User[]` (the most common batch-list shape) is caught.
   const numIdx = checker.getIndexTypeOfType(type, ts.IndexKind.Number);
   if (numIdx) {
-    const v = findLeakInType(numIdx, canon, checker, visited, depth + 1);
+    const v = findLeakInType(numIdx, canon, sanitized, checker, visited, depth + 1);
     if (v) return `${v}[]`;
   }
 
@@ -392,7 +517,7 @@ function findLeakInType(
   // looping. Task #532.
   const strIdx = checker.getIndexTypeOfType(type, ts.IndexKind.String);
   if (strIdx) {
-    const v = findLeakInType(strIdx, canon, checker, visited, depth + 1);
+    const v = findLeakInType(strIdx, canon, sanitized, checker, visited, depth + 1);
     if (v) return v;
   }
 
@@ -413,7 +538,7 @@ function findLeakInType(
         const decl = prop.valueDeclaration ?? prop.declarations?.[0];
         if (!decl) continue;
         const propType = checker.getTypeOfSymbolAtLocation(prop, decl);
-        const v = findLeakInType(propType, canon, checker, visited, depth + 1);
+        const v = findLeakInType(propType, canon, sanitized, checker, visited, depth + 1);
         if (v) return v;
       }
     }
@@ -580,23 +705,24 @@ function walkExpression(
   expr: ts.Expression,
   checker: ts.TypeChecker,
   canon: CanonicalTypes,
+  sanitized: CanonicalSanitizedSymbols,
   report: Reporter,
 ): void {
   if (ts.isParenthesizedExpression(expr)) {
-    walkExpression(expr.expression, checker, canon, report);
+    walkExpression(expr.expression, checker, canon, sanitized, report);
     return;
   }
   if (ts.isObjectLiteralExpression(expr)) {
     for (const prop of expr.properties) {
       if (ts.isPropertyAssignment(prop)) {
-        walkExpression(prop.initializer, checker, canon, report);
+        walkExpression(prop.initializer, checker, canon, sanitized, report);
       } else if (ts.isShorthandPropertyAssignment(prop)) {
         const t = checker.getTypeAtLocation(prop.name);
-        const found = findLeakInType(t, canon, checker);
+        const found = findLeakInType(t, canon, sanitized, checker);
         if (found) report(prop, found);
       } else if (ts.isSpreadAssignment(prop)) {
         const t = checker.getTypeAtLocation(prop.expression);
-        const found = findLeakInType(t, canon, checker);
+        const found = findLeakInType(t, canon, sanitized, checker);
         if (found) report(prop, found);
       }
       // Method/Get/Set declarations on an object literal can't
@@ -608,22 +734,22 @@ function walkExpression(
     for (const el of expr.elements) {
       if (ts.isSpreadElement(el)) {
         const t = checker.getTypeAtLocation(el.expression);
-        const found = findLeakInType(t, canon, checker);
+        const found = findLeakInType(t, canon, sanitized, checker);
         if (found) report(el, found);
       } else {
-        walkExpression(el, checker, canon, report);
+        walkExpression(el, checker, canon, sanitized, report);
       }
     }
     return;
   }
   if (ts.isConditionalExpression(expr)) {
-    walkExpression(expr.whenTrue, checker, canon, report);
-    walkExpression(expr.whenFalse, checker, canon, report);
+    walkExpression(expr.whenTrue, checker, canon, sanitized, report);
+    walkExpression(expr.whenFalse, checker, canon, sanitized, report);
     return;
   }
   // Default: get the static type and check.
   const t = checker.getTypeAtLocation(expr);
-  const found = findLeakInType(t, canon, checker);
+  const found = findLeakInType(t, canon, sanitized, checker);
   if (found) report(expr, found);
 }
 
@@ -704,11 +830,18 @@ function main(): void {
     // Sanity bottom: if we can't find the canonical types the script
     // would silently pass — fail loud instead.
     console.error(
-      '[check-wire-sanitization] FAIL — could not resolve User / Organization / Location / Bowler type aliases from shared/schema/{users,organizations,locations,bowlers}.ts. ' +
+      '[check-wire-sanitization] FAIL — could not resolve User / Organization / Location / Bowler / Payment type aliases from shared/schema/{users,organizations,locations,bowlers,payments}.ts. ' +
         'Refusing to run rather than silently passing.',
     );
     process.exit(2);
   }
+
+  // Best-effort: resolves to all-null on a setup that doesn't expose
+  // the canonical Sanitized* aliases (in which case the alias-symbol
+  // exemption is a no-op and the structural pass behaves exactly as
+  // before — only the Payment row is currently affected by the
+  // exemption, see CanonicalSanitizedSymbols above).
+  const sanitized = resolveSanitizedSymbols(program, checker);
 
   const sensitive = resolveSensitiveFieldLists(program);
   if (!sensitive) {
@@ -748,7 +881,7 @@ function main(): void {
           // Pass 1 (#382): structural assignability — catches raw
           // rows, spreads, shorthands, and helpers whose return type
           // embeds a User/Organization.
-          walkExpression(m.dataArg, checker, canon, record);
+          walkExpression(m.dataArg, checker, canon, sanitized, record);
           // Pass 2 (#501): name-based deny-list — catches hand-rolled
           // projections that pick a SUBSET including a sensitive
           // column (e.g. `{ id: u.id, password: u.password }`).
@@ -764,13 +897,13 @@ function main(): void {
 
   if (violations.length === 0) {
     console.log(
-      '[check-wire-sanitization] OK — no raw User/Organization/Location/Bowler values or sensitive field leaks reach a response helper.',
+      '[check-wire-sanitization] OK — no raw User/Organization/Location/Bowler/Payment values or sensitive field leaks reach a response helper.',
     );
     return;
   }
 
   console.error(
-    `\n[check-wire-sanitization] ${REPORT_ONLY ? 'REPORT' : 'FAIL'} — ${violations.length} call site(s) leak User/Organization/Location/Bowler data to the wire (raw rows or deny-listed sensitive fields):\n`,
+    `\n[check-wire-sanitization] ${REPORT_ONLY ? 'REPORT' : 'FAIL'} — ${violations.length} call site(s) leak User/Organization/Location/Bowler/Payment data to the wire (raw rows or deny-listed sensitive fields):\n`,
   );
   for (const v of violations) {
     console.error(
@@ -781,8 +914,8 @@ function main(): void {
   console.error(
     '\nFor `<- <TypeName>` violations: wrap the value in the matching\n' +
       'sanitize helper (sanitizeUser / sanitizeOrg / sanitizeLocation /\n' +
-      'sanitizeBowler, or the `…s` array variants) from server/utils/api.ts\n' +
-      'before handing it to the response helper.\n' +
+      'sanitizeBowler / sanitizePayment, or the `…s` array variants) from\n' +
+      'server/utils/api.ts before handing it to the response helper.\n' +
       'For `<- sensitive:<field>` violations: drop the sensitive field from the\n' +
       'projection or rebuild the payload via sanitizeUser / sanitizeOrg.\n' +
       'See docs/lint.md for the contract.',

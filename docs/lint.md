@@ -82,15 +82,19 @@ Concretely, lint will fail the build on any net-new violation of:
 anywhere under `server/`, `shared/`, `client/src/`, `tests/`, or
 `scripts/`.
 
-## Wire-sanitization guard (raw User / Organization rows)
+## Wire-sanitization guard (raw User / Organization / Location / Bowler / Payment rows)
 
-`server/utils/api.ts` exposes two allowlist-projection helpers —
-`sanitizeUser` and `sanitizeOrg` — that are the only supported way
-to ship a `User` or `Organization` row to the wire. Anything not on
-the allowlist (e.g. `password`, `inviteToken`, `failedPasswordChangeAttempts`,
-or the OAuth tokens in `Organization.integrations`) is dropped at
-the boundary so a future column cannot leak just because nobody
-noticed.
+`server/utils/api.ts` exposes five allowlist-projection helpers —
+`sanitizeUser`, `sanitizeOrg`, `sanitizeLocation`, `sanitizeBowler`,
+and `sanitizePayment` — that are the only supported way to ship a
+`User`, `Organization`, `Location`, `Bowler`, or `Payment` row to
+the wire. Anything not on the allowlist (e.g. `password`,
+`inviteToken`, `failedPasswordChangeAttempts`, the OAuth tokens in
+`Organization.integrations`, the `squareCredentials` /
+`cardpointeCredentials` blobs on locations, `cardpointeProfileId`
+on bowlers, or any future sensitive column on `payments`) is
+dropped at the boundary so a future column cannot leak just because
+nobody noticed.
 
 The protection is only as strong as the discipline at every call
 site. A new route that does
@@ -99,22 +103,24 @@ site. A new route that does
 sendSuccess(res, user)            // raw User row
 res.json({ data: organization })  // raw Organization row
 sendSuccess(res, { ...user, paymentSyncStatus })   // spread of raw User
+sendSuccess(res, { recentPayments: payments })     // raw Payment[] under a wrapper key
 ```
 
 silently re-introduces the leak risk that #327 (allowlist projection)
 closes. Sister of the existing CSRF / org-isolation guards,
 `scripts/check-wire-sanitization.ts` is a CI step that fails when a
 response helper receives a value structurally assignable to the
-canonical `User` or `Organization` row type.
+canonical `User`, `Organization`, `Location`, `Bowler`, or `Payment`
+row type.
 
 It is type-driven, not name-driven: the script loads the same
 TypeScript program `npm run check` uses, resolves the canonical
-`User` and `Organization` types from `shared/schema/users.ts` and
-`shared/schema/organizations.ts`, then asks the type checker
-`isTypeAssignableTo` for every `sendSuccess`, `sendPaginatedSuccess`,
-`res.json`, or `res.status(...).json` call site under `server/`.
-A `SanitizedUser` / `SanitizedOrganization` (`Pick<…>` projections
-that drop sensitive columns) is NOT assignable to the full row, so
+`User` / `Organization` / `Location` / `Bowler` / `Payment` types
+from their declaration sites under `shared/schema/`, then asks the
+type checker `isTypeAssignableTo` for every `sendSuccess`,
+`sendPaginatedSuccess`, `res.json`, or `res.status(...).json` call
+site under `server/`. A `Sanitized*` (`Pick<…>` projection that
+drops sensitive columns) is NOT assignable to the full row, so
 the canonical wraps stay green:
 
 ```ts
@@ -243,12 +249,12 @@ tsx scripts/check-wire-sanitization.ts             # strict (CI mode)
 tsx scripts/check-wire-sanitization.ts --report    # print the table without exiting non-zero
 ```
 
-The guard's own behavior is pinned by 30 fixtures in
+The guard's own behavior is pinned by fixtures in
 `tests/unit/check-wire-sanitization.test.ts` (run as part of the
 vitest suite). Wired into CI as the `Wire sanitization (raw
-User/Organization)` step in `.github/workflows/ci.yml`'s
-`check-and-lint` job, alongside the CSRF and org-isolation
-coverage steps.
+User/Organization/Location/Bowler/Payment)` step in
+`.github/workflows/ci.yml`'s `check-and-lint` job, alongside the
+CSRF and org-isolation coverage steps.
 
 ## Existing-debt baseline
 

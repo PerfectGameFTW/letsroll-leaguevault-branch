@@ -1,14 +1,15 @@
 /**
  * Tests the raw-row wire-sanitization CI guard introduced in task
- * #382 and extended to Location/Bowler in task #505.
+ * #382, extended to Location/Bowler in task #505, and extended to
+ * Payment in task #536.
  *
  * The guard (`scripts/check-wire-sanitization.ts`) loads the project's
  * TypeScript program and fails when `sendSuccess`,
  * `sendPaginatedSuccess`, or `res.json` / `res.status(...).json` is
  * called with a value structurally assignable to the canonical `User`,
- * `Organization`, `Location`, or `Bowler` row type — bypassing
- * `sanitizeUser` / `sanitizeOrg` / `sanitizeLocation` /
- * `sanitizeBowler` from `server/utils/api.ts`.
+ * `Organization`, `Location`, `Bowler`, or `Payment` row type —
+ * bypassing `sanitizeUser` / `sanitizeOrg` / `sanitizeLocation` /
+ * `sanitizeBowler` / `sanitizePayment` from `server/utils/api.ts`.
  *
  * These tests:
  *   1. Run the real script against the real codebase. This is the
@@ -161,11 +162,33 @@ function makeFixture(extraFiles: Record<string, string>): string {
   );
 
   writeFile(
+    'shared/schema/payments.ts',
+    `export type Payment = {
+  id: number;
+  bowlerId: number;
+  leagueId: number;
+  amount: number;
+  status: string;
+  type: string;
+  providerPaymentId: string | null;
+  cardpointeAuthcode: string | null;
+  // A future sensitive column the safe-list / sanitizer would have
+  // to drop, mirroring the squareCredentials shape on Location: any
+  // route returning a raw Payment would ship this verbatim, so the
+  // structural lint must catch the leak here too.
+  processorWebhookSecret: string | null;
+  createdAt: string;
+};
+`,
+  );
+
+  writeFile(
     'shared/schema/index.ts',
     `export type { User } from './users';
 export type { Organization } from './organizations';
 export type { Location } from './locations';
 export type { Bowler } from './bowlers';
+export type { Payment } from './payments';
 `,
   );
 
@@ -175,11 +198,13 @@ export type { Bowler } from './bowlers';
 import type { Organization } from '../../shared/schema/organizations';
 import type { Location } from '../../shared/schema/locations';
 import type { Bowler } from '../../shared/schema/bowlers';
+import type { Payment } from '../../shared/schema/payments';
 
 export type SanitizedUser = Pick<User, 'id' | 'email' | 'name' | 'createdAt'>;
 export type SanitizedOrganization = Pick<Organization, 'id' | 'name' | 'slug' | 'createdAt'>;
 export type SanitizedLocation = Pick<Location, 'id' | 'name' | 'address' | 'city' | 'state' | 'zipCode' | 'organizationId' | 'paymentProvider'>;
 export type SanitizedBowler = Pick<Bowler, 'id' | 'name' | 'email' | 'phone' | 'active' | 'organizationId' | 'paymentCustomerId' | 'bnContactId'>;
+export type SanitizedPayment = Pick<Payment, 'id' | 'bowlerId' | 'leagueId' | 'amount' | 'status' | 'type' | 'providerPaymentId' | 'cardpointeAuthcode' | 'createdAt'>;
 
 // Deny-list (#501): the inverse of the safe lists above. The script
 // reads these constants out of this file via the AST. Mirrors the
@@ -206,6 +231,12 @@ export function sanitizeBowler(b: Bowler): SanitizedBowler {
 }
 export function sanitizeBowlers(bs: Bowler[]): SanitizedBowler[] {
   return bs.map(sanitizeBowler);
+}
+export function sanitizePayment(p: Payment): SanitizedPayment {
+  return p as unknown as SanitizedPayment;
+}
+export function sanitizePayments(ps: Payment[]): SanitizedPayment[] {
+  return ps.map(sanitizePayment);
 }
 
 // Minimal Response stand-in so we don't need express in the fixture.
@@ -250,7 +281,7 @@ describe('check-wire-sanitization CI guard', () => {
   it('runs against the real codebase and exits 0', () => {
     const r = runIn(process.cwd());
     expect(r.status, r.stderr || r.stdout).toBe(0);
-    expect(r.stdout).toMatch(/no raw User\/Organization\/Location\/Bowler values/);
+    expect(r.stdout).toMatch(/no raw User\/Organization\/Location\/Bowler\/Payment values/);
   }, 60_000);
 
   it('flags sendSuccess(res, user) where user is User', () => {
@@ -812,6 +843,199 @@ export function bad() { sendSuccess(res, { ...bowler, foo: 'bar' }); }
     const r = runIn(dir);
     expect(r.status, r.stdout || r.stderr).toBe(1);
     expect(r.stderr).toMatch(/<- Bowler/);
+  }, 30_000);
+
+  // ---------------------------------------------------------------
+  // Payment structural assignability (task #536) — same pass-1
+  // contract as User/Organization/Location/Bowler, expanded to
+  // cover the canonical Payment row type. Acceptance: a future
+  // route that returns `storage.getPayment*` output through
+  // `sendSuccess` / `res.json` / a paginated wrapper without
+  // calling `sanitizePayment` / `sanitizePayments` fails the
+  // lint, and the existing wraps in
+  // `server/routes/payments/{payment-reports,payment-record,payment-refunds}.ts`
+  // (#504) plus `server/routes/admin.ts` and
+  // `server/routes/bowlers.ts` stay green — the latter is
+  // covered by the "runs against the real codebase" test above.
+  // ---------------------------------------------------------------
+
+  it('flags sendSuccess(res, payment) where payment is Payment', () => {
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Payment } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const payment: Payment;
+export function bad() { sendSuccess(res, payment); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/sendSuccess\(\) <- Payment/);
+    expect(r.stderr).toMatch(/leak\.ts/);
+  }, 30_000);
+
+  it('flags sendSuccess(res, payments) where payments is Payment[]', () => {
+    // Array-of-row leak via the numeric-index descent — the
+    // canonical list-endpoint shape (`getPaymentsByLeague`,
+    // `getRecentPayments`, etc.) returns `Payment[]`.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Payment } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const payments: Payment[];
+export function bad() { sendSuccess(res, payments); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- Payment\[\]/);
+  }, 30_000);
+
+  it('flags res.json(payment) where payment is Payment', () => {
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Payment } from '@shared/schema';
+import { type Response } from './utils/api';
+declare const res: Response;
+declare const payment: Payment;
+export function bad() { res.json(payment); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/res\.json\(\) <- Payment/);
+  }, 30_000);
+
+  it('flags Payment | undefined (the typical storage.getPayment return)', () => {
+    // `storage.getPayment(id)` returns `Payment | undefined` — the
+    // union descent has to cover this so a route that forwards the
+    // optional-row result straight through to `sendSuccess` is
+    // caught the same way `User | undefined` is.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Payment } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const maybePayment: Payment | undefined;
+export function bad() { sendSuccess(res, maybePayment); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- Payment/);
+  }, 30_000);
+
+  it('flags shorthand { payment } where payment is Payment', () => {
+    // The destructured/shorthand-property leak shape — a route
+    // that builds `sendSuccess(res, { payment })` with a raw row
+    // is the canonical "embedded under a response key" form
+    // called out in the task description.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Payment } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const payment: Payment;
+export function bad() { sendSuccess(res, { payment }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- Payment/);
+  }, 30_000);
+
+  it('flags an aliased { recentPayments: payments } embedding a raw Payment[]', () => {
+    // The "embedded under a response key like `recentPayments` /
+    // `payments`" pattern explicitly called out in the task. The
+    // outer object is not assignable to `Payment` (or `Payment[]`),
+    // but the property-walk descent has to flag the inner
+    // `Payment[]` value through the wrapper key.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Payment } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const payments: Payment[];
+export function bad() { sendSuccess(res, { recentPayments: payments }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- Payment/);
+  }, 30_000);
+
+  it('flags { ...payment, extra } spread of a raw Payment row', () => {
+    // Same spread-of-row shape that the User/Organization/Bowler
+    // tests above pin — a route that augments a raw payment with a
+    // computed field still ships every column on the row.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Payment } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const payment: Payment;
+export function bad() { sendSuccess(res, { ...payment, displayLabel: 'x' }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- Payment/);
+  }, 30_000);
+
+  it('flags sendPaginatedSuccess(res, payments, pagination) with raw Payment[]', () => {
+    // Paginated-response shape — `sendPaginatedSuccess` is the
+    // helper used by `payment-reports.ts` and several admin
+    // listings. The data argument is the SAME structural slot as
+    // for `sendSuccess`, so the existing detection must fire.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Payment } from '@shared/schema';
+import { sendPaginatedSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const payments: Payment[];
+export function bad() {
+  sendPaginatedSuccess(res, payments, { page: 1, limit: 50 });
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/sendPaginatedSuccess\(\) <- Payment\[\]/);
+  }, 30_000);
+
+  it('does NOT flag sanitizePayment(payment) / sanitizePayments(list)', () => {
+    // The canonical safe wraps. `SanitizedPayment` is a
+    // `Pick<Payment, …>` missing `processorWebhookSecret`, so it
+    // is NOT structurally assignable to `Payment` and the guard
+    // stays silent.
+    const dir = makeFixture({
+      'server/safe.ts': `import type { Payment } from '@shared/schema';
+import { sendSuccess, sendPaginatedSuccess, sanitizePayment, sanitizePayments, type Response } from './utils/api';
+declare const res: Response;
+declare const payment: Payment;
+declare const payments: Payment[];
+export function ok1() { sendSuccess(res, sanitizePayment(payment)); }
+export function ok2() { sendSuccess(res, sanitizePayments(payments)); }
+export function ok3() { sendSuccess(res, payments.map(sanitizePayment)); }
+export function ok4() {
+  sendPaginatedSuccess(res, sanitizePayments(payments), { page: 1, limit: 50 });
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  }, 30_000);
+
+  it('does NOT flag { recentPayments: sanitizePayments(list), total } (the safe embedded shape)', () => {
+    // Negative half of the embedded-key shape: the inner value is
+    // a `SanitizedPayment[]`, not a `Payment[]`, so the property
+    // descent finds nothing to report.
+    const dir = makeFixture({
+      'server/safe.ts': `import type { Payment } from '@shared/schema';
+import { sendSuccess, sanitizePayments, type Response } from './utils/api';
+declare const res: Response;
+declare const payments: Payment[];
+export function ok() {
+  sendSuccess(res, { recentPayments: sanitizePayments(payments), total: payments.length });
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
   }, 30_000);
 
   // ---------------------------------------------------------------
