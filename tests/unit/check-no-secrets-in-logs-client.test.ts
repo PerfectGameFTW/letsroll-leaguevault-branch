@@ -456,6 +456,79 @@ describe('check-no-secrets-in-logs CI guard (client surface)', () => {
     ).toBe(true);
   });
 
+  it('flags a CROSS-FILE named-export object literal `import { helpers } from … ; helpers.pick(data)` (task #553)', () => {
+    // Same cross-file methodHost shape as the server test, pinned
+    // on the client surface so the wider client forbidden-shape set
+    // (`.newPassword` etc.) routes through `getExportedHelpers`.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-client-cross-host-obj-'),
+    );
+    const helpersFile = join(dir, 'client/src/helpers.ts');
+    const componentFile = join(dir, 'client/src/Component.tsx');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const helpers = {\n` +
+        `  pick: (d: any) => d.newPassword,\n` +
+        `};\n`,
+    );
+    writeFileSync(
+      componentFile,
+      `import { helpers } from './helpers';\n` +
+        `function F({ data }: any) {\n` +
+        `  console.log('attempt', helpers.pick(data));\n` +
+        `  return null;\n` +
+        `}\n`,
+    );
+    const reasons = scanSource(
+      componentFile,
+      readFileSync(componentFile, 'utf8'),
+      CLIENT_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pick\(\)' returning .*\.newPassword/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE named-export class `import { H } from … ; const h = new H(); h.pick(data)` (task #553)', () => {
+    // The instance-binding pass must run AFTER cross-file imports
+    // so the imported `H` is in scope by the time `new H()` is
+    // resolved into the methodHost binding for `h`.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-client-cross-host-class-'),
+    );
+    const helpersFile = join(dir, 'client/src/helpers.ts');
+    const componentFile = join(dir, 'client/src/Component.tsx');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export class H {\n` +
+        `  pick(d: any) { return d.newPassword; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      componentFile,
+      `import { H } from './helpers';\n` +
+        `function F({ data }: any) {\n` +
+        `  const h = new H();\n` +
+        `  console.warn('v=', h.pick(data));\n` +
+        `  return null;\n` +
+        `}\n`,
+    );
+    const reasons = scanSource(
+      componentFile,
+      readFileSync(componentFile, 'utf8'),
+      CLIENT_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'h\.pick\(\)' returning .*\.newPassword/.test(r),
+      ),
+    ).toBe(true);
+  });
+
   it('flags `new H().pick(data)` on the client surface', () => {
     const reasons = reasonsFor(
       `class H {\n` +

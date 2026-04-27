@@ -614,27 +614,39 @@ function hasDefaultModifier(node: ts.Node): boolean {
 const DEFAULT_EXPORT_KEY = 'default';
 
 /**
- * Parse `file` and extract the names of any top-level exported
- * functions whose body returns a forbidden expression. Used by
+ * Parse `file` and extract the top-level exports whose shape can
+ * carry a secret out of the importing file's log calls. Used by
  * `collectScopedBindings` to seed the importing file's source-file
- * scope with `helper` bindings for each `import … from './path'`
- * specifier.
+ * scope with the appropriate binding for each `import … from
+ * './path'` specifier.
  *
- * Recognized export shapes:
+ * Recognized helper-function export shapes (task #541, extended in
+ * task #549 for default exports):
  *
  *   export function pickPassword(req) { return req.body.password; }
  *   export const pickPassword = (req) => req.body.password;
  *   export const pickPassword = function (req) { return req.body.password; };
- *
- * Default-export shapes (task #549) — recorded under the sentinel
- * key `DEFAULT_EXPORT_KEY` so a default-import in the consumer
- * (`import pickPassword from './helpers'`) can bind whatever local
- * name it chose to the same helper:
- *
  *   export default function pickPassword(req) { return req.body.password; }
  *   export default function (req) { return req.body.password; }
  *   export default (req) => req.body.password;                // ExportAssignment
  *   export default function (req) { return req.body.password; }; // ExportAssignment
+ *
+ * Recognized method-host export shapes (task #553) — same machinery
+ * the in-file pass 4 uses, applied across the module boundary so a
+ * helper hidden behind a property access still resolves through an
+ * `import { helpers, H } from './helpers'` chain:
+ *
+ *   export const helpers = { pickPassword: (req) => req.body.password };
+ *   export const H = class { pick(req) { return req.body.password; } };
+ *   export class H { pick(req) { return req.body.password; } }
+ *
+ * The named-export object-literal / class binding is recorded under
+ * the variable / class name as a `methodHost` binding; the importing
+ * file's pass 6 binds the same `methodHost` under the local
+ * (possibly aliased) import name, and the existing call-site walk
+ * (`scanArgForSecrets`) resolves `helpers.pickPassword(req)` /
+ * `new H().pick(req)` / `h.pick(req)` against it just as it would
+ * for a same-file host.
  *
  * Re-exports (`export { x } from './y'`, `export * from './y'`)
  * remain out of scope.
@@ -685,13 +697,53 @@ function getExportedHelpers(
     } else if (ts.isVariableStatement(stmt) && hasExportModifier(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
         if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
-        const init = decl.initializer;
+        const init = unwrapParens(decl.initializer);
         if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
           const cls = classifyFunctionReturn(init, surface, importedScopes);
           if (cls) {
             map.set(decl.name.text, { kind: 'helper', reason: cls.reason });
           }
+        } else if (ts.isObjectLiteralExpression(init)) {
+          // task #553: `export const helpers = { pick: (req) => req.body.password }`.
+          // Same shape pass 4 records for in-file object literals,
+          // recorded here under the export name so an importing file
+          // sees `helpers` as a methodHost.
+          const host = buildObjectLiteralMethodHost(init, surface, importedScopes);
+          if (host) {
+            map.set(decl.name.text, { kind: 'methodHost', host });
+          }
+        } else if (ts.isClassExpression(init)) {
+          // task #553: `export const H = class { pick(req) { … } }`.
+          // Class expression assigned to an exported binding —
+          // mirrors the variable-initialized class-expression branch
+          // of pass 4 (`visitMethodHosts`).
+          const host = buildClassMethodHost(init, surface, importedScopes);
+          if (host) {
+            map.set(decl.name.text, { kind: 'methodHost', host });
+          }
         }
+      }
+    } else if (
+      ts.isClassDeclaration(stmt) &&
+      hasExportModifier(stmt) &&
+      stmt.name &&
+      !hasDefaultModifier(stmt)
+    ) {
+      // task #553: `export class H { pick(req) { return req.body.password; } }`.
+      // Named-export class — recorded under the class name so an
+      // importing `import { H } from './helpers'` (and a subsequent
+      // `new H().pick(req)` or `const h = new H(); h.pick(req)`)
+      // can resolve through the same methodHost the in-file pass 4
+      // would have produced. Default-exported classes
+      // (`export default class { … }`) are intentionally out of
+      // scope — the brief calls out NAMED exports, and the helper
+      // path's DEFAULT_EXPORT_KEY semantics for default imports
+      // would need additional plumbing to round-trip a class via
+      // `import H from './helpers'` (no consumer in this codebase
+      // does so today, so deferring keeps the change minimal).
+      const host = buildClassMethodHost(stmt, surface, importedScopes);
+      if (host) {
+        map.set(stmt.name.text, { kind: 'methodHost', host });
       }
     } else if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) {
       // `export default <expr>` — covers the ExportAssignment shapes
@@ -1157,46 +1209,16 @@ function collectScopedBindings(
   };
   visitMethodHosts(sourceFile);
 
-  // Pass 5: instance bindings via `new` (task #548). After pass 4
-  // has populated class-name -> methodHost bindings, walk the file
-  // again and propagate that host to any `const h = new H();`
-  // local. A subsequent `h.pick(req)` inside a log argument can
-  // then resolve `h` to the same methodHost as `H` and flag the
-  // call. Runs as a separate pass so a forward `const h = new H();
-  // ... class H {}` (declaration after use, legal at module scope)
-  // still resolves — pass 4 records `H` first, then this pass
-  // resolves the receiver.
-  const visitInstances = (node: ts.Node): void => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer
-    ) {
-      const init = unwrapParens(node.initializer);
-      if (ts.isNewExpression(init) && ts.isIdentifier(init.expression)) {
-        const ctor = init.expression;
-        const b = resolveIdentifierBinding(ctor, scopes);
-        if (b && b.kind === 'methodHost') {
-          const scope = isVarDeclaration(node)
-            ? nearestFunctionScope(node)
-            : nearestScope(node);
-          recordIn(scope, node.name.text, {
-            kind: 'methodHost',
-            host: b.host,
-          });
-        }
-      }
-    }
-    ts.forEachChild(node, visitInstances);
-  };
-  visitInstances(sourceFile);
-
-  // Pass 6: cross-file helper detection (task #541, extended in
-  // task #549 to default exports/imports). For each top-level
-  // `import … from '<spec>'`, resolve the spec to an on-disk file,
-  // ask `getExportedHelpers` for the set of exports it considers
-  // forbidden helpers, and seed the importing file's source-file
-  // scope with a 'helper' binding under the LOCAL name.
+  // Pass 5: cross-file helper / methodHost detection (task #541,
+  // extended in task #549 to default exports/imports and in
+  // task #553 to named-export object literals + classes). For each
+  // top-level `import … from '<spec>'`, resolve the spec to an
+  // on-disk file, ask `getExportedHelpers` for the set of exports
+  // it considers forbidden, and seed the importing file's
+  // source-file scope with the appropriate binding under the LOCAL
+  // name. Runs BEFORE the `new`-expression instance pass below so
+  // that `import { H } from './h'; const h = new H();` correctly
+  // resolves `H` to its cross-file methodHost when binding `h`.
   //
   //   import { foo }            -> recorded under `foo`
   //   import { foo as bar }     -> recorded under `bar`
@@ -1246,6 +1268,43 @@ function collectScopedBindings(
       }
     }
   }
+
+  // Pass 6: instance bindings via `new` (task #548, extended in
+  // task #553). After pass 4 has populated in-file class-name ->
+  // methodHost bindings AND pass 5 has populated cross-file
+  // imported class-name -> methodHost bindings, walk the file and
+  // propagate the host to any `const h = new H();` local. A
+  // subsequent `h.pick(req)` inside a log argument can then resolve
+  // `h` to the same methodHost as `H` and flag the call. Runs as a
+  // separate pass so a forward `const h = new H(); ... class H {}`
+  // (declaration after use, legal at module scope) and a cross-file
+  // `import { H } from './h'; const h = new H();` BOTH resolve —
+  // the constructor binding is in scope by the time the receiver
+  // resolution runs.
+  const visitInstances = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      const init = unwrapParens(node.initializer);
+      if (ts.isNewExpression(init) && ts.isIdentifier(init.expression)) {
+        const ctor = init.expression;
+        const b = resolveIdentifierBinding(ctor, scopes);
+        if (b && b.kind === 'methodHost') {
+          const scope = isVarDeclaration(node)
+            ? nearestFunctionScope(node)
+            : nearestScope(node);
+          recordIn(scope, node.name.text, {
+            kind: 'methodHost',
+            host: b.host,
+          });
+        }
+      }
+    }
+    ts.forEachChild(node, visitInstances);
+  };
+  visitInstances(sourceFile);
 
   return scopes;
 }

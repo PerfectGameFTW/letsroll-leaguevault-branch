@@ -1013,6 +1013,279 @@ describe('check-no-secrets-in-logs CI guard', () => {
     expect(reasons).toHaveLength(0);
   });
 
+  // ---------------------------------------------------------------
+  // Cross-file methodHost detection (task #553). Task #548 caught
+  // the same-file object-literal / class method-host shape; the
+  // natural next bypass is to put the literal or class behind a
+  // module boundary:
+  //
+  //   // helpers.ts
+  //   export const helpers = { pickPassword: (req) => req.body.password };
+  //   export class H { pick(req) { return req.body.password; } }
+  //   // routes.ts
+  //   import { helpers, H } from './helpers';
+  //   log.info(helpers.pickPassword(req));
+  //   log.info(new H().pick(req));
+  //
+  // `getExportedHelpers` now records named-export object literals
+  // and class declarations under their export name as a methodHost
+  // binding, so the importing file's pass 5 binds the same host
+  // under the local (possibly aliased) import name and the existing
+  // method-call rule fires on the cross-file shapes.
+  // ---------------------------------------------------------------
+
+  it('flags a CROSS-FILE named-export object literal consumed via `helpers.pickPassword(req)` (the brief)', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-cross-host-obj-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { helpers } from './helpers';\n` +
+        `log.info(\`pw=\${helpers.pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE named-export object literal under a renamed alias `import { helpers as h }`', () => {
+    // Same renaming semantics as the helper-function alias test —
+    // the local name (`h`) is what the receiver-resolution sees, so
+    // `h.pick(req)` must trip even though the export name was
+    // `helpers`.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-cross-host-obj-alias-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const helpers = {\n` +
+        `  pick(req: any) { return req.body.password; },\n` +
+        `};\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { helpers as h } from './helpers';\n` +
+        `log.warn(h.pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'h\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE named-export class via `new H().pick(req)` (the brief)', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-cross-host-class-new-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { H } from './helpers';\n` +
+        `log.info(new H().pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'new H\(\)\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE named-export class via `const h = new H(); h.pick(req)` (the brief)', () => {
+    // The instance-binding pass must run AFTER cross-file imports
+    // so `H` is in scope by the time `new H()` is resolved into the
+    // methodHost binding for `h`. Pin that ordering.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-cross-host-class-instance-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { H } from './helpers';\n` +
+        `const h = new H();\n` +
+        `log.warn(h.pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'h\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE named-export class consumed via `H.pick(req)` (static-style call)', () => {
+    // The methodHost folds static and instance methods into the
+    // same map (mirroring the in-file class-method test), so
+    // calling the import directly as `H.pick(req)` resolves the
+    // same way.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-cross-host-class-static-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export class H {\n` +
+        `  static pick(req: any) { return req.body.password; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { H } from './helpers';\n` +
+        `log.error(H.pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'H\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE class-expression export `export const H = class { … }`', () => {
+    // Classes aren't always declared with `class` syntax — assigning
+    // a class expression to an exported `const` is a real-world
+    // shape. Pin the class-expression branch of `getExportedHelpers`.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-cross-host-class-expr-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const H = class {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `};\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { H } from './helpers';\n` +
+        `log.info(new H().pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'new H\(\)\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a CROSS-FILE named-export object literal whose methods are benign', () => {
+    // Symmetric no-false-positive: a benign object literal exported
+    // from another file must not poison every importing call site.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-cross-host-obj-benign-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const helpers = {\n` +
+        `  getId: (req: any) => req.body.id,\n` +
+        `  getName: (req: any) => req.body.name,\n` +
+        `};\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { helpers } from './helpers';\n` +
+        `log.info('id', helpers.getId(req), helpers.getName(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a CROSS-FILE named-export class whose methods are benign', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-cross-host-class-benign-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export class H {\n` +
+        `  id(req: any) { return req.body.id; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { H } from './helpers';\n` +
+        `log.info(new H().id(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(reasons).toHaveLength(0);
+  });
+
   it('flags BOTH default and named bindings on a combined `import default, { named } from` clause', () => {
     // `import baz, { foo } from './x'` populates `importClause.name`
     // (default) AND `importClause.namedBindings` (named) on the same
