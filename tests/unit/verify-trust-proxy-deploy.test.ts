@@ -121,12 +121,16 @@ describe('runVerifier — env validation (exit 2)', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('exits 2 when ADMIN_COOKIE is missing', async () => {
+  it('exits 2 when both PROBE_TOKEN and ADMIN_COOKIE are missing', async () => {
     await expect(runVerifier({ BASE_URL: 'https://app.example.com' })).rejects.toThrow(
       '__EXIT__:2',
     );
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(errorSpy.mock.calls[0]?.[0]).toMatch(/ADMIN_COOKIE is required/);
+    // The script accepts either credential — PROBE_TOKEN (preferred,
+    // no rotation) or ADMIN_COOKIE (legacy, ~24h). The error mentions
+    // both; pin the regex to that disjunction so a future tweak to
+    // either label still satisfies the assertion.
+    expect(errorSpy.mock.calls[0]?.[0]).toMatch(/PROBE_TOKEN.*ADMIN_COOKIE.*is required/);
   });
 });
 

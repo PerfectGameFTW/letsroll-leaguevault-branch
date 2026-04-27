@@ -101,8 +101,20 @@ vi.mock('../../server/middleware/csrf', () => ({
   csrfProtection: (_req: Request, _res: Response, next: NextFunction) => next(),
 }));
 
+// `vi.mock` factories fully replace the real module — every symbol the
+// transitively-imported real code reads has to be present here or
+// vitest throws "No 'X' export is defined on the mock". Importing
+// `server/routes/auth` pulls in the shared rate-limit store (#356)
+// which reads `pool` from `server/db.ts` which reads `env.DATABASE_URL`
+// from this module. The express-rate-limit mock further down means the
+// pool is never actually queried during tests, so an empty `env`
+// object is enough to satisfy the import-time access without a real
+// connection string. Mirror this list with `confirm-email-change-no-
+// token-leak.test.ts` and `auth-no-token-leak.test.ts` if you add more
+// config symbols.
 vi.mock('../../server/config', () => ({
   isDev: false,
+  env: {},
 }));
 
 // Bypass the per-route rate limiter so we can hammer the same IP
