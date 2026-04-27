@@ -2153,6 +2153,291 @@ describe('check-no-secrets-in-logs CI guard', () => {
     ).toBe(true);
   });
 
+  // -------- Task #560: TypeScript transparent-callee wrappers --------
+  //
+  // Each block below mirrors the three paren-bypass tests above
+  // (DOT / BRACKET / BARE-IDENTIFIER) for one TypeScript-only
+  // wrapper that erases at runtime: `as`, `<...>`, and `!`. The
+  // architect explicitly flagged these as the next trivial bypass
+  // after #554 — anyone aware of the dot/bracket/paren rules can
+  // swap the callee for `(helpers.pick as any)(req)` /
+  // `(<any>helpers.pick)(req)` / `helpers.pick!(req)` and slip
+  // past the dispatch otherwise. `unwrapTransparentCallee` strips
+  // all four wrapper kinds (paren + the three TS wrappers) before
+  // the shape check, closing the bypass for every call-shape rule
+  // (helper-function, dot-method, bracket-method) at once.
+
+  it("flags `(helpers.pickPassword as any)(req)` — DOT-form `as` wrapper (task #560)", () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info((helpers.pickPassword as any)(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags `(helpers['pick'] as any)(req)` — BRACKET-form `as` wrapper (task #560)", () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pick: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info((helpers['pick'] as any)(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\["pick"\]\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags `(pickPassword as any)(req)` — BARE-IDENTIFIER helper-call `as` wrapper (task #560)", () => {
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `log.info((pickPassword as any)(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `(<any>helpers.pickPassword)(req)` — DOT-form angle-bracket type assertion wrapper (task #560)', () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info((<any>helpers.pickPassword)(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags `(<any>helpers['pick'])(req)` — BRACKET-form angle-bracket type assertion wrapper (task #560)", () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pick: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info((<any>helpers['pick'])(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\["pick"\]\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `(<any>pickPassword)(req)` — BARE-IDENTIFIER helper-call angle-bracket type assertion wrapper (task #560)', () => {
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `log.info((<any>pickPassword)(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `helpers.pickPassword!(req)` — DOT-form non-null assertion wrapper (task #560)', () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info(helpers.pickPassword!(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags `helpers['pick']!(req)` — BRACKET-form non-null assertion wrapper (task #560)", () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pick: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info(helpers['pick']!(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\["pick"\]\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `pickPassword!(req)` — BARE-IDENTIFIER helper-call non-null assertion wrapper (task #560)', () => {
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `log.info(pickPassword!(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  // Receiver-side wrappers — the architect-required sister of the
+  // callee-side bypass above. After #554 the dispatch unwraps
+  // wrappers on the CALLEE (`(helpers.pick as any)(req)`), but the
+  // RECEIVER position inside the callee was still raw — so
+  // `(helpers as any).pick(req)` and friends slipped through
+  // because `resolveCallReceiverHost`'s recursion only stripped
+  // `ParenthesizedExpression`. The shared `isTransparentExpressionWrapper`
+  // predicate (used by both `unwrapTransparentCallee` AND the
+  // recursive resolveCallReceiverHost / describeReceiverPath
+  // branches) keeps both sides in lock-step.
+
+  it("flags `(helpers as any).pickPassword(req)` — `as`-wrapped receiver, dot method (task #560)", () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info((helpers as any).pickPassword(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `(<any>helpers).pickPassword(req)` — angle-bracket-wrapped receiver, dot method (task #560)', () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info((<any>helpers).pickPassword(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `helpers!.pickPassword(req)` — non-null-wrapped receiver, dot method (task #560)', () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info(helpers!.pickPassword(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  // `satisfies` — TS 4.9+. Same erase-at-emit semantics as `as`,
+  // and the architect explicitly called this out as a wrapper kind
+  // missed by the original brief. Cover both callee and receiver
+  // positions so neither side has the bypass.
+
+  it("flags `(helpers.pickPassword satisfies (req: any) => string)(req)` — `satisfies` callee wrapper (task #560)", () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info((helpers.pickPassword satisfies (req: any) => string)(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags `(helpers satisfies typeof helpers).pickPassword(req)` — `satisfies` receiver wrapper (task #560)", () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info((helpers satisfies typeof helpers).pickPassword(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags `((helpers as any).pickPassword as any)(req)` — wrappers stacked on BOTH receiver AND callee compose (task #560)", () => {
+    // End-to-end pin that the unwrap on the receiver side and the
+    // unwrap on the callee side use the same predicate and therefore
+    // strip independently. Without the shared predicate one side
+    // could lag the other and this nested form would slip through.
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info(((helpers as any).pickPassword as any)(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  // Negative tests — split per-wrapper for failure-attribution
+  // clarity (per architect feedback). Each pins that the wrapper
+  // strip does NOT relax the methodHost binding lookup: an unknown
+  // receiver stays unknown after unwrapping.
+
+  it("does NOT flag `(unknownThing as any).pick(req)` — wrapper around an unbound receiver (task #560 negative)", () => {
+    const reasons = reasonsFor(
+      `declare const unknownThing: any;\n` +
+        `log.info((unknownThing as any).pick(req));`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it("does NOT flag `(<any>unknownThing).pick(req)` — angle-bracket wrapper around an unbound receiver (task #560 negative)", () => {
+    const reasons = reasonsFor(
+      `declare const unknownThing: any;\n` +
+        `log.info((<any>unknownThing).pick(req));`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it("does NOT flag `unknownThing!.pick(req)` — non-null wrapper around an unbound receiver (task #560 negative)", () => {
+    const reasons = reasonsFor(
+      `declare const unknownThing: any;\n` +
+        `log.info(unknownThing!.pick(req));`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
   it('does NOT flag a benign computed call on a host whose OTHER methods are forbidden', () => {
     // Symmetric to task #548's "benign call on an object whose OTHER
     // methods are forbidden" — the methods map only contains the

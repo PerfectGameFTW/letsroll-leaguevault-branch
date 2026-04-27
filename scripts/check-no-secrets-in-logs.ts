@@ -1469,7 +1469,7 @@ function resolveCallReceiverHost(
   expr: ts.Expression,
   scopes: Map<ts.Node, Map<string, Binding>>,
 ): MethodHost | null {
-  if (ts.isParenthesizedExpression(expr)) {
+  if (isTransparentExpressionWrapper(expr)) {
     return resolveCallReceiverHost(expr.expression, scopes);
   }
   if (ts.isIdentifier(expr)) {
@@ -1503,7 +1503,7 @@ function resolveCallReceiverHost(
  * source used a string literal or a no-substitution template.
  */
 function describeReceiverPath(expr: ts.Expression): string {
-  if (ts.isParenthesizedExpression(expr)) {
+  if (isTransparentExpressionWrapper(expr)) {
     return describeReceiverPath(expr.expression);
   }
   if (ts.isIdentifier(expr)) return expr.text;
@@ -1662,23 +1662,73 @@ function callIsSuppressed(
  * straight at the offending shape.
  */
 /**
- * Strip outer ParenthesizedExpression wrappers off a callee
- * expression. Without this, a trivial `(helpers.pick)(req)` /
- * `(helpers['pick'])(req)` slips past every call-site shape check
- * below — those tests look at `n.expression` directly, which would
- * be a `ParenthesizedExpression` rather than the
- * Property/Element/Identifier the rule expects. `resolveCallReceiverHost`
- * already unwraps parens internally on the receiver side; this is
- * the matching unwrap for the call-site (callee) side, closing the
- * paren-bypass for ALL three call-shape rules at once
- * (helper-function call, form-reader call, method-call dot AND
- * bracket form). Same shape is unwrapped on the receiver inside the
- * call, so detection composes (e.g. `((helpers)['pick'])(req)` is
- * still flagged).
+ * Predicate for "transparent" expression wrappers — wrappers whose
+ * runtime value is identical to their inner `expression` and which
+ * therefore cannot change WHICH function is invoked or WHICH object
+ * is being dereferenced. Used to strip them off both the callee
+ * (`unwrapTransparentCallee`) AND the receiver (the recursive
+ * `resolveCallReceiverHost` / `describeReceiverPath` calls) so a
+ * cosmetic wrapper anywhere in the call shape can never silently
+ * bypass the dispatch.
+ *
+ * Wrappers recognised:
+ *   - `ParenthesizedExpression` — `(x)`               (task #554)
+ *   - `AsExpression`            — `x as T`            (task #560)
+ *   - `TypeAssertionExpression` — `<T>x`              (task #560)
+ *   - `NonNullExpression`       — `x!`                (task #560)
+ *   - `SatisfiesExpression`     — `x satisfies T`     (task #560)
+ *
+ * All five are erased by the TS emitter or are runtime no-ops, so
+ * the inner expression evaluates to the same value as the wrapper
+ * itself — unwrapping cannot create a false positive (the function
+ * actually invoked / object actually dereferenced is exactly the
+ * one the inner expression resolves to). DO NOT add wrappers that
+ * fail this property here — `ConditionalExpression` (ternary) for
+ * example chooses one of two paths at runtime and is NOT
+ * transparent.
  */
-function unwrapParenCallee(expr: ts.Expression): ts.Expression {
+function isTransparentExpressionWrapper(
+  expr: ts.Expression,
+): expr is
+  | ts.ParenthesizedExpression
+  | ts.AsExpression
+  | ts.TypeAssertionExpression
+  | ts.NonNullExpression
+  | ts.SatisfiesExpression {
+  return (
+    ts.isParenthesizedExpression(expr) ||
+    ts.isAsExpression(expr) ||
+    ts.isTypeAssertionExpression(expr) ||
+    ts.isNonNullExpression(expr) ||
+    ts.isSatisfiesExpression(expr)
+  );
+}
+
+/**
+ * Strip transparent wrappers off a callee expression. Without this,
+ * a trivial `(helpers.pick)(req)` / `(helpers.pick as any)(req)` /
+ * `(<any>helpers.pick)(req)` / `helpers.pick!(req)` /
+ * `(helpers.pick satisfies typeof helpers.pick)(req)` slips past
+ * every call-site shape check below — those tests look at
+ * `n.expression` directly, which would be the wrapper rather than
+ * the Property/Element/Identifier the rule expects. Closes the
+ * wrapper bypass for ALL three call-shape rules at once
+ * (helper-function call, form-reader call, method-call dot AND
+ * bracket form).
+ *
+ * Detection composes — e.g. `((helpers as any)['pick'] as any)(req)`
+ * is still flagged because both the callee paren+as wrapper AND the
+ * receiver paren+as wrapper are stripped before the dispatch.
+ * `resolveCallReceiverHost` and `describeReceiverPath` use the
+ * same `isTransparentExpressionWrapper` predicate, so the unwrap
+ * stays in lock-step on both sides; adding a new transparent
+ * wrapper kind in one place automatically fixes it everywhere.
+ */
+function unwrapTransparentCallee(expr: ts.Expression): ts.Expression {
   let cur: ts.Expression = expr;
-  while (ts.isParenthesizedExpression(cur)) cur = cur.expression;
+  while (isTransparentExpressionWrapper(cur)) {
+    cur = cur.expression;
+  }
   return cur;
 }
 
@@ -1706,11 +1756,13 @@ function scanArgForSecrets(
         }
       }
     } else if (ts.isCallExpression(n)) {
-      // Strip outer parens off the callee so a trivial
+      // Strip transparent wrappers off the callee so a trivial
       // `(helpers.pick)(req)` / `(helpers['pick'])(req)` /
-      // `(pickPassword)(req)` doesn't slip past every shape check
-      // below. See `unwrapParenCallee` doc-comment for the rationale.
-      const callee = unwrapParenCallee(n.expression);
+      // `(pickPassword)(req)` / `(helpers.pick as any)(req)` /
+      // `(<any>helpers.pick)(req)` / `helpers.pick!(req)` doesn't
+      // slip past every shape check below. See
+      // `unwrapTransparentCallee` doc-comment for the rationale.
+      const callee = unwrapTransparentCallee(n.expression);
       // Detect react-hook-form value readers: `form.getValues('password')`,
       // `form.watch('newPassword')`, etc. Only flagged when both the
       // method name AND the string-literal argument are forbidden — a
