@@ -15,7 +15,7 @@ router.get('/slug/:slug', async (req, res) => {
     const organization = await storage.getOrganizationBySlug(slug);
 
     if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     sendSuccess(res, {
@@ -38,7 +38,7 @@ router.get('/slug/:slug/leagues', async (req, res) => {
     const organization = await storage.getOrganizationBySlug(slug);
 
     if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     const leagues = await storage.getLeagues(organization.id);

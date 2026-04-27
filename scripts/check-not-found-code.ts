@@ -20,17 +20,6 @@
  *   - 'RECEIPT_UNAVAILABLE' — narrows to "underlying record found
  *                              but no receipt is generated"
  *
- * KNOWN_VIOLATIONS records pre-existing `'NotFound'` (camelCase)
- * drift sites that are tracked under the pending "Use the same
- * 'not found' error code across the rest of the admin pages" cleanup
- * task. Each entry comes out as that work lands; new violations not
- * on the list always fail the script.
- *
- * Baseline identity is `file:line:code` (NOT just `file:line`). If
- * a future edit replaces `'NotFound'` at one of these lines with a
- * different non-allow-listed code (say `'NotFoundV2'`), the swap is
- * a fresh violation rather than a silently-grandfathered one.
- *
  * Detection rules per `sendError(res, msg, 404, code, ...)` call:
  *   (a) 4th arg missing entirely → ALWAYS a violation. Without it,
  *       `sendError` falls back to its default `'ServerError'` code,
@@ -69,42 +58,12 @@ const ALLOWED_CODES = new Set<string>([
   'RECEIPT_UNAVAILABLE',
 ]);
 
-/**
- * Pre-existing `'NotFound'` (camelCase) drift sites tracked under
- * the pending "Use the same 'not found' error code across the rest
- * of the admin pages" cleanup task. Format: "relative/path:line".
- *
- * As that task lands and each call site flips to `'NOT_FOUND'`, the
- * matching entry should be deleted from this set so the guard locks
- * the contract once the cleanup is complete. New `'NotFound'` sites
- * NOT in this set always fail — that's the point of the guard.
- *
- * Maintained in source (not a JSON sidecar) so each entry can carry
- * a comment if a future site is intentionally exempt for a different
- * reason.
- */
-const KNOWN_VIOLATIONS = new Set<string>([
-  // server/routes/organizations-public.ts — public org lookups (2 sites)
-  "server/routes/organizations-public.ts:18:'NotFound'",
-  "server/routes/organizations-public.ts:41:'NotFound'",
-]);
-
 interface Violation {
   file: string;
   line: number;
   column: number;
   reason: string;
   snippet: string;
-  /**
-   * Baseline identity: `file:line:codeRepr`. `codeRepr` is the
-   * literal source slice of the offending 4th argument, single-
-   * quoted in canonical form so `'NotFound'`, `"NotFound"`, and
-   * the missing-arg sentinel `MISSING` are each distinguishable.
-   * Including the code in the key prevents a same-line swap from
-   * one bad code to a different bad code from being silently
-   * grandfathered through the baseline.
-   */
-  key: string;
 }
 
 function listTsFiles(dir: string): string[] {
@@ -186,41 +145,35 @@ function scanFile(filePath: string, violations: Violation[]): void {
         const { line, character } = sf.getLineAndCharacterOfPosition(
           node.getStart(sf),
         );
-        const push = (reason: string, codeRepr: string): void => {
+        const push = (reason: string): void => {
           violations.push({
             file: relFile,
             line: line + 1,
             column: character + 1,
             reason,
             snippet: snippetAt(sf, node),
-            key: `${relFile}:${line + 1}:${codeRepr}`,
           });
         };
         if (!codeArg) {
           push(
             "missing code argument — defaults to 'ServerError' which is wrong for a 404. " +
               "Pass 'NOT_FOUND' (or an allow-listed alternative) explicitly.",
-            'MISSING',
           );
         } else {
           const lit = readStringLiteral(codeArg);
           if (lit === null) {
             // Non-literal code (identifier / expression / etc.).
             // No real call sites use this shape today; flag if one
-            // ever appears so the contract gets revisited. The
-            // baseline-key uses the source slice so different
-            // expressions on the same line don't collide.
+            // ever appears so the contract gets revisited.
             push(
               `code argument is not a string literal (got ${ts.SyntaxKind[codeArg.kind]}). ` +
                 "If this is a constant, inline 'NOT_FOUND' here or extend the guard's allow-list logic.",
-              snippetAt(sf, codeArg),
             );
           } else if (!ALLOWED_CODES.has(lit)) {
             push(
               `code '${lit}' is not in the allow-list ` +
                 `{${[...ALLOWED_CODES].map((c) => `'${c}'`).join(', ')}}. ` +
                 "Use 'NOT_FOUND' (or the matching domain-narrowed alternative).",
-              `'${lit}'`,
             );
           }
         }
@@ -257,71 +210,26 @@ function main(): void {
   const violations: Violation[] = [];
   for (const f of files) scanFile(f, violations);
 
-  // Partition: a violation in KNOWN_VIOLATIONS is downgraded to
-  // expected (still printed under a "known" header so the cleanup
-  // task can see what's left); anything else is a real failure.
-  const known: Violation[] = [];
-  const fresh: Violation[] = [];
-  const seenKnown = new Set<string>();
-  for (const v of violations) {
-    if (KNOWN_VIOLATIONS.has(v.key)) {
-      known.push(v);
-      seenKnown.add(v.key);
-    } else {
-      fresh.push(v);
-    }
-  }
-  // Stale baseline entries: the cleanup task fixed a site but
-  // forgot to delete the matching baseline entry. Surface it so
-  // the baseline shrinks in lockstep with the cleanup.
-  //
-  // Scoped to files that actually got scanned. Without this filter
-  // a synthetic fixture (or a future move of admin.ts to a new
-  // path) trips every baseline entry as "stale" — which would mean
-  // the script's own test harness can't run it against minimal
-  // fixtures. The real-codebase invocation always sees every
-  // baseline file, so the cleanup-detection contract is preserved.
-  const scannedFiles = new Set(files.map((f) => relative(ROOT, f)));
-  const stale: string[] = [];
-  for (const k of KNOWN_VIOLATIONS) {
-    const file = k.split(':')[0];
-    if (scannedFiles.has(file) && !seenKnown.has(k)) stale.push(k);
-  }
-
-  if (fresh.length === 0 && stale.length === 0) {
+  if (violations.length === 0) {
     console.log(
       `[check-not-found-code] OK — scanned ${files.length} file(s) under ${relative(ROOT, SCAN_ROOT)}. ` +
-        `Every 404 sendError uses an allow-listed code. ` +
-        `${known.length} known-pending site(s) still on the baseline.`,
+        `Every 404 sendError uses an allow-listed code.`,
     );
     return;
   }
 
-  if (fresh.length > 0) {
-    console.error(
-      `\n[check-not-found-code] ${REPORT_ONLY ? 'REPORT' : 'FAIL'} — ${fresh.length} new 404 sendError site(s) use a non-allow-listed code:\n`,
-    );
-    for (const v of fresh) {
-      console.error(`  ${v.file}:${v.line}:${v.column}`);
-      console.error(`      · ${v.reason}`);
-      console.error(`      · ${v.snippet}`);
-    }
-    console.error(
-      "\nFix: replace the code with 'NOT_FOUND' (or 'USER_NOT_FOUND' / 'LEAGUE_NOT_FOUND' / 'RECEIPT_UNAVAILABLE' if the route intentionally narrows). " +
-        'See the canonical-code comment in server/utils/api.ts.',
-    );
+  console.error(
+    `\n[check-not-found-code] ${REPORT_ONLY ? 'REPORT' : 'FAIL'} — ${violations.length} 404 sendError site(s) use a non-allow-listed code:\n`,
+  );
+  for (const v of violations) {
+    console.error(`  ${v.file}:${v.line}:${v.column}`);
+    console.error(`      · ${v.reason}`);
+    console.error(`      · ${v.snippet}`);
   }
-
-  if (stale.length > 0) {
-    console.error(
-      `\n[check-not-found-code] FAIL — ${stale.length} baseline entr(ies) in scripts/check-not-found-code.ts no longer match any violation:\n`,
-    );
-    for (const k of stale) console.error(`  ${k}`);
-    console.error(
-      '\nFix: delete these entries from KNOWN_VIOLATIONS in scripts/check-not-found-code.ts. ' +
-        'A baseline that drifts ahead of the codebase silently weakens the guard.',
-    );
-  }
+  console.error(
+    "\nFix: replace the code with 'NOT_FOUND' (or 'USER_NOT_FOUND' / 'LEAGUE_NOT_FOUND' / 'RECEIPT_UNAVAILABLE' if the route intentionally narrows). " +
+      'See the canonical-code comment in server/utils/api.ts.',
+  );
 
   if (!REPORT_ONLY) process.exit(1);
 }

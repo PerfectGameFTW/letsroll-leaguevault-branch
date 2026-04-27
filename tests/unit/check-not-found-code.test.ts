@@ -7,11 +7,9 @@
  * and asserts the code (4th) arg is in the allow-list:
  *   { 'NOT_FOUND', 'USER_NOT_FOUND', 'LEAGUE_NOT_FOUND',
  *     'RECEIPT_UNAVAILABLE' }
- * Pre-existing `'NotFound'` (camelCase) drift sites are tracked
- * under the pending "Use the same 'not found' error code across the
- * rest of the admin pages" cleanup task and recorded in the
- * KNOWN_VIOLATIONS baseline; the baseline shrinks as the cleanup
- * lands. New drift always fails.
+ * Any drift always fails — the prior `KNOWN_VIOLATIONS` baseline
+ * was retired in task #557 once `server/routes/organizations-public.ts`
+ * (the last `'NotFound'` site) flipped to the canonical code.
  *
  * These tests:
  *   1. Run the real script against the real codebase. This is the
@@ -81,12 +79,9 @@ describe('check-not-found-code (real codebase)', () => {
   it('passes against the real server/routes tree', () => {
     const r = runIn(process.cwd());
     // Composite assertion: exit 0 + the success banner.
-    // If this test fails, either:
-    //   (a) a new 404 sendError site uses a non-allow-listed code
-    //       (fix: use 'NOT_FOUND' or extend the allow-list), OR
-    //   (b) a baseline entry no longer matches any violation
-    //       (fix: delete the entry from KNOWN_VIOLATIONS in
-    //       scripts/check-not-found-code.ts).
+    // If this test fails, a 404 sendError site uses a
+    // non-allow-listed code — fix: use 'NOT_FOUND' or one of the
+    // allow-listed alternatives in scripts/check-not-found-code.ts.
     expect(
       { status: r.status, stdout: r.stdout, stderr: r.stderr },
     ).toMatchObject({
@@ -264,7 +259,7 @@ export function c(res: unknown) { return sendError(res, 'z', 404); }
     });
     const r = runIn(dir);
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/3 new 404 sendError site\(s\)/);
+    expect(r.stderr).toMatch(/3 404 sendError site\(s\)/);
     expect(r.stderr).toMatch(/server\/routes\/many\.ts:2/);
     expect(r.stderr).toMatch(/server\/routes\/many\.ts:3/);
     expect(r.stderr).toMatch(/server\/routes\/many\.ts:4/);
