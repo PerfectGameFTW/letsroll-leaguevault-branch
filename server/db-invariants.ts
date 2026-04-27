@@ -53,4 +53,34 @@ export async function installDbInvariants(): Promise<void> {
     FOR EACH ROW
     EXECUTE FUNCTION users_role_org_required_fn();
   `);
+
+  // Task #356 follow-up: ensure the shared rate-limit bucket table
+  // exists. It deliberately lives outside `shared/schema.ts` because
+  // the application never accesses it through Drizzle — every read
+  // and write goes through the raw SQL in
+  // `server/utils/rate-limit-store.ts`, which is what the
+  // express-rate-limit `Store` interface expects. That means
+  // `npm run db:push` (driven by `shared/schema.ts`) doesn't know
+  // about it, and the matching SQL file
+  // `migrations/0028_add_rate_limit_buckets.sql` isn't executed by
+  // anything in the deployment pipeline either — `drizzle-kit push`
+  // doesn't replay raw migration files. Without this block the table
+  // exists in environments where someone happened to apply 0028 by
+  // hand and is missing everywhere else, including the CI Postgres
+  // container, which made `tests/unit/rate-limit-store.test.ts` fail
+  // with `relation "rate_limit_buckets" does not exist`. Creating the
+  // table here keeps this in lockstep with the trigger above: every
+  // boot path (prod, dev, vitest globalSetup) lands on the same
+  // schema, idempotently.
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS rate_limit_buckets (
+      key       text PRIMARY KEY,
+      count     integer NOT NULL DEFAULT 0,
+      reset_at  timestamptz NOT NULL
+    );
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS rate_limit_buckets_reset_at_idx
+      ON rate_limit_buckets (reset_at);
+  `);
 }

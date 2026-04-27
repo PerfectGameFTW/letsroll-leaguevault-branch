@@ -87,48 +87,53 @@ describe('check-eslint-baseline CI guard', () => {
   });
 
   it('exits 1 in --strict mode when a per-rule ceiling is exceeded', () => {
-    // Construct a fixture with 233 no-non-null-assertion suppressions
-    // in one file — one above the ceiling of 232 baked into the script
-    // by task #371. (We pick this rule rather than no-explicit-any
+    // Construct a fixture with 259 no-non-null-assertion suppressions
+    // in one file — one above the ceiling of 258 baked into the
+    // script (the original task-#371 ceiling of 232 was raised to
+    // 258 by task #516 to absorb typed-debt fixes from the lint
+    // ratchet bump). We pick this rule rather than no-explicit-any
     // because the latter is ratcheted to 0, leaving no slack to write
     // a "exceeds the ceiling" fixture without also tripping every
-    // other check at the same time.)
+    // other check at the same time.
     const dir = makeFixture({
       'src/foo.ts': {
-        '@typescript-eslint/no-non-null-assertion': { count: 233 },
+        '@typescript-eslint/no-non-null-assertion': { count: 259 },
       },
     });
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/FAIL: @typescript-eslint\/no-non-null-assertion/);
-    expect(r.stderr).toMatch(/233 suppressions \(ceiling 232\)/);
+    expect(r.stderr).toMatch(/259 suppressions \(ceiling 258\)/);
   });
 
   it('exits 1 in --strict mode when the total ceiling is exceeded (catches "swap one any for a different rule" workarounds)', () => {
-    // Each ratcheted rule pinned at its ceiling (so no per-rule
-    // breach fires) + an unrelated rule pushing the total past the
-    // 472 cap. The unrelated rule (`no-unused-vars`) is not in
-    // RULE_CEILINGS, so this fixture isolates the total-ceiling
-    // check from the per-rule check.
+    // Each ratcheted rule pinned at its current ceiling (so no
+    // per-rule breach fires) + an unrelated rule pushing the total
+    // past the 535 cap (originally 472, raised by task #516 alongside
+    // the per-rule bumps). The unrelated rule (`no-unused-vars`) is
+    // not in RULE_CEILINGS, so this fixture isolates the total-ceiling
+    // check from the per-rule check. Pinned-rule sum = 0 + 258 + 92
+    // + 4 + 159 = 513; +100 unrelated = 613 total, which is 78 over
+    // the 535 ceiling.
     const dir = makeFixture({
       'src/foo.ts': {
         '@typescript-eslint/no-explicit-any': { count: 0 },
-        '@typescript-eslint/no-non-null-assertion': { count: 232 },
-        '@typescript-eslint/no-unnecessary-type-assertion': { count: 89 },
+        '@typescript-eslint/no-non-null-assertion': { count: 258 },
+        '@typescript-eslint/no-unnecessary-type-assertion': { count: 92 },
         '@typescript-eslint/consistent-type-assertions': { count: 4 },
-        'no-restricted-syntax': { count: 125 },
+        'no-restricted-syntax': { count: 159 },
         '@typescript-eslint/no-unused-vars': { count: 100 },
       },
     });
     const r = runIn(dir, ['--strict']);
     expect(r.status).toBe(1);
-    expect(r.stderr).toMatch(/FAIL: total suppressions: 550/);
+    expect(r.stderr).toMatch(/FAIL: total suppressions: 613/);
   });
 
   it('exits 0 with a RATCHET hint when a per-rule count drops below the ceiling', () => {
-    // 100 suppressions for the rule whose ceiling is 232 → ratchet
+    // 100 suppressions for the rule whose ceiling is 258 → ratchet
     // suggestion expected. Total is 100, below the total ceiling of
-    // 472 → another ratchet line.
+    // 535 → another ratchet line.
     const dir = makeFixture({
       'src/foo.ts': {
         '@typescript-eslint/no-non-null-assertion': { count: 100 },
@@ -137,7 +142,7 @@ describe('check-eslint-baseline CI guard', () => {
     const r = runIn(dir, ['--strict']);
     expect(r.status, r.stderr || r.stdout).toBe(0);
     expect(r.stdout).toMatch(
-      /RATCHET: @typescript-eslint\/no-non-null-assertion: 100 suppressions \(ceiling 232\)/,
+      /RATCHET: @typescript-eslint\/no-non-null-assertion: 100 suppressions \(ceiling 258\)/,
     );
     expect(r.stdout).toMatch(/Lower RULE_CEILINGS/);
     expect(r.stdout).toMatch(/RATCHET: total suppressions: 100/);
