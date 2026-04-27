@@ -970,10 +970,17 @@ const retryPaymentSyncLimiter = rateLimit({
   store: createSharedRateLimitStore('retry-payment-sync'),
   keyGenerator: (req: Request) => {
     const userId = (req.user as { id?: number } | undefined)?.id;
+    if (userId) return `u:${userId}`;
     // Fall through to IP if not yet authenticated — `requireAuth`
     // runs AFTER this limiter, so an unauth caller still gets per-IP
     // throttling instead of bypassing the limit by omitting cookies.
-    return userId ? `u:${userId}` : `ip:${req.ip ?? 'unknown'}`;
+    // `ipKeyGenerator` collapses IPv6 addresses down to a /64 prefix,
+    // which is what blocks the "rotate addresses inside one /64 to
+    // dodge the bucket" bypass that `req.ip` alone permits — and is
+    // also what express-rate-limit v8+ now hard-validates at module
+    // load (`ERR_ERL_KEY_GEN_IPV6`), so this also keeps the server
+    // from refusing to boot.
+    return `ip:${ipKeyGenerator(req.ip ?? 'unknown')}`;
   },
   handler: (req, res) => {
     log.warn('Self-serve payment-sync retry throttled', {
