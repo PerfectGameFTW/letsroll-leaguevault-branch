@@ -38,9 +38,12 @@
  *   (b) 4th arg is a string literal (single, double, or template
  *       with no substitutions) NOT in the allow-list → violation.
  *   (c) 4th arg is something else (identifier, expression, etc.) →
- *       skipped with a warning. The expectation is that string
- *       literals are the dominant shape; a future audit can pin
- *       constants to the allow-list once any are introduced.
+ *       fail-closed violation, with a message naming the SyntaxKind
+ *       and asking the contributor to either inline a literal or
+ *       extend the guard's allow-list logic. No real route uses
+ *       this shape today; if a constant-of-codes pattern is
+ *       introduced, the guard's resolution layer should grow to
+ *       cover it before the violation is downgraded to a pass.
  *
  * Usage:
  *   tsx scripts/check-not-found-code.ts            # CI mode (exit 1 on violations)
