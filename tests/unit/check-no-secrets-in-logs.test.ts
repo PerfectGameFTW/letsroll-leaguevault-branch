@@ -1362,6 +1362,202 @@ describe('check-no-secrets-in-logs CI guard', () => {
   });
 
   // ---------------------------------------------------------------
+  // Namespace-import method hosts (task #558). Tasks #541, #549,
+  // and #553 covered named/default helper imports and named-export
+  // methodHost imports. The remaining shape is the namespace
+  // import:
+  //
+  //   // helpers.ts
+  //   export function pickPassword(req) { return req.body.password; }
+  //   export const helpers = {
+  //     pickPassword(req) { return req.body.password; },
+  //   };
+  //   export class H { pick(req) { return req.body.password; } }
+  //   // routes.ts
+  //   import * as mod from './helpers';
+  //   log.info(mod.pickPassword(req));        // helper-on-namespace
+  //   log.info(mod.helpers.pickPassword(req));// nested object-literal host
+  //   log.info(new mod.H().pick(req));        // nested class host via new
+  //
+  // Pass 5 now also handles `ts.NamespaceImport` clauses, building a
+  // synthetic methodHost whose `methods` map collects helper-kind
+  // exports (so `mod.<helper>(req)` resolves through the existing
+  // method-call rule) and whose `nested` map collects methodHost
+  // exports (so `mod.<host>.<m>(req)` and `new mod.<Host>().<m>(req)`
+  // both round-trip through `resolveCallReceiverHost` /
+  // `describeReceiverPath`, which were generalized to recurse into
+  // `NewExpression.expression` so PropertyAccess constructors are
+  // accepted, not just bare Identifier ctors.
+  // ---------------------------------------------------------------
+
+  it('flags a NAMESPACE-IMPORT helper call `mod.pickPassword(req)` (the brief)', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-ns-helper-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export function pickPassword(req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import * as mod from './helpers';\n` +
+        `log.info(\`pw=\${mod.pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'mod\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a NAMESPACE-IMPORT nested object-literal `mod.helpers.pickPassword(req)` (the brief)', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-ns-obj-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import * as mod from './helpers';\n` +
+        `log.info(\`pw=\${mod.helpers.pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'mod\.helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a NAMESPACE-IMPORT nested class via `new mod.H().pick(req)` (the brief)', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-ns-class-new-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import * as mod from './helpers';\n` +
+        `log.info(new mod.H().pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'new mod\.H\(\)\.pick\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a NAMESPACE-IMPORT nested class via `const h = new mod.H(); h.pick(req)`', () => {
+    // Mirrors the #553 instance-binding test: `visitInstances`
+    // (pass 6) was generalized to call `resolveCallReceiverHost`
+    // on the constructor expression, so PropertyAccess ctors
+    // (`new mod.H()`) bind the local `h` to the same nested
+    // host the new-expression itself resolves to.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-ns-class-instance-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import * as mod from './helpers';\n` +
+        `const h = new mod.H();\n` +
+        `log.warn(h.pick(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'h\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a NAMESPACE-IMPORT helper or method whose return is benign', () => {
+    // Negative: confirms we are not flagging *every* call through
+    // a namespace import — the synthetic methodHost only collects
+    // exports that `getExportedHelpers` already classified as
+    // helper / methodHost (i.e. forbidden-return), so benign
+    // exports pass through silently.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-ns-benign-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export function describe(req: any) { return req.method; }\n` +
+        `export const tools = {\n` +
+        `  summarize: (req: any) => req.params.id,\n` +
+        `};\n` +
+        `export class K {\n` +
+        `  label(req: any) { return req.path; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import * as mod from './helpers';\n` +
+        `log.info(mod.describe(req));\n` +
+        `log.info(mod.tools.summarize(req));\n` +
+        `log.info(new mod.K().label(req));\n`,
+    );
+    const findings = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    );
+    expect(findings).toEqual([]);
+  });
+
+  // ---------------------------------------------------------------
   // Re-export resolution (task #556). Tasks #541 and #549 wired up
   // cross-file resolution for direct named/default exports but
   // skipped re-export forwarding shapes:

@@ -1384,6 +1384,32 @@ function collectScopedBindings(
           recordIn(sourceFile, el.name.text, helper);
         }
       }
+    } else if (nb && ts.isNamespaceImport(nb)) {
+      // task #558: `import * as mod from './h'`. Each named export
+      // of the source file is reachable as `mod.<exportName>` —
+      // helper-function exports become methods on a synthetic
+      // namespace methodHost (so `mod.pickPassword(req)` resolves
+      // through the existing method-call rule), and methodHost
+      // exports (object-literal / class) become nested entries
+      // (so `mod.helpers.pickPassword(req)` and
+      // `new mod.H().pick(req)` both round-trip through the
+      // existing `resolveCallReceiverHost` PropertyAccess +
+      // NewExpression branches). The default export is skipped —
+      // `mod.default` is the only way to reach it via a namespace
+      // import and no consumer in this codebase does so today.
+      const methods = new Map<string, string>();
+      const nested = new Map<string, MethodHost>();
+      for (const [name, b] of exported) {
+        if (name === DEFAULT_EXPORT_KEY) continue;
+        if (b.kind === 'helper') methods.set(name, b.reason);
+        else if (b.kind === 'methodHost') nested.set(name, b.host);
+      }
+      if (methods.size > 0 || nested.size > 0) {
+        recordIn(sourceFile, nb.name.text, {
+          kind: 'methodHost',
+          host: { methods, nested },
+        });
+      }
     }
   }
 
@@ -1406,16 +1432,19 @@ function collectScopedBindings(
       node.initializer
     ) {
       const init = unwrapTransparentWrappers(node.initializer);
-      if (ts.isNewExpression(init) && ts.isIdentifier(init.expression)) {
-        const ctor = init.expression;
-        const b = resolveIdentifierBinding(ctor, scopes);
-        if (b && b.kind === 'methodHost') {
+      if (ts.isNewExpression(init)) {
+        // task #558: generalize from `new H()` (Identifier ctor)
+        // to any constructor expression `resolveCallReceiverHost`
+        // can resolve, so `const h = new mod.H(); h.pick(req)`
+        // binds `h` to the same nested host as `new mod.H()`.
+        const host = resolveCallReceiverHost(init.expression, scopes);
+        if (host) {
           const scope = isVarDeclaration(node)
             ? nearestFunctionScope(node)
             : nearestScope(node);
           recordIn(scope, node.name.text, {
             kind: 'methodHost',
-            host: b.host,
+            host,
           });
         }
       }
@@ -1496,9 +1525,14 @@ function resolveCallReceiverHost(
     const parent = resolveCallReceiverHost(expr.expression, scopes);
     return parent ? parent.nested.get(argExpr.text) ?? null : null;
   }
-  if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression)) {
-    const b = resolveIdentifierBinding(expr.expression, scopes);
-    return b && b.kind === 'methodHost' ? b.host : null;
+  if (ts.isNewExpression(expr)) {
+    // task #558: recurse into the constructor expression so
+    // `new mod.H().pick(req)` resolves through `mod` (namespace
+    // methodHost) -> `mod.H` (nested host) -> `pick`. The bare-
+    // identifier case (`new H()`) still resolves through the
+    // Identifier branch above, since `resolveCallReceiverHost`
+    // already calls `resolveIdentifierBinding` for it.
+    return resolveCallReceiverHost(expr.expression, scopes);
   }
   return null;
 }
@@ -1527,8 +1561,12 @@ function describeReceiverPath(expr: ts.Expression): string {
     }
     return `${describeReceiverPath(expr.expression)}[<computed>]`;
   }
-  if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression)) {
-    return `new ${expr.expression.text}()`;
+  if (ts.isNewExpression(expr)) {
+    // task #558: render `new mod.H()` and `new ns.deeply.K()`,
+    // not just bare `new H()`. Recursing through `expr.expression`
+    // delegates Identifier / PropertyAccess / ElementAccess to the
+    // branches above and stays symmetric with `resolveCallReceiverHost`.
+    return `new ${describeReceiverPath(expr.expression)}()`;
   }
   return '<receiver>';
 }
@@ -1702,7 +1740,7 @@ function isTransparentExpressionWrapper(
 ): expr is
   | ts.ParenthesizedExpression
   | ts.AsExpression
-  | ts.TypeAssertionExpression
+  | ts.TypeAssertion
   | ts.NonNullExpression
   | ts.SatisfiesExpression {
   return (
