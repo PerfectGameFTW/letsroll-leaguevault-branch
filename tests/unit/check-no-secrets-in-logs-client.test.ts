@@ -543,6 +543,81 @@ describe('check-no-secrets-in-logs CI guard (client surface)', () => {
     ).toBe(true);
   });
 
+  it('flags a NAMESPACE-IMPORT nested object-literal `mod.helpers.pickPassword(data)` on the client surface (task #558)', () => {
+    // Client-surface parity for the server-side namespace-import
+    // tests in `check-no-secrets-in-logs.test.ts`. The detection
+    // logic is shared, but pinning the client surface here prevents
+    // future client-only forbidden-property additions (e.g.
+    // `newPassword`) from silently regressing the namespace path.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-client-ns-obj-'),
+    );
+    const helpersFile = join(dir, 'client/src/helpers.ts');
+    const componentFile = join(dir, 'client/src/Component.tsx');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const helpers = {\n` +
+        `  pickPassword: (d: any) => d.newPassword,\n` +
+        `};\n`,
+    );
+    writeFileSync(
+      componentFile,
+      `import * as mod from './helpers';\n` +
+        `function F({ data }: any) {\n` +
+        `  console.log('v=', mod.helpers.pickPassword(data));\n` +
+        `  return null;\n` +
+        `}\n`,
+    );
+    const reasons = scanSource(
+      componentFile,
+      readFileSync(componentFile, 'utf8'),
+      CLIENT_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'mod\.helpers\.pickPassword\(\)' returning .*\.newPassword/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a NAMESPACE-IMPORT nested class via `new mod.H().pick(data)` on the client surface (task #558)', () => {
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-client-ns-class-'),
+    );
+    const helpersFile = join(dir, 'client/src/helpers.ts');
+    const componentFile = join(dir, 'client/src/Component.tsx');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export class H {\n` +
+        `  pick(d: any) { return d.newPassword; }\n` +
+        `}\n`,
+    );
+    writeFileSync(
+      componentFile,
+      `import * as mod from './helpers';\n` +
+        `function F({ data }: any) {\n` +
+        `  console.warn(new mod.H().pick(data));\n` +
+        `  return null;\n` +
+        `}\n`,
+    );
+    const reasons = scanSource(
+      componentFile,
+      readFileSync(componentFile, 'utf8'),
+      CLIENT_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /method call 'new mod\.H\(\)\.pick\(\)' returning .*\.newPassword/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
   // ---------------------------------------------------------------
   // Suppression annotation works on the client surface too.
   // ---------------------------------------------------------------
