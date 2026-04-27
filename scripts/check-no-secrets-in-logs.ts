@@ -648,8 +648,22 @@ const DEFAULT_EXPORT_KEY = 'default';
  * `new H().pick(req)` / `h.pick(req)` against it just as it would
  * for a same-file host.
  *
- * Re-exports (`export { x } from './y'`, `export * from './y'`)
- * remain out of scope.
+ * Re-export shapes (task #556) — the barrel-file pattern
+ * `export { x } from './y'`. The walk recursively asks the resolved
+ * source for its helpers and copies the selected entries into the
+ * current file's helpers map under the re-exported names:
+ *
+ *   export { foo } from './helpers';            // named re-export
+ *   export { foo as bar } from './helpers';     // renamed re-export
+ *   export * from './helpers';                  // wildcard (named only;
+ *                                               //   default is NOT
+ *                                               //   forwarded, per spec)
+ *   export { default as foo } from './helpers'; // default-as-named
+ *                                               //   (interacts with #549)
+ *
+ * Namespace re-exports (`export * as ns from './y'`) remain out of
+ * scope — they would need a new binding kind so a consumer's
+ * `ns.foo(req)` could resolve.
  */
 function getExportedHelpers(
   file: string,
@@ -757,6 +771,78 @@ function getExportedHelpers(
           map.set(DEFAULT_EXPORT_KEY, { kind: 'helper', reason: cls.reason });
         }
       }
+    } else if (
+      ts.isExportDeclaration(stmt) &&
+      stmt.moduleSpecifier &&
+      ts.isStringLiteralLike(stmt.moduleSpecifier)
+    ) {
+      // task #556: re-exports forward another file's helpers under
+      // the current file's exports. Both task #541 and task #549
+      // deliberately skipped these; barrel files
+      // (`server/utils/index.ts`) commonly route helpers through
+      // `export { foo } from './helpers'`, so a consumer importing
+      // from the barrel would otherwise see an empty helpers map
+      // and the rule would not fire.
+      //
+      // The recursive `getExportedHelpers` walk uses the
+      // EXPORT_HELPER_CACHE (set early — see comment above the
+      // cache declaration) to keep cyclic re-export graphs linear.
+      const resolved = resolveImportPath(
+        file,
+        stmt.moduleSpecifier.text,
+        surface,
+      );
+      if (!resolved || resolved === file) continue;
+      const reExported = getExportedHelpers(resolved, surface);
+      if (reExported.size === 0) continue;
+      if (stmt.exportClause === undefined) {
+        // `export * from './helpers'` — wildcard. Per the
+        // ECMAScript spec, `export *` does NOT forward the
+        // source's default export, so we copy every NAMED entry
+        // but skip the DEFAULT_EXPORT_KEY entry. Existing entries
+        // in `map` (an in-file declaration earlier in the file, or
+        // a more-specific named re-export) win over the wildcard
+        // — matches ES module precedence, where a local
+        // declaration shadows a wildcard re-export of the same
+        // name.
+        for (const [k, v] of reExported) {
+          if (k === DEFAULT_EXPORT_KEY) continue;
+          if (!map.has(k)) {
+            map.set(k, v);
+          }
+        }
+      } else if (ts.isNamedExports(stmt.exportClause)) {
+        // `export { foo } from './helpers'` — named re-export.
+        // `export { foo as bar } from './helpers'` — renamed.
+        // `export { default as foo } from './helpers'` — pulls
+        // the source's default export through under the new
+        // name; the resolver looks it up under DEFAULT_EXPORT_KEY
+        // (task #549). The symmetric `export { foo as default }
+        // from './helpers'` (named-as-default) is also handled —
+        // we explicitly map a target name of 'default' to
+        // DEFAULT_EXPORT_KEY so the intent survives any future
+        // refactor of the sentinel value.
+        for (const el of stmt.exportClause.elements) {
+          const sourceName = el.propertyName
+            ? el.propertyName.text
+            : el.name.text;
+          const targetName = el.name.text;
+          const srcKey =
+            sourceName === 'default' ? DEFAULT_EXPORT_KEY : sourceName;
+          const targetKey =
+            targetName === 'default' ? DEFAULT_EXPORT_KEY : targetName;
+          const helper = reExported.get(srcKey);
+          if (helper) {
+            map.set(targetKey, helper);
+          }
+        }
+      }
+      // `export * as ns from './helpers'` (NamespaceExport
+      // exportClause) is intentionally out of scope: it would
+      // require a new binding kind representing a "namespace of
+      // helpers" so an importing file's `ns.foo(req)` could
+      // resolve. Tracked separately (overlaps with task #558's
+      // namespace-import work).
     }
   }
   return map;

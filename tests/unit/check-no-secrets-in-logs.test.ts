@@ -1324,6 +1324,307 @@ describe('check-no-secrets-in-logs CI guard', () => {
   });
 
   // ---------------------------------------------------------------
+  // Re-export resolution (task #556). Tasks #541 and #549 wired up
+  // cross-file resolution for direct named/default exports but
+  // skipped re-export forwarding shapes:
+  //
+  //   // helpers.ts
+  //   export function pickPassword(req) { return req.body.password; }
+  //   // index.ts (barrel)
+  //   export { pickPassword } from './helpers';
+  //   // routes.ts
+  //   import { pickPassword } from './utils';
+  //   log.info(`pw=${pickPassword(req)}`);
+  //
+  // The barrel pattern is common; the scanner now walks each
+  // ExportDeclaration with a moduleSpecifier, recursively asks the
+  // re-export source for its helpers, and copies the selected
+  // entries into the current file's helpers map under the
+  // re-exported names. Wildcard re-exports follow ECMAScript
+  // semantics — they forward every named export but NOT the
+  // default. Namespace re-exports remain out of scope (see follow-up).
+  // ---------------------------------------------------------------
+
+  it('flags a CROSS-FILE helper routed through a NAMED re-export `export { foo } from` (the brief)', () => {
+    // Three-file barrel chain: helpers.ts defines the helper,
+    // index.ts re-exports it under the same name, routes.ts
+    // imports from the barrel and calls the helper inside a log
+    // template literal. Without #556 the scanner sees `index.ts`
+    // as having no helpers; with the re-export branch in
+    // `getExportedHelpers`, `pickPassword` resolves through the
+    // barrel.
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-rexp-named-'));
+    const helpersFile = join(dir, 'server/utils/helpers.ts');
+    const indexFile = join(dir, 'server/utils/index.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export function pickPassword(req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(indexFile, `export { pickPassword } from './helpers';\n`);
+    writeFileSync(
+      routesFile,
+      `import { pickPassword } from './utils';\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE helper routed through a RENAMED re-export `export { foo as bar } from`', () => {
+    // The barrel renames the helper on its way through. The
+    // importing file uses the renamed identifier; the scanner
+    // must record the helper under the re-exported name (`pp`)
+    // so the consumer's `pp(req)` call resolves.
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-rexp-renamed-'));
+    const helpersFile = join(dir, 'server/utils/helpers.ts');
+    const indexFile = join(dir, 'server/utils/index.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export const pickPassword = (req: any) => req.body.password;\n`,
+    );
+    writeFileSync(
+      indexFile,
+      `export { pickPassword as pp } from './helpers';\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { pp } from './utils';\n` + `log.info(pp(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) => /helper call 'pp\(\)' returning .*\.password/.test(r)),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE helper routed through a WILDCARD re-export `export * from`', () => {
+    // `export * from './helpers'` forwards every named export.
+    // The scanner copies all NAMED entries (DEFAULT_EXPORT_KEY is
+    // excluded per ECMA spec — see the dedicated negative test
+    // below). The consumer imports `pickPassword` directly from
+    // the barrel and the helper-call rule fires.
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-rexp-wildcard-'));
+    const helpersFile = join(dir, 'server/utils/helpers.ts');
+    const indexFile = join(dir, 'server/utils/index.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export function pickPassword(req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(indexFile, `export * from './helpers';\n`);
+    writeFileSync(
+      routesFile,
+      `import { pickPassword } from './utils';\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE helper routed through a DEFAULT-AS-NAMED re-export `export { default as foo } from`', () => {
+    // Cross-shape interaction with task #549: the source file
+    // exports the helper as `default`; the barrel re-exports it
+    // under a new name. The scanner looks up DEFAULT_EXPORT_KEY
+    // in the source's helpers map and records the binding under
+    // the re-exported name in the current file.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-rexp-default-as-named-'),
+    );
+    const helpersFile = join(dir, 'server/utils/helpers.ts');
+    const indexFile = join(dir, 'server/utils/index.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default function (req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(
+      indexFile,
+      `export { default as pickPassword } from './helpers';\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import { pickPassword } from './utils';\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT forward a default export through a WILDCARD re-export `export * from` (per ECMA spec)', () => {
+    // ES module semantics: `export *` forwards all NAMED exports
+    // but NOT the default. A consumer trying to default-import
+    // through the barrel would see no default at runtime; the
+    // scanner mirrors that — the default helper must NOT be
+    // bound under any name through a wildcard re-export.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-rexp-wildcard-no-default-'),
+    );
+    const helpersFile = join(dir, 'server/utils/helpers.ts');
+    const indexFile = join(dir, 'server/utils/index.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default function pickPassword(req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(indexFile, `export * from './helpers';\n`);
+    writeFileSync(
+      routesFile,
+      `import pickPassword from './utils';\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a CROSS-FILE re-export whose source helper is benign', () => {
+    // Pin that the re-export branch does not over-match: a benign
+    // helper forwarded through a barrel must remain benign on the
+    // consumer side.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-rexp-benign-'),
+    );
+    const helpersFile = join(dir, 'server/utils/helpers.ts');
+    const indexFile = join(dir, 'server/utils/index.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export function getUserId(req: any) { return req.body.id; }\n`,
+    );
+    writeFileSync(indexFile, `export { getUserId } from './helpers';\n`);
+    writeFileSync(
+      routesFile,
+      `import { getUserId } from './utils';\n` +
+        `log.info('user', getUserId(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('flags a CROSS-FILE helper routed through a NAMED-AS-DEFAULT re-export `export { foo as default } from`', () => {
+    // Symmetric to the default-as-named case: the source file
+    // exports the helper under a NAMED export; the barrel
+    // re-exports it as the barrel's DEFAULT. The consumer
+    // default-imports from the barrel. The scanner must
+    // explicitly map a target name of 'default' to the
+    // DEFAULT_EXPORT_KEY sentinel so the consumer's default
+    // import resolves through the barrel even though
+    // DEFAULT_EXPORT_KEY happens to be the literal string
+    // 'default' today (the sentinel could be renamed without
+    // breaking this branch).
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-rexp-named-as-default-'),
+    );
+    const helpersFile = join(dir, 'server/utils/helpers.ts');
+    const indexFile = join(dir, 'server/utils/index.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export function pickPassword(req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(
+      indexFile,
+      `export { pickPassword as default } from './helpers';\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import pickPassword from './utils';\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE helper routed through a TWO-HOP re-export chain (barrel of barrels)', () => {
+    // Real codebases nest barrels (`server/utils/index.ts`
+    // re-exports `server/utils/auth/index.ts` which re-exports
+    // `server/utils/auth/helpers.ts`). The recursive
+    // `getExportedHelpers` walk should resolve through every hop;
+    // the EXPORT_HELPER_CACHE keeps the walk linear.
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-rexp-chain-'));
+    const helpersFile = join(dir, 'server/utils/auth/helpers.ts');
+    const innerIndexFile = join(dir, 'server/utils/auth/index.ts');
+    const outerIndexFile = join(dir, 'server/utils/index.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export function pickPassword(req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(
+      innerIndexFile,
+      `export { pickPassword } from './helpers';\n`,
+    );
+    writeFileSync(outerIndexFile, `export * from './auth';\n`);
+    writeFileSync(
+      routesFile,
+      `import { pickPassword } from './utils';\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  // ---------------------------------------------------------------
   // Method-call detection (task #548). Task #541 closed the
   // bare-identifier helper-call shape; the natural next bypass is
   // to route the same call through a property access:
