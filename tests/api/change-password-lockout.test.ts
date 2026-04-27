@@ -290,11 +290,30 @@ describe('POST /api/account/change-password — account lockout (task #357)', ()
       ),
     );
 
-    // Every response is either 423 (lock active) or 400 (the one
+    // Every response is either 423 (lock active), 400 (the one
     // that crossed the threshold loses the race to the pre-check
-    // for siblings). Crucially: NONE may be 200, NONE may be 5xx.
+    // for siblings), or 403 (see below). Crucially: NONE may be
+    // 200, NONE may be 5xx.
+    //
+    // Why 403 is allowed here — the lockout side-effect inside the
+    // handler calls destroyAllSessionsForUser(user.id), which fires
+    // `DELETE FROM "session" WHERE sess->'passport'->>'user' = $1`
+    // and so wipes the caller's own session row mid-burst. A sibling
+    // request whose express-session load runs AFTER that delete
+    // commits enters the globally-mounted csrfProtection middleware
+    // (server/index.ts: `app.use('/api', csrfProtection)`) with no
+    // `req.session.csrfToken`, which is exactly the
+    // `Missing session CSRF token` branch — it returns 403 with
+    // `success: false` and code `CSRF_ERROR`. That's not a bug:
+    // it's the same security contract the lockout is enforcing
+    // ("your session is no longer valid"), surfaced one middleware
+    // earlier than the 423 ACCOUNT_LOCKED response. Tolerating it
+    // here keeps the assertion focused on the actual invariants
+    // (no overshoot, exactly one lock transition, no success, no
+    // server error) instead of pinning the precise middleware that
+    // refuses the request.
     for (const r of responses) {
-      expect([400, 423]).toContain(r.status);
+      expect([400, 403, 423]).toContain(r.status);
       expect(r.data.success).toBe(false);
     }
     const lockedResponses = responses.filter(r => r.status === 423);
