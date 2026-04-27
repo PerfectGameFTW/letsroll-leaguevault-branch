@@ -379,6 +379,41 @@ describe('check-no-secrets-in-logs CI guard (client surface)', () => {
     ).toBe(true);
   });
 
+  it('flags a CROSS-FILE default-exported helper imported via default-import (client surface, task #549)', () => {
+    // Same default-export / default-import shape as the server
+    // surface, pinned on the client so the wider client forbidden
+    // sets (`newPassword` etc.) also flow through the default-import
+    // resolver.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-client-cross-default-'),
+    );
+    const helpersFile = join(dir, 'client/src/helpers.ts');
+    const componentFile = join(dir, 'client/src/Component.tsx');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default (d: any) => d.newPassword;\n`,
+    );
+    writeFileSync(
+      componentFile,
+      `import grabPw from './helpers';\n` +
+        `function F({ data }: any) {\n` +
+        `  console.log('attempt', grabPw(data));\n` +
+        `  return null;\n` +
+        `}\n`,
+    );
+    const reasons = scanSource(
+      componentFile,
+      readFileSync(componentFile, 'utf8'),
+      CLIENT_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'grabPw\(\)' returning .*\.newPassword/.test(r),
+      ),
+    ).toBe(true);
+  });
+
   // ---------------------------------------------------------------
   // Method-call detection (task #548) on the client surface. Same
   // machinery as the server surface but the forbidden-shape sets

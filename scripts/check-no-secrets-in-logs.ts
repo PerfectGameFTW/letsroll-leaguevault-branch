@@ -597,11 +597,27 @@ function hasExportModifier(node: ts.Node): boolean {
   return mods?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 }
 
+function hasDefaultModifier(node: ts.Node): boolean {
+  if (!ts.canHaveModifiers(node)) return false;
+  const mods = ts.getModifiers(node);
+  return mods?.some((m) => m.kind === ts.SyntaxKind.DefaultKeyword) ?? false;
+}
+
+/**
+ * Sentinel key used in the exported-helpers map for a file's default
+ * export. Default imports (`import name from './helpers'`) bind a
+ * caller-chosen local name to whatever the source file's default
+ * export resolves to, so the cross-file resolver records the helper
+ * under this fixed key and the import walk looks it up by the same
+ * key — independent of the local name the importing file picks.
+ */
+const DEFAULT_EXPORT_KEY = 'default';
+
 /**
  * Parse `file` and extract the names of any top-level exported
  * functions whose body returns a forbidden expression. Used by
  * `collectScopedBindings` to seed the importing file's source-file
- * scope with `helper` bindings for each `import { … } from './path'`
+ * scope with `helper` bindings for each `import … from './path'`
  * specifier.
  *
  * Recognized export shapes:
@@ -610,10 +626,18 @@ function hasExportModifier(node: ts.Node): boolean {
  *   export const pickPassword = (req) => req.body.password;
  *   export const pickPassword = function (req) { return req.body.password; };
  *
- * Default exports and re-exports (`export { x } from './y'`) are
- * intentionally out of scope — the brief asks for "imported
- * function declarations", and named exports cover the canonical
- * helper shape.
+ * Default-export shapes (task #549) — recorded under the sentinel
+ * key `DEFAULT_EXPORT_KEY` so a default-import in the consumer
+ * (`import pickPassword from './helpers'`) can bind whatever local
+ * name it chose to the same helper:
+ *
+ *   export default function pickPassword(req) { return req.body.password; }
+ *   export default function (req) { return req.body.password; }
+ *   export default (req) => req.body.password;                // ExportAssignment
+ *   export default function (req) { return req.body.password; }; // ExportAssignment
+ *
+ * Re-exports (`export { x } from './y'`, `export * from './y'`)
+ * remain out of scope.
  */
 function getExportedHelpers(
   file: string,
@@ -643,10 +667,20 @@ function getExportedHelpers(
   // (`function f(req) { const pw = req.body.password; return pw; }`).
   const importedScopes = collectScopedBindings(sf, surface);
   for (const stmt of sf.statements) {
-    if (ts.isFunctionDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
+    if (ts.isFunctionDeclaration(stmt) && hasExportModifier(stmt)) {
+      // `export function foo() {}` (named export) records under the
+      // function's name. `export default function foo() {}` and
+      // `export default function () {}` both record under the default
+      // sentinel: the consumer can only reach them via a default
+      // import, regardless of the function's source-file name.
       const cls = classifyFunctionReturn(stmt, surface, importedScopes);
       if (cls) {
-        map.set(stmt.name.text, { kind: 'helper', reason: cls.reason });
+        const key = hasDefaultModifier(stmt)
+          ? DEFAULT_EXPORT_KEY
+          : stmt.name?.text;
+        if (key) {
+          map.set(key, { kind: 'helper', reason: cls.reason });
+        }
       }
     } else if (ts.isVariableStatement(stmt) && hasExportModifier(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
@@ -657,6 +691,18 @@ function getExportedHelpers(
           if (cls) {
             map.set(decl.name.text, { kind: 'helper', reason: cls.reason });
           }
+        }
+      }
+    } else if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) {
+      // `export default <expr>` — covers the ExportAssignment shapes
+      // listed in the brief: arrow function or function expression.
+      // (`export = …` CommonJS-style assignment is intentionally
+      // skipped; default-import semantics don't apply to it.)
+      const init = unwrapParens(stmt.expression);
+      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+        const cls = classifyFunctionReturn(init, surface, importedScopes);
+        if (cls) {
+          map.set(DEFAULT_EXPORT_KEY, { kind: 'helper', reason: cls.reason });
         }
       }
     }
@@ -1145,12 +1191,26 @@ function collectScopedBindings(
   };
   visitInstances(sourceFile);
 
-  // Pass 6: cross-file helper detection (task #541). For each
-  // top-level `import { foo, bar as baz } from '<spec>'`, resolve
-  // the spec to an on-disk file, ask `getExportedHelpers` for the
-  // set of named exports it considers forbidden helpers, and seed
-  // the importing file's source-file scope with a 'helper' binding
-  // under the LOCAL name (so `import { x as y }` records `y`).
+  // Pass 6: cross-file helper detection (task #541, extended in
+  // task #549 to default exports/imports). For each top-level
+  // `import … from '<spec>'`, resolve the spec to an on-disk file,
+  // ask `getExportedHelpers` for the set of exports it considers
+  // forbidden helpers, and seed the importing file's source-file
+  // scope with a 'helper' binding under the LOCAL name.
+  //
+  //   import { foo }            -> recorded under `foo`
+  //   import { foo as bar }     -> recorded under `bar`
+  //   import baz from './x'     -> recorded under `baz` from the
+  //                                exporter's `DEFAULT_EXPORT_KEY`
+  //                                entry (task #549). The importing
+  //                                file picks the local name; whatever
+  //                                the source named the default
+  //                                export is irrelevant.
+  //   import baz, { foo } from './x' -> both default + named bindings
+  //                                are walked, since the import
+  //                                clause carries `name` AND
+  //                                `namedBindings` simultaneously.
+  //
   // The import-resolution cache breaks cycles so this stays linear
   // even on a tightly-coupled package.
   for (const stmt of sourceFile.statements) {
@@ -1165,7 +1225,17 @@ function collectScopedBindings(
     if (resolved === sourceFile.fileName) continue;
     const exported = getExportedHelpers(resolved, surface);
     if (exported.size === 0) continue;
-    const nb = stmt.importClause.namedBindings;
+    const ic = stmt.importClause;
+    // Default-import binding: `import name from './helpers'`. The
+    // `importClause.name` field holds the local default-import name
+    // (and is independent of any `namedBindings` on the same clause).
+    if (ic.name) {
+      const helper = exported.get(DEFAULT_EXPORT_KEY);
+      if (helper) {
+        recordIn(sourceFile, ic.name.text, helper);
+      }
+    }
+    const nb = ic.namedBindings;
     if (nb && ts.isNamedImports(nb)) {
       for (const el of nb.elements) {
         const importedName = el.propertyName ? el.propertyName.text : el.name.text;

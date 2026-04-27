@@ -851,6 +851,206 @@ describe('check-no-secrets-in-logs CI guard', () => {
   });
 
   // ---------------------------------------------------------------
+  // Default-export / default-import helper detection (task #549).
+  // Task #541 wired up cross-file resolution for named exports;
+  // teams that prefer default exports could still bypass with:
+  //
+  //   // helpers.ts
+  //   export default function pickPassword(req) { return req.body.password; }
+  //   // routes.ts
+  //   import pickPassword from './helpers';
+  //   log.info(`pw=${pickPassword(req)}`);
+  //
+  // The scanner now extracts default-exported helpers under a
+  // sentinel key in `getExportedHelpers` and the import walk binds
+  // the importing file's default-import local name to that helper
+  // binding, so the helper-call rule fires.
+  // ---------------------------------------------------------------
+
+  it('flags a CROSS-FILE default-export `export default function name` consumed via default-import (the brief)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-default-named-'));
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default function pickPassword(req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import pickPassword from './helpers';\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE anonymous default-export `export default function () { … }` consumed via default-import', () => {
+    // `export default function () { ... }` parses as a
+    // FunctionDeclaration with no name — the helper extraction
+    // must still record it under the default sentinel so the
+    // importing local name picks it up.
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-default-anon-'));
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default function (req: any) { return req.body.password; }\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import grabPw from './helpers';\n` +
+        `log.info(grabPw(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'grabPw\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE arrow default-export `export default (req) => …` (ExportAssignment shape)', () => {
+    // `export default <ArrowFunction>` parses as ExportAssignment
+    // with a non-`isExportEquals` flag and an ArrowFunction
+    // expression.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-arrow-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default (req: any) => req.body.password;\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import pp from './helpers';\n` +
+        `log.warn(\`pw=\${pp(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pp\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a CROSS-FILE function-expression default-export `export default (function () { … })` (ExportAssignment shape)', () => {
+    // Wrapping the function expression in parens forces the parser
+    // to treat the export as an ExportAssignment with a
+    // FunctionExpression (rather than a FunctionDeclaration). Pin
+    // the FunctionExpression branch of the ExportAssignment walk.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-fnexpr-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default (function (req: any) { return req.body.password; });\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import pickPw from './helpers';\n` +
+        `log.error(pickPw(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPw\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a CROSS-FILE default-export whose function body is benign', () => {
+    // Symmetry with the named-export benign test: a default-exported
+    // helper that doesn't return a forbidden expression must not
+    // poison every default-import call site.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-benign-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default function getUserId(req: any) { return req.body.id; }\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import getUserId from './helpers';\n` +
+        `log.info('user', getUserId(req));\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('flags BOTH default and named bindings on a combined `import default, { named } from` clause', () => {
+    // `import baz, { foo } from './x'` populates `importClause.name`
+    // (default) AND `importClause.namedBindings` (named) on the same
+    // statement. Both paths must be walked so neither is a blind
+    // spot when a file mixes default and named helpers.
+    const dir = mkdtempSync(join(tmpdir(), 'no-secrets-in-logs-default-mixed-'));
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `export default function pickPassword(req: any) { return req.body.password; }\n` +
+        `export function pickToken(req: any) { return req.body.token; }\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import pickPassword, { pickToken } from './helpers';\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);\n` +
+        `log.warn(\`tk=\${pickToken(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickToken\(\)' returning .*\.token/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  // ---------------------------------------------------------------
   // Method-call detection (task #548). Task #541 closed the
   // bare-identifier helper-call shape; the natural next bypass is
   // to route the same call through a property access:
