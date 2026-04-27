@@ -110,7 +110,7 @@ jobs:
       #   * This workflow file — so a tweak here re-runs the suite to
       #     prove the tweak didn't break the gate.
       - name: Detect sweep-related changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         id: changes
         with:
           filters: |
