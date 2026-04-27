@@ -494,6 +494,24 @@ export function handleUserOrgError(res: Response, error: unknown): boolean {
   return false;
 }
 
+/**
+ * Canonical error-code values:
+ *
+ *   - 404 → 'NOT_FOUND' (default for the "resource not found" case).
+ *     Domain-narrowed alternatives 'USER_NOT_FOUND',
+ *     'LEAGUE_NOT_FOUND', and 'RECEIPT_UNAVAILABLE' are also
+ *     accepted; everything else (`'NotFound'`, `'not_found'`,
+ *     missing arg → falls back to `'ServerError'`) is drift.
+ *
+ * The 4xx code values for 404 specifically are pinned by
+ * `scripts/check-not-found-code.ts` (task #552), which fails CI on
+ * any new `sendError(res, msg, 404, 'NotFound')`-style call site
+ * under `server/routes/`. Pre-existing drift is captured in that
+ * script's KNOWN_VIOLATIONS baseline pending the unification
+ * cleanup task. The `code: string` parameter type is intentionally
+ * left wide here so other status codes can declare their own
+ * conventions without forcing this guard to enumerate them.
+ */
 export function sendError(
   res: Response,
   message: string,

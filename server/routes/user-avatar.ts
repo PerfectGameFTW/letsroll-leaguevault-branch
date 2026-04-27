@@ -135,7 +135,7 @@ router.get("/avatar", async (req: Request, res: Response) => {
     const user = await storage.getUser(userId);
 
     if (!user || !user.avatar) {
-      return sendError(res, "Avatar not found", 404);
+      return sendError(res, "Avatar not found", 404, 'NOT_FOUND');
     }
 
     return sendSuccess(res, { avatarUrl: user.avatar });

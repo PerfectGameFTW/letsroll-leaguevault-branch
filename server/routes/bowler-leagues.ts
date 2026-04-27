@@ -237,7 +237,7 @@ router.patch("/:id", async (req, res) => {
 
     const bowlerLeague = await storage.getBowlerLeague(id);
     if (!bowlerLeague) {
-      return sendError(res, "Bowler league not found", 404);
+      return sendError(res, "Bowler league not found", 404, 'NOT_FOUND');
     }
 
     if (!(await hasAccessToLeague(req, bowlerLeague.leagueId))) {
@@ -260,7 +260,7 @@ router.patch("/:id", async (req, res) => {
 
     const updated = await storage.updateBowlerLeague(id, update);
     if (!updated) {
-      return sendError(res, "Bowler league not found", 404);
+      return sendError(res, "Bowler league not found", 404, 'NOT_FOUND');
     }
     // Re-sync attrs even on team moves: cheap idempotent upsert and
     // catches the active=false toggle that DOES change `league_name`
@@ -285,7 +285,7 @@ router.delete("/:id", async (req, res) => {
 
     const bowlerLeague = await storage.getBowlerLeague(id);
     if (!bowlerLeague) {
-      return sendError(res, "Bowler league not found", 404);
+      return sendError(res, "Bowler league not found", 404, 'NOT_FOUND');
     }
 
     if (!(await hasAccessToLeague(req, bowlerLeague.leagueId))) {
@@ -306,7 +306,7 @@ router.delete("/:id", async (req, res) => {
     const affectedBowlerId = bowlerLeague.bowlerId;
     const deleted = await storage.deleteBowlerLeague(id);
     if (!deleted) {
-      return sendError(res, "Bowler league not found", 404);
+      return sendError(res, "Bowler league not found", 404, 'NOT_FOUND');
     }
 
     // Re-push updated league_name/league_season (the bowler may now
@@ -336,7 +336,7 @@ router.patch("/:id/order", async (req, res) => {
 
     const bowlerLeague = await storage.getBowlerLeague(id);
     if (!bowlerLeague) {
-      return sendError(res, "Bowler league not found", 404);
+      return sendError(res, "Bowler league not found", 404, 'NOT_FOUND');
     }
 
     if (!(await hasAccessToLeague(req, bowlerLeague.leagueId))) {

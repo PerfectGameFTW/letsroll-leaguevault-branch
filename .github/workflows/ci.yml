@@ -148,6 +148,23 @@ jobs:
       - name: Wire sanitization (raw User/Organization)
         run: npx tsx scripts/check-wire-sanitization.ts
 
+      # `npx tsx scripts/check-not-found-code.ts` (task #552). Walks
+      # every `.ts` file under `server/routes/`, finds every
+      # `sendError(...)` call whose status arg is the literal `404`,
+      # and asserts the code (4th) arg is in the allow-list:
+      #   { 'NOT_FOUND', 'USER_NOT_FOUND', 'LEAGUE_NOT_FOUND',
+      #     'RECEIPT_UNAVAILABLE' }
+      # Pre-existing `'NotFound'` (camelCase) drift sites are tracked
+      # under the pending "Use the same 'not found' error code across
+      # the rest of the admin pages" cleanup task and are captured in
+      # the script's KNOWN_VIOLATIONS baseline; the baseline shrinks
+      # as the cleanup lands. New drift always fails. Pinned by
+      # `tests/unit/check-not-found-code.test.ts` (real-codebase run
+      # plus synthetic fixtures). Same `npx tsx` invocation pattern
+      # as the wire-sanitization step above for the same PATH reason.
+      - name: Not-found error-code drift
+        run: npx tsx scripts/check-not-found-code.ts
+
       # `npm run build` = `vite build && esbuild server/index.ts ...`
       # (task #468). Runs the full production build of both halves of
       # the app:

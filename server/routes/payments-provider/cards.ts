@@ -39,7 +39,7 @@ router.post('/cards/:bowlerId', async (req, res) => {
 
     const bowler = await storage.getBowler(bowlerId);
     if (!bowler) {
-      return sendError(res, 'Bowler not found', 404);
+      return sendError(res, 'Bowler not found', 404, 'NOT_FOUND');
     }
 
     const cardLeagueId = req.body.leagueId ? parseInt(req.body.leagueId) : null;
@@ -146,7 +146,7 @@ router.delete('/cards/:bowlerId/:cardId', async (req, res) => {
 
     const bowler = await storage.getBowler(bowlerId);
     if (!bowler) {
-      return sendError(res, 'Bowler not found', 404);
+      return sendError(res, 'Bowler not found', 404, 'NOT_FOUND');
     }
 
     const delLeagueIdParsed = parseOptionalIntParam(req.query.leagueId);
