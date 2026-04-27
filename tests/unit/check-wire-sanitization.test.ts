@@ -1,13 +1,14 @@
 /**
- * Tests the raw-User/Organization wire-sanitization CI guard
- * introduced in task #382.
+ * Tests the raw-row wire-sanitization CI guard introduced in task
+ * #382 and extended to Location/Bowler in task #505.
  *
  * The guard (`scripts/check-wire-sanitization.ts`) loads the project's
  * TypeScript program and fails when `sendSuccess`,
  * `sendPaginatedSuccess`, or `res.json` / `res.status(...).json` is
- * called with a value structurally assignable to the canonical `User`
- * or `Organization` row type — bypassing `sanitizeUser` /
- * `sanitizeOrg` from `server/utils/api.ts`.
+ * called with a value structurally assignable to the canonical `User`,
+ * `Organization`, `Location`, or `Bowler` row type — bypassing
+ * `sanitizeUser` / `sanitizeOrg` / `sanitizeLocation` /
+ * `sanitizeBowler` from `server/utils/api.ts`.
  *
  * These tests:
  *   1. Run the real script against the real codebase. This is the
@@ -56,17 +57,17 @@ function runIn(
 
 /**
  * Minimal mini-project: tsconfig + canonical schema (User /
- * Organization) + sanitize helpers + the user-supplied test files.
- * Each call returns the fixture root so the script can be run
- * against it via `runIn(dir)`.
+ * Organization / Location / Bowler) + sanitize helpers + the
+ * user-supplied test files. Each call returns the fixture root so
+ * the script can be run against it via `runIn(dir)`.
  *
  * Rationale: the script reads `process.cwd()/tsconfig.json` to
  * build a TypeScript program, so we have to give it a real (if
- * tiny) tsconfig that sees a real (if tiny) `shared/schema/users.ts`
- * and `shared/schema/organizations.ts`. The User / Organization
- * shapes here mirror the production rows closely enough to exercise
- * the full assignability story (sensitive fields → can't be
- * satisfied by a SanitizedUser projection).
+ * tiny) tsconfig that sees real (if tiny) declarations of every
+ * canonical row type the guard knows about. The shapes here mirror
+ * the production rows closely enough to exercise the full
+ * assignability story (sensitive fields → can't be satisfied by a
+ * Sanitized* projection).
  */
 function makeFixture(extraFiles: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'wire-sanitization-'));
@@ -126,9 +127,45 @@ function makeFixture(extraFiles: Record<string, string>): string {
   );
 
   writeFile(
+    'shared/schema/locations.ts',
+    `export type Location = {
+  id: number;
+  name: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  organizationId: number;
+  paymentProvider: string;
+  squareCredentials: Record<string, unknown>;
+  cardpointeCredentials: Record<string, unknown>;
+};
+`,
+  );
+
+  writeFile(
+    'shared/schema/bowlers.ts',
+    `export type Bowler = {
+  id: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  active: boolean;
+  organizationId: number;
+  paymentCustomerId: string | null;
+  cardpointeProfileId: string | null;
+  paymentProviderLocationId: number | null;
+  bnContactId: string | null;
+};
+`,
+  );
+
+  writeFile(
     'shared/schema/index.ts',
     `export type { User } from './users';
 export type { Organization } from './organizations';
+export type { Location } from './locations';
+export type { Bowler } from './bowlers';
 `,
   );
 
@@ -136,9 +173,13 @@ export type { Organization } from './organizations';
     'server/utils/api.ts',
     `import type { User } from '../../shared/schema/users';
 import type { Organization } from '../../shared/schema/organizations';
+import type { Location } from '../../shared/schema/locations';
+import type { Bowler } from '../../shared/schema/bowlers';
 
 export type SanitizedUser = Pick<User, 'id' | 'email' | 'name' | 'createdAt'>;
 export type SanitizedOrganization = Pick<Organization, 'id' | 'name' | 'slug' | 'createdAt'>;
+export type SanitizedLocation = Pick<Location, 'id' | 'name' | 'address' | 'city' | 'state' | 'zipCode' | 'organizationId' | 'paymentProvider'>;
+export type SanitizedBowler = Pick<Bowler, 'id' | 'name' | 'email' | 'phone' | 'active' | 'organizationId' | 'paymentCustomerId' | 'bnContactId'>;
 
 // Deny-list (#501): the inverse of the safe lists above. The script
 // reads these constants out of this file via the AST. Mirrors the
@@ -153,6 +194,18 @@ export function sanitizeUser(u: User): SanitizedUser {
 }
 export function sanitizeOrg(o: Organization): SanitizedOrganization {
   return o as unknown as SanitizedOrganization;
+}
+export function sanitizeLocation(l: Location): SanitizedLocation {
+  return l as unknown as SanitizedLocation;
+}
+export function sanitizeLocations(ls: Location[]): SanitizedLocation[] {
+  return ls.map(sanitizeLocation);
+}
+export function sanitizeBowler(b: Bowler): SanitizedBowler {
+  return b as unknown as SanitizedBowler;
+}
+export function sanitizeBowlers(bs: Bowler[]): SanitizedBowler[] {
+  return bs.map(sanitizeBowler);
 }
 
 // Minimal Response stand-in so we don't need express in the fixture.
@@ -197,7 +250,7 @@ describe('check-wire-sanitization CI guard', () => {
   it('runs against the real codebase and exits 0', () => {
     const r = runIn(process.cwd());
     expect(r.status, r.stderr || r.stdout).toBe(0);
-    expect(r.stdout).toMatch(/no raw User\/Organization values/);
+    expect(r.stdout).toMatch(/no raw User\/Organization\/Location\/Bowler values/);
   }, 60_000);
 
   it('flags sendSuccess(res, user) where user is User', () => {
@@ -633,6 +686,132 @@ export function ok() { sendSuccess(res, { user: sanitizeUser(u), emailSent: true
     });
     const r = runIn(dir);
     expect(r.status, r.stderr).toBe(0);
+  }, 30_000);
+
+  // ---------------------------------------------------------------
+  // Location / Bowler structural assignability (task #505) — same
+  // pass-1 contract as User/Organization, just expanded to two more
+  // canonical row types. The acceptance criterion is that adding
+  // `sendSuccess(res, bowler)` or `res.json(location)` back to a
+  // route fails the lint, and that the existing wraps in
+  // `server/routes/{locations,bowlers,user-bowlers,teams}.ts`
+  // (#381) stay green — the latter is covered by the
+  // "runs against the real codebase" test above.
+  // ---------------------------------------------------------------
+
+  it('flags res.json(location) where location is Location', () => {
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Location } from '@shared/schema';
+import { type Response } from './utils/api';
+declare const res: Response;
+declare const location: Location;
+export function bad() { res.json(location); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/res\.json\(\) <- Location/);
+    expect(r.stderr).toMatch(/leak\.ts/);
+  }, 30_000);
+
+  it('flags sendSuccess(res, bowler) where bowler is Bowler', () => {
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Bowler } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const bowler: Bowler;
+export function bad() { sendSuccess(res, bowler); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/sendSuccess\(\) <- Bowler/);
+    expect(r.stderr).toMatch(/leak\.ts/);
+  }, 30_000);
+
+  it('flags sendSuccess(res, locations) where locations is Location[]', () => {
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Location } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const locations: Location[];
+export function bad() { sendSuccess(res, locations); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- Location\[\]/);
+  }, 30_000);
+
+  it('flags sendSuccess(res, bowlers) where bowlers is Bowler[]', () => {
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Bowler } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const bowlers: Bowler[];
+export function bad() { sendSuccess(res, bowlers); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- Bowler\[\]/);
+  }, 30_000);
+
+  it('does NOT flag sanitizeLocation(location) / sanitizeLocations(list)', () => {
+    const dir = makeFixture({
+      'server/safe.ts': `import type { Location } from '@shared/schema';
+import { sendSuccess, sanitizeLocation, sanitizeLocations, type Response } from './utils/api';
+declare const res: Response;
+declare const location: Location;
+declare const locations: Location[];
+export function ok1() { sendSuccess(res, sanitizeLocation(location)); }
+export function ok2() { sendSuccess(res, sanitizeLocations(locations)); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  }, 30_000);
+
+  it('does NOT flag the { ...sanitizeBowler(b), hasAccount } spread used in bowlers/teams routes', () => {
+    // The canonical bowler spread shape from
+    // `server/routes/bowlers.ts` and `server/routes/teams.ts`
+    // (task #381). `sanitizeBowler` returns a `SanitizedBowler`,
+    // which is a `Pick<Bowler, …>` missing the unsafe columns —
+    // so the spread+extra-key result is `SanitizedBowler & {
+    // hasAccount: boolean }`, NOT structurally assignable to
+    // `Bowler` (it's missing required columns like
+    // `cardpointeProfileId`). The structural pass must stay
+    // silent on this exact pattern.
+    const dir = makeFixture({
+      'server/safe.ts': `import type { Bowler } from '@shared/schema';
+import { sendSuccess, sanitizeBowler, type Response } from './utils/api';
+declare const res: Response;
+declare const bowler: Bowler;
+declare const hasAccount: boolean;
+export function ok() {
+  sendSuccess(res, { ...sanitizeBowler(bowler), hasAccount });
+}
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  }, 30_000);
+
+  it('flags { ...bowler, extra } spread of a raw Bowler row', () => {
+    // Negative counterpart to the wrap-then-spread test above —
+    // spreading the RAW row (not the sanitized projection) is
+    // exactly the leak shape the guard exists to catch.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Bowler } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const bowler: Bowler;
+export function bad() { sendSuccess(res, { ...bowler, foo: 'bar' }); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- Bowler/);
   }, 30_000);
 
   it('--report mode prints the violation table without exiting non-zero', () => {
