@@ -1,5 +1,6 @@
 import { loadScript } from "@/lib/utils";
 import { csrfFetch } from '@/lib/queryClient';
+import { makeApiError, type ApiErrorLike } from "@/lib/provider-not-configured";
 import type { CardPointeCard } from "@/hooks/use-cardpointe-payment";
 import type { SquareCard as SquareCardHook } from "@/hooks/use-square-payment";
 
@@ -393,32 +394,46 @@ export async function createPayment(amount: number, cardInstance: SquareCardHook
         body: JSON.stringify(paymentData),
       });
 
-      const responseData = await response.json();
+      // task #511: parse the body defensively so a non-JSON error
+      // response (e.g. an upstream proxy returning HTML) can't bubble
+      // up as a SyntaxError whose technical `.message` would land in
+      // the user-facing toast.
+      let responseData: { status?: string; savedCardId?: string | null; [key: string]: unknown } | null = null;
+      let responseTextFallback: string | null = null;
+      try {
+        responseData = await response.clone().json();
+      } catch {
+        responseData = null;
+        try {
+          responseTextFallback = await response.text();
+        } catch {
+          responseTextFallback = null;
+        }
+      }
 
       if (!response.ok) {
-        const errorMessage = responseData.error?.message || 'Payment processing failed';
-        const code = responseData.error?.code || 'PAYMENT_FAILED';
-        // task #514: throw a plain Error with the already-friendly
-        // backend message attached as `.message`, plus structured
-        // `.code` and `.status` so consumers can branch on the code
-        // (notably PROVIDER_NOT_CONFIGURED) without parsing JSON.
-        const err = new Error(cleanPaymentMessage(errorMessage)) as Error & {
-          code?: string;
-          status?: number;
-        };
-        err.code = code;
-        err.status = response.status;
+        // task #511: standardise on `makeApiError` so `.message`,
+        // `.code`, and `.status` are populated the same way the admin
+        // pages do it. Prefer the structured body, fall back to the
+        // raw text body for non-JSON responses, then run the message
+        // through `cleanPaymentMessage` to strip Square-developer
+        // jargon. Always ensure a `PAYMENT_FAILED` fallback `.code`.
+        const fallbackMessage =
+          (responseTextFallback ?? '').trim() || 'Payment processing failed';
+        const err = makeApiError(responseData, response.status, fallbackMessage);
+        err.message = cleanPaymentMessage(err.message);
+        if (!err.code) err.code = 'PAYMENT_FAILED';
         throw err;
       }
 
-      if (!responseData.status || responseData.status !== 'COMPLETED') {
+      if (!responseData || !responseData.status || responseData.status !== 'COMPLETED') {
         throw makePaymentError(
           "We couldn't complete your payment. Please try again.",
           'PAYMENT_INCOMPLETE',
         );
       }
 
-      return responseData;
+      return responseData as unknown as PaymentResult;
     } else {
       throw makePaymentError(
         'Please check your card details and try again.',
@@ -426,17 +441,16 @@ export async function createPayment(amount: number, cardInstance: SquareCardHook
       );
     }
   } catch (error) {
-    // task #514: re-throw any already-typed payment error verbatim so
-    // its `.code` (esp. PROVIDER_NOT_CONFIGURED) and friendly message
-    // survive. Anything else gets the generic "try again" sentence so
-    // raw network/SDK errors don't leak to the toast.
-    if (error instanceof Error && (error as Error & { code?: string }).code) {
+    // task #511: re-throw any already-typed payment error verbatim so
+    // its `.code` (esp. PROVIDER_NOT_CONFIGURED), `.status`, and
+    // friendly message survive. Anything else gets a clean
+    // PAYMENT_FAILED wrap so raw network/SDK errors don't leak as
+    // JSON-shaped or stack-trace `error.message` strings into a toast.
+    if (error instanceof Error && (error as ApiErrorLike).code) {
       throw error;
     }
     if (error instanceof Error && error.message) {
-      const wrapped = new Error(cleanPaymentMessage(error.message)) as Error & {
-        code?: string;
-      };
+      const wrapped = new Error(cleanPaymentMessage(error.message)) as ApiErrorLike;
       wrapped.code = 'PAYMENT_FAILED';
       throw wrapped;
     }
@@ -458,34 +472,34 @@ export async function createSquareCustomer(name: string, email: string, teamId: 
     });
 
     if (!response.ok) {
-      // Try to surface the structured `error.code` (specifically
-      // PROVIDER_NOT_CONFIGURED) — fall back to plain text if the
-      // body isn't JSON.
+      // task #511: standardise on the shared `makeApiError` helper so
+      // `.message`, `.code`, and `.status` are populated the same way
+      // as every other API call. Falls back to the response body text
+      // for non-JSON payloads so we still produce a clean `.message`.
       let errorBody: unknown = null;
       try {
         errorBody = await response.clone().json();
       } catch {
         errorBody = null;
       }
-      const code = (errorBody as { error?: { code?: string } })?.error?.code;
-      const message = (errorBody as { error?: { message?: string } })?.error?.message
-        ?? (errorBody ? undefined : await response.text())
-        ?? 'Failed to create Square customer';
-      const err = new Error(message) as Error & { code?: string; status?: number };
-      if (code) err.code = code;
-      err.status = response.status;
-      throw err;
+      const fallback = errorBody
+        ? 'Failed to create Square customer'
+        : (await response.text()) || 'Failed to create Square customer';
+      throw makeApiError(errorBody, response.status, fallback);
     }
 
     const customer = await response.json();
     return customer;
   } catch (error) {
-    // Preserve structured `.code` (e.g. PROVIDER_NOT_CONFIGURED) when
-    // re-wrapping so admin pages can branch on it.
-    if (error instanceof Error && (error as Error & { code?: string }).code) {
+    // task #511: re-throw any already-typed API error verbatim so its
+    // `.code` (e.g. PROVIDER_NOT_CONFIGURED) and `.status` survive.
+    // For unexpected (network/SDK) failures, surface a plain Error
+    // with a clean human message — never a JSON-encoded blob.
+    if (error instanceof Error && (error as ApiErrorLike).code) {
       throw error;
     }
-    throw new Error('Failed to create Square customer: ' + (error instanceof Error ? error.message : String(error)));
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error('Failed to create Square customer: ' + detail);
   }
 }
 
