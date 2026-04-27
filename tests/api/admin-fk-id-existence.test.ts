@@ -437,12 +437,12 @@ describe('Task #518 — pin remaining admin FK id existence checks', () => {
 
       expect(status).toBe(404);
       expect(data.success).toBe(false);
-      // server/routes/locations.ts uses `'NotFound'` (PascalCase)
-      // for its error codes — diverges from the screaming-snake
-      // convention elsewhere in this file. Pin the actual code so
-      // a future normalisation pass has to update both routes and
-      // this test together rather than silently shifting one.
-      expect(data.error?.code).toBe('NotFound');
+      // Task #542 unified the admin-route 404 code on the
+      // SCREAMING_SNAKE `'NOT_FOUND'` value. server/routes/locations.ts
+      // previously emitted `'NotFound'` (PascalCase); pinning the
+      // canonical value here means any future drift back to a
+      // route-local variant fails this assertion.
+      expect(data.error?.code).toBe('NOT_FOUND');
       expect(data.error?.message).toMatch(/organization not found/i);
     });
   });
@@ -464,9 +464,10 @@ describe('Task #518 — pin remaining admin FK id existence checks', () => {
 
       expect(status).toBe(404);
       expect(data.success).toBe(false);
-      // organization-admin.ts uses lower_snake_case error codes —
-      // again deliberately divergent from `NOT_FOUND` / `NotFound`.
-      expect(data.error?.code).toBe('not_found');
+      // Task #542 unified on `'NOT_FOUND'` —
+      // server/routes/organization-admin.ts previously emitted the
+      // lower_snake `'not_found'` variant.
+      expect(data.error?.code).toBe('NOT_FOUND');
       expect(data.error?.message).toMatch(/organization not found/i);
     });
   });
@@ -488,7 +489,7 @@ describe('Task #518 — pin remaining admin FK id existence checks', () => {
 
       expect(status).toBe(404);
       expect(data.success).toBe(false);
-      expect(data.error?.code).toBe('not_found');
+      expect(data.error?.code).toBe('NOT_FOUND');
       expect(data.error?.message).toMatch(/organization not found/i);
 
       // Belt-and-suspenders: prove no row was inserted under the
@@ -521,7 +522,7 @@ describe('Task #518 — pin remaining admin FK id existence checks', () => {
 
       expect(status).toBe(404);
       expect(data.success).toBe(false);
-      expect(data.error?.code).toBe('not_found');
+      expect(data.error?.code).toBe('NOT_FOUND');
       expect(data.error?.message).toMatch(/location not found/i);
     });
 

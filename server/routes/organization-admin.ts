@@ -200,7 +200,7 @@ router.patch('/users/:id/admin-status', requireOrgAdminOrSystemAdmin, adminWrite
     
     const user = await storage.getUser(userId);
     if (!user) {
-      return sendError(res, 'User not found', 404, 'not_found');
+      return sendError(res, 'User not found', 404, 'NOT_FOUND');
     }
 
     // Task #462: an admin cannot change their OWN admin status through
@@ -335,12 +335,12 @@ router.post('/users/:id/add', requireOrgAdminOrSystemAdmin, adminWriteLimiter, a
     // server/routes/bowlers.ts.
     const orgRow = await storage.getOrganization(organizationId);
     if (!orgRow) {
-      return sendError(res, 'Organization not found', 404, 'not_found');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     const user = await storage.getUser(userId);
     if (!user) {
-      return sendError(res, 'User not found', 404, 'not_found');
+      return sendError(res, 'User not found', 404, 'NOT_FOUND');
     }
 
     if (req.user!.role === 'org_admin' && user.role === 'system_admin') {
@@ -398,7 +398,7 @@ router.delete('/users/:id', requireOrgAdminOrSystemAdmin, adminWriteLimiter, asy
 
     const user = await storage.getUser(userId);
     if (!user) {
-      return sendError(res, 'User not found', 404, 'not_found');
+      return sendError(res, 'User not found', 404, 'NOT_FOUND');
     }
 
     // Authorization: deletion is intentionally locked down so neither
@@ -473,7 +473,7 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
 
     const user = await storage.getUser(userId);
     if (!user) {
-      return sendError(res, 'User not found', 404, 'not_found');
+      return sendError(res, 'User not found', 404, 'NOT_FOUND');
     }
 
     if (req.user!.role === 'org_admin') {
@@ -499,7 +499,7 @@ router.patch('/users/:id/location', requireOrgAdminOrSystemAdmin, adminWriteLimi
         !locationRow ||
         (user.organizationId !== null && locationRow.organizationId !== user.organizationId)
       ) {
-        return sendError(res, 'Location not found for this user\'s organization', 404, 'not_found');
+        return sendError(res, 'Location not found for this user\'s organization', 404, 'NOT_FOUND');
       }
     }
 
@@ -550,7 +550,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
     // 500s. Mirrors server/routes/bowlers.ts (#422).
     const orgRow = await storage.getOrganization(organizationId);
     if (!orgRow) {
-      return sendError(res, 'Organization not found', 404, 'not_found');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     // Task #454: same existence + same-tenant guard for the optional
@@ -559,7 +559,7 @@ router.post('/users/create', requireOrgAdminOrSystemAdmin, inviteLimiter, async 
     if (locationId !== null && locationId !== undefined) {
       const locationRow = await storage.getLocation(locationId);
       if (!locationRow || locationRow.organizationId !== organizationId) {
-        return sendError(res, 'Location not found for this organization', 404, 'not_found');
+        return sendError(res, 'Location not found for this organization', 404, 'NOT_FOUND');
       }
     }
 
@@ -650,7 +650,7 @@ router.post('/users/:id/reset-password', requireOrgAdminOrSystemAdmin, adminWrit
 
     const targetUser = await storage.getUser(userId);
     if (!targetUser) {
-      return sendError(res, 'User not found', 404, 'not_found');
+      return sendError(res, 'User not found', 404, 'NOT_FOUND');
     }
 
     if (targetUser.id === req.user!.id) {
@@ -818,7 +818,7 @@ router.post('/users/:id/resend-invite', requireOrgAdminOrSystemAdmin, inviteLimi
 
     const user = await storage.getUser(userId);
     if (!user) {
-      return sendError(res, 'User not found', 404, 'not_found');
+      return sendError(res, 'User not found', 404, 'NOT_FOUND');
     }
 
     if (req.user!.role === 'org_admin') {

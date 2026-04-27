@@ -44,7 +44,7 @@ router.get('/:id', async (req: Request, res) => {
 
     const location = await storage.getLocation(id);
     if (!location) {
-      return sendError(res, 'Location not found', 404, 'NotFound');
+      return sendError(res, 'Location not found', 404, 'NOT_FOUND');
     }
 
     if (req.user?.role !== 'system_admin' && req.user?.organizationId !== location.organizationId) {
@@ -81,7 +81,7 @@ router.post('/', async (req: Request, res) => {
     // server/routes/bowlers.ts.
     const orgRow = await storage.getOrganization(validatedData.organizationId);
     if (!orgRow) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     const location = await storage.createLocation(validatedData);
@@ -104,7 +104,7 @@ router.patch('/:id', async (req: Request, res) => {
 
     const location = await storage.getLocation(id);
     if (!location) {
-      return sendError(res, 'Location not found', 404, 'NotFound');
+      return sendError(res, 'Location not found', 404, 'NOT_FOUND');
     }
 
     if (req.user?.role !== 'system_admin' && req.user?.organizationId !== location.organizationId) {
@@ -186,7 +186,7 @@ router.patch('/:id/archive', async (req: Request, res) => {
 
     const location = await storage.getLocation(id);
     if (!location) {
-      return sendError(res, 'Location not found', 404, 'NotFound');
+      return sendError(res, 'Location not found', 404, 'NOT_FOUND');
     }
 
     if (req.user?.role !== 'system_admin' && req.user?.organizationId !== location.organizationId) {
@@ -210,7 +210,7 @@ router.patch('/:id/restore', async (req: Request, res) => {
 
     const location = await storage.getLocation(id);
     if (!location) {
-      return sendError(res, 'Location not found', 404, 'NotFound');
+      return sendError(res, 'Location not found', 404, 'NOT_FOUND');
     }
 
     if (req.user?.role !== 'system_admin' && req.user?.organizationId !== location.organizationId) {
@@ -234,7 +234,7 @@ router.delete('/:id', async (req: Request, res) => {
 
     const location = await storage.getLocation(id);
     if (!location) {
-      return sendError(res, 'Location not found', 404, 'NotFound');
+      return sendError(res, 'Location not found', 404, 'NOT_FOUND');
     }
 
     if (req.user?.role !== 'system_admin' && req.user?.organizationId !== location.organizationId) {
@@ -255,7 +255,7 @@ router.get('/:id/square-config', async (req: Request, res) => {
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
 
     const location = await storage.getLocation(id);
-    if (!location) return sendError(res, 'Location not found', 404, 'NotFound');
+    if (!location) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
 
     const isOrgAdmin = req.user?.role === 'org_admin' || req.user?.role === 'system_admin';
     const hasAccess = req.user?.role === 'system_admin' || req.user?.organizationId === location.organizationId;
@@ -281,7 +281,7 @@ router.patch('/:id/square-config', async (req: Request, res) => {
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
 
     const location = await storage.getLocation(id);
-    if (!location) return sendError(res, 'Location not found', 404, 'NotFound');
+    if (!location) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
 
     const isOrgAdmin = req.user?.role === 'org_admin' || req.user?.role === 'system_admin';
     const hasAccess = req.user?.role === 'system_admin' || req.user?.organizationId === location.organizationId;
@@ -323,7 +323,7 @@ router.get('/:id/cardpointe-config', async (req: Request, res) => {
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
 
     const location = await storage.getLocation(id);
-    if (!location) return sendError(res, 'Location not found', 404, 'NotFound');
+    if (!location) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
 
     const isOrgAdmin = req.user?.role === 'org_admin' || req.user?.role === 'system_admin';
     const hasAccess = req.user?.role === 'system_admin' || req.user?.organizationId === location.organizationId;
@@ -350,7 +350,7 @@ router.patch('/:id/cardpointe-config', async (req: Request, res) => {
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
 
     const location = await storage.getLocation(id);
-    if (!location) return sendError(res, 'Location not found', 404, 'NotFound');
+    if (!location) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
 
     const isOrgAdmin = req.user?.role === 'org_admin' || req.user?.role === 'system_admin';
     const hasAccess = req.user?.role === 'system_admin' || req.user?.organizationId === location.organizationId;
@@ -392,7 +392,7 @@ router.patch('/:id/payment-provider', async (req: Request, res) => {
     if (isNaN(id)) return sendError(res, 'Invalid location ID', 400, 'InvalidRequest');
 
     const location = await storage.getLocation(id);
-    if (!location) return sendError(res, 'Location not found', 404, 'NotFound');
+    if (!location) return sendError(res, 'Location not found', 404, 'NOT_FOUND');
 
     const isOrgAdmin = req.user?.role === 'org_admin' || req.user?.role === 'system_admin';
     const hasAccess = req.user?.role === 'system_admin' || req.user?.organizationId === location.organizationId;
