@@ -98,8 +98,11 @@
  *     type is checked directly.
  *   - The type walk descends through unions (so `User | undefined`
  *     from `storage.getUser(...)` is caught), numeric-index types
- *     (so `User[]` is caught), AND properties of object/intersection
- *     types — so a helper whose return type embeds a row, like
+ *     (so `User[]` is caught), string-index types (so
+ *     `Record<string, User>` and other dictionary shapes whose only
+ *     access path is the string index signature are caught — task
+ *     #532), AND properties of object/intersection types — so a
+ *     helper whose return type embeds a row, like
  *     `function buildAccountResponse(u: User): { user: User }`, is
  *     flagged when its result is handed to a response helper. The
  *     descent is bounded by a per-walk visited set keyed on type
@@ -304,7 +307,10 @@ function resolveSensitiveFieldLists(
  * Walk a value type and return the name of the first leak it
  * contains, or null. Descends through:
  *   - union members (so `User | undefined` is caught),
- *   - numeric-index types (so `User[]` is caught), and
+ *   - numeric-index types (so `User[]` is caught),
+ *   - string-index types (so `Record<string, User>` and other
+ *     dictionary shapes whose only access path is the string index
+ *     signature are caught — task #532), and
  *   - properties of object / intersection types (so a helper whose
  *     return type embeds a row, e.g. `function f(): { user: User }`,
  *     is caught when its result is handed to a response helper).
@@ -369,6 +375,25 @@ function findLeakInType(
   if (numIdx) {
     const v = findLeakInType(numIdx, canon, checker, visited, depth + 1);
     if (v) return `${v}[]`;
+  }
+
+  // Record / dictionary shapes — descend through the string-index
+  // value type so `Record<string, User>` (or anything with only a
+  // string index signature like `{ [orgSlug: string]: Organization }`)
+  // is caught. The bare object has no enumerable named properties,
+  // so the property descent below does NOT see this — without this
+  // step a future `buildUserDirectory(): Record<string, User>` would
+  // sneak past the guard the same way `User[]` would have before
+  // the numeric-index descent above was added.
+  //
+  // Bound by the same visited-set + depth cap that protects the
+  // numeric-index and property descents, so a recursive Record type
+  // (e.g. `type Tree = Record<string, Tree>`) terminates instead of
+  // looping. Task #532.
+  const strIdx = checker.getIndexTypeOfType(type, ts.IndexKind.String);
+  if (strIdx) {
+    const v = findLeakInType(strIdx, canon, checker, visited, depth + 1);
+    if (v) return v;
   }
 
   // Walk properties of object / intersection types so a value typed

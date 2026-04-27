@@ -814,6 +814,86 @@ export function bad() { sendSuccess(res, { ...bowler, foo: 'bar' }); }
     expect(r.stderr).toMatch(/<- Bowler/);
   }, 30_000);
 
+  // ---------------------------------------------------------------
+  // String-index / dictionary-shape descent (task #532). The earlier
+  // structural pass walked union members, numeric-index types, and
+  // named properties of object/intersection types — so a helper
+  // returning `{ user: User }` was caught (task #500). It did NOT
+  // walk string-index types, which meant `Record<string, User>` (or
+  // any object whose only access path is a string index signature
+  // like `{ [orgSlug: string]: Organization }`) sneaked past the
+  // guard: the bare Record has no enumerable named properties to
+  // descend into, and the structural assignability check at the top
+  // of `findLeakInType` doesn't fire because Record-of-User is not
+  // assignable to User itself. Same shape of risk as the numeric-
+  // index case (`User[]` would have slipped past before the
+  // numeric-index descent was added) — these tests pin the new
+  // string-index descent so it can't be removed silently.
+  // ---------------------------------------------------------------
+
+  it('flags a helper returning Record<string, User> (the canonical Record leak)', () => {
+    const dir = makeFixture({
+      'server/leak.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const users: User[];
+function buildUserDirectory(list: User[]): Record<string, User> {
+  const out: Record<string, User> = {};
+  for (const u of list) out[u.email] = u;
+  return out;
+}
+export function bad() { sendSuccess(res, buildUserDirectory(users)); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- User/);
+    expect(r.stderr).toMatch(/leak\.ts/);
+  }, 30_000);
+
+  it('flags a Record<string, Organization> shape on the Organization side', () => {
+    // Same gap, expressed via the explicit index-signature spelling
+    // rather than the `Record<…>` alias — the descent has to be on
+    // the string-index TYPE, not on the spelling, so both forms
+    // need to fire.
+    const dir = makeFixture({
+      'server/leak.ts': `import type { Organization } from '@shared/schema';
+import { sendSuccess, type Response } from './utils/api';
+declare const res: Response;
+declare const bySlug: { [orgSlug: string]: Organization };
+export function bad() { sendSuccess(res, bySlug); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stdout || r.stderr).toBe(1);
+    expect(r.stderr).toMatch(/<- Organization/);
+  }, 30_000);
+
+  it('does NOT flag Record<string, SanitizedUser> (the safe projected dictionary)', () => {
+    // The negative half of the contract. The whole point of the
+    // descent is that it sees through the wrapper — but it must
+    // still respect the structural assignability check on the
+    // VALUE type. A `SanitizedUser` is a `Pick<User, …>` missing
+    // the sensitive columns, so it is NOT assignable to `User`,
+    // and a `Record<string, SanitizedUser>` is the intended safe
+    // shape for a dictionary response. Must stay green.
+    const dir = makeFixture({
+      'server/safe.ts': `import type { User } from '@shared/schema';
+import { sendSuccess, sanitizeUser, type Response, type SanitizedUser } from './utils/api';
+declare const res: Response;
+declare const users: User[];
+function buildSafeDirectory(list: User[]): Record<string, SanitizedUser> {
+  const out: Record<string, SanitizedUser> = {};
+  for (const u of list) out[u.email] = sanitizeUser(u);
+  return out;
+}
+export function ok() { sendSuccess(res, buildSafeDirectory(users)); }
+`,
+    });
+    const r = runIn(dir);
+    expect(r.status, r.stderr).toBe(0);
+  }, 30_000);
+
   it('--report mode prints the violation table without exiting non-zero', () => {
     const dir = makeFixture({
       'server/leak.ts': `import type { User } from '@shared/schema';

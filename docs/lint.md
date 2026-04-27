@@ -134,6 +134,13 @@ Coverage (structural pass — task #382):
 - Detects array-of-row leaks (`User[]` / `Organization[]`) via the
   numeric-index type so `sendSuccess(res, users)` is caught even
   though the array itself isn't assignable to `User`.
+- Detects dictionary-shaped leaks (`Record<string, User>`,
+  `{ [slug: string]: Organization }`, etc.) via the string-index
+  type, so a future `buildUserDirectory()`-style helper that
+  returns a map of raw rows can't sneak past the guard the same
+  way `User[]` would have before the numeric-index descent. The
+  bare Record has no enumerable named properties, so the
+  property-walk below would otherwise miss it (task #532).
 - Walks `User | undefined` (the typical `storage.getUser(...)`
   return shape) by descending union members.
 - Walks properties of object / intersection types, so a helper
@@ -236,7 +243,7 @@ tsx scripts/check-wire-sanitization.ts             # strict (CI mode)
 tsx scripts/check-wire-sanitization.ts --report    # print the table without exiting non-zero
 ```
 
-The guard's own behavior is pinned by 27 fixtures in
+The guard's own behavior is pinned by 30 fixtures in
 `tests/unit/check-wire-sanitization.test.ts` (run as part of the
 vitest suite). Wired into CI as the `Wire sanitization (raw
 User/Organization)` step in `.github/workflows/ci.yml`'s
