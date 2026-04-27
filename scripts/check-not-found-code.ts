@@ -111,7 +111,11 @@ function listTsFiles(dir: string): string[] {
   const out: string[] = [];
   const stack: string[] = [dir];
   while (stack.length > 0) {
-    const cur = stack.pop()!;
+    const cur = stack.pop();
+    // The loop guard above guarantees cur is defined; this check
+    // satisfies the no-non-null-assertion lint without changing
+    // runtime behavior.
+    if (cur === undefined) continue;
     let entries: string[];
     try {
       entries = readdirSync(cur);

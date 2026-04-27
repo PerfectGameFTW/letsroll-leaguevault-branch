@@ -516,7 +516,7 @@ function buildObjectLiteralMethodHost(
   for (const prop of obj.properties) {
     let name: string | null = null;
     if ('name' in prop && prop.name) {
-      const pn = prop.name as ts.PropertyName;
+      const pn = prop.name;
       if (ts.isIdentifier(pn) || ts.isStringLiteralLike(pn)) {
         name = pn.text;
       }

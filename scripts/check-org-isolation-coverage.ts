@@ -408,7 +408,6 @@ function suggestionFor(c: Candidate): string {
 
 function main(): void {
   if (!existsSync(TEST_FILE)) {
-    // eslint-disable-next-line no-console
     console.error(
       `[check-org-isolation-coverage] FAIL — isolation test file not found: ${relative(process.cwd(), TEST_FILE)}`,
     );
@@ -416,7 +415,6 @@ function main(): void {
   }
 
   if (!existsSync(ROUTES_INDEX)) {
-    // eslint-disable-next-line no-console
     console.error(
       `[check-org-isolation-coverage] FAIL — routes index not found: ${relative(process.cwd(), ROUTES_INDEX)}`,
     );
@@ -437,13 +435,11 @@ function main(): void {
     if (!r.covered) missing.push({ c, reasons: r.missingReasons });
   }
 
-  // eslint-disable-next-line no-console
   console.log(
     `[check-org-isolation-coverage] scanned ${candidates.length} id-bearing GET endpoint(s) under server/routes/.`,
   );
 
   if (missing.length === 0) {
-    // eslint-disable-next-line no-console
     console.log(
       '[check-org-isolation-coverage] OK — every id-bearing GET endpoint is referenced in tests/api/organization-isolation.test.ts.',
     );
@@ -451,22 +447,17 @@ function main(): void {
   }
 
   const verb = STRICT ? 'FAIL' : 'WARN';
-  // eslint-disable-next-line no-console
   console.error(
     `\n[check-org-isolation-coverage] ${verb} — ${missing.length} endpoint(s) appear to lack cross-org coverage:`,
   );
   for (const { c, reasons } of missing) {
     const rel = relative(process.cwd(), c.source);
-    // eslint-disable-next-line no-console
     console.error(`  - GET ${c.effectivePath}  (${c.kind}, in ${rel})`);
     for (const r of reasons) {
-      // eslint-disable-next-line no-console
       console.error(`      · ${r}`);
     }
-    // eslint-disable-next-line no-console
     console.error(`      → suggested: ${suggestionFor(c)}`);
   }
-  // eslint-disable-next-line no-console
   console.error(
     '\nAdd a cross-org assertion to tests/api/organization-isolation.test.ts,\n' +
       'or (only with security-team sign-off) add the effective path to\n' +
