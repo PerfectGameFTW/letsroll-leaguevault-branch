@@ -114,7 +114,7 @@ export function useBowlerPaymentSubmit({
         if (cardMode === 'saved' && selectedSavedCardId) {
           paymentCardId = selectedSavedCardId;
         } else {
-          const token = await tokenizeCard(card!);
+          const token = await tokenizeCard(card);
           const saveResponse = await csrfFetch(`/api/payments-provider/cards/${bowler.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -165,7 +165,7 @@ export function useBowlerPaymentSubmit({
         if (cardMode === 'saved' && selectedSavedCardId) {
           paymentCardId = selectedSavedCardId;
         } else {
-          const token = await tokenizeCard(card!);
+          const token = await tokenizeCard(card);
           const saveResponse = await csrfFetch(`/api/payments-provider/cards/${bowler.id}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

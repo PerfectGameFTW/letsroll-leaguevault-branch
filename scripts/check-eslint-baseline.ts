@@ -55,7 +55,7 @@ const RULE_CEILINGS: Record<string, number> = {
   // `server/services/bowlnow-sync-retry.ts` and
   // `scripts/verify-trust-proxy-deploy.ts` were typed away in the
   // same pass; the remaining sites are test-only.
-  '@typescript-eslint/no-non-null-assertion': 258,
+  '@typescript-eslint/no-non-null-assertion': 256,
   // Seeded by task #371. Ratchet down as redundant casts are removed.
   // Raised in the CI green-up pass for the same merged tasks above —
   // mock-construction casts in test files. The source-side
@@ -89,7 +89,7 @@ const RULE_CEILINGS: Record<string, number> = {
 // client/public/sw.js). Raised in the CI green-up pass to absorb the
 // per-rule increases above (test-only debt from a stack of merged
 // tasks); see each per-rule comment for the breakdown.
-const TOTAL_CEILING = 535;
+const TOTAL_CEILING = 533;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');
