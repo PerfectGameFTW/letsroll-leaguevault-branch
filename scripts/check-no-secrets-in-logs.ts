@@ -1272,14 +1272,26 @@ function resolveIdentifierBinding(
 }
 
 /**
- * Resolve a method-call receiver expression (the `expression` of a
- * PropertyAccessExpression callee) to its underlying MethodHost.
+ * Resolve a method-call receiver expression (the `expression` of the
+ * call's callee, which itself may be a PropertyAccessExpression or an
+ * ElementAccessExpression) to its underlying MethodHost.
  *
- * Supports four shapes the brief calls out:
+ * Supports the shapes the briefs call out:
  *   - bare identifier (`helpers.pickPassword(...)` -> `helpers`)
  *   - nested property access (`obj.helper.pick(...)` -> `obj.helper`)
+ *   - nested element access with a string-literal index, including the
+ *     no-substitution template form
+ *     (`obj['helper']['pick'](...)` -> `obj['helper']`,
+ *      `obj[\`helper\`].pick(...)` -> `obj[\`helper\`]`); covers task
+ *     #554's bracket-form bypass of the dot-form rule
  *   - direct instantiation (`new H().pick(...)` -> `new H()`)
  *   - parenthesized variants of any of the above
+ *
+ * ElementAccess with a NON-string-literal index (`obj[methodName]` /
+ * `obj[\`pick${suffix}\`]`) is intentionally not supported — the
+ * called method name can't be resolved statically, so the call-site
+ * scanner will not look up a method on this host either, keeping the
+ * rule conservative.
  *
  * Returns null when no scope binding for the root identifier (or
  * constructor identifier) resolves to a methodHost — keeps the rule
@@ -1301,6 +1313,12 @@ function resolveCallReceiverHost(
     const parent = resolveCallReceiverHost(expr.expression, scopes);
     return parent ? parent.nested.get(expr.name.text) ?? null : null;
   }
+  if (ts.isElementAccessExpression(expr)) {
+    const argExpr = expr.argumentExpression;
+    if (!ts.isStringLiteralLike(argExpr)) return null;
+    const parent = resolveCallReceiverHost(expr.expression, scopes);
+    return parent ? parent.nested.get(argExpr.text) ?? null : null;
+  }
   if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression)) {
     const b = resolveIdentifierBinding(expr.expression, scopes);
     return b && b.kind === 'methodHost' ? b.host : null;
@@ -1312,7 +1330,10 @@ function resolveCallReceiverHost(
  * Render a method-call receiver back as a short, reviewer-readable
  * path string for the report. Mirrors the shapes
  * `resolveCallReceiverHost` accepts so the textual reason matches
- * what the reviewer will actually see in source.
+ * what the reviewer will actually see in source. The bracket form is
+ * rendered as `["name"]` (always double-quoted via JSON.stringify) so
+ * a single reason string is unambiguous regardless of whether the
+ * source used a string literal or a no-substitution template.
  */
 function describeReceiverPath(expr: ts.Expression): string {
   if (ts.isParenthesizedExpression(expr)) {
@@ -1321,6 +1342,13 @@ function describeReceiverPath(expr: ts.Expression): string {
   if (ts.isIdentifier(expr)) return expr.text;
   if (ts.isPropertyAccessExpression(expr)) {
     return `${describeReceiverPath(expr.expression)}.${expr.name.text}`;
+  }
+  if (ts.isElementAccessExpression(expr)) {
+    const argExpr = expr.argumentExpression;
+    if (ts.isStringLiteralLike(argExpr)) {
+      return `${describeReceiverPath(expr.expression)}[${JSON.stringify(argExpr.text)}]`;
+    }
+    return `${describeReceiverPath(expr.expression)}[<computed>]`;
   }
   if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression)) {
     return `new ${expr.expression.text}()`;
@@ -1466,6 +1494,27 @@ function callIsSuppressed(
  * `bare identifier 'csrfToken'` so the report points the reviewer
  * straight at the offending shape.
  */
+/**
+ * Strip outer ParenthesizedExpression wrappers off a callee
+ * expression. Without this, a trivial `(helpers.pick)(req)` /
+ * `(helpers['pick'])(req)` slips past every call-site shape check
+ * below — those tests look at `n.expression` directly, which would
+ * be a `ParenthesizedExpression` rather than the
+ * Property/Element/Identifier the rule expects. `resolveCallReceiverHost`
+ * already unwraps parens internally on the receiver side; this is
+ * the matching unwrap for the call-site (callee) side, closing the
+ * paren-bypass for ALL three call-shape rules at once
+ * (helper-function call, form-reader call, method-call dot AND
+ * bracket form). Same shape is unwrapped on the receiver inside the
+ * call, so detection composes (e.g. `((helpers)['pick'])(req)` is
+ * still flagged).
+ */
+function unwrapParenCallee(expr: ts.Expression): ts.Expression {
+  let cur: ts.Expression = expr;
+  while (ts.isParenthesizedExpression(cur)) cur = cur.expression;
+  return cur;
+}
+
 function scanArgForSecrets(
   arg: ts.Node,
   found: Set<string>,
@@ -1490,15 +1539,20 @@ function scanArgForSecrets(
         }
       }
     } else if (ts.isCallExpression(n)) {
+      // Strip outer parens off the callee so a trivial
+      // `(helpers.pick)(req)` / `(helpers['pick'])(req)` /
+      // `(pickPassword)(req)` doesn't slip past every shape check
+      // below. See `unwrapParenCallee` doc-comment for the rationale.
+      const callee = unwrapParenCallee(n.expression);
       // Detect react-hook-form value readers: `form.getValues('password')`,
       // `form.watch('newPassword')`, etc. Only flagged when both the
       // method name AND the string-literal argument are forbidden — a
       // benign `form.getValues('amount')` does not trip.
       if (
         surface.forbiddenFormGetterMethods.size > 0 &&
-        ts.isPropertyAccessExpression(n.expression)
+        ts.isPropertyAccessExpression(callee)
       ) {
-        const methodName = n.expression.name.text;
+        const methodName = callee.name.text;
         if (surface.forbiddenFormGetterMethods.has(methodName)) {
           const first = n.arguments[0];
           if (first && ts.isStringLiteralLike(first)) {
@@ -1519,11 +1573,11 @@ function scanArgForSecrets(
       // Catches `log.info(\`pw=\${pickPassword(req)}\`)` even though
       // the forbidden property access never appears inside the log
       // call's argument subtree.
-      if (ts.isIdentifier(n.expression)) {
-        const binding = resolveIdentifierBinding(n.expression, scopes);
+      if (ts.isIdentifier(callee)) {
+        const binding = resolveIdentifierBinding(callee, scopes);
         if (binding && binding.kind === 'helper') {
           found.add(
-            `helper call '${n.expression.text}()' returning ${binding.reason}`,
+            `helper call '${callee.text}()' returning ${binding.reason}`,
           );
         }
       }
@@ -1536,21 +1590,52 @@ function scanArgForSecrets(
       // bypass left after #541 (route the helper through a property
       // access so the bare-identifier rule no longer matches).
       //
+      // Task #554 extends the same rule to the computed-key form
+      // (`helpers['pickPassword'](req)` /
+      // `helpers[\`pickPassword\`](req)`) — the only structural
+      // difference at the call site is an ElementAccessExpression
+      // callee with a string-literal index instead of a
+      // PropertyAccessExpression with a `.name`. The
+      // methodHost/`host.methods` lookup is keyed by the same string,
+      // so once the index is read out of the literal the rest of the
+      // detection is identical. A non-literal index
+      // (`helpers[methodName](req)` /
+      // `helpers[\`pick${suffix}\`](req)`) is intentionally NOT
+      // flagged — there is no static method name to compare against
+      // the forbidden-return map, so flagging would either misreport
+      // the wrong method or require flow analysis we deliberately do
+      // not do here.
+      //
       // The form-reader detection above already short-circuits on
       // forbiddenFormGetterMethods; reaching this branch with a
       // method name in that set would still be a legitimate hit
       // when a methodHost happens to share the name (rare but
       // benign — produces a separate, more specific reason string).
-      if (ts.isPropertyAccessExpression(n.expression)) {
-        const host = resolveCallReceiverHost(n.expression.expression, scopes);
+      if (ts.isPropertyAccessExpression(callee)) {
+        const host = resolveCallReceiverHost(callee.expression, scopes);
         if (host) {
-          const methodName = n.expression.name.text;
+          const methodName = callee.name.text;
           const reason = host.methods.get(methodName);
           if (reason) {
-            const path = describeReceiverPath(n.expression.expression);
+            const path = describeReceiverPath(callee.expression);
             found.add(
               `method call '${path}.${methodName}()' returning ${reason}`,
             );
+          }
+        }
+      } else if (ts.isElementAccessExpression(callee)) {
+        const idxExpr = callee.argumentExpression;
+        if (ts.isStringLiteralLike(idxExpr)) {
+          const host = resolveCallReceiverHost(callee.expression, scopes);
+          if (host) {
+            const methodName = idxExpr.text;
+            const reason = host.methods.get(methodName);
+            if (reason) {
+              const path = describeReceiverPath(callee.expression);
+              found.add(
+                `method call '${path}[${JSON.stringify(idxExpr.text)}]()' returning ${reason}`,
+              );
+            }
           }
         }
       }

@@ -1313,6 +1313,249 @@ describe('check-no-secrets-in-logs CI guard', () => {
     expect(reasons).toHaveLength(0);
   });
 
+  // ---------------------------------------------------------------
+  // Computed method-call detection (task #554). Task #548 closed the
+  // dot-form bypass; the natural next bypass is to swap the dot for
+  // a bracket and put the method name in a string literal (or a
+  // no-substitution template literal):
+  //
+  //   const helpers = { pickPassword: (req) => req.body.password };
+  //   log.info(`pw=${helpers['pickPassword'](req)}`);
+  //   log.info(`pw=${helpers[\`pickPassword\`](req)}`);
+  //
+  // The methodHost machinery is keyed by string method name, so the
+  // computed form looks up exactly the same `host.methods.get('pick')`
+  // entry as the dot form once we read the index out of the literal.
+  // The receiver itself can also be reached via bracket form
+  // (`obj['helper']['pick']`), which is what the
+  // resolveCallReceiverHost ElementAccess branch covers.
+  // ---------------------------------------------------------------
+
+  it('flags `helpers[\'pickPassword\'](req)` (single-receiver, string-literal index)', () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info(\`pw=\${helpers['pickPassword'](req)}\`);`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\["pickPassword"\]\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `helpers[`pickPassword`](req)` (single-receiver, no-substitution template-literal index)', () => {
+    // No-substitution template literals are `ts.isStringLiteralLike`
+    // too, so the computed form via backticks must be flagged
+    // identically to the single-quote form. The reason text uses
+    // `JSON.stringify` to render the index, so it is double-quoted
+    // regardless of source quote style — pin both shapes.
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.warn(helpers[\`pickPassword\`](req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\["pickPassword"\]\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a NESTED all-bracket path `obj[\'helper\'][\'pick\'](req)`', () => {
+    // Both the outer call's index AND the inner receiver's index are
+    // string literals — exercises the new ElementAccess branch in
+    // both `scanArgForSecrets` (call site) and
+    // `resolveCallReceiverHost` (inner receiver walk).
+    const reasons = reasonsFor(
+      `const obj = {\n` +
+        `  helper: {\n` +
+        `    pick: (req: any) => req.body.password,\n` +
+        `  },\n` +
+        `};\n` +
+        `log.info(obj['helper']['pick'](req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'obj\["helper"\]\["pick"\]\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a MIXED path `obj[\'helper\'].pick(req)` (bracket inner, dot outer)', () => {
+    // Outer callee is PropertyAccess (`.pick`), inner receiver is
+    // ElementAccess (`obj['helper']`). The PropertyAccess call-site
+    // branch handles the outer; the new ElementAccess case in
+    // `resolveCallReceiverHost` handles the inner — the path string
+    // shows the bracket form back to the reviewer.
+    const reasons = reasonsFor(
+      `const obj = {\n` +
+        `  helper: {\n` +
+        `    pick: (req: any) => req.body.password,\n` +
+        `  },\n` +
+        `};\n` +
+        `log.info(obj['helper'].pick(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'obj\["helper"\]\.pick\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a MIXED path `obj.helper[\'pick\'](req)` (dot inner, bracket outer)', () => {
+    // Outer callee is ElementAccess (`['pick']`), inner receiver is
+    // PropertyAccess (`obj.helper`). Symmetric to the previous test
+    // — the new call-site ElementAccess branch handles the outer
+    // even though the inner walk uses the existing PropertyAccess
+    // case.
+    const reasons = reasonsFor(
+      `const obj = {\n` +
+        `  helper: {\n` +
+        `    pick: (req: any) => req.body.password,\n` +
+        `  },\n` +
+        `};\n` +
+        `log.info(obj.helper['pick'](req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'obj\.helper\["pick"\]\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `new H()[\'pick\'](req)` (class instance via bracket access)', () => {
+    // Same methodHost binding as task #548's `new H().pick(req)`,
+    // but reached via a bracket index. The receiver path renders as
+    // `new H()["pick"]()` so the reviewer sees the bracket form.
+    const reasons = reasonsFor(
+      `class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `}\n` +
+        `log.info(new H()['pick'](req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'new H\(\)\["pick"\]\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a computed method call whose index is a non-literal expression', () => {
+    // `helpers[methodName](req)` where `methodName` is a runtime
+    // variable cannot be statically resolved to a method name. The
+    // rule must stay conservative — flagging would be guesswork
+    // (the method might be `pickId`, not `pickPassword`).
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `  pickId: (req: any) => req.body.id,\n` +
+        `};\n` +
+        `function f(methodName: 'pickPassword' | 'pickId') {\n` +
+        `  log.info(helpers[methodName](req));\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a computed method call whose index is a substitution template literal', () => {
+    // `` helpers[`pick${suffix}`](req) `` is `ts.isTemplateExpression`,
+    // NOT `ts.isStringLiteralLike` — the resolved method name depends
+    // on `suffix` at runtime. Same conservatism as the variable-index
+    // case above.
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `function f(suffix: string) {\n` +
+        `  log.info(helpers[\`pick\${suffix}\`](req));\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('flags a parenthesized DOT-form callee `(helpers.pickPassword)(req)` (paren-bypass guard)', () => {
+    // The architect-flagged paren bypass: wrapping the callee in
+    // parens used to short-circuit every shape check below
+    // (`n.expression` was a ParenthesizedExpression, not a
+    // PropertyAccess). `unwrapParenCallee` strips the outer parens
+    // before the dispatch so the dot form still trips the rule.
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info((helpers.pickPassword)(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a parenthesized BRACKET-form callee `(helpers[\'pick\'])(req)` (paren-bypass guard)', () => {
+    // Symmetric to the dot-form case above, but for the new
+    // computed/bracket form. Same `unwrapParenCallee` indirection
+    // makes both shapes detect identically.
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pick: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info((helpers['pick'])(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\["pick"\]\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a parenthesized BARE-IDENTIFIER helper-call `(pickPassword)(req)` (paren-bypass guard)', () => {
+    // The same paren-bypass also affected the bare-identifier
+    // helper-call rule (task #541). Same fix covers all three
+    // call-shape rules at once.
+    const reasons = reasonsFor(
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `log.info((pickPassword)(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a benign computed call on a host whose OTHER methods are forbidden', () => {
+    // Symmetric to task #548's "benign call on an object whose OTHER
+    // methods are forbidden" — the methods map only contains the
+    // forbidden entry, so a call to `helpers['pickId']` misses the
+    // lookup cleanly even though `helpers['pickPassword']` would hit.
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `  pickId: (req: any) => req.body.id,\n` +
+        `};\n` +
+        `log.info('id', helpers['pickId'](req));`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
   it('honors a trailing // secret-log-ok: <reason> annotation', () => {
     const reasons = reasonsFor(
       `function f(csrfToken: string) {\n` +
