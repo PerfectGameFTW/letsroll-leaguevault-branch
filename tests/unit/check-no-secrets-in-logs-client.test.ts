@@ -40,6 +40,13 @@ import { describe, expect, it } from 'vitest';
 import { scanSource, CLIENT_SURFACE } from '../../scripts/check-no-secrets-in-logs';
 
 const SCRIPT = join(process.cwd(), 'scripts/check-no-secrets-in-logs.ts');
+// Use the locally-installed tsx binary directly instead of going
+// through `npx`. When two test files spawn `npx tsx` in parallel
+// against fresh `mkdtempSync` cwd's, npx's package-resolution /
+// install path races and intermittently exits non-zero (status 1
+// or 254). Pointing at `node_modules/.bin/tsx` skips that resolver
+// entirely and keeps the spawn deterministic under file-parallelism.
+const TSX_BIN = join(process.cwd(), 'node_modules/.bin/tsx');
 
 function reasonsFor(src: string, file = 'client/src/fixture.ts'): string[] {
   return scanSource(file, src, CLIENT_SURFACE).flatMap((h) => h.reasons);
@@ -54,8 +61,8 @@ describe('check-no-secrets-in-logs CI guard (client surface)', () => {
    */
   it('runs against the real codebase in --strict mode and exits 0', () => {
     const r = spawnSync(
-      'npx',
-      ['tsx', SCRIPT, '--surface=client', '--strict'],
+      TSX_BIN,
+      [SCRIPT, '--surface=client', '--strict'],
       {
         cwd: process.cwd(),
         encoding: 'utf8',
@@ -715,7 +722,7 @@ describe('check-no-secrets-in-logs CI guard (client surface)', () => {
         `  return <span>x</span>;\n` +
         `}\n`,
     );
-    const r = spawnSync('npx', ['tsx', SCRIPT, '--surface=client'], {
+    const r = spawnSync(TSX_BIN, [SCRIPT, '--surface=client'], {
       cwd: dir,
       encoding: 'utf8',
       env: { ...process.env, NODE_ENV: 'test' },
