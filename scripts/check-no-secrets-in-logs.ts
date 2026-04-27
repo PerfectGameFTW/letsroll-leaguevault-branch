@@ -574,6 +574,41 @@ function classifyInitializer(
   surface: Surface,
   scopes?: Map<ts.Node, Map<string, Binding>>,
 ): { kind: 'forbidden'; reason: string } | null {
+  // task #547: unwrap parentheses so `(req.body.password ?? '')`
+  // resolves the same as the unparenthesized form. Parens are a
+  // structurally invisible wrapper for the purposes of leak
+  // classification; the existing property-access / identifier /
+  // form-reader branches all benefit from this normalization too.
+  if (ts.isParenthesizedExpression(init)) {
+    return classifyInitializer(init.expression, surface, scopes);
+  }
+  // task #547: walk through `??` and `||` operands so a forbidden
+  // RHS hidden behind a default value (`req.body.password ?? ''`)
+  // gets classified the same as the bare property access. Either
+  // operand reaching a forbidden shape is enough — the alias is
+  // conservatively forbidden, and the original property-access
+  // reason is preserved by recursion so the report still points at
+  // the real source.
+  if (
+    ts.isBinaryExpression(init) &&
+    (init.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
+      init.operatorToken.kind === ts.SyntaxKind.BarBarToken)
+  ) {
+    const left = classifyInitializer(init.left, surface, scopes);
+    if (left) return left;
+    const right = classifyInitializer(init.right, surface, scopes);
+    if (right) return right;
+  }
+  // task #547: same idea for ternaries — `cond ? req.body.token :
+  // null` could yield the secret on the truthy branch and must be
+  // treated as forbidden. Walking both branches keeps the rule
+  // symmetric (the secret can sit on either side).
+  if (ts.isConditionalExpression(init)) {
+    const t = classifyInitializer(init.whenTrue, surface, scopes);
+    if (t) return t;
+    const f = classifyInitializer(init.whenFalse, surface, scopes);
+    if (f) return f;
+  }
   if (ts.isPropertyAccessExpression(init)) {
     const name = init.name.text.toLowerCase();
     if (surface.forbiddenPropertyNames.has(name)) {

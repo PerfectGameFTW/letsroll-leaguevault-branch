@@ -469,6 +469,105 @@ describe('check-no-secrets-in-logs CI guard', () => {
   });
 
   // ---------------------------------------------------------------
+  // Null-coalescing / logical-or / ternary alias detection
+  // (task #547). #540 closed plain-identifier alias chains, but
+  // the brief explicitly called out "a temp variable for
+  // null-coalescing" as a motivating shape:
+  //
+  //   const pw = req.body.password ?? '';
+  //   log.info(`pw=${pw}`);
+  //
+  //   const t = cond ? req.body.token : null;
+  //   log.info(t);
+  //
+  // The classifier must walk into `??` / `||` operands and ternary
+  // branches; if any reachable operand classifies as forbidden the
+  // whole RHS is forbidden, with the original property-access
+  // reason preserved through the recursion.
+  // ---------------------------------------------------------------
+
+  it('flags `const pw = req.body.password ?? ""; log.info(pw)` (null-coalescing alias)', () => {
+    const reasons = reasonsFor(
+      `function login(req: any) {\n` +
+        `  const pw = req.body.password ?? '';\n` +
+        `  log.info(\`pw=\${pw}\`);\n` +
+        `}`,
+    );
+    // The reason must surface the ORIGINAL `.password` source so the
+    // report still points at the real leak site, not just the alias.
+    expect(
+      reasons.some((r) => /local 'pw' aliasing .*\.password/.test(r)),
+    ).toBe(true);
+  });
+
+  it('flags `const pw = req.body.password || ""; log.info(pw)` (logical-or alias)', () => {
+    // `||` and `??` share the same recursion path; pin both so a
+    // future refactor of one branch doesn't silently regress the
+    // other.
+    const reasons = reasonsFor(
+      `function login(req: any) {\n` +
+        `  const pw = req.body.password || '';\n` +
+        `  log.info(\`pw=\${pw}\`);\n` +
+        `}`,
+    );
+    expect(
+      reasons.some((r) => /local 'pw' aliasing .*\.password/.test(r)),
+    ).toBe(true);
+  });
+
+  it('flags `const t = cond ? req.body.token : null; log.info(t)` (ternary alias)', () => {
+    const reasons = reasonsFor(
+      `function login(req: any, cond: boolean) {\n` +
+        `  const t = cond ? req.body.token : null;\n` +
+        `  log.info(t);\n` +
+        `}`,
+    );
+    expect(
+      reasons.some((r) => /local 't' aliasing .*\.token/.test(r)),
+    ).toBe(true);
+  });
+
+  it('flags a ternary whose forbidden branch is on the false side', () => {
+    // The recursion must walk both branches — the secret can sit
+    // on either side of the `:` and still leak when logged.
+    const reasons = reasonsFor(
+      `function login(req: any, cond: boolean) {\n` +
+        `  const t = cond ? null : req.body.token;\n` +
+        `  log.info(t);\n` +
+        `}`,
+    );
+    expect(
+      reasons.some((r) => /local 't' aliasing .*\.token/.test(r)),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a ternary where neither branch is forbidden', () => {
+    // Negative case from the brief — the propagation must only
+    // fire when at least one operand reaches a forbidden shape, so
+    // a benign ternary stays clean.
+    const reasons = reasonsFor(
+      `function f(cond: boolean) {\n` +
+        `  const v = cond ? 'a' : 'b';\n` +
+        `  log.info(v);\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a `??` alias whose only operand is benign', () => {
+    // Symmetric negative for the binary path — neither operand of
+    // `userInput ?? 'fallback'` reaches a forbidden shape, so the
+    // local stays benign.
+    const reasons = reasonsFor(
+      `function f(userInput: string | null) {\n` +
+        `  const v = userInput ?? 'fallback';\n` +
+        `  log.info(v);\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  // ---------------------------------------------------------------
   // Helper-function call detection (task #541). Multi-hop alias
   // detection (#540) closed the obvious bypass of routing the
   // secret through extra locals; the next natural shape is to
