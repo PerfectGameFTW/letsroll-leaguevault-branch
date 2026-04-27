@@ -79,7 +79,7 @@ jobs:
 
     steps:
       - name: Check out the PR
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Detect whether this PR (or push) actually touched any of the
       # files the race suite covers. Done inside the job (rather than
@@ -140,7 +140,7 @@ jobs:
 
       - name: Set up Node.js
         if: steps.decide.outputs.run == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           # Pinned to the runtime declared in `replit.md` so CI matches
           # the dev/prod environment. Bump in lockstep when that file
