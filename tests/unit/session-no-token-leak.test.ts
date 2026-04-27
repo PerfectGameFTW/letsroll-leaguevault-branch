@@ -135,6 +135,15 @@ vi.mock('../../server/lib/password', () => ({
 
 vi.mock('../../server/config', () => ({
   isDev: true,
+  // `setupAuth` reads `isDeployment` to decide whether to mark the
+  // session cookie `secure` even when NODE_ENV !== 'production'
+  // (Replit deployments terminate TLS at the proxy). This mock has
+  // to mirror EVERY symbol the imported file consumes — vi.mock with
+  // a factory is a full replacement, so an omitted export becomes a
+  // hard "No 'isDeployment' export" runtime error rather than a
+  // silent undefined. Pinned `false` here so the cookie path under
+  // test stays the dev (non-secure) branch.
+  isDeployment: false,
   env: {
     SESSION_SECRET,
     APP_DOMAIN: 'test.example',

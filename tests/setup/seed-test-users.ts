@@ -7,9 +7,9 @@
  * Safe to run multiple times: existing users are updated in place
  * (password rehashed, role/orgId enforced) and existing orgs are reused.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../../server/db';
-import { organizations, users } from '@shared/schema';
+import { leagues, organizations, users } from '@shared/schema';
 import { hashPassword } from '../../server/lib/password';
 import { isReplitDeploymentValue } from '../../server/utils/replit-env';
 
@@ -62,6 +62,45 @@ interface UserSpec {
   name: string;
   role: 'system_admin' | 'org_admin' | 'user';
   organizationId: number | null;
+}
+
+/**
+ * Ensure each test org has at least one baseline league so tests
+ * that need to link a bowler/team to a league (e.g. the
+ * `tests/api/bowler-leagues-*.test.ts` suites) have something to
+ * attach to on a freshly-provisioned database.
+ *
+ * Without this, those tests pass on developer machines (where prior
+ * runs have left leagues lying around) but fail in CI on a clean DB
+ * at the `expect(list.length).toBeGreaterThan(0)` precondition. The
+ * fixture is matched by stable (organizationId, name) so re-runs
+ * don't accumulate duplicates and the row is reused across the
+ * whole suite.
+ *
+ * Kept minimal: only the columns the schema marks as NOT NULL
+ * without a default. Everything else falls back to the schema
+ * defaults (active=true, weeklyFee, paymentMode='weekly',
+ * seasonNumber=1, empty skip/cancel arrays).
+ */
+async function ensureBaselineLeague(
+  organizationId: number,
+  name: string,
+): Promise<void> {
+  const [existing] = await db
+    .select({ id: leagues.id })
+    .from(leagues)
+    .where(and(eq(leagues.organizationId, organizationId), eq(leagues.name, name)));
+  if (existing) return;
+
+  // Far-future season so anything that filters by "currently active"
+  // still picks it up regardless of the wall clock.
+  await db.insert(leagues).values({
+    name,
+    organizationId,
+    seasonStart: '2025-01-01',
+    seasonEnd: '2099-12-31',
+    weekDay: 'Monday',
+  });
 }
 
 async function ensureUser(spec: UserSpec): Promise<void> {
@@ -121,6 +160,13 @@ export async function seedTestUsers(): Promise<void> {
     role: 'org_admin',
     organizationId: orgBId,
   });
+
+  // Baseline league per test org — see `ensureBaselineLeague` above
+  // for why. Names are unique per org so tests that need a stable
+  // identifier (or want to ignore the baseline and search for their
+  // own) can do either.
+  await ensureBaselineLeague(orgAId, 'Vitest Org A Baseline League');
+  await ensureBaselineLeague(orgBId, 'Vitest Org B Baseline League');
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
