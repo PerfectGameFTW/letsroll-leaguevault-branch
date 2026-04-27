@@ -14,6 +14,7 @@ import { hasAccessToPayment, requireOrganizationAccess } from '../../utils/acces
 import { paymentWriteLimiter } from '../../middleware/rate-limit.js';
 import { differenceInWeeks } from 'date-fns';
 import { paymentScheduler } from '../../services/payment-scheduler.js';
+import { isTestKickSuppressed, PAYMENT_SCHEDULER_KICK_HEADER } from '../../utils/test-suppression';
 import { db } from '../../db.js';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
 import { payments as paymentsTable } from '@shared/schema';
@@ -123,7 +124,9 @@ router.post("/", paymentWriteLimiter, async (req, res) => {
             const activeSchedule = await storage.getPaymentSchedule(payment.bowlerId, payment.leagueId);
             if (activeSchedule) {
               await storage.deactivatePaymentSchedule(activeSchedule.id, `paid_in_full:payment_id=${created.id}`);
-              await paymentScheduler.removeSchedule(activeSchedule.id);
+              if (!isTestKickSuppressed(req, PAYMENT_SCHEDULER_KICK_HEADER)) {
+                await paymentScheduler.removeSchedule(activeSchedule.id);
+              }
               log.info(`Bowler ${payment.bowlerId} paid in full for league ${payment.leagueId}, auto-cancelled schedule ${activeSchedule.id}`);
             }
           }

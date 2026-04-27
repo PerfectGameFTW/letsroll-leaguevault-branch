@@ -10,6 +10,7 @@ import { adminWriteLimiter } from '../middleware/rate-limit.js';
 import { getNextLeagueDateTime } from '../utils/league-datetime.js';
 import { getEffectiveBowlingWeeks } from '@shared/schedule-utils';
 import { createLogger } from '../logger';
+import { isTestKickSuppressed, PAYMENT_SCHEDULER_KICK_HEADER } from '../utils/test-suppression';
 
 const log = createLogger("PaymentSchedules");
 
@@ -86,7 +87,9 @@ router.post('/', adminWriteLimiter, async (req, res) => {
 
     const schedule = await storage.createPaymentSchedule(validationResult.data);
 
-    await paymentScheduler.addSchedule(schedule, league.organizationId);
+    if (!isTestKickSuppressed(req, PAYMENT_SCHEDULER_KICK_HEADER)) {
+      await paymentScheduler.addSchedule(schedule, league.organizationId);
+    }
 
     return sendSuccess(res, schedule, 201);
   } catch (error) {
@@ -153,7 +156,9 @@ router.delete('/:id', adminWriteLimiter, async (req, res) => {
     }
 
     await storage.deactivatePaymentSchedule(id, "manual");
-    await paymentScheduler.removeSchedule(id);
+    if (!isTestKickSuppressed(req, PAYMENT_SCHEDULER_KICK_HEADER)) {
+      await paymentScheduler.removeSchedule(id);
+    }
 
     return sendSuccess(res, { message: 'Payment schedule cancelled' });
   } catch (error) {
@@ -215,7 +220,9 @@ router.patch('/:id', adminWriteLimiter, async (req, res) => {
     }
 
     const updated = await storage.updatePaymentScheduleFields(id, updates);
-    await paymentScheduler.updateSchedule(updated);
+    if (!isTestKickSuppressed(req, PAYMENT_SCHEDULER_KICK_HEADER)) {
+      await paymentScheduler.updateSchedule(updated);
+    }
 
     return sendSuccess(res, updated);
   } catch (error) {

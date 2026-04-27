@@ -9,6 +9,7 @@ import { getOrganizationFilter, filterByOrganization } from '../middleware/organ
 import { hashPassword } from '../auth';
 import { sendInviteEmail } from '../services/email';
 import { paymentScheduler } from '../services/payment-scheduler.js';
+import { isTestKickSuppressed, PAYMENT_SCHEDULER_KICK_HEADER } from '../utils/test-suppression';
 import { getNextLeagueDateTime } from '../utils/league-datetime.js';
 import { calculateSeasonEnd } from '@shared/schedule-utils';
 import { db } from '../db.js';
@@ -329,10 +330,12 @@ router.patch("/:id", async (req: Request, res) => {
         );
 
         await storage.updatePaymentScheduleFields(sched.id, { nextPaymentDate: nextDate.toISOString() });
-        await paymentScheduler.removeSchedule(sched.id);
-        const updatedSched = await storage.getPaymentScheduleById(sched.id);
-        if (updatedSched && updatedSched.active) {
-          await paymentScheduler.addSchedule(updatedSched, updated.organizationId);
+        if (!isTestKickSuppressed(req, PAYMENT_SCHEDULER_KICK_HEADER)) {
+          await paymentScheduler.removeSchedule(sched.id);
+          const updatedSched = await storage.getPaymentScheduleById(sched.id);
+          if (updatedSched && updatedSched.active) {
+            await paymentScheduler.addSchedule(updatedSched, updated.organizationId);
+          }
         }
       }
     }

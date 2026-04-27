@@ -446,6 +446,23 @@ the other receives `ADMIN_EXISTS` (HTTP 403).
 - **Integration tests**: `npm test -- tests/` (requires running server + seeded users)
   - Prerequisite: `npx tsx scripts/seed.ts all` to create test users
 - **Seed utility**: `npx tsx scripts/seed.ts <command>` (first-admin | org-admin | system-admin \<ID\> | all)
+- **Background-worker kick suppression in tests** (#569, #571): the dev
+  server runs singleton background workers (`applePayWorker`,
+  `paymentScheduler`, …) that share a DB with the vitest suite. Any
+  route that wakes one of these workers as a side effect of an HTTP
+  request can race tests by acting on rows tests just wrote. The
+  convention to silence them is:
+  - Add a header constant to `server/utils/test-suppression.ts` of the
+    shape `x-test-suppress-<worker>-kick`.
+  - Gate the worker kick at the route boundary with
+    `isTestKickSuppressed(req, HEADER)` from the same module. The helper
+    only honours the header when `NODE_ENV !== 'production'`, so the
+    production worker can never be disabled by spoofing the header.
+  - Wire the new header into `tests/helpers.ts:withTestBypassHeader` so
+    every test request is shielded by default.
+
+  Any new background worker added to `server/services/` that mutates
+  rows the test suite reads MUST follow this convention from day one.
 
 ## Branding
 - **App name is always "LeagueVault"** — in app stores, on the home screen icon, and in the PWA manifest (including on org subdomains)

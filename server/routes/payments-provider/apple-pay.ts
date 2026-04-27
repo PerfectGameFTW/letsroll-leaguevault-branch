@@ -16,6 +16,7 @@ import { hasWalletSupport } from '../../services/payment-provider';
 import { applePayWorker } from '../../services/apple-pay-worker';
 import { acceptedApplePayDomainsForOrg, isAcceptedApplePayDomain } from '../../services/apple-pay-domains';
 import { APPLE_PAY_RECOVERY_ALERT_KIND } from '../../services/apple-pay-alerts';
+import { isTestKickSuppressed, APPLE_PAY_WORKER_KICK_HEADER } from '../../utils/test-suppression';
 
 // How far back the admin dashboard banner should consider an Apple Pay
 // recovery alert "recent". 24 hours is generous enough to survive an
@@ -34,11 +35,12 @@ const router = Router();
  * DB with the vitest suite) races the apple-pay job tests by claiming
  * `pending` rows out from under them — see task #569 for the failure
  * mode. The header is wired in tests/helpers.ts via `withTestBypassHeader`
- * so every test request short-circuits the kick by default.
+ * so every test request short-circuits the kick by default. Generic
+ * helper + header constant live in `server/utils/test-suppression.ts`
+ * (#571 generalised the convention to every other route-kicked worker).
  */
 function isWorkerKickSuppressed(req: { headers: Record<string, unknown> }): boolean {
-  if (process.env.NODE_ENV === 'production') return false;
-  return req.headers['x-test-suppress-apple-pay-kick'] === '1';
+  return isTestKickSuppressed(req, APPLE_PAY_WORKER_KICK_HEADER);
 }
 
 router.post('/apple-pay/register-all-domains', async (req, res) => {
