@@ -28,7 +28,7 @@ vi.mock('@/lib/queryClient', () => ({
   csrfFetch: csrfFetchMock,
 }));
 
-import { createPayment, createSquareCustomer } from '@/lib/square';
+import { createPayment, createSquareCustomer, tokenizeCard } from '@/lib/square';
 import { PROVIDER_NOT_CONFIGURED } from '@/lib/provider-not-configured';
 import type { SquareCard } from '@/hooks/use-square-payment';
 
@@ -320,5 +320,106 @@ describe('createSquareCustomer error contract (tasks #511 / #514)', () => {
     // callers like `providerNotConfiguredToast` lose their signal.
     expect(err.message).not.toMatch(/^Failed to create Square customer:/);
     expect(err.message).not.toMatch(/[{}]/);
+  });
+});
+
+describe('tokenizeCard error contract (task #546)', () => {
+  // tokenizeCard never touches the network — it just calls
+  // `cardInstance.tokenize()` and translates the result. Each spec
+  // builds the smallest possible mock card surface needed for the
+  // case under test; `destroy`/`attach` are stubbed only because
+  // `SquareCard` requires them structurally.
+  function makeCard(tokenize: SquareCard['tokenize']): SquareCard {
+    return {
+      tokenize,
+      destroy: vi.fn(),
+      attach: vi.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it('(a) throws INITIALIZATION_ERROR with a friendly message when no card is supplied', async () => {
+    const err = await tokenizeCard(null)
+      .then(
+        () => {
+          throw new Error('tokenizeCard unexpectedly resolved instead of rejecting');
+        },
+        (e: unknown) => e as Error & { code?: string },
+      );
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err.code).toBe('INITIALIZATION_ERROR');
+    expect(err.message).toBe('Card element not initialized');
+    // Friendly-message invariants — no JSON soup, no SDK jargon.
+    expect(err.message).not.toMatch(/[{}]/);
+    expect(err.message).not.toMatch(/Square API Error/i);
+  });
+
+  it('(b) throws TOKENIZATION_ERROR with a friendly message when tokenize returns status !== "OK"', async () => {
+    const card = makeCard(
+      vi.fn().mockResolvedValue({
+        status: 'ERROR',
+        // A realistic SDK shape for a declined / invalid card.
+        errors: [{ message: 'Card was declined by the issuer.' }],
+      }),
+    );
+
+    const err = await tokenizeCard(card)
+      .then(
+        () => {
+          throw new Error('tokenizeCard unexpectedly resolved instead of rejecting');
+        },
+        (e: unknown) => e as Error & { code?: string },
+      );
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err.code).toBe('TOKENIZATION_ERROR');
+    expect(err.message).toBe('Please check your card details and try again.');
+    // The upstream SDK error array must NOT leak into the user-visible
+    // message — the whole point of the static fallback.
+    expect(err.message).not.toMatch(/[{}]/);
+    expect(err.message).not.toMatch(/"errors"/);
+    expect(err.message).not.toMatch(/Square API Error/i);
+  });
+
+  it('(c) throws TOKENIZATION_ERROR with a friendly message when the SDK call itself rejects', async () => {
+    // A typical raw-SDK rejection shape: developer-targeted message
+    // with `Square API Error:` prefix and a JSON-ish payload. None of
+    // this should reach the user-visible toast.
+    const card = makeCard(
+      vi.fn().mockRejectedValue(
+        new Error(
+          'Square API Error: {"error":{"code":"NETWORK_TIMEOUT","detail":"location_id=LY5C3TE48WEXX"}}',
+        ),
+      ),
+    );
+
+    const err = await tokenizeCard(card)
+      .then(
+        () => {
+          throw new Error('tokenizeCard unexpectedly resolved instead of rejecting');
+        },
+        (e: unknown) => e as Error & { code?: string },
+      );
+
+    expect(err).toBeInstanceOf(Error);
+    expect(err.code).toBe('TOKENIZATION_ERROR');
+    expect(err.message).toBe('Please check your card details and try again.');
+    // The whole point: the SDK's developer-jargon message must be
+    // collapsed into the static friendly sentence — no JSON, no
+    // Square-specific phrasing, no internal location id.
+    expect(err.message).not.toMatch(/[{}]/);
+    expect(err.message).not.toMatch(/Square API Error/i);
+    expect(err.message).not.toMatch(/location_id/);
+    expect(err.message).not.toMatch(/LY5C3TE48WEXX/);
+  });
+
+  it('(d) returns the token string on a successful tokenize', async () => {
+    const card = makeCard(
+      vi.fn().mockResolvedValue({ status: 'OK', token: 'tok_success_42' }),
+    );
+
+    const token = await tokenizeCard(card);
+
+    expect(token).toBe('tok_success_42');
   });
 });

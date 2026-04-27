@@ -294,11 +294,27 @@ function makePaymentError(message: string, code: string): Error & { code: string
   return err;
 }
 
-export async function tokenizeCard(cardInstance: SquareCard | CardPointeCard): Promise<string> {
+export async function tokenizeCard(
+  // task #546: accept the absent-card states honestly so the
+  // defensive `if (!cardInstance)` guard isn't dead code per the
+  // type system. Callers that already hold a non-null card see no
+  // behavior change; tests can pass `null` without a double-cast.
+  cardInstance: SquareCard | CardPointeCard | null | undefined,
+): Promise<string> {
   if (!cardInstance) {
     throw makePaymentError('Card element not initialized', 'INITIALIZATION_ERROR');
   }
-  const result = await cardInstance.tokenize();
+  // task #546: wrap the SDK call so any thrown SDK error (network
+  // glitch, init race, raw `Square API Error: ...` strings) gets
+  // collapsed into the same friendly `TOKENIZATION_ERROR` shape as
+  // the `status !== 'OK'` path. Without this guard, raw SDK jargon
+  // could land in a user-facing toast.
+  let result;
+  try {
+    result = await cardInstance.tokenize();
+  } catch {
+    throw makePaymentError('Please check your card details and try again.', 'TOKENIZATION_ERROR');
+  }
   if ('status' in result) {
     if (result.status === 'OK' && result.token) {
       return result.token;
