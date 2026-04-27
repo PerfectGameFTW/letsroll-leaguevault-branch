@@ -986,6 +986,44 @@ describe('check-no-secrets-in-logs CI guard', () => {
     ).toBe(true);
   });
 
+  it('flags a CROSS-FILE identifier default-export `export default pickPassword` (the brief)', () => {
+    // task #555: the natural next bypass of #549. The function is
+    // declared as a plain (non-exported) FunctionDeclaration first,
+    // then re-exported via `export default <Identifier>`. This
+    // parses as ExportAssignment whose expression is an Identifier
+    // — distinct from the ArrowFunction / FunctionExpression
+    // shapes #549 wired up. Pin the identifier-export shape
+    // end-to-end: helpers.ts declares the function, exports it as
+    // default by identifier; routes.ts default-imports it and
+    // logs the call result.
+    const dir = mkdtempSync(
+      join(tmpdir(), 'no-secrets-in-logs-default-ident-'),
+    );
+    const helpersFile = join(dir, 'server/helpers.ts');
+    const routesFile = join(dir, 'server/routes.ts');
+    mkdirSync(dirname(helpersFile), { recursive: true });
+    writeFileSync(
+      helpersFile,
+      `function pickPassword(req: any) { return req.body.password; }\n` +
+        `export default pickPassword;\n`,
+    );
+    writeFileSync(
+      routesFile,
+      `import pickPassword from './helpers';\n` +
+        `log.info(\`pw=\${pickPassword(req)}\`);\n`,
+    );
+    const reasons = scanSource(
+      routesFile,
+      readFileSync(routesFile, 'utf8'),
+      SERVER_SURFACE,
+    ).flatMap((h) => h.reasons);
+    expect(
+      reasons.some((r) =>
+        /helper call 'pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
   it('does NOT flag a CROSS-FILE default-export whose function body is benign', () => {
     // Symmetry with the named-export benign test: a default-exported
     // helper that doesn't return a forbidden expression must not

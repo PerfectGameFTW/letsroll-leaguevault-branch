@@ -770,6 +770,28 @@ function getExportedHelpers(
         if (cls) {
           map.set(DEFAULT_EXPORT_KEY, { kind: 'helper', reason: cls.reason });
         }
+      } else if (ts.isIdentifier(init)) {
+        // task #555: `export default <Identifier>` — the natural
+        // bypass of #549's ExportAssignment branch. The expression
+        // is just an identifier referring to a function declared
+        // (or const-bound) earlier in the same file:
+        //
+        //   function pickPassword(req) { return req.body.password; }
+        //   export default pickPassword;
+        //
+        // Look the identifier up in the imported file's source-file
+        // scope (populated by `collectScopedBindings` passes 1+3,
+        // which classify same-file function declarations and
+        // arrow/function-expression-initialized variables as
+        // 'helper' bindings when their body returns a forbidden
+        // expression). Record the resolved helper under the default
+        // sentinel so a default-import in the consumer flags the
+        // call site identically to `export default function …`.
+        const sourceScope = importedScopes.get(sf);
+        const binding = sourceScope?.get(init.text);
+        if (binding && binding.kind === 'helper') {
+          map.set(DEFAULT_EXPORT_KEY, { kind: 'helper', reason: binding.reason });
+        }
       }
     } else if (
       ts.isExportDeclaration(stmt) &&
