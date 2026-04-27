@@ -478,16 +478,22 @@ function classifyFunctionReturn(
 }
 
 /**
- * Strip parenthesized wrappers from an expression. The forbidden
- * shapes we care about (arrow / function expression / object literal /
- * class expression / new expression) are all structurally invisible
- * through `()`; treating `(value)` and `value` the same way keeps
- * the method-host detection robust against the paren noise commonly
- * left over from conditionals or formatter quirks.
+ * Strip transparent wrappers from an expression. The forbidden
+ * shapes we care about at every caller (arrow / function expression /
+ * object literal / class expression / new expression) are all
+ * structurally invisible through paren AND through TS-only wrappers
+ * (`as`, `<T>`, `!`, `satisfies`) — none alter the runtime value, so
+ * looking through them keeps the alias-classification and method-host
+ * detection from being trivially bypassed by a wrapper noise like
+ * `const x = req.body.password as any`. Task #562 broadened this from
+ * paren-only to the full transparent set; `isTransparentExpressionWrapper`
+ * is the same predicate `unwrapTransparentCallee` (task #560) uses, so
+ * adding a new transparent wrapper kind in one place fixes it for both
+ * the call-site and the alias paths at once.
  */
-function unwrapParens(expr: ts.Expression): ts.Expression {
+function unwrapTransparentWrappers(expr: ts.Expression): ts.Expression {
   let n: ts.Expression = expr;
-  while (ts.isParenthesizedExpression(n)) n = n.expression;
+  while (isTransparentExpressionWrapper(n)) n = n.expression;
   return n;
 }
 
@@ -523,7 +529,7 @@ function buildObjectLiteralMethodHost(
     }
     if (!name) continue;
     if (ts.isPropertyAssignment(prop)) {
-      const init = unwrapParens(prop.initializer);
+      const init = unwrapTransparentWrappers(prop.initializer);
       if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
         const cls = classifyFunctionReturn(init, surface, scopes);
         if (cls) methods.set(name, cls.reason);
@@ -711,7 +717,7 @@ function getExportedHelpers(
     } else if (ts.isVariableStatement(stmt) && hasExportModifier(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
         if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
-        const init = unwrapParens(decl.initializer);
+        const init = unwrapTransparentWrappers(decl.initializer);
         if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
           const cls = classifyFunctionReturn(init, surface, importedScopes);
           if (cls) {
@@ -764,7 +770,7 @@ function getExportedHelpers(
       // listed in the brief: arrow function or function expression.
       // (`export = …` CommonJS-style assignment is intentionally
       // skipped; default-import semantics don't apply to it.)
-      const init = unwrapParens(stmt.expression);
+      const init = unwrapTransparentWrappers(stmt.expression);
       if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
         const cls = classifyFunctionReturn(init, surface, importedScopes);
         if (cls) {
@@ -907,7 +913,11 @@ function classifyInitializer(
   // structurally invisible wrapper for the purposes of leak
   // classification; the existing property-access / identifier /
   // form-reader branches all benefit from this normalization too.
-  if (ts.isParenthesizedExpression(init)) {
+  // task #562: broadened to ALL transparent wrappers (`as`, `<T>`,
+  // `!`, `satisfies`) — `const x = req.body.password as any` would
+  // otherwise alias-record `x` as benign and let `log.info(x)` slip
+  // past, mirroring the call-site bypass closed in task #560.
+  if (isTransparentExpressionWrapper(init)) {
     return classifyInitializer(init.expression, surface, scopes);
   }
   // task #547: walk through `??` and `||` operands so a forbidden
@@ -1288,7 +1298,7 @@ function collectScopedBindings(
       ts.isIdentifier(node.name) &&
       node.initializer
     ) {
-      const init = unwrapParens(node.initializer);
+      const init = unwrapTransparentWrappers(node.initializer);
       const scope = isVarDeclaration(node)
         ? nearestFunctionScope(node)
         : nearestScope(node);
@@ -1395,7 +1405,7 @@ function collectScopedBindings(
       ts.isIdentifier(node.name) &&
       node.initializer
     ) {
-      const init = unwrapParens(node.initializer);
+      const init = unwrapTransparentWrappers(node.initializer);
       if (ts.isNewExpression(init) && ts.isIdentifier(init.expression)) {
         const ctor = init.expression;
         const b = resolveIdentifierBinding(ctor, scopes);

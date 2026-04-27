@@ -2438,6 +2438,100 @@ describe('check-no-secrets-in-logs CI guard', () => {
     expect(reasons).toHaveLength(0);
   });
 
+  // -------- Task #562: TS transparent wrappers in alias initializers --------
+  // Sibling of the task #560 callee/receiver wrapper block above. Task
+  // #560 closed the bypass for `(helper as any)(req)` style call-site
+  // wrappers; this block closes the bypass for `const x = req.body.password
+  // as any; log.info(x)` — same predicate (`isTransparentExpressionWrapper`),
+  // applied at the alias-classification path (`unwrapTransparentWrappers` +
+  // the top of `classifyInitializer`). Each wrapper kind is pinned at one
+  // of {const initializer, ?? operand, ternary branch} per the brief.
+
+  it("flags `const x = req.body.password as any` — `as` wrapper on alias initializer (task #562)", () => {
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const x = req.body.password as any;\n` +
+        `  log.info(x);\n` +
+        `}`,
+    );
+    expect(reasons).toContain(
+      "local 'x' aliasing property access ending in .password",
+    );
+  });
+
+  it('flags `const x = <any>req.body.password` — angle-bracket wrapper on alias initializer (task #562)', () => {
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const x = <any>req.body.password;\n` +
+        `  log.info(x);\n` +
+        `}`,
+    );
+    expect(reasons).toContain(
+      "local 'x' aliasing property access ending in .password",
+    );
+  });
+
+  it('flags `const x = req.body.password!` — non-null wrapper on alias initializer (task #562)', () => {
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const x = req.body.password!;\n` +
+        `  log.info(x);\n` +
+        `}`,
+    );
+    expect(reasons).toContain(
+      "local 'x' aliasing property access ending in .password",
+    );
+  });
+
+  it("flags `const x = req.body.password satisfies string` — `satisfies` wrapper on alias initializer (task #562)", () => {
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const x = req.body.password satisfies string;\n` +
+        `  log.info(x);\n` +
+        `}`,
+    );
+    expect(reasons).toContain(
+      "local 'x' aliasing property access ending in .password",
+    );
+  });
+
+  it("flags `(req.body.password as any) ?? ''` — wrapper inside `??` operand resolves through to the property (task #562)", () => {
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const x = (req.body.password as any) ?? '';\n` +
+        `  log.info(x);\n` +
+        `}`,
+    );
+    expect(reasons).toContain(
+      "local 'x' aliasing property access ending in .password",
+    );
+  });
+
+  it('flags `cond ? req.body.password! : null` — wrapper inside ternary branch resolves through to the property (task #562)', () => {
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const x = req.cond ? req.body.password! : null;\n` +
+        `  log.info(x);\n` +
+        `}`,
+    );
+    expect(reasons).toContain(
+      "local 'x' aliasing property access ending in .password",
+    );
+  });
+
+  it('does NOT flag `const x = unboundFoo as any` — wrapper around an unbound identifier stays benign (task #562 negative)', () => {
+    // Confirms the broadened unwrap doesn't false-positive: looking
+    // through the wrapper still hits a bare identifier with no
+    // forbidden binding, so no alias is recorded.
+    const reasons = reasonsFor(
+      `function f() {\n` +
+        `  const x = unboundFoo as any;\n` +
+        `  log.info(x);\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
   it('does NOT flag a benign computed call on a host whose OTHER methods are forbidden', () => {
     // Symmetric to task #548's "benign call on an object whose OTHER
     // methods are forbidden" — the methods map only contains the
