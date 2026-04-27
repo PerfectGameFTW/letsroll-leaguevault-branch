@@ -42,6 +42,7 @@ concurrency:
 # it out; no issue/PR writes, no package publishing.
 permissions:
   contents: read
+  pull-requests: read  # This is needed to access PR files
 
 jobs:
   race-suite:
