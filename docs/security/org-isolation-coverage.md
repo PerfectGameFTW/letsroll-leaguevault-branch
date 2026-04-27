@@ -78,8 +78,41 @@ green and only goes red when a future change reintroduces a gap.
 
 The same caveat from `csrf-coverage.md` applies: the workflow only
 **blocks merges** if GitHub branch protection on `main` requires the
-`Type check & lint` status check. That setting lives in GitHub repo
-settings → Branches → branch protection rules, not in this repo.
+relevant status checks to pass before a pull request can be merged.
+That setting lives in GitHub repo settings → Branches → branch
+protection rules, not in this repo. If branch protection isn't
+configured (or isn't configured to require these statuses), the
+workflow will still run and report red on a failing PR, but the merge
+button will not be gated.
+
+Two `ci.yml` jobs need to be wired as required checks to fully pin
+this guard:
+
+- **`Type check & lint`** — runs `npm run check:org-isolation`
+  against the live `server/routes/` tree, so an id-bearing GET
+  endpoint added without a corresponding cross-org assertion (or
+  allowlist entry) fails the build at PR time.
+- **`Tests`** — runs `npm test` (vitest), which executes the unit
+  fixtures in `tests/unit/check-org-isolation-coverage.test.ts` that
+  pin the guard's own parser / propagation logic (including the
+  multi-segment `:bowlerId/:leagueId` template-literal matching, the
+  nested `router.use` propagation, and the allowlist-rationale
+  shape). Without this check required, a contributor could change
+  `scripts/check-org-isolation-coverage.ts` in a way that breaks the
+  regex parsing or the propagation logic but happens not to flag
+  anything in the current tree, and the regression would not be
+  caught — `Type check & lint` would still report green because the
+  guard runs against the (already-covered) live codebase. The
+  `Tests` job is what gives those self-tests teeth on PRs.
+
+When extending CI with additional static checks, **append a step to
+the existing `check-and-lint` job** rather than renaming the job or
+splitting into a new job. The job's GitHub-Actions display name
+(`Type check & lint`) is what branch protection keys on; renaming it
+silently de-protects `main` until an operator updates the rule. The
+same applies to `Tests` — append a vitest file rather than renaming
+the job. The in-file comment in `ci.yml` repeats this for future
+contributors.
 
 ## Closing a flagged endpoint
 
