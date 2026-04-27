@@ -42,7 +42,12 @@ function userKeyGenerator(req: Request): string {
  */
 const TEST_BYPASS_HEADER_VALUE = '1';
 
-function testBypassSkip(req: Request): boolean {
+// Exported so route files that build their own inline `rateLimit({...})`
+// (e.g. server/routes/account.ts's confirm-email-change limiter) can opt
+// into the same NODE_ENV-gated bypass that every limiter declared in this
+// file already uses, without re-implementing the gate locally and risking
+// drift in the production-safety check.
+export function testBypassSkip(req: Request): boolean {
   if (process.env.NODE_ENV === 'production') return false;
   return req.header('x-test-rate-limit-bypass') === TEST_BYPASS_HEADER_VALUE;
 }

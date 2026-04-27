@@ -20,6 +20,7 @@ import {
   getBaseUrl,
 } from '../services/email';
 import { requireSystemAdmin } from '../middleware/auth';
+import { testBypassSkip } from '../middleware/rate-limit';
 import { syncBowlerForUser } from '../services/payment-customer-sync';
 import { maskEmail } from '../utils/pii';
 import { randomBytes, createHash } from 'crypto';
@@ -664,6 +665,17 @@ const confirmEmailChangeLimiter = rateLimit({
   // Task #356: shared Postgres store so failed-attempt budget holds
   // across multi-replica deployments.
   store: createSharedRateLimitStore('confirm-email-change'),
+  // Test-only NODE_ENV-gated bypass shared with every limiter declared in
+  // server/middleware/rate-limit.ts. Without this, the shared-IP bucket is
+  // drained under heavy parallel CI load by the cumulative failed confirms
+  // emitted by the file's other tests (the "N parallel confirms" test alone
+  // burns N-1 failures), causing the race-test loser to receive 429 instead
+  // of the expected 400 EMAIL_IN_USE. The dedicated limiter coverage in this
+  // same file (the "trips the limiter after 30 failed confirms" / "fresh
+  // window" / "skipSuccessfulRequests" tests) deliberately uses a raw
+  // `postWithBucket` helper that does NOT add the bypass header, so the
+  // limiter still fires for those assertions.
+  skip: testBypassSkip,
   keyGenerator: (req: Request) => {
     // In non-prod, allow tests to claim an isolated bucket via header so a
     // single suite can exercise the limit without polluting (or being

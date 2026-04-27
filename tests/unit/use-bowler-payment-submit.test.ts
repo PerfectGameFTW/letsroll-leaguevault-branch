@@ -20,6 +20,16 @@ vi.mock('react', async () => {
   return { ...actual, useCallback: <T>(fn: T): T => fn };
 });
 
+// The hook calls `useLocation()` from wouter so it can pass `navigate`
+// into `providerNotConfiguredToast` in its catch block. This test invokes
+// the hook as a plain function (the `useCallback` mock above strips React's
+// hook context), so we likewise neutralize wouter's hook here. Without
+// this, wouter's real `useLocation` triggers React's "Invalid hook call"
+// guard and every test in this file fails before reaching its assertion.
+vi.mock('wouter', () => ({
+  useLocation: () => ['/test', vi.fn()] as const,
+}));
+
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: toastMock, dismiss: vi.fn(), toasts: [] }),
 }));

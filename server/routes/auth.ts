@@ -68,6 +68,14 @@ const setPasswordLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  // Mirror the loginLimiter/registerLimiter pattern in this same file:
+  // the test suite (especially the email-change suite at task #475/#494)
+  // calls /api/auth/set-password multiple times per run, and at max=5 per
+  // 15min the shared-IP bucket drains under heavy parallel CI load,
+  // causing unrelated tests to receive 429 instead of their expected
+  // status. Production keeps the limit enforced (isDev is false there);
+  // no test in tests/api/ asserts a 429 from this route.
+  skip: () => isDev,
   store: createSharedRateLimitStore('set-password'),
   message: {
     success: false,
