@@ -30,6 +30,7 @@ vi.mock('@/lib/queryClient', () => ({
 
 import { createPayment, createSquareCustomer } from '@/lib/square';
 import { PROVIDER_NOT_CONFIGURED } from '@/lib/provider-not-configured';
+import type { SquareCard } from '@/hooks/use-square-payment';
 
 interface FakeResponseInit {
   ok: boolean;
@@ -72,17 +73,23 @@ function fakeResponse({ ok, status, jsonBody, textBody }: FakeResponseInit) {
   return resp;
 }
 
-const okTokenizeCard = {
-  tokenize: vi.fn().mockResolvedValue({ status: 'OK', token: 'tok_abc123' }),
-} as unknown as Parameters<typeof createPayment>[1];
+// Hold a separately-typed handle to the mock so the beforeEach reset
+// doesn't need to re-cast `okTokenizeCard`. Stub the full `SquareCard`
+// surface (one of the two members of `createPayment`'s second-arg
+// union) so no `as unknown as Foo` double-cast is needed — the unused
+// `destroy`/`attach` stubs are required only to satisfy the interface.
+const okTokenize = vi.fn().mockResolvedValue({ status: 'OK', token: 'tok_abc123' });
+const okTokenizeCard: SquareCard = {
+  tokenize: okTokenize,
+  destroy: vi.fn(),
+  attach: vi.fn().mockResolvedValue(undefined),
+};
 
 beforeEach(() => {
   csrfFetchMock.mockReset();
   // The card is reused across tests; reset its tokenize stub each time
   // so call counts and resolved values can't leak between specs.
-  (okTokenizeCard as { tokenize: ReturnType<typeof vi.fn> }).tokenize
-    .mockReset()
-    .mockResolvedValue({ status: 'OK', token: 'tok_abc123' });
+  okTokenize.mockReset().mockResolvedValue({ status: 'OK', token: 'tok_abc123' });
 });
 
 afterEach(() => {
@@ -121,17 +128,21 @@ describe('createPayment error contract (tasks #511 / #514)', () => {
     );
 
     const err = await createPayment(2500, okTokenizeCard, 1, 2)
-      .then(() => null)
-      .catch((e: unknown) => e as Error & { code?: string; status?: number });
+      .then(
+        () => {
+          throw new Error('helper unexpectedly resolved instead of rejecting');
+        },
+        (e: unknown) => e as Error & { code?: string; status?: number },
+      );
 
     expect(err).toBeInstanceOf(Error);
-    expect(err!.message).toBe('Card was declined.');
-    expect(err!.code).toBe('CARD_DECLINED');
-    expect(err!.status).toBe(402);
+    expect(err.message).toBe('Card was declined.');
+    expect(err.code).toBe('CARD_DECLINED');
+    expect(err.status).toBe(402);
     // The whole point of this regression test: no JSON-shaped soup
     // ever appears in the user-visible message.
-    expect(err!.message).not.toMatch(/[{}]/);
-    expect(err!.message).not.toMatch(/"error"/);
+    expect(err.message).not.toMatch(/[{}]/);
+    expect(err.message).not.toMatch(/"error"/);
   });
 
   it('(c) falls back to plain-text body for non-JSON responses without leaking JSON', async () => {
@@ -144,16 +155,20 @@ describe('createPayment error contract (tasks #511 / #514)', () => {
     );
 
     const err = await createPayment(2500, okTokenizeCard, 1, 2)
-      .then(() => null)
-      .catch((e: unknown) => e as Error & { code?: string; status?: number });
+      .then(
+        () => {
+          throw new Error('helper unexpectedly resolved instead of rejecting');
+        },
+        (e: unknown) => e as Error & { code?: string; status?: number },
+      );
 
     expect(err).toBeInstanceOf(Error);
-    expect(err!.message).toBe('Bad Gateway');
+    expect(err.message).toBe('Bad Gateway');
     // No structured code on the wire → the helper still attaches the
     // `PAYMENT_FAILED` fallback so callers can branch on `.code`.
-    expect(err!.code).toBe('PAYMENT_FAILED');
-    expect(err!.status).toBe(502);
-    expect(err!.message).not.toMatch(/[{}]/);
+    expect(err.code).toBe('PAYMENT_FAILED');
+    expect(err.status).toBe(502);
+    expect(err.message).not.toMatch(/[{}]/);
   });
 
   it('(d) preserves PROVIDER_NOT_CONFIGURED end-to-end through the outer catch', async () => {
@@ -171,17 +186,21 @@ describe('createPayment error contract (tasks #511 / #514)', () => {
     );
 
     const err = await createPayment(2500, okTokenizeCard, 1, 2)
-      .then(() => null)
-      .catch((e: unknown) => e as Error & { code?: string; status?: number });
+      .then(
+        () => {
+          throw new Error('helper unexpectedly resolved instead of rejecting');
+        },
+        (e: unknown) => e as Error & { code?: string; status?: number },
+      );
 
     expect(err).toBeInstanceOf(Error);
-    expect(err!.code).toBe(PROVIDER_NOT_CONFIGURED);
-    expect(err!.status).toBe(422);
-    expect(err!.message).toBe("Square isn't connected for this location.");
+    expect(err.code).toBe(PROVIDER_NOT_CONFIGURED);
+    expect(err.status).toBe(422);
+    expect(err.message).toBe("Square isn't connected for this location.");
     // Crucially: the outer catch must NOT have downgraded `.code` to
     // `PAYMENT_FAILED` nor stuffed a JSON blob into `.message`.
-    expect(err!.code).not.toBe('PAYMENT_FAILED');
-    expect(err!.message).not.toMatch(/[{}]/);
+    expect(err.code).not.toBe('PAYMENT_FAILED');
+    expect(err.message).not.toMatch(/[{}]/);
   });
 });
 
@@ -219,15 +238,19 @@ describe('createSquareCustomer error contract (tasks #511 / #514)', () => {
     );
 
     const err = await createSquareCustomer('Jane Bowler', 'jane@example.com', 7)
-      .then(() => null)
-      .catch((e: unknown) => e as Error & { code?: string; status?: number });
+      .then(
+        () => {
+          throw new Error('helper unexpectedly resolved instead of rejecting');
+        },
+        (e: unknown) => e as Error & { code?: string; status?: number },
+      );
 
     expect(err).toBeInstanceOf(Error);
-    expect(err!.message).toBe('A customer with this email already exists.');
-    expect(err!.code).toBe('CUSTOMER_EXISTS');
-    expect(err!.status).toBe(409);
-    expect(err!.message).not.toMatch(/[{}]/);
-    expect(err!.message).not.toMatch(/"error"/);
+    expect(err.message).toBe('A customer with this email already exists.');
+    expect(err.code).toBe('CUSTOMER_EXISTS');
+    expect(err.status).toBe(409);
+    expect(err.message).not.toMatch(/[{}]/);
+    expect(err.message).not.toMatch(/"error"/);
   });
 
   it('(c) falls back to plain-text body for non-JSON responses without leaking JSON', async () => {
@@ -240,17 +263,21 @@ describe('createSquareCustomer error contract (tasks #511 / #514)', () => {
     );
 
     const err = await createSquareCustomer('Jane Bowler', 'jane@example.com', 7)
-      .then(() => null)
-      .catch((e: unknown) => e as Error);
+      .then(
+        () => {
+          throw new Error('helper unexpectedly resolved instead of rejecting');
+        },
+        (e: unknown) => e as Error,
+      );
 
     expect(err).toBeInstanceOf(Error);
     // The plain-text path goes through the outer catch's "no .code"
     // branch, which prefixes the human-friendly summary. The point of
     // the assertion is that the upstream text survives in `.message`
     // and that no JSON soup leaks through.
-    expect(err!.message).toContain('Internal Server Error');
-    expect(err!.message).not.toMatch(/[{}]/);
-    expect(err!.message).not.toMatch(/"error"/);
+    expect(err.message).toContain('Internal Server Error');
+    expect(err.message).not.toMatch(/[{}]/);
+    expect(err.message).not.toMatch(/"error"/);
   });
 
   it('(d) preserves PROVIDER_NOT_CONFIGURED end-to-end through the outer catch', async () => {
@@ -268,17 +295,21 @@ describe('createSquareCustomer error contract (tasks #511 / #514)', () => {
     );
 
     const err = await createSquareCustomer('Jane Bowler', 'jane@example.com', 7)
-      .then(() => null)
-      .catch((e: unknown) => e as Error & { code?: string; status?: number });
+      .then(
+        () => {
+          throw new Error('helper unexpectedly resolved instead of rejecting');
+        },
+        (e: unknown) => e as Error & { code?: string; status?: number },
+      );
 
     expect(err).toBeInstanceOf(Error);
-    expect(err!.code).toBe(PROVIDER_NOT_CONFIGURED);
-    expect(err!.status).toBe(422);
-    expect(err!.message).toBe("Square isn't connected for this location.");
+    expect(err.code).toBe(PROVIDER_NOT_CONFIGURED);
+    expect(err.status).toBe(422);
+    expect(err.message).toBe("Square isn't connected for this location.");
     // The outer catch must NOT have wrapped this into a generic
     // "Failed to create Square customer: ..." string, otherwise
     // callers like `providerNotConfiguredToast` lose their signal.
-    expect(err!.message).not.toMatch(/^Failed to create Square customer:/);
-    expect(err!.message).not.toMatch(/[{}]/);
+    expect(err.message).not.toMatch(/^Failed to create Square customer:/);
+    expect(err.message).not.toMatch(/[{}]/);
   });
 });
