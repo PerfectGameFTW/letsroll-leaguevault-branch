@@ -312,15 +312,30 @@ type Binding =
  * when the initializer matches one of the forbidden shapes —
  * otherwise null.
  *
- * Single-hop only by design: `const a = req.body.password; const
- * b = a;` records `a` as forbidden but `b` as 'other'. The brief
- * for task #516 calls out the single-hop alias as the gap to
- * close; multi-hop is intentionally out of scope and would be a
- * follow-up.
+ * Multi-hop alias chains (task #540): when the RHS is a plain
+ * Identifier that does not itself match a forbidden-name set, we
+ * look it up in the partially-built `scopes` map. If that lookup
+ * resolves to a forbidden binding (set by an earlier declaration
+ * or assignment in the same file), the new binding inherits the
+ * forbidden classification and the reason text is wrapped so the
+ * report still points at the original property access.
+ *
+ *   const pw   = req.body.password;        // pw   forbidden
+ *   const same = pw;                        // same forbidden (this hop)
+ *   const last = same;                      // last forbidden (next hop)
+ *   log.info(`pw=${last}`);                 // flagged
+ *
+ * This is the bridge that closes the gap left after task #516
+ * (single-hop alias). Source-order traversal in `collectScopedBindings`
+ * means each hop only consults bindings already recorded for prior
+ * statements / declarations, which is exactly the semantics we want
+ * — a later TDZ-violating reference is conservatively classified
+ * against any outer same-named binding.
  */
 function classifyInitializer(
   init: ts.Expression,
   surface: Surface,
+  scopes?: Map<ts.Node, Map<string, Binding>>,
 ): { kind: 'forbidden'; reason: string } | null {
   if (ts.isPropertyAccessExpression(init)) {
     const name = init.name.text.toLowerCase();
@@ -356,6 +371,20 @@ function classifyInitializer(
         kind: 'forbidden',
         reason: `bare identifier '${init.text}'`,
       };
+    }
+    // Multi-hop alias propagation. If the RHS identifier is itself
+    // a known forbidden alias from an earlier binding in scope,
+    // classify this initializer as forbidden too. Wraps the prior
+    // reason so the chain stays auditable in the report (e.g.
+    // `local 'pw' aliasing property access ending in .password`).
+    if (scopes) {
+      const prior = resolveIdentifierBinding(init, scopes);
+      if (prior && prior.kind === 'forbidden') {
+        return {
+          kind: 'forbidden',
+          reason: `local '${init.text}' aliasing ${prior.reason}`,
+        };
+      }
     }
   }
   if (
@@ -459,7 +488,10 @@ function collectScopedBindings(
       const init = node.initializer;
       if (ts.isIdentifier(node.name)) {
         // Plain `const x = <init>` — classify the initializer.
-        const cls = init ? classifyInitializer(init, surface) : null;
+        // Pass `scopes` so a plain-identifier RHS (`const same = pw`)
+        // can resolve to the prior binding's classification, which
+        // is what makes multi-hop alias chains catch (task #540).
+        const cls = init ? classifyInitializer(init, surface, scopes) : null;
         recordIn(scope, node.name.text, cls ?? { kind: 'other' });
       } else if (ts.isObjectBindingPattern(node.name)) {
         // `const { password } = req.body` and friends. Each
@@ -550,7 +582,11 @@ function collectScopedBindings(
       node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
       ts.isIdentifier(node.left)
     ) {
-      const cls = classifyInitializer(node.right, surface);
+      // Pass `scopes` for the same reason as Pass 1: an assignment
+      // `b = a` where `a` already resolves to a forbidden binding
+      // must propagate the forbidden classification to `b`
+      // (task #540 multi-hop chain).
+      const cls = classifyInitializer(node.right, surface, scopes);
       if (cls) {
         const name = node.left.text;
         let bindingScope: ts.Node = sourceFile;

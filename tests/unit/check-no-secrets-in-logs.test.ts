@@ -377,6 +377,98 @@ describe('check-no-secrets-in-logs CI guard', () => {
   });
 
   // ---------------------------------------------------------------
+  // Multi-hop alias detection (task #540). Single-hop closed in #516
+  // leaves an obvious bypass: route the secret through a second
+  // local before logging. The brief calls out
+  //   const pw = req.body.password;
+  //   const same = pw;
+  //   log.info(`pw=${same}`);
+  // as the canonical two-hop shape. The classifier must consult
+  // each plain-identifier RHS's existing binding so the forbidden
+  // classification propagates across the chain.
+  // ---------------------------------------------------------------
+
+  it('flags the two-hop `const pw = req.body.password; const same = pw; log.info(`pw=${same}`)` chain (the brief)', () => {
+    const reasons = reasonsFor(
+      `function login(req: any) {\n` +
+        `  const pw = req.body.password;\n` +
+        `  const same = pw;\n` +
+        `  log.info(\`pw=\${same}\`);\n` +
+        `}`,
+    );
+    // The chain should bubble the original property-access reason
+    // through both hops so the report points at the real source.
+    expect(
+      reasons.some((r) => /local 'same' aliasing.*\.password/.test(r)),
+    ).toBe(true);
+  });
+
+  it('flags a three-hop chain `pw -> same -> last -> log`', () => {
+    // Pin that the propagation is fully recursive — each plain-id
+    // initializer pulls forward the prior binding's forbidden
+    // classification, not just the first hop.
+    const reasons = reasonsFor(
+      `function login(req: any) {\n` +
+        `  const pw = req.body.password;\n` +
+        `  const same = pw;\n` +
+        `  const last = same;\n` +
+        `  log.info(\`pw=\${last}\`);\n` +
+        `}`,
+    );
+    expect(
+      reasons.some((r) => /local 'last' aliasing.*\.password/.test(r)),
+    ).toBe(true);
+  });
+
+  it('flags a two-hop chain that goes through an assignment `b = a`', () => {
+    // Mixed shape: declaration hop then assignment hop. The
+    // assignment-alias pass must also consult prior bindings when
+    // its RHS is a plain identifier.
+    const reasons = reasonsFor(
+      `function login(req: any) {\n` +
+        `  const pw = req.body.password;\n` +
+        `  let other: string;\n` +
+        `  other = pw;\n` +
+        `  log.info(\`pw=\${other}\`);\n` +
+        `}`,
+    );
+    expect(
+      reasons.some((r) => /local 'other' aliasing.*\.password/.test(r)),
+    ).toBe(true);
+  });
+
+  it('does NOT flag a multi-hop chain shadowed by an inner declaration', () => {
+    // Same shadowing rules apply: an inner `const same = 'fixture'`
+    // must mask the outer alias chain so the inner log call is
+    // benign.
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const pw = req.body.password;\n` +
+        `  const same = pw;\n` +
+        `  {\n` +
+        `    const same = 'fixture';\n` +
+        `    log.info(same);\n` +
+        `  }\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a two-hop chain whose source binding is a benign value', () => {
+    // The propagation only fires when the prior binding is itself
+    // forbidden. `const a = 'fixture'; const b = a;` stays clean
+    // even though structurally it is a two-hop alias.
+    const reasons = reasonsFor(
+      `function f() {\n` +
+        `  const a = 'fixture';\n` +
+        `  const b = a;\n` +
+        `  log.info(b);\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  // ---------------------------------------------------------------
   // Suppression annotation.
   // ---------------------------------------------------------------
 
