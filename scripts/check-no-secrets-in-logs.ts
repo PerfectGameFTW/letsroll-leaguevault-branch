@@ -235,6 +235,368 @@ function commentSuppresses(commentText: string): boolean {
   return /[A-Za-z0-9]/.test(rest);
 }
 
+/**
+ * Scope-introducing nodes: any node that hosts its own `let` /
+ * `const` / parameter bindings. Mirrors the helper of the same
+ * name in `scripts/check-log-debug-pii.ts` so the two guards
+ * agree on what counts as a scope (var hoisting, parameter
+ * shadowing, destructuring, catch clauses, etc.).
+ */
+function isScopeIntroducingNode(node: ts.Node): boolean {
+  if (ts.isSourceFile(node)) return true;
+  if (ts.isBlock(node)) return true;
+  if (ts.isFunctionDeclaration(node)) return true;
+  if (ts.isFunctionExpression(node)) return true;
+  if (ts.isArrowFunction(node)) return true;
+  if (ts.isMethodDeclaration(node)) return true;
+  if (ts.isConstructorDeclaration(node)) return true;
+  if (ts.isGetAccessorDeclaration(node)) return true;
+  if (ts.isSetAccessorDeclaration(node)) return true;
+  if (ts.isForStatement(node)) return true;
+  if (ts.isForInStatement(node)) return true;
+  if (ts.isForOfStatement(node)) return true;
+  if (ts.isCatchClause(node)) return true;
+  return false;
+}
+
+function nearestScope(node: ts.Node): ts.Node {
+  let n: ts.Node | undefined = node.parent;
+  while (n && !isScopeIntroducingNode(n)) n = n.parent;
+  return n ?? node.getSourceFile();
+}
+
+function isFunctionScope(node: ts.Node): boolean {
+  return (
+    ts.isSourceFile(node) ||
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isConstructorDeclaration(node) ||
+    ts.isGetAccessorDeclaration(node) ||
+    ts.isSetAccessorDeclaration(node)
+  );
+}
+
+function nearestFunctionScope(node: ts.Node): ts.Node {
+  let n: ts.Node | undefined = node.parent;
+  while (n && !isFunctionScope(n)) n = n.parent;
+  return n ?? node.getSourceFile();
+}
+
+function isVarDeclaration(decl: ts.VariableDeclaration): boolean {
+  const list = decl.parent;
+  if (list && ts.isVariableDeclarationList(list)) {
+    return (list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) === 0;
+  }
+  return false;
+}
+
+/**
+ * A binding either resolves to a forbidden value (the local was
+ * initialized from a forbidden property access / element access /
+ * identifier / form-reader call) or to "other" — meaning the name
+ * is bound here but to something benign. The "other" entries are
+ * load-bearing for shadowing: a `const pw = 'fixture'` in an inner
+ * scope must mask any same-named outer alias so the inner `pw` is
+ * NOT treated as a secret.
+ */
+type Binding =
+  | { kind: 'forbidden'; reason: string }
+  | { kind: 'other' };
+
+/**
+ * Classify a variable initializer / assignment RHS. Returns a
+ * forbidden binding (with the reason text the scanner would have
+ * produced if the expression appeared directly inside a log call)
+ * when the initializer matches one of the forbidden shapes —
+ * otherwise null.
+ *
+ * Single-hop only by design: `const a = req.body.password; const
+ * b = a;` records `a` as forbidden but `b` as 'other'. The brief
+ * for task #516 calls out the single-hop alias as the gap to
+ * close; multi-hop is intentionally out of scope and would be a
+ * follow-up.
+ */
+function classifyInitializer(
+  init: ts.Expression,
+  surface: Surface,
+): { kind: 'forbidden'; reason: string } | null {
+  if (ts.isPropertyAccessExpression(init)) {
+    const name = init.name.text.toLowerCase();
+    if (surface.forbiddenPropertyNames.has(name)) {
+      return {
+        kind: 'forbidden',
+        reason: `property access ending in .${init.name.text}`,
+      };
+    }
+  }
+  if (ts.isElementAccessExpression(init)) {
+    const a = init.argumentExpression;
+    if (ts.isStringLiteralLike(a)) {
+      const lit = a.text.toLowerCase();
+      if (
+        surface.forbiddenHeaderKeys.has(lit) ||
+        surface.forbiddenPropertyNames.has(lit)
+      ) {
+        return {
+          kind: 'forbidden',
+          reason: `element access [${JSON.stringify(a.text)}]`,
+        };
+      }
+    }
+  }
+  if (ts.isIdentifier(init)) {
+    const lc = init.text.toLowerCase();
+    if (
+      surface.forbiddenIdentifiersStrict.has(lc) ||
+      surface.forbiddenIdentifiersValueOnly.has(lc)
+    ) {
+      return {
+        kind: 'forbidden',
+        reason: `bare identifier '${init.text}'`,
+      };
+    }
+  }
+  if (
+    ts.isCallExpression(init) &&
+    surface.forbiddenFormGetterMethods.size > 0 &&
+    ts.isPropertyAccessExpression(init.expression)
+  ) {
+    const methodName = init.expression.name.text;
+    if (surface.forbiddenFormGetterMethods.has(methodName)) {
+      const first = init.arguments[0];
+      if (first && ts.isStringLiteralLike(first)) {
+        const key = first.text.toLowerCase();
+        if (surface.forbiddenFormFieldKeys.has(key)) {
+          return {
+            kind: 'forbidden',
+            reason: `form-reader call .${methodName}(${JSON.stringify(first.text)})`,
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Build a per-scope binding map. For every variable declaration,
+ * function parameter, catch variable, function declaration, and
+ * destructured property, record either the forbidden classification
+ * (so a later log call can flag uses of the local) or 'other' (so
+ * the binding shadows any same-named outer forbidden binding).
+ *
+ * Mirrors `collectScopedBindings` in `scripts/check-log-debug-pii.ts`
+ * — same scope rules (`var` hoists to the nearest function scope,
+ * `let` / `const` are block-scoped, parameters bind on the
+ * function-like, catch clauses introduce their own scope) and a
+ * separate pass for assignment-aliasing (`pw = req.body.password;`)
+ * that resolves the binding scope to where the identifier was
+ * actually declared rather than the assignment's enclosing block.
+ */
+function collectScopedBindings(
+  sourceFile: ts.SourceFile,
+  surface: Surface,
+): Map<ts.Node, Map<string, Binding>> {
+  const scopes = new Map<ts.Node, Map<string, Binding>>();
+  const recordIn = (scope: ts.Node, name: string, binding: Binding): void => {
+    let m = scopes.get(scope);
+    if (!m) {
+      m = new Map();
+      scopes.set(scope, m);
+    }
+    // 'forbidden' wins over 'other' in case both happen on the
+    // same name in the same scope (rare; stay conservative on
+    // the side of catching leaks).
+    const prev = m.get(name);
+    if (prev && prev.kind === 'forbidden') return;
+    m.set(name, binding);
+  };
+  const recordParameters = (
+    params: readonly ts.ParameterDeclaration[],
+    scope: ts.Node,
+  ): void => {
+    for (const p of params) {
+      const collectFromBinding = (n: ts.BindingName): void => {
+        if (ts.isIdentifier(n)) {
+          recordIn(scope, n.text, { kind: 'other' });
+        } else if (
+          ts.isObjectBindingPattern(n) ||
+          ts.isArrayBindingPattern(n)
+        ) {
+          for (const el of n.elements) {
+            if (ts.isBindingElement(el)) collectFromBinding(el.name);
+          }
+        }
+      };
+      collectFromBinding(p.name);
+    }
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isConstructorDeclaration(node) ||
+      ts.isGetAccessorDeclaration(node) ||
+      ts.isSetAccessorDeclaration(node)
+    ) {
+      recordParameters(node.parameters, node);
+    }
+    if (ts.isCatchClause(node) && node.variableDeclaration) {
+      const vd = node.variableDeclaration;
+      if (ts.isIdentifier(vd.name)) {
+        recordIn(node, vd.name.text, { kind: 'other' });
+      }
+    }
+    if (ts.isVariableDeclaration(node)) {
+      const scope = isVarDeclaration(node)
+        ? nearestFunctionScope(node)
+        : nearestScope(node);
+      const init = node.initializer;
+      if (ts.isIdentifier(node.name)) {
+        // Plain `const x = <init>` — classify the initializer.
+        const cls = init ? classifyInitializer(init, surface) : null;
+        recordIn(scope, node.name.text, cls ?? { kind: 'other' });
+      } else if (ts.isObjectBindingPattern(node.name)) {
+        // `const { password } = req.body` and friends. Each
+        // binding element pulls a property out of the source — if
+        // that property NAME is forbidden, the local it lands in
+        // is itself a forbidden alias even though the source
+        // expression on the RHS is benign-looking.
+        for (const el of node.name.elements) {
+          if (!ts.isBindingElement(el)) continue;
+          let propText = '';
+          if (el.propertyName) {
+            if (
+              ts.isIdentifier(el.propertyName) ||
+              ts.isStringLiteralLike(el.propertyName)
+            ) {
+              propText = el.propertyName.text;
+            }
+          } else if (ts.isIdentifier(el.name)) {
+            propText = el.name.text;
+          }
+          const lcProp = propText.toLowerCase();
+          if (ts.isIdentifier(el.name)) {
+            if (
+              propText &&
+              (surface.forbiddenPropertyNames.has(lcProp) ||
+                surface.forbiddenHeaderKeys.has(lcProp))
+            ) {
+              const reason = surface.forbiddenHeaderKeys.has(lcProp)
+                ? `element access [${JSON.stringify(propText)}]`
+                : `property access ending in .${propText}`;
+              recordIn(scope, el.name.text, {
+                kind: 'forbidden',
+                reason: `destructured ${reason}`,
+              });
+            } else {
+              recordIn(scope, el.name.text, { kind: 'other' });
+            }
+          } else if (
+            ts.isObjectBindingPattern(el.name) ||
+            ts.isArrayBindingPattern(el.name)
+          ) {
+            const collectFromBinding = (n: ts.BindingName): void => {
+              if (ts.isIdentifier(n)) {
+                recordIn(scope, n.text, { kind: 'other' });
+              } else if (
+                ts.isObjectBindingPattern(n) ||
+                ts.isArrayBindingPattern(n)
+              ) {
+                for (const inner of n.elements) {
+                  if (ts.isBindingElement(inner)) collectFromBinding(inner.name);
+                }
+              }
+            };
+            collectFromBinding(el.name);
+          }
+        }
+      } else if (ts.isArrayBindingPattern(node.name)) {
+        const collectFromBinding = (n: ts.BindingName): void => {
+          if (ts.isIdentifier(n)) {
+            recordIn(scope, n.text, { kind: 'other' });
+          } else if (
+            ts.isObjectBindingPattern(n) ||
+            ts.isArrayBindingPattern(n)
+          ) {
+            for (const el of n.elements) {
+              if (ts.isBindingElement(el)) collectFromBinding(el.name);
+            }
+          }
+        };
+        collectFromBinding(node.name);
+      }
+    }
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      recordIn(nearestScope(node), node.name.text, { kind: 'other' });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
+  // Pass 2: assignment-alias `pw = req.body.password;`. Resolve to
+  // the scope where the LHS was actually declared (mirrors the
+  // sibling guard) so an assignment inside an inner block still
+  // marks the outer-declared name as forbidden for sibling calls
+  // in the same function.
+  const visitAssignments = (node: ts.Node): void => {
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(node.left)
+    ) {
+      const cls = classifyInitializer(node.right, surface);
+      if (cls) {
+        const name = node.left.text;
+        let bindingScope: ts.Node = sourceFile;
+        let s: ts.Node | undefined = nearestScope(node);
+        while (s) {
+          if (scopes.get(s)?.has(name)) {
+            bindingScope = s;
+            break;
+          }
+          if (ts.isSourceFile(s)) {
+            bindingScope = s;
+            break;
+          }
+          s = nearestScope(s);
+        }
+        recordIn(bindingScope, name, cls);
+      }
+    }
+    ts.forEachChild(node, visitAssignments);
+  };
+  visitAssignments(sourceFile);
+
+  return scopes;
+}
+
+/**
+ * Resolve an identifier used at a call site by walking up scopes
+ * until a scope binds the name. Returns the binding when found,
+ * or null when no enclosing scope binds the name (the name is
+ * from an import / module-level / global).
+ */
+function resolveIdentifierBinding(
+  ident: ts.Identifier,
+  scopes: Map<ts.Node, Map<string, Binding>>,
+): Binding | null {
+  let s: ts.Node | undefined = nearestScope(ident);
+  while (s) {
+    const m = scopes.get(s);
+    const b = m?.get(ident.text);
+    if (b) return b;
+    if (ts.isSourceFile(s)) break;
+    s = s.parent ? nearestScope(s) : undefined;
+  }
+  return null;
+}
+
 function listSourceFiles(root: string, surface: Surface): string[] {
   const out: string[] = [];
   const exts = surface.fileExtensions;
@@ -377,6 +739,7 @@ function scanArgForSecrets(
   arg: ts.Node,
   found: Set<string>,
   surface: Surface,
+  scopes: Map<ts.Node, Map<string, Binding>>,
 ): void {
   const visit = (n: ts.Node): void => {
     if (ts.isPropertyAccessExpression(n)) {
@@ -438,6 +801,7 @@ function scanArgForSecrets(
       // ShorthandPropertyAssignment is the special case: `{ csrfToken }`
       // is BOTH a key and a value reference, so it MUST flag for both
       // the strict and value-only sets.
+      let directlyFlagged = false;
       if (
         ts.isShorthandPropertyAssignment(parent) &&
         parent.name === n
@@ -447,11 +811,13 @@ function scanArgForSecrets(
           surface.forbiddenIdentifiersValueOnly.has(lcName)
         ) {
           found.add(`shorthand property '${n.text}' (value reference)`);
+          directlyFlagged = true;
         }
       } else if (!isPropertyName) {
         if (surface.forbiddenIdentifiersStrict.has(lcName)) {
           // Strict set: even `csrfToken.length` is suspicious.
           found.add(`bare identifier '${n.text}'`);
+          directlyFlagged = true;
         } else if (
           surface.forbiddenIdentifiersValueOnly.has(lcName) &&
           !isPropertyReceiver
@@ -460,6 +826,32 @@ function scanArgForSecrets(
           // position is the leak; `token.id` (a property-access
           // receiver, structurally just metadata access) is not.
           found.add(`bare identifier '${n.text}'`);
+          directlyFlagged = true;
+        }
+      }
+      // Single-hop alias check (task #516). A local bound to a
+      // forbidden value via `const pw = req.body.password;` /
+      // `const { password } = req.body;` / `pw = req.body.password;`
+      // / etc. carries the secret string; flag uses of that local
+      // in the same value-reference positions as the value-only
+      // direct identifiers (standalone arg, template span,
+      // shorthand prop) but NOT as a property receiver, so
+      // `pw.length` style metadata access stays benign.
+      if (!directlyFlagged && !isPropertyName && !isPropertyReceiver) {
+        const binding = resolveIdentifierBinding(n, scopes);
+        if (binding && binding.kind === 'forbidden') {
+          if (
+            ts.isShorthandPropertyAssignment(parent) &&
+            parent.name === n
+          ) {
+            found.add(
+              `shorthand property '${n.text}' aliasing ${binding.reason}`,
+            );
+          } else {
+            found.add(
+              `local '${n.text}' aliasing ${binding.reason}`,
+            );
+          }
         }
       }
     }
@@ -484,6 +876,7 @@ export function scanSource(
     /* setParentNodes */ true,
     scriptKindForFile(file),
   );
+  const scopes = collectScopedBindings(sourceFile, surface);
   const hits: Hit[] = [];
 
   const visit = (node: ts.Node): void => {
@@ -499,7 +892,8 @@ export function scanSource(
           isLogMethodAccess(callee));
       if (isLogCall && !callIsSuppressed(sourceFile, node)) {
         const found = new Set<string>();
-        for (const arg of node.arguments) scanArgForSecrets(arg, found, surface);
+        for (const arg of node.arguments)
+          scanArgForSecrets(arg, found, surface, scopes);
         if (found.size > 0) {
           const { line } = sourceFile.getLineAndCharacterOfPosition(
             node.getStart(sourceFile),

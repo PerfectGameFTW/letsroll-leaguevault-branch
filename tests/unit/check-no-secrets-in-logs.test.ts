@@ -262,6 +262,121 @@ describe('check-no-secrets-in-logs CI guard', () => {
   });
 
   // ---------------------------------------------------------------
+  // Single-hop alias detection (task #516). Without scope-aware
+  // binding tracking, a route that pulls the secret into a local
+  // before logging slipped past the scanner because the local name
+  // is not in any forbidden set and the forbidden property access
+  // does not appear inside the log call's argument subtree.
+  // ---------------------------------------------------------------
+
+  it('flags `const pw = req.body.password; log.info(`pw=${pw}`)` (the brief)', () => {
+    // This is the canonical multi-line alias case from the task
+    // brief. The scanner must walk per-scope bindings and see that
+    // `pw` is bound to a forbidden property access at declaration
+    // time.
+    const reasons = reasonsFor(
+      `function login(req: any) {\n` +
+        `  const pw = req.body.password;\n` +
+        `  log.info(\`pw=\${pw}\`);\n` +
+        `}`,
+    );
+    expect(reasons.some((r) => /local 'pw' aliasing .*\.password/.test(r))).toBe(
+      true,
+    );
+  });
+
+  it('flags a local bound to req.headers["x-csrf-token"] when later logged', () => {
+    const reasons = reasonsFor(
+      `function check(req: any) {\n` +
+        `  const csrf = req.headers['x-csrf-token'];\n` +
+        `  log.warn('seen', csrf);\n` +
+        `}`,
+    );
+    expect(
+      reasons.some((r) => /local 'csrf' aliasing .*x-csrf-token/.test(r)),
+    ).toBe(true);
+  });
+
+  it('flags a local bound via destructuring `const { password } = req.body`', () => {
+    // Destructuring is the alias shape that already half-worked
+    // because the destructured local IS the secret string. Pin it
+    // explicitly so the scope pass keeps treating it as a
+    // forbidden binding even when used away from the destructure
+    // (not in shorthand-prop form).
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const { password } = req.body;\n` +
+        `  log.error('attempt', password);\n` +
+        `}`,
+    );
+    expect(
+      reasons.some((r) => /local 'password' aliasing/.test(r)),
+    ).toBe(true);
+  });
+
+  it('flags a local bound via renamed destructuring `const { password: pw } = req.body`', () => {
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const { password: pw } = req.body;\n` +
+        `  log.warn(\`pw=\${pw}\`);\n` +
+        `}`,
+    );
+    expect(reasons.some((r) => /local 'pw' aliasing/.test(r))).toBe(true);
+  });
+
+  it('flags a local re-assigned with `pw = req.body.password` (assignment alias)', () => {
+    // Mirrors the assignment-alias pass in the sibling
+    // `check-log-debug-pii` guard.
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  let pw: string | undefined;\n` +
+        `  pw = req.body.password;\n` +
+        `  log.info(\`pw=\${pw}\`);\n` +
+        `}`,
+    );
+    expect(reasons.some((r) => /local 'pw' aliasing/.test(r))).toBe(true);
+  });
+
+  it('does NOT flag an alias shadowed by an inner declaration', () => {
+    // Shadowing must work the same way as the sibling guard. An
+    // inner `const pw = 'fixture'` masks the outer alias so the
+    // inner `log.info(pw)` is benign.
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const pw = req.body.password;\n` +
+        `  {\n` +
+        `    const pw = 'fixture';\n` +
+        `    log.info(pw);\n` +
+        `  }\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a benign local that happens to share a name across scopes', () => {
+    // `pw` here is just a parameter name with a non-secret
+    // initializer in the call site; no enclosing scope binds it
+    // to a forbidden value.
+    expect(
+      reasonsFor(
+        `function f(pw: string) { log.info(\`label=\${pw}\`); }`,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('does NOT flag a property-receiver use of an aliased local (`pw.length`)', () => {
+    // The metadata-access shape stays benign — same conservative
+    // policy as the bare-`token` rule.
+    const reasons = reasonsFor(
+      `function f(req: any) {\n` +
+        `  const pw = req.body.password;\n` +
+        `  log.info('pw len', pw.length);\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  // ---------------------------------------------------------------
   // Suppression annotation.
   // ---------------------------------------------------------------
 
