@@ -1,6 +1,7 @@
 /**
  * Tests the project-wide "no secret-bearing fields in log calls" guard
- * introduced in task #432.
+ * introduced in task #432 and extended to the client surface in
+ * task #515.
  *
  * The guard (`scripts/check-no-secrets-in-logs.ts`) walks every `.ts`
  * file under `server/` (excluding `*.test.ts` and `__tests__/`) and
@@ -11,6 +12,10 @@
  *   - bare identifier `inviteToken` / `setupSecret` / `csrfToken` /
  *     `resetToken`
  *   - element access with literal `'x-csrf-token'` / `'x-setup-secret'`
+ *
+ * This file pins the SERVER surface. The companion file
+ * `check-no-secrets-in-logs-client.test.ts` pins the CLIENT surface
+ * (which adds form-reader and password-field patterns).
  *
  * These tests:
  *   1. Import `scanSource` from the script directly and drive it
@@ -32,12 +37,14 @@ import { writeFileSync, mkdtempSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { scanSource } from '../../scripts/check-no-secrets-in-logs';
+import { scanSource, SERVER_SURFACE } from '../../scripts/check-no-secrets-in-logs';
 
 const SCRIPT = join(process.cwd(), 'scripts/check-no-secrets-in-logs.ts');
 
 function reasonsFor(src: string): string[] {
-  return scanSource('server/fixture.ts', src).flatMap((h) => h.reasons);
+  return scanSource('server/fixture.ts', src, SERVER_SURFACE).flatMap(
+    (h) => h.reasons,
+  );
 }
 
 describe('check-no-secrets-in-logs CI guard', () => {
@@ -54,7 +61,7 @@ describe('check-no-secrets-in-logs CI guard', () => {
     });
     expect(r.status, r.stderr || r.stdout).toBe(0);
     expect(r.stdout).toMatch(
-      /no-secrets-in-logs guard: scanned \d+ file\(s\) — OK/,
+      /no-secrets-in-logs guard \(server\): scanned \d+ file\(s\) — OK/,
     );
   });
 

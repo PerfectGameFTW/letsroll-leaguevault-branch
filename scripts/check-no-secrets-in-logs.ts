@@ -1,5 +1,5 @@
 /**
- * Project-wide guard against logging secret-bearing fields (task #432).
+ * Project-wide guard against logging secret-bearing fields.
  *
  * Companion to the per-surface `assertNoTokenLeak` regression tests
  * (task #307 / #396) and to the broader `log.debug` PII guard
@@ -15,8 +15,14 @@
  *
  * would not be caught by any existing guard until someone notices.
  *
- * This script parses every `.ts` file under `server/` (excluding
- * `*.test.ts` and `__tests__/`) with the TypeScript compiler API and
+ * Task #432 introduced the original server-side scan. Task #515
+ * extended the same machinery to the React client and shared code,
+ * because the browser console is just as much a secret-leak surface
+ * (it gets shipped to error trackers like Sentry, gets pasted into
+ * user-supplied bug-report screenshots, etc).
+ *
+ * The script parses every `.ts` (and on the client, `.tsx`) file under
+ * the configured surface roots with the TypeScript compiler API and
  * walks each call to a known log method:
  *
  *   log.<level>(...)        logger.<level>(...)        console.<level>(...)
@@ -25,35 +31,44 @@
  *
  * where <level> ∈ {debug, info, warn, error, trace, fatal, log}.
  *
- * Inside each argument subtree it flags as a leak any of:
+ * Inside each argument subtree it flags as a leak any of the
+ * forbidden shapes for that surface (see SERVER_SURFACE /
+ * CLIENT_SURFACE below). Common shapes shared across surfaces:
  *
  *   - PropertyAccessExpression whose property name (case-insensitive)
- *     is one of: password, token, inviteToken, setupSecret, csrfToken,
- *     resetToken. Catches `req.body.password`, `result.token`,
- *     `user.inviteToken`, etc. — including optional-chain
- *     (`req?.body?.token`) and computed-string forms
- *     (`req.body['password']`).
+ *     matches the surface's `forbiddenPropertyNames` set. Catches
+ *     `req.body.password`, `result.token`, `data.csrfToken`, etc. —
+ *     including optional-chain (`req?.body?.token`) and computed-string
+ *     forms (`req.body['password']`).
  *
- *   - Bare Identifier whose name (case-insensitive) is one of:
- *     inviteToken, setupSecret, csrfToken, resetToken. These names
- *     have no benign meaning in this codebase — every variable named
- *     `csrfToken` or `inviteToken` IS the secret. Flagged in any
- *     value-reference position, including as a property-access
- *     receiver (`csrfToken.length`).
+ *   - Bare Identifier whose name (case-insensitive) is in the surface's
+ *     `forbiddenIdentifiersStrict` set. These names have no benign
+ *     meaning in this codebase — every variable named `csrfToken` or
+ *     `inviteToken` IS the secret. Flagged in any value-reference
+ *     position, including as a property-access receiver
+ *     (`csrfToken.length`).
  *
- *   - Bare Identifier `token` flagged ONLY in value-reference
- *     positions where it stands alone (a direct argument, a template
- *     interpolation `${token}`, a shorthand property `{ token }`),
- *     NOT when it is the receiver of a further property access
- *     (`token.id` — common metadata access on payment / api tokens
- *     where the secret bytes live in a different field). The
- *     property-access check above (`PropertyAccessExpression` whose
- *     .name is `token`) still catches `req.body.token` /
+ *   - Bare Identifier in `forbiddenIdentifiersValueOnly` flagged ONLY
+ *     in value-reference positions where it stands alone (a direct
+ *     argument, a template interpolation `${token}`, a shorthand
+ *     property `{ token }`), NOT when it is the receiver of a further
+ *     property access (`token.id` — common metadata access on payment
+ *     / api tokens where the secret bytes live in a different field).
+ *     The property-access check above still catches `req.body.token` /
  *     `result.token`, so the dangerous shapes are not blind spots.
  *
- *   - ElementAccessExpression with a string literal argument of
- *     `x-csrf-token` or `x-setup-secret` (case-insensitive). Catches
- *     `req.headers['x-csrf-token']` and `req.headers['x-setup-secret']`.
+ *   - ElementAccessExpression with a string-literal argument matching
+ *     the surface's `forbiddenHeaderKeys` set (`x-csrf-token`,
+ *     `x-setup-secret`).
+ *
+ * Client-only additions (because the React client never touches Express
+ * `req.headers` but does talk to react-hook-form):
+ *
+ *   - CallExpression where the receiver method name is in
+ *     `forbiddenFormGetterMethods` (`getValues`, `watch`,
+ *     `getFieldState`) AND the first string-literal argument is in
+ *     `forbiddenFormFieldKeys`. Catches the realistic blind-spot
+ *     `console.log('attempt', form.getValues('password'))`.
  *
  * Suppression: a call site can opt out with an inline comment
  *   // secret-log-ok: <reason>
@@ -65,22 +80,24 @@
  * documented in `docs/security/no-secrets-in-logs.md`.
  *
  * Default mode prints a report and exits 0 (advisory). With
- * `--strict` it exits 1 on any breach. The vitest forcing function in
- * `tests/unit/check-no-secrets-in-logs.test.ts` runs `--strict`
- * against the real codebase and asserts exit 0 — that is how this
- * becomes a CI gate without editing the locked `package.json`
- * (the same wiring as the sibling `check-log-debug-pii` guard).
+ * `--strict` it exits 1 on any breach. Surface is selected with
+ * `--surface=server` (default) or `--surface=client`. The vitest
+ * forcing functions (`tests/unit/check-no-secrets-in-logs.test.ts`
+ * and `tests/unit/check-no-secrets-in-logs-client.test.ts`) run
+ * `--strict` against the real codebase per surface and assert exit 0
+ * — that is how this becomes a CI gate without editing the locked
+ * `package.json`.
  *
  * Run with:
- *   tsx scripts/check-no-secrets-in-logs.ts            # advisory
- *   tsx scripts/check-no-secrets-in-logs.ts --strict   # CI gate
+ *   tsx scripts/check-no-secrets-in-logs.ts                      # server, advisory
+ *   tsx scripts/check-no-secrets-in-logs.ts --strict              # server, CI gate
+ *   tsx scripts/check-no-secrets-in-logs.ts --surface=client --strict
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
-const SERVER_DIR = resolve(process.cwd(), 'server');
 const STRICT = process.argv.includes('--strict');
 
 const LOG_ROOTS = new Set(['log', 'logger', 'console']);
@@ -94,49 +111,117 @@ const LOG_LEVELS = new Set([
   'log',
 ]);
 
-// Property names that, when accessed off any object inside a log
-// argument, are treated as secret-bearing.
-const FORBIDDEN_PROPERTY_NAMES = new Set([
+/**
+ * Per-surface configuration. Each surface declares its own roots
+ * (which directories to walk), file extensions (server is `.ts`-only,
+ * client also reads `.tsx`), and forbidden-shape sets. Keeping the
+ * sets per-surface lets us tune client-only patterns
+ * (`form.getValues('password')`) without false-positiving the server
+ * scan, and lets us add server-only patterns (`x-setup-secret` is a
+ * bootstrap-admin header that never appears in client code) without
+ * polluting the client scan.
+ */
+export interface Surface {
+  name: 'server' | 'client';
+  roots: string[];
+  fileExtensions: string[];
+  forbiddenPropertyNames: Set<string>;
+  forbiddenIdentifiersStrict: Set<string>;
+  forbiddenIdentifiersValueOnly: Set<string>;
+  forbiddenHeaderKeys: Set<string>;
+  forbiddenFormGetterMethods: Set<string>;
+  forbiddenFormFieldKeys: Set<string>;
+}
+
+const SHARED_SECRET_PROPS = [
   'password',
   'token',
   'invitetoken',
   'setupsecret',
   'csrftoken',
   'resettoken',
-]);
+];
 
-// Bare identifier names that have no benign meaning in this codebase
-// — every variable named `csrfToken` IS the secret. Flagged whenever
-// the identifier appears in a value-reference position inside a log
-// call argument: as a direct argument, inside a template
-// interpolation, in a shorthand property `{ csrfToken }`, AS WELL
-// AS when it is the receiver of a further property access
-// (`csrfToken.length` — even metadata like length is suspicious for
-// these names).
-const FORBIDDEN_IDENTIFIERS_STRICT = new Set([
-  'invitetoken',
-  'setupsecret',
-  'csrftoken',
-  'resettoken',
-]);
+const SHARED_HEADER_KEYS = ['x-csrf-token', 'x-setup-secret'];
 
-// `token` is in the brief's list but has more benign uses than the
-// strict set above — `token.id`, `token.kind`, etc., commonly
-// reference internal payment-token / api-token metadata where the
-// secret bytes live in a different field. So we flag it ONLY in
-// value-reference positions where it stands alone (a direct
-// argument, a template interpolation, a shorthand `{ token }`)
-// — not when it is the receiver of a further property access.
-// The property-access check above (`PropertyAccessExpression` whose
-// .name is `token`) still catches `req.body.token` / `result.token`.
-const FORBIDDEN_IDENTIFIERS_VALUE_ONLY = new Set(['token']);
+export const SERVER_SURFACE: Surface = {
+  name: 'server',
+  roots: [resolve(process.cwd(), 'server')],
+  fileExtensions: ['.ts'],
+  forbiddenPropertyNames: new Set(SHARED_SECRET_PROPS),
+  forbiddenIdentifiersStrict: new Set([
+    'invitetoken',
+    'setupsecret',
+    'csrftoken',
+    'resettoken',
+  ]),
+  // `token` is in the brief's list but has more benign uses than the
+  // strict set above — `token.id`, `token.kind`, etc., commonly
+  // reference internal payment-token / api-token metadata where the
+  // secret bytes live in a different field.
+  forbiddenIdentifiersValueOnly: new Set(['token']),
+  forbiddenHeaderKeys: new Set(SHARED_HEADER_KEYS),
+  forbiddenFormGetterMethods: new Set(),
+  forbiddenFormFieldKeys: new Set(),
+};
 
-// String-literal argument values that, when used to index any object,
-// imply a secret-bearing header lookup.
-const FORBIDDEN_HEADER_KEYS = new Set([
-  'x-csrf-token',
-  'x-setup-secret',
-]);
+export const CLIENT_SURFACE: Surface = {
+  name: 'client',
+  roots: [
+    resolve(process.cwd(), 'client/src'),
+    resolve(process.cwd(), 'shared'),
+  ],
+  fileExtensions: ['.ts', '.tsx'],
+  // The client uses react-hook-form's `currentPassword` / `newPassword`
+  // / `confirmPassword` field names verbatim across the change-password,
+  // set-password, and admin reset-password flows. Each is just as much
+  // a leak risk as bare `password`.
+  forbiddenPropertyNames: new Set([
+    ...SHARED_SECRET_PROPS,
+    'currentpassword',
+    'newpassword',
+    'confirmpassword',
+  ]),
+  forbiddenIdentifiersStrict: new Set([
+    'invitetoken',
+    'setupsecret',
+    'csrftoken',
+    'resettoken',
+    'currentpassword',
+    'newpassword',
+    'confirmpassword',
+  ]),
+  // The brief calls out "password input value to the browser console"
+  // as the realistic client-side leak. Bare `password` standing alone
+  // in a value position is the canonical shape; `password.length`
+  // (property-access receiver) is benign metadata, the property-access
+  // rule above already catches `data.password`.
+  forbiddenIdentifiersValueOnly: new Set(['token', 'password']),
+  forbiddenHeaderKeys: new Set(SHARED_HEADER_KEYS),
+  // react-hook-form readers. A `console.log('x', form.getValues('password'))`
+  // pulls the live value out of the controlled input and dumps it. Same
+  // for `form.watch('password')`. `form.getFieldState('password')` is
+  // metadata-only (touched / dirty / errors), not the value, but its
+  // presence inside a log line is still the kind of pattern reviewers
+  // want to catch — flagged for symmetry.
+  forbiddenFormGetterMethods: new Set(['getValues', 'watch', 'getFieldState']),
+  forbiddenFormFieldKeys: new Set([
+    'password',
+    'currentpassword',
+    'newpassword',
+    'confirmpassword',
+    'token',
+    'csrftoken',
+    'invitetoken',
+    'setupsecret',
+    'resettoken',
+  ]),
+};
+
+const SURFACES: Record<'server' | 'client', Surface> = {
+  server: SERVER_SURFACE,
+  client: CLIENT_SURFACE,
+};
 
 const SUPPRESSION_LOCATE_RE = /\bsecret-log-ok\s*:/i;
 function commentSuppresses(commentText: string): boolean {
@@ -150,8 +235,9 @@ function commentSuppresses(commentText: string): boolean {
   return /[A-Za-z0-9]/.test(rest);
 }
 
-function listTsFiles(root: string): string[] {
+function listSourceFiles(root: string, surface: Surface): string[] {
   const out: string[] = [];
+  const exts = surface.fileExtensions;
   function walk(dir: string): void {
     let entries: string[];
     try {
@@ -170,13 +256,16 @@ function listTsFiles(root: string): string[] {
       if (st.isDirectory()) {
         if (name === 'node_modules' || name === '__tests__') continue;
         walk(full);
-      } else if (
-        st.isFile() &&
-        full.endsWith('.ts') &&
-        !full.endsWith('.test.ts') &&
-        !full.endsWith('.d.ts')
-      ) {
-        out.push(full);
+      } else if (st.isFile()) {
+        const matchesExt = exts.some((ext) => full.endsWith(ext));
+        if (
+          matchesExt &&
+          !full.endsWith('.test.ts') &&
+          !full.endsWith('.test.tsx') &&
+          !full.endsWith('.d.ts')
+        ) {
+          out.push(full);
+        }
       }
     }
   }
@@ -284,22 +373,48 @@ function callIsSuppressed(
  * `bare identifier 'csrfToken'` so the report points the reviewer
  * straight at the offending shape.
  */
-function scanArgForSecrets(arg: ts.Node, found: Set<string>): void {
+function scanArgForSecrets(
+  arg: ts.Node,
+  found: Set<string>,
+  surface: Surface,
+): void {
   const visit = (n: ts.Node): void => {
     if (ts.isPropertyAccessExpression(n)) {
       const name = n.name.text.toLowerCase();
-      if (FORBIDDEN_PROPERTY_NAMES.has(name)) {
+      if (surface.forbiddenPropertyNames.has(name)) {
         found.add(`property access ending in .${n.name.text}`);
       }
     } else if (ts.isElementAccessExpression(n)) {
-      const arg = n.argumentExpression;
-      if (ts.isStringLiteralLike(arg)) {
-        const lit = arg.text.toLowerCase();
-        if (FORBIDDEN_HEADER_KEYS.has(lit)) {
-          found.add(`element access [${JSON.stringify(arg.text)}]`);
-        } else if (FORBIDDEN_PROPERTY_NAMES.has(lit)) {
+      const a = n.argumentExpression;
+      if (ts.isStringLiteralLike(a)) {
+        const lit = a.text.toLowerCase();
+        if (surface.forbiddenHeaderKeys.has(lit)) {
+          found.add(`element access [${JSON.stringify(a.text)}]`);
+        } else if (surface.forbiddenPropertyNames.has(lit)) {
           // Catches the computed equivalent: req.body['password'].
-          found.add(`element access [${JSON.stringify(arg.text)}]`);
+          found.add(`element access [${JSON.stringify(a.text)}]`);
+        }
+      }
+    } else if (ts.isCallExpression(n)) {
+      // Detect react-hook-form value readers: `form.getValues('password')`,
+      // `form.watch('newPassword')`, etc. Only flagged when both the
+      // method name AND the string-literal argument are forbidden — a
+      // benign `form.getValues('amount')` does not trip.
+      if (
+        surface.forbiddenFormGetterMethods.size > 0 &&
+        ts.isPropertyAccessExpression(n.expression)
+      ) {
+        const methodName = n.expression.name.text;
+        if (surface.forbiddenFormGetterMethods.has(methodName)) {
+          const first = n.arguments[0];
+          if (first && ts.isStringLiteralLike(first)) {
+            const key = first.text.toLowerCase();
+            if (surface.forbiddenFormFieldKeys.has(key)) {
+              found.add(
+                `form-reader call .${methodName}(${JSON.stringify(first.text)})`,
+              );
+            }
+          }
         }
       }
     } else if (ts.isIdentifier(n)) {
@@ -328,17 +443,17 @@ function scanArgForSecrets(arg: ts.Node, found: Set<string>): void {
         parent.name === n
       ) {
         if (
-          FORBIDDEN_IDENTIFIERS_STRICT.has(lcName) ||
-          FORBIDDEN_IDENTIFIERS_VALUE_ONLY.has(lcName)
+          surface.forbiddenIdentifiersStrict.has(lcName) ||
+          surface.forbiddenIdentifiersValueOnly.has(lcName)
         ) {
           found.add(`shorthand property '${n.text}' (value reference)`);
         }
       } else if (!isPropertyName) {
-        if (FORBIDDEN_IDENTIFIERS_STRICT.has(lcName)) {
+        if (surface.forbiddenIdentifiersStrict.has(lcName)) {
           // Strict set: even `csrfToken.length` is suspicious.
           found.add(`bare identifier '${n.text}'`);
         } else if (
-          FORBIDDEN_IDENTIFIERS_VALUE_ONLY.has(lcName) &&
+          surface.forbiddenIdentifiersValueOnly.has(lcName) &&
           !isPropertyReceiver
         ) {
           // Value-only set: `token` standing alone in a value
@@ -353,13 +468,21 @@ function scanArgForSecrets(arg: ts.Node, found: Set<string>): void {
   visit(arg);
 }
 
-export function scanSource(file: string, src: string): Hit[] {
+function scriptKindForFile(file: string): ts.ScriptKind {
+  return file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+}
+
+export function scanSource(
+  file: string,
+  src: string,
+  surface: Surface = SERVER_SURFACE,
+): Hit[] {
   const sourceFile = ts.createSourceFile(
     file,
     src,
     ts.ScriptTarget.Latest,
     /* setParentNodes */ true,
-    ts.ScriptKind.TS,
+    scriptKindForFile(file),
   );
   const hits: Hit[] = [];
 
@@ -376,7 +499,7 @@ export function scanSource(file: string, src: string): Hit[] {
           isLogMethodAccess(callee));
       if (isLogCall && !callIsSuppressed(sourceFile, node)) {
         const found = new Set<string>();
-        for (const arg of node.arguments) scanArgForSecrets(arg, found);
+        for (const arg of node.arguments) scanArgForSecrets(arg, found, surface);
         if (found.size > 0) {
           const { line } = sourceFile.getLineAndCharacterOfPosition(
             node.getStart(sourceFile),
@@ -400,24 +523,39 @@ export function scanSource(file: string, src: string): Hit[] {
   return hits;
 }
 
-export function scanFile(file: string): Hit[] {
-  return scanSource(file, readFileSync(file, 'utf8'));
+export function scanFile(file: string, surface: Surface = SERVER_SURFACE): Hit[] {
+  return scanSource(file, readFileSync(file, 'utf8'), surface);
+}
+
+function parseSurfaceArg(): Surface {
+  const arg = process.argv.find((a) => a.startsWith('--surface='));
+  if (!arg) return SERVER_SURFACE;
+  const name = arg.slice('--surface='.length);
+  if (name === 'server' || name === 'client') return SURFACES[name];
+  process.stderr.write(
+    `unknown --surface=${name}; expected 'server' or 'client'\n`,
+  );
+  process.exit(2);
 }
 
 function main(): void {
-  const files = listTsFiles(SERVER_DIR);
+  const surface = parseSurfaceArg();
+  const files: string[] = [];
+  for (const root of surface.roots) {
+    for (const f of listSourceFiles(root, surface)) files.push(f);
+  }
   const hits: Hit[] = [];
   for (const f of files) {
-    for (const h of scanFile(f)) hits.push(h);
+    for (const h of scanFile(f, surface)) hits.push(h);
   }
   const rel = (p: string): string => p.replace(process.cwd() + '/', '');
   if (hits.length === 0) {
     console.log(
-      `no-secrets-in-logs guard: scanned ${files.length} file(s) — OK: no secret-bearing log calls detected`,
+      `no-secrets-in-logs guard (${surface.name}): scanned ${files.length} file(s) — OK: no secret-bearing log calls detected`,
     );
     process.exit(0);
   }
-  const stream = STRICT ? process.stderr : process.stderr;
+  const stream = process.stderr;
   const tag = STRICT ? 'FAIL' : 'WARN';
   for (const h of hits) {
     for (const r of h.reasons) {
@@ -428,7 +566,7 @@ function main(): void {
     }
   }
   stream.write(
-    `\n${hits.length} log call(s) appear to interpolate secret-bearing fields.\n` +
+    `\n${hits.length} log call(s) appear to interpolate secret-bearing fields (surface=${surface.name}).\n` +
       `If a hit is a structural label (not a value), add an inline\n` +
       `\`// secret-log-ok: <reason>\` annotation and document it in\n` +
       `docs/security/no-secrets-in-logs.md.\n`,

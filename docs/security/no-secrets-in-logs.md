@@ -60,11 +60,11 @@ that logs `req.body.password`, `req.body.token`, or
 `req.headers['x-csrf-token']` would slip past until someone wrote a
 new per-surface test for it.
 
-`scripts/check-no-secrets-in-logs.ts` (added in task #432) is the
-project-wide forcing function for that gap. It parses every `.ts`
-file under `server/` (excluding `*.test.ts` and `__tests__/`) with
-the TypeScript compiler API and walks each call to a known log
-method:
+`scripts/check-no-secrets-in-logs.ts` (added in task #432, extended
+to the client surface in task #515) is the project-wide forcing
+function for that gap. It parses every `.ts` file under the configured
+roots (and `.tsx` on the client) with the TypeScript compiler API
+and walks each call to a known log method:
 
   log.<level>(...)         logger.<level>(...)         console.<level>(...)
   log?.<level>(...)        logger?.<level>(...)        console?.<level>(...)
@@ -106,12 +106,55 @@ template head/middle/tail text, so a structural label like
 `log.warn('csrfToken missing')` is not a false positive. Only value
 references (expression nodes) count.
 
-The CI forcing function is `tests/unit/check-no-secrets-in-logs.test.ts`,
-which spawns the script in `--strict` mode against the real
-`server/` tree and asserts exit 0 — the same wiring as the sibling
-`check-log-debug-pii` guard. The locked `package.json` means we
-cannot add a dedicated `npm run check:no-secrets-in-logs` shortcut;
-running `npm test` is the gate.
+The script accepts a `--surface=server` (default) or
+`--surface=client` flag to switch between the surface configs (see
+"Client surfaces" below). The CI forcing functions are:
+
+- `tests/unit/check-no-secrets-in-logs.test.ts` — spawns the script
+  in `--strict` (server) mode against the real `server/` tree and
+  asserts exit 0.
+- `tests/unit/check-no-secrets-in-logs-client.test.ts` — spawns the
+  script in `--surface=client --strict` mode against the real
+  `client/src/` and `shared/` trees and asserts exit 0.
+
+The locked `package.json` means we cannot add a dedicated
+`npm run check:no-secrets-in-logs` shortcut; running `npm test` is
+the gate (the same wiring as the sibling `check-log-debug-pii`
+guard).
+
+## Client surfaces
+
+Task #432 deliberately scoped the original audit to `server/` to
+mirror the original auth-surface scope. But the React client also
+makes log calls (`console.warn`, app-level loggers), and a future PR
+could log a CSRF token, an OAuth token fragment, or a password input
+value to the browser console — which then ends up in error trackers
+like Sentry or in user-supplied screenshots.
+
+Task #515 extends the same machinery to a CLIENT surface. The client
+surface walks `client/src/**` and `shared/**` (both `.ts` and
+`.tsx`) and shares the SHARED forbidden shapes above plus the
+client-specific patterns below.
+
+| Pattern | Example caught | Notes |
+| --- | --- | --- |
+| Property access ending in `.currentPassword` / `.newPassword` / `.confirmPassword` | `console.log('attempt', { v: data.newPassword })` | Verbatim react-hook-form field names used in change-password / set-password / admin reset-password flows |
+| Bare identifier `currentPassword` / `newPassword` / `confirmPassword` in any value-reference position | `` console.log(`v=${newPassword}`) `` | Strict set — every variable with these names IS the secret |
+| Bare identifier `password` in a value-reference position where it stands alone | ``console.log({ password })``, `` `pw=${password}` `` | Mirrors the server's `token` policy: NOT flagged as a property-access receiver (`password.length`) since the bytes aren't in the line; the property-access rule still catches `data.password` |
+| `form.getValues('<key>')` / `form.watch('<key>')` / `form.getFieldState('<key>')` where `<key>` is one of `password` / `currentPassword` / `newPassword` / `confirmPassword` / `token` / `csrfToken` / `inviteToken` / `setupSecret` / `resetToken` | `console.log('attempt', form.getValues('password'))` | The realistic blind spot from the brief: react-hook-form readers pulling the live controlled-input value into a log line |
+
+The client surface inherits the SHARED shapes too — property access
+ending in `.password` / `.token` / `.csrfToken` / `.inviteToken` /
+`.setupSecret` / `.resetToken`, bare `csrfToken` / `inviteToken` /
+`setupSecret` / `resetToken` identifiers, bare `token` in
+value-reference positions, and `'x-csrf-token'` /
+`'x-setup-secret'` element-access keys.
+
+The client surface deliberately does NOT inspect JSX-attribute
+string literals (`<input type="password" />`,
+`<input name="newPassword" />`) — those are string-literal values
+on JSX attributes, not value references inside log-call argument
+trees, and the scanner only walks log-call arguments.
 
 ### Allowed exceptions
 
