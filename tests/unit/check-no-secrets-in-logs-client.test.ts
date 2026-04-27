@@ -380,6 +380,62 @@ describe('check-no-secrets-in-logs CI guard (client surface)', () => {
   });
 
   // ---------------------------------------------------------------
+  // Method-call detection (task #548) on the client surface. Same
+  // machinery as the server surface but the forbidden-shape sets
+  // are wider — a method that returns `data.newPassword` or
+  // `form.getValues('password')` must classify the host as forbidden
+  // for that method name.
+  // ---------------------------------------------------------------
+
+  it('flags `helpers.pick(data)` where helpers is an object literal returning .newPassword', () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pick: (d: any) => d.newPassword,\n` +
+        `};\n` +
+        `console.log(\`pw=\${helpers.pick(data)}\`);`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pick\(\)' returning .*\.newPassword/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it("flags `helpers.pick(form)` whose method returns form.getValues('password')", () => {
+    // Reuses the form-reader detection in the method-classifier:
+    // the method body returns `form.getValues('password')`, which
+    // classifies the method as forbidden so any call to it inside
+    // a log argument is flagged.
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pick: (form: any) => form.getValues('password'),\n` +
+        `};\n` +
+        `console.warn(\`v=\${helpers.pick(form)}\`);`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pick\(\)' returning form-reader call \.getValues\("password"\)/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `new H().pick(data)` on the client surface', () => {
+    const reasons = reasonsFor(
+      `class H {\n` +
+        `  pick(d: any) { return d.newPassword; }\n` +
+        `}\n` +
+        `console.log(new H().pick(data));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'new H\(\)\.pick\(\)' returning .*\.newPassword/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  // ---------------------------------------------------------------
   // Suppression annotation works on the client surface too.
   // ---------------------------------------------------------------
 

@@ -293,7 +293,7 @@ function isVarDeclaration(decl: ts.VariableDeclaration): boolean {
 }
 
 /**
- * A binding resolves to one of three classifications:
+ * A binding resolves to one of four classifications:
  *
  *   - 'forbidden' — the local holds a secret string (initialized
  *     from a forbidden property access / element access / identifier
@@ -307,14 +307,36 @@ function isVarDeclaration(decl: ts.VariableDeclaration): boolean {
  *     log call is a leak — the return value carries the secret out.
  *     Task #541's headline case (`log.info(pickPassword(req))`).
  *
+ *   - 'methodHost' — the local IS an object-with-methods or a class
+ *     constructor (or an instance of one). A property-access call
+ *     (`helpers.pickPassword(req)`, `obj.helper.pick(req)`,
+ *     `h.pick(req)`, `new H().pick(req)`) whose method name resolves
+ *     to a forbidden-return method on the host is a leak.
+ *     Task #548's headline case — covers the natural bypass of
+ *     routing the helper through a property access so the bare
+ *     identifier rule from #541 does not match.
+ *
  *   - 'other' — the name is bound here but to something benign.
  *     Load-bearing for shadowing: a `const pw = 'fixture'` in an
  *     inner scope must mask any same-named outer alias so the inner
  *     `pw` is NOT treated as a secret.
  */
+interface MethodHost {
+  // Methods on this host whose return value is a forbidden expression.
+  // Keyed by method name; the value is the underlying reason text
+  // (`property access ending in .password`, etc.) so the report can
+  // point the reviewer at the real secret source.
+  methods: Map<string, string>;
+  // Sub-hosts reachable via a property access on this host. Lets a
+  // nested object literal `{ helper: { pick: () => req.body.password } }`
+  // be flagged via `obj.helper.pick(req)` — the brief explicitly
+  // calls out `obj.helper.pick(req)` as one of the shapes to catch.
+  nested: Map<string, MethodHost>;
+}
 type Binding =
   | { kind: 'forbidden'; reason: string }
   | { kind: 'helper'; reason: string }
+  | { kind: 'methodHost'; host: MethodHost }
   | { kind: 'other' };
 
 /**
@@ -453,6 +475,106 @@ function classifyFunctionReturn(
   };
   visit(body);
   return result;
+}
+
+/**
+ * Strip parenthesized wrappers from an expression. The forbidden
+ * shapes we care about (arrow / function expression / object literal /
+ * class expression / new expression) are all structurally invisible
+ * through `()`; treating `(value)` and `value` the same way keeps
+ * the method-host detection robust against the paren noise commonly
+ * left over from conditionals or formatter quirks.
+ */
+function unwrapParens(expr: ts.Expression): ts.Expression {
+  let n: ts.Expression = expr;
+  while (ts.isParenthesizedExpression(n)) n = n.expression;
+  return n;
+}
+
+/**
+ * Build a MethodHost description for an object literal. Each property
+ * whose value is an arrow / function expression with a forbidden
+ * return is recorded as a forbidden-method on the host. Each property
+ * whose value is itself an object literal recursively becomes a
+ * nested host so `obj.helper.pick(req)` resolves end-to-end.
+ *
+ * Method-shorthand syntax (`{ pick(req) { return req.body.password; } }`)
+ * is just a `MethodDeclaration` on the object-literal AST, so it is
+ * picked up by the same loop.
+ *
+ * Returns null when the literal contains no forbidden methods AND no
+ * non-empty nested hosts — keeps the binding map sparse so a benign
+ * config-style object doesn't get a `methodHost` binding.
+ */
+function buildObjectLiteralMethodHost(
+  obj: ts.ObjectLiteralExpression,
+  surface: Surface,
+  scopes?: Map<ts.Node, Map<string, Binding>>,
+): MethodHost | null {
+  const methods = new Map<string, string>();
+  const nested = new Map<string, MethodHost>();
+  for (const prop of obj.properties) {
+    let name: string | null = null;
+    if ('name' in prop && prop.name) {
+      const pn = prop.name as ts.PropertyName;
+      if (ts.isIdentifier(pn) || ts.isStringLiteralLike(pn)) {
+        name = pn.text;
+      }
+    }
+    if (!name) continue;
+    if (ts.isPropertyAssignment(prop)) {
+      const init = unwrapParens(prop.initializer);
+      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+        const cls = classifyFunctionReturn(init, surface, scopes);
+        if (cls) methods.set(name, cls.reason);
+      } else if (ts.isObjectLiteralExpression(init)) {
+        const sub = buildObjectLiteralMethodHost(init, surface, scopes);
+        if (sub) nested.set(name, sub);
+      } else if (ts.isClassExpression(init)) {
+        const sub = buildClassMethodHost(init, surface, scopes);
+        if (sub) nested.set(name, sub);
+      }
+    } else if (ts.isMethodDeclaration(prop)) {
+      const cls = classifyFunctionReturn(prop, surface, scopes);
+      if (cls) methods.set(name, cls.reason);
+    }
+  }
+  if (methods.size === 0 && nested.size === 0) return null;
+  return { methods, nested };
+}
+
+/**
+ * Build a MethodHost description for a class declaration / class
+ * expression. Each `MethodDeclaration` whose body returns a forbidden
+ * expression contributes a forbidden-method entry. `static` and
+ * instance methods are folded into the same map: a class binding
+ * is consulted both for direct static calls (`H.pick(req)`) and for
+ * instance calls (`new H().pick(req)` / `h.pick(req)` after `const
+ * h = new H()`), and the runtime distinction between the two would
+ * only matter for false-positive avoidance — but a method that is
+ * declared on a class with the same name in either form IS callable
+ * at the syntactic shape we care about, so unifying them is the
+ * conservative choice.
+ *
+ * Constructors / accessors are intentionally skipped: a constructor
+ * is invoked via `new`, not as a property-access call, and the
+ * accessor get / set syntax does not match the call shape we flag.
+ */
+function buildClassMethodHost(
+  cls: ts.ClassDeclaration | ts.ClassExpression,
+  surface: Surface,
+  scopes?: Map<ts.Node, Map<string, Binding>>,
+): MethodHost | null {
+  const methods = new Map<string, string>();
+  for (const member of cls.members) {
+    if (!ts.isMethodDeclaration(member)) continue;
+    const pn = member.name;
+    if (!ts.isIdentifier(pn) && !ts.isStringLiteralLike(pn)) continue;
+    const c = classifyFunctionReturn(member, surface, scopes);
+    if (c) methods.set(pn.text, c.reason);
+  }
+  if (methods.size === 0) return null;
+  return { methods, nested: new Map() };
 }
 
 /**
@@ -708,16 +830,23 @@ function collectScopedBindings(
       scopes.set(scope, m);
     }
     // Priority when the same name is recorded twice in the same
-    // scope: forbidden > helper > other. 'forbidden' must always
-    // win (stay conservative on the side of catching leaks). A
-    // 'helper' upgrade over a placeholder 'other' (recorded by the
-    // first pass for `function pickPassword(...) {}` before its
-    // body has been classified) is what lets pass 3 promote the
-    // function to a known helper.
+    // scope: forbidden > helper > methodHost > other. 'forbidden'
+    // must always win (stay conservative on the side of catching
+    // leaks). A 'helper' upgrade over a placeholder 'other' (recorded
+    // by pass 1 for `function pickPassword(...) {}` before its body
+    // has been classified) is what lets pass 3 promote the function
+    // to a known helper. Same idea for 'methodHost': pass 1 records
+    // `const helpers = { ... }` as 'other' before pass 4 has had a
+    // chance to inspect the literal's properties; pass 4 then
+    // upgrades the binding to methodHost.
     const prev = m.get(name);
     if (prev) {
       if (prev.kind === 'forbidden') return;
-      if (prev.kind === 'helper' && binding.kind === 'other') return;
+      if (
+        prev.kind === 'helper' &&
+        binding.kind !== 'forbidden'
+      ) return;
+      if (prev.kind === 'methodHost' && binding.kind === 'other') return;
     }
     m.set(name, binding);
   };
@@ -931,7 +1060,92 @@ function collectScopedBindings(
   };
   visitHelpers(sourceFile);
 
-  // Pass 4: cross-file helper detection (task #541). For each
+  // Pass 4: object-literal & class method-host detection (task #548).
+  // Task #541 caught bare-identifier helper calls; the natural next
+  // bypass is to route the same call through a property access,
+  // either via an object literal of helper functions or via a class
+  // method:
+  //
+  //   const helpers = { pickPassword: (req) => req.body.password };
+  //   log.info(`pw=${helpers.pickPassword(req)}`);
+  //
+  //   class H { pick(req) { return req.body.password; } }
+  //   log.info(new H().pick(req));
+  //
+  // Both shapes are recorded as a 'methodHost' binding so the
+  // call-site scan (`scanArgForSecrets`) can resolve
+  // `helpers.pickPassword(...)` / `H.pick(...)` to the underlying
+  // forbidden return.
+  const visitMethodHosts = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      const init = unwrapParens(node.initializer);
+      const scope = isVarDeclaration(node)
+        ? nearestFunctionScope(node)
+        : nearestScope(node);
+      if (ts.isObjectLiteralExpression(init)) {
+        const host = buildObjectLiteralMethodHost(init, surface, scopes);
+        if (host) {
+          recordIn(scope, node.name.text, { kind: 'methodHost', host });
+        }
+      } else if (ts.isClassExpression(init)) {
+        const host = buildClassMethodHost(init, surface, scopes);
+        if (host) {
+          recordIn(scope, node.name.text, { kind: 'methodHost', host });
+        }
+      }
+    }
+    if (ts.isClassDeclaration(node) && node.name) {
+      const host = buildClassMethodHost(node, surface, scopes);
+      if (host) {
+        recordIn(nearestScope(node), node.name.text, {
+          kind: 'methodHost',
+          host,
+        });
+      }
+    }
+    ts.forEachChild(node, visitMethodHosts);
+  };
+  visitMethodHosts(sourceFile);
+
+  // Pass 5: instance bindings via `new` (task #548). After pass 4
+  // has populated class-name -> methodHost bindings, walk the file
+  // again and propagate that host to any `const h = new H();`
+  // local. A subsequent `h.pick(req)` inside a log argument can
+  // then resolve `h` to the same methodHost as `H` and flag the
+  // call. Runs as a separate pass so a forward `const h = new H();
+  // ... class H {}` (declaration after use, legal at module scope)
+  // still resolves — pass 4 records `H` first, then this pass
+  // resolves the receiver.
+  const visitInstances = (node: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer
+    ) {
+      const init = unwrapParens(node.initializer);
+      if (ts.isNewExpression(init) && ts.isIdentifier(init.expression)) {
+        const ctor = init.expression;
+        const b = resolveIdentifierBinding(ctor, scopes);
+        if (b && b.kind === 'methodHost') {
+          const scope = isVarDeclaration(node)
+            ? nearestFunctionScope(node)
+            : nearestScope(node);
+          recordIn(scope, node.name.text, {
+            kind: 'methodHost',
+            host: b.host,
+          });
+        }
+      }
+    }
+    ts.forEachChild(node, visitInstances);
+  };
+  visitInstances(sourceFile);
+
+  // Pass 6: cross-file helper detection (task #541). For each
   // top-level `import { foo, bar as baz } from '<spec>'`, resolve
   // the spec to an on-disk file, ask `getExportedHelpers` for the
   // set of named exports it considers forbidden helpers, and seed
@@ -985,6 +1199,63 @@ function resolveIdentifierBinding(
     s = s.parent ? nearestScope(s) : undefined;
   }
   return null;
+}
+
+/**
+ * Resolve a method-call receiver expression (the `expression` of a
+ * PropertyAccessExpression callee) to its underlying MethodHost.
+ *
+ * Supports four shapes the brief calls out:
+ *   - bare identifier (`helpers.pickPassword(...)` -> `helpers`)
+ *   - nested property access (`obj.helper.pick(...)` -> `obj.helper`)
+ *   - direct instantiation (`new H().pick(...)` -> `new H()`)
+ *   - parenthesized variants of any of the above
+ *
+ * Returns null when no scope binding for the root identifier (or
+ * constructor identifier) resolves to a methodHost — keeps the rule
+ * conservative against arbitrary expressions like `getHelpers().pick`
+ * which would require flow analysis we deliberately do not do here.
+ */
+function resolveCallReceiverHost(
+  expr: ts.Expression,
+  scopes: Map<ts.Node, Map<string, Binding>>,
+): MethodHost | null {
+  if (ts.isParenthesizedExpression(expr)) {
+    return resolveCallReceiverHost(expr.expression, scopes);
+  }
+  if (ts.isIdentifier(expr)) {
+    const b = resolveIdentifierBinding(expr, scopes);
+    return b && b.kind === 'methodHost' ? b.host : null;
+  }
+  if (ts.isPropertyAccessExpression(expr)) {
+    const parent = resolveCallReceiverHost(expr.expression, scopes);
+    return parent ? parent.nested.get(expr.name.text) ?? null : null;
+  }
+  if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression)) {
+    const b = resolveIdentifierBinding(expr.expression, scopes);
+    return b && b.kind === 'methodHost' ? b.host : null;
+  }
+  return null;
+}
+
+/**
+ * Render a method-call receiver back as a short, reviewer-readable
+ * path string for the report. Mirrors the shapes
+ * `resolveCallReceiverHost` accepts so the textual reason matches
+ * what the reviewer will actually see in source.
+ */
+function describeReceiverPath(expr: ts.Expression): string {
+  if (ts.isParenthesizedExpression(expr)) {
+    return describeReceiverPath(expr.expression);
+  }
+  if (ts.isIdentifier(expr)) return expr.text;
+  if (ts.isPropertyAccessExpression(expr)) {
+    return `${describeReceiverPath(expr.expression)}.${expr.name.text}`;
+  }
+  if (ts.isNewExpression(expr) && ts.isIdentifier(expr.expression)) {
+    return `new ${expr.expression.text}()`;
+  }
+  return '<receiver>';
 }
 
 function listSourceFiles(root: string, surface: Surface): string[] {
@@ -1184,6 +1455,33 @@ function scanArgForSecrets(
           found.add(
             `helper call '${n.expression.text}()' returning ${binding.reason}`,
           );
+        }
+      }
+      // Method-call detection (task #548). A property-access call
+      // (`helpers.pickPassword(req)`, `obj.helper.pick(req)`,
+      // `h.pick(req)` after `const h = new H();`, or
+      // `new H().pick(req)`) is flagged when the resolved receiver
+      // is a 'methodHost' binding and the property name matches a
+      // forbidden-return method on that host. Closes the natural
+      // bypass left after #541 (route the helper through a property
+      // access so the bare-identifier rule no longer matches).
+      //
+      // The form-reader detection above already short-circuits on
+      // forbiddenFormGetterMethods; reaching this branch with a
+      // method name in that set would still be a legitimate hit
+      // when a methodHost happens to share the name (rare but
+      // benign — produces a separate, more specific reason string).
+      if (ts.isPropertyAccessExpression(n.expression)) {
+        const host = resolveCallReceiverHost(n.expression.expression, scopes);
+        if (host) {
+          const methodName = n.expression.name.text;
+          const reason = host.methods.get(methodName);
+          if (reason) {
+            const path = describeReceiverPath(n.expression.expression);
+            found.add(
+              `method call '${path}.${methodName}()' returning ${reason}`,
+            );
+          }
         }
       }
     } else if (ts.isIdentifier(n)) {

@@ -851,8 +851,267 @@ describe('check-no-secrets-in-logs CI guard', () => {
   });
 
   // ---------------------------------------------------------------
-  // Suppression annotation.
+  // Method-call detection (task #548). Task #541 closed the
+  // bare-identifier helper-call shape; the natural next bypass is
+  // to route the same call through a property access:
+  //
+  //   const helpers = { pickPassword: (req) => req.body.password };
+  //   log.info(`pw=${helpers.pickPassword(req)}`);
+  //
+  //   class H { pick(req) { return req.body.password; } }
+  //   log.info(new H().pick(req));
+  //
+  // The scanner records object-literal properties whose value is an
+  // arrow / function expression returning a forbidden expression
+  // (and class methods doing the same) as a 'methodHost' binding,
+  // then flags property-access call sites whose receiver resolves
+  // to that host.
   // ---------------------------------------------------------------
+
+  it('flags `helpers.pickPassword(req)` where helpers is an object literal of arrow helpers (the brief)', () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info(\`pw=\${helpers.pickPassword(req)}\`);`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning property access ending in \.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags an object-literal method-shorthand `{ pickPassword(req) { return req.body.password; } }`', () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword(req: any) { return req.body.password; },\n` +
+        `};\n` +
+        `log.warn(helpers.pickPassword(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pickPassword\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a function-expression value on an object literal', () => {
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pick: function (req: any) { return req.body.password; },\n` +
+        `};\n` +
+        `log.error(\`pw=\${helpers.pick(req)}\`);`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'helpers\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a NESTED object-literal path `obj.helper.pick(req)`', () => {
+    // The brief explicitly calls out `obj.helper.pick(...)` — a
+    // helper one level deep inside another object literal. The
+    // scanner walks the property-access chain and looks the
+    // method up on the resolved nested host.
+    const reasons = reasonsFor(
+      `const obj = {\n` +
+        `  helper: {\n` +
+        `    pick: (req: any) => req.body.password,\n` +
+        `  },\n` +
+        `};\n` +
+        `log.info(obj.helper.pick(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'obj\.helper\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags an object-literal helper that returns a forbidden bare identifier', () => {
+    // Same machinery as the helper-function rule: a method whose
+    // body returns a strict-set bare identifier (`csrfToken`) is a
+    // forbidden helper.
+    const reasons = reasonsFor(
+      `const h = {\n` +
+        `  getCsrf: (csrfToken: string) => csrfToken,\n` +
+        `};\n` +
+        `log.info(h.getCsrf(t));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'h\.getCsrf\(\)' returning bare identifier 'csrfToken'/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `new H().pick(req)` where H is a class with a forbidden-return method (the brief)', () => {
+    const reasons = reasonsFor(
+      `class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `}\n` +
+        `log.info(new H().pick(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'new H\(\)\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags `h.pick(req)` where h is an instance bound from `new H()` (the brief)', () => {
+    const reasons = reasonsFor(
+      `class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `}\n` +
+        `const h = new H();\n` +
+        `log.warn(h.pick(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'h\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a class method that routes through an intra-method alias before returning', () => {
+    // Same intra-helper alias semantics as task #541 — the file
+    // scope passed to the classifier resolves `pw` to its forbidden
+    // origin so the method-classification still fires.
+    const reasons = reasonsFor(
+      `class H {\n` +
+        `  pick(req: any) {\n` +
+        `    const pw = req.body.password;\n` +
+        `    return pw;\n` +
+        `  }\n` +
+        `}\n` +
+        `log.info(new H().pick(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'new H\(\)\.pick\(\)' returning local 'pw' aliasing .*\.password/.test(
+          r,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a class with multiple methods only when the called one is forbidden', () => {
+    // The methodHost records `pick` as forbidden but NOT `id`. A
+    // log call to `h.id()` must stay quiet; a log call to `h.pick()`
+    // must trip.
+    const reasonsBenign = reasonsFor(
+      `class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `  id(req: any) { return req.body.id; }\n` +
+        `}\n` +
+        `const h = new H();\n` +
+        `log.info(h.id(req));`,
+    );
+    expect(reasonsBenign).toHaveLength(0);
+    const reasonsLeaky = reasonsFor(
+      `class H {\n` +
+        `  pick(req: any) { return req.body.password; }\n` +
+        `  id(req: any) { return req.body.id; }\n` +
+        `}\n` +
+        `const h = new H();\n` +
+        `log.info(h.pick(req));`,
+    );
+    expect(
+      reasonsLeaky.some((r) =>
+        /method call 'h\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('flags a static class method `H.pick(req)`', () => {
+    // Static methods are folded into the same methodHost map as
+    // instance methods, so `H.pick(req)` resolves the same way as
+    // `new H().pick(req)`.
+    const reasons = reasonsFor(
+      `class H {\n` +
+        `  static pick(req: any) { return req.body.password; }\n` +
+        `}\n` +
+        `log.info(H.pick(req));`,
+    );
+    expect(
+      reasons.some((r) =>
+        /method call 'H\.pick\(\)' returning .*\.password/.test(r),
+      ),
+    ).toBe(true);
+  });
+
+  it('does NOT flag an object-literal whose methods return only benign values', () => {
+    // A config-style object whose method values are benign helpers
+    // must not get a methodHost binding (or, if it does, must not
+    // flag any call). Pin the no-false-positive expectation.
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  getId: (req: any) => req.body.id,\n` +
+        `  getName: (req: any) => req.body.name,\n` +
+        `};\n` +
+        `log.info(helpers.getId(req), helpers.getName(req));`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a benign call on an object whose OTHER methods are forbidden', () => {
+    // The methodHost records both forbidden and benign methods,
+    // but only the forbidden one is in `host.methods`. A call to
+    // the benign one must not trip — the lookup misses cleanly.
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pickPassword: (req: any) => req.body.password,\n` +
+        `  pickId: (req: any) => req.body.id,\n` +
+        `};\n` +
+        `log.info('id', helpers.pickId(req));`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a non-call reference to a methodHost member', () => {
+    // Passing the method as a value (`registerHandler(helpers.pick)`)
+    // does not surface the secret — only invocation does. The
+    // method-call rule fires only on `CallExpression`.
+    const reasons = reasonsFor(
+      `const helpers = {\n` +
+        `  pick: (req: any) => req.body.password,\n` +
+        `};\n` +
+        `log.info('handler is', helpers.pick);`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a method call on an object that has been shadowed by an inner declaration', () => {
+    // Same shadowing rules as the alias / helper machinery: an
+    // inner `const helpers = { pick: () => 'safe' }` must mask
+    // the outer forbidden methodHost binding.
+    const reasons = reasonsFor(
+      `const helpers = { pick: (req: any) => req.body.password };\n` +
+        `function caller(req: any) {\n` +
+        `  const helpers = { pick: (_req: any) => 'placeholder' };\n` +
+        `  log.info(helpers.pick(req));\n` +
+        `}`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
+
+  it('does NOT flag a method call on an unknown receiver (no flow-analysis false positives)', () => {
+    // A receiver that the scanner cannot statically resolve to a
+    // methodHost (a parameter, an unknown global, a function-call
+    // result) must not produce a hit — the rule is intentionally
+    // conservative against reaching outside the per-file scope map.
+    const reasons = reasonsFor(
+      `function f(svc: any) { log.info(svc.pickPassword(req)); }`,
+    );
+    expect(reasons).toHaveLength(0);
+  });
 
   it('honors a trailing // secret-log-ok: <reason> annotation', () => {
     const reasons = reasonsFor(
