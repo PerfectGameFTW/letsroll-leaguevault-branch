@@ -1,50 +1,61 @@
 /**
- * Task #454 — sweep test for admin-supplied FK ids.
+ * Task #454 / #518 — sweep test for admin-supplied FK ids.
  *
  * Pins the existence-check pattern set by task #422 (the
- * `?organizationId` guard on `POST /api/bowlers`) on two of the
- * higher-blast-radius routes that #454 swept:
+ * `?organizationId` guard on `POST /api/bowlers`) for every guard
+ * #454 swept onto the admin surface.
  *
- *   - `POST /api/payments` — admin posts a payment with a typoed
- *     `bowlerId`. Without the existence check, the request falls
- *     through to the `payments.bowler_id -> bowlers.id` foreign-key
- *     constraint and surfaces as a generic 500. The route now
- *     returns 404 NOT_FOUND.
+ * #454 added the original two regression cases at this layer for
+ * the highest-blast-radius routes (`POST /api/payments` bowlerId
+ * and `PATCH /api/organization-admin/users/:id/location`). #518
+ * extends the same pattern to the rest of the routes #454 touched
+ * (`POST /api/leagues`, `PATCH /api/leagues/:id`, `POST /api/locations`,
+ * `POST /api/org-admin/users/:id/add`, `POST /api/org-admin/users/create`)
+ * so a future refactor that quietly removes one of those guards
+ * fails this suite instead of silently regressing the route to a
+ * raw `foreign_key_violation` 500. The audit document at
+ * `docs/security/admin-fk-id-checks.md` is the source-of-truth
+ * catalogue.
  *
- *   - `PATCH /api/organization-admin/users/:id/location` — admin
- *     re-assigns a user to a missing location id. Without the
- *     existence check the request hits the
- *     `users.location_id -> locations.id` FK and 500s. The route
- *     now returns 404.
- *
- * The other gaps the audit doc lists (`POST /api/leagues`,
- * `POST /api/locations`, `POST /api/organization-admin/users/...`)
- * are exercised at the same layer; we deliberately keep the
- * regression net narrow rather than re-test every CRUD route, on
- * the same scope-economy reasoning as
- * `tests/api/bowler-creation-org-required.test.ts`. The audit
- * document at `docs/security/admin-fk-id-checks.md` is the
- * source-of-truth catalogue.
+ * Each missing-id assertion uses `2_000_000_000` — well above any
+ * seeded id but well within int range — so the only failure mode
+ * left is the existence check (no parser fallthrough, no FK
+ * fallthrough). For tenant-scoped FKs (locations on leagues /
+ * users) we also assert the cross-tenant case, since #454
+ * deliberately conflated "missing" with "wrong tenant" into the
+ * same 404 to avoid an existence oracle.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, like } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   bowlers,
   leagues,
+  locations,
   organizations,
   payments,
+  users,
 } from '@shared/schema';
 import {
   apiPatch,
   apiPost,
   login,
   type AuthSession,
+  TEST_ADMIN_EMAIL,
+  TEST_ADMIN_PASSWORD,
   TEST_ORG_A_EMAIL,
+  TEST_ORG_B_EMAIL,
   TEST_ORG_PASSWORD,
 } from '../helpers';
 
 const TEST_ORG_A_SLUG = process.env.TEST_ORG_A_SLUG || 'vitest-org-a';
+const TEST_ORG_B_SLUG = process.env.TEST_ORG_B_SLUG || 'vitest-org-b';
+
+// 2_000_000_000 is well above any seeded id but well within int range
+// so it parses cleanly and the only failure mode left is the existence
+// check (no parser fallthrough, no FK fallthrough). Reused across every
+// missing-id assertion below.
+const MISSING_ID = 2_000_000_000;
 
 describe('Task #454 — admin-supplied FK id existence checks', () => {
   let orgAAdmin: AuthSession;
@@ -189,6 +200,352 @@ describe('Task #454 — admin-supplied FK id existence checks', () => {
 
       expect(status).toBe(200);
       expect(data.success).toBe(true);
+    });
+  });
+});
+
+describe('Task #518 — pin remaining admin FK id existence checks', () => {
+  let sysAdmin: AuthSession;
+  let orgAAdmin: AuthSession;
+  let orgBAdmin: AuthSession;
+  let orgAId = 0;
+  let orgBId = 0;
+  let leagueOrgAId = 0;
+  let locationOrgBId = 0;
+
+  // Cleanup buckets — every fixture row created in beforeAll, plus
+  // any rows the happy-path tests may decide to write. The negative
+  // tests below all expect 404 BEFORE any insert, so they never
+  // contribute here, but a regression that turns a guard into a
+  // pass-through would still be caught by the audit-table test
+  // failures rather than by orphaned rows piling up.
+  const createdLocationIds: number[] = [];
+  const createdLeagueIds: number[] = [];
+  // Email pattern reserved for the org-admin/users/create negative
+  // tests so we can wipe any accidental survivors at the end.
+  const CREATE_USER_EMAIL_PREFIX = 'vitest-518-create-';
+
+  beforeAll(async () => {
+    sysAdmin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+    orgAAdmin = await login(TEST_ORG_A_EMAIL, TEST_ORG_PASSWORD);
+    orgBAdmin = await login(TEST_ORG_B_EMAIL, TEST_ORG_PASSWORD);
+
+    const [orgA] = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.slug, TEST_ORG_A_SLUG));
+    if (!orgA) throw new Error('Test org A missing — run seed-test-users');
+    orgAId = orgA.id;
+
+    const [orgB] = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.slug, TEST_ORG_B_SLUG));
+    if (!orgB) throw new Error('Test org B missing — run seed-test-users');
+    orgBId = orgB.id;
+
+    // A real league in org A so the PATCH /api/leagues/:id tests
+    // have something to mutate. The route lookup runs BEFORE the
+    // FK existence checks, so we need a real id-with-org-access
+    // even when we expect a 404 from the new guard.
+    const [la] = await db
+      .insert(leagues)
+      .values({
+        name: 'Vitest #518 League',
+        seasonStart: '2025-01-01 00:00:00',
+        seasonEnd: '2025-12-31 00:00:00',
+        weekDay: 'Monday',
+        organizationId: orgAId,
+      })
+      .returning({ id: leagues.id });
+    leagueOrgAId = la.id;
+    createdLeagueIds.push(la.id);
+
+    // The cross-tenant locationId tests need a real location row
+    // owned by org B that an org A admin can try (and fail) to
+    // stamp onto a league or user. Belongs to org B by FK, so the
+    // same-tenant comparison in each guard is what fires the 404
+    // (not the existence check) — exactly the case the audit
+    // doc calls out as the "existence-oracle" risk.
+    const [locB] = await db
+      .insert(locations)
+      .values({ name: 'Vitest #518 Loc B', organizationId: orgBId })
+      .returning({ id: locations.id });
+    locationOrgBId = locB.id;
+    createdLocationIds.push(locB.id);
+  });
+
+  afterAll(async () => {
+    // Sweep any users the /users/create negative tests may have
+    // accidentally inserted. The tests all expect a 404 BEFORE
+    // the user insert, so this should normally be a no-op — but
+    // a regression that turns the guard into a pass-through would
+    // leave rows behind, and we don't want them poisoning later
+    // runs (the duplicate-email guard would mask the regression
+    // by switching the failure mode to a 409 conflict).
+    await db.delete(users).where(like(users.email, `${CREATE_USER_EMAIL_PREFIX}%`));
+
+    if (createdLeagueIds.length) {
+      await db.delete(leagues).where(inArray(leagues.id, createdLeagueIds));
+    }
+    if (createdLocationIds.length) {
+      await db.delete(locations).where(inArray(locations.id, createdLocationIds));
+    }
+  });
+
+  // ----------------------- POST /api/leagues -----------------------
+
+  describe('POST /api/leagues', () => {
+    it('returns 404 NOT_FOUND when a system_admin posts with a non-existent organizationId', async () => {
+      // System admin path: bodyOrg wins over the (null) session org,
+      // so a typoed body.organizationId is exactly what the new
+      // existence pre-check at server/routes/leagues.ts:148-151 is
+      // there to catch. Without it, the request falls through to
+      // the `leagues.organization_id -> organizations.id` FK and
+      // surfaces as a generic 500.
+      const { status, data } = await apiPost(
+        '/api/leagues',
+        {
+          name: 'Vitest #518 Missing Org',
+          seasonStart: '2025-01-01 00:00:00',
+          seasonEnd: '2025-12-31 00:00:00',
+          weekDay: 'Monday',
+          organizationId: MISSING_ID,
+        },
+        sysAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.code).toBe('NOT_FOUND');
+      expect(data.error?.message).toMatch(/organization not found/i);
+    });
+
+    it('returns 404 when an org_admin posts with a non-existent locationId', async () => {
+      // The org id resolves cleanly from the org_admin's session
+      // (orgAId), so the only failure mode left is the locationId
+      // existence guard at server/routes/leagues.ts:157-165.
+      const { status, data } = await apiPost(
+        '/api/leagues',
+        {
+          name: 'Vitest #518 Missing Loc',
+          seasonStart: '2025-01-01 00:00:00',
+          seasonEnd: '2025-12-31 00:00:00',
+          weekDay: 'Monday',
+          locationId: MISSING_ID,
+        },
+        orgAAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.code).toBe('NOT_FOUND');
+      expect(data.error?.message).toMatch(/location not found/i);
+    });
+
+    it('returns 404 when an org_admin tries to stamp a league with a location from another organization', async () => {
+      // The locationId is real — but it belongs to org B, not the
+      // caller's org A. The same-tenant arm of the guard at
+      // server/routes/leagues.ts:159 must conflate this with the
+      // missing-id case so an attacker can't probe for which
+      // location ids exist outside their tenant.
+      const { status, data } = await apiPost(
+        '/api/leagues',
+        {
+          name: 'Vitest #518 Cross-Tenant Loc',
+          seasonStart: '2025-01-01 00:00:00',
+          seasonEnd: '2025-12-31 00:00:00',
+          weekDay: 'Monday',
+          locationId: locationOrgBId,
+        },
+        orgAAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.message).toMatch(/location not found/i);
+    });
+  });
+
+  // -------------------- PATCH /api/leagues/:id ---------------------
+
+  describe('PATCH /api/leagues/:id', () => {
+    it('returns 404 when a system_admin re-stamps a league onto a non-existent organizationId', async () => {
+      // Mirror of the POST guard but for the update branch at
+      // server/routes/leagues.ts:209-218. The non-system-admin
+      // branch already 403s for any org change, so this is the
+      // only path the FK existence check is reachable from.
+      const { status, data } = await apiPatch(
+        `/api/leagues/${leagueOrgAId}`,
+        { organizationId: MISSING_ID },
+        sysAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.code).toBe('NOT_FOUND');
+      expect(data.error?.message).toMatch(/organization not found/i);
+    });
+
+    it('returns 404 when an org_admin patches a league with a non-existent locationId', async () => {
+      const { status, data } = await apiPatch(
+        `/api/leagues/${leagueOrgAId}`,
+        { locationId: MISSING_ID },
+        orgAAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.code).toBe('NOT_FOUND');
+      expect(data.error?.message).toMatch(/location not found/i);
+    });
+
+    it('returns 404 when an org_admin patches a league with a location from another organization', async () => {
+      // Cross-tenant arm of the PATCH location guard
+      // (server/routes/leagues.ts:228-235). Same existence-oracle
+      // reasoning as the POST cross-tenant test above.
+      const { status, data } = await apiPatch(
+        `/api/leagues/${leagueOrgAId}`,
+        { locationId: locationOrgBId },
+        orgAAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.message).toMatch(/location not found/i);
+    });
+  });
+
+  // ---------------------- POST /api/locations ----------------------
+
+  describe('POST /api/locations', () => {
+    it('returns 404 when a system_admin creates a location for a non-existent organizationId', async () => {
+      // The non-sysadmin path is pinned to the caller's session
+      // org by the equality check at server/routes/locations.ts:71,
+      // so the only path the new FK existence check at lines 82-85
+      // is reachable from is system_admin overriding via body.
+      // Without the guard, a typoed id falls through to the
+      // `locations.organization_id -> organizations.id` FK and 500s.
+      const { status, data } = await apiPost(
+        '/api/locations',
+        {
+          name: 'Vitest #518 Loc Missing Org',
+          organizationId: MISSING_ID,
+        },
+        sysAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      // server/routes/locations.ts uses `'NotFound'` (PascalCase)
+      // for its error codes — diverges from the screaming-snake
+      // convention elsewhere in this file. Pin the actual code so
+      // a future normalisation pass has to update both routes and
+      // this test together rather than silently shifting one.
+      expect(data.error?.code).toBe('NotFound');
+      expect(data.error?.message).toMatch(/organization not found/i);
+    });
+  });
+
+  // ----------------- POST /api/org-admin/users/:id/add -----------------
+
+  describe('POST /api/org-admin/users/:id/add', () => {
+    it('returns 404 when a system_admin tries to add a user to a non-existent organizationId', async () => {
+      // The orgRow check at server/routes/organization-admin.ts:286-289
+      // runs BEFORE the user lookup at line 291, so any path-userId
+      // is fine here — the org id is the failure mode under test.
+      // Use the org B admin id (a real user) so we don't accidentally
+      // trip the user-not-found arm if the order is ever swapped.
+      const { status, data } = await apiPost(
+        `/api/org-admin/users/${orgBAdmin.user.id}/add`,
+        { organizationId: MISSING_ID },
+        sysAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      // organization-admin.ts uses lower_snake_case error codes —
+      // again deliberately divergent from `NOT_FOUND` / `NotFound`.
+      expect(data.error?.code).toBe('not_found');
+      expect(data.error?.message).toMatch(/organization not found/i);
+    });
+  });
+
+  // ----------------- POST /api/org-admin/users/create ------------------
+
+  describe('POST /api/org-admin/users/create', () => {
+    it('returns 404 when a system_admin creates a user under a non-existent organizationId', async () => {
+      const { status, data } = await apiPost(
+        '/api/org-admin/users/create',
+        {
+          firstName: 'Vitest',
+          lastName: '#518 MissingOrg',
+          email: `${CREATE_USER_EMAIL_PREFIX}missing-org@example.com`,
+          organizationId: MISSING_ID,
+        },
+        sysAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.code).toBe('not_found');
+      expect(data.error?.message).toMatch(/organization not found/i);
+
+      // Belt-and-suspenders: prove no row was inserted under the
+      // missing org id. If the existence check ever regresses to
+      // a pass-through, the duplicate-email guard would fire on
+      // the next run and mask the regression — this catches the
+      // first-run leak directly.
+      const orphans = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, `${CREATE_USER_EMAIL_PREFIX}missing-org@example.com`));
+      expect(orphans).toHaveLength(0);
+    });
+
+    it('returns 404 when a system_admin creates a user with a non-existent locationId', async () => {
+      // Org id resolves to a real org so the org guard passes; the
+      // locationId guard at server/routes/organization-admin.ts:509-514
+      // is the only failure mode left.
+      const { status, data } = await apiPost(
+        '/api/org-admin/users/create',
+        {
+          firstName: 'Vitest',
+          lastName: '#518 MissingLoc',
+          email: `${CREATE_USER_EMAIL_PREFIX}missing-loc@example.com`,
+          organizationId: orgAId,
+          locationId: MISSING_ID,
+        },
+        sysAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.code).toBe('not_found');
+      expect(data.error?.message).toMatch(/location not found/i);
+    });
+
+    it('returns 404 when an org_admin creates a user with a location from another organization', async () => {
+      // Cross-tenant arm of the same locationId guard. The
+      // org_admin's session org wins (orgAId), and locationOrgBId
+      // belongs to org B — the same-tenant comparison at line 511
+      // is what fires the 404 (not the existence check), proving
+      // the wrong-tenant case is collapsed into the same response
+      // as the missing-id case.
+      const { status, data } = await apiPost(
+        '/api/org-admin/users/create',
+        {
+          firstName: 'Vitest',
+          lastName: '#518 CrossTenant',
+          email: `${CREATE_USER_EMAIL_PREFIX}cross-tenant@example.com`,
+          locationId: locationOrgBId,
+        },
+        orgAAdmin,
+      );
+
+      expect(status).toBe(404);
+      expect(data.success).toBe(false);
+      expect(data.error?.message).toMatch(/location not found/i);
     });
   });
 });
