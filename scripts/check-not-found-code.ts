@@ -84,21 +84,6 @@ const ALLOWED_CODES = new Set<string>([
  * reason.
  */
 const KNOWN_VIOLATIONS = new Set<string>([
-  // server/routes/admin.ts — email template lookups (3 sites)
-  "server/routes/admin.ts:144:'NotFound'",
-  "server/routes/admin.ts:161:'NotFound'",
-  "server/routes/admin.ts:187:'NotFound'",
-  // server/routes/organizations.ts — admin org lookups (10 sites)
-  "server/routes/organizations.ts:127:'NotFound'",
-  "server/routes/organizations.ts:169:'NotFound'",
-  "server/routes/organizations.ts:192:'NotFound'",
-  "server/routes/organizations.ts:290:'NotFound'",
-  "server/routes/organizations.ts:342:'NotFound'",
-  "server/routes/organizations.ts:363:'NotFound'",
-  "server/routes/organizations.ts:384:'NotFound'",
-  "server/routes/organizations.ts:429:'NotFound'",
-  "server/routes/organizations.ts:435:'NotFound'",
-  "server/routes/organizations.ts:462:'NotFound'",
   // server/routes/organizations-public.ts — public org lookups (2 sites)
   "server/routes/organizations-public.ts:18:'NotFound'",
   "server/routes/organizations-public.ts:41:'NotFound'",

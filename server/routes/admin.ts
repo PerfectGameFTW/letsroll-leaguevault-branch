@@ -141,7 +141,7 @@ router.get('/email-templates/:id', requireAdmin, async (req, res) => {
     }
     const template = await storage.getEmailTemplate(id);
     if (!template) {
-      return sendError(res, 'Email template not found', 404, 'NotFound');
+      return sendError(res, 'Email template not found', 404, 'NOT_FOUND');
     }
     sendSuccess(res, template);
   } catch (error) {
@@ -158,7 +158,7 @@ router.patch('/email-templates/:id', requireAdmin, async (req, res) => {
     }
     const existing = await storage.getEmailTemplate(id);
     if (!existing) {
-      return sendError(res, 'Email template not found', 404, 'NotFound');
+      return sendError(res, 'Email template not found', 404, 'NOT_FOUND');
     }
     const validated = updateEmailTemplateSchema.parse(req.body);
     const updated = await storage.updateEmailTemplate(id, validated);
@@ -184,7 +184,7 @@ router.post('/email-templates/:id/send-test', requireAdmin, emailTestLimiter, as
     }
     const template = await storage.getEmailTemplate(id);
     if (!template) {
-      return sendError(res, 'Email template not found', 404, 'NotFound');
+      return sendError(res, 'Email template not found', 404, 'NOT_FOUND');
     }
     let organization = undefined;
     if (organizationId) {

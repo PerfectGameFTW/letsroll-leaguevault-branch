@@ -124,7 +124,7 @@ router.get('/:id', async (req, res) => {
 
     const organization = await storage.getOrganization(id);
     if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     sendSuccess(res, sanitizeOrg(organization));
@@ -166,7 +166,7 @@ router.get('/slug/:slug', async (req, res) => {
     const organization = await storage.getOrganizationBySlug(slug);
     
     if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     sendSuccess(res, {
@@ -189,7 +189,7 @@ router.get('/slug/:slug/leagues', async (req, res) => {
     const organization = await storage.getOrganizationBySlug(slug);
     
     if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     const leagues = await storage.getLeagues(organization.id);
@@ -287,7 +287,7 @@ router.patch('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
 
     const organization = await storage.getOrganization(id);
     if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     const validatedData = updateOrganizationSchema.parse(req.body);
@@ -339,7 +339,7 @@ router.patch('/:id/archive', requireAdmin, adminWriteLimiter, async (req, res) =
 
     const organization = await storage.getOrganization(id);
     if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     const archived = await storage.archiveOrganization(id);
@@ -360,7 +360,7 @@ router.patch('/:id/restore', requireAdmin, adminWriteLimiter, async (req, res) =
 
     const organization = await storage.getOrganization(id);
     if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     const restored = await storage.restoreOrganization(id);
@@ -381,7 +381,7 @@ router.delete('/:id', requireAdmin, adminWriteLimiter, async (req, res) => {
 
     const organization = await storage.getOrganization(id);
     if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     await storage.deleteOrganization(id);
@@ -426,13 +426,13 @@ router.post('/user/:userId/set', requireAdmin, adminWriteLimiter, async (req, re
     if (organizationId !== null) {
       const organization = await storage.getOrganization(organizationId);
       if (!organization) {
-        return sendError(res, 'Organization not found', 404, 'NotFound');
+        return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
       }
       
       // Get the current user to update organization admin status
       const currentUser = await storage.getUser(userId);
       if (!currentUser) {
-        return sendError(res, 'User not found', 404, 'NotFound');
+        return sendError(res, 'User not found', 404, 'NOT_FOUND');
       }
     }
     
@@ -459,7 +459,7 @@ router.get('/:id/leagues', async (req, res) => {
 
     const organization = await storage.getOrganization(id);
     if (!organization) {
-      return sendError(res, 'Organization not found', 404, 'NotFound');
+      return sendError(res, 'Organization not found', 404, 'NOT_FOUND');
     }
 
     if (!requireOrganizationAccess(req, id, 'organization', id)) {
