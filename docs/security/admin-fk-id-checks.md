@@ -41,7 +41,7 @@ on a column with an FK constraint, with the path that gates it.
 | `PATCH /api/org-admin/users/:id/location` | body `locationId` | `users.location_id` | Existence + same-tenant check added in #454. Pinned by `tests/api/admin-fk-id-existence.test.ts` (#454) |
 | `POST /api/system-admin/orphaned-data/:type/:id/reassign` | body `organizationId` | `leagues.organization_id` / `users.organization_id` | `assertOrgExists` in `server/storage/orphaned-data.ts` -> 404 (`OrphanRowNotFoundError`) |
 | `PATCH /api/system-admin/users/:userId/admin-status` | none (id-from-row) | n/a | n/a |
-| `POST /api/payments-provider/apple-pay/register-domain` | body `locationId` | n/a (read-only path; not inserted) | Existence + same-org check already present (`location.organizationId === req.user.organizationId`) |
+| `POST /api/payments-provider/apple-pay/register-domain` | body `locationId` | n/a (read-only path; not inserted) | Existence + same-org check already present (`location.organizationId === req.user.organizationId`). Pinned by `tests/api/admin-fk-id-existence.test.ts` (#543: missing-location and cross-tenant location both collapse to the same 403 FORBIDDEN response) |
 
 Routes not listed here either don't accept an admin-supplied id (the
 id comes from the URL path and is validated against the row before

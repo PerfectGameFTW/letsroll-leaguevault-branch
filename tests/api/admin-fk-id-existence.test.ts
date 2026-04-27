@@ -550,3 +550,89 @@ describe('Task #518 — pin remaining admin FK id existence checks', () => {
     });
   });
 });
+
+describe('Task #543 — pin apple-pay register-domain cross-tenant location check', () => {
+  // The route at server/routes/payments-provider/apple-pay.ts:309-312
+  // collapses "location does not exist" and "location belongs to another
+  // org" into the same 403 FORBIDDEN response so an org_admin can't use
+  // the route as an existence oracle for location ids in tenants they
+  // don't own. The audit catalogue at docs/security/admin-fk-id-checks.md
+  // already lists this guard, but #518 only swept regression tests for
+  // the rest of the table — this route was the lone unpinned row, which
+  // is exactly the same risk #518 addressed (a future refactor of
+  // `getPaymentProvider` quietly removing the same-tenant arm of the
+  // check). The two assertions below mirror the missing-location /
+  // cross-tenant pattern used everywhere else in this file.
+
+  let orgAAdmin: AuthSession;
+  let orgBId = 0;
+  let locationOrgBId = 0;
+  const createdLocationIds: number[] = [];
+
+  // Domain has to satisfy the org-admin domain guard that runs BEFORE
+  // the locationId check (route lines 280-287). Mirror the suffix
+  // resolution from tests/api/apple-pay-register-domain.test.ts so this
+  // suite still runs when APP_DOMAIN points at a staging hostname.
+  const APP_DOMAIN_SUFFIX = process.env.APP_DOMAIN ?? 'leaguevault.app';
+  const ENDPOINT = '/api/payments-provider/apple-pay/register-domain';
+  const orgADomain = `${TEST_ORG_A_SLUG}.${APP_DOMAIN_SUFFIX}`;
+
+  beforeAll(async () => {
+    orgAAdmin = await login(TEST_ORG_A_EMAIL, TEST_ORG_PASSWORD);
+
+    const [orgB] = await db
+      .select({ id: organizations.id })
+      .from(organizations)
+      .where(eq(organizations.slug, TEST_ORG_B_SLUG));
+    if (!orgB) throw new Error('Test org B missing — run seed-test-users');
+    orgBId = orgB.id;
+
+    const [locB] = await db
+      .insert(locations)
+      .values({ name: 'Vitest #543 Loc B', organizationId: orgBId })
+      .returning({ id: locations.id });
+    locationOrgBId = locB.id;
+    createdLocationIds.push(locB.id);
+  });
+
+  afterAll(async () => {
+    if (createdLocationIds.length) {
+      await db.delete(locations).where(inArray(locations.id, createdLocationIds));
+    }
+  });
+
+  it('returns 403 FORBIDDEN when an org_admin posts with a non-existent locationId', async () => {
+    // Real positive integer, well above any seeded id, so the strict
+    // parser passes and the only failure mode left is the existence
+    // arm of the same-org guard (route line 310: `!location`).
+    const { status, data } = await apiPost(
+      ENDPOINT,
+      { domain: orgADomain, locationId: MISSING_ID },
+      orgAAdmin,
+    );
+
+    expect(status).toBe(403);
+    expect(data.success).toBe(false);
+    expect(data.error?.code).toBe('FORBIDDEN');
+    expect(data.error?.message).toMatch(/location does not belong to your organization/i);
+  });
+
+  it('returns the same 403 FORBIDDEN when an org_admin posts with a locationId from another organization', async () => {
+    // The locationId is real — but it belongs to org B, not the
+    // caller's org A. The same-tenant arm of the guard
+    // (route line 310: `location.organizationId !== req.user.organizationId`)
+    // must produce a response that's indistinguishable from the
+    // missing-id case above so the route can't be used as an
+    // existence oracle for ids in another tenant.
+    const { status, data } = await apiPost(
+      ENDPOINT,
+      { domain: orgADomain, locationId: locationOrgBId },
+      orgAAdmin,
+    );
+
+    expect(status).toBe(403);
+    expect(data.success).toBe(false);
+    expect(data.error?.code).toBe('FORBIDDEN');
+    expect(data.error?.message).toMatch(/location does not belong to your organization/i);
+  });
+});
