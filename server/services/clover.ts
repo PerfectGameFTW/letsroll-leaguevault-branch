@@ -10,9 +10,9 @@
  *   - POST /v1/charges                    — one-off and saved-card charges
  *   - POST /v1/customers                  — create customer
  *   - GET  /v1/customers/{id}             — fetch (used opportunistically)
- *   - POST /v1/customers/{id}/sources     — vault a card token onto a customer
- *   - GET  /v1/customers/{id}/sources     — list vaulted cards
- *   - DELETE /v1/customers/{id}/sources/{cardId} — remove a vaulted card
+ *   - POST /v1/customers/{id}/cards       — vault a card token onto a customer
+ *   - GET  /v1/customers/{id}/cards       — list vaulted cards
+ *   - DELETE /v1/customers/{id}/cards/{cardId} — remove a vaulted card
  *   - DELETE /v1/customers/{id}           — delete a customer (account-deletion)
  *   - POST /v1/refunds                    — refund an existing charge
  *   - GET  /v1/charges/{id}               — verify / look up an existing charge
@@ -243,6 +243,7 @@ export interface CloverSource {
 }
 
 interface CloverSourceList {
+  cards?: CloverSource[];
   sources?: CloverSource[];
   data?: CloverSource[];
   elements?: CloverSource[];
@@ -256,7 +257,7 @@ export async function createCustomerSource(
   return request<CloverSource>(
     creds,
     'POST',
-    `/v1/customers/${encodeURIComponent(customerId)}/sources`,
+    `/v1/customers/${encodeURIComponent(customerId)}/cards`,
     { source },
   );
 }
@@ -268,9 +269,9 @@ export async function listCustomerSources(
   const result = await request<CloverSourceList>(
     creds,
     'GET',
-    `/v1/customers/${encodeURIComponent(customerId)}/sources`,
+    `/v1/customers/${encodeURIComponent(customerId)}/cards`,
   );
-  return result.sources || result.data || result.elements || [];
+  return result.cards || result.sources || result.data || result.elements || [];
 }
 
 export async function deleteCustomerSource(
@@ -281,7 +282,7 @@ export async function deleteCustomerSource(
   await request<unknown>(
     creds,
     'DELETE',
-    `/v1/customers/${encodeURIComponent(customerId)}/sources/${encodeURIComponent(sourceId)}`,
+    `/v1/customers/${encodeURIComponent(customerId)}/cards/${encodeURIComponent(sourceId)}`,
   );
 }
 

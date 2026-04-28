@@ -21,7 +21,7 @@ import {
   GENERIC_PAYMENT_USER_MESSAGE,
 } from '../../services/payment-provider-factory';
 import { computePaymentSplit, buildLineItems } from '../../services/payment-execution';
-import { getProviderCustomerId, persistCloverCustomer } from '../../services/payment-utils';
+import { getProviderCustomerId, persistCloverCustomer, ensureProviderCustomer } from '../../services/payment-utils';
 import { providerNameToPaymentType } from '@shared/schema/constants';
 import { isDev } from '../../config';
 import { getProviderForLeague } from './shared.js';
@@ -184,10 +184,19 @@ router.post('/payments', paymentLimiter, async (req, res) => {
 
     const provider = await getPaymentProvider(league.locationId ?? null);
 
-    const customerId = getProviderCustomerId(bowler, provider);
-
+    // When the user opted to store the card on file, bootstrap a
+    // provider customer first if one doesn't already exist (task #573).
+    // Without this, first-time Clover bowlers — who never go through
+    // the Square-only profile sync — would charge successfully but
+    // silently skip the save-card step below.
+    let customerId = getProviderCustomerId(bowler, provider);
     if (req.body.storeCard && !customerId) {
-      log.warn('Cannot store card — bowler has no customer ID:', bowlerId);
+      const bootstrapped = await ensureProviderCustomer(provider, bowler);
+      if (bootstrapped) {
+        customerId = bootstrapped;
+      } else {
+        log.warn('Cannot store card — bowler has no customer ID and bootstrap failed:', bowlerId);
+      }
     }
 
     const weeklyFee = league.weeklyFee || 0;
@@ -277,10 +286,10 @@ router.post('/payments', paymentLimiter, async (req, res) => {
       bowlerId, leagueId, amount,
     });
 
-    const canStoreCard = !!customerId;
-    if (req.body.storeCard && canStoreCard && sourceId && !provider.validateCardId(sourceId)) {
+    if (req.body.storeCard && customerId && sourceId && !provider.validateCardId(sourceId)) {
+      const cid = customerId;
       try {
-        const savedCard = await provider.saveCardOnFile(sourceId, customerId);
+        const savedCard = await provider.saveCardOnFile(sourceId, cid);
         if (savedCard?.id) {
           log.info('Card saved on file:', savedCard.id.substring(0, 15) + '...');
           storedCardId = savedCard.id;
@@ -293,7 +302,7 @@ router.post('/payments', paymentLimiter, async (req, res) => {
           } catch (schedError) {
             if (isDev) log.info('No payment schedule to update (normal for one-time payments)');
           }
-          await persistCloverCustomer(provider, customerId, bowlerId);
+          await persistCloverCustomer(provider, cid, bowlerId);
         }
       } catch (error) {
         log.error('Failed to save card on file:', error);
