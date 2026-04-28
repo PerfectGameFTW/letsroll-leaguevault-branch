@@ -152,11 +152,15 @@ vi.mock('@/lib/queryClient', async () => {
   };
 });
 
+// Hoisted so the wouter mock factory (which runs before module init)
+// can refer to it AND the test body can assert against the same fn.
+const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
+
 vi.mock('wouter', async () => {
   const actual = await vi.importActual<typeof import('wouter')>('wouter');
   return {
     ...actual,
-    useLocation: () => ['/', vi.fn()],
+    useLocation: () => ['/', navigateMock],
   };
 });
 
@@ -188,13 +192,43 @@ const BOWLERS: Bowler[] = [
   },
 ];
 
-function renderForm() {
+type RenderOptions = {
+  /**
+   * Optional currentUser to seed into the QueryClient for the
+   * `/api/user` query that <PaymentForm /> uses to decide whether
+   * to render the admin-only "Open Settings" action (#583).
+   * Pass `null` to simulate a non-admin operator (e.g. league
+   * scorekeeper) — the user object lacks the system_admin /
+   * org_admin role, so the action must NOT render.
+   */
+  currentUser?: { role: string } | null;
+  /**
+   * Optional locationId to seed into the league query so the
+   * "Open Settings" deep-link can append `?location=<id>`.
+   */
+  locationId?: number | null;
+};
+
+function renderForm(opts: RenderOptions = {}) {
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
       mutations: { retry: false },
     },
   });
+  if (opts.currentUser !== undefined) {
+    // Mirror the wire shape: `{ success, data }` ApiResponse<User>.
+    qc.setQueryData(['/api/user'], {
+      success: true,
+      data: opts.currentUser,
+    });
+  }
+  if (opts.locationId !== undefined) {
+    qc.setQueryData(['/api/leagues', 7], {
+      success: true,
+      data: { id: 7, locationId: opts.locationId },
+    });
+  }
   return render(
     <QueryClientProvider client={qc}>
       <PaymentForm
@@ -209,6 +243,7 @@ function renderForm() {
 
 beforeEach(() => {
   cloverInitializeCard.mockClear();
+  navigateMock.mockClear();
 });
 
 describe('<PaymentForm /> — Clover not fully configured (#580)', () => {
@@ -289,6 +324,162 @@ describe('<PaymentForm /> — Clover not fully configured (#580)', () => {
     //    is half-configured. (It's enabled on Cash, which is fine.)
     await user.click(screen.getByRole('tab', { name: /credit card/i }));
     expect(screen.getByRole('button', { name: /submit payment/i })).toBeDisabled();
+  });
+
+  it('renders an "Open Settings" deep-link for admins that includes the location id (#583)', async () => {
+    providerState = {
+      config: {
+        paymentProvider: 'clover',
+        merchantId: 'M_PARTIAL',
+        environment: 'sandbox',
+        providerConfigured: false,
+        missingFields: ['apiToken', 'publicTokenizerKey'],
+      },
+      isLoading: false,
+      isClover: true,
+      isSquare: false,
+      supportsWallets: false,
+      isProviderConfigured: false,
+      missingFields: ['apiToken', 'publicTokenizerKey'],
+    };
+
+    const user = userEvent.setup();
+    renderForm({
+      currentUser: { role: 'org_admin' },
+      locationId: 1234,
+    });
+
+    await user.click(screen.getByRole('tab', { name: /credit card/i }));
+
+    const alert = await screen.findByTestId('alert-clover-not-configured');
+    // Admins get the imperative copy (they ARE the admin), not
+    // the "ask your league admin" deflection.
+    expect(alert).toHaveTextContent(/Finish configuring Clover in Settings/i);
+    expect(alert).not.toHaveTextContent(/Ask your league admin/i);
+
+    const action = await screen.findByTestId(
+      'button-clover-not-configured-open-settings',
+    );
+    expect(action).toHaveTextContent(/open settings/i);
+
+    await user.click(action);
+
+    // Mirrors the contract enforced by
+    // tests/components/provider-not-configured-toast.test.tsx for the
+    // shared toast helper: deep-link to /integrations with the
+    // location id appended as a query param so the integrations page
+    // can scroll/select the right location.
+    expect(navigateMock).toHaveBeenCalledTimes(1);
+    expect(navigateMock).toHaveBeenCalledWith('/integrations?location=1234');
+  });
+
+  it('falls back to /integrations (no query param) when no locationId is known (#583)', async () => {
+    providerState = {
+      config: {
+        paymentProvider: 'clover',
+        merchantId: 'M_PARTIAL',
+        environment: 'sandbox',
+        providerConfigured: false,
+        missingFields: ['apiToken'],
+      },
+      isLoading: false,
+      isClover: true,
+      isSquare: false,
+      supportsWallets: false,
+      isProviderConfigured: false,
+      missingFields: ['apiToken'],
+    };
+
+    const user = userEvent.setup();
+    renderForm({
+      currentUser: { role: 'system_admin' },
+      // No locationId seeded — leagueInfo?.locationId is null.
+    });
+
+    await user.click(screen.getByRole('tab', { name: /credit card/i }));
+
+    const action = await screen.findByTestId(
+      'button-clover-not-configured-open-settings',
+    );
+    await user.click(action);
+
+    expect(navigateMock).toHaveBeenCalledWith('/integrations');
+  });
+
+  it('does NOT render the "Open Settings" action for non-admin operators (#583)', async () => {
+    providerState = {
+      config: {
+        paymentProvider: 'clover',
+        merchantId: 'M_PARTIAL',
+        environment: 'sandbox',
+        providerConfigured: false,
+        missingFields: ['apiToken', 'publicTokenizerKey'],
+      },
+      isLoading: false,
+      isClover: true,
+      isSquare: false,
+      supportsWallets: false,
+      isProviderConfigured: false,
+      missingFields: ['apiToken', 'publicTokenizerKey'],
+    };
+
+    const user = userEvent.setup();
+    renderForm({
+      // 'user' is the only non-admin role in USER_ROLES — confirms
+      // the gate is on the admin roles (system_admin / org_admin),
+      // not just "logged in at all".
+      currentUser: { role: 'user' },
+      locationId: 1234,
+    });
+
+    await user.click(screen.getByRole('tab', { name: /credit card/i }));
+
+    const alert = await screen.findByTestId('alert-clover-not-configured');
+    // Non-admins keep the deflection copy — they can't reach the
+    // integrations page anyway.
+    expect(alert).toHaveTextContent(/Ask your league admin/i);
+
+    expect(
+      screen.queryByTestId('button-clover-not-configured-open-settings'),
+    ).not.toBeInTheDocument();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('renders an "Open Settings" deep-link in the Square not-configured alert too (#583)', async () => {
+    const squareConfig: PaymentProviderConfig = {
+      paymentProvider: 'square',
+      appId: 'sq_app_partial',
+      environment: 'sandbox',
+      providerConfigured: false,
+      missingFields: ['accessToken', 'locationId'],
+    };
+    providerState = {
+      config: squareConfig,
+      isLoading: false,
+      isClover: false,
+      isSquare: true,
+      supportsWallets: false,
+      isProviderConfigured: false,
+      missingFields: ['accessToken', 'locationId'],
+    };
+
+    const user = userEvent.setup();
+    renderForm({
+      currentUser: { role: 'org_admin' },
+      locationId: 9876,
+    });
+
+    await user.click(screen.getByRole('tab', { name: /credit card/i }));
+
+    const alert = await screen.findByTestId('alert-square-not-configured');
+    expect(alert).toHaveTextContent(/Finish configuring Square in Settings/i);
+
+    const action = await screen.findByTestId(
+      'button-square-not-configured-open-settings',
+    );
+    await user.click(action);
+
+    expect(navigateMock).toHaveBeenCalledWith('/integrations?location=9876');
   });
 
   it('renders the credit card section (and no Clover-not-configured alert) when the provider is fully configured', async () => {

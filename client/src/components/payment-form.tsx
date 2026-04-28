@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { insertPaymentSchema, DEFAULT_WEEKLY_FEE_CENTS } from "@shared/schema";
-import type { InsertPayment, Bowler, League } from "@shared/schema";
+import type { InsertPayment, Bowler, League, User, ApiResponse } from "@shared/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, AlertCircle, AlertTriangle, Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -74,6 +74,19 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     enabled: !!leagueId,
   });
   const leagueInfo = leagueData?.data;
+
+  // Admins (system_admin or org_admin) can actually fix a misconfigured
+  // payment provider. Non-admin operators get the static "ask your league
+  // admin" copy with no Open Settings action — they can't reach the
+  // integrations page anyway. (Task #583, mirrors the deep-link rendered
+  // by `providerNotConfiguredToast` in client/src/lib/provider-not-configured.tsx.)
+  const { data: currentUserResponse } = useQuery<ApiResponse<User>>({
+    queryKey: ['/api/user'],
+    staleTime: 1000 * 60 * 5,
+  });
+  const currentUser = currentUserResponse?.data;
+  const isAdmin =
+    currentUser?.role === 'system_admin' || currentUser?.role === 'org_admin';
 
   const form = useForm<InsertPayment>({
     resolver: zodResolver(insertPaymentSchema),
@@ -505,10 +518,34 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                     </p>
                   )}
                   <p className="text-xs mt-2">
-                    Ask your league admin to finish configuring {providerLabel} in
-                    Settings, then try again. Cash and check payments still
-                    work in the meantime.
+                    {isAdmin
+                      ? `Finish configuring ${providerLabel} in Settings to enable card payments. Cash and check payments still work in the meantime.`
+                      : `Ask your league admin to finish configuring ${providerLabel} in Settings, then try again. Cash and check payments still work in the meantime.`}
                   </p>
+                  {isAdmin && (
+                    <div className="mt-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        data-testid={
+                          isClover
+                            ? "button-clover-not-configured-open-settings"
+                            : "button-square-not-configured-open-settings"
+                        }
+                        onClick={() => {
+                          const locId = leagueInfo?.locationId ?? null;
+                          navigate(
+                            locId
+                              ? `/integrations?location=${locId}`
+                              : '/integrations',
+                          );
+                        }}
+                      >
+                        Open Settings
+                      </Button>
+                    </div>
+                  )}
                 </AlertDescription>
               </Alert>
             )}
