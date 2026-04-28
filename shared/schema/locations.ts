@@ -103,6 +103,67 @@ export function getMissingCloverFields(
   return missing;
 }
 
+/**
+ * Required fields for a fully-configured Square Ecommerce location.
+ * Mirrors `REQUIRED_CLOVER_FIELDS`. Used by the server
+ * `/payments-provider/config` route and by the settings UI to detect
+ * partial configurations and surface a clear "Square not fully
+ * configured" message instead of failing silently at checkout.
+ * (Task #579 — Square parity for the #575 partial-config UX.)
+ */
+export const REQUIRED_SQUARE_FIELDS = [
+  'appId',
+  'accessToken',
+  'locationId',
+] as const;
+
+export type RequiredSquareField = (typeof REQUIRED_SQUARE_FIELDS)[number];
+
+/**
+ * Public/client-facing label for each required Square field. Kept here
+ * so server logs and the settings/payment UIs use identical wording.
+ */
+export const SQUARE_FIELD_LABELS: Record<RequiredSquareField, string> = {
+  appId: 'Application ID',
+  accessToken: 'Access Token',
+  locationId: 'Square Location ID',
+};
+
+/**
+ * Returns the list of required Square fields that are missing from the
+ * provided credentials blob. An empty array means the location is
+ * fully configured.
+ *
+ * Like `getMissingCloverFields`, this works on the *raw* credentials
+ * shape (with `accessToken`) AND on the public-facing config shape
+ * returned by GET `/locations/:id/square-config` (which exposes
+ * `accessTokenConfigured: boolean` instead of the secret itself). The
+ * latter is detected by the presence of `accessTokenConfigured` and
+ * treated as "accessToken present" when true.
+ */
+export interface SquareConfigStatusInput {
+  appId?: string | null;
+  accessToken?: string | null;
+  accessTokenConfigured?: boolean;
+  locationId?: string | null;
+}
+
+export function getMissingSquareFields(
+  creds: SquareConfigStatusInput | null | undefined,
+): RequiredSquareField[] {
+  if (!creds) return [...REQUIRED_SQUARE_FIELDS];
+
+  const missing: RequiredSquareField[] = [];
+
+  if (!nonEmptyString(creds.appId)) missing.push('appId');
+  const hasAccessToken =
+    creds.accessTokenConfigured === true || nonEmptyString(creds.accessToken);
+  if (!hasAccessToken) missing.push('accessToken');
+  if (!nonEmptyString(creds.locationId)) missing.push('locationId');
+
+  return missing;
+}
+
 export const locations = pgTable("locations", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),

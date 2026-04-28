@@ -27,7 +27,7 @@ import type { InsertPayment, Bowler, League } from "@shared/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, AlertCircle, AlertTriangle, Info } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { CLOVER_FIELD_LABELS } from "@shared/schema";
+import { CLOVER_FIELD_LABELS, SQUARE_FIELD_LABELS, type RequiredCloverField, type RequiredSquareField } from "@shared/schema";
 import { PaymentCreditCardSection } from "@/components/payment-credit-card-section";
 import { csrfFetch } from '@/lib/queryClient';
 import {
@@ -90,18 +90,30 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
   const {
     config: providerConfig,
     isClover,
+    isSquare,
     supportsWallets,
     isLoading: providerLoading,
     isProviderConfigured,
     missingFields: providerMissingFields,
   } = usePaymentProvider(leagueInfo?.locationId ?? null);
-  // Only Clover currently exposes per-field "missing" data via
-  // `/payments-provider/config`. For Square the in-flow toast (driven
-  // by PROVIDER_NOT_CONFIGURED on the actual charge) handles the
-  // misconfigured case, so we keep this gate Clover-specific to avoid
-  // regressing the existing Square behavior. (task #575)
+  // Both Clover (#575) and Square (#579) now expose per-field "missing"
+  // data via `/payments-provider/config`. When the active provider for
+  // the location is partially configured we replace the card UI with a
+  // friendly Alert listing the missing fields and disable the submit
+  // button — instead of trying to spin up a tokenizer that will fail.
   const cloverNotFullyConfigured =
     isClover && !providerLoading && !isProviderConfigured;
+  const squareNotFullyConfigured =
+    isSquare && !providerLoading && !isProviderConfigured;
+  const providerNotFullyConfigured =
+    cloverNotFullyConfigured || squareNotFullyConfigured;
+  const providerLabel = isClover ? 'Clover' : 'Square';
+  const providerFieldLabels: Record<string, string> = isClover
+    ? CLOVER_FIELD_LABELS
+    : SQUARE_FIELD_LABELS;
+  function labelForMissingField(f: RequiredCloverField | RequiredSquareField): string {
+    return providerFieldLabels[f] ?? f;
+  }
 
   const {
     card: squareCard,
@@ -195,12 +207,12 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
       return;
     }
 
-    // Don't even attempt to spin up the Clover tokenizer when the
-    // location's Clover credentials are missing/partial — the SDK
+    // Don't even attempt to spin up the active provider's tokenizer
+    // when the location's credentials are missing/partial — the SDK
     // load would fail with a generic error and leave the user
     // staring at a broken card form. The friendly notice rendered
-    // below tells admins exactly what to fix. (task #575)
-    if (cloverNotFullyConfigured) {
+    // below tells admins exactly what to fix. (Tasks #575 + #579.)
+    if (providerNotFullyConfigured) {
       return;
     }
     
@@ -465,13 +477,20 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               </FormItem>
             )}
 
-            {paymentType === "credit_card" && cloverNotFullyConfigured && (
-              <Alert variant="destructive" data-testid="alert-clover-not-configured">
+            {paymentType === "credit_card" && providerNotFullyConfigured && (
+              <Alert
+                variant="destructive"
+                data-testid={
+                  isClover
+                    ? "alert-clover-not-configured"
+                    : "alert-square-not-configured"
+                }
+              >
                 <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Clover isn't fully set up for this location</AlertTitle>
+                <AlertTitle>{providerLabel} isn't fully set up for this location</AlertTitle>
                 <AlertDescription>
                   <p className="text-sm">
-                    Card payments are unavailable until every required Clover
+                    Card payments are unavailable until every required {providerLabel}{' '}
                     credential is filled in.
                   </p>
                   {providerMissingFields.length > 0 && (
@@ -479,14 +498,14 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                       Missing:{" "}
                       <span className="font-medium">
                         {providerMissingFields
-                          .map((f) => CLOVER_FIELD_LABELS[f])
+                          .map((f) => labelForMissingField(f))
                           .join(", ")}
                       </span>
                       .
                     </p>
                   )}
                   <p className="text-xs mt-2">
-                    Ask your league admin to finish configuring Clover in
+                    Ask your league admin to finish configuring {providerLabel} in
                     Settings, then try again. Cash and check payments still
                     work in the meantime.
                   </p>
@@ -494,7 +513,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               </Alert>
             )}
 
-            {paymentType === "credit_card" && !cloverNotFullyConfigured && (
+            {paymentType === "credit_card" && !providerNotFullyConfigured && (
               <PaymentCreditCardSection
                 form={form}
                 savedCards={savedCards}
@@ -534,7 +553,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 disabled={
                   form.formState.isSubmitting || 
                   isWalletProcessing ||
-                  (paymentType === "credit_card" && cloverNotFullyConfigured) ||
+                  (paymentType === "credit_card" && providerNotFullyConfigured) ||
                   (paymentType === "credit_card" && cardMode === 'new' && !isSquareReady) ||
                   (paymentType === "credit_card" && cardMode === 'saved' && !selectedSavedCardId) ||
                   // inline email is

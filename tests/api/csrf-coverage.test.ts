@@ -38,7 +38,18 @@ async function rawRequest(
   path: string,
   init: RequestInit,
 ): Promise<{ status: number; body: ApiResponse }> {
-  const res = await fetch(`${BASE_URL}${path}`, init);
+  // Add the test-only rate-limit bypass header on every raw request.
+  // The setup-admin endpoint is protected by `setupAdminLimiter`
+  // (5 requests / 15 min, backed by a shared Postgres store), so
+  // re-running this test file across vitest invocations would
+  // exhaust the bucket and turn legitimate 401/403 assertions into
+  // flaky 429s. The bypass is gated on `NODE_ENV !== 'production'`
+  // server-side (see `testBypassSkip` in `server/middleware/rate-limit.ts`).
+  const headers: Record<string, string> = {
+    ...((init.headers as Record<string, string> | undefined) ?? {}),
+    'x-test-rate-limit-bypass': '1',
+  };
+  const res = await fetch(`${BASE_URL}${path}`, { ...init, headers });
   const body = await res.json().catch(() => ({ success: false } as ApiResponse));
   return { status: res.status, body };
 }

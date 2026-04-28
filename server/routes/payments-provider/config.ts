@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { storage } from '../../storage';
 import { createLogger } from '../../logger';
 import { isDev } from '../../config';
-import { getMissingCloverFields } from '@shared/schema';
+import { getMissingCloverFields, getMissingSquareFields } from '@shared/schema';
 
 const log = createLogger('Payments');
 
@@ -47,15 +47,23 @@ router.get('/config', async (req, res) => {
             }
 
             const creds = await storage.getLocationSquareConfig(lvLocationId);
-            if (creds?.appId && creds?.accessToken && creds.appId.trim().length > 0) {
-              return res.json({
-                appId: creds.appId.trim(),
-                locationId: creds.locationId?.trim() || '',
-                paymentProvider: loc.paymentProvider ?? 'square',
-                providerConfigured: true,
-                missingFields: [],
-              });
-            }
+            // Always advertise per-location Square config (even when
+            // partial / missing) so the client can branch its UI on
+            // `providerConfigured` + `missingFields`. Mirrors the
+            // Clover branch above. Falling through to env-var config
+            // when a location is explicitly on Square would mask a
+            // half-configured location with stale process-level
+            // credentials and silently break the partial-config UX
+            // settings/payment surfaces depend on. (Task #579 —
+            // Square parity for the #575 partial-config UX.)
+            const sqMissingFields = getMissingSquareFields(creds ?? null);
+            return res.json({
+              appId: creds?.appId?.trim() || '',
+              locationId: creds?.locationId?.trim() || '',
+              paymentProvider: loc.paymentProvider ?? 'square',
+              providerConfigured: sqMissingFields.length === 0,
+              missingFields: sqMissingFields,
+            });
           }
         }
       } catch {

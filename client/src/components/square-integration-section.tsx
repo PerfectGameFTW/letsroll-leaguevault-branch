@@ -23,7 +23,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ChevronUp, CheckCircle2, Eye, EyeOff, Pencil, CreditCard, AlertTriangle } from "lucide-react";
 import { SiSquare } from "react-icons/si";
 import type { ApiResponse, Location, PaymentProviderType } from "@shared/schema";
-import { CLOVER_FIELD_LABELS, getMissingCloverFields } from "@shared/schema";
+import { CLOVER_FIELD_LABELS, getMissingCloverFields, SQUARE_FIELD_LABELS, getMissingSquareFields } from "@shared/schema";
 import { clearProviderConfigCache } from "@/hooks/use-payment-provider";
 
 interface SquareLocationConfig {
@@ -100,7 +100,16 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
   });
 
   const config = configResponse?.data;
-  const isConfigured = !!(config?.accessTokenConfigured);
+  // "Configured" means *all three* required Square fields are present.
+  // "Partial" means at least one field is set but at least one is
+  // missing — surface this so admins can see exactly what's left to
+  // fill in instead of being told only "Not configured" or seeing a
+  // broken card form at checkout (task #579, mirrors task #575 for
+  // Clover).
+  const squareMissingFields = getMissingSquareFields(config ?? null);
+  const filledSquareFieldCount = 3 - squareMissingFields.length;
+  const isConfigured = squareMissingFields.length === 0;
+  const isPartial = !isConfigured && filledSquareFieldCount > 0;
 
   const mutation = useMutation({
     mutationFn: async (data: { appId?: string; accessToken?: string; locationId?: string }) => {
@@ -108,6 +117,7 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/locations", location.id, "square-config"] });
+      clearProviderConfigCache();
       toast({ title: "Square settings saved", description: `Square credentials for ${location.name} have been updated.` });
       setAccessToken("");
       setExpanded(false);
@@ -136,7 +146,7 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         {isLoading ? (
           <div className="h-5 w-24 bg-muted animate-pulse rounded-full" />
         ) : isConfigured ? (
@@ -144,13 +154,18 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
             <CheckCircle2 className="h-3 w-3 mr-1" />
             Configured
           </Badge>
+        ) : isPartial ? (
+          <Badge className="bg-amber-100 text-amber-800 border-amber-200" data-testid="badge-square-partial">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Partial setup
+          </Badge>
         ) : (
           <Badge variant="outline">Not configured</Badge>
         )}
-        {isConfigured && !expanded ? (
+        {(isConfigured || isPartial) && !expanded ? (
           <Button variant="outline" size="sm" onClick={handleOpen}>
             <Pencil className="h-3.5 w-3.5 mr-1.5" />
-            Edit
+            {isPartial ? 'Finish setup' : 'Edit'}
           </Button>
         ) : !expanded ? (
           <Button variant="outline" size="sm" onClick={handleOpen}>
@@ -163,11 +178,38 @@ function SquareConfigForm({ location }: PaymentLocationCardProps) {
         )}
       </div>
 
+      {!isLoading && isPartial && !expanded && (
+        <p
+          className="text-xs text-amber-700"
+          data-testid="text-square-missing-fields"
+        >
+          Missing: {squareMissingFields.map((f) => SQUARE_FIELD_LABELS[f]).join(', ')}.
+          Card payments will be unavailable until every field is filled in.
+        </p>
+      )}
+
       {expanded && (
         <div className="space-y-4 pt-2">
           <p className="text-sm text-muted-foreground">
             Enter the Square credentials for <strong>{location.name}</strong>.
           </p>
+
+          {isPartial && (
+            <div
+              className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"
+              data-testid="alert-square-missing-fields-form"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                <div>
+                  <div className="font-medium">Square is partially configured</div>
+                  <div className="text-xs mt-1">
+                    Still needed: {squareMissingFields.map((f) => SQUARE_FIELD_LABELS[f]).join(', ')}.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor={`sq-app-id-${location.id}`}>Application ID</Label>

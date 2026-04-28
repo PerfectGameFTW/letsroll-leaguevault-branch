@@ -1,5 +1,17 @@
 import { useState, useEffect, useRef } from "react";
-import type { PaymentProviderType, RequiredCloverField } from "@shared/schema";
+import type {
+  PaymentProviderType,
+  RequiredCloverField,
+  RequiredSquareField,
+} from "@shared/schema";
+
+/**
+ * Required-field name returned in `missingFields` from
+ * `/api/payments-provider/config`. Either a Clover-specific or
+ * Square-specific field name depending on the active provider for
+ * the queried location. (Tasks #575, #579.)
+ */
+export type RequiredProviderField = RequiredCloverField | RequiredSquareField;
 
 export interface PaymentProviderConfig {
   paymentProvider: PaymentProviderType;
@@ -11,7 +23,7 @@ export interface PaymentProviderConfig {
   /** True when the active provider has every required credential set. */
   providerConfigured?: boolean;
   /** Names of required fields the active provider is still missing. */
-  missingFields?: RequiredCloverField[];
+  missingFields?: RequiredProviderField[];
 }
 
 interface UsePaymentProviderReturn {
@@ -23,13 +35,14 @@ interface UsePaymentProviderReturn {
   supportsWallets: boolean;
   /**
    * True when the active provider for the location is fully configured
-   * (e.g. all four required Clover credentials are present). Defaults
-   * to true while the config is loading or when no `providerConfigured`
-   * flag is present in the response (legacy/env-only Square config).
+   * (e.g. all four required Clover credentials, or all three required
+   * Square credentials, are present). Defaults to true while the config
+   * is loading or when no `providerConfigured` flag is present in the
+   * response (legacy/env-only Square config).
    */
   isProviderConfigured: boolean;
   /** Required fields the active provider is missing. */
-  missingFields: RequiredCloverField[];
+  missingFields: RequiredProviderField[];
 }
 
 interface CacheEntry {
