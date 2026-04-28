@@ -534,6 +534,7 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
                 disabled={
                   form.formState.isSubmitting || 
                   isWalletProcessing ||
+                  (paymentType === "credit_card" && cloverNotFullyConfigured) ||
                   (paymentType === "credit_card" && cardMode === 'new' && !isSquareReady) ||
                   (paymentType === "credit_card" && cardMode === 'saved' && !selectedSavedCardId) ||
                   // inline email is
