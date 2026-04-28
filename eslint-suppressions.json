@@ -224,14 +224,6 @@
       "count": 2
     }
   },
-  "server/services/__tests__/apple-pay-worker.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    },
-    "no-restricted-syntax": {
-      "count": 5
-    }
-  },
   "server/services/account-deletion.ts": {
     "@typescript-eslint/consistent-type-assertions": {
       "count": 1

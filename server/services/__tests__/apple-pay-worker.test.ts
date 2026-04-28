@@ -70,7 +70,7 @@ function deferred<T>(): Deferred<T> {
 }
 
 function makeItems(jobId: number, count: number): ApplePayJobItem[] {
-  return Array.from({ length: count }, (_, i) => ({
+  return Array.from({ length: count }, (_, i): ApplePayJobItem => ({
     id: 1000 + i,
     jobId,
     organizationId: 1,
@@ -81,10 +81,16 @@ function makeItems(jobId: number, count: number): ApplePayJobItem[] {
     processedAt: null,
     claimedAt: null,
     recoveredCount: 0,
-  })) as ApplePayJobItem[];
+  }));
 }
 
 function makeJob(): ApplePayJob {
+  // Timestamps on apple_pay_jobs are declared with `mode: "string"` (see
+  // shared/schema/apple-pay-jobs.ts), so the inferred TS type is `string`,
+  // not `Date`. We pass an ISO string here to match the real shape exactly
+  // — the previous `new Date()` + `as unknown as ApplePayJob` cast was
+  // hiding that mismatch.
+  const now = new Date().toISOString();
   return {
     id: 42,
     status: "running",
@@ -94,10 +100,10 @@ function makeJob(): ApplePayJob {
     skippedCount: 0,
     errorMessage: null,
     createdBy: null,
-    createdAt: new Date(),
-    startedAt: new Date(),
+    createdAt: now,
+    startedAt: now,
     completedAt: null,
-  } as unknown as ApplePayJob;
+  };
 }
 
 describe("ApplePayWorker — cancellation race conditions", () => {
@@ -162,9 +168,7 @@ describe("ApplePayWorker — cancellation race conditions", () => {
 
     // Drive processJob directly — bypasses the kick/loop so the test owns
     // the lifecycle.
-    const runPromise = (applePayWorker as unknown as {
-      processJob: (job: ApplePayJob) => Promise<void>;
-    }).processJob(job);
+    const runPromise = applePayWorker.processJob(job);
 
     // Wait for exactly the concurrency-limit number (4) of provider calls
     // to have started. We poll on inFlightStarted.length to avoid a
@@ -220,9 +224,7 @@ describe("ApplePayWorker — cancellation race conditions", () => {
     const provider = { registerApplePayDomain: vi.fn() };
     providerFactoryMock.getPaymentProvider.mockResolvedValue(provider);
 
-    await (applePayWorker as unknown as {
-      processJob: (job: ApplePayJob) => Promise<void>;
-    }).processJob(job);
+    await applePayWorker.processJob(job);
 
     // The pre-loop cancellation guard runs BEFORE getPendingApplePayJobItems.
     // Even if that read happened, no items are dispatched.
@@ -269,9 +271,7 @@ describe("ApplePayWorker — cancellation race conditions", () => {
       return calls <= 1 ? "running" : "canceled";
     });
 
-    await (applePayWorker as unknown as {
-      processJob: (job: ApplePayJob) => Promise<void>;
-    }).processJob(job);
+    await applePayWorker.processJob(job);
 
     expect(storageMock.storage.finalizeApplePayJob).toHaveBeenCalledTimes(1);
     const finalizeCall = storageMock.storage.finalizeApplePayJob.mock.calls[0];
@@ -309,9 +309,7 @@ describe("ApplePayWorker — cancellation race conditions", () => {
     // Both checks return "running" — no cancellation involved.
     storageMock.storage.getApplePayJobStatus.mockResolvedValue("running");
 
-    await (applePayWorker as unknown as {
-      processJob: (job: ApplePayJob) => Promise<void>;
-    }).processJob(job);
+    await applePayWorker.processJob(job);
 
     const finalizeCall = storageMock.storage.finalizeApplePayJob.mock.calls[0];
     expect(finalizeCall[1].status).toBe("failed");
@@ -340,9 +338,7 @@ describe("ApplePayWorker — cancellation race conditions", () => {
     storageMock.storage.reopenApplePayJobForRetry.mockResolvedValue(true);
     storageMock.storage.getApplePayJobStatus.mockResolvedValue("running");
 
-    await (applePayWorker as unknown as {
-      processJob: (job: ApplePayJob) => Promise<void>;
-    }).processJob(job);
+    await applePayWorker.processJob(job);
 
     // Critical: NO terminal write happened. The job stays alive
     // for the next worker tick.
@@ -379,14 +375,14 @@ describe("ApplePayWorker — finalize guard for non-terminal items", () => {
     // finalizing, otherwise the item is silently stranded.
     const job = makeJob();
     const firstPassItems = makeItems(job.id, 2);
-    const lateRevivedItem = {
+    const lateRevivedItem: ApplePayJobItem = {
       ...firstPassItems[0],
       id: 9999,
       domain: "late-revived.example.test",
       // The late-revived item has no location, so processItem will
       // mark it `skipped` — exercising the (real) item resolution path.
       locationId: null,
-    } as ApplePayJobItem;
+    };
 
     // First pending() call returns the initial snapshot. Second call
     // (the bounded re-drain) returns the late-revived item.
@@ -414,9 +410,7 @@ describe("ApplePayWorker — finalize guard for non-terminal items", () => {
     });
     storageMock.storage.finalizeApplePayJob.mockResolvedValue(undefined);
 
-    await (applePayWorker as unknown as {
-      processJob: (job: ApplePayJob) => Promise<void>;
-    }).processJob(job);
+    await applePayWorker.processJob(job);
 
     // Two calls to getPendingApplePayJobItems prove the re-drain ran.
     expect(storageMock.storage.getPendingApplePayJobItems).toHaveBeenCalledTimes(2);
@@ -475,9 +469,7 @@ describe("ApplePayWorker — finalize guard for non-terminal items", () => {
     });
     storageMock.storage.reopenApplePayJobForRetry.mockResolvedValue(true);
 
-    await (applePayWorker as unknown as {
-      processJob: (job: ApplePayJob) => Promise<void>;
-    }).processJob(job);
+    await applePayWorker.processJob(job);
 
     // No terminal write — that's the whole point of the guard.
     expect(storageMock.storage.finalizeApplePayJob).not.toHaveBeenCalled();
@@ -509,9 +501,7 @@ describe("ApplePayWorker — finalize guard for non-terminal items", () => {
     });
     storageMock.storage.reopenApplePayJobForRetry.mockResolvedValue(true);
 
-    await (applePayWorker as unknown as {
-      processJob: (job: ApplePayJob) => Promise<void>;
-    }).processJob(job);
+    await applePayWorker.processJob(job);
 
     // Critically: no `failed` finalize. The previous behavior would
     // have terminalized the job here, stranding both items.
@@ -539,9 +529,7 @@ describe("ApplePayWorker — finalize guard for non-terminal items", () => {
     });
     storageMock.storage.finalizeApplePayJob.mockResolvedValue(undefined);
 
-    await (applePayWorker as unknown as {
-      processJob: (job: ApplePayJob) => Promise<void>;
-    }).processJob(job);
+    await applePayWorker.processJob(job);
 
     expect(storageMock.storage.reopenApplePayJobForRetry).not.toHaveBeenCalled();
     expect(storageMock.storage.finalizeApplePayJob).toHaveBeenCalledTimes(1);

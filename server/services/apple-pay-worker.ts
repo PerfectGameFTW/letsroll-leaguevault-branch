@@ -100,7 +100,15 @@ class ApplePayWorker {
     }
   }
 
-  private async processJob(job: ApplePayJob): Promise<void> {
+  /**
+   * Drives one job from claim through terminal status. In production this
+   * is only reached via `loop()` after `claimNextApplePayJob` — exposed
+   * (rather than `private`) so the white-box cancellation/finalize-guard
+   * tests in `__tests__/apple-pay-worker.test.ts` can drive it directly
+   * without `as unknown as` laundering past the type checker.
+   * @internal Do not call from production code.
+   */
+  async processJob(job: ApplePayJob): Promise<void> {
     log("Processing job", { jobId: job.id, totalDomains: job.totalDomains });
     try {
       // First-run path: enumerate orgs/locations into items table.
