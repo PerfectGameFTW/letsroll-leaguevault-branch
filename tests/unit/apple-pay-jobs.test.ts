@@ -46,6 +46,20 @@ async function makeJob(): Promise<number> {
   return job.id;
 }
 
+/**
+ * Find an element in `arr` matching `pred`, failing the test loudly if
+ * the expected row is missing. Used in place of `arr.find(pred)!` so a
+ * missing row surfaces as a clear assertion message instead of an
+ * opaque `Cannot read properties of undefined` later in the test.
+ */
+function mustFind<T>(arr: readonly T[], pred: (item: T) => boolean, label: string): T {
+  const found = arr.find(pred);
+  if (found === undefined) {
+    throw new Error(`expected to find ${label}`);
+  }
+  return found;
+}
+
 afterEach(async () => {
   if (createdJobIds.length === 0) return;
   // Items are removed via the FK ON DELETE CASCADE.
@@ -498,8 +512,8 @@ describe("apple pay job storage — reopenApplePayJobForRetry (#568)", () => {
       { organizationId: null, locationId: null, domain: "crash-stranded.test" },
     ]);
     const items = await getApplePayJobItems(jobId);
-    const done = items.find((i) => i.domain === "crash-done.test")!;
-    const stranded = items.find((i) => i.domain === "crash-stranded.test")!;
+    const done = mustFind(items, (i) => i.domain === "crash-done.test", "crash-done.test item");
+    const stranded = mustFind(items, (i) => i.domain === "crash-stranded.test", "crash-stranded.test item");
 
     // Pretend the worker claimed both items mid-call before crashing.
     expect(await claimApplePayJobItemForProcessing(done.id)).toBe(true);
@@ -522,7 +536,11 @@ describe("apple pay job storage — reopenApplePayJobForRetry (#568)", () => {
     await recoverInterruptedApplePayJobs({ onlyJobIds: [jobId] });
     const reloadedJob = await getApplePayJob(jobId);
     expect(reloadedJob?.status).toBe("pending");
-    const strandedAfterRecovery = (await getApplePayJobItems(jobId)).find((i) => i.id === stranded.id)!;
+    const strandedAfterRecovery = mustFind(
+      await getApplePayJobItems(jobId),
+      (i) => i.id === stranded.id,
+      "stranded item after recovery",
+    );
     expect(strandedAfterRecovery.status).toBe("pending");
     expect(strandedAfterRecovery.recoveredCount).toBe(1);
 

@@ -61,7 +61,10 @@ const RULE_CEILINGS: Record<string, number> = {
   // mock-construction casts in test files. The source-side
   // unnecessary cast in `server/routes/system-admin.ts` was removed
   // by widening `verifyTrustProxy`'s parameter to `Application`.
-  '@typescript-eslint/no-unnecessary-type-assertion': 92,
+  // Ratcheted 92 → 91 in task #572 to match the live count after the
+  // same CI green-up pass paid down one cast without lowering this
+  // ceiling at the time.
+  '@typescript-eslint/no-unnecessary-type-assertion': 91,
   // Seeded by task #371. Currently only the object-literal-as-Foo
   // form (`{ ... } as Foo`) trips this; ratchet down by removing
   // those casts.
@@ -79,7 +82,10 @@ const RULE_CEILINGS: Record<string, number> = {
   // as `Partial<PaymentResult>`, and the one in
   // `server/routes/system-admin.ts` was removed by widening
   // `verifyTrustProxy`'s parameter type.
-  'no-restricted-syntax': 159,
+  // Ratcheted 159 → 154 in task #572 to match the live count after the
+  // same CI green-up pass paid down five double-casts without lowering
+  // this ceiling at the time.
+  'no-restricted-syntax': 154,
 };
 
 // Ceiling for the sum of all suppression counts across every rule.
@@ -88,8 +94,12 @@ const RULE_CEILINGS: Record<string, number> = {
 // unnecessary + 4 obj-literal + 22 pre-existing `no-undef` in
 // client/public/sw.js). Raised in the CI green-up pass to absorb the
 // per-rule increases above (test-only debt from a stack of merged
-// tasks); see each per-rule comment for the breakdown.
-const TOTAL_CEILING = 533;
+// tasks); see each per-rule comment for the breakdown. Ratcheted
+// 533 → 527 in task #572 alongside the no-non-null-assertion drop
+// from 38 → 35 in tests/unit/apple-pay-jobs.test.ts and the
+// matching downward ratchets on no-unnecessary-type-assertion
+// (92 → 91) and no-restricted-syntax (159 → 154).
+const TOTAL_CEILING = 527;
 
 const STRICT = process.argv.includes('--strict');
 const SUPPRESSIONS_PATH = resolve(process.cwd(), 'eslint-suppressions.json');
