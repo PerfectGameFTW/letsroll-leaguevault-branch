@@ -13,7 +13,7 @@
  * leagues are inserted directly without any DDL.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, inArray, like, or } from 'drizzle-orm';
 import { db } from '../../server/db';
 import {
   leagues,
@@ -78,6 +78,52 @@ describe('Orphaned Data API (system-admin)', () => {
 
   beforeAll(async () => {
     admin = await login(TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD);
+
+    // Idempotent pre-purge: a previous run may have been interrupted
+    // (SIGTERM, OOM, vitest crash) before its `afterAll` finished. The
+    // bypass-FK rows below pin `(leagueId, number)` to constants
+    // (BOGUS_LEAGUE_ID + 9992 / etc.), so any leftover would collide on
+    // `teams_league_number_idx` when this run re-inserts them. Wipe the
+    // known-shape leftovers up-front so the suite is self-healing.
+    await db.delete(payments).where(eq(payments.leagueId, BOGUS_LEAGUE_ID));
+    await db.delete(bowlerLeagues).where(eq(bowlerLeagues.leagueId, BOGUS_LEAGUE_ID));
+    await db.delete(teams).where(eq(teams.leagueId, BOGUS_LEAGUE_ID));
+
+    const staleLeagues = await db
+      .select({ id: leagues.id })
+      .from(leagues)
+      .where(
+        inArray(leagues.name, [
+          'Vitest Orphan League A',
+          'Vitest Orphan League B',
+          'Vitest Non-Orphan League',
+        ]),
+      );
+    if (staleLeagues.length > 0) {
+      const ids = staleLeagues.map((l) => l.id);
+      // Children first (FK is ON DELETE CASCADE for teams, but
+      // bowler_leagues / payments may not be — delete defensively).
+      await db.delete(payments).where(inArray(payments.leagueId, ids));
+      await db.delete(bowlerLeagues).where(inArray(bowlerLeagues.leagueId, ids));
+      await db.delete(teams).where(inArray(teams.leagueId, ids));
+      await db.delete(leagues).where(inArray(leagues.id, ids));
+    }
+
+    // Note: we deliberately do NOT pre-purge `bowlers` by name here.
+    // There is no unique constraint on `bowlers.name`, so leftover rows
+    // from interrupted runs don't block the new INSERT below, and a
+    // name-only delete is too broad to be safe against unrelated
+    // fixtures that might happen to reuse the string.
+
+    await db
+      .delete(users)
+      .where(
+        or(
+          like(users.email, 'vitest-orphan-%@example.com'),
+          like(users.email, 'vitest-orphan-sysadmin-%@example.com'),
+          like(users.email, 'vitest-nonorphan-%@example.com'),
+        ),
+      );
 
     const [org] = await db
       .select({ id: organizations.id })
