@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -16,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AlertCircle } from "lucide-react";
-import type { ApiResponse, Organization, User } from "@shared/schema";
+import type { ApiResponse, Location, Organization, User } from "@shared/schema";
 import { BowlNowCard, type BowlNowConfig } from "@/components/bowlnow-integration-card";
 import { SquareSection } from "@/components/square-integration-section";
 
@@ -26,9 +27,10 @@ interface IntegrationsConfig {
 
 interface IntegrationsContentProps {
   orgId: number;
+  highlightLocationId: number | null;
 }
 
-function IntegrationsContent({ orgId }: IntegrationsContentProps) {
+function IntegrationsContent({ orgId, highlightLocationId }: IntegrationsContentProps) {
   const { data: integrationsResponse, isLoading, isError } = useQuery<ApiResponse<IntegrationsConfig>>({
     queryKey: ["/api/integrations", orgId],
     queryFn: async () => {
@@ -85,7 +87,7 @@ function IntegrationsContent({ orgId }: IntegrationsContentProps) {
   return (
     <div className="space-y-6 max-w-2xl">
       {config && <BowlNowCard config={config.bowlnow} orgId={orgId} />}
-      <SquareSection orgId={orgId} />
+      <SquareSection orgId={orgId} highlightLocationId={highlightLocationId} />
     </div>
   );
 }
@@ -99,10 +101,53 @@ export default function IntegrationsPage() {
   const currentUser = currentUserResponse?.data;
   const isSystemAdmin = currentUser?.role === "system_admin";
 
+  // Read the optional `?location=<id>` deep-link query param emitted by
+  // the checkout's "not configured" alert / toast (tasks #582, #583).
+  // Only accept positive integers — anything else is ignored so the page
+  // still loads cleanly when the link is malformed (task #584).
+  const search = useSearch();
+  const highlightLocationId = useMemo(() => {
+    const raw = new URLSearchParams(search).get("location");
+    if (!raw) return null;
+    if (!/^\d+$/.test(raw)) return null;
+    const parsed = Number(raw);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }, [search]);
+
   const [selectedOrgId, setSelectedOrgId] = useState<number | null>(null);
 
+  // When a deep link is present, look up the location so we can route a
+  // system admin to the correct organization automatically (regular admins
+  // only ever see their own org). The query is non-blocking: a 404 / 403 /
+  // network error just leaves the page on the user's default org so the
+  // page "still loads cleanly with no error" per the task spec.
+  const { data: highlightLocationResponse } = useQuery<ApiResponse<Location>>({
+    queryKey: ["/api/locations", highlightLocationId],
+    queryFn: async () => {
+      const res = await fetch(`/api/locations/${highlightLocationId}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`Failed to fetch location: ${res.status}`);
+      return res.json();
+    },
+    enabled: highlightLocationId != null,
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+  });
+
+  const highlightLocationOrgId = highlightLocationResponse?.data?.organizationId ?? null;
+
+  // Auto-select the location's org for system admins so they don't have
+  // to hunt for it in the dropdown after following the deep link. We only
+  // overwrite an empty selection — never the admin's manual choice — so
+  // navigating back to the page after switching orgs doesn't snap back.
+  useEffect(() => {
+    if (!isSystemAdmin) return;
+    if (selectedOrgId != null) return;
+    if (highlightLocationOrgId == null) return;
+    setSelectedOrgId(highlightLocationOrgId);
+  }, [isSystemAdmin, selectedOrgId, highlightLocationOrgId]);
+
   const effectiveOrgId = isSystemAdmin
-    ? (selectedOrgId ?? currentUser?.organizationId ?? null)
+    ? (selectedOrgId ?? highlightLocationOrgId ?? currentUser?.organizationId ?? null)
     : (currentUser?.organizationId ?? null);
 
   const { data: orgsResponse } = useQuery<ApiResponse<Organization[]>>({
@@ -153,7 +198,11 @@ export default function IntegrationsPage() {
           {isSystemAdmin ? "Select an organization above to manage its integrations." : "No organization context found."}
         </div>
       ) : (
-        <IntegrationsContent key={effectiveOrgId} orgId={effectiveOrgId} />
+        <IntegrationsContent
+          key={effectiveOrgId}
+          orgId={effectiveOrgId}
+          highlightLocationId={highlightLocationId}
+        />
       )}
       </ErrorBoundary>
     </Layout>

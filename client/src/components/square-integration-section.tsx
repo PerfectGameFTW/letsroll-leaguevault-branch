@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { cn } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -41,6 +42,11 @@ interface CloverLocationConfig {
 
 interface PaymentLocationCardProps {
   location: Location;
+}
+
+interface PaymentLocationCardHighlightProps {
+  location: Location;
+  highlighted: boolean;
 }
 
 function ProviderSelector({ location }: { location: Location }) {
@@ -490,12 +496,41 @@ function CloverConfigForm({ location }: PaymentLocationCardProps) {
   );
 }
 
-function PaymentLocationCard({ location }: PaymentLocationCardProps) {
+function PaymentLocationCard({ location, highlighted }: PaymentLocationCardHighlightProps) {
   const provider = (location.paymentProvider as PaymentProviderType) || 'square';
   const isClover = provider === 'clover';
 
+  // When this card matches the `?location=<id>` deep-link query param
+  // (task #584), scroll it into view and flash a temporary ring so the
+  // admin lands directly on the card they need to fix instead of having
+  // to scan the page. The highlight auto-fades after a couple of seconds
+  // to keep the page calm once the admin's attention is captured.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [showRing, setShowRing] = useState(false);
+
+  useEffect(() => {
+    if (!highlighted) return;
+    const node = cardRef.current;
+    if (node) {
+      // jsdom defines this as a no-op via the component test setup, so
+      // the test can spy on it and the call is safe in any environment.
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+    setShowRing(true);
+    const t = setTimeout(() => setShowRing(false), 2500);
+    return () => clearTimeout(t);
+  }, [highlighted]);
+
   return (
-    <Card>
+    <Card
+      ref={cardRef}
+      data-testid={`payment-location-card-${location.id}`}
+      data-highlighted={highlighted ? 'true' : undefined}
+      className={cn(
+        'transition-shadow',
+        showRing && 'ring-2 ring-primary ring-offset-2',
+      )}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -527,9 +562,15 @@ function PaymentLocationCard({ location }: PaymentLocationCardProps) {
 
 interface SquareSectionProps {
   orgId: number;
+  /**
+   * Optional location id from the `?location=<id>` deep-link query param
+   * (task #584). When set and the matching location is in this org, the
+   * corresponding card scrolls into view and flashes a highlight ring.
+   */
+  highlightLocationId?: number | null;
 }
 
-export function SquareSection({ orgId }: SquareSectionProps) {
+export function SquareSection({ orgId, highlightLocationId = null }: SquareSectionProps) {
   const { data: locationsResponse, isLoading } = useQuery<ApiResponse<Location[]>>({
     queryKey: ["/api/locations", { organizationId: orgId }],
     queryFn: async () => {
@@ -581,7 +622,11 @@ export function SquareSection({ orgId }: SquareSectionProps) {
       ) : (
         <div className="space-y-3">
           {locations.map((location) => (
-            <PaymentLocationCard key={location.id} location={location} />
+            <PaymentLocationCard
+              key={location.id}
+              location={location}
+              highlighted={highlightLocationId === location.id}
+            />
           ))}
         </div>
       )}
