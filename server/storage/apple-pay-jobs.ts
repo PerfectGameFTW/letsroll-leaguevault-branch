@@ -166,7 +166,7 @@ export async function recoverInterruptedApplePayJobs(
   }
 
   const jobScope = onlyJobIds
-    ? and(eq(applePayJobs.status, "running"), inArray(applePayJobs.id, onlyJobIds))!
+    ? and(eq(applePayJobs.status, "running"), inArray(applePayJobs.id, onlyJobIds))
     : eq(applePayJobs.status, "running");
 
   const updatedJobs = await db

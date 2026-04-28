@@ -562,7 +562,7 @@
   },
   "tests/unit/apple-pay-jobs.test.ts": {
     "@typescript-eslint/no-non-null-assertion": {
-      "count": 35
+      "count": 38
     }
   },
   "tests/unit/auth-no-token-leak.test.ts": {

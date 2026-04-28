@@ -24,6 +24,26 @@ A full-stack bowling league management application with multi-tenant support for
 - The only acceptable exceptions are: (a) a failure that genuinely cannot be reproduced locally and clearly belongs to infrastructure rather than code, or (b) a failure that requires user input the agent does not have (a missing secret, an external service that's down). Both must be called out explicitly in the task completion notes.
 - This applies to every agent (main, task, design, etc.) and every mode (plan, build).
 
+## Validation Gate (auto-runs on `mark_task_complete`)
+The agent has 8 named validation commands registered that mirror `.github/workflows/ci.yml` exactly. Calling `mark_task_complete` triggers them automatically; if any fail, the task is blocked. This catches CI failures locally instead of after a push to GitHub.
+
+| Name                | Command                                            | Mirrors CI step          |
+|---------------------|----------------------------------------------------|--------------------------|
+| `typecheck`         | `npm run check`                                    | "Type check"             |
+| `lint`              | `npm run lint`                                     | "Lint"                   |
+| `csrf-coverage`     | `npm run check:csrf`                               | "CSRF coverage"          |
+| `org-isolation`     | `npm run check:org-isolation`                      | "Cross-org isolation"    |
+| `wire-sanitization` | `npx tsx scripts/check-wire-sanitization.ts`       | "Wire sanitization"      |
+| `not-found-code`    | `npx tsx scripts/check-not-found-code.ts`          | "Not-found error-code"   |
+| `build`             | `npm run build`                                    | "Production build"       |
+| `test`              | `npm test`                                         | sibling `Tests` job      |
+
+The race suite (`scripts/test-race.sh`) is opt-in (`RUN_BOOTSTRAP_RACE_TESTS=1`) so it is naturally skipped by `npm test`, matching CI's split where it has its own workflow (`race-suite.yml`).
+
+Lint uses ESLint 9's count-based suppressions baseline at `eslint-suppressions.json`. Net-new violations beyond the per-file count fail the gate; existing-debt counts are accepted. When fixing real violations, also re-baseline with `npx eslint . --suppress-rule <rule>` (or `--prune-suppressions` to drop stale entries) so the count stays honest.
+
+Validations can be re-run on demand from the agent's code-execution sandbox via `startValidationRun({ commandIds: [...] })`; full per-command logs land at `/tmp/validation/<name>.log`. The per-command runtime budget locally is similar to CI (~1 min for the static checks, ~3-4 min for `test`, ~20-40s for `build`).
+
 ## Architecture
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui + TanStack Query + wouter
 - **Backend**: Express + Passport.js + Drizzle ORM
