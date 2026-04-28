@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useSearch } from "wouter";
 import { Layout } from "@/components/layout";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { ArrowLeft } from "lucide-react";
@@ -24,6 +24,11 @@ export default function BowlerViewPage() {
   const params = useParams();
   const bowlerId = parseInt(params.bowlerId!);
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
+
+  const search = useSearch();
+  const cameFromBowlersList = useMemo(() => {
+    return new URLSearchParams(search).get("from") === "bowlers";
+  }, [search]);
 
   const { data: detailsResponse, isLoading: loadingDetails } = useQuery<ApiResponse<BowlerDetailsResponse>>({
     queryKey: [`/api/bowlers/${bowlerId}/details`],
@@ -109,15 +114,25 @@ export default function BowlerViewPage() {
   return (
     <Layout>
       <div className="mb-6">
-        {selectedAssociation && (
+        {cameFromBowlersList ? (
+          <Link
+            href="/bowlers"
+            className="text-muted-foreground hover:text-foreground flex items-center mb-4"
+            data-testid="link-back-to-bowlers"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Bowlers
+          </Link>
+        ) : selectedAssociation ? (
           <Link
             href={`/teams/${selectedAssociation.teamId}`}
             className="text-muted-foreground hover:text-foreground flex items-center mb-4"
+            data-testid="link-back-to-team"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Team
           </Link>
-        )}
+        ) : null}
         <div className="flex flex-col gap-2 mb-6">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl font-bold">{bowler?.name}</h1>
