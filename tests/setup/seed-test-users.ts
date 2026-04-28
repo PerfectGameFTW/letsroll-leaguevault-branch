@@ -118,6 +118,20 @@ async function ensureUser(spec: UserSpec): Promise<void> {
         role: spec.role,
         organizationId: spec.organizationId,
         name: spec.name,
+        // Task #576: reset the change-password lockout state every
+        // time the seeder runs. `tests/api/csrf-coverage.test.ts`
+        // intentionally fires a wrong-password attempt against this
+        // user to prove the CSRF gate, which bumps
+        // `failedPasswordChangeAttempts`. Without this reset, after
+        // enough consecutive vitest invocations against the same DB
+        // the shared user crosses
+        // `PASSWORD_CHANGE_LOCKOUT_THRESHOLD` and the test starts
+        // failing with `ACCOUNT_LOCKED` instead of the expected
+        // `INVALID_PASSWORD`. Clearing both columns at seed time
+        // makes the suite reliable on local re-runs and on CI
+        // against a long-lived database.
+        failedPasswordChangeAttempts: 0,
+        passwordChangeLockedUntil: null,
       })
       .where(eq(users.id, existing.id));
     return;
