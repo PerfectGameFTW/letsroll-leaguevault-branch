@@ -4,8 +4,8 @@ export type { PaymentMode, UserRole, PaymentTypeValue } from "./constants";
 export { organizations, orgIntegrationsSchema, insertOrganizationSchema, updateOrganizationSchema } from "./organizations";
 export type { OrgIntegrations, Organization, InsertOrganization, UpdateOrganization } from "./organizations";
 
-export { locations, locationSquareCredentialsSchema, locationCloverCredentialsSchema, insertLocationSchema, updateLocationSchema, PAYMENT_PROVIDERS, CLOVER_ENVIRONMENTS } from "./locations";
-export type { LocationSquareCredentials, LocationCloverCredentials, Location, InsertLocation, UpdateLocation, PaymentProviderType, CloverEnvironment } from "./locations";
+export { locations, locationSquareCredentialsSchema, locationCloverCredentialsSchema, insertLocationSchema, updateLocationSchema, PAYMENT_PROVIDERS, CLOVER_ENVIRONMENTS, REQUIRED_CLOVER_FIELDS, CLOVER_FIELD_LABELS, getMissingCloverFields } from "./locations";
+export type { LocationSquareCredentials, LocationCloverCredentials, Location, InsertLocation, UpdateLocation, PaymentProviderType, CloverEnvironment, RequiredCloverField } from "./locations";
 
 export { leagues, insertLeagueSchema, updateLeagueSchema } from "./leagues";
 export type { League, InsertLeague, UpdateLeague } from "./leagues";

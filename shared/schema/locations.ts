@@ -36,6 +36,73 @@ export const locationCloverCredentialsSchema = z.object({
   environment: z.enum(CLOVER_ENVIRONMENTS).optional(),
 }).nullable().optional();
 
+/**
+ * Required fields for a fully-configured Clover Ecommerce location.
+ * Used by the server `/payments-provider/config` route and by the
+ * settings UI to detect partial configurations and surface a clear
+ * "Clover not fully configured" message instead of failing silently
+ * at checkout. (Task #575.)
+ */
+export const REQUIRED_CLOVER_FIELDS = [
+  'apiToken',
+  'merchantId',
+  'publicTokenizerKey',
+  'environment',
+] as const;
+
+export type RequiredCloverField = (typeof REQUIRED_CLOVER_FIELDS)[number];
+
+/**
+ * Public/client-facing label for each required Clover field. Kept here
+ * so server logs and the settings/payment UIs use identical wording.
+ */
+export const CLOVER_FIELD_LABELS: Record<RequiredCloverField, string> = {
+  apiToken: 'API Token',
+  merchantId: 'Merchant ID',
+  publicTokenizerKey: 'Public Tokenizer Key',
+  environment: 'Environment',
+};
+
+function nonEmptyString(value: unknown): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+/**
+ * Returns the list of required Clover fields that are missing from the
+ * provided credentials blob. An empty array means the location is
+ * fully configured.
+ *
+ * NOTE: this works on the *raw* credentials shape (with `apiToken`)
+ * AND on the public-facing config shape returned by the GET
+ * `/locations/:id/clover-config` endpoint (which exposes
+ * `apiTokenConfigured: boolean` instead of the secret itself). The
+ * latter is detected by the presence of `apiTokenConfigured` and
+ * treated as "apiToken present" when true.
+ */
+export interface CloverConfigStatusInput {
+  apiToken?: string | null;
+  apiTokenConfigured?: boolean;
+  merchantId?: string | null;
+  publicTokenizerKey?: string | null;
+  environment?: CloverEnvironment | string | null;
+}
+
+export function getMissingCloverFields(
+  creds: CloverConfigStatusInput | null | undefined,
+): RequiredCloverField[] {
+  if (!creds) return [...REQUIRED_CLOVER_FIELDS];
+
+  const missing: RequiredCloverField[] = [];
+
+  const hasApiToken = creds.apiTokenConfigured === true || nonEmptyString(creds.apiToken);
+  if (!hasApiToken) missing.push('apiToken');
+  if (!nonEmptyString(creds.merchantId)) missing.push('merchantId');
+  if (!nonEmptyString(creds.publicTokenizerKey)) missing.push('publicTokenizerKey');
+  if (!nonEmptyString(creds.environment)) missing.push('environment');
+
+  return missing;
+}
+
 export const locations = pgTable("locations", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),

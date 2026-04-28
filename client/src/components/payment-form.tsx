@@ -25,8 +25,9 @@ import { Input } from "@/components/ui/input";
 import { insertPaymentSchema, DEFAULT_WEEKLY_FEE_CENTS } from "@shared/schema";
 import type { InsertPayment, Bowler, League } from "@shared/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2, AlertCircle, Info } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, AlertCircle, AlertTriangle, Info } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { CLOVER_FIELD_LABELS } from "@shared/schema";
 import { PaymentCreditCardSection } from "@/components/payment-credit-card-section";
 import { csrfFetch } from '@/lib/queryClient';
 import {
@@ -86,7 +87,21 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     },
   });
 
-  const { config: providerConfig, isClover, supportsWallets, isLoading: providerLoading } = usePaymentProvider(leagueInfo?.locationId ?? null);
+  const {
+    config: providerConfig,
+    isClover,
+    supportsWallets,
+    isLoading: providerLoading,
+    isProviderConfigured,
+    missingFields: providerMissingFields,
+  } = usePaymentProvider(leagueInfo?.locationId ?? null);
+  // Only Clover currently exposes per-field "missing" data via
+  // `/payments-provider/config`. For Square the in-flow toast (driven
+  // by PROVIDER_NOT_CONFIGURED on the actual charge) handles the
+  // misconfigured case, so we keep this gate Clover-specific to avoid
+  // regressing the existing Square behavior. (task #575)
+  const cloverNotFullyConfigured =
+    isClover && !providerLoading && !isProviderConfigured;
 
   const {
     card: squareCard,
@@ -177,6 +192,15 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
     }
 
     if (providerLoading || !cardContainerRef.current) {
+      return;
+    }
+
+    // Don't even attempt to spin up the Clover tokenizer when the
+    // location's Clover credentials are missing/partial — the SDK
+    // load would fail with a generic error and leave the user
+    // staring at a broken card form. The friendly notice rendered
+    // below tells admins exactly what to fix. (task #575)
+    if (cloverNotFullyConfigured) {
       return;
     }
     
@@ -441,7 +465,36 @@ export function PaymentForm({ open, onClose, bowlers, leagueId }: PaymentFormPro
               </FormItem>
             )}
 
-            {paymentType === "credit_card" && (
+            {paymentType === "credit_card" && cloverNotFullyConfigured && (
+              <Alert variant="destructive" data-testid="alert-clover-not-configured">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Clover isn't fully set up for this location</AlertTitle>
+                <AlertDescription>
+                  <p className="text-sm">
+                    Card payments are unavailable until every required Clover
+                    credential is filled in.
+                  </p>
+                  {providerMissingFields.length > 0 && (
+                    <p className="text-xs mt-2">
+                      Missing:{" "}
+                      <span className="font-medium">
+                        {providerMissingFields
+                          .map((f) => CLOVER_FIELD_LABELS[f])
+                          .join(", ")}
+                      </span>
+                      .
+                    </p>
+                  )}
+                  <p className="text-xs mt-2">
+                    Ask your league admin to finish configuring Clover in
+                    Settings, then try again. Cash and check payments still
+                    work in the meantime.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {paymentType === "credit_card" && !cloverNotFullyConfigured && (
               <PaymentCreditCardSection
                 form={form}
                 savedCards={savedCards}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import type { PaymentProviderType } from "@shared/schema";
+import type { PaymentProviderType, RequiredCloverField } from "@shared/schema";
 
 export interface PaymentProviderConfig {
   paymentProvider: PaymentProviderType;
@@ -8,6 +8,10 @@ export interface PaymentProviderConfig {
   merchantId?: string;
   publicTokenizerKey?: string;
   environment?: 'sandbox' | 'production';
+  /** True when the active provider has every required credential set. */
+  providerConfigured?: boolean;
+  /** Names of required fields the active provider is still missing. */
+  missingFields?: RequiredCloverField[];
 }
 
 interface UsePaymentProviderReturn {
@@ -17,6 +21,15 @@ interface UsePaymentProviderReturn {
   isSquare: boolean;
   isClover: boolean;
   supportsWallets: boolean;
+  /**
+   * True when the active provider for the location is fully configured
+   * (e.g. all four required Clover credentials are present). Defaults
+   * to true while the config is loading or when no `providerConfigured`
+   * flag is present in the response (legacy/env-only Square config).
+   */
+  isProviderConfigured: boolean;
+  /** Required fields the active provider is missing. */
+  missingFields: RequiredCloverField[];
 }
 
 interface CacheEntry {
@@ -66,6 +79,8 @@ export function usePaymentProvider(locationId?: number | null): UsePaymentProvid
           merchantId: data.merchantId,
           publicTokenizerKey: data.publicTokenizerKey,
           environment: data.environment,
+          providerConfigured: data.providerConfigured,
+          missingFields: Array.isArray(data.missingFields) ? data.missingFields : undefined,
         };
         configCache.set(cacheKey, { config: cfg, timestamp: Date.now() });
         if (mountedRef.current) {
@@ -82,6 +97,12 @@ export function usePaymentProvider(locationId?: number | null): UsePaymentProvid
   }, [locationId]);
 
   const provider = config?.paymentProvider ?? 'square';
+  // Default to "configured" while loading or when the server didn't
+  // include the new flag (legacy/env-only Square responses) so we
+  // don't flash an erroneous "not configured" banner before the
+  // response arrives.
+  const isProviderConfigured = config?.providerConfigured !== false;
+  const missingFields = config?.missingFields ?? [];
 
   return {
     config,
@@ -90,6 +111,8 @@ export function usePaymentProvider(locationId?: number | null): UsePaymentProvid
     isSquare: provider === 'square',
     isClover: provider === 'clover',
     supportsWallets: provider === 'square',
+    isProviderConfigured,
+    missingFields,
   };
 }
 

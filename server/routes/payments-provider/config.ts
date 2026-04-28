@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { storage } from '../../storage';
 import { createLogger } from '../../logger';
 import { isDev } from '../../config';
+import { getMissingCloverFields } from '@shared/schema';
 
 const log = createLogger('Payments');
 
@@ -27,14 +28,22 @@ router.get('/config', async (req, res) => {
           if (isAuthorized) {
             if (loc.paymentProvider === 'clover') {
               const clCreds = await storage.getLocationCloverConfig(lvLocationId);
-              if (clCreds?.merchantId && clCreds.merchantId.trim().length > 0) {
-                return res.json({
-                  paymentProvider: 'clover',
-                  merchantId: clCreds.merchantId.trim(),
-                  publicTokenizerKey: clCreds.publicTokenizerKey?.trim() || '',
-                  environment: clCreds.environment ?? 'sandbox',
-                });
-              }
+              // Always advertise that this location is on Clover so the
+              // client can branch its UI even when the config is
+              // missing or partial. The `providerConfigured` flag and
+              // `missingFields` list let the payment form / settings
+              // page show a friendly "Clover not fully configured"
+              // message instead of silently rendering a broken card
+              // tokenizer (task #575).
+              const missingFields = getMissingCloverFields(clCreds ?? null);
+              return res.json({
+                paymentProvider: 'clover',
+                merchantId: clCreds?.merchantId?.trim() || '',
+                publicTokenizerKey: clCreds?.publicTokenizerKey?.trim() || '',
+                environment: clCreds?.environment ?? 'sandbox',
+                providerConfigured: missingFields.length === 0,
+                missingFields,
+              });
             }
 
             const creds = await storage.getLocationSquareConfig(lvLocationId);
@@ -43,6 +52,8 @@ router.get('/config', async (req, res) => {
                 appId: creds.appId.trim(),
                 locationId: creds.locationId?.trim() || '',
                 paymentProvider: loc.paymentProvider ?? 'square',
+                providerConfigured: true,
+                missingFields: [],
               });
             }
           }
