@@ -30,6 +30,7 @@ interface PaymentHistoryTableProps {
   onDelete: (paymentId: number) => void;
   isDeletePending: boolean;
   isAdmin?: boolean;
+  bowlerHrefSuffix?: string;
 }
 
 export const PaymentHistoryTable = memo(function PaymentHistoryTable({
@@ -40,6 +41,7 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
   onDelete,
   isDeletePending,
   isAdmin = false,
+  bowlerHrefSuffix = "",
 }: PaymentHistoryTableProps) {
   const showTeamColumn = !!bowlerTeamMap;
   // admin "Resend receipt" entry-point on the weekly
@@ -77,7 +79,7 @@ export const PaymentHistoryTable = memo(function PaymentHistoryTable({
                 <TableRow key={payment.id}>
                   <TableCell>
                     {bowler ? (
-                      <Link href={`/bowlers/${bowler.id}`} className="hover:underline text-foreground">
+                      <Link href={`/bowlers/${bowler.id}${bowlerHrefSuffix}`} className="hover:underline text-foreground">
                         {bowler.name}
                       </Link>
                     ) : 'Unknown Bowler'}

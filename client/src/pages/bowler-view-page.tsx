@@ -26,8 +26,33 @@ export default function BowlerViewPage() {
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | null>(null);
 
   const search = useSearch();
-  const cameFromBowlersList = useMemo(() => {
-    return new URLSearchParams(search).get("from") === "bowlers";
+  const explicitBackLink = useMemo(() => {
+    const params = new URLSearchParams(search);
+    const from = params.get("from");
+    const fromLeagueId = params.get("fromLeagueId");
+    const fromTeamId = params.get("fromTeamId");
+    switch (from) {
+      case "bowlers":
+        return { href: "/bowlers", label: "Back to Bowlers", testid: "link-back-to-bowlers" };
+      case "past-due":
+        return { href: "/reports/past-due", label: "Back to Past Due", testid: "link-back-to-past-due" };
+      case "league-past-due":
+        return fromLeagueId && /^\d+$/.test(fromLeagueId)
+          ? { href: `/reports/leagues/${fromLeagueId}/past-due`, label: "Back to Past Due", testid: "link-back-to-league-past-due" }
+          : null;
+      case "weekly-payments":
+        return fromLeagueId && /^\d+$/.test(fromLeagueId)
+          ? { href: `/leagues/${fromLeagueId}/weekly-payments`, label: "Back to Weekly Payments", testid: "link-back-to-weekly-payments" }
+          : null;
+      case "team":
+        return fromTeamId && /^\d+$/.test(fromTeamId)
+          ? { href: `/teams/${fromTeamId}`, label: "Back to Team", testid: "link-back-to-team" }
+          : null;
+      case "home":
+        return { href: "/home", label: "Back to Dashboard", testid: "link-back-to-home" };
+      default:
+        return null;
+    }
   }, [search]);
 
   const { data: detailsResponse, isLoading: loadingDetails } = useQuery<ApiResponse<BowlerDetailsResponse>>({
@@ -114,14 +139,14 @@ export default function BowlerViewPage() {
   return (
     <Layout>
       <div className="mb-6">
-        {cameFromBowlersList ? (
+        {explicitBackLink ? (
           <Link
-            href="/bowlers"
+            href={explicitBackLink.href}
             className="text-muted-foreground hover:text-foreground flex items-center mb-4"
-            data-testid="link-back-to-bowlers"
+            data-testid={explicitBackLink.testid}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Bowlers
+            {explicitBackLink.label}
           </Link>
         ) : selectedAssociation ? (
           <Link

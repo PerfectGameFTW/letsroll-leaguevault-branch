@@ -162,7 +162,7 @@ export default function PastDuePage() {
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         <CheckCircle2 className={`h-4 w-4 ${item.bowler.hasAccount ? "text-green-500" : "text-muted-foreground/40"}`} />
-                        <Link href={`/bowlers/${item.bowler.id}`} className="hover:underline">
+                        <Link href={`/bowlers/${item.bowler.id}?from=past-due`} className="hover:underline">
                           {item.bowler.name}
                         </Link>
                       </div>

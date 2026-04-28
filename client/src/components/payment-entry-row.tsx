@@ -34,6 +34,7 @@ interface PaymentEntryRowProps {
   onSubmit: (bowlerId: number) => void;
   isSubmitting: boolean;
   variant?: "table" | "card";
+  bowlerHrefSuffix?: string;
 }
 
 export const PaymentEntryRow = memo(function PaymentEntryRow({
@@ -46,12 +47,13 @@ export const PaymentEntryRow = memo(function PaymentEntryRow({
   onSubmit,
   isSubmitting,
   variant = "table",
+  bowlerHrefSuffix = "",
 }: PaymentEntryRowProps) {
   if (variant === "card") {
     return (
       <div className="rounded-lg border bg-card p-4 space-y-3">
         <div className="flex items-center justify-between">
-          <Link href={`/bowlers/${bowler.id}`} className="hover:underline text-foreground font-medium">
+          <Link href={`/bowlers/${bowler.id}${bowlerHrefSuffix}`} className="hover:underline text-foreground font-medium">
             {bowler.name}
           </Link>
           {teamName !== undefined && (
@@ -108,7 +110,7 @@ export const PaymentEntryRow = memo(function PaymentEntryRow({
   return (
     <TableRow>
       <TableCell>
-        <Link href={`/bowlers/${bowler.id}`} className="hover:underline text-foreground">
+        <Link href={`/bowlers/${bowler.id}${bowlerHrefSuffix}`} className="hover:underline text-foreground">
           {bowler.name}
         </Link>
       </TableCell>

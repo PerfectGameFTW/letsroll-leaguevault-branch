@@ -160,4 +160,79 @@ describe('BowlerViewPage back link', () => {
 
     expect(screen.queryByTestId('link-back-to-bowlers')).not.toBeInTheDocument();
   });
+
+  it('renders "Back to Past Due" pointing at /reports/past-due when ?from=past-due is set', async () => {
+    renderPage('from=past-due');
+
+    const backLink = await screen.findByTestId('link-back-to-past-due');
+    expect(backLink).toHaveAttribute('href', '/reports/past-due');
+    expect(backLink).toHaveTextContent(/back to past due/i);
+    expect(screen.queryByTestId('link-back-to-team')).not.toBeInTheDocument();
+  });
+
+  it('renders "Back to Past Due" pointing at the league past-due page when ?from=league-past-due&fromLeagueId=N', async () => {
+    renderPage('from=league-past-due&fromLeagueId=42');
+
+    const backLink = await screen.findByTestId('link-back-to-league-past-due');
+    expect(backLink).toHaveAttribute('href', '/reports/leagues/42/past-due');
+    expect(backLink).toHaveTextContent(/back to past due/i);
+    expect(screen.queryByTestId('link-back-to-team')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the team link when ?from=league-past-due is missing fromLeagueId', async () => {
+    renderPage('from=league-past-due');
+
+    const backLink = await screen.findByTestId('link-back-to-team');
+    expect(backLink).toHaveAttribute('href', `/teams/${TEAM_ID}`);
+    expect(screen.queryByTestId('link-back-to-league-past-due')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the team link when fromLeagueId is non-numeric', async () => {
+    renderPage('from=league-past-due&fromLeagueId=abc');
+
+    const backLink = await screen.findByTestId('link-back-to-team');
+    expect(backLink).toHaveAttribute('href', `/teams/${TEAM_ID}`);
+    expect(screen.queryByTestId('link-back-to-league-past-due')).not.toBeInTheDocument();
+  });
+
+  it('renders "Back to Weekly Payments" with a valid fromLeagueId', async () => {
+    renderPage('from=weekly-payments&fromLeagueId=99');
+
+    const backLink = await screen.findByTestId('link-back-to-weekly-payments');
+    expect(backLink).toHaveAttribute('href', '/leagues/99/weekly-payments');
+    expect(backLink).toHaveTextContent(/back to weekly payments/i);
+    expect(screen.queryByTestId('link-back-to-team')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the team link when ?from=weekly-payments is missing fromLeagueId', async () => {
+    renderPage('from=weekly-payments');
+
+    const backLink = await screen.findByTestId('link-back-to-team');
+    expect(backLink).toHaveAttribute('href', `/teams/${TEAM_ID}`);
+    expect(screen.queryByTestId('link-back-to-weekly-payments')).not.toBeInTheDocument();
+  });
+
+  it('renders "Back to Team" pointing at fromTeamId when ?from=team&fromTeamId=N', async () => {
+    renderPage('from=team&fromTeamId=4242');
+
+    const backLink = await screen.findByTestId('link-back-to-team');
+    expect(backLink).toHaveAttribute('href', '/teams/4242');
+    expect(backLink).toHaveTextContent(/back to team/i);
+  });
+
+  it('falls back to the default team link when ?from=team is missing fromTeamId', async () => {
+    renderPage('from=team');
+
+    const backLink = await screen.findByTestId('link-back-to-team');
+    expect(backLink).toHaveAttribute('href', `/teams/${TEAM_ID}`);
+  });
+
+  it('renders "Back to Dashboard" when ?from=home is set', async () => {
+    renderPage('from=home');
+
+    const backLink = await screen.findByTestId('link-back-to-home');
+    expect(backLink).toHaveAttribute('href', '/home');
+    expect(backLink).toHaveTextContent(/back to dashboard/i);
+    expect(screen.queryByTestId('link-back-to-team')).not.toBeInTheDocument();
+  });
 });

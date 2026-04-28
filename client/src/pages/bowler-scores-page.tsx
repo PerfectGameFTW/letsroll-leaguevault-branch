@@ -15,7 +15,7 @@ import { ArrowLeft } from "lucide-react";
 import { PageLoadingState, PageErrorState } from "@/components/page-states";
 import type { Score, Bowler } from "@shared/schema";
 import { format } from "date-fns";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useSearch } from "wouter";
 
 interface ExtendedScore extends Score {
   game: {
@@ -67,6 +67,8 @@ interface ApiResponse<T> {
 export default function BowlerScoresPage() {
   const { bowlerId } = useParams<{ bowlerId: string }>();
   const parsedBowlerId = bowlerId ? parseInt(bowlerId) : undefined;
+  const search = useSearch();
+  const backHref = search ? `/bowlers/${bowlerId}?${search}` : `/bowlers/${bowlerId}`;
 
   const { data: bowlerResponse, isLoading: loadingBowler } = useQuery<ApiResponse<Bowler>>({
     queryKey: [`/api/bowlers/${bowlerId}`],
@@ -160,7 +162,7 @@ export default function BowlerScoresPage() {
       <ErrorBoundary level="section">
       <div className="space-y-6">
         <Link
-          href={`/bowlers/${bowlerId}`}
+          href={backHref}
           className="text-muted-foreground hover:text-foreground flex items-center"
         >
           <ArrowLeft className="h-4 w-4 mr-2" />

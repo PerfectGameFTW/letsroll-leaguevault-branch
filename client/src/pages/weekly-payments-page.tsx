@@ -243,6 +243,7 @@ export default function WeeklyPaymentsPage() {
                               onSubmit={(bowlerId) => handleSubmitPayment(bowlerId, selectedDate)}
                               isSubmitting={submitPaymentMutation.isPending}
                               variant="card"
+                              bowlerHrefSuffix={`?from=weekly-payments&fromLeagueId=${leagueId}`}
                             />
                           ))}
                         </div>
@@ -277,6 +278,7 @@ export default function WeeklyPaymentsPage() {
                                   onCheckNumberChange={handleCheckNumberChange}
                                   onSubmit={(bowlerId) => handleSubmitPayment(bowlerId, selectedDate)}
                                   isSubmitting={submitPaymentMutation.isPending}
+                                  bowlerHrefSuffix={`?from=weekly-payments&fromLeagueId=${leagueId}`}
                                 />
                               ))}
                             </TableBody>
@@ -292,6 +294,7 @@ export default function WeeklyPaymentsPage() {
                         onDelete={setPaymentToDelete}
                         isDeletePending={deletePaymentMutation.isPending}
                         isAdmin={isAdmin}
+                        bowlerHrefSuffix={`?from=weekly-payments&fromLeagueId=${leagueId}`}
                       />
                     </div>
                   )}
