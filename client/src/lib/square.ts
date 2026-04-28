@@ -544,6 +544,6 @@ export async function createSquareCustomer(name: string, email: string, teamId: 
 }
 
 export function getSquareCustomerUrl(customerId: string): string {
-  return `https://squareup.com/dashboard/customers/${customerId}`;
+  return `https://app.squareup.com/dashboard/customers/directory/customer/${customerId}`;
 }
 

@@ -177,7 +177,7 @@ function MessagingContent({ orgId }: MessagingContentProps) {
             </div>
             {squareConnected && (
               <a
-                href="https://squareup.com/dashboard/customers/directory"
+                href="https://app.squareup.com/dashboard/customers/directory"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1.5 text-indigo-600 hover:text-indigo-700 font-medium"
